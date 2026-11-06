@@ -53,6 +53,8 @@ pub struct MpvEngine {
     entry: Option<i64>,
     null_output: bool,
     api_version: u64,
+    audio_module: Option<super::runtime::MpvModule>,
+    retired_local_ready: bool,
     pinned_authority: Option<Cancellation>,
     pinned_bmff_options: bool,
     stereo_pcm: Option<super::StereoPcmControl>,
@@ -175,6 +177,31 @@ impl MpvEngine {
     }
     fn open_mode(config: MpvConfig, video: bool) -> Result<Self> {
         let mut native = Native::open(config.library.as_deref())?;
+        Self::initialize_native(&mut native, config.null_output, video)?;
+        Ok(Self {
+            api_version: native.version(),
+            audio_module: (!video).then(|| native.module()),
+            retired_local_ready: false,
+            native: Some(native),
+            equalizer: None,
+            equalizer_reserved: false,
+            loudness: None,
+            loudness_reserved: false,
+            parametric: None,
+            equalizer_library: None,
+            sequence: 0,
+            events: VecDeque::new(),
+            entry: None,
+            null_output: config.null_output,
+            pinned_authority: None,
+            pinned_bmff_options: false,
+            stereo_pcm: None,
+            local_flac: None,
+            local_wave: false,
+            local_equalizer: None,
+        })
+    }
+    fn initialize_native(native: &mut Native, null_output: bool, video: bool) -> Result<()> {
         for (key, value) in [
             ("config", "no"),
             ("load-scripts", "no"),
@@ -195,30 +222,11 @@ impl MpvEngine {
         }
         // An unset ao selects the operating-system default. "auto" is not a
         // driver in the tested libmpv build (audio initialization error -14).
-        if config.null_output {
+        if null_output {
             native.option(c"ao", c"null")?;
         }
         native.initialize()?;
-        Ok(Self {
-            api_version: native.version(),
-            native: Some(native),
-            equalizer: None,
-            equalizer_reserved: false,
-            loudness: None,
-            loudness_reserved: false,
-            parametric: None,
-            equalizer_library: None,
-            sequence: 0,
-            events: VecDeque::new(),
-            entry: None,
-            null_output: config.null_output,
-            pinned_authority: None,
-            pinned_bmff_options: false,
-            stereo_pcm: None,
-            local_flac: None,
-            local_wave: false,
-            local_equalizer: None,
-        })
+        Ok(())
     }
     pub fn api_version(&self) -> u64 {
         self.api_version
@@ -883,6 +891,32 @@ impl AudioEngine for MpvEngine {
             return Ok(None);
         }
         self.loudness.as_ref().map(|h| h.stats()).transpose()
+    }
+    fn reopen_retired_local_sink(&mut self, cancel: &Cancellation) -> Result<bool> {
+        if !self.retired_local_ready {
+            return Ok(false);
+        }
+        if self.native.is_some()
+            || self.entry.is_some()
+            || self.pinned_authority.is_some()
+            || self.stereo_pcm.is_some()
+            || self.local_equalizer.is_some()
+        {
+            return Err(Error::State("retired native sink still owns playback"));
+        }
+        let module = self
+            .audio_module
+            .as_ref()
+            .ok_or(Error::State("retired native audio SDK is unavailable"))?;
+        cancel.check()?;
+        // Keep the already mapped SDK. A path lookup at recovery time could
+        // select a different runtime; no old Native/source survives this call.
+        let mut native = Native::from_runtime(module.acquire()?)?;
+        Self::initialize_native(&mut native, self.null_output, false)?;
+        cancel.check()?;
+        self.native = Some(native);
+        self.retired_local_ready = false;
+        Ok(true)
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         let result = self.load_inner(request, cancel);

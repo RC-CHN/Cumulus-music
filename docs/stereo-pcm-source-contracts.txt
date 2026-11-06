@@ -330,3 +330,32 @@ ordinary playback proof. See ordinary-native-local-equalizer-proof.txt for
 the separate native setup, engine and actor integration. A timeout or
 ambiguous retirement cannot hand the descriptor to a second sink; after
 publication, error does not authorize an audible retry.
+
+Ordinary local Stop recovery after fail-closed destruction
+
+If libmpv cannot acknowledge a pinned Stop, terminate the old handle and
+its output synchronously as before. Only for a committed ordinary local
+PCM graph with no other native effect adapter, keep a recovery receipt
+after the callback has closed and the producer has joined within the
+existing bounded retirement wait. Discard the old file and all its
+authority; no PCM, native event, or file descriptor can enter a new sink.
+
+A later explicit native file open or indexed-file selection, or the
+existing explicit Play/Retry/queue-row action on an ordinary local file,
+may prepare one empty paused sink. Use the same mapped libmpv module and
+normal audio settings, reapply the selected device through the output
+owner, and obtain current media authority through the existing native
+file or indexed-source checks. The playback actor still requires the
+accepted account, selected resource, generation and audio focus before
+unpausing. A failed or cancelled open does not issue a media reload.
+The original Stop/EOF handling, successful native Stop reuse, background
+restore/automatic transitions, cold download and other pinned lanes,
+and video handles do not perform this recovery.
+
+The deterministic local probe forces a genuine native command rejection
+after actual processed WAV playback, observes synchronous handle
+destruction, and uses the same production actor for a new explicit
+file request. The original actor reproduced “native sink retired” on
+that request. The normal GUI reselect proof uses real GTK and the
+packaged decoder with synthetic FLAC. Its healthy Stop observations do
+not establish a spontaneous missing acknowledgement on that platform.

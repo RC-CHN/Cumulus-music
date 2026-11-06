@@ -364,6 +364,11 @@ impl<R: HeldInput> HeldPass<R> {
             .ok_or(Error::State("stereo reader was already published"))
     }
     fn reclaim(mut self) -> Result<HeldSource<R>> {
+        let source = self.join_retired()?;
+        source.reader.source_authority().validate()?;
+        Ok(source)
+    }
+    fn join_retired(&mut self) -> Result<HeldSource<R>> {
         // A reader still held here was never published to a sink.
         drop(self.reader.take());
         let state = self.control.snapshot()?;
@@ -387,7 +392,6 @@ impl<R: HeldInput> HeldPass<R> {
         worker
             .join()
             .map_err(|_| Error::State("stereo worker panicked"))?;
-        source.reader.source_authority().validate()?;
         Ok(source)
     }
 }

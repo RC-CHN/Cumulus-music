@@ -139,6 +139,13 @@ impl MpvEngine {
         self.pinned_authority = None;
         let stereo = self.stereo_pcm.take();
         self.events.clear();
+        // Only the proven ordinary owned PCM graph is eligible. Its callbacks
+        // own the effects; no independent live filter can be migrated.
+        let recoverable_local = self.native.is_some()
+            && self.audio_module.is_some()
+            && self.equalizer.is_none()
+            && self.loudness.is_none()
+            && self.parametric.is_none();
         let result = match stop {
             Ok(event) => {
                 self.events.push_back(event);
@@ -154,6 +161,15 @@ impl MpvEngine {
         };
         if let Some(control) = stereo {
             control.retire_sink();
+            if result.is_err()
+                && recoverable_local
+                && let Some(local) = self.local_equalizer.take()
+            {
+                // Native destruction closed the reader and stopped AO. The
+                // only recovery receipt is a joined worker and discarded
+                // old source; a timeout or unsafe close stays fail-closed.
+                self.retired_local_ready = local.discard_retired().is_ok();
+            }
         }
         result
     }
@@ -276,6 +292,8 @@ mod tests {
             entry: None,
             null_output: true,
             api_version: 0,
+            audio_module: None,
+            retired_local_ready: false,
             pinned_authority: None,
             pinned_bmff_options: false,
             stereo_pcm: None,
@@ -567,3 +585,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "retired_playback_tests.rs"]
+mod retired_playback_tests;

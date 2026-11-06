@@ -49,6 +49,19 @@ unsafe fn load(path: &OsStr) -> Result<Library> {
 type Libraries = Mutex<HashMap<OsString, Arc<Library>>>;
 static LIBRARIES: OnceLock<Libraries> = OnceLock::new();
 
+/// Retains the exact loaded code without a native media handle or MTA lease.
+#[derive(Clone)]
+pub(super) struct MpvModule(Arc<Library>);
+impl MpvModule {
+    pub(super) fn acquire(&self) -> Result<MpvRuntime> {
+        Ok(MpvRuntime {
+            #[cfg(windows)]
+            _mta: com::Mta::acquire()?,
+            library: self.0.clone(),
+        })
+    }
+}
+
 /// Native host lease for libmpv and its dependency modules. This carries no
 /// account, decoder, output device, source, or playback state.
 ///
@@ -116,13 +129,11 @@ impl MpvRuntime {
             library
         };
         drop(modules);
-        #[cfg(windows)]
-        let mta = com::Mta::acquire()?;
-        Ok(Self {
-            #[cfg(windows)]
-            _mta: mta,
-            library,
-        })
+        MpvModule(library).acquire()
+    }
+
+    pub(super) fn module(&self) -> MpvModule {
+        MpvModule(self.library.clone())
     }
 
     /// Resolve an SDK symbol, with the borrowed library lifetime preserved.

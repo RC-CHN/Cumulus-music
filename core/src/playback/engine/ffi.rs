@@ -96,11 +96,23 @@ impl Native {
     pub fn open(path: Option<&std::path::Path>) -> Result<Self> {
         // SAFETY: native host selects a trusted system/bundled libmpv. The
         // resolved symbols use documented C signatures and stay library-owned.
-        unsafe {
-            let library = match path {
+        let library = unsafe {
+            match path {
                 Some(path) => MpvRuntime::open(path.as_os_str()),
                 None => MpvRuntime::open_default(),
-            }?;
+            }?
+        };
+        Self::from_runtime(library)
+    }
+
+    pub(super) fn module(&self) -> super::runtime::MpvModule {
+        self._runtime.module()
+    }
+
+    pub(super) fn from_runtime(library: MpvRuntime) -> Result<Self> {
+        // SAFETY: this runtime retains the trusted module; every symbol has the
+        // documented C ABI and is only used while the lease is owned.
+        unsafe {
             let version = *library
                 .get::<Version>(b"mpv_client_api_version\0")
                 .map_err(|_| failed("ABI", -1))?;

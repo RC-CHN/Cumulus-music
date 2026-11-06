@@ -78,6 +78,12 @@ trait PinnedReader: std::io::Read + std::io::Seek + Send {}
 impl<T: std::io::Read + std::io::Seek + Send> PinnedReader for T {}
 
 pub trait AudioEngine: Send {
+    /// An explicit ordinary local request may prepare a fresh empty sink
+    /// after verified fail-closed retirement. This never loads or resumes media.
+    fn reopen_retired_local_sink(&mut self, _: &Cancellation) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Observe the actual decoder format for this entry; unknown never implies
     /// stereo. Implementations must not report a forced output-device layout.
     fn decoded_audio_format(&mut self, _entry_id: i64) -> Result<Option<DecodedAudioFormat>> {

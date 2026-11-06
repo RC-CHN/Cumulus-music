@@ -257,6 +257,16 @@ pub(super) struct Focused<E: ?Sized> {
     pub owner: Owner,
 }
 impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
+    fn reopen_retired_local_sink(&mut self, cancel: &Cancellation) -> Result<bool> {
+        let current = self.focus.snapshot()?;
+        let focus = self.focus.clone();
+        let owner = self.owner;
+        let source = cancel.clone();
+        let cancel = Cancellation::new(move || {
+            !source.is_cancelled() && focus.check(current.generation, owner).is_ok()
+        });
+        self.inner.reopen_retired_local_sink(&cancel)
+    }
     fn output_devices(&mut self) -> Result<Option<OutputDevices>> {
         self.inner.output_devices()
     }

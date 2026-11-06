@@ -25,6 +25,12 @@ pub(super) struct LocalEqualizer {
     pending: bool,
 }
 
+impl LocalEqualizer {
+    pub(super) fn discard_retired(self) -> Result<()> {
+        self.pass.discard_retired()
+    }
+}
+
 impl MpvEngine {
     pub fn with_local_equalizer_decoder(mut self, runtime: TrustedFlacRuntime) -> Self {
         self.local_flac = Some(runtime);

@@ -140,6 +140,11 @@ impl NativeStereoPass {
         self.0.take_reader()
     }
 
+    pub(crate) fn discard_retired(mut self) -> Result<()> {
+        // Retirement drops the old source. Its revoked authorization cannot
+        // be used to open, seek, or pass a descriptor into the new sink.
+        self.0.join_retired().map(drop)
+    }
     pub(crate) fn reclaim(self) -> Result<NativeStereoSource> {
         self.0.reclaim().map(NativeStereoSource)
     }

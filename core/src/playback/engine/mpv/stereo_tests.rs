@@ -16,6 +16,8 @@ fn already_destroyed_native_sink_does_not_strand_unpublished_pcm_ownership() {
         entry: None,
         null_output: true,
         api_version: 0,
+        audio_module: None,
+        retired_local_ready: false,
         pinned_authority: None,
         pinned_bmff_options: false,
         stereo_pcm: None,

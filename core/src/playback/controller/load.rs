@@ -33,6 +33,7 @@ pub(super) struct LoadOptions {
     pub restart_at_end: bool,
     pub supplied_voice_checkpoint: bool,
     pub prefer_search_download: bool,
+    pub explicit_local_recovery: bool,
     pub source: LoadSource,
 }
 pub(super) struct Prepared {
@@ -41,6 +42,7 @@ pub(super) struct Prepared {
     pub media: LoadedMedia,
     pub local_equalizer: bool,
     pub indexed_flac: bool,
+    reopened_local_sink: bool,
     pub timeline: Timeline,
     pub position: f64,
     pub reset: bool,
@@ -190,6 +192,14 @@ impl Actor {
             && self.equalizer.preferences.settings.local_graph_requested())
         .then_some(self.equalizer.preferences.settings);
         let native_open = item.resource.get("native_open_file").is_some();
+        // Use the typed native/indexed resource and ordinary source path, not
+        // a renderer label. Resolution/inspection still run normally below.
+        let reopen_local_sink = options.explicit_local_recovery
+            && self.independent_transport(&item)
+            && matches!(&options.source, LoadSource::CurrentPreference)
+            && (native_open
+                || (item.resource["local_id"].is_string()
+                    && item.resource["local_revision"]["kind"] == "file"));
         let local_equalizer = local_material.filter(|_| native_open);
         let indexed_equalizer = local_material.filter(|_| {
             cfg!(all(target_os = "linux", target_arch = "x86_64"))
@@ -257,15 +267,19 @@ impl Actor {
             .and_then(|cache| cache.store.revision().ok());
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
-                let (streaming_revision, pinned_search, native_indexed) =
+                let reopen_guard = cancel.clone();
+                let (streaming_revision, pinned_search, native_indexed, reopened_local_sink) =
                     super::engine(engine.clone(), cancel.clone(), move |engine| {
                         engine.stop()?;
+                        let reopened =
+                            reopen_local_sink && engine.reopen_retired_local_sink(&reopen_guard)?;
                         // Discard the previous track's gain before priming a new decoder.
                         engine.reset_track_loudness()?;
                         Ok((
                             streaming_revision.filter(|_| engine.streaming_audio_available()),
                             engine.supports_pinned_search_download(),
                             indexed_equalizer.is_some() && engine.supports_indexed_flac_equalizer(),
+                            reopened,
                         ))
                     })
                     .await?;
@@ -473,6 +487,7 @@ impl Actor {
                     media,
                     local_equalizer,
                     indexed_flac,
+                    reopened_local_sink,
                     timeline,
                     position,
                     reset,
@@ -559,7 +574,7 @@ impl Actor {
                         }
                     }
                 }
-                if self.local_equalizer_needs_sync {
+                if self.local_equalizer_needs_sync || prepared.reopened_local_sink {
                     self.equalizer.status = EqualizerStatus::Pending;
                 }
                 if self.equalizer.status == EqualizerStatus::Pending

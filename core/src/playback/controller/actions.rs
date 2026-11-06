@@ -214,6 +214,15 @@ impl Actor {
         let relay_hint = crate::relay::publisher::player::Hint::from_command(&request.command);
         let prefer_search_download =
             matches!(&request.command, PlaybackCommand::PlaySearchCatalog(_));
+        let explicit_local_recovery = !request.verified_skip_selection
+            && match &request.command {
+                PlaybackCommand::Replace { source, .. } => source["kind"] == "local",
+                PlaybackCommand::Play
+                | PlaybackCommand::PlayFromStart
+                | PlaybackCommand::RefreshSource
+                | PlaybackCommand::Select(_) => true,
+                _ => false,
+            };
         let result = match request.command {
             PlaybackCommand::Startup(input) => {
                 self.startup_restore(input).map(|value| options = value)
@@ -579,6 +588,7 @@ impl Actor {
         self.relay_hint = relay_hint;
         if let Some(mut options) = options {
             options.prefer_search_download = prefer_search_download;
+            options.explicit_local_recovery = explicit_local_recovery;
             if let Err(error) = self.begin(options, request.id, Some(request.reply)).await {
                 self.record_failure(&error);
             }

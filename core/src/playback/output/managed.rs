@@ -262,6 +262,20 @@ impl<E: AudioEngine + ?Sized> ManagedOutput<E> {
     }
 }
 impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
+    fn reopen_retired_local_sink(&mut self, cancel: &Cancellation) -> Result<bool> {
+        if !self
+            .inner
+            .reopen_retired_local_sink(&self.lease.cancellation(cancel))?
+        {
+            return Ok(false);
+        }
+        // Do not carry the old handle's output observations/failure cache.
+        // The existing load path reapplies device preferences to this sink.
+        self.checked = None;
+        self.policy = None;
+        self.failed_selection = None;
+        Ok(true)
+    }
     fn maintain_output(&mut self) -> Result<()> {
         self.synchronize(false)
     }
