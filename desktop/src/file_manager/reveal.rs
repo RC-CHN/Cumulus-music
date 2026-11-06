@@ -53,6 +53,9 @@ fn linux_show_item(path: &Path, cancel: &gio::Cancellable) -> Result<bool> {
         glib::{VariantTy, variant::ToVariant},
         prelude::{CancellableExt, FileExt},
     };
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
     let connection = match gio::bus_get_sync(gio::BusType::Session, Some(cancel)) {
         Ok(connection) => connection,
         Err(_) if cancel.is_cancelled() => return Err(Error::Cancelled),
@@ -62,6 +65,11 @@ fn linux_show_item(path: &Path, cancel: &gio::Cancellable) -> Result<bool> {
     let uri = gio::File::for_path(path).uri().to_string();
     let params = (vec![uri], "").to_variant();
     const SERVICE: &str = "org.freedesktop.FileManager1";
+    // Canonicalization or opening the session bus can finish after the caller's
+    // outer deadline. In that case do not start a late shell request.
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
     match connection.call_sync(
         Some(SERVICE),
         "/org/freedesktop/FileManager1",
