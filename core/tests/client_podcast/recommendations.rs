@@ -22,7 +22,7 @@ async fn subscription_recommendations_use_exact_uncached_read_and_strip_raw_payl
         .await
         .unwrap();
     let projected = serde_json::to_value(initial).unwrap();
-    let rows = projected["value"].as_array().unwrap();
+    let rows = projected["value"]["cards"].as_array().unwrap();
     assert_eq!(
         rows.iter()
             .map(|row| row["id"].as_str().unwrap())
@@ -43,6 +43,7 @@ async fn subscription_recommendations_use_exact_uncached_read_and_strip_raw_payl
             .await
             .unwrap()
             .value
+            .cards
             .is_empty()
     );
     *api.recommendation_response.lock().unwrap() = json!({"code":200,"data":{"id":2}});
@@ -91,7 +92,8 @@ async fn subscription_recommendations_never_return_late_or_guest_reads() {
             .podcast_subscription_recommendations("2")
             .await
             .unwrap()
-            .value[0]
+            .value
+            .cards[0]
             .id,
         "42"
     );
@@ -108,4 +110,120 @@ async fn subscription_recommendations_never_return_late_or_guest_reads() {
             .is_err()
     );
     assert!(guest.calls.lock().unwrap().is_empty());
+}
+
+async fn prepared(client: &MusicClient, input: PlaySelection) -> cumulus_core::Result<PlayerView> {
+    let current = client.player_snapshot("1").await?;
+    let ticket =
+        client.prepare_play_selection("1", &current.queue_revision, current.play_id.as_deref())?;
+    client.commit_prepared_selection("1", &ticket, input).await
+}
+
+#[tokio::test]
+async fn subscription_recommendations_overlay_paginates_and_toggles_current_decoder() {
+    use cumulus_core::playback::{PlaybackMode, controller::PlaybackStatus};
+
+    let (dir, api, _session, client, device) = fixture_with_device();
+    *api.recommendation_response.lock().unwrap() =
+        json!({"code":200,"data":[radio(),{"id":8,"name":"Unavailable","underShelf":true}]});
+    api.count.store(251, Ordering::SeqCst);
+    let library = client
+        .podcast_page("1", query(PodcastScope::Podcasts, 0), true)
+        .await
+        .unwrap();
+    let shelf = client
+        .podcast_subscription_recommendations("1")
+        .await
+        .unwrap()
+        .value;
+    let profile = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    profile
+        .store()
+        .put(
+            "9",
+            "podcast-latest-voice-v1",
+            "7",
+            &json!({
+                "id":"251","mainTrackId":"1251","name":"Episode 251","time":19,"duration":120
+            }),
+        )
+        .unwrap();
+    let _subscription = client.subscribe_playback("1").await.unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let select = |id: &str, receipt: &str| PlaySelection::PodcastSubscriptionRecommendation {
+        id: id.into(),
+        revision: library.revision.clone(),
+        receipt: receipt.into(),
+    };
+    api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        prepared(&client, select("8", &shelf.receipt)).await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        prepared(&client, select("7", "00000000000000000000000000000000")).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(api.calls.lock().unwrap().is_empty());
+    assert_eq!(device.state.lock().unwrap().loads, 0);
+
+    let started = prepared(&client, select("7", &shelf.receipt))
+        .await
+        .unwrap();
+    assert_eq!(started.state, PlaybackStatus::Playing);
+    assert_eq!(started.mode, PlaybackMode::Sequential);
+    assert_eq!(
+        started.track.as_ref().unwrap().voice_id.as_deref(),
+        Some("251")
+    );
+    assert_eq!(started.position, Some(19.0));
+    assert!(matches!(started.origin, Some(PlayerOrigin::Podcast { ref id }) if id == "7"));
+    assert_eq!(started.queue_len, 251);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let observed = api.calls.lock().unwrap().clone();
+    let by_radio = "/api/v6/dj/program/byradio";
+    assert_eq!(
+        observed
+            .iter()
+            .filter(|(path, _)| path == by_radio)
+            .map(|(_, args)| args.clone())
+            .collect::<Vec<_>>(),
+        [
+            json!({"radioId":"7","offset":0,"limit":250}),
+            json!({"radioId":"7","offset":250,"limit":250})
+        ]
+    );
+    assert!(
+        observed
+            .iter()
+            .any(|(path, p)| path == "/api/dj/play/url/check" && p["voiceId"] == "251")
+    );
+    assert!(!observed.iter().any(|(path, _)| matches!(
+        path.as_str(),
+        "/api/djradio/v3/get"
+            | "/api/dj/around/program/v1"
+            | "/api/dj/user/setting/resumeplay/get"
+            | "/api/djradio/newcount/clear/byradio"
+    )));
+
+    for state in [PlaybackStatus::Paused, PlaybackStatus::Playing] {
+        let toggled = prepared(&client, select("7", &shelf.receipt))
+            .await
+            .unwrap();
+        assert_eq!(toggled.state, state);
+        assert_eq!(toggled.play_id, started.play_id);
+        assert_eq!(toggled.entry_id, started.entry_id);
+        assert_eq!(toggled.position, started.position);
+        assert_eq!(toggled.queue_revision, started.queue_revision);
+    }
+    assert_eq!(api.calls.lock().unwrap().as_slice(), observed.as_slice());
+    assert_eq!(device.state.lock().unwrap().loads, 1);
 }

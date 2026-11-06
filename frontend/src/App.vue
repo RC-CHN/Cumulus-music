@@ -1456,6 +1456,28 @@ watch(
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
 }
+const currentPodcastRadioId = computed(() => {
+  const view = player.view.value;
+  return player.loaded.value && !view?.fm && view?.origin?.kind === 'podcast'
+    ? view.origin.id
+    : undefined;
+});
+function playRecommendedPodcast(id: string) {
+  if (page.value.kind !== 'podcasts' || !player.ready.value || player.busy.value) return;
+  const source = podcasts.recommendedSelection(id);
+  if (!source) return;
+  void player.prepareSelection(async (epoch) => {
+    const active = podcasts.recommendedSelection(id);
+    if (
+      page.value.kind !== 'podcasts' ||
+      podcasts.epoch.value !== epoch ||
+      active?.receipt !== source.receipt ||
+      active.revision !== source.revision
+    )
+      throw { code: 'stale', message: '推荐播客已更新' };
+    return { kind: 'podcast_subscription_recommendation', ...source };
+  });
+}
 function playRecentPodcast(revision: string, id: string, doubleClick: boolean) {
   if (page.value.kind !== 'podcasts' || !podcasts.recentSelected.value || player.busy.value) return;
   const current = player.view.value;
@@ -5006,7 +5028,9 @@ onUnmounted(() => {
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentVoiceId"
                 @play="playPodcast"
+                :current-radio-id="currentPodcastRadioId"
                 @recent-play="playRecentPodcast"
+                @recommended-play="playRecommendedPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
               />

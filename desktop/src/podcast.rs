@@ -186,7 +186,7 @@ pub async fn podcast_subscription_recommendations<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
-) -> Result<AccountData<Vec<PodcastSubscriptionRecommendation>>, ClientError> {
+) -> Result<AccountData<PodcastSubscriptionRecommendations>, ClientError> {
     if window.label() != "main" {
         return Err(cumulus_core::Error::InvalidInput(
             "podcast recommendations require the main window",

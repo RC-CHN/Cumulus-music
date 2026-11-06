@@ -104,10 +104,14 @@ export interface PodcastSubscriptionRecommendation {
   playCount: number | null;
   unavailable: boolean;
 }
+export interface PodcastSubscriptionRecommendations {
+  receipt: string;
+  cards: PodcastSubscriptionRecommendation[];
+}
 export interface PodcastClient {
   podcastSubscriptionRecommendations(
     epoch: string,
-  ): Promise<AccountData<PodcastSubscriptionRecommendation[]>>;
+  ): Promise<AccountData<PodcastSubscriptionRecommendations>>;
   podcastState(epoch: string, refresh: boolean): Promise<AccountData<PodcastState>>;
   podcastRadioOrder(epoch: string, query: PodcastRadioOrder): Promise<AccountData<boolean | null>>;
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;

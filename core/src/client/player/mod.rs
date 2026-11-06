@@ -13,6 +13,7 @@ mod next_play;
 mod origin;
 mod output;
 mod playlist_batch;
+mod podcast_recommended;
 mod power;
 mod preferences;
 mod prepared_selection;

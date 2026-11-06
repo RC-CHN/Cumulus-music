@@ -11,12 +11,12 @@ import type {
   PodcastCommand,
   PodcastAction,
   PodcastMutation,
-  PodcastSubscriptionRecommendation,
+  PodcastSubscriptionRecommendations,
 } from '../services/podcast.ts';
 
 export function usePodcasts(core: PodcastClient = useCore(), expired: () => void = () => {}) {
   const page = shallowRef<PodcastPage>();
-  const recommendations = shallowRef<PodcastSubscriptionRecommendation[]>([]);
+  const recommendations = shallowRef<PodcastSubscriptionRecommendations>();
   const query = ref<PodcastQuery>({
     scope: { kind: 'podcasts' },
     keyword: '',
@@ -50,7 +50,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       snapshot?.scope.kind === 'podcasts' &&
       snapshot.epoch === epoch.value &&
       snapshot.remoteTotal < 50
-      ? recommendations.value
+      ? (recommendations.value?.cards ?? [])
       : [];
   });
   function valid(g: number, e: string) {
@@ -71,7 +71,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     stateRead++;
     recommendationVisit++;
     recommendationsRequested = false;
-    recommendations.value = [];
+    recommendations.value = undefined;
     epoch.value = '';
     page.value = undefined;
     liked.value = new Set();
@@ -227,13 +227,21 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     // Unavailable/ambiguous clear never prevents ordinary detail navigation.
     if (receipt) void core.podcastClearSubscribedBadge(owner, receipt, id).catch(() => {});
   }
-  function openRecommended(id: string) {
+  function recommendedSelection(id: string) {
+    const shelf = recommendations.value;
+    const displayed = page.value;
     if (
       !visible ||
       busy.value ||
+      !shelf ||
+      !displayed ||
       !recommendedCards.value.some((card) => card.id === id && !card.unavailable)
     )
       return;
+    return { id, receipt: shelf.receipt, revision: displayed.revision };
+  }
+  function openRecommended(id: string) {
+    if (!recommendedSelection(id)) return;
     // This action came from the recommendation shelf, not from a subscribed card.
     navigate({ kind: 'radio', id, ascending: true });
   }
@@ -395,6 +403,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     navigate,
     openCard,
     recommendedCards,
+    recommendedSelection,
     openRecommended,
     open,
     back,

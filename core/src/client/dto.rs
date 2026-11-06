@@ -63,7 +63,7 @@ pub use super::podcast::{
     PodcastRadioOrder, PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource,
     PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastRecentPage, PodcastRecentQuery,
     PodcastSearchMembership, PodcastState, PodcastSubcategory, PodcastSubscriptionRecommendation,
-    PodcastTopLayout,
+    PodcastSubscriptionRecommendations, PodcastTopLayout,
 };
 pub use super::profile_blacklist::{
     ProfileBlacklistCommand, ProfileBlacklistEntry, ProfileBlacklistHeader, ProfileBlacklistList,

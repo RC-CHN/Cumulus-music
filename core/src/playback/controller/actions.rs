@@ -35,6 +35,7 @@ impl Actor {
             request.command,
             PlaybackCommand::UseMissingDownloadOnline { .. }
                 | PlaybackCommand::ReplaceListenedBook { .. }
+                | PlaybackCommand::ReplacePodcastRecommendation { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
@@ -190,6 +191,7 @@ impl Actor {
             request.command,
             PlaybackCommand::Replace { .. }
                 | PlaybackCommand::ReplaceListenedBook { .. }
+                | PlaybackCommand::ReplacePodcastRecommendation { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::Select(_)
@@ -272,6 +274,39 @@ impl Actor {
                 .apply_remote(value, Some(&request.reply))
                 .await
                 .map(|value| options = value),
+            PlaybackCommand::ReplacePodcastRecommendation {
+                mut resources,
+                index,
+                source,
+                position,
+                sequential,
+            } => {
+                self.stamp_quality(&mut resources);
+                let still_current = request
+                    .guard
+                    .as_ref()
+                    .is_some_and(|(_, guard)| !guard.is_cancelled());
+                if !still_current {
+                    Err(Error::StaleResponse)
+                } else {
+                    self.session
+                        .with_token(&self.token, |_| {
+                            self.queue.replace_with_mode(
+                                resources,
+                                index,
+                                source,
+                                sequential.then_some(crate::playback::PlaybackMode::Sequential),
+                            )
+                        })
+                        .map(|_| {
+                            options = Some(LoadOptions {
+                                position: Some(position),
+                                recover: true,
+                                ..LoadOptions::default()
+                            })
+                        })
+                }
+            }
             PlaybackCommand::Replace {
                 mut resources,
                 index,

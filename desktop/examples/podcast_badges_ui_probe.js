@@ -104,6 +104,7 @@
   async function checkRecommendations() {
     const shelf = () => one('[data-podcast-subscription-recommendations]', pane());
     const rec = (id) => one(`[data-recommended-radio-id="${id}"]`, shelf());
+    const recOpen = (id) => one('.recommendation-open', rec(id));
     const visibleIds = () => [...shelf().querySelectorAll('[data-recommended-radio-id]:not([inert])')]
       .map((card) => card.dataset.recommendedRadioId);
     await wait(shelf, 'recommendation shelf');
@@ -128,7 +129,7 @@
     const previous = () => button('上一组推荐播客', shelf());
     click(await wait(() => shown(previous()) && previous(), 'accessible previous group'));
     await wait(() => shown(rec('81')) && !rec('81').inert, 'first group restored');
-    click(rec('81'));
+    click(recOpen('81'));
     await wait(() => detailReady('81') && detailReads.length === 1, 'recommended detail');
     assert(!shelf() && !requests.length, 'detail is normal and never clears subscription badge');
     await capture('recommended_detail', () => one('.podcast-summary h2', pane()));

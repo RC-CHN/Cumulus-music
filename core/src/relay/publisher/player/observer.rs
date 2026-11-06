@@ -27,6 +27,7 @@ impl Hint {
                 command,
                 PlaybackCommand::Replace { .. }
                     | PlaybackCommand::ReplaceListenedBook { .. }
+                    | PlaybackCommand::ReplacePodcastRecommendation { .. }
                     | PlaybackCommand::ReplaceFollowLatest { .. }
                     | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
             ),

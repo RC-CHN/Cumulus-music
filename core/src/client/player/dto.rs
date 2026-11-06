@@ -259,6 +259,11 @@ pub enum PlaySelection {
     Voice {
         id: String,
     },
+    PodcastSubscriptionRecommendation {
+        receipt: String,
+        revision: String,
+        id: String,
+    },
     PodcastRecent {
         revision: String,
         id: String,

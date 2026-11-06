@@ -5,10 +5,14 @@ mod discovery;
 mod dto;
 mod home;
 pub(super) mod profile;
+pub(in crate::client) mod radio_playback;
 mod rankings;
 mod recent;
 mod subscription_recommendations;
-pub use subscription_recommendations::PodcastSubscriptionRecommendation;
+pub(super) use subscription_recommendations::Host as PodcastSubscriptionRecommendationHost;
+pub use subscription_recommendations::{
+    PodcastSubscriptionRecommendation, PodcastSubscriptionRecommendations,
+};
 pub(super) mod view;
 use super::MusicClient;
 use crate::{

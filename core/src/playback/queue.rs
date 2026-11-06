@@ -271,6 +271,27 @@ impl PlaybackQueue {
         source: Value,
         retain: Option<String>,
     ) -> Result<()> {
+        self.replace_inner(resources, index, source, retain, None)
+    }
+
+    pub(super) fn replace_with_mode(
+        &mut self,
+        resources: Vec<Value>,
+        index: usize,
+        source: Value,
+        mode: Option<PlaybackMode>,
+    ) -> Result<()> {
+        self.replace_inner(resources, index, source, None, mode)
+    }
+
+    fn replace_inner(
+        &mut self,
+        resources: Vec<Value>,
+        index: usize,
+        source: Value,
+        retain: Option<String>,
+        mode: Option<PlaybackMode>,
+    ) -> Result<()> {
         if !resources.is_empty() && index >= resources.len() {
             return Err(Error::InvalidInput("invalid initial queue index"));
         }
@@ -280,11 +301,12 @@ impl PlaybackQueue {
         }
         let mut order: Vec<_> = items.iter().map(|i| i.entry_id.clone()).collect();
         let current = order.get(index).cloned();
-        let mode = self
-            .intelligence
-            .as_ref()
-            .filter(|s| s.context.active())
-            .map_or(self.state.mode, |s| s.last_mode);
+        let mode = mode.unwrap_or_else(|| {
+            self.intelligence
+                .as_ref()
+                .filter(|s| s.context.active())
+                .map_or(self.state.mode, |s| s.last_mode)
+        });
         if mode == PlaybackMode::Random {
             order.shuffle(&mut self.rng)
         }

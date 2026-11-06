@@ -3,8 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { PodcastSubscriptionRecommendation } from '../services/podcast';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ cards: PodcastSubscriptionRecommendation[]; disabled: boolean }>();
-const emit = defineEmits<{ open: [id: string] }>();
+const props = defineProps<{
+  cards: PodcastSubscriptionRecommendation[];
+  disabled: boolean;
+  canPlay: boolean;
+  currentRadioId?: string;
+  playing: boolean;
+}>();
+const emit = defineEmits<{ open: [id: string]; play: [id: string] }>();
 const viewport = ref<HTMLElement>();
 const width = ref(0),
   start = ref(0);
@@ -46,31 +52,51 @@ function move(direction: -1 | 1) {
           transform: 'translateX(' + -(cell + gap) * start + 'px)',
         }"
       >
-        <button
+        <article
           v-for="(card, index) in cards"
           :key="card.id"
-          type="button"
           class="recommendation-card"
           :data-recommended-radio-id="card.id"
           :inert="index < start || index >= start + columns"
-          :disabled="disabled || card.unavailable"
-          @click="emit('open', card.id)"
         >
-          <span class="recommendation-cover">
-            <img
-              v-if="card.coverUrl"
-              :src="card.coverUrl"
-              alt=""
-              loading="lazy"
-              referrerpolicy="no-referrer"
-            />
-            <Icon v-else name="music" />
-            <span v-if="card.playCount !== null && card.playCount > 0" class="recommendation-count">
-              <Icon name="headphones" />{{ count.format(card.playCount) }}
+          <button
+            type="button"
+            class="recommendation-open"
+            :disabled="disabled || card.unavailable"
+            @click="emit('open', card.id)"
+          >
+            <span class="recommendation-cover">
+              <img
+                v-if="card.coverUrl"
+                :src="card.coverUrl"
+                alt=""
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              />
+              <Icon v-else name="music" />
+              <span
+                v-if="card.playCount !== null && card.playCount > 0"
+                class="recommendation-count"
+              >
+                <Icon name="headphones" />{{ count.format(card.playCount) }}
+              </span>
             </span>
-          </span>
-          <span class="recommendation-name" :title="card.name">{{ card.name }}</span>
-        </button>
+            <span class="recommendation-name" :title="card.name">{{ card.name }}</span>
+          </button>
+          <button
+            v-if="!card.unavailable"
+            type="button"
+            class="recommendation-play"
+            :class="{ active: currentRadioId === card.id }"
+            :disabled="disabled || !canPlay"
+            :aria-label="
+              (currentRadioId === card.id ? (playing ? '暂停 ' : '继续播放 ') : '播放 ') + card.name
+            "
+            @click="emit('play', card.id)"
+          >
+            <Icon :name="currentRadioId === card.id && playing ? 'pause' : 'play'" />
+          </button>
+        </article>
       </div>
     </div>
     <template v-if="maxStart > 0">
@@ -119,6 +145,11 @@ function move(direction: -1 | 1) {
 }
 .recommendation-card {
   min-width: 0;
+  position: relative;
+}
+.recommendation-open {
+  display: block;
+  width: 100%;
   border: 0;
   border-radius: 6px;
   overflow: hidden;
@@ -127,8 +158,32 @@ function move(direction: -1 | 1) {
   color: inherit;
   text-align: left;
 }
-.recommendation-card:focus-visible {
+.recommendation-open:focus-visible {
   outline-offset: -2px;
+}
+.recommendation-play {
+  position: absolute;
+  right: 10px;
+  bottom: 54px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  opacity: 0;
+  transition: opacity 0.2s ease-in;
+}
+.recommendation-card:hover .recommendation-play,
+.recommendation-card:focus-within .recommendation-play,
+.recommendation-play.active {
+  opacity: 1;
+}
+.recommendation-play .icon {
+  width: 21px;
+  height: 21px;
 }
 .recommendation-cover {
   position: relative;
@@ -198,7 +253,8 @@ function move(direction: -1 | 1) {
   transform: rotate(180deg);
 }
 @media (prefers-reduced-motion: reduce) {
-  .recommendation-rail {
+  .recommendation-rail,
+  .recommendation-play {
     transition: none;
   }
 }

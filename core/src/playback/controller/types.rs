@@ -215,6 +215,14 @@ pub enum PlaybackCommand {
         index: usize,
         source: Value,
     },
+    /// M404's explicit recommended-radio play-all, with first-load position.
+    ReplacePodcastRecommendation {
+        resources: Vec<Value>,
+        index: usize,
+        source: Value,
+        position: f64,
+        sequential: bool,
+    },
     /// Replace from a fenced book row using its supplied checkpoint once.
     ReplaceListenedBook {
         resources: Vec<Value>,

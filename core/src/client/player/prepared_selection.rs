@@ -102,6 +102,7 @@ impl MusicClient {
                 | PlaySelection::DailyRecommendationsBatch { .. }
                 | PlaySelection::StyleRecommendations { .. }
                 | PlaySelection::Podcast { .. }
+                | PlaySelection::PodcastSubscriptionRecommendation { .. }
                 | PlaySelection::Voice { .. }
                 | PlaySelection::Playlist { .. }
                 | PlaySelection::SearchChart { .. }

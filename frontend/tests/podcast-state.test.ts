@@ -7,6 +7,7 @@ import type {
   PodcastState,
   PodcastMutation,
   PodcastSubscriptionRecommendation,
+  PodcastSubscriptionRecommendations,
 } from '../src/services/podcast.ts';
 import type { AccountData } from '../src/services/contracts.ts';
 const account = (epoch = '1') => ({
@@ -45,7 +46,10 @@ function deferred<T>() {
 function client(extra: Partial<PodcastClient> = {}): PodcastClient {
   return {
     podcastPage: async (e) => page(e),
-    podcastSubscriptionRecommendations: async (e) => ({ epoch: e, value: [] }),
+    podcastSubscriptionRecommendations: async (e) => ({
+      epoch: e,
+      value: { receipt: e, cards: [] },
+    }),
     podcastClearSubscribedBadge: async () => {},
     podcastRadioOrder: async (e) => ({ epoch: e, value: null }),
     podcastState: async (e) => ({ epoch: e, value: { likedIds: [], operations: [] } }),
@@ -374,7 +378,7 @@ test('recommendations load once per active My Podcasts visit and use the total p
   const api = client({
     podcastSubscriptionRecommendations: async (e) => {
       reads.push(e);
-      return { epoch: e, value: [recommended('81')] };
+      return { epoch: e, value: { receipt: e, cards: [recommended('81')] } };
     },
     podcastPage: async (e, request) => ({
       ...page(e),
@@ -434,8 +438,8 @@ test('recommendations load once per active My Podcasts visit and use the total p
 });
 
 test('late recommendation from inactive visit or old account cannot populate the shelf', async () => {
-  const oldVisit = deferred<AccountData<PodcastSubscriptionRecommendation[]>>();
-  const oldAccount = deferred<AccountData<PodcastSubscriptionRecommendation[]>>();
+  const oldVisit = deferred<AccountData<PodcastSubscriptionRecommendations>>();
+  const oldAccount = deferred<AccountData<PodcastSubscriptionRecommendations>>();
   const reads: string[] = [];
   const model = usePodcasts(
     client({
@@ -445,7 +449,7 @@ test('late recommendation from inactive visit or old account cannot populate the
           ? oldVisit.promise
           : reads.length === 2
             ? oldAccount.promise
-            : { epoch: e, value: [recommended('93')] };
+            : { epoch: e, value: { receipt: e, cards: [recommended('93')] } };
       },
       podcastPage: async (e, request) => ({ ...page(e), scope: request.scope, remoteTotal: 0 }),
     }),
@@ -456,8 +460,8 @@ test('late recommendation from inactive visit or old account cannot populate the
   model.show(true);
   model.connect(account('2'));
   await model.load(true);
-  oldVisit.resolve({ epoch: '1', value: [recommended('91')] });
-  oldAccount.resolve({ epoch: '1', value: [recommended('92')] });
+  oldVisit.resolve({ epoch: '1', value: { receipt: 'old-visit', cards: [recommended('91')] } });
+  oldAccount.resolve({ epoch: '1', value: { receipt: 'old-account', cards: [recommended('92')] } });
   await Promise.all([oldVisit.promise, oldAccount.promise]);
   await Promise.resolve();
   assert.deepEqual(reads, ['1', '1', '2']);
@@ -473,7 +477,7 @@ test('opening a radio from outside My Podcasts does not read subscription recomm
     client({
       podcastSubscriptionRecommendations: async (e) => {
         reads.push(e);
-        return { epoch: e, value: [recommended('81')] };
+        return { epoch: e, value: { receipt: e, cards: [recommended('81')] } };
       },
       podcastPage: async (e, request) => ({ ...page(e), scope: request.scope, remoteTotal: 0 }),
     }),

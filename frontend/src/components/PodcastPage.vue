@@ -15,11 +15,13 @@ const props = defineProps<{
   recent: PodcastRecentModel;
   playable: boolean;
   currentId?: string;
+  currentRadioId?: string;
   playing: boolean;
 }>();
 const emit = defineEmits<{
   play: [scope: PodcastScope, revision: string, id: string | null];
   recentPlay: [revision: string, id: string, doubleClick: boolean];
+  recommendedPlay: [id: string];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[]];
 }>();
@@ -419,7 +421,11 @@ const pending = props.model.pending;
         v-if="model.recommendedCards.value.length"
         :cards="model.recommendedCards.value"
         :disabled="busy"
+        :can-play="playable"
+        :current-radio-id="currentRadioId"
+        :playing="playing"
         @open="model.openRecommended"
+        @play="emit('recommendedPlay', $event)"
       />
     </template>
   </section>

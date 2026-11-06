@@ -1,5 +1,9 @@
 //! Official "听过的书" destination. This is independent of the syncable history timeline.
-use super::super::{MusicClient, dto::AccountData, podcast};
+use super::super::{
+    MusicClient,
+    dto::AccountData,
+    podcast::{self, radio_playback::by_radio},
+};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -14,7 +18,6 @@ use std::{collections::HashSet, sync::Mutex};
 const PATH: &str = "/api/voice/book/recent";
 const PAGE: usize = 20;
 const MAX_BOOKS: usize = 1000;
-const PROGRAM_PAGE: usize = 250;
 const AROUND: &str = "/api/dj/around/program/v1";
 const AROUND_RADIUS: usize = 250;
 
@@ -148,52 +151,6 @@ fn local_chapter(chapter: &mut Chapter, local: latest::LatestVoice) {
     chapter.location = local.time * 1000;
     chapter.duration = local.duration * 1000;
     chapter.completed = local.time > 0 && local.time >= local.duration;
-}
-
-async fn by_radio(
-    api: &dyn Api,
-    radio: &str,
-    ascending: Option<bool>,
-    source: &Cancellation,
-) -> Result<Vec<Episode>> {
-    let mut voices = Vec::new();
-    let mut seen = HashSet::new();
-    // M/404 uses 250 per page and leaves asc absent without a saved order.
-    for offset in (0..50_000).step_by(PROGRAM_PAGE) {
-        if source.is_cancelled() {
-            return Err(Error::QueueChanged);
-        }
-        let mut args = json!({"radioId":radio,"offset":offset,"limit":PROGRAM_PAGE});
-        if let Some(ascending) = ascending {
-            args["asc"] = json!(ascending);
-        }
-        let response = api
-            .call("/api/v6/dj/program/byradio", args, false, &[200])
-            .await?;
-        let data = &response["data"];
-        let rows = data["programs"]
-            .as_array()
-            .filter(|rows| rows.len() <= PROGRAM_PAGE)
-            .ok_or(Error::Response("invalid listened book program page"))?;
-        for raw in rows {
-            let voice = Episode::from_official(raw)?;
-            if !seen.insert(voice.id.clone()) {
-                return Err(Error::QueueChanged);
-            }
-            voices.push(voice);
-        }
-        match data["more"].as_bool() {
-            Some(false) => break,
-            None if data["more"].is_null() => break,
-            Some(true) if !rows.is_empty() && offset + PROGRAM_PAGE < 50_000 => (),
-            _ => {
-                return Err(Error::Response(
-                    "listened book program pages do not advance",
-                ));
-            }
-        }
-    }
-    Ok(voices)
 }
 
 async fn around(api: &dyn Api, chapter: &str, ascending: bool) -> Result<Vec<Episode>> {

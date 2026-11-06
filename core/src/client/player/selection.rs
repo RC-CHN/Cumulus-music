@@ -71,6 +71,9 @@ impl MusicClient {
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
+            PlaySelection::PodcastSubscriptionRecommendation { .. } => Err(Error::InvalidInput(
+                "recommended podcast playback requires a preparation ticket",
+            )),
             PlaySelection::SearchArtistCard { .. } => Err(Error::InvalidInput(
                 "search artist playback requires a preparation ticket",
             )),
@@ -446,6 +449,28 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
+            PlaySelection::PodcastSubscriptionRecommendation {
+                receipt,
+                revision,
+                id,
+            } => {
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (command, source) = self
+                    .recommended_podcast_command(&token, &receipt, &revision, &id)
+                    .await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        command,
+                        attempt,
+                        lease,
+                        Some(prepared),
+                        Some(source),
+                    )
+                    .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
             PlaySelection::PodcastRecent { revision, id, .. } => {
                 let mut selection = self
                     .podcast_recent_resources(&token, &revision, &id, preserve.is_none())
@@ -750,6 +775,7 @@ impl MusicClient {
                     | PlaySelection::Local { .. }
                     | PlaySelection::Podcast { .. }
                     | PlaySelection::PodcastRecent { .. }
+                    | PlaySelection::PodcastSubscriptionRecommendation { .. }
                     | PlaySelection::Voice { .. }
                     | PlaySelection::SearchArtistCard { .. }
                     | PlaySelection::SearchResultVoice { .. }
