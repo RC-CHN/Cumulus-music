@@ -210,7 +210,63 @@ pub(super) struct AlbumTableRows {
     pub double_click: bool,
 }
 
+fn current_album_table_song(before: &PlaybackSnapshot, id: &str) -> bool {
+    !before.fm
+        && before.play_id.is_some()
+        && before
+            .selected
+            .as_ref()
+            .is_some_and(|entry| online_song(&entry.resource, id))
+        && matches!(
+            before.state,
+            PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+        )
+}
+
 impl MusicClient {
+    /// M/3085 toggles the current ID before applying a double-click queue
+    /// replacement. Call only after validating the album row and hydrating it.
+    pub(super) async fn toggle_active_album_row(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        attempt: u64,
+        lease: u64,
+        source_guard: &Cancellation,
+    ) -> Result<Option<PlaybackSnapshot>> {
+        let Some(controller) = self.player.controller.get() else {
+            return Ok(None);
+        };
+        if !current_album_table_song(&controller.snapshot(), id) {
+            return Ok(None);
+        }
+        let (before, queue) = controller.queue_with_state(token).await?;
+        if !current_album_table_song(&before, id) || queue.intelligence.is_some() {
+            return Ok(None);
+        }
+        let _room = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        if self.together_attached(token, None)? {
+            return Ok(None);
+        }
+        if source_guard.is_cancelled() {
+            return Err(Error::QueueChanged);
+        }
+        self.submit_retained_row(
+            token,
+            PlaybackCommand::Pause(!before.paused),
+            before.fence(),
+            attempt,
+            lease,
+            Some(source_guard.clone()),
+        )
+        .await
+        .map(Some)
+    }
+
     pub(super) async fn play_retained_album_rows(
         &self,
         token: &SessionToken,
@@ -250,14 +306,7 @@ impl MusicClient {
             .ok_or(Error::QueueChanged)?
             .to_owned();
         let expected = before.fence();
-        let command = if before
-            .selected
-            .as_ref()
-            .is_some_and(|entry| online_song(&entry.resource, &id))
-            && matches!(
-                before.state,
-                PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
-            ) {
+        let command = if current_album_table_song(&before, &id) {
             if double_click {
                 PlaybackCommand::Pause(!before.paused)
             } else {

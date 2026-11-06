@@ -287,3 +287,91 @@ async fn version_one_recovery_snapshot_upgrades_without_fresh_album_request() {
             .any(|path| path.starts_with("/api/album/"))
     );
 }
+
+#[tokio::test]
+async fn replacing_double_click_on_active_same_song_toggles_exact_decoder_until_it_is_inactive() {
+    let (_dir, api, _session, client, _count) = fixture();
+    *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
+    let (album, _) = scope(&client, AlbumDurationOrder::Ascending).await;
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: cumulus_core::playback::PlaybackMode::SingleLoop,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["11".into(), "1000".into()],
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let before = client
+        .player_action("1", PlayerAction::Seek { seconds: 17.0 })
+        .await
+        .unwrap();
+    assert_eq!(before.state, PlaybackStatus::Playing);
+    let select = |album| PlaySelection::SongRowDoubleClick {
+        selection: SongRowSelection::AlbumDetail {
+            album,
+            row: row(vec![0, 1, 2], 0, "11"),
+            quality: Quality::Standard,
+        },
+    };
+    api.calls.lock().unwrap().clear();
+    let paused = client
+        .play_selection("1", select(album.clone()))
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.entry_id, before.entry_id);
+    assert_eq!(paused.play_id, before.play_id);
+    assert_eq!(paused.queue_revision, before.queue_revision);
+    assert_eq!(paused.position, before.position);
+    let resumed = client
+        .play_selection("1", select(album.clone()))
+        .await
+        .unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.entry_id, before.entry_id);
+    assert_eq!(resumed.play_id, before.play_id);
+    assert_eq!(resumed.queue_revision, before.queue_revision);
+    assert_eq!(ids(&client).await, ["11", "1000"]);
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path == "/api/song/enhance/player/url/v1")
+    );
+
+    // A valid duplicate ID must not revive a row whose album metadata was
+    // omitted. Its new current receipt still carries the unavailable anchor.
+    let mut missing = tracks(180_000);
+    missing[0].as_object_mut().unwrap().remove("name");
+    *api.album_tracks.lock().unwrap() = Some(missing);
+    let (disabled, _) = scope(&client, AlbumDurationOrder::Ascending).await;
+    assert!(matches!(
+        client.play_selection("1", select(disabled)).await,
+        Err(Error::QueueChanged)
+    ));
+    let unchanged = client.player_snapshot("1").await.unwrap();
+    assert_eq!(unchanged.state, PlaybackStatus::Playing);
+    assert_eq!(unchanged.play_id, before.play_id);
+    assert_eq!(unchanged.queue_revision, before.queue_revision);
+
+    *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
+    let (album, _) = scope(&client, AlbumDurationOrder::Ascending).await;
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    let replaced = client.play_selection("1", select(album)).await.unwrap();
+    assert_eq!(replaced.state, PlaybackStatus::Playing);
+    assert_ne!(replaced.play_id, before.play_id);
+    assert_eq!(ids(&client).await, ["11"]);
+}
