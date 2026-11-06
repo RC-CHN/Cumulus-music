@@ -233,6 +233,7 @@ zero. Receipts, counter logs and screenshots:
 The 4608-frame run also passed with the Ubuntu 24.04 libmpv 0.37
 runtime supplied via the private loader path, using this machine's GTK and
 PipeWire. Its amplitudes, longest zero runs and zero ERR counters matched
-this result. See `.build/ui-proof/phase86-indexed-4608-f-noble/`. This is
-not a full Ubuntu runner simulation. The Debian package job separately
+this result. See `.build/ui-proof/phase86-indexed-4608-f-noble/`. These
+trials used 1× playback and a private sink; different speeds and physical
+output devices were not covered. This is not a full Ubuntu runner simulation. The Debian package job separately
 requires the wider case on the exact CI build before publication.
