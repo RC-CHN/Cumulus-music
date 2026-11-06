@@ -11,6 +11,7 @@ const props = defineProps<{
   scrollTop: number;
   loading: boolean;
   purpose?: 'download' | 'collect';
+  includeCreate?: boolean;
 }>();
 const emit = defineEmits<{
   select: [id: string];
@@ -18,18 +19,23 @@ const emit = defineEmits<{
   scroll: [top: number];
   nearEnd: [];
 }>();
+const entries = computed(() =>
+  props.includeCreate === false ? props.playlists : [null, ...props.playlists],
+);
 const { container, start, end, onScroll, restore } = useVirtualRows(
-  () => props.playlists.length + 1,
+  () => entries.value.length,
   64,
   5,
 );
-const entries = computed(() => [null, ...props.playlists]);
 const active = ref(0);
 const broken = ref(new Set<string>());
 onMounted(() => {
   if (container.value) {
     restore(props.scrollTop);
-    active.value = Math.min(props.playlists.length, Math.floor(props.scrollTop / 64));
+    active.value = Math.max(
+      0,
+      Math.min(entries.value.length - 1, Math.floor(props.scrollTop / 64)),
+    );
   }
 });
 function scroll() {
@@ -52,7 +58,12 @@ function scroll() {
     emit('nearEnd');
 }
 async function move(event: KeyboardEvent) {
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || props.disabled) return;
+  if (
+    !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) ||
+    props.disabled ||
+    !entries.value.length
+  )
+    return;
   event.preventDefault();
   const host = container.value;
   if (!host) return;

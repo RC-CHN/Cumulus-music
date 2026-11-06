@@ -210,6 +210,8 @@ import type { DownloadQuery } from './services/downloads';
 import DownloadDialog from './components/DownloadDialog.vue';
 import VoiceSongDownloadPicker from './components/VoiceSongDownloadPicker.vue';
 import { useVoiceSongDownload } from './composables/useVoiceSongDownload';
+import VoiceSongGroupCollectDialog from './components/VoiceSongGroupCollectDialog.vue';
+import { useVoiceSongGroupCollect } from './composables/useVoiceSongGroupCollect';
 import CloudPage from './components/CloudPage.vue';
 import CloudBatchPage from './components/cloud/CloudBatchPage.vue';
 import MvCollection from './components/MvCollection.vue';
@@ -1217,6 +1219,9 @@ function showPlaybackVoiceSongMenu(
       live,
       copyrightBlocked: row.rights.copyrightBlocked,
       selection,
+      collectGroup: selection
+        ? () => openPlaybackVoiceSongGroupCollect(target, selection.indices, opener)
+        : undefined,
       download() {
         if (!live() || selection) return;
         voiceDownloadRoute.value = route;
@@ -1230,6 +1235,20 @@ function showPlaybackVoiceSongMenu(
       },
     },
   });
+}
+function openPlaybackVoiceSongGroupCollect(
+  target: VoiceSongRowTarget,
+  indices: readonly number[],
+  opener?: HTMLElement,
+) {
+  if (!voiceSongGroup(target, indices) || voiceSongGroupCollect.visible.value) return;
+  const route = page.value;
+  const live = () =>
+    page.value === route && player.lyricsOpen.value && voiceSongs.ownsTarget(target);
+  if (!live()) return;
+  voiceGroupCollectOpener.value = opener;
+  const { epoch, playId, voiceId, receipt: cardReceipt } = target;
+  void voiceSongGroupCollect.open({ card: { epoch, playId, voiceId, cardReceipt }, indices, live });
 }
 async function openPlaybackLyricContributor(target: LyricContributorTarget) {
   const route = page.value;
@@ -1853,6 +1872,15 @@ const activeVoicePage = computed(() =>
 );
 const voicePage = useVoicePage(core, activeVoicePage);
 const { recommendations: voiceRecommendations, songs: voiceSongs } = voicePage;
+const voiceGroupCollectOpener = shallowRef<HTMLElement>();
+const voiceSongGroupCollect = useVoiceSongGroupCollect(
+  core,
+  () => void music.bootstrap(false),
+  () => void music.resources(),
+);
+function voiceSongGroupCollectFocus() {
+  return voiceGroupCollectOpener.value ?? null;
+}
 const voiceDownloadRoute = shallowRef<typeof page.value>();
 const voiceDownloadOpener = shallowRef<HTMLElement>();
 const voiceSongDownload = useVoiceSongDownload(
@@ -6008,6 +6036,7 @@ onUnmounted(() => {
         @voice-song-play="actOnVoiceSong"
         @voice-song-like="likePlaybackVoiceSong"
         @voice-song-more="showPlaybackVoiceSongMenu"
+        @voice-song-collect="openPlaybackVoiceSongGroupCollect"
         @voice-song-artist="openPlaybackVoiceSongArtist"
         @voice-podcast-login="loginOpen = true"
         @lyric-contributor="openPlaybackLyricContributor"
@@ -6238,6 +6267,16 @@ onUnmounted(() => {
         :target="downloadDialog"
         @close="downloadDialog = undefined"
         @started="music.navigate({ kind: 'downloads', initialTab: 'active' })"
+      />
+    </ModalTransition>
+    <ModalTransition
+      :return-focus="voiceSongGroupCollectFocus"
+      :restore-focus="player.lyricsOpen.value && signedIn"
+    >
+      <VoiceSongGroupCollectDialog
+        v-if="voiceSongGroupCollect.visible.value"
+        :model="voiceSongGroupCollect"
+        @expired="music.bootstrap(false)"
       />
     </ModalTransition>
     <ModalTransition

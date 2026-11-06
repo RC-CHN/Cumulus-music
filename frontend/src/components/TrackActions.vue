@@ -86,7 +86,9 @@ const items = computed<MenuItem[]>(() => {
           { key: 'main-divider', label: '', separator: true },
           { key: 'collect', label: '收藏', icon: 'star', disabled: !available },
         ]
-      : []),
+      : input.episode?.collectGroup
+        ? [{ key: 'collect', label: '收藏', icon: 'star' }]
+        : []),
     ...(!selection && (!input.episode || input.episode.download)
       ? [
           {
@@ -250,8 +252,10 @@ async function select(key: string) {
     return;
   const { track } = input;
   if (key === 'play') input.play();
-  else if (key === 'collect') emit('collect', track);
-  else if (key === 'download') {
+  else if (key === 'collect') {
+    if (input.episode?.selection) input.episode.collectGroup?.();
+    else emit('collect', track);
+  } else if (key === 'download') {
     if (input.episode) input.episode.download?.();
     else emit('download', track);
   } else if (key === 'comments') {

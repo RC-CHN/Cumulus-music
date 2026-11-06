@@ -98,6 +98,7 @@ const emit = defineEmits<{
     indices?: readonly number[],
   ];
   voiceSongLike: [target: VoiceSongRowTarget];
+  voiceSongCollect: [target: VoiceSongRowTarget, indices: readonly number[], opener: HTMLElement];
   voiceSongMore: [
     target: VoiceSongRowTarget,
     event: MouseEvent | KeyboardEvent,
@@ -227,6 +228,10 @@ function moreVoiceSong(
 ) {
   const target = voiceSongTarget(index);
   if (target) emit('voiceSongMore', target, event, indices);
+}
+function collectVoiceSongs(index: number, indices: readonly number[], opener: HTMLElement) {
+  const target = voiceSongTarget(index);
+  if (target) emit('voiceSongCollect', target, indices, opener);
 }
 function openVoiceSongArtist(index: number, id: string) {
   const target = voiceSongTarget(index);
@@ -1063,6 +1068,7 @@ const displayedAuxiliary = computed(() =>
                 @play="playVoiceSong"
                 @like="likeVoiceSong"
                 @more="moreVoiceSong"
+                @collect="collectVoiceSongs"
                 @artist="openVoiceSongArtist"
               />
             </div>

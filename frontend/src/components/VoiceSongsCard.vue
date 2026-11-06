@@ -25,6 +25,7 @@ const emit = defineEmits<{
   play: [index: number, gesture: 'cover' | 'double_click', indices?: readonly number[]];
   like: [index: number];
   more: [index: number, event: MouseEvent | KeyboardEvent, indices?: readonly number[]];
+  collect: [index: number, indices: readonly number[], opener: HTMLElement];
   artist: [index: number, id: string];
 }>();
 const title = useId();
@@ -129,6 +130,22 @@ async function moveFocus(event: KeyboardEvent) {
     event.preventDefault();
     event.stopPropagation();
     selection.value = allVoiceSongs(selection.value, total.value);
+    return;
+  }
+  if (
+    event.ctrlKey &&
+    !event.altKey &&
+    !event.shiftKey &&
+    !event.metaKey &&
+    event.key.toLowerCase() === 's'
+  ) {
+    const index = Number(event.target.dataset.rowIndex);
+    const group = voiceSongSelectionSnapshot(selection.value, index);
+    if (group) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) emit('collect', index, group, event.target);
+    }
     return;
   }
   if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;

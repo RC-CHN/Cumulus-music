@@ -30,6 +30,7 @@ export interface TrackMenuRequest {
     live: () => boolean;
     copyrightBlocked: boolean;
     selection?: { allCopyrightBlocked: boolean };
+    collectGroup?: () => void;
     comments: () => void;
     download?: () => void;
   };
