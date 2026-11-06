@@ -87,7 +87,8 @@ export type LocalCommand =
   | { kind: 'watch'; path: string }
   | { kind: 'enable' | 'disable'; id: string }
   | { kind: 'rescan' }
-  | { kind: 'hide_track'; id: string; revision: string };
+  | { kind: 'hide_track'; id: string; revision: string }
+  | { kind: 'hide_group'; query: LocalQuery; revision: string };
 export interface LocalClient {
   localPage(query: LocalQuery): Promise<LocalPage>;
   localCommand(command: LocalCommand): Promise<void>;

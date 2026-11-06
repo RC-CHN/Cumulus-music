@@ -109,6 +109,72 @@ fn text_key(item: &LibraryItem, sort: LocalSort) -> String {
         LocalSort::Folder => folder(item),
     })
 }
+pub(super) fn revision(items: &[LibraryItem]) -> Result<String> {
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(items)?)))
+}
+
+fn matches_filter(item: &LibraryItem, needle: &str, include_missing: bool) -> bool {
+    (include_missing || item.available())
+        && (needle.is_empty()
+            || [&item.metadata.title, &item.metadata.album]
+                .into_iter()
+                .chain(item.metadata.artists.iter())
+                .any(|v| folded(v).contains(needle))
+            || folded(&item.path.to_string_lossy()).contains(needle))
+}
+
+pub(super) fn group_hide_targets(items: &[LibraryItem], query: &LocalQuery) -> Result<Vec<usize>> {
+    let key = query
+        .group_key
+        .as_deref()
+        .filter(|key| !key.is_empty())
+        .ok_or(Error::InvalidInput("a named local group is required"))?;
+    let needle = folded(query.keyword.trim());
+    if query.group == LocalGroup::List
+        || !items.iter().any(|item| {
+            matches_filter(item, &needle, query.include_missing)
+                && keys(item, query.group).contains(key)
+        })
+    {
+        return Err(Error::QueueChanged);
+    }
+    let folder_root = if query.group == LocalGroup::Folder {
+        let mut matches = items
+            .iter()
+            .filter_map(|item| item.path.parent())
+            .filter(|parent| parent.to_string_lossy() == key);
+        let root = matches.next().ok_or(Error::QueueChanged)?;
+        if !root.is_absolute() || matches.any(|other| other != root) {
+            return Err(Error::QueueChanged);
+        }
+        Some(root)
+    } else {
+        None
+    };
+
+    // Search controls which group is presented, not the group's action
+    // payload. Folder removal is a native path-component subtree, never a
+    // raw string prefix that could include an unrelated sibling directory.
+    let targets = items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            let member = match query.group {
+                LocalGroup::Artist => item.metadata.artists.iter().any(|artist| artist == key),
+                LocalGroup::Album => item.metadata.album == key,
+                LocalGroup::Folder => folder_root.is_some_and(|root| item.path.starts_with(root)),
+                LocalGroup::List => false,
+            };
+            member.then_some(index)
+        })
+        .take(50_001)
+        .collect::<Vec<_>>();
+    if targets.is_empty() || targets.len() > 50_000 {
+        return Err(Error::InvalidInput("local group is empty or too large"));
+    }
+    Ok(targets)
+}
+
 impl LocalLibrary {
     /// One index transaction supplies both the revision and the complete list.
     pub fn catalog(&self, query: &LocalQuery) -> Result<LocalSnapshot> {
@@ -117,22 +183,14 @@ impl LocalLibrary {
             include_missing: true,
             ..Default::default()
         })?;
-        let revision = hex::encode(Sha256::digest(serde_json::to_vec(&all)?));
+        let revision = revision(&all)?;
         if query.revision.as_ref().is_some_and(|v| v != &revision) {
             return Err(Error::QueueChanged);
         }
         let needle = folded(query.keyword.trim());
         let mut items = all
             .into_iter()
-            .filter(|item| {
-                (query.include_missing || item.available())
-                    && (needle.is_empty()
-                        || [&item.metadata.title, &item.metadata.album]
-                            .into_iter()
-                            .chain(item.metadata.artists.iter())
-                            .any(|v| folded(v).contains(&needle))
-                        || folded(&item.path.to_string_lossy()).contains(&needle))
-            })
+            .filter(|item| matches_filter(item, &needle, query.include_missing))
             .collect::<Vec<_>>();
         let mut groups = BTreeMap::<String, usize>::new();
         for item in &items {

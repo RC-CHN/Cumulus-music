@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    storage::{OperationLock, StateStore},
+    storage::{OperationLock, StateStore, StateTransaction},
 };
 pub use held_flac::IndexedFlacReceipt;
 pub use mapping::{LocalMapping, MappingSource};
@@ -61,30 +61,33 @@ impl LocalLibrary {
     }
 
     fn load_with_hidden(&self, load_hidden: bool) -> Result<Index> {
-        self.store.transaction(|tx| {
-            let files = tx
-                .values(OWNER, FILES)?
+        self.store
+            .transaction(|tx| Self::load_index(tx, load_hidden))
+    }
+
+    fn load_index(tx: &StateTransaction<'_>, load_hidden: bool) -> Result<Index> {
+        let files = tx
+            .values(OWNER, FILES)?
+            .into_iter()
+            .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
+            .collect::<Result<_>>()?;
+        let cues = tx
+            .values(OWNER, CUES)?
+            .into_iter()
+            .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
+            .collect::<Result<_>>()?;
+        let hidden = if load_hidden {
+            tx.values(OWNER, HIDDEN)?
                 .into_iter()
                 .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
-                .collect::<Result<_>>()?;
-            let cues = tx
-                .values(OWNER, CUES)?
-                .into_iter()
-                .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
-                .collect::<Result<_>>()?;
-            let hidden = if load_hidden {
-                tx.values(OWNER, HIDDEN)?
-                    .into_iter()
-                    .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
-                    .collect::<Result<_>>()?
-            } else {
-                BTreeMap::new()
-            };
-            Ok(Index {
-                files,
-                cues,
-                hidden,
-            })
+                .collect::<Result<_>>()?
+        } else {
+            BTreeMap::new()
+        };
+        Ok(Index {
+            files,
+            cues,
+            hidden,
         })
     }
     fn commit(&self, old: &Index, new: &Index, cancelled: &dyn Fn() -> bool) -> Result<()> {

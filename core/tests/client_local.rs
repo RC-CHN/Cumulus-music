@@ -59,7 +59,10 @@ impl AudioProbe for Probe {
         })
     }
 }
-fn client(root: &Path, probe: Arc<Probe>) -> (Arc<AccountSession>, MusicClient, LocalLibrary) {
+fn client(
+    root: &Path,
+    probe: Arc<dyn AudioProbe>,
+) -> (Arc<AccountSession>, MusicClient, LocalLibrary) {
     let registry = ProfileRegistry::open(root, ApiOrigin::Pc).unwrap();
     let session = Arc::new(AccountSession::new(
         Arc::new(Offline),
@@ -1244,5 +1247,143 @@ async fn local_folder_reveal_resolves_only_exact_indexed_parent_of_current_group
             client.local_folder_directory(scoped, page.revision).await,
             Err(Error::QueueChanged)
         ));
+    }
+}
+
+#[tokio::test]
+async fn local_group_list_removal_is_full_revision_fenced_reversible_and_keeps_player() {
+    struct GroupProbe;
+    impl AudioProbe for GroupProbe {
+        fn inspect(&self, path: &Path) -> Result<AudioMetadata> {
+            let mut metadata = Probe::default().inspect(path)?;
+            let neighboring = metadata.title == "Other";
+            metadata.artists = if neighboring {
+                vec!["Outside".into()]
+            } else {
+                vec!["Target".into(), "Guest".into()]
+            };
+            metadata.album = if neighboring { "Another" } else { "Selection" }.into();
+            Ok(metadata)
+        }
+    }
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    let folder = media.join("Set");
+    let child = folder.join("Child");
+    let neighbor = media.join("Set plus");
+    std::fs::create_dir_all(&child).unwrap();
+    std::fs::create_dir_all(&neighbor).unwrap();
+    let files = [
+        folder.join("Anchor.wav"),
+        child.join("Nested.wav"),
+        neighbor.join("Other.wav"),
+    ];
+    for (index, file) in files.iter().enumerate() {
+        std::fs::write(file, format!("fixture {index}")).unwrap();
+    }
+    let state = root.path().join("state");
+    let (_, music, library) = client(&state, Arc::new(GroupProbe));
+    library.scan(&media).unwrap();
+    let initial = music.local_page(LocalQuery::default()).await.unwrap();
+    let selected = initial
+        .tracks
+        .iter()
+        .find(|track| track.track.name == "Anchor")
+        .unwrap();
+    let loaded = music
+        .play_selection(
+            "0",
+            PlaySelection::Local {
+                query: LocalQuery::default(),
+                revision: initial.revision.clone(),
+                start_id: Some(selected.track.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    let paused = music
+        .player_action("0", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    assert_eq!(loaded.play_id, paused.play_id);
+    assert_eq!(
+        paused.state,
+        cumulus_core::playback::controller::PlaybackStatus::Paused
+    );
+    let directory = folder
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    for (group, key) in [
+        (LocalGroup::Artist, "Target"),
+        (LocalGroup::Album, "Selection"),
+        (LocalGroup::Folder, directory.as_str()),
+    ] {
+        // The displayed query supplies one row; the native group command
+        // must also remove Nested, which is not a result or on this page.
+        let query = LocalQuery {
+            keyword: "Anchor".into(),
+            group,
+            group_key: Some(key.into()),
+            limit: 1,
+            ..Default::default()
+        };
+        let before = music.local_page(query.clone()).await.unwrap();
+        assert_eq!(before.total, 1);
+        let hide = |query, revision| LocalCommand::HideGroup { query, revision };
+        assert!(matches!(
+            music
+                .local_command(hide(query.clone(), "0".repeat(64)))
+                .await,
+            Err(Error::QueueChanged)
+        ));
+        assert!(matches!(
+            music
+                .local_command(hide(
+                    LocalQuery {
+                        keyword: "Other".into(),
+                        ..query.clone()
+                    },
+                    before.revision.clone(),
+                ))
+                .await,
+            Err(Error::QueueChanged)
+        ));
+        music
+            .local_command(hide(query.clone(), before.revision.clone()))
+            .await
+            .unwrap();
+        let after = music.local_page(LocalQuery::default()).await.unwrap();
+        assert_eq!(
+            (after.total, after.tracks[0].track.name.as_str()),
+            (1, "Other")
+        );
+        assert!(matches!(
+            music.local_command(hide(query, before.revision)).await,
+            Err(Error::QueueChanged)
+        ));
+        let still = music.player_snapshot("0").await.unwrap();
+        assert_eq!(still.play_id, paused.play_id);
+        assert_eq!(still.entry_id, paused.entry_id);
+        assert_eq!(still.queue_revision, paused.queue_revision);
+        assert_eq!(still.state, paused.state);
+        assert_eq!(still.position, paused.position);
+        for (index, file) in files.iter().enumerate() {
+            assert_eq!(
+                std::fs::read_to_string(file).unwrap(),
+                format!("fixture {index}")
+            );
+        }
+        library.scan(&media).unwrap();
+        assert_eq!(
+            music.local_page(LocalQuery::default()).await.unwrap().total,
+            1
+        );
+        music.local_command(LocalCommand::Rescan).await.unwrap();
+        assert_eq!(
+            music.local_page(LocalQuery::default()).await.unwrap().total,
+            3
+        );
     }
 }

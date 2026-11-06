@@ -221,3 +221,36 @@ test('a context action uses the clicked native group without inheriting the sele
   assert.equal(localGroupQuery(query, response, 'not-indexed'), null);
   assert.equal(localGroupQuery(defaultLocalQuery(), response, ''), null);
 });
+
+test('group list removal falls back only if the current group disappeared', async (t) => {
+  let removed = false;
+  const reads: Array<string | null> = [];
+  const model = useLocal(
+    fixture({
+      localPage: async (query) => {
+        reads.push(query.groupKey);
+        const groups = [
+          ...(!removed ? [{ key: 'Deleted', name: 'Deleted', count: 2 }] : []),
+          { key: 'Remaining', name: 'Remaining', count: 1 },
+        ];
+        return { ...page(removed ? 'after' : 'before'), groups };
+      },
+      localCommand: async (command) => {
+        assert.deepEqual(command, {
+          kind: 'hide_group',
+          query: { ...defaultLocalQuery(), group: 'album', groupKey: 'Deleted' },
+          revision: 'before',
+        });
+        removed = true;
+      },
+    }),
+  );
+  t.after(() => model.dispose());
+  const query = { ...defaultLocalQuery(), group: 'album' as const, groupKey: 'Deleted' };
+  model.filter(query);
+  await turn();
+  await model.command({ kind: 'hide_group', query, revision: 'before' });
+  assert.deepEqual(reads, ['Deleted', 'Deleted', 'Remaining']);
+  assert.equal(model.query.value.groupKey, 'Remaining');
+  assert.match(model.notice.value, /源文件仍保留/);
+});

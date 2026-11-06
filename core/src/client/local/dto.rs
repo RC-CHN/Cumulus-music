@@ -51,6 +51,7 @@ pub enum LocalCommand {
     Enable { id: String },
     Rescan,
     HideTrack { id: String, revision: String },
+    HideGroup { query: LocalQuery, revision: String },
 }
 
 #[derive(Serialize)]

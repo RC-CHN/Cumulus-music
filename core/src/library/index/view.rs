@@ -1,7 +1,11 @@
 use super::{HIDDEN, Index, LocalLibrary, OWNER};
 use crate::{
     Error, Result,
-    library::{LibraryItem, ListOptions, LocalResource, LocalRevision, identity::fingerprint},
+    library::{
+        LibraryItem, ListOptions, LocalResource, LocalRevision,
+        catalog::{self, LocalQuery},
+        identity::fingerprint,
+    },
 };
 use std::{collections::HashSet, path::PathBuf};
 use unicode_casefold::UnicodeCaseFold;
@@ -63,7 +67,10 @@ impl LocalLibrary {
         options: ListOptions<'_>,
         include_hidden: bool,
     ) -> Result<Vec<LibraryItem>> {
-        let index = self.load_with_hidden(!include_hidden)?;
+        Self::visible_items(self.load_with_hidden(!include_hidden)?, options)
+    }
+
+    fn visible_items(index: Index, options: ListOptions<'_>) -> Result<Vec<LibraryItem>> {
         let virtual_tracks = cue_items(&index, options.include_missing);
         let containers: HashSet<PathBuf> = cue_items(&index, false)
             .into_iter()
@@ -126,6 +133,35 @@ impl LocalLibrary {
         }
         self.store
             .put(OWNER, HIDDEN, id, &serde_json::to_value(item.revision)?)
+    }
+
+    /// Hide a full group against the exact displayed catalog revision. The
+    /// shared index lock and one write transaction cover snapshot and commit.
+    pub(crate) fn hide_group(&self, query: &LocalQuery, revision: &str) -> Result<()> {
+        let _lock = self.lock()?;
+        self.store.transaction(|tx| {
+            let items = Self::visible_items(
+                Self::load_index(tx, true)?,
+                ListOptions {
+                    include_missing: true,
+                    ..Default::default()
+                },
+            )?;
+            if catalog::revision(&items)? != revision {
+                return Err(Error::QueueChanged);
+            }
+            let targets = catalog::group_hide_targets(&items, query)?;
+            for index in targets {
+                let item = &items[index];
+                tx.put(
+                    OWNER,
+                    HIDDEN,
+                    &item.id,
+                    &serde_json::to_value(&item.revision)?,
+                )?;
+            }
+            Ok(())
+        })
     }
 
     /// A user-requested rescan may restore list entries. Automatic monitoring

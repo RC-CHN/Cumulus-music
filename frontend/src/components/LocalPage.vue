@@ -372,6 +372,19 @@ const groupMenuItems = computed(() => [
         },
       ]
     : []),
+  ...(groupScope.value?.query.groupKey
+    ? [
+        ...(groupScope.value.query.group !== 'folder'
+          ? [{ key: 'group-hide-divider', label: '', separator: true as const }]
+          : []),
+        {
+          key: 'hide_group',
+          label: '从列表中删除',
+          icon: 'trash' as const,
+          disabled: !groupScopeCurrent.value || adding.value || openingDirectory.value,
+        },
+      ]
+    : []),
 ]);
 function openGroupMenu(event: MouseEvent | KeyboardEvent) {
   if (
@@ -427,6 +440,31 @@ async function groupAction(action: string) {
     return;
   }
   if (adding.value) return;
+  if (action === 'hide_group' && scope.query.groupKey && !openingDirectory.value) {
+    const anchor = document.activeElement;
+    await props.model.command({
+      kind: 'hide_group',
+      query: scope.query,
+      revision: scope.revision,
+    });
+    await nextTick();
+    // ActionMenu returns focus to its anchor before dispatch. If this very
+    // button disappeared, restore focus without stealing it from another action.
+    if (
+      ownsVisit() &&
+      groupScope.value === scope &&
+      anchor instanceof HTMLButtonElement &&
+      anchor.dataset.localGroupKey === scope.query.groupKey &&
+      !anchor.isConnected &&
+      document.activeElement === document.body
+    ) {
+      const selected = browser.value?.querySelector<HTMLButtonElement>(
+        '.local-groups button[aria-pressed="true"]',
+      );
+      (selected ?? searchInput.value)?.focus({ preventScroll: true });
+    }
+    return;
+  }
   if (action === 'play' && props.playable) emit('play', scope.query, scope.revision, null);
   else if (action === 'next' && props.queueable) await queueScope(scope.query, scope.revision);
 }

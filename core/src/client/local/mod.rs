@@ -189,6 +189,17 @@ impl MusicClient {
                     track_reference(&id, &revision)?;
                     context.library.hide_revision(&id, &revision)?;
                 }
+                LocalCommand::HideGroup { query, revision } => {
+                    query.validate()?;
+                    if query.offset != 0
+                        || query.revision.is_some()
+                        || revision.len() != 64
+                        || !revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    {
+                        return Err(Error::InvalidInput("invalid local group reference"));
+                    }
+                    context.library.hide_group(&query, &revision)?;
+                }
             }
             Ok(())
         })
