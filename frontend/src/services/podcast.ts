@@ -97,7 +97,17 @@ export type PodcastRadioOrder =
       revision: string;
       ascending: boolean;
     };
+export interface PodcastSubscriptionRecommendation {
+  id: string;
+  name: string;
+  coverUrl: string | null;
+  playCount: number | null;
+  unavailable: boolean;
+}
 export interface PodcastClient {
+  podcastSubscriptionRecommendations(
+    epoch: string,
+  ): Promise<AccountData<PodcastSubscriptionRecommendation[]>>;
   podcastState(epoch: string, refresh: boolean): Promise<AccountData<PodcastState>>;
   podcastRadioOrder(epoch: string, query: PodcastRadioOrder): Promise<AccountData<boolean | null>>;
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;

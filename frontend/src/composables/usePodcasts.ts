@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
@@ -11,10 +11,12 @@ import type {
   PodcastCommand,
   PodcastAction,
   PodcastMutation,
+  PodcastSubscriptionRecommendation,
 } from '../services/podcast.ts';
 
 export function usePodcasts(core: PodcastClient = useCore(), expired: () => void = () => {}) {
   const page = shallowRef<PodcastPage>();
+  const recommendations = shallowRef<PodcastSubscriptionRecommendation[]>([]);
   const query = ref<PodcastQuery>({
     scope: { kind: 'podcasts' },
     keyword: '',
@@ -34,11 +36,22 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     read = 0,
     write = 0,
     stateRead = 0,
+    recommendationVisit = 0,
     visible = false;
   let history: PodcastQuery[] = [];
   const canBack = ref(false);
   const recentSelected = ref(false);
   const recentReturn = ref(false);
+  const recommendedCards = computed(() => {
+    const snapshot = page.value;
+    return !recentSelected.value &&
+      query.value.scope.kind === 'podcasts' &&
+      snapshot?.scope.kind === 'podcasts' &&
+      snapshot.epoch === epoch.value &&
+      snapshot.remoteTotal < 50
+      ? recommendations.value
+      : [];
+  });
   function valid(g: number, e: string) {
     return generation === g && epoch.value === e && !!e;
   }
@@ -55,6 +68,8 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     read++;
     write++;
     stateRead++;
+    recommendationVisit++;
+    recommendations.value = [];
     epoch.value = '';
     page.value = undefined;
     liked.value = new Set();
@@ -81,7 +96,22 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     if (account.status !== 'authenticated') return;
     epoch.value = account.epoch;
     void state(false);
-    if (visible) void load(true);
+    if (visible) {
+      void load(true);
+      void loadRecommendations();
+    }
+  }
+  async function loadRecommendations() {
+    const g = generation,
+      e = epoch.value,
+      visit = ++recommendationVisit;
+    try {
+      const result = await core.podcastSubscriptionRecommendations(e);
+      if (visible && valid(g, e) && visit === recommendationVisit && result.epoch === e)
+        recommendations.value = result.value;
+    } catch {
+      // This optional shelf never masks the collection or retries within a visit.
+    }
   }
   // Disk-only reads expose unresolved writes even while the service is offline.
   async function state(refresh = false) {
@@ -185,6 +215,16 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     // Unavailable/ambiguous clear never prevents ordinary detail navigation.
     if (receipt) void core.podcastClearSubscribedBadge(owner, receipt, id).catch(() => {});
   }
+  function openRecommended(id: string) {
+    if (
+      !visible ||
+      busy.value ||
+      !recommendedCards.value.some((card) => card.id === id && !card.unavailable)
+    )
+      return;
+    // This action came from the recommendation shelf, not from a subscribed card.
+    navigate({ kind: 'radio', id, ascending: true });
+  }
   function open(reference: string) {
     if (busy.value) return;
     const id = podcastReference(reference);
@@ -208,8 +248,13 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     if (visible) void load(true);
   }
   function show(value: boolean) {
+    const entering = value && !visible;
     visible = value;
-    if (value && epoch.value) void load(!page.value);
+    if (!value) recommendationVisit++;
+    if (value && epoch.value) {
+      void load(!page.value);
+      if (entering) void loadRecommendations();
+    }
   }
   function search(keyword: string) {
     query.value = { ...query.value, keyword, offset: 0 };
@@ -337,6 +382,8 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     externalLikeChanged,
     navigate,
     openCard,
+    recommendedCards,
+    openRecommended,
     open,
     back,
     search,

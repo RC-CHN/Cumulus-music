@@ -176,12 +176,14 @@ impl Api for Library {
             {
                 return response;
             }
+            if path == "/api/djradio/my/radio/recommend" {
+                assert!(!cache);
+                assert_eq!(body, json!({}));
+                return Ok(json!({"code":200,"data":[]}));
+            }
             if path.contains("clear")
                 || path.contains("submit")
-                || matches!(
-                    path,
-                    PROGRESS | "/api/djradio/my/radio/recommend" | "/api/user/setting/update"
-                )
+                || matches!(path, PROGRESS | "/api/user/setting/update")
             {
                 panic!("unexpected synthetic remote action: {path}");
             }

@@ -7,6 +7,8 @@ mod home;
 pub(super) mod profile;
 mod rankings;
 mod recent;
+mod subscription_recommendations;
+pub use subscription_recommendations::PodcastSubscriptionRecommendation;
 pub(super) mod view;
 use super::MusicClient;
 use crate::{

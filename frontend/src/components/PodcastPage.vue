@@ -6,6 +6,7 @@ import { time } from '../services/player';
 import type { PodcastModel } from '../composables/usePodcasts';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
 import PodcastRecentList from './PodcastRecentList.vue';
+import PodcastSubscriptionRecommendations from './PodcastSubscriptionRecommendations.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import { audiobookSkipSaved, type AudiobookSkipContext } from '../services/audiobookSkip';
 import type { PodcastScope, EpisodeView } from '../services/podcast';
@@ -414,6 +415,12 @@ const pending = props.model.pending;
           下一页
         </button>
       </footer>
+      <PodcastSubscriptionRecommendations
+        v-if="model.recommendedCards.value.length"
+        :cards="model.recommendedCards.value"
+        :disabled="busy"
+        @open="model.openRecommended"
+      />
     </template>
   </section>
 </template>

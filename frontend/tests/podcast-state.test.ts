@@ -6,6 +6,7 @@ import type {
   PodcastPage,
   PodcastState,
   PodcastMutation,
+  PodcastSubscriptionRecommendation,
 } from '../src/services/podcast.ts';
 import type { AccountData } from '../src/services/contracts.ts';
 const account = (epoch = '1') => ({
@@ -44,6 +45,7 @@ function deferred<T>() {
 function client(extra: Partial<PodcastClient> = {}): PodcastClient {
   return {
     podcastPage: async (e) => page(e),
+    podcastSubscriptionRecommendations: async (e) => ({ epoch: e, value: [] }),
     podcastClearSubscribedBadge: async () => {},
     podcastRadioOrder: async (e) => ({ epoch: e, value: null }),
     podcastState: async (e) => ({ epoch: e, value: { likedIds: [], operations: [] } }),
@@ -355,4 +357,112 @@ test('only an explicit positive subscribed card opens and consumes its exact nat
   assert.equal(reads.includes('radio'), true);
   assert.deepEqual(clears, [['1', 'subscribed-1', '7']], 'generic reload never retries');
   m.dispose();
+});
+
+const recommended = (id: string): PodcastSubscriptionRecommendation => ({
+  id,
+  name: '合成推荐',
+  coverUrl: null,
+  playCount: 10,
+  unavailable: false,
+});
+
+test('recommendations load once per active My Podcasts visit and use the total podcast count', async () => {
+  const reads: string[] = [];
+  const clear: string[] = [];
+  let total = 50;
+  const api = client({
+    podcastSubscriptionRecommendations: async (e) => {
+      reads.push(e);
+      return { epoch: e, value: [recommended('81')] };
+    },
+    podcastPage: async (e, request) => ({
+      ...page(e),
+      scope: request.scope,
+      // The filtered row count is not the subscriptions total.
+      total: 0,
+      remoteTotal: total,
+      subscribedBadgeReceipt: 'fixture',
+      cards: [
+        {
+          ...recommended('81'),
+          creator: '',
+          description: '',
+          programCount: 1,
+          subscribed: true,
+          feeType: 0,
+          newEpisodeCount: 3,
+        },
+      ],
+    }),
+    podcastClearSubscribedBadge: async (_, __, id) => {
+      clear.push(id);
+    },
+  });
+  const model = usePodcasts(api);
+  model.connect(account());
+  assert.deepEqual(reads, []);
+  model.show(true);
+  await model.load(true);
+  assert.deepEqual(reads, ['1']);
+  assert.deepEqual(model.recommendedCards.value, []);
+  total = 49;
+  await model.load(true);
+  assert.deepEqual(
+    model.recommendedCards.value.map((c) => c.id),
+    ['81'],
+  );
+  model.navigate({ kind: 'audiobooks' });
+  await model.load(true);
+  assert.deepEqual(model.recommendedCards.value, []);
+  model.navigate({ kind: 'podcasts' });
+  await model.load(true);
+  model.openRecommended('not-on-shelf');
+  assert.equal(model.query.value.scope.kind, 'podcasts');
+  model.openRecommended('81');
+  assert.deepEqual(model.query.value.scope, { kind: 'radio', id: '81', ascending: true });
+  assert.deepEqual(clear, [], 'same-ID subscription badge is not consumed');
+  model.back();
+  await model.load(true);
+  assert.equal(model.recommendedCards.value[0]?.id, '81');
+  model.showRecent();
+  assert.deepEqual(model.recommendedCards.value, []);
+  assert.deepEqual(reads, ['1']);
+  model.show(false);
+  model.show(true);
+  assert.deepEqual(reads, ['1', '1']);
+});
+
+test('late recommendation from inactive visit or old account cannot populate the shelf', async () => {
+  const oldVisit = deferred<AccountData<PodcastSubscriptionRecommendation[]>>();
+  const oldAccount = deferred<AccountData<PodcastSubscriptionRecommendation[]>>();
+  const reads: string[] = [];
+  const model = usePodcasts(
+    client({
+      podcastSubscriptionRecommendations: async (e) => {
+        reads.push(e);
+        return reads.length === 1
+          ? oldVisit.promise
+          : reads.length === 2
+            ? oldAccount.promise
+            : { epoch: e, value: [recommended('93')] };
+      },
+      podcastPage: async (e, request) => ({ ...page(e), scope: request.scope, remoteTotal: 0 }),
+    }),
+  );
+  model.connect(account());
+  model.show(true);
+  model.show(false);
+  model.show(true);
+  model.connect(account('2'));
+  await model.load(true);
+  oldVisit.resolve({ epoch: '1', value: [recommended('91')] });
+  oldAccount.resolve({ epoch: '1', value: [recommended('92')] });
+  await Promise.all([oldVisit.promise, oldAccount.promise]);
+  await Promise.resolve();
+  assert.deepEqual(reads, ['1', '1', '2']);
+  assert.deepEqual(
+    model.recommendedCards.value.map((c) => c.id),
+    ['93'],
+  );
 });

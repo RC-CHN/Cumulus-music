@@ -5,6 +5,8 @@ mod badges;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
+#[path = "client_podcast/recommendations.rs"]
+mod recommendations;
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -37,6 +39,10 @@ struct Backend {
     progress_released: tokio::sync::Notify,
     trial: AtomicBool,
     audiobook: AtomicBool,
+    recommendation_response: Mutex<Value>,
+    recommendation_hold: AtomicBool,
+    recommendation_started: tokio::sync::Notify,
+    recommendation_release: tokio::sync::Notify,
 }
 fn program(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"djPlayRecordVo":{"listenLocation":15000,"isListened":false},"cookie":"SECRET"})
@@ -73,13 +79,22 @@ impl Api for Backend {
         })
     }
 
-    fn request<'a>(&'a self, path: &'a str, p: Value, _: bool) -> ApiFuture<'a, Value> {
+    fn request<'a>(&'a self, path: &'a str, p: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push((path.into(), p.clone()));
             if self.offline.load(Ordering::SeqCst) {
                 return Err(Error::State("fixture offline"));
             }
             Ok(match path {
+                "/api/djradio/my/radio/recommend" => {
+                    assert!(!cache);
+                    assert_eq!(p, json!({}));
+                    if self.recommendation_hold.load(Ordering::SeqCst) {
+                        self.recommendation_started.notify_one();
+                        self.recommendation_release.notified().await;
+                    }
+                    self.recommendation_response.lock().unwrap().clone()
+                }
                 "/api/user/setting" => json!({"code":200,"setting":{"personalServiceSetting":
                     if self.personalization_disabled.load(Ordering::SeqCst) {2} else {0}}}),
                 "/api/social/my/recent/update/voice/list/v1" => {
