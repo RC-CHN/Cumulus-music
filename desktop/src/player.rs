@@ -308,8 +308,8 @@ pub async fn player_queue_collection(
         .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn player_queue_like(
-    window: tauri::WebviewWindow,
+pub async fn player_queue_like<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     revision: String,
