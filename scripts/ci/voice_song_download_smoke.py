@@ -227,10 +227,11 @@ def verify(case, root, stages, complete, play_completed):
 
 def run(args, root, case):
     root.mkdir()
+    play_completed = args.play_completed and case == 'liked'
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_VOICE_SONG_DOWNLOAD_PROOF=case,
                CUMULUS_PODCAST_SCENE_HOME_PROOF='automatic')
-    if args.play_completed:
+    if play_completed:
         env['CUMULUS_VOICE_SONG_DOWNLOAD_LOCAL_PLAY_PROOF'] = '1'
     if sys.platform == 'linux':
         env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
@@ -248,7 +249,7 @@ def run(args, root, case):
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert result == 0, (root / 'host.log').read_text(encoding='utf-8')
     stages = {p.stem.split('_', 2)[2]: read(p) for p in sorted(output.glob('ux_*.json'))}
-    evidence = verify(case, root, stages, read(output / 'complete.json'), args.play_completed)
+    evidence = verify(case, root, stages, read(output / 'complete.json'), play_completed)
     if sys.platform == 'linux':
         locale = read(output / 'locale.json')
         assert locale['numeric'] == 'C' and all(locale[key] != 'C' for key in ('messages', 'characters')), locale
@@ -270,8 +271,8 @@ def main():
     args = parser.parse_args()
     if sys.platform not in ('linux', 'win32') or (args.screenshots and sys.platform != 'linux'):
         parser.error('use Linux X11 or Windows; screenshots require X11')
-    if args.play_completed and args.case != 'liked':
-        parser.error('--play-completed requires --case liked')
+    if args.play_completed and args.case not in ('all', 'liked'):
+        parser.error('--play-completed requires the liked case')
     if sys.platform == 'linux':
         require_xvfb()
     if args.runtime:
