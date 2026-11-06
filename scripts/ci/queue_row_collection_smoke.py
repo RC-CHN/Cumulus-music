@@ -10,9 +10,9 @@ from pathlib import Path
 import re
 import subprocess
 
-from motion_smoke import launch
 from queue_collection_smoke import isolated_profile
 from search_queue_drop_smoke import TrustedDrag
+from window_manager import launch
 
 
 LABELS = ('pointer_ready', 'pointer_picker', 'pointer_cancelled', 'keyboard_ready',
