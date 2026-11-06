@@ -31,6 +31,7 @@ import { displayedQueueMove } from '../services/queueSelection';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
 import { queueArtistCredits } from '../services/playbackMetadata';
+import type { QueueTrackMenuRequest } from '../services/trackMenu';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import QueueClearDialog from './queue/QueueClearDialog.vue';
@@ -52,6 +53,7 @@ const emit = defineEmits<{
   artist: [id: string];
   like: [target: QueueLikeTarget];
   reviewLikes: [];
+  more: [input: QueueTrackMenuRequest];
   together: [];
   cleared: [];
   refreshPlaylistSource: [event: MouseEvent];
@@ -59,6 +61,9 @@ const emit = defineEmits<{
 const client = useCore();
 const collecting = ref(false),
   collectionIssue = ref('');
+const menuPending = ref<string>(),
+  menuIssue = ref('');
+let menuAttempt = 0;
 let collectionRead = 0;
 const {
   queue,
@@ -524,6 +529,77 @@ function likeRecoveryFocus() {
   }
   return closeButton.value ?? null;
 }
+async function openQueueMenu(row: QueueTrack, event: MouseEvent) {
+  if (!row.catalogMenu || !liveNavigationRow(row)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const shown = queue.value!;
+  const node = event.currentTarget;
+  if (!(node instanceof HTMLElement)) return;
+  const anchor =
+    node instanceof HTMLButtonElement
+      ? node
+      : node.querySelector<HTMLButtonElement>('.queue-row-more');
+  if (!anchor || anchor.disabled) return;
+  const pointer = event.type === 'contextmenu' && (event.clientX !== 0 || event.clientY !== 0);
+  const point = pointer ? { x: event.clientX, y: event.clientY } : undefined;
+  if (pointer && !selected.value.has(row.entryId)) selection.select(row.entryId);
+  else if (event.type === 'click' && event.detail > 0)
+    selection.select(row.entryId, event.ctrlKey || event.metaKey, event.shiftKey);
+  const group = selected.value.size > 1 ? [...selected.value] : [];
+  const ids = group.length ? group : [row.entryId];
+  const rows = ids.map((id) => shown.tracks.find((entry) => entry.entryId === id));
+  menuIssue.value = '';
+  if (rows.some((entry) => !entry?.catalogMenu)) {
+    menuIssue.value = '所选条目包含此菜单暂不支持的资源';
+    return;
+  }
+  const tracks = rows.map((entry) => entry!.track);
+  const sameSelection = () =>
+    group.length === 0
+      ? selected.value.size < 2
+      : group.length === selected.value.size && group.every((id) => selected.value.has(id));
+  const live = () =>
+    liveNavigationRow(row) && queue.value === shown && anchor.isConnected && sameSelection();
+  const attempt = ++menuAttempt;
+  menuPending.value = row.entryId;
+  anchor.focus({ preventScroll: true });
+  try {
+    const info = await client.playerQueueCatalogMenu(shown.epoch, shown.revision, row.entryId);
+    if (
+      attempt !== menuAttempt ||
+      !live() ||
+      document.activeElement !== anchor ||
+      info.epoch !== shown.epoch ||
+      info.revision !== shown.revision ||
+      info.entryId !== row.entryId ||
+      info.track.id !== row.track.id
+    )
+      return;
+    emit('more', {
+      info,
+      tracks,
+      anchor,
+      point,
+      live,
+      play: () => {
+        if (live()) void activateRow(anchor, row.entryId, row.track.missing);
+      },
+      remove: () => {
+        if (live())
+          void edit(
+            { kind: 'remove', entry_ids: ids },
+            shown.tracks.findIndex((entry) => entry.entryId === ids[0]),
+            shown,
+          );
+      },
+    });
+  } catch (error) {
+    if (attempt === menuAttempt && live()) menuIssue.value = failure(error).message;
+  } finally {
+    if (attempt === menuAttempt) menuPending.value = undefined;
+  }
+}
 function selectRow(event: MouseEvent, id: string) {
   // Pointer selection runs on down/up to preserve a group while dragging.
   // Keyboard activation and accessibility tools produce a zero-detail click.
@@ -826,6 +902,7 @@ async function confirmClear(event: Event) {
             item.likeSongId && liked.has(item.likeSongId),
             item.likeSongId && busyLikes.has(item.likeSongId),
             queue.fm,
+            menuPending === item.entryId,
             queue.tracks.length,
             selected.has(item.entryId),
             dragging.has(item.entryId),
@@ -841,6 +918,7 @@ async function confirmClear(event: Event) {
             'queue-more-separated': expansion?.index === start + index,
           }"
           :aria-current="item.entryId === currentEntry ? 'true' : undefined"
+          @contextmenu="openQueueMenu(item, $event)"
         >
           <span
             v-if="expansion?.index === start + index"
@@ -927,6 +1005,20 @@ async function confirmClear(event: Event) {
           >
             <Icon name="heart" />
           </button>
+          <button
+            v-if="item.catalogMenu"
+            type="button"
+            class="icon-button queue-row-more"
+            :disabled="navigationLocked"
+            :aria-busy="menuPending === item.entryId"
+            :aria-label="`更多操作 ${item.track.name}`"
+            aria-haspopup="menu"
+            title="更多"
+            @click.stop="openQueueMenu(item, $event)"
+            @dblclick.stop
+          >
+            <Icon name="more" />
+          </button>
           <time :title="item.track.durationMs > 0 ? undefined : '时长未知'">{{
             item.track.durationMs > 0 ? time(item.track.durationMs / 1000) : '—'
           }}</time>
@@ -976,6 +1068,7 @@ async function confirmClear(event: Event) {
         · Esc 取消
       </div>
     </div>
+    <p v-if="menuIssue" class="queue-notice" role="status">{{ menuIssue }}</p>
     <div v-if="likeNotice || pendingLikes" class="queue-notice queue-like-notice" role="status">
       <span>{{ pendingLikes ? `${pendingLikes} 首歌曲的喜欢操作待核对` : likeNotice }}</span>
       <button v-if="pendingLikes" type="button" class="text-button" @click="emit('reviewLikes')">

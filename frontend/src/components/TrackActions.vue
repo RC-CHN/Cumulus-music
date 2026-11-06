@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import MenuTransition from './MenuTransition.vue';
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { failure, type TrackView, type PlaylistView } from '../services/contracts';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { MenuItem } from '../services/menu';
-import { songLink, type TrackMenuRequest } from '../services/trackMenu';
+import {
+  queueSongMenuItems,
+  songLink,
+  type QueueMenuAction,
+  type QueueTrackMenuRequest,
+  type TrackMenuRequest,
+} from '../services/trackMenu';
 import { useCore } from '../services/core';
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
@@ -16,11 +22,13 @@ const emit = defineEmits<{
   comments: [track: TrackView];
   remove: [track: TrackView, playlist: PlaylistView];
   manage: [track: TrackView, playlist: PlaylistView];
+  queueAction: [key: QueueMenuAction, input: QueueTrackMenuRequest];
 }>();
 const client = useCore(),
   menu = ref<InstanceType<typeof ActionMenu>>();
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
+const queueRequest = shallowRef<QueueTrackMenuRequest>();
 const shared = shallowRef<TrackView>(),
   message = ref(''),
   failed = ref(false),
@@ -30,6 +38,16 @@ let returnFocus: HTMLElement | undefined;
 let sequence = 0,
   timer: ReturnType<typeof setTimeout> | undefined;
 const items = computed<MenuItem[]>(() => {
+  const queue = queueRequest.value;
+  if (queue) {
+    if (!queue.live()) return [];
+    return queueSongMenuItems(
+      queue.info,
+      queue.tracks.length > 1,
+      props.player.playing.value && props.player.view.value?.entryId === queue.info.entryId,
+      !props.player.ready.value || props.player.busy.value || props.player.queueBusy.value,
+    );
+  }
   const track = request.value?.track;
   if (!track) return [];
   const available = !track.missing && !track.local;
@@ -87,12 +105,20 @@ function dismiss() {
 }
 function close() {
   menu.value?.close();
+  queueRequest.value = undefined;
   shared.value = undefined;
   clear();
 }
+watch(
+  () => queueRequest.value?.live(),
+  (live) => {
+    if (live === false) close();
+  },
+);
 onBeforeUnmount(close);
 async function show(input: TrackMenuRequest, source?: PlaylistView) {
   clear();
+  queueRequest.value = undefined;
   request.value = input;
   playlist.value = source;
   const event = input.event;
@@ -119,6 +145,19 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
     trigger,
   );
 }
+async function showQueue(input: QueueTrackMenuRequest) {
+  clear();
+  menu.value?.close();
+  request.value = undefined;
+  playlist.value = undefined;
+  queueRequest.value = input;
+  returnFocus = input.anchor;
+  const attempt = sequence;
+  await nextTick();
+  if (attempt !== sequence || !input.live()) return;
+  if (input.point) await menu.value?.showAt(input.point.x, input.point.y, input.anchor);
+  else await menu.value?.showBelow(input.anchor);
+}
 function feedback(text: string, error = false) {
   message.value = text;
   failed.value = error;
@@ -129,7 +168,10 @@ function feedback(text: string, error = false) {
     }, 3000);
 }
 async function copy() {
-  const link = request.value && songLink(request.value.track);
+  const queue = queueRequest.value;
+  if (queue && !queue.live()) return;
+  const track = queue?.info.track ?? request.value?.track;
+  const link = track && songLink(track);
   if (!link || copying.value) return;
   const attempt = sequence;
   retrying.value = !!document.activeElement?.closest('.track-action-feedback');
@@ -153,6 +195,17 @@ async function copy() {
   }
 }
 async function select(key: string) {
+  const queue = queueRequest.value;
+  if (queue) {
+    const action = items.value.find((item) => item.key === key);
+    if (!queue.live() || !action || action.disabled || action.separator) return;
+    if (key === 'play') queue.play();
+    else if (key === 'remove') queue.remove();
+    else if (key === 'copy') await copy();
+    else if (key === 'share') shared.value = queue.info.track;
+    else emit('queueAction', key as QueueMenuAction, queue);
+    return;
+  }
   const input = request.value;
   if (!input || items.value.find((i) => i.key === key)?.disabled) return;
   const { track } = input;
@@ -190,14 +243,14 @@ async function select(key: string) {
     }
   }
 }
-defineExpose({ show, close });
+defineExpose({ show, showQueue, close });
 </script>
 <template>
   <ActionMenu
     ref="menu"
     context-only
     variant="song"
-    label="歌曲操作"
+    :label="queueRequest ? '播放列表歌曲操作' : '歌曲操作'"
     :items="items"
     @select="select"
   />

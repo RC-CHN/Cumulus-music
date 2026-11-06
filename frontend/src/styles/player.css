@@ -881,7 +881,8 @@ input[type='range'] {
   height: 15px;
 }
 .queue-origin,
-.queue-like {
+.queue-like,
+.queue-row-more {
   flex: 0 0 auto;
   opacity: 0;
   pointer-events: none;
@@ -889,13 +890,16 @@ input[type='range'] {
 .queue-row:hover .queue-origin,
 .queue-row:focus-within .queue-origin,
 .queue-row:hover .queue-like,
-.queue-row:focus-within .queue-like {
+.queue-row:focus-within .queue-like,
+.queue-row:hover .queue-row-more,
+.queue-row:focus-within .queue-row-more {
   opacity: 1;
   pointer-events: auto;
 }
 @media (hover: none) {
   .queue-origin,
-  .queue-like {
+  .queue-like,
+  .queue-row-more {
     opacity: 1;
     pointer-events: auto;
   }

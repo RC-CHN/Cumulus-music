@@ -23,6 +23,7 @@ mod queue_collection;
 mod queue_drop;
 mod queue_edit;
 mod queue_like;
+mod queue_menu;
 mod queue_more_playlist;
 mod queue_playlist;
 mod reports;
@@ -1818,6 +1819,7 @@ impl MusicClient {
                         like_song_id: ordinary_queue
                             .then(|| queue_like::song_id(&i.resource))
                             .flatten(),
+                        catalog_menu: ordinary_queue && queue_menu::eligible(&i.resource),
                     })
                 })
                 .collect::<Result<_>>()?,

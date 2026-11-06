@@ -157,6 +157,8 @@ import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
 import type {
   TrackCurrentToggle,
+  QueueMenuAction,
+  QueueTrackMenuRequest,
   TrackMenuRequest,
   TrackPendingToggle,
   TrackPlayGesture,
@@ -1879,6 +1881,41 @@ function collectQueue(value: QueueCollectionView, trigger: HTMLElement | undefin
       duplicates: value.duplicates,
     },
   };
+}
+function applyQueueMenu(key: QueueMenuAction, input: QueueTrackMenuRequest) {
+  if (!input.live() || input.info.epoch !== account.value.epoch) return;
+  const { track } = input.info;
+  if (key === 'comments') trackComments(track);
+  else if (key === 'collect') {
+    if (!signedIn.value) {
+      loginOpen.value = true;
+      return;
+    }
+    const tracks = [...new Map(input.tracks.map((item) => [item.id, item])).values()];
+    collectQueue(
+      {
+        epoch: input.info.epoch,
+        revision: input.info.revision,
+        total: input.tracks.length,
+        unsupported: 0,
+        duplicates: input.tracks.length - tracks.length,
+        tracks,
+      },
+      input.anchor,
+    );
+  } else if (key === 'download') {
+    if (!signedIn.value) loginOpen.value = true;
+    else downloadDialog.value = { kind: 'start', tracks: [...input.tracks] };
+  } else if (key === 'artist') {
+    const id = track.artistRefs?.[0]?.id;
+    if (id) navigateFromQueue({ kind: 'artist', id });
+  } else if (key === 'album') {
+    if (track.albumId) navigateFromQueue({ kind: 'album', id: track.albumId });
+  } else if (key === 'source') {
+    if (input.info.origin) navigateFromQueue(input.info.origin);
+  } else if (key === 'directory') {
+    if (input.info.downloadTaskId) void downloads.open(input.info.downloadTaskId);
+  }
 }
 function queueCollectionFallback() {
   if (!queueCollectionReturn.value) return null;
@@ -5760,6 +5797,7 @@ onUnmounted(() => {
         @artist="(id) => navigateFromQueue({ kind: 'artist', id })"
         @like="(target) => (signedIn ? music.likeFromQueue(target) : (loginOpen = true))"
         @review-likes="reviewQueueLikes"
+        @more="(input) => trackActions?.showQueue(input)"
         @together="openTogetherFromQueue"
         @cleared="together.load(false, true)"
       />
@@ -5895,6 +5933,7 @@ onUnmounted(() => {
       @comments="(track) => openComments({ kind: 'track', id: track.id }, track.name)"
       @remove="(track, playlist) => (playlistDialog = { kind: 'remove', track, playlist })"
       @manage="(track, playlist) => (playlistDialog = { kind: 'track', track, playlist })"
+      @queue-action="applyQueueMenu"
     />
     <ModalTransition
       :restore-focus="

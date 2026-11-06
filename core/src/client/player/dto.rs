@@ -159,6 +159,21 @@ pub struct QueueTrack {
     pub origin: Option<QueueOrigin>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub like_song_id: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub catalog_menu: bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueCatalogMenu {
+    pub epoch: String,
+    pub revision: String,
+    pub entry_id: String,
+    pub track: TrackView,
+    pub source_label: String,
+    pub origin: Option<QueueOrigin>,
+    pub comment_count: Option<u64>,
+    pub downloaded: bool,
+    pub download_task_id: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

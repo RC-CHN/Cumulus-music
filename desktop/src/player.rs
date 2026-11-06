@@ -325,6 +325,22 @@ pub async fn player_queue_like<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_queue_catalog_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<QueueCatalogMenu, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue song menu requires the main window").into());
+    }
+    client
+        .player_queue_catalog_menu(&epoch, &revision, &entry_id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_chorus(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

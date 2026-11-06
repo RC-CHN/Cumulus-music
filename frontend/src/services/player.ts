@@ -241,6 +241,18 @@ export interface QueueTrack {
   moreRecommendation?: boolean;
   origin?: QueueOrigin;
   likeSongId?: string;
+  catalogMenu?: boolean;
+}
+export interface QueueCatalogMenu {
+  epoch: string;
+  revision: string;
+  entryId: string;
+  track: TrackView;
+  sourceLabel: string;
+  origin: QueueOrigin | null;
+  commentCount: number | null;
+  downloaded: boolean;
+  downloadTaskId: string | null;
 }
 export interface QueueLikeTarget {
   epoch: string;
@@ -779,6 +791,11 @@ export interface PlayerClient extends VinylSimilarClient {
     entryId: string,
     liked: boolean,
   ): Promise<AccountData<LikeResult>>;
+  playerQueueCatalogMenu(
+    epoch: string,
+    revision: string,
+    entryId: string,
+  ): Promise<QueueCatalogMenu>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
   playerVinylCommentsAvailable(epoch: string): Promise<boolean>;
