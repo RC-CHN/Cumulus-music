@@ -1,0 +1,39 @@
+{
+  "kind": "synthetic-only",
+  "method": "POST",
+  "path": "/api/login/sns",
+  "cases": [
+    {
+      "provider": "weixin",
+      "type": 10,
+      "oauthQuery": "code=synthetic-provider-wx%2B%25%26",
+      "desktopResult": {
+        "code": "synthetic-desktop-wx+%& 雪 \"q\"\\tail",
+        "__fixtureOnlyOpaque": {
+          "labels": [
+            "声+%&",
+            "百分号%25"
+          ],
+          "quote": "\"\\"
+        }
+      },
+      "expectedForm": "type=10&tokenJsonStr=synthetic-desktop-wx%2B%25%26%20%E9%9B%AA%20%22q%22%5Ctail&desktopLoginSnsParam=%7B%22code%22%3A%22synthetic-desktop-wx%2B%25%26%20%E9%9B%AA%20%5C%22q%5C%22%5C%5Ctail%22%2C%22__fixtureOnlyOpaque%22%3A%7B%22labels%22%3A%5B%22%E5%A3%B0%2B%25%26%22%2C%22%E7%99%BE%E5%88%86%E5%8F%B7%2525%22%5D%2C%22quote%22%3A%22%5C%22%5C%5C%22%7D%7D&fromPage=JSK"
+    },
+    {
+      "provider": "qq",
+      "type": 5,
+      "oauthQuery": "code=synthetic-provider-qq%2B%25%26",
+      "desktopResult": {
+        "code": "{\"synthetic-desktop-qq\":\"中+%& %25\"}",
+        "__fixtureOnlyOpaque": {
+          "labels": [
+            "?",
+            "😀"
+          ],
+          "enabled": true
+        }
+      },
+      "expectedForm": "type=5&tokenJsonStr=%7B%22synthetic-desktop-qq%22%3A%22%E4%B8%AD%2B%25%26%20%2525%22%7D&desktopLoginSnsParam=%7B%22code%22%3A%22%7B%5C%22synthetic-desktop-qq%5C%22%3A%5C%22%E4%B8%AD%2B%25%26%20%2525%5C%22%7D%22%2C%22__fixtureOnlyOpaque%22%3A%7B%22labels%22%3A%5B%22%3F%22%2C%22%F0%9F%98%80%22%5D%2C%22enabled%22%3Atrue%7D%7D&fromPage=JSK"
+    }
+  ]
+}

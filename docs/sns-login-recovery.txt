@@ -299,6 +299,19 @@ Cumulus SNS 登录恢复契约与后续实现边界
   后续 SNS 接线不能因为 M1368 标记就补造官方 PC 强制 Guardian 调用，
   不能从持久 Cookie 恢复 MUSIC_TU，也不能把 musicTu 与处罚 musicTuP 混同。
 
+  离线 Rust 线格式测试：core/tests/sns_exchange_wire.rs，冻结向量在
+  core/tests/fixtures/sns-exchange-wire.json。微信、QQ 的输入均为合成字符串，
+  期望表单使用本地恢复 M48:31–45 在 Node 中生成。额外嵌套字段
+  __fixtureOnlyOpaque 仅用来验证未知对象不丢字段，不是已恢复的回调字段。
+  测试分别核对桌面对象的 code、第三方 URL 的另一枚 code、一次 JSON 对象
+  编码、字面量 +/%/& 和 Unicode。复用现有纯 RequestPlan 构造并解开合成
+  PC 前端 EAPI 封装，核对只出现一次 params、无重复 URL query、无账号 Cookie
+  或第三方 OAuth code。测试只验证已恢复的 POST 字段与当前编码器，不会发请求、
+  打开账号存储、采用登录态或扩展 JSK 登录白名单。实际回调字段类型和 EAPI
+  服务端接受性仍待授权成功证据。
+
+    cargo test -p cumulus-core --locked --test sns_exchange_wire
+
 8. 下一批原生 host 与状态机设计（设计要求，未实现/未验证）
 
   core：新增 attempt-local ThirdPartyAttempt 与 native-only provider trait。
