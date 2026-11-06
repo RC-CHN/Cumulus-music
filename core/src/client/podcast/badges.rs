@@ -33,9 +33,9 @@ fn badge_count(radio: &Radio) -> Option<u64> {
     // M/21.Z takes the first JS-truthy field. A malformed truthy value
     // is not evidence for a badge or permission to send a write.
     let raw = &radio.raw;
-    if crate::protocol::wire::serialization::js_truthy(&raw["newVoiceCount"]) {
-        number(&raw["newVoiceCount"])
-    } else if raw["newProgramCount"].is_null() {
+    if crate::protocol::wire::serialization::js_truthy(&raw["newVoiceCount"])
+        || raw["newProgramCount"].is_null()
+    {
         number(&raw["newVoiceCount"])
     } else {
         number(&raw["newProgramCount"])
@@ -283,14 +283,14 @@ impl Claim<'_> {
         }
         let state = self.host.lock()?;
         if state.owner.as_ref() != Some(&self.token)
-            || !state
+            || state
                 .observed
                 .as_ref()
-                .is_some_and(|page| page.receipt == self.receipt)
-            || !state
+                .is_none_or(|page| page.receipt != self.receipt)
+            || state
                 .consumed
                 .get(&self.radio)
-                .is_some_and(|attempt| attempt.id == self.id)
+                .is_none_or(|attempt| attempt.id != self.id)
         {
             return Err(Error::StaleResponse);
         }
