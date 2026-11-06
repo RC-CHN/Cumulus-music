@@ -42,7 +42,8 @@ impl Fixture {
                     let cards = (81..=87)
                         .map(|id| {
                             json!({
-                                "id":id, "name":format!("合成推荐 {id}"), "playCount":1870
+                                "id":id, "name":format!("合成推荐 {id}"), "playCount":1870,
+                                "dj":{"userId":88}
                             })
                         })
                         .collect::<Vec<_>>();
@@ -68,31 +69,42 @@ impl Fixture {
                 let id = id(&body["radioId"]);
                 assert_eq!(body["offset"], 0);
                 if body["limit"] == 250 {
-                    assert!(self.recommendations && id == 81);
-                    assert_eq!(body, &json!({"radioId":"81","offset":0,"limit":250}));
+                    assert!(self.recommendations && (81..=82).contains(&id));
+                    assert_eq!(
+                        body,
+                        &json!({"radioId":id.to_string(),"offset":0,"limit":250})
+                    );
                     self.trace.lock().unwrap().push(json!([path, body]));
                 }
                 json!({"code":200,"data":{"programs":[program(id)],"count":1,"more":false,"asc":body["asc"]}})
             }
             "/api/dj/program/detail" if self.recommendations => {
-                assert_eq!(body, &json!({"id":"9081"}));
+                let radio = program_radio(&body["id"]);
+                assert_eq!(body, &json!({"id":(9000 + radio).to_string()}));
                 self.trace.lock().unwrap().push(json!([path, body]));
-                json!({"code":200,"program":program(81)})
+                json!({"code":200,"program":program(radio)})
             }
             "/api/dj/play/url/check" if self.recommendations => {
-                assert_eq!(body["voiceId"], "9081");
+                let radio = program_radio(&body["voiceId"]);
                 self.trace.lock().unwrap().push(json!([path, body]));
-                json!({"code":200,"data":{"voiceId":9081,"songId":10081,"canPlay":true}})
+                json!({"code":200,"data":{"voiceId":9000+radio,"songId":10000+radio,"canPlay":true}})
             }
             "/api/song/enhance/player/url/v1" if self.recommendations => {
                 let ids: Value = serde_json::from_str(body["ids"].as_str().unwrap()).unwrap();
-                assert!(ids == json!([10081]) || ids == json!(["10081"]));
+                let song = ids[0]
+                    .as_u64()
+                    .unwrap_or_else(|| ids[0].as_str().unwrap().parse().unwrap());
+                assert_eq!(ids.as_array().unwrap().len(), 1);
+                assert!((10081..=10082).contains(&song));
                 self.trace.lock().unwrap().push(json!([path, body]));
-                json!({"code":200,"data":[{"id":10081,"url":super::MEDIA,"code":200,
+                json!({"code":200,"data":[{"id":song,"url":super::MEDIA,"code":200,
                     "md5":"fixture","level":"standard","expi":120}]})
             }
             CLEAR | "/api/djradio/newcount/clear" => {
                 panic!("badge write escaped the sealed typed fixture")
+            }
+            "/api/djradio/sub" | "/api/djradio/unsub" if self.recommendations => {
+                panic!("recommendation proof never confirms a subscription")
             }
             _ => return None,
         };
@@ -148,4 +160,10 @@ fn radio(id: u64) -> Value {
 fn program(id: u64) -> Value {
     json!({"id":9000+id,"name":format!("合成单集 {id}"),
         "mainSong":{"id":10000+id,"duration":30000},"duration":30000,"radio":radio(id)})
+}
+
+fn program_radio(value: &Value) -> u64 {
+    let voice: u64 = value.as_str().unwrap().parse().unwrap();
+    assert!((9081..=9082).contains(&voice));
+    voice - 9000
 }

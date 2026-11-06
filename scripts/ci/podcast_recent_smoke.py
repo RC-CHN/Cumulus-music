@@ -117,18 +117,41 @@ def check_recommendations(output, stages, complete, screenshots):
     assert set(stages) == {
         'recommended_first', 'recommended_next', 'recommended_playing', 'recommended_paused',
         'recommended_resumed', 'recommended_detail', 'recommended_back',
+        'recommendation_menu_collectible', 'recommendation_menu_subscribed',
+        'recommendation_menu_share', 'recommendation_menu_copy', 'recommendation_menu_next',
     }, stages
     assert complete['detailReads'] == ['81']
     assert stages['recommended_detail']['detail'] == '合成确认播客'
     assert complete['first'][0] == '81' and complete['lastGroup'][-1] == '86'
     assert len(complete['first']) == len(complete['lastGroup']) < 6
     trace = complete['podcastBadgeTrace']
-    assert sorted(row[0] for row in trace) == sorted([
+    before = stages['recommended_back']['podcastBadgeTrace']
+    assert trace[:len(before)] == before, trace
+    assert sorted(row[0] for row in before) == sorted([
         '/api/my/podcast/page/list', '/api/my/podcast/page/list',
         '/api/djradio/my/radio/recommend', '/api/djradio/v3/get',
         '/api/v6/dj/program/byradio', '/api/dj/program/detail', '/api/dj/play/url/check',
         '/api/song/enhance/player/url/v1',
-    ]), trace
+    ]), before
+    tail = trace[len(before):]
+    assert tail[0] == ['/api/v6/dj/program/byradio', {'radioId':'82', 'offset':0, 'limit':250}], tail
+    # The unchanged ordinary actor may authorize/prefetch the new next row
+    # once. It cannot become the active decoder while the old row is paused.
+    assert [row[0] for row in tail[1:]] == [
+        '/api/dj/program/detail', '/api/dj/play/url/check', '/api/song/enhance/player/url/v1',
+    ][:len(tail) - 1], tail
+    for path, args in tail[1:]:
+        if path == '/api/dj/program/detail':
+            assert args == {'id':'9082'}, tail
+        elif path == '/api/dj/play/url/check':
+            assert args['voiceId'] == '9082', tail
+        else:
+            assert list(map(str, json.loads(args['ids']))) == ['10082'], tail
+    next_player = stages['recommendation_menu_next']['player']
+    assert (next_player['state'], next_player['queueLen'], next_player['track']['voiceId']) == (
+        'paused', 2, '9081',
+    )
+    assert next_player['playId'] == stages['recommended_playing']['player']['playId']
     for suffix, state in [('playing', 'playing'), ('paused', 'paused'), ('resumed', 'playing')]:
         row = stages['recommended_' + suffix]
         player = row['player']

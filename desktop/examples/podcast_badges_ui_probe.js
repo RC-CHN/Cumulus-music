@@ -38,11 +38,12 @@
     node.focus({ preventScroll: true });
     node.click();
   }
-  function solidPadding(selector) {
+  function solidPadding(selector, right = false) {
     const node = one(selector);
     const rect = node.getBoundingClientRect();
-    const padding = Number.parseFloat(getComputedStyle(node).paddingLeft);
-    const x = rect.left + Math.min(5, padding / 2), y = rect.top + rect.height / 2;
+    const padding = Number.parseFloat(getComputedStyle(node)[right ? 'paddingRight' : 'paddingLeft']);
+    const offset = Math.min(5, padding / 2);
+    const x = right ? rect.right - offset : rect.left + offset, y = rect.top + rect.height / 2;
     assert(padding >= 4 && document.elementFromPoint(x, y) === node && opaque(node),
       'visible solid padding: ' + selector);
     for (let current = node; current; current = current.parentElement) {
@@ -81,7 +82,9 @@
       clearOutcomes: requests.slice(), readCount: detailReads.length,
       screenX, screenY, ratio: devicePixelRatio,
       paintSamples: window.__CUMULUS_PROOF_INVOKE__
-        ? ['.sidebar-caption', '.playerbar'].map(solidPadding) : [],
+        ? target().matches('dialog[open]')
+          ? [solidPadding('dialog[open]'), solidPadding('dialog[open]', true)]
+          : ['.sidebar-caption', '.playerbar'].map((selector) => solidPadding(selector)) : [],
     });
     await wait(() => window.__podcastProgressStage === `ux_${String(index).padStart(2, '0')}_${label}`,
       'durable stage acknowledgement');
@@ -105,6 +108,23 @@
     const shelf = () => one('[data-podcast-subscription-recommendations]', pane());
     const rec = (id) => one(`[data-recommended-radio-id="${id}"]`, shelf());
     const recOpen = (id) => one('.recommendation-open', rec(id));
+    const currentMenu = () => [...document.querySelectorAll('[role="menu"]')]
+      .find((node) => node.getAttribute('aria-label')?.startsWith('推荐播客菜单：') && shown(node));
+    const menuKeys = () => [...currentMenu().querySelectorAll('button[data-menu-key]')]
+      .map((node) => node.dataset.menuKey);
+    async function openMenu(id, keyboard = false) {
+      const anchor = recOpen(id);
+      anchor.focus({preventScroll: true});
+      if (keyboard) {
+        anchor.dispatchEvent(new KeyboardEvent('keydown',
+          {key: 'F10', shiftKey: true, bubbles: true, cancelable: true}));
+      } else {
+        const box = anchor.getBoundingClientRect();
+        anchor.dispatchEvent(new MouseEvent('contextmenu',
+          {button: 2, clientX: box.left + 20, clientY: box.top + 30, bubbles: true, cancelable: true}));
+      }
+      return wait(() => shown(currentMenu()) && opaque(currentMenu()) && currentMenu(), 'recommendation menu');
+    }
     const visibleIds = () => [...shelf().querySelectorAll('[data-recommended-radio-id]:not([inert])')]
       .map((card) => card.dataset.recommendedRadioId);
     await wait(shelf, 'recommendation shelf');
@@ -126,6 +146,15 @@
     await capture('recommended_next', () => rec('86'), false);
     const lastGroup = visibleIds();
     assert(lastGroup.length === first.length && lastGroup.at(-1) === '86', 'last visible group');
+    await openMenu('86', true);
+    assert(JSON.stringify(menuKeys()) === JSON.stringify(['open','play','next','collect','share','copy']),
+      'external unsubscribed card offers the official ordinary menu');
+    await capture('recommendation_menu_collectible', currentMenu, false);
+    click(button('收藏...', currentMenu()));
+    const confirm = () => one('dialog[open][aria-label="收藏播客"]');
+    await wait(() => shown(confirm()) && opaque(confirm()), 'explicit recommendation collect confirmation');
+    click(button('取消', confirm()));
+    await wait(() => !confirm() && document.activeElement === recOpen('86'), 'cancel restores original card focus');
     const previous = () => button('上一组推荐播客', shelf());
     click(await wait(() => shown(previous()) && previous(), 'accessible previous group'));
     await wait(() => shown(rec('81')) && !rec('81').inert, 'first group restored');
@@ -169,6 +198,37 @@
     await wait(shelf, 'recommendations survive Back');
     shelf().scrollIntoView({ block: 'nearest', behavior: 'instant' });
     await capture('recommended_back', () => rec('81'), false);
+    await openMenu('81');
+    assert(JSON.stringify(menuKeys()) === JSON.stringify(['open','play','next','share','copy']),
+      'already subscribed card omits collect and removal');
+    await capture('recommendation_menu_subscribed', currentMenu, false);
+    click(button('分享...', currentMenu()));
+    const share = () => one('dialog[open].track-share-dialog');
+    await wait(() => shown(share()) && opaque(share()), 'podcast public share dialog');
+    assert(one('input[aria-label="播客分享链接"]', share()).value === 'https://music.163.com/djradio?id=81',
+      'exact public podcast link with no attribution or credentials');
+    await capture('recommendation_menu_share', share, false);
+    click(one('button[aria-label="关闭分享"]', share()));
+    await wait(() => !share() && document.activeElement === recOpen('81'), 'share restores original card focus');
+    await openMenu('81');
+    click(button('复制链接', currentMenu()));
+    const copied = () => [...shelf().querySelectorAll('[role="status"]')]
+      .find((node) => node.textContent.trim() === '链接已复制');
+    await wait(copied, 'native clipboard acknowledged the public link');
+    await capture('recommendation_menu_copy', copied, false);
+
+    click(overlay());
+    const paused = await wait(() => playingState('paused'), 'pause before queue-only action');
+    await openMenu('82');
+    click(button('下一首播放', currentMenu()));
+    const queued = await wait(async () => {
+      const result = await playingState('paused');
+      return result?.queueLen === 2 && result;
+    }, 'insert next podcast without transport change');
+    assert(queued.playId === paused.playId && queued.entryId === paused.entryId &&
+      queued.position === paused.position && queued.queueRevision !== paused.queueRevision,
+      'queue-only action preserves selected native decoder and clock');
+    await capture('recommendation_menu_next', () => recOpen('82'), false, { player: queued });
     await emit('complete', { ok: true, stageCount: index, remoteWrites: 0,
       realMusicRequests: 0, detailReads, first, lastGroup });
   }
