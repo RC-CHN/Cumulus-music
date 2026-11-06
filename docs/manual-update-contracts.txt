@@ -5,7 +5,8 @@
 
 - hybrid_64/3097.js:5603–5672 的“关于网易云音乐”显示当前版本；商店版不显示
   “检查更新”，普通客户端显式点击才发 async:update/checkUpdate
-  {action:"manual",isSilence:false}。本功能采用相同的关于入口和手动反馈节奏。
+  {action:"manual",isSilence:false}。Cumulus 自己的入口标为「检查 Cumulus 更新」，
+  沿用关于页的手动查询节奏。
 - async_update.txt → hybrid_119/3131.js:396–809：原生读取 core 版本，区分新包、
   无新版、静默与手动分支；无新版时弹出“检查更新／知道了”，手动确认新包后
   可进入下载窗口。原生 Update.startUpgrade（同模块 :356–395）有整包、增量、

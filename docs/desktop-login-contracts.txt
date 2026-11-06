@@ -210,4 +210,9 @@ login_presentation、select_login_country、open_login_document均经过现有ma
 - 合成定向验证：cargo test -p cumulus-core --lib --locked qr_retirement
   以及 cargo test -p cumulus-core --test client_auth --locked cancelled_ordinary_qr_waits
   分别验证独立句柄/注册/未知内容拒绝和真实原生扫码状态机的迟到 Cookie、目录退役及当前
-  账号不变。无需真实二维码、账号或网络；这里只列可复跑用例，不代表桌面实机已验证。
+  账号不变。集成批次的账号、本地库、播客和搜索共 84 项 Rust 用例通过，其中账号用例 25 项。
+  无需真实二维码、账号或网络；此处的取消退役证据是 Rust 集成验证。
+- 另用 Linux 真实 WebView、封闭服务和 libmpv 验证普通扫码成功后采用会话、全新进程恢复
+  所选账号、原生歌单回读、下载暂停后按 Range 续传、完成后离线播放，共 20 阶段、19 张
+  截图（.build/ui-proof/phase84-auth-main-r1/report.json）。这是成功路径，不证明取消
+  退役的桌面交互，也没有真实账号请求。
