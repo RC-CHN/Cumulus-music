@@ -50,12 +50,12 @@ const selected = computed(() =>
 const menuItems = computed<MenuItem[]>(() => {
   const canShare = !!selected.value && !!podcastPublicLink(selected.value.id);
   return [
-    { key: 'open', label: '查看播客', icon: 'search' },
+    { key: 'open', label: '查看播客', icon: 'check' },
     { key: 'play', label: '播放', icon: 'play', disabled: !props.canPlay },
     { key: 'next', label: '下一首播放', icon: 'next', disabled: !props.canPlay },
     { key: 'sep', label: '', separator: true },
     ...(selected.value && props.canCollect(selected.value.id)
-      ? [{ key: 'collect', label: '收藏...', icon: 'favorite' }]
+      ? [{ key: 'collect', label: '收藏...', icon: 'star' }]
       : []),
     { key: 'share', label: '分享...', icon: 'share', disabled: !canShare },
     { key: 'copy', label: '复制链接', icon: 'copy', disabled: !canShare },
@@ -66,12 +66,18 @@ const collect = shallowRef<CardTarget>();
 const collectDialog = ref<HTMLDialogElement>();
 watch(collectDialog, (dialog) => dialog?.showModal());
 watch([() => props.revision, () => props.cards], () => {
+  target.value = undefined;
   collect.value = undefined;
   shared.value = undefined;
   menu.value?.close();
+  clearFeedback();
 });
 const feedback = ref('');
 let timer: ReturnType<typeof setTimeout> | undefined;
+function clearFeedback() {
+  clearTimeout(timer);
+  feedback.value = '';
+}
 const width = ref(0),
   start = ref(0);
 const gap = 20;
@@ -112,6 +118,7 @@ async function context(event: MouseEvent | KeyboardEvent, card: PodcastSubscript
   const pointer = event instanceof MouseEvent && event.button === 2;
   const point = { x: pointer ? event.clientX : box.left, y: pointer ? event.clientY : box.bottom };
   const selection = { card, revision: props.revision, anchor };
+  clearFeedback();
   target.value = selection;
   await nextTick();
   if (target.value === selection && anchor.isConnected && selected.value)

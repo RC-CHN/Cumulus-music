@@ -110,6 +110,7 @@
     const recOpen = (id) => one('.recommendation-open', rec(id));
     const currentMenu = () => [...document.querySelectorAll('[role="menu"]')]
       .find((node) => node.getAttribute('aria-label')?.startsWith('推荐播客菜单：') && shown(node));
+    const menuGone = () => !one('[role="menu"][aria-label^="推荐播客菜单："]');
     const menuKeys = () => [...currentMenu().querySelectorAll('button[data-menu-key]')]
       .map((node) => node.dataset.menuKey);
     async function openMenu(id, keyboard = false) {
@@ -214,12 +215,13 @@
     click(button('复制链接', currentMenu()));
     const copied = () => [...shelf().querySelectorAll('[role="status"]')]
       .find((node) => node.textContent.trim() === '链接已复制');
-    await wait(copied, 'native clipboard acknowledged the public link');
+    await wait(() => copied() && menuGone(), 'native clipboard acknowledged the public link');
     await capture('recommendation_menu_copy', copied, false);
 
     click(overlay());
     const paused = await wait(() => playingState('paused'), 'pause before queue-only action');
     await openMenu('82');
+    assert(!copied(), 'new card action clears previous clipboard feedback');
     click(button('下一首播放', currentMenu()));
     const queued = await wait(async () => {
       const result = await playingState('paused');
@@ -228,6 +230,7 @@
     assert(queued.playId === paused.playId && queued.entryId === paused.entryId &&
       queued.position === paused.position && queued.queueRevision !== paused.queueRevision,
       'queue-only action preserves selected native decoder and clock');
+    await wait(menuGone, 'settled next action menu dismissal');
     await capture('recommendation_menu_next', () => recOpen('82'), false, { player: queued });
     await emit('complete', { ok: true, stageCount: index, remoteWrites: 0,
       realMusicRequests: 0, detailReads, first, lastGroup });
