@@ -27,6 +27,8 @@ const DOWNLOAD_VOICE_ID: &str =
     "CASE WHEN json_valid(value) THEN CAST(json_extract(value,'$.origin.voice_id') AS TEXT) END";
 const DOWNLOAD_VOICE_TASK: &str = "kind='download_tasks_v1' AND
     CASE WHEN json_valid(value) THEN json_extract(value,'$.origin.kind')='voice' ELSE 0 END";
+const INDEXED_FLAC_DOWNLOAD_CLAIMS: &str = "kind IN ('offline_music_v1','download_directory_v1',
+    'download_tasks_v1','download_file_operations_v1')";
 
 #[derive(Clone, Copy)]
 pub(crate) enum PlaybackDownloadKind {
@@ -102,7 +104,9 @@ impl StateStore {
              CREATE INDEX IF NOT EXISTS download_song_v1 ON state(owner,({DOWNLOAD_SONG_ID}))
              WHERE {DOWNLOAD_SONG_TASK};
              CREATE INDEX IF NOT EXISTS download_voice_v1 ON state(owner,({DOWNLOAD_VOICE_ID}))
-             WHERE {DOWNLOAD_VOICE_TASK};"
+             WHERE {DOWNLOAD_VOICE_TASK};
+             CREATE INDEX IF NOT EXISTS indexed_flac_download_claims_v1 ON state(kind,key)
+             WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS};"
         ))?;
         Ok(Self {
             directory,
@@ -185,33 +189,43 @@ impl StateStore {
     /// guest. Inputs are an exact canonical index path and its offline key.
     pub(crate) fn download_claims_indexed_path(&self, key: &str, path: &str) -> Result<bool> {
         let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
-        let mut query = connection.prepare_cached(
+        // Use exact index seeks for owner-independent keys and avoid scanning
+        // unrelated state namespaces when a track has no claimed path.
+        let mut query = connection.prepare_cached(&format!(
             "SELECT EXISTS(
-                SELECT 1 FROM state WHERE
-                  (kind='offline_music_v1' AND key=?1)
-                  OR (kind='download_directory_v1' AND key='active')
-                  OR (kind='download_directory_v1' AND key='settings' AND
-                      CASE WHEN json_valid(value) THEN
+                SELECT 1 FROM state
+                    WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS} AND kind='offline_music_v1' AND key=?1
+                UNION ALL
+                SELECT 1 FROM state
+                    WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS} AND kind='download_directory_v1' AND key='active'
+                UNION ALL
+                SELECT 1 FROM state
+                    WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS} AND kind='download_directory_v1' AND key='settings'
+                    AND CASE WHEN json_valid(value) THEN
+                      (json_extract(value,'$.root')='/' OR
+                       substr(?2,1,length(json_extract(value,'$.root'))+1)=
+                           json_extract(value,'$.root')||'/')
+                    ELSE 1 END
+                UNION ALL
+                SELECT 1 FROM state
+                    WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS} AND kind='download_tasks_v1'
+                    AND CASE WHEN json_valid(value) THEN
+                      (json_extract(value,'$.target')=?2 OR
+                       json_extract(value,'$.destination.path')=?2 OR
+                       (json_extract(value,'$.destination.kind')='named' AND
                         (json_extract(value,'$.root')='/' OR
                          substr(?2,1,length(json_extract(value,'$.root'))+1)=
-                             json_extract(value,'$.root')||'/')
-                      ELSE 1 END)
-                  OR (kind='download_tasks_v1' AND
-                      CASE WHEN json_valid(value) THEN
-                        (json_extract(value,'$.target')=?2 OR
-                         json_extract(value,'$.destination.path')=?2 OR
-                         (json_extract(value,'$.destination.kind')='named' AND
-                          (json_extract(value,'$.root')='/' OR
-                           substr(?2,1,length(json_extract(value,'$.root'))+1)=
-                               json_extract(value,'$.root')||'/')))
-                      ELSE 1 END)
-                  OR (kind='download_file_operations_v1' AND
-                      CASE WHEN json_valid(value) THEN
-                        (json_extract(value,'$.phase') IS NULL OR
-                         json_extract(value,'$.phase') NOT IN ('complete','cancelled'))
-                      ELSE 1 END)
-            )",
-        )?;
+                             json_extract(value,'$.root')||'/')))
+                    ELSE 1 END
+                UNION ALL
+                SELECT 1 FROM state
+                    WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS} AND kind='download_file_operations_v1'
+                    AND CASE WHEN json_valid(value) THEN
+                      (json_extract(value,'$.phase') IS NULL OR
+                       json_extract(value,'$.phase') NOT IN ('complete','cancelled'))
+                    ELSE 1 END
+            )"
+        ))?;
         Ok(query.query_row([key, path], |row| row.get(0))?)
     }
 
@@ -485,6 +499,20 @@ mod indexed_flac_exclusion {
             .unwrap();
         assert!(
             !store
+                .download_claims_indexed_path("other-id", "/music/unrelated.flac")
+                .unwrap()
+        );
+        store
+            .transaction(|tx| {
+                tx.connection.execute(
+                    "INSERT INTO state VALUES('other-account','download_tasks_v1','corrupt','{')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            store
                 .download_claims_indexed_path("other-id", "/music/unrelated.flac")
                 .unwrap()
         );
