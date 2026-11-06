@@ -18,13 +18,28 @@ import type { SystemMediaStatus } from '../services/systemMedia';
 import type { ShortcutStatus } from '../services/shortcuts';
 import type { SessionRenewalView } from '../services/renewal';
 import type { MessageCountView } from '../services/messages';
-import type { VoiceSongRowTarget } from '../services/voiceSongs';
+import type {
+  VoiceSongCollectCard,
+  VoiceSongCollectTarget,
+  VoiceSongRowTarget,
+} from '../services/voiceSongs';
 
 const voiceSongDownloadTarget = ({ epoch, playId, receipt, index }: VoiceSongRowTarget) => ({
   epoch,
   playId,
   receipt,
   index,
+});
+
+const voiceSongCollectCard = ({ epoch, playId, cardReceipt }: VoiceSongCollectCard) => ({
+  epoch,
+  playId,
+  cardReceipt,
+});
+
+const voiceSongCollectTarget = (target: VoiceSongCollectTarget) => ({
+  ...voiceSongCollectCard(target),
+  selectionReceipt: target.selectionReceipt,
 });
 
 /** The only module that knows how the desktop host transports commands. */
@@ -502,6 +517,27 @@ export function createTauriClient(): CoreClient {
       invoke('player_voice_songs_selection', { epoch, playId, receipt, action, quality }),
     playerVoiceSongLike: (epoch, playId, receipt, index, liked) =>
       invoke('player_voice_song_like', { epoch, playId, receipt, index, liked }),
+    playerVoiceSongsCollectPrepare: (target, indices) =>
+      invoke('player_voice_songs_collect_prepare', {
+        target: voiceSongCollectCard(target),
+        indices,
+      }),
+    playerVoiceSongsCollectDestinations: (target, sort, page) =>
+      invoke('player_voice_songs_collect_destinations', {
+        target: voiceSongCollectTarget(target),
+        sort,
+        page,
+      }),
+    playerVoiceSongsCollectExisting: (target, playlistId) =>
+      invoke('player_voice_songs_collect_existing', {
+        target: voiceSongCollectTarget(target),
+        playlistId,
+      }),
+    playerVoiceSongsCollectStatus: (target, reconcile) =>
+      invoke('player_voice_songs_collect_status', {
+        target: voiceSongCollectTarget(target),
+        reconcile,
+      }),
     playerVoiceSongDownloadPrepare: (target) =>
       invoke('player_voice_song_download_prepare', { target: voiceSongDownloadTarget(target) }),
     playerVoiceSongDownloadStart: (target, options) =>

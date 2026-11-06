@@ -1,4 +1,4 @@
-import type { AccountData, LikeResult, TrackView } from './contracts.ts';
+import type { AccountData, LikeResult, PlaylistView, TrackView } from './contracts.ts';
 import type { DownloadOptions, DownloadResult } from './downloads.ts';
 import type { PlayerView, Quality } from './player.ts';
 import type { PlaylistPhase } from './playlists.ts';
@@ -105,7 +105,54 @@ export interface VoiceSongDownloadClient {
   ): Promise<DownloadResult>;
 }
 
-export interface VoiceSongsClient extends VoiceSongDownloadClient {
+export interface VoiceSongCollectCard extends VoiceSongsScope {
+  cardReceipt: string;
+}
+
+export interface VoiceSongCollectTarget extends VoiceSongCollectCard {
+  selectionReceipt: string;
+}
+
+export interface VoiceSongCollectPlan {
+  epoch: string;
+  playId: string;
+  selectionReceipt: string | null;
+  selectedCount: number;
+  eligibleCount: number;
+  omittedIndices: number[];
+  usedFirstFallback: boolean;
+}
+
+export interface VoiceSongCollectResult {
+  epoch: string;
+  playId: string;
+  selectionReceipt: string;
+  playlistId: string;
+  operationId: string;
+  phase: PlaylistPhase;
+}
+
+export interface VoiceSongCollectClient {
+  playerVoiceSongsCollectPrepare(
+    target: VoiceSongCollectCard,
+    indices: readonly number[],
+  ): Promise<VoiceSongCollectPlan>;
+  playerVoiceSongsCollectDestinations(
+    target: VoiceSongCollectTarget,
+    sort: 'default' | 'recently',
+    page: number,
+  ): Promise<AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>>;
+  playerVoiceSongsCollectExisting(
+    target: VoiceSongCollectTarget,
+    playlistId: string,
+  ): Promise<VoiceSongCollectResult>;
+  playerVoiceSongsCollectStatus(
+    target: VoiceSongCollectTarget,
+    reconcile: boolean,
+  ): Promise<VoiceSongCollectResult>;
+}
+
+export interface VoiceSongsClient extends VoiceSongDownloadClient, VoiceSongCollectClient {
   playerVoiceSongs(epoch: string, playId: string): Promise<VoiceSongsView>;
   playerVoiceSongPlay(
     epoch: string,

@@ -4,6 +4,7 @@ pub mod quality;
 pub mod reports;
 pub mod vinyl_similar;
 pub mod voice_related;
+pub mod voice_song_collect;
 pub mod voice_song_download;
 use cumulus_core::{
     Error,
