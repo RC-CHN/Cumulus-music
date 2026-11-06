@@ -757,6 +757,7 @@ dependencies = [
  "unicode-casefold",
  "url",
  "uuid",
+ "windows-sys 0.60.2",
  "x25519-dalek",
 ]
 

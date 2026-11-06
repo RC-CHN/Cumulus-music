@@ -35,13 +35,31 @@ not change that route. It prepares a possible future native handoff:
 
 Windows currently persists creation time, or no identity, in
 library/identity.rs. The pinned file-id 0.2.3 library's public verification
-functions take a path and open another handle; the by-handle functions are
-private. The receipt therefore returns unavailable on Windows without opening
-the path. Before enabling that platform, record a strong volume/file ID
-from the same native handle during an indexed rescan, compare that value
-from the actual opened handle with reparse points rejected, and test
-replacement/reparse behavior under a real Windows runner. Older records
-must not qualify on creation time, file length, or a second path-only probe.
+functions take a path and open another handle. The separate
+library::identity::windows::WindowsFileIdentity helper uses the already
+locked windows-sys 0.60.2 calls GetFileType and GetFileInformationByHandleEx.
+For a supplied no-follow disk handle, it rejects FileAttributeTagInfo
+directory/device/reparse attributes or tags and reads FileIdInfo's volume
+serial and full 128-bit identifier from that same handle. An unsupported
+class, zero identity or ineligible handle yields no ID. There is no
+timestamp, low-resolution or path fallback; other file-information query
+errors propagate.
+The caller must open the leaf with FILE_FLAG_OPEN_REPARSE_POINT and validate
+the parent path. A handle cannot reveal whether a previous open followed
+a link.
+
+The indexed receipt still returns unavailable on Windows without opening
+the path. Before enabling it, add a separate optional native identity record
+bound to the exact existing indexed ID and FileFingerprint revision. An
+explicit Windows rescan must capture the legacy metadata and new ID on the
+same checked handle, including rows whose normal scanner metadata cache
+would otherwise skip re-probing. Publish the companion record with the
+matching row or leave it absent. Compare against the actual held decoder
+handle on load. Old queued resources and the serialized legacy fingerprint
+stay unchanged; absent/mismatched companion records remain on stock.
+Windows native tests must exercise replacement and a real reparse point
+before product admission. No index persistence or scan behavior is changed
+by the helper.
 
 The receipt does not bind an account/download ledger, queue/output lease
 or decoder ownership on its own. A future controller must still fence
@@ -59,3 +77,15 @@ Synthetic cases exercise the real indexed CUE row, NCM and renamed NCM,
 same-size/same-mtime substitution before a new open, old descriptor
 delivery without reopening, wrong selection, cancellation, stale index
 after rescan, symlink substitution, and unavailable legacy Windows identity.
+
+Windows helper tests (requires a local filesystem with FileIdInfo support):
+cargo test -p cumulus-core --locked --lib library::identity::windows::tests
+
+The tests cover a real directory handle and same-name replacement with
+the same byte length, creation time and modification time. The real
+symlink test is separately opt-in because creating a link needs Developer
+Mode or Windows privilege:
+cargo test -p cumulus-core --locked --lib actual_reparse_handle_is_rejected_without_following_its_file_target -- --ignored
+
+The exact module and tests pass strict Windows GNU cross-Clippy and link
+in an isolated minimal target. This does not run Win32.
