@@ -30,6 +30,9 @@ pub(crate) use stereo::{
 const RATE: u32 = 44_100;
 const CHANNELS: usize = 2;
 const FLAC_BLOCK: u32 = 1024;
+// Stock FFmpeg stereo FLAC at 44.1/48 kHz can use 4608 samples per
+// callback. Only a verified ordinary indexed file may opt into that bound.
+const INDEXED_FLAC_BLOCK: u32 = 4608;
 #[cfg(test)]
 const TOTAL: u64 = 1_048_633;
 const BYTE_BUDGET: usize = 128 * 1024;
@@ -47,6 +50,7 @@ struct Source<'reader> {
     input: Box<dyn PinnedReader + 'reader>,
     authority: Cancellation,
     rate: u32,
+    max_block: u32,
     size: u64,
     offset: u64,
     scratch: Box<[u8; SCRATCH]>,
@@ -55,8 +59,14 @@ struct Source<'reader> {
     seeks_left: usize,
     generation: Generation,
     next_source_frame: u64,
-    pending: Option<DecodedPacket>,
+    pending: Option<PendingFrame>,
     fault: Option<&'static str>,
+}
+
+struct PendingFrame {
+    start: u64,
+    pcm: Vec<f32>,
+    consumed: usize,
 }
 
 const READ_BUDGET_EXHAUSTED: &str = "FLAC operation read budget exhausted";
@@ -94,6 +104,29 @@ impl Source<'_> {
         self.bytes_left = BYTE_BUDGET;
         self.seeks_left = 32;
         Ok(())
+    }
+
+    fn next_packet(&mut self) -> Option<DecodedPacket> {
+        let mut frame = self.pending.take()?;
+        let first_source_frame = frame.start + (frame.consumed / CHANNELS) as u64;
+        let count = FLAC_BLOCK as usize * CHANNELS;
+        let pcm = if frame.pcm.len() <= count {
+            // The existing 1024-frame lanes keep moving their original Vec.
+            frame.pcm
+        } else {
+            let end = (frame.consumed + count).min(frame.pcm.len());
+            let pcm = frame.pcm[frame.consumed..end].to_vec();
+            frame.consumed = end;
+            if end < frame.pcm.len() {
+                self.pending = Some(frame);
+            }
+            pcm
+        };
+        Some(DecodedPacket {
+            generation: self.generation,
+            first_source_frame,
+            payload: DecoderPayload::Samples(pcm),
+        })
     }
 }
 
@@ -221,7 +254,7 @@ unsafe extern "C" fn write(
             || header.sample_rate != source.rate
             || header.bits_per_sample != 16
             || header.number_type != abi::SAMPLE_NUMBER
-            || !(1..=FLAC_BLOCK).contains(&header.blocksize)
+            || !(1..=source.max_block).contains(&header.blocksize)
             || source.pending.is_some()
         {
             return source.fail("unsupported or overlapping FLAC frame");
@@ -250,10 +283,10 @@ unsafe extern "C" fn write(
             };
             pcm.extend([f32::from(l) / 32768.0, f32::from(r) / 32768.0]);
         }
-        source.pending = Some(DecodedPacket {
-            generation: source.generation,
-            first_source_frame: start,
-            payload: DecoderPayload::Samples(pcm),
+        source.pending = Some(PendingFrame {
+            start,
+            pcm,
+            consumed: 0,
         });
         source.next_source_frame += frames as u64;
         Some(abi::OK)
@@ -276,18 +309,19 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
         generation: Generation,
         authority: Cancellation,
     ) -> io::Result<Self> {
-        Self::open_with_rate(api, input, generation, authority, RATE)
+        Self::open_with_limits(api, input, generation, authority, RATE, FLAC_BLOCK)
     }
 
-    fn open_with_rate(
+    fn open_with_limits(
         api: &'api Api,
         mut input: Box<dyn PinnedReader + 'reader>,
         generation: Generation,
         authority: Cancellation,
         rate: u32,
+        max_block: u32,
     ) -> io::Result<Self> {
-        if !matches!(rate, RATE | 48_000) {
-            return Err(io::Error::other("unsupported pinned FLAC sample rate"));
+        if !matches!(rate, RATE | 48_000) || !(16..=INDEXED_FLAC_BLOCK).contains(&max_block) {
+            return Err(io::Error::other("unsupported pinned FLAC decoder limits"));
         }
         let size = input.seek(SeekFrom::End(0))?;
         input.rewind()?;
@@ -305,6 +339,7 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
             input,
             authority,
             rate,
+            max_block,
             size,
             offset: 0,
             scratch: Box::new([0; SCRATCH]),
@@ -402,7 +437,7 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
             return Ok(None);
         }
         for _ in 0..=16 {
-            if let Some(packet) = self.source_mut().pending.take() {
+            if self.source().pending.is_some() {
                 if self.source().next_source_frame > self.total {
                     self.source_mut()
                         .fail("decoded FLAC exceeds STREAMINFO frame count");
@@ -410,7 +445,7 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
                         "decoded FLAC exceeds STREAMINFO frame count",
                     ));
                 }
-                return Ok(Some(packet));
+                return Ok(self.source_mut().next_packet());
             }
             // SAFETY: valid decoder retained while its public state is queried.
             if unsafe { (self.api.state)(self.handle.as_ptr()) } == abi::END_OF_STREAM {
@@ -489,6 +524,69 @@ fn sdk_path() -> PathBuf {
             #[cfg(not(target_os = "linux"))]
             panic!("set CUMULUS_FLAC_PROBE_LIBRARY to the trusted libFLAC DLL");
         })
+}
+
+#[test]
+#[ignore = "requires the trusted native libFLAC 1.5.0; synthetic PCM only"]
+fn indexed_large_flac_reframes_and_seek_discards_the_staged_suffix() {
+    let api = Api::open(&sdk_path()).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("wide-seek.flac");
+    let total = u64::from(INDEXED_FLAC_BLOCK) * 4 + 7;
+    api.encode_fixture_with_index(
+        &path,
+        RATE,
+        INDEXED_FLAC_BLOCK,
+        total,
+        Some(INDEXED_FLAC_BLOCK),
+        source_pair,
+    )
+    .unwrap();
+    let open = || Box::new(std::fs::File::open(&path).unwrap());
+    let mut cold = Decoder::open(&api, open(), Generation(1), Cancellation::default()).unwrap();
+    assert!(
+        cold.next().is_err(),
+        "the existing narrow decoder must still reject the real wide callback"
+    );
+
+    let mut decoder = Decoder::open_with_limits(
+        &api,
+        open(),
+        Generation(1),
+        Cancellation::default(),
+        RATE,
+        INDEXED_FLAC_BLOCK,
+    )
+    .unwrap();
+    assert_eq!(
+        expect_packet(decoder.next().unwrap().unwrap(), Generation(1), 0),
+        FLAC_BLOCK as usize
+    );
+    assert_eq!(
+        decoder.source().next_source_frame,
+        u64::from(INDEXED_FLAC_BLOCK)
+    );
+    assert!(decoder.source().pending.is_some());
+
+    let generation = Generation(2);
+    let target = u64::from(INDEXED_FLAC_BLOCK) * 2 + 513;
+    decoder.seek(generation, target).unwrap();
+    let mut cursor = target;
+    while cursor < total {
+        let remaining_in_frame =
+            u64::from(INDEXED_FLAC_BLOCK) - cursor % u64::from(INDEXED_FLAC_BLOCK);
+        let expected = remaining_in_frame
+            .min(u64::from(FLAC_BLOCK))
+            .min(total - cursor);
+        let frames = expect_packet(decoder.next().unwrap().unwrap(), generation, cursor);
+        assert_eq!(frames as u64, expected);
+        cursor += frames as u64;
+    }
+    let end = decoder.next().unwrap().unwrap();
+    assert!(matches!(end.payload, DecoderPayload::End));
+    assert_eq!(end.generation, generation);
+    assert_eq!(end.first_source_frame, total);
+    assert!(decoder.next().unwrap().is_none());
 }
 
 #[test]
