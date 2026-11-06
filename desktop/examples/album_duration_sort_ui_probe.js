@@ -2,7 +2,14 @@
 (async () => {
   const one = (selector) => document.querySelector(selector);
   const all = (selector) => [...document.querySelectorAll(selector)];
-  const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
+  const invoke = async (command, args = {}) => {
+    try {
+      return await window.__TAURI_INTERNALS__.invoke(command, args);
+    } catch (error) {
+      const code = typeof error?.code === 'string' && /^[a-z_]+$/.test(error.code) ? error.code : 'invoke_error';
+      throw Error(`${command}: ${code}`);
+    }
+  };
   const emit = (stage, value = {}) =>
     invoke('plugin:event|emit', { event: 'ux-proof', payload: { stage, ...value } });
   const button = (text) => all('button').find((node) => node.textContent.trim() === text);
@@ -72,12 +79,12 @@
     }, 'album 8 loaded the four scoped song rows');
   }
   try {
-    ({ epoch } = await invoke('account_snapshot'));
-    await act({ kind: 'mode', mode: 'single_loop' });
     click(await wait(() => one('.track-credit-links button'), 'daily artist credit'));
     await wait(() => one('.catalog-heading h1')?.textContent === '测试歌手', 'artist');
     click(one('[data-catalog-tab="albums"]'));
     await openAlbum();
+    ({ epoch } = await invoke('account_snapshot'));
+    await act({ kind: 'mode', mode: 'single_loop' });
     assert(order() === 'none' && rows().join(',') === original, 'initial service order');
     await capture('original');
     await sortTo('ascending', asc);
@@ -101,6 +108,24 @@
     click(one('[data-track-id="13"] .track-play'));
     await untilPlayed('13', '12,11,13');
     await capture('filtered_row', true);
+
+    const sameRow = one('[data-album-panel="songs"] [data-track-id="13"]');
+    const doubleClick = () => sameRow.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, button: 0, detail: 2 }));
+    const initial = await player();
+    const sameDecoder = (state) => state.playId === initial.playId && state.entryId === initial.entryId &&
+      state.queueRevision === initial.queueRevision;
+    doubleClick();
+    const rowPaused = await wait(async () => {
+      const state = await player();
+      return state.state === 'paused' && state;
+    }, 'double-click paused the active album row');
+    assert(sameDecoder(rowPaused) && rowPaused.position >= initial.position &&
+      queueIds(await queue()) === '12,11,13', 'row pause changed decoder, position or queue');
+    await capture('same_row_pause');
+    doubleClick();
+    await untilPlayed('13', '12,11,13');
+    assert(sameDecoder(await player()), 'row resume replaced the decoder or queue');
+    await capture('same_row_resume', true);
 
     click(one('.album-header:not(.album-header-compact) [data-album-play]'));
     await untilPlayed('12', asc);

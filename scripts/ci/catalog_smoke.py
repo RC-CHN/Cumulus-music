@@ -480,7 +480,7 @@ def main():
     if args.album_duration_sort:
         assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         names = ('original', 'ascending', 'descending', 'restored', 'reset',
-                 'filtered_row', 'full_album', 'paused_append')
+                 'filtered_row', 'same_row_pause', 'same_row_resume', 'full_album', 'paused_append')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
@@ -510,13 +510,15 @@ def main():
         assert not any(call['path'] in playback_paths for call in delta('original', 'descending'))
         assert not any(call['path'] in playback_paths for call in delta('restored', 'reset'))
         assert not any(call['path'] in album_paths for call in delta('reset', 'filtered_row'))
-        for start, end in (('filtered_row', 'full_album'), ('full_album', 'paused_append')):
+        assert not any(call['path'] in playback_paths for call in delta('filtered_row', 'same_row_resume'))
+        for start, end in (('same_row_resume', 'full_album'), ('full_album', 'paused_append')):
             reads = [(call['path'], call['args']) for call in delta(start, end)
                      if call['path'] in album_paths]
             assert reads == [(path, {'id': '8'}) for path in album_paths], reads
         assert not any(call['path'] in ('/api/album/sub', '/api/album/unsub')
                        for call in complete['albumDurationSortFixture']['calls'])
         for name, playing, ids in (('filtered_row', '13', '12,11,13'),
+                                   ('same_row_resume', '13', '12,11,13'),
                                    ('full_album', '12', ascending)):
             stage = stages[name]
             native = stage['nativePlayer']
@@ -524,6 +526,12 @@ def main():
             assert native['track']['id'] == playing and native['origin'] == {'kind': 'album', 'id': '8'}
             assert ','.join(entry['track']['id'] for entry in stage['nativeQueue']['tracks']) == ids
             assert stage['rows'] == ['12', '11', '13'] and stage['order'] == 'ascending'
+        paused, resumed, first = (stages[name]['player'] for name in
+                                  ('same_row_pause', 'same_row_resume', 'filtered_row'))
+        assert paused['state'] == 'paused' and resumed['state'] == 'playing'
+        assert all(paused[key] == resumed[key] == first[key]
+                   for key in ('playId', 'entryId', 'queueRevision'))
+        assert paused['position'] >= first['position'] and resumed['position'] >= paused['position']
         appended = stages['paused_append']
         assert appended['player']['state'] == 'paused' and appended['player']['track']['id'] == '900'
         assert appended['player']['position'] > 4
@@ -536,7 +544,8 @@ def main():
                 'characters': locale.setlocale(locale.LC_CTYPE, ''),
             }
         report = dict(ok=True, actualWebView=True, states=len(names), screenshots=captures,
-                      stableDurationSort=True, sortedNativePlayback=True, pausedInsertionPreserved=True,
+                      stableDurationSort=True, sortedNativePlayback=True, sameRowDecoderPreserved=True,
+                      pausedInsertionPreserved=True,
                       realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
