@@ -106,6 +106,54 @@ function deferred<T>() {
 }
 const tick = () => new Promise<void>((done) => setImmediate(done));
 
+for (const delivery of ['before ordinary rows', 'after ordinary rows']) {
+  test(`a delayed signed startup view restores its existing receipt ${delivery}`, async () => {
+    const memory = createSearchViewportMemory();
+    memory.connect(account);
+    memory.observePresentation(observation('1', false));
+    const stale = deferred<AccountData<SearchPresentationPatch>>();
+    const revisions: string[] = [];
+    let searches = 0;
+    const model = useSearchResults(
+      {
+        searchResults: async () => {
+          searches++;
+          return { epoch: '1', value: { ...page(), presentationRevision: '2' } };
+        },
+        searchPresentation: async (_epoch, receipt, revision) => {
+          assert.equal(receipt, 'page-1');
+          revisions.push(revision);
+          return revision === '1' ? stale.promise : patch('2');
+        },
+      } as SearchResultsClient,
+      () => assert.fail('no auth transition'),
+      memory,
+    );
+    model.connect(account);
+    const opening = model.open(query, false, 1);
+    await tick();
+    assert.deepEqual(revisions, ['1']);
+    if (delivery === 'before ordinary rows') memory.observePresentation(observation('2'));
+    stale.reject({ code: 'stale', message: 'signed native revision already advanced' });
+    await opening;
+    if (delivery === 'after ordinary rows') {
+      assert.equal(model.loading.value, false);
+      assert.equal(hint(model.view.value), undefined, 'ordinary rows may render before the event');
+      memory.observePresentation(observation('2'));
+    }
+    await tick();
+    assert.deepEqual(hint(model.view.value), { kind: 'alias', text: '2' });
+    assert.equal(model.view.value?.presentationRevision, '2');
+    assert.deepEqual(
+      revisions,
+      ['1', '2'],
+      'project the same existing receipt at the new revision',
+    );
+    assert.equal(searches, 1, 'the delayed event must never replay the search');
+    model.dispose();
+  });
+}
+
 test('live presentation removes footers immediately and only the newest native receipt may restore them', async () => {
   const memory = createSearchViewportMemory();
   memory.connect(account);

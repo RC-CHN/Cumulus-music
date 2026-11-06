@@ -21,7 +21,10 @@ export function withoutSearchFooters(view: SearchResultView): SearchResultView {
       return { ...item, hint: undefined, reasons: [] };
     }),
   }));
-  return changed ? { ...view, sections } : view;
+  // A locally redacted view is no longer the projection the native revision
+  // describes. Keep its receipt so that a delayed matching event can restore
+  // the authorized fields, even if that revision already arrived in the search.
+  return changed ? { ...view, presentationRevision: undefined, sections } : view;
 }
 
 export interface SearchPosition {
