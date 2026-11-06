@@ -202,9 +202,11 @@ macOS不在当前支持范围。Linux验证不能单独推出Windows选择器/�
 - 合成回归：cargo test -p cumulus-core --test client_local --locked local_group_list_removal
   验证歌手/专辑/目录完整成员、邻居目录、旧修订、自动扫描仍隐藏、显式重新扫描恢复、
   原文件内容及已暂停队列/播放 ID/位置不变。frontend/tests/local-state.test.ts 覆盖
-  回读与当前分组选中恢复。这里列的是复跑入口，未把未运行的 Rust/GUI 当作已通过。
-- 真实桌面待验用例：构建 custom-protocol 的 local_ui_probe 后，在非 C 系统 locale、
+  回读与当前分组选中恢复。Linux 定向 Rust 和前端验证已通过。
+- 真实桌面用例：构建 custom-protocol 的 local_ui_probe 后，在非 C 系统 locale、
   私有 Xvfb/DBus 下运行 scripts/ci/local_group_hide_smoke.py --binary <probe>
   --root <new-root> --screenshots。使用合成音频和 libmpv/null；真实 DOM 右键/Escape、
   Shift+F10 只移出父目录与下级曲目（同名前缀目录保留）、焦点回退、实际重新扫描恢复、
-  播放实例不变；脚本同时检查三份原文件内容。此处仅提供探针，未声称已实际运行。
+  播放实例不变；脚本同时检查三份原文件内容。Linux 已核对 7→5→7、三个源文件哈希和
+  相同的暂停实例；三张截图及回执见 `.build/ui-proof/phase84-group-hide-r2/`。
+  这是隔离合成媒体实测，不代表 Windows GUI 或真实用户目录验收。
