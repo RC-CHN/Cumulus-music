@@ -5,6 +5,9 @@ import { useVoicePage } from '../src/composables/useVoicePage.ts';
 import type { TrackView } from '../src/services/contracts.ts';
 import type { PlayerView } from '../src/services/player.ts';
 import {
+  currentVoicePageDetail,
+  voicePageCreatorTarget,
+  voicePagePodcastTarget,
   voicePageScope,
   type VinylVoiceDetailView,
   type VoicePageScope,
@@ -264,4 +267,41 @@ test('a page visit requires an active native voice and exact entry and epoch', (
   assert.equal(voicePageScope({ ...view, entryId: null }, '1'), undefined);
   assert.equal(voicePageScope({ ...view, state: 'loading' }, '1'), undefined);
   assert.equal(voicePageScope({ ...view, fm: true }, '1'), undefined);
+});
+
+test('fresh program labels do not grant a navigation or subscription target for different native IDs', () => {
+  const fresh = detail(a);
+  fresh.detail.creator = { id: '41', name: '新主播名' };
+  fresh.detail.radio = { id: '51', name: '新播单名', ownedByViewer: false };
+  const current = {
+    ...a,
+    state: 'paused',
+    resourceKind: 'voice',
+    track: { id: '1601', voiceId: a.voiceId },
+    voiceDetail: {
+      ...fresh.detail,
+      creator: { id: '41', name: '旧主播名' },
+      radio: { id: '51', name: '旧播单名', ownedByViewer: false },
+    },
+  } as PlayerView;
+  assert.equal(currentVoicePageDetail(fresh, current, a.epoch), fresh);
+  assert.equal(voicePageCreatorTarget(fresh, current, a.epoch)?.userId, '41');
+  assert.equal(voicePagePodcastTarget(fresh, current, a.epoch)?.radioId, '51');
+
+  const changed = {
+    ...fresh,
+    detail: {
+      ...fresh.detail,
+      creator: { id: '42', name: '另一位主播' },
+      radio: { id: '52', name: '另一个播单', ownedByViewer: false },
+    },
+  };
+  assert.equal(currentVoicePageDetail(changed, current, a.epoch), changed);
+  assert.equal(voicePageCreatorTarget(changed, current, a.epoch), undefined);
+  assert.equal(voicePagePodcastTarget(changed, current, a.epoch), undefined);
+  assert.equal(voicePageCreatorTarget(undefined, current, a.epoch), undefined);
+  assert.equal(
+    currentVoicePageDetail(fresh, { ...current, entryId: 'different' }, a.epoch),
+    undefined,
+  );
 });

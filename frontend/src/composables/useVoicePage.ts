@@ -107,3 +107,5 @@ export function useVoicePage(
   onScopeDispose(invalidate);
   return { status, snapshot, detail, recommendations, songs };
 }
+
+export type VoicePageModel = ReturnType<typeof useVoicePage>;

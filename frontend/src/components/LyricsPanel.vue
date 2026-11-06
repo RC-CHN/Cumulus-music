@@ -11,12 +11,15 @@ import type { AccountView } from '../services/contracts';
 import type { PodcastSearchFollow } from '../services/podcast';
 import {
   playbackVoiceDetail,
-  voiceCreatorTarget,
-  voicePodcastTarget,
-  voicePodcastTargetIsCurrent,
+  voiceDetailPresentation,
   type VoiceCreatorTarget,
   type VoicePodcastTarget,
 } from '../services/voiceDetail';
+import {
+  currentVoicePageDetail,
+  voicePageCreatorTarget,
+  voicePagePodcastTarget,
+} from '../services/voicePage';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import LyricFontSize from './LyricFontSize.vue';
 import ActionMenu from './ActionMenu.vue';
@@ -30,7 +33,7 @@ import VoicePlaybackCover from './VoicePlaybackCover.vue';
 import VoicePodcastCard from './VoicePodcastCard.vue';
 import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
 import VoiceRecommendationsCard from './VoiceRecommendationsCard.vue';
-import type { VoiceRecommendationsModel } from '../composables/useVoiceRecommendations';
+import type { VoicePageModel } from '../composables/useVoicePage';
 import type {
   VoiceRecommendationsPage,
   VoiceRecommendationTarget,
@@ -54,7 +57,6 @@ import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay
 import { vinylCopyText, vinylSelection } from '../services/vinylTextCopy';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
-import type { VoiceSongsModel } from '../composables/useVoiceSongs';
 import type { VoiceSongRowTarget } from '../services/voiceSongs';
 import VoiceSongsCard from './VoiceSongsCard.vue';
 import {
@@ -70,8 +72,7 @@ const props = defineProps<{
   activeDetailTab: VinylDetailTab;
   similarModel: VinylSimilarModel;
   wikiModel: VinylWikiModel;
-  voiceRecommendations: VoiceRecommendationsModel;
-  voiceSongs: VoiceSongsModel;
+  voicePage: VoicePageModel;
   likedSongs: ReadonlySet<string>;
   busyLikes: ReadonlySet<string>;
   commentsAvailable: boolean;
@@ -110,6 +111,7 @@ function commentOpener() {
   return props.commentComposer.current.value?.opener ?? null;
 }
 const { view, lyrics, lyricLoading, lyricUpdating, lyricError, loaded, busy } = props.player;
+const { recommendations: voiceRecommendations, songs: voiceSongs } = props.voicePage;
 const panel = ref<HTMLElement>(),
   container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>(),
@@ -121,15 +123,25 @@ const uncollect = shallowRef<{
   expected: PodcastSearchFollow;
 }>();
 let uncollectOpener: HTMLElement | null = null;
-const modeAvailable = computed(
-  () => !!view.value?.track && view.value.resourceKind !== 'voice' && !view.value.track.voiceId,
+const voiceEpisode = computed(
+  () => view.value?.resourceKind === 'voice' || !!view.value?.track?.voiceId,
 );
+const modeAvailable = computed(() => !!view.value?.track && !voiceEpisode.value);
 const displayMode = computed(() => (modeAvailable.value ? preferredMode.value : 'classic'));
 const classicTitleAlias = computed(() =>
-  displayMode.value === 'classic' ? view.value?.titleAlias : undefined,
+  displayMode.value === 'classic' && !voiceEpisode.value ? view.value?.titleAlias : undefined,
+);
+const voicePageState = computed(() =>
+  voiceEpisode.value ? props.voicePage.status.value : undefined,
+);
+const freshVoice = computed(() =>
+  currentVoicePageDetail(props.voicePage.detail.value, view.value, props.account.epoch),
 );
 const displayedTitle = computed(
-  () => view.value?.track?.name || (classicTitleAlias.value ? '未知歌曲' : ''),
+  () =>
+    freshVoice.value?.title ||
+    view.value?.track?.name ||
+    (classicTitleAlias.value ? '未知歌曲' : ''),
 );
 watch(modeAvailable, (available) => {
   if (!available) modeSheetOpen.value = false;
@@ -149,20 +161,43 @@ function escapePanel() {
 }
 const metadata = computed(() => playbackMetadata(view.value?.track));
 const source = computed(() => playbackSource(view.value));
-const voiceMetadata = computed(() => playbackVoiceDetail(view.value));
-const currentVoiceArtwork = computed(() =>
-  view.value?.epoch === props.account.epoch ? voiceMetadata.value : null,
+const playbackVoice = computed(() =>
+  view.value?.epoch === props.account.epoch ? playbackVoiceDetail(view.value) : null,
 );
+const voiceMetadata = computed(() => {
+  if (freshVoice.value) return voiceDetailPresentation(freshVoice.value.detail);
+  // An offline, already downloaded episode can still show its saved metadata.
+  if (
+    props.player.lyricsOpen.value &&
+    (props.account.status === 'signed_out' || props.account.status === 'expired') &&
+    view.value?.resourceKind === 'downloaded'
+  )
+    return playbackVoice.value;
+});
+const voicePageNotice = computed(() => {
+  if (voicePageState.value === 'loading') return '正在读取节目详情…';
+  if (voicePageState.value === 'failed') return '暂时无法读取节目详情，关闭后可重新打开。';
+});
 const recommendedPodcasts = computed(() => {
-  const page = props.voiceRecommendations.view.value;
+  const page = freshVoice.value && voiceRecommendations.view.value;
   return page?.cards.length ? page : undefined;
 });
 const includedSongs = computed(() => {
-  const page = props.voiceSongs.view.value;
+  const page = freshVoice.value && voiceSongs.view.value;
   return page?.tracks.length ? page : undefined;
 });
+const showVoiceCards = computed(
+  () =>
+    !!(
+      voicePageNotice.value ||
+      voiceMetadata.value?.description ||
+      voiceMetadata.value?.radio ||
+      recommendedPodcasts.value ||
+      includedSongs.value
+    ),
+);
 function voiceSongTarget(index: number) {
-  return includedSongs.value && props.voiceSongs.target(includedSongs.value, index);
+  return includedSongs.value && voiceSongs.target(includedSongs.value, index);
 }
 function playVoiceSong(index: number, gesture: 'cover' | 'double_click') {
   const target = voiceSongTarget(index);
@@ -181,16 +216,18 @@ function openVoiceSongArtist(index: number, id: string) {
   if (target) emit('voiceSongArtist', target, id);
 }
 function openVoiceRecommendation(page: VoiceRecommendationsPage, radioId: string) {
-  const target = props.voiceRecommendations.target(page, radioId);
+  const target = voiceRecommendations.target(page, radioId);
   if (target) emit('voiceRecommendation', target);
 }
-const creatorTarget = computed(() => voiceCreatorTarget(view.value));
+const creatorTarget = computed(() =>
+  voicePageCreatorTarget(freshVoice.value, view.value, props.account.epoch),
+);
 const cover = useCoverImage(() => ({
   owner: view.value?.epoch ?? '',
   source: view.value?.track?.coverUrl,
 }));
 function openVoiceCreator() {
-  const target = voiceCreatorTarget(view.value);
+  const target = creatorTarget.value;
   if (target) emit('voiceCreator', target);
 }
 const wordMode = ref(true);
@@ -213,7 +250,14 @@ watch(lyricFontGain, (value) => {
 });
 const motion = useMotion();
 const commentsVisible = computed(() => props.commentsAvailable && commentsOpen.value);
-const podcastTarget = computed(() => voicePodcastTarget(view.value));
+const podcastTarget = computed(() =>
+  voicePagePodcastTarget(freshVoice.value, view.value, props.account.epoch),
+);
+const podcastOwned = computed(
+  () =>
+    voiceMetadata.value?.radio?.ownedByViewer === true ||
+    (!!podcastTarget.value && playbackVoice.value?.radio?.ownedByViewer === true),
+);
 const podcastFollow = usePodcastFollow(
   useCore(),
   () => props.account,
@@ -221,7 +265,7 @@ const podcastFollow = usePodcastFollow(
     props.player.lyricsOpen.value &&
     !commentsVisible.value &&
     podcastTarget.value?.epoch === props.account.epoch &&
-    !voiceMetadata.value?.radio?.ownedByViewer,
+    !podcastOwned.value,
   () => emit('commentReportExpired'),
   {
     scope: () => podcastTarget.value?.playId ?? '',
@@ -233,12 +277,16 @@ const podcastFollow = usePodcastFollow(
   },
 );
 function ownsPodcastCard(target: VoicePodcastTarget) {
+  const current = podcastTarget.value;
   return (
     props.player.lyricsOpen.value &&
     !commentsVisible.value &&
     target.epoch === props.account.epoch &&
-    voiceMetadata.value?.radio?.ownedByViewer !== true &&
-    voicePodcastTargetIsCurrent(target, view.value)
+    !podcastOwned.value &&
+    current?.epoch === target.epoch &&
+    current.playId === target.playId &&
+    current.voiceId === target.voiceId &&
+    current.radioId === target.radioId
   );
 }
 function activateVoicePodcast(
@@ -761,6 +809,7 @@ const displayedAuxiliary = computed(() =>
     class="lyrics-panel"
     :data-vinyl-mode="displayMode"
     :data-vinyl-tab="commentsVisible ? 'comments' : activeDetailTab"
+    :data-voice-page-state="voicePageState"
     :style="{ '--lyric-font-gain': `${lyricFontGain}px` }"
     aria-label="播放详情与歌词"
     @keydown.esc.stop="escapePanel"
@@ -808,10 +857,10 @@ const displayedAuxiliary = computed(() =>
           </button>
           <div class="vinyl-info" :class="{ 'has-track-alias': classicTitleAlias }">
             <VoicePlaybackCover
-              v-if="voiceMetadata"
+              v-if="voiceEpisode"
               :epoch="account.epoch"
-              :cover-url="currentVoiceArtwork?.coverUrl"
-              :play-count="currentVoiceArtwork?.playCount"
+              :cover-url="playbackVoice?.coverUrl"
+              :play-count="voiceMetadata?.playCount"
             />
             <div
               v-else-if="displayMode !== 'lyric'"
@@ -871,7 +920,12 @@ const displayedAuxiliary = computed(() =>
                 <span v-else>—</span>
               </li>
             </ul>
-            <p v-else-if="view?.track" class="vinyl-credits" aria-label="歌手" data-non-selectable>
+            <p
+              v-else-if="view?.track && !voiceEpisode"
+              class="vinyl-credits"
+              aria-label="歌手"
+              data-non-selectable
+            >
               <template v-for="(artist, index) in metadata.artists" :key="index">
                 <span v-if="index > 0" aria-hidden="true"> / </span>
                 <button
@@ -888,7 +942,7 @@ const displayedAuxiliary = computed(() =>
               </template>
             </p>
             <small
-              v-if="displayMode === 'classic' && view?.track && !voiceMetadata"
+              v-if="displayMode === 'classic' && view?.track && !voiceEpisode"
               class="vinyl-album"
               data-non-selectable
             >
@@ -907,7 +961,7 @@ const displayedAuxiliary = computed(() =>
               }}</span>
             </small>
             <small
-              v-if="displayMode === 'classic' && source"
+              v-if="displayMode === 'classic' && source && !voiceEpisode"
               class="vinyl-source"
               data-non-selectable
             >
@@ -933,21 +987,30 @@ const displayedAuxiliary = computed(() =>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
             <div
-              v-if="
-                voiceMetadata?.description || podcastTarget || recommendedPodcasts || includedSongs
-              "
+              v-if="showVoiceCards"
               ref="voiceCards"
               class="voice-playback-cards"
               :class="{ 'voice-playback-cards-only': !lines.length }"
               @wheel.stop.passive
             >
+              <p
+                v-if="voicePageNotice"
+                class="voice-page-notice"
+                data-voice-page-notice
+                role="status"
+              >
+                <span v-if="voicePageState === 'loading'" class="spinner" aria-hidden="true" />
+                {{ voicePageNotice }}
+              </p>
               <VoicePodcastCard
-                v-if="voiceMetadata?.radio && podcastTarget"
+                v-if="voiceMetadata?.radio"
                 :radio="voiceMetadata.radio"
                 :target="podcastTarget"
-                :episode-cover="currentVoiceArtwork?.coverUrl"
+                :epoch="account.epoch"
+                :episode-cover="playbackVoice?.coverUrl"
                 :signed-in="account.status === 'authenticated'"
-                :control="podcastFollow.control(podcastTarget.radioId)"
+                :owned="podcastOwned"
+                :control="podcastTarget ? podcastFollow.control(podcastTarget.radioId) : undefined"
                 :refreshing="podcastFollow.refreshing.value"
                 :status="podcastFollow.status.value"
                 @open="emit('voicePodcast', $event)"
@@ -1009,11 +1072,7 @@ const displayedAuxiliary = computed(() =>
               </button>
             </div>
             <div
-              v-show="
-                activeDetailTab === 'lyrics' &&
-                (!(voiceMetadata?.description || podcastTarget || recommendedPodcasts) ||
-                  lines.length)
-              "
+              v-show="activeDetailTab === 'lyrics' && (!showVoiceCards || lines.length)"
               id="vinyl-lyrics-content"
               class="vinyl-detail-content"
               :role="wikiAvailable ? 'tabpanel' : undefined"

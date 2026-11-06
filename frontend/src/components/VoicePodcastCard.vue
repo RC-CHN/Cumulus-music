@@ -7,9 +7,11 @@ import type { VoicePlaybackPodcast, VoicePodcastTarget } from '../services/voice
 
 const props = defineProps<{
   radio: VoicePlaybackPodcast;
-  target: VoicePodcastTarget;
+  target?: VoicePodcastTarget;
+  epoch: string;
   episodeCover?: string | null;
   signedIn: boolean;
+  owned: boolean;
   control?: PodcastSearchFollow;
   refreshing: boolean;
   status: string;
@@ -23,11 +25,14 @@ const emit = defineEmits<{
   ];
 }>();
 function activate(event: MouseEvent) {
-  if (event.currentTarget instanceof HTMLElement)
+  if (props.target && event.currentTarget instanceof HTMLElement)
     emit('activate', props.target, props.control, event.currentTarget);
 }
+function openPodcast() {
+  if (props.target && props.signedIn) emit('open', props.target);
+}
 const image = useCoverImage(() => ({
-  owner: props.target.epoch,
+  owner: props.epoch,
   source: props.radio.coverUrl ?? props.episodeCover,
 }));
 const subscribed = computed(() => props.control?.kind === 'toggle' && props.control.subscribed);
@@ -36,7 +41,7 @@ const label = computed(() =>
     ? '核对收藏'
     : subscribed.value
       ? '已收藏'
-      : !props.signedIn || props.radio.ownedByViewer || props.control
+      : !props.target || !props.signedIn || props.owned || props.control
         ? '收藏播单'
         : props.refreshing
           ? '读取收藏状态…'
@@ -51,9 +56,9 @@ const label = computed(() =>
         type="button"
         class="voice-podcast-open"
         data-voice-podcast-open
-        :disabled="!signedIn"
+        :disabled="!target || !signedIn"
         :aria-label="`查看播单：${radio.name}`"
-        @click="emit('open', target)"
+        @click="openPodcast"
       >
         <span class="voice-podcast-cover" :data-cover-state="image.state.value">
           <img
@@ -80,9 +85,9 @@ const label = computed(() =>
         type="button"
         class="secondary voice-podcast-subscribe"
         data-voice-podcast-subscribe
-        :disabled="radio.ownedByViewer || refreshing || control?.busy"
+        :disabled="!target || owned || refreshing || control?.busy"
         :aria-pressed="control?.kind === 'toggle' ? subscribed : undefined"
-        :title="radio.ownedByViewer ? '不能收藏自己的播单' : undefined"
+        :title="owned ? '不能收藏自己的播单' : !target ? '暂时无法核对该播单' : undefined"
         @click="activate"
       >
         <Icon v-if="control?.kind === 'toggle' && !subscribed" name="collect" />{{ label }}

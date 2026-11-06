@@ -1019,6 +1019,15 @@ input[type='range'] {
 .voice-playback-cards > * {
   flex: none;
 }
+.voice-page-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
 .vinyl-info {
   display: flex;
   flex-direction: column;

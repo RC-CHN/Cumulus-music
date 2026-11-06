@@ -182,11 +182,13 @@ import { usePlaybackCommentInfo } from './composables/usePlaybackCommentCount';
 import { useVinylComments } from './composables/useVinylComments';
 import { useVinylSimilar } from './composables/useVinylSimilar';
 import { useVinylWiki } from './composables/useVinylWiki';
-import { useVoiceRecommendations } from './composables/useVoiceRecommendations';
+import { useVoicePage } from './composables/useVoicePage';
 import {
-  voiceRecommendationsSeed,
-  type VoiceRecommendationTarget,
-} from './services/voiceRecommendations';
+  voicePageCreatorTarget,
+  voicePagePodcastTarget,
+  voicePageScope,
+} from './services/voicePage';
+import type { VoiceRecommendationTarget } from './services/voiceRecommendations';
 import {
   activeVinylDetailTab,
   readVinylDetailTab,
@@ -258,7 +260,6 @@ import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
 import { useDownloads } from './composables/useDownloads';
 import type { DownloadDialogTarget } from './services/downloads';
-import { useVoiceSongs } from './composables/useVoiceSongs';
 import type { VoiceSongAction, VoiceSongRowTarget } from './services/voiceSongs';
 import { usePlaylists } from './composables/usePlaylists';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
@@ -1038,23 +1039,24 @@ function openCatalog(resource: CatalogResource) {
 }
 async function openPlaybackVoiceCreator(target: VoiceCreatorTarget) {
   const route = page.value;
+  const detail = voicePage.detail.value;
+  const ownsView = () =>
+    detail !== undefined &&
+    detail === voicePage.detail.value &&
+    route === page.value &&
+    target.epoch === account.value.epoch &&
+    signedIn.value &&
+    !music.initializing.value &&
+    player.lyricsOpen.value;
   if (
-    target.epoch !== account.value.epoch ||
-    !signedIn.value ||
-    music.initializing.value ||
-    !player.lyricsOpen.value
+    !ownsView() ||
+    !voiceCreatorTargetIsCurrent(target, player.view.value) ||
+    voicePageCreatorTarget(detail, player.view.value, account.value.epoch)?.userId !== target.userId
   )
     return;
   try {
     const current = await player.syncPlayback();
-    if (
-      route !== page.value ||
-      target.epoch !== account.value.epoch ||
-      !signedIn.value ||
-      !player.lyricsOpen.value ||
-      !voiceCreatorTargetIsCurrent(target, current)
-    )
-      return;
+    if (!ownsView() || !voiceCreatorTargetIsCurrent(target, current)) return;
     player.lyricsOpen.value = false;
     music.navigate({ kind: 'playlist_creator', id: target.userId });
   } catch {
@@ -1063,13 +1065,22 @@ async function openPlaybackVoiceCreator(target: VoiceCreatorTarget) {
 }
 async function openPlaybackVoicePodcast(target: VoicePodcastTarget) {
   const route = page.value;
+  const detail = voicePage.detail.value;
   const ownsView = () =>
+    detail !== undefined &&
+    detail === voicePage.detail.value &&
     route === page.value &&
     target.epoch === account.value.epoch &&
     signedIn.value &&
     !music.initializing.value &&
     player.lyricsOpen.value;
-  if (!ownsView()) return;
+  if (
+    !ownsView() ||
+    !voicePodcastTargetIsCurrent(target, player.view.value) ||
+    voicePagePodcastTarget(detail, player.view.value, account.value.epoch)?.radioId !==
+      target.radioId
+  )
+    return;
   try {
     const current = await player.syncPlayback();
     if (!ownsView() || !voicePodcastTargetIsCurrent(target, current)) return;
@@ -1775,13 +1786,13 @@ watch(vinylDisplayMode, (value) => storeVinylDisplayMode(value));
 const player = usePlayer(undefined, () => {
   void music.bootstrap(false);
 });
-const activeVoiceCard = computed(() =>
+const activeVoicePage = computed(() =>
   music.signedIn.value && !music.initializing.value && player.ready.value && player.lyricsOpen.value
-    ? voiceRecommendationsSeed(player.view.value, music.account.value.epoch)
+    ? voicePageScope(player.view.value, music.account.value.epoch)
     : undefined,
 );
-const voiceRecommendations = useVoiceRecommendations(core, activeVoiceCard);
-const voiceSongs = useVoiceSongs(core, activeVoiceCard);
+const voicePage = useVoicePage(core, activeVoicePage);
+const { recommendations: voiceRecommendations, songs: voiceSongs } = voicePage;
 const { count: playbackCommentCount, notePublished: notePlaybackCommentPublished } =
   usePlaybackCommentInfo(player.view, player.loaded, () => music.account.value.epoch);
 const vinylCommentsOpen = ref(false);
@@ -5872,8 +5883,7 @@ onUnmounted(() => {
         :active-detail-tab="vinylActiveDetailTab"
         :wiki-model="vinylWiki"
         :similar-model="vinylSimilar"
-        :voice-recommendations="voiceRecommendations"
-        :voice-songs="voiceSongs"
+        :voice-page="voicePage"
         :liked-songs="liked"
         :busy-likes="busyLikes"
         :comments-available="!!vinylCommentTarget"

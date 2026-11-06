@@ -61,19 +61,21 @@ export function playbackVoiceDetail(view: PlayerView | undefined) {
   if (!track || !(view?.resourceKind === 'voice' || track.voiceId)) return null;
   const voiceId = identifier(track.voiceId);
   const detail = voiceId && view.voiceDetail?.id === voiceId ? view.voiceDetail : null;
+  return { id: voiceId, title: track.name, ...voiceDetailPresentation(detail, !!view.playId) };
+}
+
+export function voiceDetailPresentation(detail: VoiceDetail | null, active = true) {
   const creator = detail?.creator?.name
     ? { name: detail.creator.name, id: identifier(detail.creator.id) }
     : null;
   const radio = detail?.radio && identifier(detail.radio.id) ? detail.radio : undefined;
   return {
-    id: voiceId,
-    title: track.name,
     creator,
     releaseDate: formatVoiceReleaseDate(detail?.releaseTime),
-    ...(view.playId && detail?.description ? { description: detail.description } : {}),
-    ...(view.playId && detail?.coverUrl ? { coverUrl: detail.coverUrl } : {}),
-    ...(view.playId && detail?.playCount !== undefined ? { playCount: detail.playCount } : {}),
-    ...(view.playId && radio ? { radio } : {}),
+    ...(active && detail?.description ? { description: detail.description } : {}),
+    ...(active && detail?.coverUrl ? { coverUrl: detail.coverUrl } : {}),
+    ...(active && detail?.playCount !== undefined ? { playCount: detail.playCount } : {}),
+    ...(active && radio ? { radio } : {}),
   };
 }
 
@@ -88,7 +90,7 @@ export function voicePlaybackScope(
     !['playing', 'paused', 'buffering'].includes(view.state)
   )
     return;
-  const voiceId = playbackVoiceDetail(view)?.id;
+  const voiceId = identifier(view.track?.voiceId);
   if (!voiceId || view.voiceDetail?.id !== voiceId) return;
   return { epoch, playId: view.playId, voiceId };
 }
