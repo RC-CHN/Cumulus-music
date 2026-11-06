@@ -962,6 +962,9 @@ jobs:
             --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --root .build/ci-native-spatial-flac-48k-linux
       - name: Verify indexed Linux FLAC and held fallback with the packaged decoder
         run: |
+          export CUMULUS_FLAC_PROBE_LIBRARY="$PWD/.build/package-stage/linux-x64/native/libcumulus_flac150.so.14"
+          cargo test -p cumulus-core --locked --lib indexed_large_flac_reframes_and_seek_discards_the_staged_suffix -- --ignored
+          cargo test -p cumulus-core --locked --lib indexed_4608_flac_matches_1024_flac_and_wav_through_seek_and_tail -- --ignored
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
             env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
