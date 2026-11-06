@@ -258,12 +258,17 @@
         launcher()?.getAttribute('aria-label') === '管理耳机音效' &&
         launcher()?.dataset.headphoneState === 'configured' && launcher()?.dataset.effectState === 'processing',
       'footer distinguishes active headphone tuning from configuration alone');
-      // This synthetic adapter processes PEQ but does not provide a graphic
-      // equalizer. Its warning must stay visible beside a configured device.
+      // The ordinary directory fixture declines this graphic EQ enable while
+      // the real native headphone processor stays active.
       const combined = await invoke('player_action', { epoch: account.epoch, action: {
         kind: 'equalizer', expected_revision: equalizerRevision,
         settings: { enabled: true, gains: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
       } });
+      assert(combined.state === 'playing' && combined.playId === prior.playId && combined.entryId === prior.entryId &&
+        combined.equalizer?.status === 'unavailable' && combined.equalizer.revision !== equalizerRevision &&
+        combined.equalizer.settings.enabled && combined.equalizer.settings.gains[0] === 3 &&
+        !combined.equalizer.source_bypassed && combined.deviceParametric?.status === 'configured' &&
+        combined.parametricProcessing === true, 'native graphic EQ is unavailable beside active headphone tuning');
       equalizerRevision = combined.equalizer.revision;
       await wait(() => launcher()?.dataset.effectState === 'problem' &&
         launcher()?.dataset.equalizerState === 'problem' && launcher()?.dataset.headphoneState === 'configured' &&

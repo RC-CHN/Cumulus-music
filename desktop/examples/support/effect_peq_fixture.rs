@@ -245,9 +245,14 @@ impl MediaBackend for Material {
 pub struct Audio {
     engine: MpvEngine,
     wave: PathBuf,
+    directory_graphic_eq_unavailable: bool,
 }
 impl Audio {
-    pub fn open(wave: PathBuf, library: PathBuf) -> Result<Self> {
+    pub fn open(
+        wave: PathBuf,
+        library: PathBuf,
+        directory_graphic_eq_unavailable: bool,
+    ) -> Result<Self> {
         Ok(Self {
             engine: MpvEngine::open(MpvConfig {
                 null_output: true,
@@ -255,6 +260,7 @@ impl Audio {
             })?
             .with_effects_library(library),
             wave,
+            directory_graphic_eq_unavailable,
         })
     }
     fn record_equalizer(settings: EqualizerSettings, applied: bool) -> Result<bool> {
@@ -315,6 +321,9 @@ impl AudioEngine for Audio {
         Ok(view)
     }
     fn apply_equalizer(&mut self, settings: EqualizerSettings) -> Result<bool> {
+        if self.directory_graphic_eq_unavailable && settings.enabled() {
+            return Ok(false);
+        }
         Self::record_equalizer(settings, self.engine.apply_equalizer(settings)?)
     }
     fn bypass_equalizer_for_source(&mut self) -> Result<bool> {

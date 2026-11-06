@@ -1037,9 +1037,12 @@ fn main() {
             let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER")
                 .expect("trusted synthetic PEQ adapter"));
             let wave = relay_fixture::wave(&root)?;
+            let directory_graphic_eq_unavailable = device_peq_proof && !device_source_bypass_proof;
             client = client
                 .with_effect_material_backend(Arc::new(effect_peq_fixture::Material))
-                .with_audio_factory(move || Ok(Box::new(effect_peq_fixture::Audio::open(wave.clone(), path.clone())?)));
+                .with_audio_factory(move || Ok(Box::new(effect_peq_fixture::Audio::open(
+                    wave.clone(), path.clone(), directory_graphic_eq_unavailable,
+                )?)));
         } else if motion_proof {
             let elapsed = factory_elapsed.clone();
             let count=factory_count.clone();
