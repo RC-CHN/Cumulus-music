@@ -260,7 +260,11 @@ import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
 import { useDownloads } from './composables/useDownloads';
 import type { DownloadDialogTarget } from './services/downloads';
-import type { VoiceSongAction, VoiceSongRowTarget } from './services/voiceSongs';
+import type {
+  VoiceSongAction,
+  VoiceSongRowTarget,
+  VoiceSongSelectionAction,
+} from './services/voiceSongs';
 import { usePlaylists } from './composables/usePlaylists';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
@@ -1120,7 +1124,42 @@ function voiceSongRow(target: VoiceSongRowTarget) {
   const rights = card?.availability[target.index];
   return track && rights ? { track, rights } : undefined;
 }
-async function actOnVoiceSong(target: VoiceSongRowTarget, kind: VoiceSongAction['kind']) {
+function voiceSongGroup(target: VoiceSongRowTarget, indices: readonly number[]) {
+  const rights = voiceSongs.view.value?.availability;
+  if (
+    !voiceSongs.ownsTarget(target) ||
+    !rights ||
+    indices.length < 2 ||
+    indices.length > 100 ||
+    !indices.includes(target.index) ||
+    new Set(indices).size !== indices.length ||
+    indices.some((index) => !Number.isInteger(index) || !rights[index])
+  )
+    return;
+  return {
+    indices,
+    allCopyrightBlocked: indices.every((index) => rights[index]!.copyrightBlocked),
+  };
+}
+async function actOnVoiceSongGroup(
+  target: VoiceSongRowTarget,
+  kind: VoiceSongSelectionAction['kind'],
+  indices: readonly number[],
+) {
+  if (!voiceSongGroup(target, indices)) return false;
+  return player.playVoiceSongSelection(target, target.receipt, {
+    kind,
+    index: target.index,
+    indices,
+  });
+}
+async function actOnVoiceSong(
+  target: VoiceSongRowTarget,
+  kind: VoiceSongAction['kind'],
+  indices?: readonly number[],
+) {
+  if (kind === 'double_click' && indices)
+    return actOnVoiceSongGroup(target, 'double_click', indices);
   const row = voiceSongRow(target);
   if (!row?.rights.onlineEligible || (kind === 'next_play' && row.rights.copyrightBlocked))
     return false;
@@ -1147,22 +1186,36 @@ async function openPlaybackVoiceSongArtist(target: VoiceSongRowTarget, id: strin
     // The original row must still be visible in the same episode.
   }
 }
-function showPlaybackVoiceSongMenu(target: VoiceSongRowTarget, event: MouseEvent | KeyboardEvent) {
+function showPlaybackVoiceSongMenu(
+  target: VoiceSongRowTarget,
+  event: MouseEvent | KeyboardEvent,
+  indices?: readonly number[],
+) {
   const row = voiceSongRow(target);
   if (!row) return;
+  const selection = indices && voiceSongGroup(target, indices);
+  if (indices && !selection) return;
   const route = page.value;
   const live = () => route === page.value && voiceSongs.ownsTarget(target);
   void trackActions.value?.show({
     track: row.track,
     event,
     play: () => {
-      if (live()) void actOnVoiceSong(target, 'cover');
+      if (!live()) return;
+      if (selection) void actOnVoiceSongGroup(target, 'menu_play', selection.indices);
+      else void actOnVoiceSong(target, 'cover');
     },
-    queueNext: () => (live() ? actOnVoiceSong(target, 'next_play') : Promise.resolve(false)),
+    queueNext: () => {
+      if (!live()) return Promise.resolve(false);
+      return selection
+        ? actOnVoiceSongGroup(target, 'next_play', selection.indices)
+        : actOnVoiceSong(target, 'next_play');
+    },
     playUnavailable: !row.rights.onlineEligible,
     episode: {
       live,
       copyrightBlocked: row.rights.copyrightBlocked,
+      selection,
       comments() {
         if (!live()) return;
         player.lyricsOpen.value = false;

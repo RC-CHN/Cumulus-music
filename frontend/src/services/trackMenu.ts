@@ -29,6 +29,7 @@ export interface TrackMenuRequest {
   episode?: {
     live: () => boolean;
     copyrightBlocked: boolean;
+    selection?: { allCopyrightBlocked: boolean };
     comments: () => void;
   };
 }

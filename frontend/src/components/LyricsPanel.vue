@@ -92,9 +92,17 @@ const emit = defineEmits<{
   voiceCreator: [target: VoiceCreatorTarget];
   voicePodcast: [target: VoicePodcastTarget];
   voiceRecommendation: [target: VoiceRecommendationTarget];
-  voiceSongPlay: [target: VoiceSongRowTarget, gesture: 'cover' | 'double_click'];
+  voiceSongPlay: [
+    target: VoiceSongRowTarget,
+    gesture: 'cover' | 'double_click',
+    indices?: readonly number[],
+  ];
   voiceSongLike: [target: VoiceSongRowTarget];
-  voiceSongMore: [target: VoiceSongRowTarget, event: MouseEvent | KeyboardEvent];
+  voiceSongMore: [
+    target: VoiceSongRowTarget,
+    event: MouseEvent | KeyboardEvent,
+    indices?: readonly number[],
+  ];
   voiceSongArtist: [target: VoiceSongRowTarget, id: string];
   voicePodcastLogin: [];
   lyricContributor: [target: LyricContributorTarget];
@@ -199,17 +207,25 @@ const showVoiceCards = computed(
 function voiceSongTarget(index: number) {
   return includedSongs.value && voiceSongs.target(includedSongs.value, index);
 }
-function playVoiceSong(index: number, gesture: 'cover' | 'double_click') {
+function playVoiceSong(
+  index: number,
+  gesture: 'cover' | 'double_click',
+  indices?: readonly number[],
+) {
   const target = voiceSongTarget(index);
-  if (target) emit('voiceSongPlay', target, gesture);
+  if (target) emit('voiceSongPlay', target, gesture, indices);
 }
 function likeVoiceSong(index: number) {
   const target = voiceSongTarget(index);
   if (target) emit('voiceSongLike', target);
 }
-function moreVoiceSong(index: number, event: MouseEvent | KeyboardEvent) {
+function moreVoiceSong(
+  index: number,
+  event: MouseEvent | KeyboardEvent,
+  indices?: readonly number[],
+) {
   const target = voiceSongTarget(index);
-  if (target) emit('voiceSongMore', target, event);
+  if (target) emit('voiceSongMore', target, event, indices);
 }
 function openVoiceSongArtist(index: number, id: string) {
   const target = voiceSongTarget(index);

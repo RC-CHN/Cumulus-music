@@ -53,19 +53,18 @@ const items = computed<MenuItem[]>(() => {
   const input = request.value;
   const track = input?.track;
   if (!track || (input?.episode && !input.episode.live())) return [];
+  const selection = input.episode?.selection;
   const available = !track.missing && !track.local;
-  const canPlay = available && !request.value?.playUnavailable;
-  const link = !input?.episode?.copyrightBlocked && songLink(track);
+  const canPlay = selection
+    ? !selection.allCopyrightBlocked
+    : available && !input.playUnavailable && !input.episode?.copyrightBlocked;
+  const link = !selection && !input.episode?.copyrightBlocked && songLink(track);
   return [
     {
       key: 'play',
       label: '播放',
       icon: 'play',
-      disabled:
-        !canPlay ||
-        !!input?.episode?.copyrightBlocked ||
-        !props.player.ready.value ||
-        props.player.busy.value,
+      disabled: !canPlay || !props.player.ready.value || props.player.busy.value,
     },
     {
       key: 'next',
@@ -73,16 +72,21 @@ const items = computed<MenuItem[]>(() => {
       icon: 'next',
       disabled:
         !canPlay ||
-        !!input?.episode?.copyrightBlocked ||
         !props.player.ready.value ||
         props.player.busy.value ||
         (!!request.value?.queueNext && props.player.queueBusy.value) ||
         props.player.view.value?.fm,
       hint: props.player.view.value?.fm ? '私人漫游期间请先切换到普通播放队列' : undefined,
     },
-    ...(!track.local ? [{ key: 'comments', label: '查看评论', icon: 'comment' }] : []),
-    { key: 'main-divider', label: '', separator: true },
-    { key: 'collect', label: '收藏', icon: 'star', disabled: !available },
+    ...(!track.local && !selection
+      ? [{ key: 'comments', label: '查看评论', icon: 'comment' }]
+      : []),
+    ...(!selection
+      ? [
+          { key: 'main-divider', label: '', separator: true },
+          { key: 'collect', label: '收藏', icon: 'star', disabled: !available },
+        ]
+      : []),
     ...(!input?.episode
       ? [{ key: 'download', label: '下载', icon: 'download', disabled: !available }]
       : []),
@@ -189,7 +193,7 @@ async function copy() {
   const queue = queueRequest.value;
   if (queue && !queue.live()) return;
   const episode = request.value?.episode;
-  if (episode && (!episode.live() || episode.copyrightBlocked)) return;
+  if (episode && (!episode.live() || episode.selection || episode.copyrightBlocked)) return;
   const track = queue?.info.track ?? request.value?.track;
   const link = track && songLink(track);
   if (!link || copying.value) return;
