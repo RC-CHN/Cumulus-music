@@ -23,6 +23,8 @@ mod fixture;
 mod fm_domain;
 #[path = "support/fm_feedback_fixture.rs"]
 mod fm_feedback_fixture;
+#[path = "support/guest_search_fixture.rs"]
+mod guest_search_fixture;
 #[path = "support/intelligence_start_fixture.rs"]
 mod intelligence_start_fixture;
 #[path = "support/intelligence_ui_fixture.rs"]
@@ -963,12 +965,14 @@ fn main() {
         let proof_store=registry.store();
         search_fixture::initialize(&proof_store)?;
         let older_verified=vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || search_artist_top50_fixture::enabled() || vertical_zone_fixture::enabled();
-        let signed_search=(search_fixture::enabled() && !older_verified).then(||search_signed_fixture::SignedSearch::open(proof_store.clone())).transpose()?;
+        let guest_search=guest_search_fixture::enabled().then(||guest_search_fixture::Wire::open(proof_store.clone())).transpose()?;
+        let signed_search=(search_fixture::enabled() && !older_verified && guest_search.is_none()).then(||search_signed_fixture::SignedSearch::open(proof_store.clone())).transpose()?;
         let library=Arc::new(Library { signed_search:signed_search.clone() });
         let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(library.clone())));
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||library.clone());
         let transfer=playlist_cover_transfer_fixture::enabled().then(||Arc::new(playlist_cover_transfer_fixture::Fixture::new(api.clone(),proof_store.clone(),root.clone())));
         let api=transfer.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or(api);
+        let api=guest_search.as_ref().map(|(client,_)|client.clone() as Arc<dyn Api>).unwrap_or(api);
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
@@ -1070,7 +1074,7 @@ fn main() {
         system_master_volume_fixture::install(app);
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         queue_more_fixture::phase_milestone("client_managed");
-        if search_signed_fixture::presentation_enabled() {
+        if search_signed_fixture::presentation_enabled() || guest_search.is_some() {
             cumulus_desktop::pc_presentation::start(app.handle())?;
         }
         if member_lifecycle_fixture::enabled() || download_page_fixture::quality_enabled() {
@@ -1181,6 +1185,7 @@ fn main() {
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
+                if let Some((_,wire))=guest_search.as_ref() {value["guestSearchCalls"]=json!(wire.report());}
                 if let Some(calls) = search_fixture::suggestion_match_calls() { value["suggestionMatchCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::default_recovery_calls() { value["defaultRecoveryCalls"] = json!(calls); }
                 if search_artist_top50_fixture::enabled() { value["artistTop50Calls"] = json!(search_artist_top50_fixture::report()); }

@@ -190,6 +190,41 @@
     );
   }
   try {
+    if (window.__cumulusGuestSearchProof) {
+      const keyword = "合成游客查询";
+      const rows = () => all(".guest-search-result");
+      const heading = () => one(".search-results-page h1")?.textContent.trim();
+      await wait(
+        () => input()?.placeholder === "发现合成好声音" && !input().disabled && document.hasFocus(),
+        "native registered guest enables topbar search",
+      );
+      assert(!one(".search-results-page"), "guest registration does not navigate");
+      await capture("guest_search_ready");
+      await suggestions(keyword);
+      await capture("guest_search_suggestions");
+      key(input(), "Enter");
+      await wait(() => heading() === keyword && rows().length, "guest comprehensive results");
+      assert(button("登录后播放和收藏"), "sign-in available without blocking the results");
+      assert(!one(".search-section-play, .search-track-card, .search-result-action-menu"), "no guest playback authority");
+      await capture("guest_search_results");
+      click(one('[data-category="songs"]'));
+      await wait(
+        () => one('[data-category="songs"][aria-selected="true"]') && rows().length &&
+          one("[data-result-section='单曲']"),
+        "guest song category",
+      );
+      assert(!button("播放全部") && !button("收藏全部"), "account controls are not emitted by guest rows");
+      await capture("guest_search_songs");
+      input().focus();
+      type("");
+      key(input(), "Enter");
+      await wait(() => heading() === "合成默认关键词" && rows().length, "guest default context result");
+      assert(!document.body.textContent.includes("synthetic-default-context-native-only"));
+      await capture("guest_search_default");
+      await emit("complete", { ok: true, stageCount: count, guestSearchVerified: true,
+        realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     if (window.__cumulusSearchDefaultRecoveryProof) {
       const missing = "搜索音乐、寻找好声音";
       await wait(
