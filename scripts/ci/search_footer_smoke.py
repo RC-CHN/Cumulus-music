@@ -123,9 +123,11 @@ def verify_vinyl_origin(directory, screenshots):
     playlist = retained["nativePlayer"]
     search = source["nativePlayer"]
     assert playlist["track"]["id"] == "1" and playlist["origin"] == {"kind": "playlist", "id": "7"}
-    assert "searchOrigin" not in playlist and retained["sourceButton"] == "查看播放来源：歌单"
-    assert retained["sourceText"] == "来源：歌单"
+    assert "searchOrigin" not in playlist and playlist["originName"] == "合成歌单 7"
+    assert retained["sourceButton"] == "查看播放来源：合成歌单 7"
+    assert retained["sourceText"] == "来源：合成歌单7"
     assert search["track"]["id"] == "2" and search["searchOrigin"] is True and search["origin"] is None
+    assert "originName" not in search
     assert source["sourceText"] == "来源：搜索" and source["sourceButton"] is None
     assert returned["sameSearch"] and returned["sourceText"] is None and returned["sourceButton"] is None
     assert identity(search) == identity(returned["nativePlayer"]) == identity(complete["nativePlayer"])

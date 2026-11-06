@@ -530,6 +530,7 @@ def main():
             native = stage['nativePlayer']
             assert native['state'] == 'playing' and native['position'] > .2
             assert native['track']['id'] == playing and native['origin'] == {'kind': 'album', 'id': '8'}
+            assert native['originName'] == '漫长的午后与未完的旋律 · A quiet afternoon / Extended edition'
             assert ','.join(entry['track']['id'] for entry in stage['nativeQueue']['tracks']) == ids
             assert stage['rows'] == ['12', '11', '13'] and stage['order'] == 'ascending'
         paused, resumed, first = (stages[name]['player'] for name in

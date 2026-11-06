@@ -68,7 +68,7 @@
     const albumState = await wait(async () => {
       const state = await read();
       return state.state === 'playing' && state.playId !== started.playId &&
-        state.origin?.kind === 'album' && state;
+        state.origin?.kind === 'album' && state.originName === '测试专辑' && state;
     }, 'album playback with original source');
     const daily = [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === '每日推荐');
     if (!daily) throw Error('daily navigation not found');

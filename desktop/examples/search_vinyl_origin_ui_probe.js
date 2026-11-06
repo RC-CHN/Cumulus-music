@@ -8,6 +8,7 @@
     event: 'ux-proof', payload: { stage, ...data },
   });
   const query = '合成 V3';
+  const playlistName = '合成歌单 7';
   const row = (id) => one(`[data-result-key="song:${id}"] .search-track-cover`);
   const search = () => one('.search-results-page h1')?.textContent === query &&
     one('#search-result-panel')?.getAttribute('aria-busy') === 'false' && !one('.page-leave-active');
@@ -75,8 +76,8 @@
       kind: 'playlist', id: '7', start_id: '1', revision: null, quality: 'standard',
     } });
     const playlist = await state('playing', '1');
-    assert(playlist.origin?.kind === 'playlist' && playlist.origin.id === '7' && !playlist.searchOrigin,
-      'real playlist origin');
+    assert(playlist.origin?.kind === 'playlist' && playlist.origin.id === '7' &&
+      playlist.originName === playlistName && !playlist.searchOrigin, 'native name of real playlist origin');
     field.value = query;
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -84,16 +85,18 @@
       'current playlist song is playable from search');
     click(original);
     const retained = await state('paused', '1', playlist);
-    assert(retained.origin?.kind === 'playlist' && retained.origin.id === '7' && !retained.searchOrigin,
+    assert(retained.origin?.kind === 'playlist' && retained.origin.id === '7' &&
+      retained.originName === playlistName && !retained.searchOrigin,
       'same-row pause must retain the original playlist source');
     const linked = await openVinyl();
-    const originalLink = linked.querySelector('button[aria-label="查看播放来源：歌单"]');
+    const originalLink = linked.querySelector(`button[aria-label="查看播放来源：${playlistName}"]`);
     assert(ready(originalLink) && originalLink.tabIndex === 0, 'playlist source remains a real link control');
     await capture('retained_playlist', retained);
     await closeVinyl();
     click(await wait(() => search() && ready(row('2')), 'new search-origin song'));
     const played = await state('playing', '2');
-    assert(played.playId !== retained.playId && played.searchOrigin === true && played.origin === null,
+    assert(played.playId !== retained.playId && played.searchOrigin === true &&
+      played.origin === null && played.originName === undefined,
       'newly selected catalog song has search provenance only');
     await wait(() => ready(row('2'))?.getAttribute('aria-label')?.startsWith('暂停 '), 'search pause control');
     click(row('2'));

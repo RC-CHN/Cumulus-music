@@ -31,6 +31,7 @@
   const order = () => header()?.parentElement.getAttribute('aria-sort');
   const rows = () => all('[data-album-panel="songs"] .track-row').map((row) => row.dataset.trackId);
   const original = '11,12,13,14', asc = '12,14,11,13', desc = '11,13,14,12';
+  const albumName = '漫长的午后与未完的旋律 · A quiet afternoon / Extended edition';
   let epoch;
   const player = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
@@ -68,7 +69,8 @@
     await wait(async () => {
       const state = await player(), view = await queue();
       return state.state === 'playing' && state.track?.id === id && state.position > .2 &&
-        state.origin?.kind === 'album' && state.origin.id === '8' && queueIds(view) === list;
+        state.origin?.kind === 'album' && state.origin.id === '8' &&
+        state.originName === albumName && queueIds(view) === list;
     }, `native playback ${id} with ${list}`);
   }
   async function sortTo(expected, visible) {
@@ -82,8 +84,7 @@
     await wait(() => {
       const album = one('.catalog-page .album-header:not(.album-header-compact)');
       const songs = one('[data-album-panel="songs"]');
-      return album?.querySelector('h1')?.textContent.trim() ===
-          '漫长的午后与未完的旋律 · A quiet afternoon / Extended edition' &&
+      return album?.querySelector('h1')?.textContent.trim() === albumName &&
         !album.querySelector('[data-album-play]').disabled && songs && !songs.inert &&
         header() && rows().length === 4 && rows().every((id) => original.split(',').includes(id));
     }, 'album 8 loaded the four scoped song rows');
