@@ -1,18 +1,19 @@
 """Actual episode song selection via XTest in a dedicated Linux WebView."""
 
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import ctypes
 import json
 import os
 from pathlib import Path
+import subprocess
 import time
 
 from queue_collection_smoke import isolated_profile
 from queue_row_collection_smoke import QueueCollectInput
 from vinyl_lyric_copy_smoke import require_xvfb
 from voice_songs_smoke import MEDIA, TRACKS, pair_ids, read
-from window_manager import launch
+from window_manager import ManagerCheck, launch
 
 CASES = {
     'menu': ('baseline', 'first_row', 'control_row', 'control_denied', 'menu_next_open',
@@ -188,6 +189,35 @@ def run(args, case, root):
     return verify(case, output)
 
 
+@contextmanager
+def suite_window_manager(root):
+    """Keep one manager alive for all child windows on the dedicated Xvfb."""
+    check = ManagerCheck(os.environ['DISPLAY'])
+    manager = None
+    try:
+        if not check.ready():
+            env = dict(os.environ)
+            isolated_profile(env, root)
+            with (root / 'suite-window-manager.log').open('x', encoding='utf-8') as log:
+                manager = subprocess.Popen(['openbox', '--sm-disable'], env=env,
+                                           stdout=log, stderr=log)
+                deadline = time.monotonic() + 6
+                while not check.ready():
+                    if manager.poll() is not None or time.monotonic() >= deadline:
+                        raise RuntimeError('isolated suite window manager did not become ready')
+                    time.sleep(.05)
+        yield
+    finally:
+        if manager is not None and manager.poll() is None:
+            manager.terminate()
+            try:
+                manager.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                manager.kill()
+                manager.wait()
+        check.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -201,8 +231,10 @@ def main():
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     selected = CASES if args.case == 'all' else (args.case,)
+    with suite_window_manager(root):
+        cases = [run(args, case, root / case) for case in selected]
     report = {'actualWebView': 'WebKitGTK', 'trustedX11Pointer': True, 'actualNullAudio': True,
-              'cases': [run(args, case, root / case) for case in selected], 'realMusicRequests': 0,
+              'cases': cases, 'realMusicRequests': 0,
               'realAccountWrites': 0, 'physicalAudioVerified': False}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
