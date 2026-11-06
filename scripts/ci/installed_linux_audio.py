@@ -159,10 +159,19 @@ def isolated_audio(root, env, *, indexed_flac=False):
         # The indexed graph admits only independently decoded stereo s16.
         audio = f'aevalsrc={fixture}|{fixture}:s=48000:d=65:c=stereo' if indexed_flac else (
             f'aevalsrc={fixture}:s=48000:d=65')
-        encoding = ['-c:a', 'flac', '-sample_fmt', 's16'] if indexed_flac else []
+        encoding = ['-c:a', 'flac', '-sample_fmt', 's16', '-frame_size', '1024'] if indexed_flac else []
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
                         audio, *encoding, '-metadata', f'title={TITLE}', source],
                        check=True, timeout=20)
+        if indexed_flac:
+            with source.open('rb') as fixture_file:
+                header = fixture_file.read(42)
+            assert len(header) == 42 and header[:4] == b'fLaC' and header[4] & 0x7f == 0
+            assert int.from_bytes(header[5:8], 'big') == 34
+            assert int.from_bytes(header[8:10], 'big') == int.from_bytes(header[10:12], 'big') == 1024
+            packed = int.from_bytes(header[18:26], 'big')
+            assert packed >> 44 == 48000 and ((packed >> 41) & 7) + 1 == 2
+            assert ((packed >> 36) & 31) + 1 == 16 and packed & ((1 << 36) - 1) == 65 * 48000
         yield source
 
 
