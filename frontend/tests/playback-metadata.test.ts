@@ -106,10 +106,18 @@ test('ordinary songs preserve named sources, downloaded navigation and unknown f
     local: false,
   };
   const base = { track, fm: false, resourceKind: 'catalog' } as PlayerView;
-  assert.deepEqual(playbackSource({ ...base, origin: { kind: 'album', id: '8' } }), {
-    name: 'Album',
-    target: { kind: 'album', id: '8' },
-  });
+  for (const kind of ['album', 'artist', 'playlist'] as const) {
+    const origin = { kind, id: '8' };
+    assert.deepEqual(playbackSource({ ...base, origin }), { name: '未知' });
+    assert.deepEqual(playbackSource({ ...base, origin, originName: '来自实际来源的名称' }), {
+      name: '来自实际来源的名称',
+      target: origin,
+    });
+  }
+  assert.deepEqual(
+    playbackSource({ ...base, origin: { kind: 'album', id: '8' }, originName: ' \n' }),
+    { name: '未知' },
+  );
   assert.deepEqual(playbackSource({ ...base, resourceKind: 'downloaded' }), {
     name: '下载管理',
     target: { kind: 'downloads' },
@@ -127,8 +135,13 @@ test('search provenance is a non-navigable label for catalog songs only', () => 
     name: '搜索',
   });
   assert.deepEqual(
-    playbackSource({ ...base, searchOrigin: true, origin: { kind: 'playlist', id: '7' } }),
-    { name: '歌单', target: { kind: 'playlist', id: '7' } },
+    playbackSource({
+      ...base,
+      searchOrigin: true,
+      origin: { kind: 'playlist', id: '7' },
+      originName: '原来的歌单',
+    }),
+    { name: '原来的歌单', target: { kind: 'playlist', id: '7' } },
   );
   assert.equal(playbackSource({ ...base, searchOrigin: true, fm: true }), null);
   assert.equal(playbackSource({ ...base, searchOrigin: true, resourceKind: 'voice' }), null);

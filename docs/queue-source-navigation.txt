@@ -33,3 +33,22 @@ Cumulus 数据与界面
   暂停位置、解码实例，以及歌曲详情和音源请求计数。该窗口用例仅实测专辑来源。
 - 本机 Linux 合成回归记录：`.build/ui-proof/phase88-queue-origin-r1/report.json`，
   通过 13 个 WebView 状态并留有对应截图；无真实账号访问，无实体声卡验证。
+
+播放详情的来源名称（普通专辑、歌手、歌单）
+
+- 官方 3.1.42.205594 的 M3085:248,313,455–456,565–575 先选择 from.sourceData
+  或动作资源，再由 M265:62–70,100–110,127–134 使用同一来源对象的 name/id
+  得到文字和路由；显式 from.text 优先。恢复 Common.tsx:546–555 与
+  TrackList.jsx:235–240 分别传入专辑、歌单对象，ArtistOperation.tsx:60–73 和
+  AllSongsList.tsx:59–72 直接给出歌手页名称。TrackTitle.tsx:555–567 只在
+  有 text 时呈现标题/可导航文字；缺值显示「未知」。队列行依然只显示通用「来源」。
+- Rust 只在准备时冻结经过同 ID 核验的名称：专辑表格和拖放用已有原生专辑详情
+  快照；无详情的专辑添加下一首保留既有 /api/album/v3/detail 的名称，并继续
+  /api/album/privilege；歌单播放、批次、追加、拖放及专区用已有同 ID 详情。
+  普通歌单主要是 /api/v6/playlist/detail，专区仍用自己已有的分流。歌手热歌
+  和搜索签名 t1 使用 /api/artist/v3/detail 中的 artist.name；歌手分页和搜索
+  控制 /api/v2/artist/songs 只读取同账号已有的歌手详情缓存，缺失不加 GET。
+- PlayerView 只新增纯文本 originName；QueueOrigin 路由、队列身份、当前音频、
+  账号隔离及请求顺序保持。原生旧队列未保存已核验名称，继续显示「未知」，不用
+  歌曲的专辑/歌手字段或历史摘要猜名称。FM、声音、本地等不借用普通目录来源名。
+  搜索与相似歌曲的既有纯文字来源继续使用，未增加跳回搜索的路由。

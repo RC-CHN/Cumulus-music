@@ -5,6 +5,7 @@ use super::{
     identifier, js_truthy, json, mapping, queue_playlist::queue_resource_for_track,
 };
 use crate::catalog::details::{CatalogDetails, CatalogQuery};
+use crate::client::player::origin;
 
 pub(super) fn resolve(
     client: &MusicClient,
@@ -52,5 +53,11 @@ pub(super) fn resolve(
         }
         resources.push(queue_resource_for_track(&mapping::track(song)?, quality));
     }
-    Ok((resources, json!({"kind":"album","id":id,"scene":"album"})))
+    Ok((
+        resources,
+        origin::named(
+            json!({"kind":"album","id":id,"scene":"album"}),
+            origin::album_name(&saved.response["album"], &id),
+        ),
+    ))
 }

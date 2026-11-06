@@ -77,6 +77,7 @@ async fn filtered_row_uses_bound_visible_order_full_header_uses_fresh_whole_albu
     assert_eq!(result.track.unwrap().id, "13");
     assert_eq!(ids(&client).await, ["11", "13", "12"]);
     assert!(matches!(result.origin, Some(PlayerOrigin::Album { id }) if id == "7"));
+    assert_eq!(result.origin_name.as_deref(), Some("长专辑"));
     assert!(
         !api.calls
             .lock()
@@ -94,6 +95,7 @@ async fn filtered_row_uses_bound_visible_order_full_header_uses_fresh_whole_albu
         .await
         .unwrap();
     assert_eq!(full.track.unwrap().id, "13");
+    assert_eq!(full.origin_name.as_deref(), Some("长专辑"));
     assert_eq!(ids(&client).await, ["13", "14", "12", "11"]);
     let calls = api.calls.lock().unwrap();
     assert_eq!(

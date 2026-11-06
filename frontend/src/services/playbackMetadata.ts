@@ -53,18 +53,12 @@ export function playbackSource(view: PlayerView | undefined): {
   // downloaded voices. Keep native origins intact for non-display consumers.
   if (!view?.track || view.fm || view.resourceKind === 'voice' || view.track.voiceId) return null;
   if (view.vinylSimilarOrigin && view.resourceKind === 'catalog') return { name: '相似歌曲' };
-  const { origin, track } = view;
+  const { origin, originName } = view;
   if (origin && /^[0-9]*[1-9][0-9]*$/.test(origin.id)) {
-    const { kind, id } = origin;
-    const name =
-      kind === 'album'
-        ? (track.albumId === id && track.album.trim()) || '专辑'
-        : kind === 'artist'
-          ? track.artistRefs?.find((artist) => artist.id === id)?.name.trim() || '歌手'
-          : kind === 'playlist'
-            ? '歌单'
-            : '播客';
-    return { name, target: origin };
+    if (origin.kind === 'podcast') return { name: '播客', target: origin };
+    if (view.resourceKind === 'catalog') {
+      return originName?.trim() ? { name: originName, target: origin } : { name: '未知' };
+    }
   }
   if (view.searchOrigin && view.resourceKind === 'catalog') return { name: '搜索' };
   switch (view.resourceKind) {

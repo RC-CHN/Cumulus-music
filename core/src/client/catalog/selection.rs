@@ -1,4 +1,5 @@
 use super::super::MusicClient;
+use super::super::player::origin;
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -32,6 +33,7 @@ impl MusicClient {
         let service = CatalogDetails::new(self.session.clone())?;
         let mut ids = Vec::new();
         let mut next_offset = 0;
+        let mut source_name = None;
         for page in pages {
             page.query.validate()?;
             if page.query.id() != id {
@@ -54,6 +56,17 @@ impl MusicClient {
                 .ok_or(Error::QueueChanged)?;
             if saved.revision != page.revision {
                 return Err(Error::QueueChanged);
+            }
+            match &page.query {
+                CatalogQuery::Album { .. } => {
+                    source_name =
+                        origin::album_name(&saved.response["album"], id).map(str::to_owned);
+                }
+                CatalogQuery::Artist { .. } => {
+                    source_name =
+                        origin::resource_name(&saved.response["artist"], id).map(str::to_owned);
+                }
+                _ => {}
             }
             let refreshed;
             let songs = if matches!(first, CatalogQuery::Album { .. }) {
@@ -85,6 +98,9 @@ impl MusicClient {
         if index >= ids.len() {
             return Err(Error::InvalidInput("invalid catalog selection index"));
         }
+        if matches!(first, CatalogQuery::ArtistSongs { .. }) {
+            source_name = origin::cached_artist_name(&service, token, id)?;
+        }
         self.session.with_token(token, |_| Ok(()))?;
         let kind = if matches!(first, CatalogQuery::Album { .. }) {
             "album"
@@ -94,7 +110,10 @@ impl MusicClient {
         Ok((
             ids,
             index,
-            json!({"kind":kind,"id":id,"scene":kind,"trial_mode":-1}),
+            origin::named(
+                json!({"kind":kind,"id":id,"scene":kind,"trial_mode":-1}),
+                source_name.as_deref(),
+            ),
         ))
     }
 }

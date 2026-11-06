@@ -81,7 +81,7 @@ impl CoverFixture {
                     2 => return Some(Err(Error::Transport("synthetic detail failure".into()))),
                     _ => vec![blocked, repeated.clone(), repeated, track(71, Value::Null)],
                 };
-                json!({"code":200,"artist":{"id":9123},"hotSongs":songs})
+                json!({"code":200,"artist":{"id":9123,"name":"已核对的歌手来源"},"hotSongs":songs})
             }
             "/api/song/enhance/privilege" => {
                 self.calls.lock().unwrap().push("privileges");
@@ -135,6 +135,10 @@ async fn signed_artist_cover_uses_exact_lane_and_server_order_without_detail_ref
         let exposed = serde_json::to_string(&view).unwrap() + &queue.to_string();
         assert!(!exposed.contains("SECRET"));
         assert!(matches!(view.origin, Some(PlayerOrigin::Artist { id }) if id == "9123"));
+        assert_eq!(
+            view.origin_name.as_deref(),
+            (mode == 1).then_some("已核对的歌手来源")
+        );
         let (expected, paths) = match mode {
             1 => (["72", "71"], &["experiment", "detail", "privileges"][..]),
             4 => (["83", "81"], &["regular"][..]),

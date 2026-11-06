@@ -10,7 +10,7 @@ pub(super) use ordinary_skip_authority::OrdinarySkipHost;
 mod missing_download;
 mod mode;
 mod next_play;
-mod origin;
+pub(in crate::client) mod origin;
 mod output;
 mod playlist_batch;
 mod podcast_recommended;
@@ -331,6 +331,12 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .selected
             .as_ref()
             .and_then(|i| origin::project(&i.source)),
+        origin_name: value
+            .selected
+            .as_ref()
+            .filter(|_| !value.fm)
+            .and_then(origin::display_name)
+            .map(str::to_owned),
         profile_rank_playlist_uid: value
             .selected
             .as_ref()

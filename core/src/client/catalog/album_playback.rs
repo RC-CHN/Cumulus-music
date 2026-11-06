@@ -1,5 +1,6 @@
 //! Ordinary album playback distinguishes native cached table rows (M/195,
 //! M/3085) from whole resources re-read by M/404 and ordered by M/470.
+use super::super::player::origin;
 use super::MusicClient;
 use crate::{
     Error, Result,
@@ -162,7 +163,10 @@ impl MusicClient {
         Ok((
             ids,
             index,
-            json!({"kind":"album","id":scope.id,"scene":"album","trial_mode":-1}),
+            origin::named(
+                json!({"kind":"album","id":scope.id,"scene":"album","trial_mode":-1}),
+                origin::album_name(&saved.response["album"], &scope.id),
+            ),
         ))
     }
 }

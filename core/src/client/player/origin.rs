@@ -1,6 +1,70 @@
 use super::{PlayerOrigin, PlayerResourceKind, QueueOrigin, RecommendationOrigin, identity};
-use crate::protocol::api::identifier;
+use crate::{
+    Error, Result,
+    account::SessionToken,
+    catalog::details::{CatalogDetails, CatalogQuery},
+    playback::QueueEntry,
+    protocol::api::identifier,
+};
 use serde_json::Value;
+
+fn label(name: &str) -> Option<&str> {
+    (!name.trim().is_empty() && name.len() <= 4096).then_some(name)
+}
+
+/// The display label comes from the source object itself, never its song rows.
+pub(in crate::client) fn resource_name<'a>(resource: &'a Value, id: &str) -> Option<&'a str> {
+    (identifier(&resource["id"]).ok()? == id)
+        .then(|| resource["name"].as_str().and_then(label))
+        .flatten()
+}
+
+pub(in crate::client) fn album_name<'a>(album: &'a Value, id: &str) -> Option<&'a str> {
+    (crate::catalog::album_identifier(album).ok()? == id)
+        .then(|| album["name"].as_str().and_then(label))
+        .flatten()
+}
+
+pub(in crate::client) fn named(mut source: Value, name: Option<&str>) -> Value {
+    if let Some(name) = name.and_then(label) {
+        source["source_name"] = Value::from(name);
+    }
+    source
+}
+
+pub(in crate::client) fn cached_artist_name(
+    catalog: &CatalogDetails,
+    token: &SessionToken,
+    id: &str,
+) -> Result<Option<String>> {
+    match catalog.cached_for(token, &CatalogQuery::Artist { id: id.to_owned() }) {
+        Ok(page) => Ok(page
+            .as_ref()
+            .and_then(|page| resource_name(&page.response["artist"], id))
+            .map(str::to_owned)),
+        Err(Error::StaleResponse) => Err(Error::StaleResponse),
+        // Optional display metadata must not block a playable selection.
+        Err(_) => Ok(None),
+    }
+}
+
+pub(super) fn display_name(entry: &QueueEntry) -> Option<&str> {
+    let name = entry.source["source_name"].as_str().and_then(label)?;
+    if identity::kind(&entry.resource) != PlayerResourceKind::Catalog
+        || !entry.resource["voice"].is_null()
+        || !entry.resource["song"]["voice_id"].is_null()
+        || !entry.resource["download_voice_id"].is_null()
+        || !matches!(
+            project(&entry.source)?,
+            PlayerOrigin::Album { .. }
+                | PlayerOrigin::Artist { .. }
+                | PlayerOrigin::Playlist { .. }
+        )
+    {
+        return None;
+    }
+    Some(name)
+}
 
 pub(super) fn project(source: &Value) -> Option<PlayerOrigin> {
     let id = || identifier(&source["id"]).ok();
@@ -70,6 +134,35 @@ pub(super) fn recommendation(source: &Value) -> Option<RecommendationOrigin> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn named_origins_use_only_the_matched_source_and_never_infer_legacy_labels() {
+        let raw = json!({"id":7,"name":"  真正的来源  ","href":"PRIVATE","token":"PRIVATE"});
+        assert_eq!(resource_name(&raw, "8"), None);
+        assert_eq!(resource_name(&raw, "7"), Some("  真正的来源  "));
+        assert_eq!(album_name(&raw, "7"), Some("  真正的来源  "));
+        for kind in ["album", "artist", "playlist"] {
+            let mut entry = QueueEntry {
+                entry_id: "entry".into(),
+                resource: json!({"id":"1","song":{"album":{"id":7,"name":"曲目标记"}}}),
+                source: json!({"kind":kind,"id":"7","history_resource":{"id":"7","name":"旧对象"}}),
+            };
+            assert_eq!(display_name(&entry), None);
+            entry.source = named(entry.source, resource_name(&raw, "7"));
+            assert_eq!(display_name(&entry), Some("  真正的来源  "));
+            assert!(!entry.source.to_string().contains("PRIVATE"));
+            entry.resource["song"]["voice_id"] = json!(9);
+            assert_eq!(display_name(&entry), None);
+            entry.resource["song"]
+                .as_object_mut()
+                .unwrap()
+                .remove("voice_id");
+            entry.source["id"] = json!("https://not-a-destination.invalid");
+            assert_eq!(display_name(&entry), None);
+        }
+        assert!(named(json!({}), Some(" \t"))["source_name"].is_null());
+        assert!(named(json!({}), Some(&"x".repeat(4097)))["source_name"].is_null());
+    }
     #[test]
     fn a_search_scene_only_labels_an_ordinary_catalog_song() {
         use crate::playback::QueueEntry;

@@ -31,6 +31,13 @@ impl CatalogApi {
     /// This path does not request page dynamic/exposure metadata or supplement
     /// missing tracks. The first matching privilege is used (Array.find).
     pub async fn album_playback_tracks(&self, id: &Value) -> Result<Vec<Value>> {
+        Ok(self.album_playback_data(id).await?.0)
+    }
+
+    pub(crate) async fn album_playback_data(
+        &self,
+        id: &Value,
+    ) -> Result<(Vec<Value>, Option<String>)> {
         let id = identifier(id)?;
         let response = self.album(&json!(id)).await?;
         validate_detail(&response, &id)?;
@@ -55,7 +62,8 @@ impl CatalogApi {
                 song.as_object_mut().unwrap().remove("privilege");
             }
         }
-        Ok(songs)
+        let name = response["album"]["name"].as_str().map(str::to_owned);
+        Ok((songs, name))
     }
     /// The page requires dynamic metadata, but retains songs if the separate
     /// privilege read fails. No collection, payment or exposure write is sent.

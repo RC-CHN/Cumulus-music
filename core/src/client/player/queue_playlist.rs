@@ -161,7 +161,7 @@ impl MusicClient {
         quality: Quality,
         selection: Option<(Vec<String>, String)>,
         attempt: u64,
-    ) -> Result<Vec<Value>> {
+    ) -> Result<(Vec<Value>, Option<String>)> {
         let detail = self
             .session
             .run_for(token, |api, _| async {
@@ -188,8 +188,11 @@ impl MusicClient {
                 .map(Value::from)
                 .collect::<Vec<_>>()
         };
-        self.online_queue_resources(token, &ids, quality, attempt)
-            .await
+        let name = super::origin::resource_name(&detail, id).map(str::to_owned);
+        let resources = self
+            .online_queue_resources(token, &ids, quality, attempt)
+            .await?;
+        Ok((resources, name))
     }
     async fn online_queue_resources(
         &self,
@@ -456,24 +459,30 @@ impl MusicClient {
             } => {
                 self.session.with_token(&token, |_| Ok(()))?;
                 let id = identifier(&json!(id))?;
-                let ids = if let Some(scope) = detail {
-                    self.album_playback_selection(&token, &scope, None, false)
-                        .await?
-                        .0
+                let (ids, source) = if let Some(scope) = detail {
+                    let (ids, _, source) = self
+                        .album_playback_selection(&token, &scope, None, false)
+                        .await?;
+                    (ids, source)
                 } else {
-                    let tracks = self
+                    let (tracks, name) = self
                         .session
                         .run_for(&token, |api, _| async {
-                            CatalogApi::new(api).album_playback_tracks(&json!(id)).await
+                            CatalogApi::new(api).album_playback_data(&json!(id)).await
                         })
                         .await?;
                     if tracks.len() > 50_000 {
                         return Err(Error::InvalidInput("album too large"));
                     }
-                    tracks
+                    let ids = tracks
                         .iter()
                         .map(|song| identifier(&song["id"]).map(Value::from))
-                        .collect::<Result<Vec<_>>>()?
+                        .collect::<Result<Vec<_>>>()?;
+                    let source = super::origin::named(
+                        json!({"kind":"album","id":id,"scene":"album","trial_mode":-1}),
+                        name.as_deref(),
+                    );
+                    (ids, source)
                 };
                 let mut seen = HashSet::new();
                 let ids = ids
@@ -489,11 +498,7 @@ impl MusicClient {
                 for resource in &mut resources {
                     resource["trial_mode"] = json!(-1);
                 }
-                (
-                    resources,
-                    json!({"kind":"album","id":id,"scene":"album","trial_mode":-1}),
-                    false,
-                )
+                (resources, source, false)
             }
             QueueCollection::Playlist {
                 id,
@@ -502,13 +507,17 @@ impl MusicClient {
             } => {
                 self.session.with_token(&token, |_| Ok(()))?;
                 let id = identifier(&json!(id))?;
-                let resources = self
+                let (resources, name) = self
                     .playlist_queue_resources(&token, &id, quality, selection, attempt)
                     .await?;
                 if resources.is_empty() {
                     return Err(Error::State("playlist has no online tracks"));
                 }
-                (resources, json!({"kind":"playlist","id":id}), false)
+                (
+                    resources,
+                    super::origin::named(json!({"kind":"playlist","id":id}), name.as_deref()),
+                    false,
+                )
             }
             QueueCollection::Voice { id } => {
                 // M3085: a context-menu next action uses just the selected

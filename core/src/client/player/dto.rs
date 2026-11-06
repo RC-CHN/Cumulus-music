@@ -51,6 +51,9 @@ pub struct PlayerView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_detail: Option<super::PlayerVoiceDetail>,
     pub origin: Option<PlayerOrigin>,
+    /// Display text frozen by the selected native album, artist or playlist.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin_name: Option<String>,
     /// Known non-navigable playback provenance; no raw source data is exposed.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub vinyl_similar_origin: bool,

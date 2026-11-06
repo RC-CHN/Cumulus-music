@@ -64,7 +64,7 @@ impl MusicClient {
 
         let artist = ArtistApi::new(api.clone());
         let artist_id = json!(id);
-        let songs = if hot_songs {
+        let (songs, name) = if hot_songs {
             let detail = artist.detail(&artist_id).await.map_err(stale_credentials)?;
             check()?;
             if identifier(&detail["artist"]["id"])? != id {
@@ -82,7 +82,10 @@ impl MusicClient {
                 .await
                 .map_err(stale_credentials)?;
             check()?;
-            crate::catalog::merge_song_privileges(songs, &privileges)?
+            (
+                crate::catalog::merge_song_privileges(songs, &privileges)?,
+                super::origin::resource_name(&detail["artist"], &id).map(str::to_owned),
+            )
         } else {
             let response = artist
                 .songs(
@@ -95,7 +98,11 @@ impl MusicClient {
                 .await
                 .map_err(stale_credentials)?;
             check()?;
-            cover_rows(&response["songs"])?.clone()
+            let name = match crate::catalog::details::CatalogDetails::new(self.session.clone()) {
+                Ok(catalog) => super::origin::cached_artist_name(&catalog, token, &id)?,
+                Err(_) => None,
+            };
+            (cover_rows(&response["songs"])?.clone(), name)
         };
 
         let mut seen = HashSet::new();
@@ -132,7 +139,10 @@ impl MusicClient {
             PlaybackCommand::Replace {
                 resources,
                 index: 0,
-                source: json!({"kind":"artist","id":id,"scene":"artist"}),
+                source: super::origin::named(
+                    json!({"kind":"artist","id":id,"scene":"artist"}),
+                    name.as_deref(),
+                ),
             },
             guard,
         ))

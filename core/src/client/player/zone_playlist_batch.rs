@@ -161,11 +161,14 @@ impl MusicClient {
             }
         }
         let start = play || was_selected.is_none();
-        let source = json!({
-            "kind":"playlist","id":id,"trial_mode":trial,
-            "history_resource":{"id":id,"name":detail["name"],"coverImgUrl":detail["coverImgUrl"],
-                "creator":detail["creator"],"description":detail["description"],"trackCount":detail["trackCount"]}
-        });
+        let source = super::origin::named(
+            json!({
+                "kind":"playlist","id":id,"trial_mode":trial,
+                "history_resource":{"id":id,"name":detail["name"],"coverImgUrl":detail["coverImgUrl"],
+                    "creator":detail["creator"],"description":detail["description"],"trackCount":detail["trackCount"]}
+            }),
+            super::origin::resource_name(detail, &id),
+        );
         let queue = insert_zone_batch(queue, resources, source, play)?;
         if context.guard.is_cancelled() || self.player.selection.load(Ordering::Acquire) != attempt
         {

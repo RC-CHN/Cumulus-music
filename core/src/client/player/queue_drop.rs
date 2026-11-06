@@ -215,7 +215,13 @@ impl MusicClient {
                         )?);
                     }
                 }
-                (resources, json!({"kind":"playlist","id":id}))
+                (
+                    resources,
+                    super::origin::named(
+                        json!({"kind":"playlist","id":id}),
+                        super::origin::resource_name(&detail, &id),
+                    ),
+                )
             }
         };
         self.session.check_generation(&token)?;

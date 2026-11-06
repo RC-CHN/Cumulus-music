@@ -48,6 +48,7 @@ async fn whole_playlist_preserves_paused_current_deduplicates_and_persists_expli
     assert_eq!(added.entry_id, before.entry_id);
     assert_eq!(added.position, before.position);
     assert_eq!(added.state, PlaybackStatus::Paused);
+    assert!(added.origin_name.is_none());
     let queue = client.player_queue("1").await.unwrap();
     let expected: Vec<_> = std::iter::once("1000".to_string())
         .chain((1..=205).map(|i| i.to_string()))
@@ -88,6 +89,7 @@ async fn whole_playlist_preserves_paused_current_deduplicates_and_persists_expli
         "1"
     );
     let played = client.player_action("1", PlayerAction::Next).await.unwrap();
+    assert_eq!(played.origin_name.as_deref(), Some("已核对的歌单"));
     assert_eq!(played.track.unwrap().id, "1");
     client
         .player_action("1", PlayerAction::Pause { paused: true })

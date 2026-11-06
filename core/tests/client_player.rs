@@ -224,6 +224,9 @@ impl Api for Backend {
                     let limit = payload["limit"].as_u64().unwrap();
                     json!({"code":200,"total":55,"more":offset+limit<55,"songs":((offset+1)..=(offset+limit).min(55)).map(|id|json!({"id":id,"name":"曲目"})).collect::<Vec<_>>()})
                 }
+                "/api/artist/v3/detail" => {
+                    json!({"code":200,"artist":{"id":payload["id"],"name":"已核对的歌手页"},"hotSongs":[{"id":1,"name":"曲目"}]})
+                }
                 "/api/album/detail/dynamic" => json!({"code":200,"isSub":false}),
                 "/api/album/privilege" => {
                     json!({"code":200,"data":self.album_privileges.lock().unwrap().clone()})
@@ -235,7 +238,7 @@ impl Api for Backend {
                     json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":self.album_tracks.lock().unwrap().clone().unwrap_or_else(||(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>())})
                 }
                 "/api/v6/playlist/detail" => {
-                    json!({"code":200,"playlist":{"id":payload["id"],"trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
+                    json!({"code":200,"playlist":{"id":payload["id"],"name":"已核对的歌单","trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
                 }
                 "/api/homepage/category/daily/song/list" => {
                     let expected = if self.style_tag_after_ack.swap(false, Ordering::SeqCst) {
@@ -1142,6 +1145,10 @@ async fn catalog_selection_keeps_loaded_artist_order_source_and_navigation_refer
         .await
         .unwrap();
     assert_eq!(state.queue_len, 40);
+    assert!(
+        state.origin_name.is_none(),
+        "song credits do not supply the artist page name"
+    );
     let track = state.track.unwrap();
     assert_eq!(track.id, "24");
     assert_eq!(track.artist_refs[0].id.as_deref(), Some("12"));
@@ -1156,6 +1163,39 @@ async fn catalog_selection_keeps_loaded_artist_order_source_and_navigation_refer
     assert_eq!(
         stored["items"][0]["source"],
         json!({"kind":"artist","id":"12","scene":"artist","trial_mode":-1})
+    );
+    client
+        .catalog_page("1", CatalogQuery::Artist { id: "12".into() }, true)
+        .await
+        .unwrap();
+    // The page cache by itself does not relabel a queue already prepared.
+    assert!(
+        client
+            .player_snapshot("1")
+            .await
+            .unwrap()
+            .origin_name
+            .is_none()
+    );
+    api.calls.lock().unwrap().clear();
+    let named = client
+        .play_selection(
+            "1",
+            PlaySelection::Catalog {
+                pages: pages.clone(),
+                index: 22,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(named.origin_name.as_deref(), Some("已核对的歌手页"));
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path.starts_with("/api/artist/"))
     );
     pages[1].revision = "old".into();
     assert!(matches!(
@@ -1219,6 +1259,7 @@ async fn catalog_album_selection_revalidates_the_album_and_keeps_all_tracks() {
         .await
         .unwrap();
     assert_eq!(state.queue_len, 501);
+    assert_eq!(state.origin_name.as_deref(), Some("长专辑"));
     assert_eq!(state.track.unwrap().id, "501");
     assert_eq!(api.calls.lock().unwrap()[0], "/api/album/v3/detail");
     client.player_action("1", PlayerAction::Stop).await.unwrap();

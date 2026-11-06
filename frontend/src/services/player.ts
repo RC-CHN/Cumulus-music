@@ -70,6 +70,7 @@ export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   audiobookSkipAvailable?: boolean;
   origin?: PlayerOrigin | null;
+  originName?: string;
   vinylSimilarOrigin?: boolean;
   searchOrigin?: boolean;
   profileRankPlaylistUid?: string;

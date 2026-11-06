@@ -757,7 +757,11 @@ impl MusicClient {
                         if ids.is_empty() {
                             return Err(Error::State("album has no songs"));
                         }
-                        Ok((ids, index, quality, json!({"kind":"album","id":id})))
+                        let source = super::origin::named(
+                            json!({"kind":"album","id":id}),
+                            super::origin::album_name(&detail["album"], &id),
+                        );
+                        Ok((ids, index, quality, source))
                     }
                     PlaySelection::MvRelated {
                         mv_id,
@@ -871,7 +875,11 @@ impl MusicClient {
                         let detail = PlaylistApi::new(api).detail(&json!(id)).await?;
                         let ids =
                             super::playlist_batch::selected_ids(&id, &detail, &ids, &revision)?;
-                        Ok((ids, 0, quality, json!({"kind":"playlist","id":id})))
+                        let source = super::origin::named(
+                            json!({"kind":"playlist","id":id}),
+                            super::origin::resource_name(&detail, &id),
+                        );
+                        Ok((ids, 0, quality, source))
                     }
                     PlaySelection::Playlist {
                         id,
@@ -916,7 +924,10 @@ impl MusicClient {
                         let history = json!({"id":id,"name":detail["name"],
                             "coverImgUrl":detail["coverImgUrl"],"creator":detail["creator"],
                             "description":detail["description"],"trackCount":detail["trackCount"]});
-                        let mut source = json!({"kind":"playlist","id":id,"history_resource":history});
+                        let mut source = super::origin::named(
+                            json!({"kind":"playlist","id":id,"history_resource":history}),
+                            super::origin::resource_name(detail, &id),
+                        );
                         if let Some(trial) = zone_trial {
                             source["trial_mode"] = json!(trial);
                         }
