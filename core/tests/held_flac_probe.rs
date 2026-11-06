@@ -93,12 +93,20 @@ fn actual_ffprobe_held_flac_matches_path_metadata_and_never_reopens() {
     ] {
         let root = tempfile::tempdir().unwrap();
         let logical = OsStr::new("合成; 音乐.FLAC");
-        let source = root.path().join(logical);
+        let source = root.path().canonicalize().unwrap().join(logical);
         fs::write(&source, bytes).unwrap();
         let expected = probe.inspect(&source).unwrap();
         assert_eq!(expected.title, title);
         assert!(expected.duration > 0.0 && expected.bitrate.is_some());
 
+        #[cfg(windows)]
+        let (mut held, identity) =
+            cumulus_core::library::identity::windows::WindowsFileIdentity::open_local_fixed_ntfs_nofollow(
+                &source,
+            )
+            .unwrap()
+            .expect("test temp root is fixed local NTFS");
+        #[cfg(not(windows))]
         let mut held = File::open(&source).unwrap();
         held.seek(SeekFrom::Start(11)).unwrap();
         assert_eq!(
@@ -111,6 +119,21 @@ fn actual_ffprobe_held_flac_matches_path_metadata_and_never_reopens() {
         fs::rename(&source, root.path().join("held.flac")).unwrap();
         fs::write(&source, replacement).unwrap();
         assert_ne!(probe.inspect(&source).unwrap(), expected);
+        #[cfg(windows)]
+        {
+            use cumulus_core::library::identity::windows::WindowsFileIdentity;
+            assert_eq!(
+                WindowsFileIdentity::from_nofollow_file(&held).unwrap(),
+                Some(identity)
+            );
+            assert_ne!(
+                WindowsFileIdentity::open_local_fixed_ntfs_nofollow(&source)
+                    .unwrap()
+                    .unwrap()
+                    .1,
+                identity
+            );
+        }
         assert_eq!(
             probe.inspect_held_flac(&mut held, logical).unwrap(),
             expected

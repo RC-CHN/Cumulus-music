@@ -286,3 +286,38 @@ probes the original held file again, checks both cursor and following bytes,
 and requires a corrupt held FLAC to fail even when a valid pathname exists.
 These cases ran with the local Linux FFprobe 8.0.1; the bundled Windows
 FFprobe 9.0.2 test remains pending on an actual Windows runner.
+
+The native Windows probe can now obtain that file from the opt-in
+`WindowsFileIdentity::open_local_fixed_ntfs_nofollow`. It first admits only
+an absolute drive-letter path, including its extended drive spelling. The
+original spelling is checked before any filesystem lookup. UNC, device
+namespace prefixes, alternate streams and ambiguous components are out of
+scope. It opens the drive root, checks the root handle resolves to an actual
+local fixed volume GUID root on NTFS, then uses the held root as
+`OBJECT_ATTRIBUTES.RootDirectory` for a single relative `NtCreateFile`.
+This avoids using an earlier pathname check as authority for a later open.
+
+The open is read-only, synchronous and restricted to `FILE_OPEN`.
+`OBJ_DONT_REPARSE` rejects reparses during resolution, and the nofollow leaf
+option and the existing attribute/full-ID helper reject a reparse object at
+the end. `FileStandardInfo` requires one link and no pending deletion on
+the same returned descriptor. Sharing permits rename and excludes ordinary
+writer opens; the link count and attributes are point-in-time checks, not
+a content digest. The helper neither binds a queue selection nor replaces
+the current Windows scan. It uses the existing locked windows-sys package.
+
+Microsoft contracts: https://learn.microsoft.com/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntcreatefile
+and https://learn.microsoft.com/windows/win32/api/ntdef/ns-ntdef-_object_attributes.
+The focused Windows GNU harness links the exact bindings but does not run
+Win32. On an actual Windows x86_64 runner with a fixed local NTFS temp
+directory, run the replacement fixture and the exact staged FFprobe fixture
+above; opt into the real symlink fixture only where Windows permits creation:
+
+cargo test -p cumulus-core --locked --lib fixed_drive_handle_rejects_writes_and_keeps_old_bytes_after_equal_metadata_replacement -- --ignored
+cargo test -p cumulus-core --locked --lib fixed_drive_handle_rejects_real_leaf_and_ancestor_reparse_points -- --ignored
+
+The first exercise rejects a writer, keeps reading the old handle after
+a same-size/same-creation-time/same-modification-time replacement, confirms
+different full IDs, and rejects hard-linked files. The second requires both
+leaf and ancestor reparses to be rejected despite their targets being readable
+via ordinary paths. Neither fixture has run on Windows yet.
