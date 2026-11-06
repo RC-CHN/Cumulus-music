@@ -588,7 +588,10 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                             and settings.get('master_bypassed', False) is bypassed)
                 return False
 
-            activate('均衡器', button_roles)
+            # WebKit does not consistently expose this aria-haspopup control
+            # as a plain AT-SPI push button. Use the established X11 footer
+            # coordinate and still require the real dialog for every action.
+            inputs.click(1049, 722)
             sliders = (accessibility.Role.SLIDER,)
             equalizer_key('低音增益', sliders, 'End')
             wait_for('installed indexed bass adjustment committed', lambda: tone_saved(10, 0))
@@ -614,7 +617,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                 assert baseline[key] > 25 and boosted[key] > baseline[key] * 1.5, (
                     f'indexed graph did not increase {frequency} Hz with GEQ off')
             screenshot('installed-indexed-boosted.png')
-            activate('均衡器', button_roles)
+            inputs.click(1049, 722)
             equalizer_key(master, master_roles, 'space')
             wait_for('indexed master bypass committed', lambda: tone_saved(10, 10, bypassed=True))
             dry = capture_tone('indexedBypassed', committed_progress('indexed master bypass'))
