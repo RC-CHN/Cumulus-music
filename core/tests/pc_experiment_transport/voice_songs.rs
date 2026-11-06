@@ -7,6 +7,8 @@ mod download;
 mod likes;
 #[path = "voice_songs/picker.rs"]
 mod picker;
+#[path = "voice_songs/purchased.rs"]
+mod purchased;
 #[path = "voice_songs/selection.rs"]
 mod selection;
 use cumulus_core::{

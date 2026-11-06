@@ -4,6 +4,7 @@ mod collect;
 mod download;
 mod likes;
 mod picker;
+mod purchased;
 mod selection;
 use super::{
     MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity, mapping,
@@ -25,6 +26,7 @@ use actions::{Page, Row};
 pub use collect::{VoiceSongCollectPlan, VoiceSongCollectResult};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
 pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
+pub use purchased::{VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult};
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
 use serde::Serialize;
 use serde_json::Value;
@@ -329,6 +331,7 @@ impl MusicClient {
             rows,
             picker: Default::default(),
             collect: Default::default(),
+            purchase: Default::default(),
             receipt: uuid::Uuid::new_v4().simple().to_string(),
             created: Instant::now(),
         });

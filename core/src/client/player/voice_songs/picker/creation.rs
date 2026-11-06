@@ -1,5 +1,7 @@
 //! An explicit create form, then one add to the verified newly created ID.
-use super::{Destination, Lease, MusicClient, Page, VoiceSongDownloadPicker, result};
+use super::{
+    Bound, Destination, Lease, MusicClient, Page, Target, VoiceSongDownloadPicker, result,
+};
 use crate::{
     Error, Result,
     client::dto::VoiceSongDownloadDecision,
@@ -7,7 +9,6 @@ use crate::{
     protocol::api::{PlaylistAddPermission, playlist_name},
 };
 use serde::Serialize;
-use std::sync::Arc;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,16 +113,14 @@ async fn add_once(
 impl MusicClient {
     fn voice_song_create_scope(
         &self,
-        epoch: &str,
-        play_id: &str,
-        receipt: &str,
+        target: Target<'_>,
     ) -> Result<(
-        Arc<Page>,
+        Bound,
         impl Fn() -> Result<()> + Send + Sync + 'static + use<>,
     )> {
-        let (page, picker_scope) = self.voice_song_picker_scope(epoch, play_id, receipt)?;
-        let api = page.api.upgrade().ok_or(Error::StaleResponse)?;
-        let revision = page.revision.clone();
+        let (bound, picker_scope) = self.voice_song_picker_scope(target)?;
+        let api = bound.page.api.upgrade().ok_or(Error::StaleResponse)?;
+        let revision = bound.page.revision.clone();
         let check = move || {
             if api
                 .song_card_playlist_create_scope_revision()
@@ -134,7 +133,7 @@ impl MusicClient {
             picker_scope()
         };
         check()?;
-        Ok((page, check))
+        Ok((bound, check))
     }
 
     /// Explicit create submission. Privacy is mandatory and never inferred.
@@ -147,17 +146,30 @@ impl MusicClient {
         name: &str,
         private: bool,
     ) -> Result<VoiceSongDownloadCreation> {
-        let (page, check) = self.voice_song_create_scope(epoch, play_id, card_receipt)?;
+        self.voice_song_create_playlist(
+            Target::ordinary(epoch, play_id, card_receipt, index),
+            name,
+            private,
+        )
+        .await
+    }
+
+    pub(in crate::client::player::voice_songs) async fn voice_song_create_playlist(
+        &self,
+        target: Target<'_>,
+        name: &str,
+        private: bool,
+    ) -> Result<VoiceSongDownloadCreation> {
+        let (bound, check) = self.voice_song_create_scope(target)?;
+        let page = &bound.page;
         let name = playlist_name(name)?;
-        page.rows
-            .get(index)
-            .filter(|row| row.playlist_eligible && row.download == super::Class::Ordinary)
-            .ok_or(Error::InvalidInput("invalid vinyl episode download row"))?;
+        if !bound.row().playlist_eligible {
+            return Err(Error::InvalidInput("invalid vinyl episode download row"));
+        }
         let service = PlaylistService::new(self.session.clone())?;
         let (mut lease, repeated) = page.picker.choose(
             &service,
-            &page,
-            index,
+            &bound,
             Destination::New {
                 name: name.clone(),
                 private,
@@ -170,10 +182,10 @@ impl MusicClient {
                 .operation_for(&page.token, creation_id(&lease)?)?
                 .ok_or(Error::StaleResponse)?
         } else {
-            let plan = self
-                .player_voice_song_download_prepare(epoch, play_id, card_receipt, index)
+            let decision = self
+                .voice_song_download_decision(target.epoch, page, bound.row(), true)
                 .await?;
-            if plan.decision != VoiceSongDownloadDecision::PlaylistRequired {
+            if decision != VoiceSongDownloadDecision::PlaylistRequired {
                 return Err(Error::State(
                     "this SongCard download does not require a playlist destination",
                 ));
@@ -192,12 +204,12 @@ impl MusicClient {
         {
             // Normal official flow chains the initial add after the acknowledged
             // creation. An ambiguous creation/read-back needs explicit resume.
-            Some(add_once(&service, &page, &lease, &check).await?)
+            Some(add_once(&service, page, &lease, &check).await?)
         } else {
             service.operation_for(&page.token, &lease.attempt.operation)?
         };
         check()?;
-        view(&page, &lease, create, add)
+        view(page, &lease, create, add)
     }
 
     /// Read only, even if this read verifies an ambiguous create. The host
@@ -210,8 +222,21 @@ impl MusicClient {
         index: usize,
         reconcile: bool,
     ) -> Result<VoiceSongDownloadCreation> {
-        let (page, check) = self.voice_song_create_scope(epoch, play_id, card_receipt)?;
-        let mut lease = page.picker.get(index, None)?;
+        self.voice_song_creation_status(
+            Target::ordinary(epoch, play_id, card_receipt, index),
+            reconcile,
+        )
+        .await
+    }
+
+    pub(in crate::client::player::voice_songs) async fn voice_song_creation_status(
+        &self,
+        target: Target<'_>,
+        reconcile: bool,
+    ) -> Result<VoiceSongDownloadCreation> {
+        let (bound, check) = self.voice_song_create_scope(target)?;
+        let page = &bound.page;
+        let mut lease = page.picker.get(&bound, None)?;
         let service = PlaylistService::new(self.session.clone())?;
         let id = creation_id(&lease)?;
         let create = if reconcile {
@@ -235,7 +260,7 @@ impl MusicClient {
             );
         }
         check()?;
-        view(&page, &lease, create, add)
+        view(page, &lease, create, add)
     }
 
     /// Explicit continuation after recovery of a created playlist. If the add
@@ -247,15 +272,24 @@ impl MusicClient {
         card_receipt: &str,
         index: usize,
     ) -> Result<VoiceSongDownloadCreation> {
-        let (page, check) = self.voice_song_create_scope(epoch, play_id, card_receipt)?;
-        let mut lease = page.picker.get(index, None)?;
+        self.voice_song_add_created_playlist(Target::ordinary(epoch, play_id, card_receipt, index))
+            .await
+    }
+
+    pub(in crate::client::player::voice_songs) async fn voice_song_add_created_playlist(
+        &self,
+        target: Target<'_>,
+    ) -> Result<VoiceSongDownloadCreation> {
+        let (bound, check) = self.voice_song_create_scope(target)?;
+        let page = &bound.page;
+        let mut lease = page.picker.get(&bound, None)?;
         let service = PlaylistService::new(self.session.clone())?;
         let create = service
             .operation_for(&page.token, creation_id(&lease)?)?
             .ok_or(Error::StaleResponse)?;
         observe_creation(&mut lease, &create)?;
-        let add = add_once(&service, &page, &lease, &check).await?;
+        let add = add_once(&service, page, &lease, &check).await?;
         check()?;
-        view(&page, &lease, create, Some(add))
+        view(page, &lease, create, Some(add))
     }
 }

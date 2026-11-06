@@ -3,7 +3,7 @@ mod creation;
 use super::{
     MusicClient,
     actions::Page,
-    download::{Admission, Class, VoiceSongDownloadDecision},
+    download::{Admission, Bound, Target, VoiceSongDownloadDecision},
     stale_credentials,
 };
 use crate::{
@@ -24,6 +24,7 @@ use std::sync::{
 #[derive(Clone)]
 struct Attempt {
     index: usize,
+    purchase: Option<String>,
     destination: Destination,
     operation: String,
     permit: String,
@@ -120,11 +121,13 @@ impl Shelf {
     fn choose<'a>(
         &'a self,
         service: &PlaylistService,
-        page: &Page,
-        index: usize,
+        bound: &Bound,
         destination: Destination,
     ) -> Result<(Lease<'a>, bool)> {
         let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        let index = bound.index;
+        let purchase = bound.purchase_receipt();
+        let page = &bound.page;
         if let Some(active) = slot.as_mut() {
             if active.busy {
                 return Err(Error::MutationBusy);
@@ -135,7 +138,10 @@ impl Shelf {
                 None => None,
             };
             if add.is_some() || create.is_some() {
-                if active.index == index && active.destination.same_request(&destination) {
+                if active.index == index
+                    && active.purchase.as_deref() == purchase
+                    && active.destination.same_request(&destination)
+                {
                     active.busy = true;
                     return Ok((
                         Lease {
@@ -156,6 +162,7 @@ impl Shelf {
         }
         let attempt = Attempt {
             index,
+            purchase: purchase.map(str::to_owned),
             destination,
             operation: uuid::Uuid::new_v4().simple().to_string(),
             permit: uuid::Uuid::new_v4().simple().to_string(),
@@ -172,12 +179,13 @@ impl Shelf {
         ))
     }
 
-    fn get(&self, index: usize, permit: Option<&str>) -> Result<Lease<'_>> {
+    fn get(&self, bound: &Bound, permit: Option<&str>) -> Result<Lease<'_>> {
         let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         let active = slot
             .as_mut()
             .filter(|active| {
-                active.index == index
+                active.index == bound.index
+                    && active.purchase.as_deref() == bound.purchase_receipt()
                     && permit.is_none_or(|value| {
                         value == active.permit && !active.consumed.load(Ordering::Acquire)
                     })
@@ -255,16 +263,14 @@ fn result(
 impl MusicClient {
     fn voice_song_picker_scope(
         &self,
-        epoch: &str,
-        play_id: &str,
-        receipt: &str,
+        target: Target<'_>,
     ) -> Result<(
-        Arc<Page>,
+        Bound,
         impl Fn() -> Result<()> + Send + Sync + 'static + use<>,
     )> {
-        let (page, download_scope) = self.voice_song_download_scope(epoch, play_id, receipt)?;
-        let api = page.api.upgrade().ok_or(Error::StaleResponse)?;
-        let revision = page.revision.clone();
+        let (bound, download_scope) = self.voice_song_bound_download(target)?;
+        let api = bound.page.api.upgrade().ok_or(Error::StaleResponse)?;
+        let revision = bound.page.revision.clone();
         let check = move || {
             if api
                 .song_card_playlist_scope_revision()
@@ -277,7 +283,7 @@ impl MusicClient {
             download_scope()
         };
         check()?;
-        Ok((page, check))
+        Ok((bound, check))
     }
 
     pub async fn player_voice_song_download_choose_playlist(
@@ -288,29 +294,38 @@ impl MusicClient {
         index: usize,
         playlist_id: &str,
     ) -> Result<VoiceSongDownloadPicker> {
-        let (page, check) = self.voice_song_picker_scope(epoch, play_id, card_receipt)?;
+        self.voice_song_choose_playlist(
+            Target::ordinary(epoch, play_id, card_receipt, index),
+            playlist_id,
+        )
+        .await
+    }
+
+    pub(super) async fn voice_song_choose_playlist(
+        &self,
+        target: Target<'_>,
+        playlist_id: &str,
+    ) -> Result<VoiceSongDownloadPicker> {
+        let (bound, check) = self.voice_song_picker_scope(target)?;
+        let page = &bound.page;
         let playlist = identifier(&json!(playlist_id))?;
-        let row = page
-            .rows
-            .get(index)
-            .filter(|row| row.download == Class::Ordinary && row.playlist_eligible)
-            .ok_or(Error::InvalidInput("invalid vinyl episode download row"))?;
+        let row = bound.row();
+        if !row.playlist_eligible {
+            return Err(Error::InvalidInput("invalid vinyl episode download row"));
+        }
         let service = PlaylistService::new(self.session.clone())?;
-        let (lease, existing) = page.picker.choose(
-            &service,
-            &page,
-            index,
-            Destination::Existing(playlist.clone()),
-        )?;
+        let (lease, existing) =
+            page.picker
+                .choose(&service, &bound, Destination::Existing(playlist.clone()))?;
         let record = if existing {
             service
                 .operation_for(&page.token, &lease.attempt.operation)?
                 .ok_or(Error::StaleResponse)?
         } else {
-            let plan = self
-                .player_voice_song_download_prepare(epoch, play_id, card_receipt, index)
+            let decision = self
+                .voice_song_download_decision(target.epoch, page, row, true)
                 .await?;
-            if plan.decision != VoiceSongDownloadDecision::PlaylistRequired {
+            if decision != VoiceSongDownloadDecision::PlaylistRequired {
                 return Err(Error::State(
                     "this SongCard download does not require a playlist destination",
                 ));
@@ -328,7 +343,7 @@ impl MusicClient {
                 .map_err(stale_credentials)?
         };
         check()?;
-        result(&page, &lease.attempt, record)
+        result(page, &lease.attempt, record)
     }
 
     /// Same current picker only; no externally supplied operation ID and no add replay.
@@ -340,8 +355,21 @@ impl MusicClient {
         index: usize,
         reconcile: bool,
     ) -> Result<VoiceSongDownloadPicker> {
-        let (page, check) = self.voice_song_picker_scope(epoch, play_id, card_receipt)?;
-        let lease = page.picker.get(index, None)?;
+        self.voice_song_picker_status(
+            Target::ordinary(epoch, play_id, card_receipt, index),
+            reconcile,
+        )
+        .await
+    }
+
+    pub(super) async fn voice_song_picker_status(
+        &self,
+        target: Target<'_>,
+        reconcile: bool,
+    ) -> Result<VoiceSongDownloadPicker> {
+        let (bound, check) = self.voice_song_picker_scope(target)?;
+        let page = &bound.page;
+        let lease = page.picker.get(&bound, None)?;
         let service = PlaylistService::new(self.session.clone())?;
         let record = if reconcile {
             service
@@ -354,7 +382,7 @@ impl MusicClient {
                 .ok_or(Error::State("picker playlist operation is missing"))?
         };
         check()?;
-        result(&page, &lease.attempt, record)
+        result(page, &lease.attempt, record)
     }
 
     pub async fn player_voice_song_download_start_from_playlist(
@@ -366,12 +394,27 @@ impl MusicClient {
         continuation: &str,
         options: DownloadOptions,
     ) -> Result<DownloadResult> {
-        let (page, check) = self.voice_song_picker_scope(epoch, play_id, card_receipt)?;
-        let lease = page.picker.get(index, Some(continuation))?;
+        self.voice_song_start_from_playlist(
+            Target::ordinary(epoch, play_id, card_receipt, index),
+            continuation,
+            options,
+        )
+        .await
+    }
+
+    pub(super) async fn voice_song_start_from_playlist(
+        &self,
+        target: Target<'_>,
+        continuation: &str,
+        options: DownloadOptions,
+    ) -> Result<DownloadResult> {
+        let (bound, check) = self.voice_song_picker_scope(target)?;
+        let page = &bound.page;
+        let lease = page.picker.get(&bound, Some(continuation))?;
         let record = PlaylistService::new(self.session.clone())?
             .operation_for(&page.token, &lease.attempt.operation)?
             .ok_or(Error::StaleResponse)?;
-        if result(&page, &lease.attempt, record)?
+        if result(page, &lease.attempt, record)?
             .continuation
             .as_deref()
             != Some(continuation)
@@ -379,9 +422,8 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         self.start_resolved_song_download(
-            epoch,
-            &page,
-            index,
+            target.epoch,
+            &bound,
             options,
             Admission::Picker(lease.attempt.consumed.clone()),
             check,

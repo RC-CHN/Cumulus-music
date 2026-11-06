@@ -91,6 +91,7 @@ pub(super) struct Page {
     pub(super) rows: Vec<Row>,
     pub(super) picker: super::picker::Shelf,
     pub(super) collect: super::collect::Shelf,
+    pub(super) purchase: super::purchased::Shelf,
     pub(super) receipt: String,
     pub(super) created: Instant,
 }

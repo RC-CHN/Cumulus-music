@@ -1,0 +1,62 @@
+播客播放页「包含歌曲」：已购单曲的下载音质与歌单前置条件
+
+证据为 Windows 3.1.42.205594 恢复的 PC webpack 工厂，
+references/netease-3.1.42.205594-analysis/recovered-js/modules/：
+- hybrid_73…/3085.js:3806–3838 先过滤已经完成、本地匹配以及合作方下架；
+  :3840–3883 对非云盘单曲执行 M/27.e、M/27.v 和 M/23.x（即 M/21.f）。
+  M/27.e:280–293 在 pre 模式要有下载码率，另有会员 qq/ts 分支，
+  maxPlayBd 有值先判失败。M/27.v:295–317 的下载屏蔽和跳转，
+  M/21.f:258–264 的版权状态、未购 fee 条件和后续收银台均不作为已购凭证。
+- M/3085:3455–3473 仅对通过 M/35.h 的行打开选音质。M/35:79–80
+  的永久购买判定是 payed 的数值掩码 & 6（掩码 0x02 或 0x04），不是 fee、
+  非零 payed、会员、试听或页面标签。M/21.A:343–368 投影原始 st、dl、
+  bd、flag、cs；maxSongBr 是 ceil(maxbr/1000)，与 maxBrLevel 是两个值。
+- M/40.c:341–353、M/7:93–104、M/59.c:177–188：低档按 maxSongBr
+  阈值；高档是 M/23.v:309–343 对独立素材位的判断，即 Hi-Res 12、
+  JYEffect 17、JYMaster 16、Sky 18、Vivid 21。Dolby 素材位为 14，
+  但不出现在这个弹窗。PC Vivid 还要 M/34:85–87 的
+  PH-PC-hyyinzhi=t1 且 PH-PC-zhenyingn=t1。
+- hybrid_121…/3051.js:17–39 实际只渲染有 tagSelectionMeta 的档位，
+  由高至低，选中第一项作为默认，但要明确确认；M/31:1152–1193 的
+  关闭回调不选择。准确顺序：vivid、sky、jymaster、jyeffect、hires、
+  lossless、exhigh、standard，逐项取满足的子集。无 64 AAC、192 或 Dolby；
+  低档的三个门槛分别为 999、320、128 kbps。原组件对空可见表未防护；
+  Rust 返回不可用，不猜测标准音质。
+- M/3085:3965–3982 明确先确认音质（取消立即返回），再检查已喜欢或
+  可信原歌单来源，否则进入「下载到歌单」。本条是 SongCard 单曲入口，
+  没有原歌单来源，不从作品/专辑/搜索身份推断。:4010–4017 将此次
+  quality 随下载动作提交，不改默认设置。下载接口 M/15:3246；
+  现原生调度器继续请求 POST /api/song/enhance/download/url/v1，
+  {id,level,immerseType:"c51"}，采用授权返回的实际音质、内容和容器规则。
+
+Rust 接线
+player_voice_song_purchased_download 为 native-only。Prepare 只提供实际
+可见、排序后的档位；Select 明确提交其中一档，检查当前账号喜欢状态后发出
+绑定当前节目/卡片回执/行号/档位的选择回执。未知喜欢状态不发回执；没有持久
+任务或歌单变更。Cancel 仅让该选择失效。旧桌面 prepare 保留
+extended_rights_unsupported，旧普通 SongCard start、歌单选择、创建与回读
+不能消费这个回执。普通目录单曲的其他独立下载入口没有更改。
+
+选择后，已喜欢可直接开始；未喜欢沿用现有归属检查、目的歌单操作日志和
+读回规则。尝试和继续回执绑定同一个选择；已有歌单明确 add=false 可在
+提醒后继续，新建歌单必须确认加入。未知结果不得拿下载作为成功，也不重放写入。
+任务入库前重新校验当前节目/卡片、账号及签名 Cookie 作用域、选定档位、任务
+和本地重复项；Vivid 还要当前同凭据已核实验。仅在入库后消费继续回执。原生
+高音质转码、加密与离线播放仍使用实际服务授权，选项本身不是媒体授权。
+单曲范围只接受归属相符、已核签名的普通 track，明确非负 status、正下载
+码率、无 bd/云盘/节目身份的数字字段。未知、异常值以及付费但未买、购买/
+收银台、音乐包或 VIP 推定、付费单集等分支不接入此操作。未新增前端、IPC、
+购物或真实账号探测。
+
+对照
+本地用 Node vm 执行恢复的 M/21、M/23.v、M/34.l、M/35.h、M/7、M/59.c、
+M/40、M/3051，宿主/store/React 仅作合成 stub。10 组原始选择矩阵，
+证据 .build/research/phase113-purchased-song/official-choice-vectors.json，
+无服务请求，不作为 Rust 通过证据。关键源 SHA-256：
+M/3085 121b1cc930b106acf5bb01d86305725ddd6abe2484120fee339a682301c7f0be
+M/27 e0eac91ccb6d66f44731b3a4c3c132f86c2d3106cbe5ed6cbb7476923551d2f8
+M/40 cdfddc3419a39eebb8c572e97585484ec37358996d5dd6b2ef5ad268c752fdab
+M/3051 4a2dc89ffdf6fe306eb2c368cd90c8ebdfefb283ee09a5972cd89b9e70121480
+Rust 使用签名 MusicHttpClient、合成账户和关闭的 HTTP 后端验证回执、请求
+顺序/字段、撤销与失效、无越权写入、持久任务及默认档未改。媒体授权在用例中
+明确拒绝，所以这些检查不声称实际付费资源媒体下载、桌面弹窗或真实权益通过。

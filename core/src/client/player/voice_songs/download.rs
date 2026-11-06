@@ -1,5 +1,11 @@
-//! Native prerequisite for the ordinary, already-liked SongCard download.
-use super::{MusicClient, actions::Page, id};
+//! Common guarded admission for ordinary and explicitly selected purchased songs.
+use super::{
+    MusicClient,
+    actions::{Page, Row},
+    id,
+    purchased::{Offer, Selection, vivid_enabled},
+    seed, stale_credentials,
+};
 use crate::{
     Error, Result,
     account::{
@@ -8,6 +14,7 @@ use crate::{
     },
     client::dto::{DownloadResult, SongDownloadState},
     download::service::DownloadOptions,
+    membership::Quality,
     protocol::wire::serialization::js_truthy,
 };
 use serde::Serialize;
@@ -20,6 +27,7 @@ use std::sync::{
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Class {
     Ordinary,
+    Purchased(Offer),
     ExtendedRights,
     Cloud,
     Unavailable,
@@ -45,6 +53,11 @@ pub(super) fn classify(row: &Value, track_id: &str) -> Class {
     if js_truthy(&p["cs"]) {
         return Class::Cloud;
     }
+    if p["fee"].as_i64().is_some_and(|fee| fee >= 0)
+        && let Some(offer) = Offer::from_privilege(p)
+    {
+        return Class::Purchased(offer);
+    }
     if js_truthy(&p["payed"]) || p["fee"].as_i64().is_some_and(|fee| fee > 0) {
         return Class::ExtendedRights;
     }
@@ -63,6 +76,7 @@ pub(super) fn classify(row: &Value, track_id: &str) -> Class {
 #[serde(rename_all = "snake_case")]
 pub enum VoiceSongDownloadDecision {
     Ready,
+    PurchasedQualityRequired,
     PlaylistRequired,
     MembershipUnknown,
     Complete,
@@ -81,6 +95,62 @@ pub struct VoiceSongDownloadPlan {
     pub play_id: String,
     pub track_id: String,
     pub decision: VoiceSongDownloadDecision,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub purchased_qualities: Vec<Quality>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct Target<'a> {
+    pub(super) epoch: &'a str,
+    play_id: &'a str,
+    card_receipt: &'a str,
+    pub(super) index: usize,
+    selected: Option<&'a str>,
+}
+
+impl<'a> Target<'a> {
+    pub(super) fn ordinary(
+        epoch: &'a str,
+        play_id: &'a str,
+        card_receipt: &'a str,
+        index: usize,
+    ) -> Self {
+        Self {
+            epoch,
+            play_id,
+            card_receipt,
+            index,
+            selected: None,
+        }
+    }
+
+    pub(super) fn purchased<'b>(self, selected: &'b str) -> Target<'b>
+    where
+        'a: 'b,
+    {
+        Target {
+            selected: Some(selected),
+            ..self
+        }
+    }
+}
+
+pub(super) struct Bound {
+    pub(super) page: Arc<Page>,
+    pub(super) index: usize,
+    selected: Option<Arc<Selection>>,
+}
+
+impl Bound {
+    pub(super) fn row(&self) -> &Row {
+        &self.page.rows[self.index]
+    }
+
+    pub(super) fn purchase_receipt(&self) -> Option<&str> {
+        self.selected
+            .as_ref()
+            .map(|selection| selection.receipt.as_str())
+    }
 }
 
 fn membership(
@@ -114,6 +184,52 @@ impl MusicClient {
         })
     }
 
+    pub(super) fn voice_song_bound_download(
+        &self,
+        target: Target<'_>,
+    ) -> Result<(
+        Bound,
+        impl Fn() -> Result<()> + Send + Sync + 'static + use<>,
+    )> {
+        let (page, scope) =
+            self.voice_song_download_scope(target.epoch, target.play_id, target.card_receipt)?;
+        let row = page
+            .rows
+            .get(target.index)
+            .ok_or(Error::InvalidInput("invalid vinyl episode song row"))?;
+        let selected = match (row.download, target.selected) {
+            (Class::Ordinary, None) => None,
+            (Class::Purchased(_), Some(receipt)) => Some(page.purchase.get(target.index, receipt)?),
+            _ => {
+                return Err(Error::InvalidInput(
+                    "invalid vinyl episode download row or purchase selection",
+                ));
+            }
+        };
+        let active = selected.clone();
+        let experiments = self.pc_experiments.clone();
+        let owner = page.clone();
+        let check = move || {
+            scope()?;
+            if let Some(selection) = &active {
+                selection.check()?;
+                if selection.quality == Quality::Vivid && !vivid_enabled(&experiments, &owner)? {
+                    return Err(Error::StaleResponse);
+                }
+            }
+            Ok(())
+        };
+        check()?;
+        Ok((
+            Bound {
+                page,
+                index: target.index,
+                selected,
+            },
+            check,
+        ))
+    }
+
     pub async fn player_voice_song_download_prepare(
         &self,
         epoch: &str,
@@ -121,14 +237,60 @@ impl MusicClient {
         receipt: &str,
         index: usize,
     ) -> Result<VoiceSongDownloadPlan> {
+        self.voice_song_download_prepare(epoch, play_id, receipt, index, false)
+            .await
+    }
+
+    pub(super) async fn voice_song_download_prepare(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        index: usize,
+        show_purchase: bool,
+    ) -> Result<VoiceSongDownloadPlan> {
         use VoiceSongDownloadDecision as D;
         let (page, check) = self.voice_song_download_scope(epoch, play_id, receipt)?;
         let row = page
             .rows
             .get(index)
             .ok_or(Error::InvalidInput("invalid vinyl episode song row"))?;
-        let id = row.track.id.clone();
-        let decision = match self.song_download_state(epoch, &id).await? {
+        let mut decision = self
+            .voice_song_download_decision(epoch, &page, row, false)
+            .await?;
+        let mut purchased_qualities = Vec::new();
+        if let (D::PurchasedQualityRequired, Class::Purchased(offer)) = (decision, row.download) {
+            if show_purchase {
+                purchased_qualities = offer.qualities(vivid_enabled(&self.pc_experiments, &page)?);
+                if purchased_qualities.is_empty() {
+                    decision = D::Unavailable;
+                }
+            } else {
+                // Existing desktop IPC will not see a new decision until it
+                // can complete the dedicated quality choice end to end.
+                decision = D::ExtendedRightsUnsupported;
+            }
+        }
+        check()?;
+        Ok(VoiceSongDownloadPlan {
+            epoch: epoch.into(),
+            play_id: play_id.into(),
+            track_id: row.track.id.clone(),
+            decision,
+            purchased_qualities,
+        })
+    }
+
+    pub(super) async fn voice_song_download_decision(
+        &self,
+        epoch: &str,
+        page: &Page,
+        row: &Row,
+        quality_selected: bool,
+    ) -> Result<VoiceSongDownloadDecision> {
+        use VoiceSongDownloadDecision as D;
+        let song = row.track.id.clone();
+        Ok(match self.song_download_state(epoch, &song).await? {
             SongDownloadState::Complete => D::Complete,
             SongDownloadState::Waiting => D::Waiting,
             SongDownloadState::Working => D::Working,
@@ -137,7 +299,6 @@ impl MusicClient {
                 let local = self.local.context().await?;
                 let session = self.session.clone();
                 let token = page.token.clone();
-                let song = id.clone();
                 let class = row.download;
                 tokio::task::spawn_blocking(move || {
                     if !local
@@ -148,7 +309,8 @@ impl MusicClient {
                         return Ok(D::Complete);
                     }
                     match class {
-                        Class::Ordinary => membership(session, &token, &song),
+                        Class::Purchased(_) if !quality_selected => Ok(D::PurchasedQualityRequired),
+                        Class::Ordinary | Class::Purchased(_) => membership(session, &token, &song),
                         Class::Cloud => Ok(D::CloudUnsupported),
                         Class::ExtendedRights => Ok(D::ExtendedRightsUnsupported),
                         Class::Unavailable => Ok(D::Unavailable),
@@ -157,13 +319,6 @@ impl MusicClient {
                 .await
                 .map_err(|_| Error::State("SongCard download admission worker stopped"))??
             }
-        };
-        check()?;
-        Ok(VoiceSongDownloadPlan {
-            epoch: epoch.into(),
-            play_id: play_id.into(),
-            track_id: id,
-            decision,
         })
     }
 
@@ -177,19 +332,6 @@ impl MusicClient {
         options: DownloadOptions,
     ) -> Result<DownloadResult> {
         let (page, check) = self.voice_song_download_scope(epoch, play_id, receipt)?;
-        self.start_resolved_song_download(epoch, &page, index, options, Admission::Liked, check)
-            .await
-    }
-
-    pub(super) async fn start_resolved_song_download(
-        &self,
-        epoch: &str,
-        page: &Page,
-        index: usize,
-        options: DownloadOptions,
-        admission: Admission,
-        check: impl Fn() -> Result<()> + Send + 'static,
-    ) -> Result<DownloadResult> {
         let row = page
             .rows
             .get(index)
@@ -199,11 +341,38 @@ impl MusicClient {
                 "song requires a different download authorization flow",
             ));
         }
-        let id = row.track.id.clone();
+        let bound = Bound {
+            page,
+            index,
+            selected: None,
+        };
+        self.start_resolved_song_download(epoch, &bound, options, Admission::Liked, check)
+            .await
+    }
+
+    pub(super) async fn start_resolved_song_download(
+        &self,
+        epoch: &str,
+        bound: &Bound,
+        options: DownloadOptions,
+        admission: Admission,
+        check: impl Fn() -> Result<()> + Send + 'static,
+    ) -> Result<DownloadResult> {
+        if bound
+            .selected
+            .as_ref()
+            .is_some_and(|selection| options.quality != selection.quality)
+        {
+            return Err(Error::InvalidInput(
+                "download options differ from the selected purchased quality",
+            ));
+        }
+        let selected = bound.selected.clone();
+        let id = bound.row().track.id.clone();
         let song = id.clone();
         let local = self.local.context().await?;
         let session = self.session.clone();
-        let token = page.token.clone();
+        let token = bound.page.token.clone();
         let (needs_liked, consumed) = match admission {
             Admission::Liked => (true, None),
             Admission::Picker(consumed) => (false, Some(consumed)),
@@ -224,6 +393,9 @@ impl MusicClient {
         }, move || {
             if let Some(consumed) = consumed {
                 consumed.store(true, Ordering::Release);
+            }
+            if let Some(selected) = selected {
+                selected.retired.store(true, Ordering::Release);
             }
         }).await
     }
