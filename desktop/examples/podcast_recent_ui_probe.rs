@@ -28,6 +28,8 @@ mod voice_page_fixture;
 mod voice_podcast_collect_fixture;
 #[path = "support/voice_recommendation_fixture.rs"]
 mod voice_recommendation_fixture;
+#[path = "support/voice_song_collect_fixture.rs"]
+mod voice_song_collect_fixture;
 #[path = "support/voice_song_download_fixture.rs"]
 mod voice_song_download_fixture;
 #[path = "support/voice_songs_fixture.rs"]
@@ -84,6 +86,7 @@ struct Library {
     voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
     voice_songs: Option<voice_songs_fixture::Fixture>,
     voice_song_download: Option<Arc<voice_song_download_fixture::Fixture>>,
+    voice_song_collect: Option<voice_song_collect_fixture::Fixture>,
 }
 
 fn radio() -> Value {
@@ -329,6 +332,13 @@ impl Api for Library {
         self.song_card_download_scope_revision()
     }
 
+    fn song_card_collection_scope_revision(&self) -> Result<Option<String>> {
+        Ok(self
+            .voice_song_collect
+            .as_ref()
+            .map(|_| voice_songs_fixture::REVISION.to_owned()))
+    }
+
     fn request_guarded_playlist_add<'a>(
         &'a self,
         write: GuardedPlaylistAdd,
@@ -336,6 +346,12 @@ impl Api for Library {
         dispatched: &'a AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(proof) = &self.voice_song_collect {
+                let (path, body) = write.into_request()?;
+                permission()?;
+                dispatched.store(true, Ordering::Release);
+                return proof.add(path, body);
+            }
             let proof = self
                 .voice_song_download
                 .as_ref()
@@ -374,6 +390,11 @@ impl Api for Library {
                 if let Some(reply) = actions.route(path, &body) {
                     return reply;
                 }
+            }
+            if let Some(collect) = &self.voice_song_collect
+                && let Some(reply) = collect.read(path, &body, cache)
+            {
+                return Ok(reply);
             }
             if let Some(download) = &self.voice_song_download
                 && let Some(reply) = download.read(path, &body, cache)
@@ -556,11 +577,18 @@ fn main() {
             .is_none_or(|case| matches!(case, "double" | "cover" | "dense"))
     );
     let voice_song_download_case = std::env::var("CUMULUS_VOICE_SONG_DOWNLOAD_PROOF").ok();
+    let voice_song_collect_enabled =
+        std::env::var("CUMULUS_VOICE_SONG_COLLECT_PROOF").as_deref() == Ok("1");
     assert!(!(voice_songs_case.is_some() && voice_song_download_case.is_some()));
+    assert!(
+        !voice_song_collect_enabled
+            || (voice_songs_case.is_none() && voice_song_download_case.is_none())
+    );
     let voice_song_download = voice_song_download_case
         .as_deref()
         .map(|case| Arc::new(voice_song_download_fixture::Fixture::new(case)));
-    let voice_songs_enabled = voice_songs_case.is_some() || voice_song_download.is_some();
+    let voice_songs_enabled =
+        voice_songs_case.is_some() || voice_song_download.is_some() || voice_song_collect_enabled;
     let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
         .ok()
         .or_else(|| voice_detail_enabled.then(|| "header".to_owned()));
@@ -633,8 +661,11 @@ fn main() {
         voice_songs: voice_songs_case
             .as_deref()
             .or_else(|| voice_song_download.as_ref().map(|_| "download"))
+            .or(voice_song_collect_enabled.then_some("collect"))
             .map(voice_songs_fixture::Fixture::new),
         voice_song_download: voice_song_download.clone(),
+        voice_song_collect: voice_song_collect_enabled
+            .then(voice_song_collect_fixture::Fixture::default),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -660,6 +691,8 @@ fn main() {
         || {
             if badges_enabled {
                 include_str!("podcast_badges_ui_probe.js").to_owned()
+            } else if voice_song_collect_enabled {
+                include_str!("voice_song_collect_ui_probe.js").to_owned()
             } else if voice_song_download_case.is_some() {
                 include_str!("voice_song_download_ui_probe.js").to_owned()
             } else if voice_songs_enabled {
@@ -822,6 +855,9 @@ fn main() {
                 }
                 if let Some(shelf) = &api.voice_recommendations {
                     value["voiceRecommendationsTrace"] = shelf.snapshot();
+                }
+                if let Some(collect) = &api.voice_song_collect {
+                    value["voiceSongCollectTrace"] = collect.snapshot();
                 }
                 if let Some(download) = &api.voice_song_download {
                     value["voiceSongDownloadTrace"] = download.snapshot();
