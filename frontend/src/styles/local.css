@@ -132,6 +132,9 @@
   background: transparent;
   border-radius: 6px;
 }
+.local-groups button:focus-visible {
+  outline-offset: -2px;
+}
 .local-groups button[aria-pressed='true'] {
   background: var(--surface-alt);
   color: var(--accent);
