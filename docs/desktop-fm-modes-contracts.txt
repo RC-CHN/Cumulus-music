@@ -116,3 +116,11 @@ complete/capture和独立审计通过；c的independent-reopen-audit确认持久
 12秒位置、专区EOF自动续曲及14秒暂停重启恢复均有原生/SQLite对应证明。
 当前Rust全量698次、前端96项通过，格式/Clippy/类型检查/正式桌面构建通过；
 日志与先前失败原因详见rust-core-validation.txt。本报告不是全目标完成声明。
+
+2026-11-06 桌面回归：`3e91f381` 的 Linux CI 已通过普通模式探针，随后空漫游
+探针在准备原曲时停在定位。原生仍暂停在约 0.356 秒，没有解码报错；旧探针仅等
+暂停事件便发送 change，早于部分 IPC 回执解除进度条禁用。两种模式的探针现等
+同一播放 ID、同一曲目和有效进度条，才发送一次 10 秒定位，并核对原生时钟与暂停。
+在 Linux 实际 WebKit 和 Ubuntu libmpv 0.37 上，普通/空漫游各两个进程通过
+50+3、13+5 个状态；没有修改生产播放器或重试定位。
+记录在 `.build/ui-proof/phase84-mode-ready-r1/` 和 `.build/ui-proof/phase84-mode-empty-ready-r1/`。
