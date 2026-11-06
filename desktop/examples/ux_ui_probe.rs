@@ -1138,7 +1138,7 @@ fn main() {
                 }
                 let owner=fixture_session.token().unwrap().uid.unwrap_or_default();
                 value["syntheticQueueTip"]=json!({
-                    "nativeFocused":main.is_focused().unwrap(),"nativeVisible":main.is_visible().unwrap(),
+                    "nativeFocused":cumulus_desktop::queue_tip_window_foreground(&main).unwrap(),"nativeVisible":main.is_visible().unwrap(),
                     "seen":proof_store.get(&owner,"queue-more-v1","tip-seen").unwrap()==Some(json!(true))
                 });
             }
