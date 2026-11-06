@@ -122,5 +122,16 @@ The native_local_equalizer_probe and scripts/ci/native_local_equalizer_smoke.py
 --indexed-flac-only exercise an actual isolated GTK/WebView process, native
 library scan and typed indexed row selection, verified graph and wrong-digest
 held stock, paused seek, resumed source clock, EOF and durable settings.
-The probe is prepared; no execution is claimed here. It uses synthetic
-audio, null output and no service egress.
+On Linux both cases passed with system libmpv and libFLAC, using synthetic
+audio, null output, a real GTK WebView and no service egress. The trusted
+case loaded one indexed descriptor as pcm_f32le, processed both native
+entries around a paused seek, and reached a single EOF. The incorrect
+digest loaded that route as stock flac, kept one native entry across seek,
+and reached EOF with no graph callback. Neither made a pathname-based
+ordinary load. The receipts are in `.build/ui-proof/phase83-indexed-flac-r1/`.
+Both cases also passed with the packaged FLAC decoder (SHA-256
+2187c6cf9cc5d60a4a02b28502dd2f4a9ac6712be45d1f6df295a462d2f0e873) and the
+Ubuntu 24.04 libmpv 0.37 runtime; numeric locale was C after GTK startup
+while the system message locale stayed intact. See
+`.build/ui-proof/phase83-indexed-flac-old-r1/`. This is a local run with
+the CI runtime, separate from the hosted gate, with no physical output.
