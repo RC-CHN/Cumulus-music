@@ -2,7 +2,10 @@ use cumulus_core::{
     Error,
     client::{
         ClientError, MusicClient,
-        dto::{PlayerView, PlayerVoiceSongsView, VinylVoiceRecommendationsView, VoiceSongAction},
+        dto::{
+            AccountData, LikeResult, PlayerView, PlayerVoiceSongsView,
+            VinylVoiceRecommendationsView, VoiceSongAction,
+        },
     },
     membership::Quality,
 };
@@ -86,6 +89,23 @@ pub async fn player_voice_song_play<R: tauri::Runtime>(
     require_main(&window)?;
     client
         .player_voice_song_play(&epoch, &play_id, &receipt, action, quality)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn player_voice_song_like<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    receipt: String,
+    index: usize,
+    liked: bool,
+) -> Result<AccountData<LikeResult>, ClientError> {
+    require_main(&window)?;
+    client
+        .player_voice_song_like(&epoch, &play_id, &receipt, index, liked)
         .await
         .map_err(Into::into)
 }

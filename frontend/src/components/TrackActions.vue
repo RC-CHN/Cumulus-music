@@ -50,11 +50,12 @@ const items = computed<MenuItem[]>(() => {
       item.key === 'collect' ? { ...item, disabled: queue.collectionLocked() } : item,
     );
   }
-  const track = request.value?.track;
-  if (!track) return [];
+  const input = request.value;
+  const track = input?.track;
+  if (!track || (input?.episode && !input.episode.live())) return [];
   const available = !track.missing && !track.local;
   const canPlay = available && !request.value?.playUnavailable;
-  const link = songLink(track);
+  const link = !input?.episode?.copyrightBlocked && songLink(track);
   return [
     {
       key: 'play',
@@ -68,6 +69,7 @@ const items = computed<MenuItem[]>(() => {
       icon: 'next',
       disabled:
         !canPlay ||
+        !!input?.episode?.copyrightBlocked ||
         !props.player.ready.value ||
         props.player.busy.value ||
         (!!request.value?.queueNext && props.player.queueBusy.value) ||
@@ -77,7 +79,9 @@ const items = computed<MenuItem[]>(() => {
     ...(!track.local ? [{ key: 'comments', label: '查看评论', icon: 'comment' }] : []),
     { key: 'main-divider', label: '', separator: true },
     { key: 'collect', label: '收藏', icon: 'star', disabled: !available },
-    { key: 'download', label: '下载', icon: 'download', disabled: !available },
+    ...(!input?.episode
+      ? [{ key: 'download', label: '下载', icon: 'download', disabled: !available }]
+      : []),
     ...(available && link
       ? [
           { key: 'share', label: '分享', icon: 'share' },
@@ -107,12 +111,19 @@ function dismiss() {
 }
 function close() {
   menu.value?.close();
+  request.value = undefined;
   queueRequest.value = undefined;
   shared.value = undefined;
   clear();
 }
 watch(
   () => queueRequest.value?.live(),
+  (live) => {
+    if (live === false) close();
+  },
+);
+watch(
+  () => request.value?.episode?.live(),
   (live) => {
     if (live === false) close();
   },
@@ -141,6 +152,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
     event.type === 'contextmenu' &&
     (event.clientX !== 0 || event.clientY !== 0);
   await nextTick();
+  if (request.value !== input || (input.episode && !input.episode.live())) return;
   await menu.value?.showAt(
     pointer ? event.clientX : (box?.left ?? 8),
     pointer ? event.clientY : (box?.bottom ?? 8),
@@ -172,6 +184,8 @@ function feedback(text: string, error = false) {
 async function copy() {
   const queue = queueRequest.value;
   if (queue && !queue.live()) return;
+  const episode = request.value?.episode;
+  if (episode && (!episode.live() || episode.copyrightBlocked)) return;
   const track = queue?.info.track ?? request.value?.track;
   const link = track && songLink(track);
   if (!link || copying.value) return;
@@ -210,13 +224,23 @@ async function select(key: string) {
     return;
   }
   const input = request.value;
-  if (!input || items.value.find((i) => i.key === key)?.disabled) return;
+  const item = items.value.find((i) => i.key === key);
+  if (
+    !input ||
+    !item ||
+    item.disabled ||
+    item.separator ||
+    (input.episode && !input.episode.live())
+  )
+    return;
   const { track } = input;
   if (key === 'play') input.play();
   else if (key === 'collect') emit('collect', track);
   else if (key === 'download') emit('download', track);
-  else if (key === 'comments') emit('comments', track);
-  else if (key === 'remove' && playlist.value) emit('remove', track, playlist.value);
+  else if (key === 'comments') {
+    if (input.episode) input.episode.comments();
+    else emit('comments', track);
+  } else if (key === 'remove' && playlist.value) emit('remove', track, playlist.value);
   else if (key === 'manage' && playlist.value) emit('manage', track, playlist.value);
   else if (key === 'share') shared.value = track;
   else if (key === 'copy') await copy();
@@ -235,7 +259,7 @@ async function select(key: string) {
           });
       if (attempt === sequence && next)
         feedback(
-          view.track?.id === track.id
+          !input.episode && view.track?.id === track.id
             ? '这首歌已是当前歌曲'
             : view.queueLen || view.track
               ? '已设为下一首播放'

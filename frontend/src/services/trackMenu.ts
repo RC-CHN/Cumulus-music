@@ -24,8 +24,13 @@ export interface TrackMenuRequest {
   event: MouseEvent | KeyboardEvent;
   play: () => void;
   nextOrigin?: 'search';
-  queueNext?: () => Promise<PlayerView | undefined>;
+  queueNext?: () => Promise<PlayerView | boolean | undefined>;
   playUnavailable?: boolean;
+  episode?: {
+    live: () => boolean;
+    copyrightBlocked: boolean;
+    comments: () => void;
+  };
 }
 
 export type QueueMenuAction =

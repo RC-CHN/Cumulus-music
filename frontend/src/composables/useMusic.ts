@@ -14,6 +14,7 @@ import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 import type { QueueLikeTarget } from '../services/player';
+import type { VoiceSongRowTarget } from '../services/voiceSongs';
 export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
 type Destination =
   | { kind: 'decoration' }
@@ -567,6 +568,15 @@ export function useMusic(
       true,
     );
   }
+  function likeFromVoiceSongs(target: VoiceSongRowTarget, songId: string) {
+    if (target.epoch !== account.value.epoch) return;
+    return changeLike(
+      songId,
+      (owner, desired) =>
+        core.playerVoiceSongLike(owner, target.playId, target.receipt, target.index, desired),
+      true,
+    );
+  }
   return {
     replace,
     replacePlaylistSection,
@@ -600,5 +610,6 @@ export function useMusic(
     back,
     like,
     likeFromQueue,
+    likeFromVoiceSongs,
   };
 }

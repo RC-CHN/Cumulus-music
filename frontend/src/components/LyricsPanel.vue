@@ -53,6 +53,9 @@ import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay
 import { vinylCopyText, vinylSelection } from '../services/vinylTextCopy';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
+import type { VoiceSongsModel } from '../composables/useVoiceSongs';
+import type { VoiceSongRowTarget } from '../services/voiceSongs';
+import VoiceSongsCard from './VoiceSongsCard.vue';
 import {
   playbackMetadata,
   playbackSource,
@@ -67,6 +70,9 @@ const props = defineProps<{
   similarModel: VinylSimilarModel;
   wikiModel: VinylWikiModel;
   voiceRecommendations: VoiceRecommendationsModel;
+  voiceSongs: VoiceSongsModel;
+  likedSongs: ReadonlySet<string>;
+  busyLikes: ReadonlySet<string>;
   commentsAvailable: boolean;
   commentModel: VinylCommentsModel;
   commentCount?: number;
@@ -84,6 +90,10 @@ const emit = defineEmits<{
   voiceCreator: [target: VoiceCreatorTarget];
   voicePodcast: [target: VoicePodcastTarget];
   voiceRecommendation: [target: VoiceRecommendationTarget];
+  voiceSongPlay: [target: VoiceSongRowTarget, gesture: 'cover' | 'double_click'];
+  voiceSongLike: [target: VoiceSongRowTarget];
+  voiceSongMore: [target: VoiceSongRowTarget, event: MouseEvent | KeyboardEvent];
+  voiceSongArtist: [target: VoiceSongRowTarget, id: string];
   voicePodcastLogin: [];
   lyricContributor: [target: LyricContributorTarget];
   fullComments: [hot: boolean];
@@ -143,6 +153,29 @@ const recommendedPodcasts = computed(() => {
   const page = props.voiceRecommendations.view.value;
   return page?.cards.length ? page : undefined;
 });
+const includedSongs = computed(() => {
+  const page = props.voiceSongs.view.value;
+  return page?.tracks.length ? page : undefined;
+});
+function voiceSongTarget(index: number) {
+  return includedSongs.value && props.voiceSongs.target(includedSongs.value, index);
+}
+function playVoiceSong(index: number, gesture: 'cover' | 'double_click') {
+  const target = voiceSongTarget(index);
+  if (target) emit('voiceSongPlay', target, gesture);
+}
+function likeVoiceSong(index: number) {
+  const target = voiceSongTarget(index);
+  if (target) emit('voiceSongLike', target);
+}
+function moreVoiceSong(index: number, event: MouseEvent | KeyboardEvent) {
+  const target = voiceSongTarget(index);
+  if (target) emit('voiceSongMore', target, event);
+}
+function openVoiceSongArtist(index: number, id: string) {
+  const target = voiceSongTarget(index);
+  if (target) emit('voiceSongArtist', target, id);
+}
 function openVoiceRecommendation(page: VoiceRecommendationsPage, radioId: string) {
   const target = props.voiceRecommendations.target(page, radioId);
   if (target) emit('voiceRecommendation', target);
@@ -890,7 +923,9 @@ const displayedAuxiliary = computed(() =>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
             <div
-              v-if="voiceMetadata?.description || podcastTarget || recommendedPodcasts"
+              v-if="
+                voiceMetadata?.description || podcastTarget || recommendedPodcasts || includedSongs
+              "
               ref="voiceCards"
               class="voice-playback-cards"
               :class="{ 'voice-playback-cards-only': !lines.length }"
@@ -921,6 +956,19 @@ const displayedAuxiliary = computed(() =>
                 :paging="voiceRecommendations.paging.value"
                 @next="voiceRecommendations.next"
                 @open="openVoiceRecommendation"
+              />
+              <VoiceSongsCard
+                v-if="includedSongs"
+                :key="includedSongs.receipt ?? includedSongs.playId"
+                :page="includedSongs"
+                :scroller="voiceCards"
+                :liked="likedSongs"
+                :busy-likes="busyLikes"
+                :transport-busy="busy"
+                @play="playVoiceSong"
+                @like="likeVoiceSong"
+                @more="moreVoiceSong"
+                @artist="openVoiceSongArtist"
               />
             </div>
             <div

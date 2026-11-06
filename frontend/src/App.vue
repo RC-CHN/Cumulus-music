@@ -258,6 +258,8 @@ import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
 import { useDownloads } from './composables/useDownloads';
 import type { DownloadDialogTarget } from './services/downloads';
+import { useVoiceSongs } from './composables/useVoiceSongs';
+import type { VoiceSongAction, VoiceSongRowTarget } from './services/voiceSongs';
 import { usePlaylists } from './composables/usePlaylists';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
@@ -1100,6 +1102,64 @@ async function openPlaybackVoiceRecommendation(target: VoiceRecommendationTarget
     // A stale playback observation cannot open a podcast from a retired shelf.
   }
 }
+function voiceSongRow(target: VoiceSongRowTarget) {
+  if (!voiceSongs.ownsTarget(target)) return;
+  const card = voiceSongs.view.value;
+  const track = card?.tracks[target.index];
+  const rights = card?.availability[target.index];
+  return track && rights ? { track, rights } : undefined;
+}
+async function actOnVoiceSong(target: VoiceSongRowTarget, kind: VoiceSongAction['kind']) {
+  const row = voiceSongRow(target);
+  if (!row?.rights.onlineEligible || (kind === 'next_play' && row.rights.copyrightBlocked))
+    return false;
+  return player.playVoiceSong(target, target.receipt, { kind, index: target.index });
+}
+function likePlaybackVoiceSong(target: VoiceSongRowTarget) {
+  const row = voiceSongRow(target);
+  if (row) void music.likeFromVoiceSongs(target, row.track.id);
+}
+async function openPlaybackVoiceSongArtist(target: VoiceSongRowTarget, id: string) {
+  const route = page.value;
+  try {
+    const current = await player.syncPlayback();
+    const row = voiceSongRow(target);
+    if (
+      route !== page.value ||
+      current?.playId !== target.playId ||
+      !row?.track.artistRefs?.some((artist) => artist.id === id)
+    )
+      return;
+    player.lyricsOpen.value = false;
+    openCatalog({ kind: 'artist', id });
+  } catch {
+    // The original row must still be visible in the same episode.
+  }
+}
+function showPlaybackVoiceSongMenu(target: VoiceSongRowTarget, event: MouseEvent | KeyboardEvent) {
+  const row = voiceSongRow(target);
+  if (!row) return;
+  const route = page.value;
+  const live = () => route === page.value && voiceSongs.ownsTarget(target);
+  void trackActions.value?.show({
+    track: row.track,
+    event,
+    play: () => {
+      if (live()) void actOnVoiceSong(target, 'cover');
+    },
+    queueNext: () => (live() ? actOnVoiceSong(target, 'next_play') : Promise.resolve(false)),
+    playUnavailable: !row.rights.onlineEligible,
+    episode: {
+      live,
+      copyrightBlocked: row.rights.copyrightBlocked,
+      comments() {
+        if (!live()) return;
+        player.lyricsOpen.value = false;
+        openComments({ kind: 'track', id: row.track.id }, row.track.name);
+      },
+    },
+  });
+}
 async function openPlaybackLyricContributor(target: LyricContributorTarget) {
   const route = page.value;
   const activeDocument = () => {
@@ -1715,17 +1775,13 @@ watch(vinylDisplayMode, (value) => storeVinylDisplayMode(value));
 const player = usePlayer(undefined, () => {
   void music.bootstrap(false);
 });
-const voiceRecommendations = useVoiceRecommendations(
-  core,
-  computed(() =>
-    music.signedIn.value &&
-    !music.initializing.value &&
-    player.ready.value &&
-    player.lyricsOpen.value
-      ? voiceRecommendationsSeed(player.view.value, music.account.value.epoch)
-      : undefined,
-  ),
+const activeVoiceCard = computed(() =>
+  music.signedIn.value && !music.initializing.value && player.ready.value && player.lyricsOpen.value
+    ? voiceRecommendationsSeed(player.view.value, music.account.value.epoch)
+    : undefined,
 );
+const voiceRecommendations = useVoiceRecommendations(core, activeVoiceCard);
+const voiceSongs = useVoiceSongs(core, activeVoiceCard);
 const { count: playbackCommentCount, notePublished: notePlaybackCommentPublished } =
   usePlaybackCommentInfo(player.view, player.loaded, () => music.account.value.epoch);
 const vinylCommentsOpen = ref(false);
@@ -5817,6 +5873,9 @@ onUnmounted(() => {
         :wiki-model="vinylWiki"
         :similar-model="vinylSimilar"
         :voice-recommendations="voiceRecommendations"
+        :voice-songs="voiceSongs"
+        :liked-songs="liked"
+        :busy-likes="busyLikes"
         :comments-available="!!vinylCommentTarget"
         :comment-model="vinylComments"
         :comment-count="playbackCommentCount"
@@ -5831,6 +5890,10 @@ onUnmounted(() => {
         @voice-creator="openPlaybackVoiceCreator"
         @voice-podcast="openPlaybackVoicePodcast"
         @voice-recommendation="openPlaybackVoiceRecommendation"
+        @voice-song-play="actOnVoiceSong"
+        @voice-song-like="likePlaybackVoiceSong"
+        @voice-song-more="showPlaybackVoiceSongMenu"
+        @voice-song-artist="openPlaybackVoiceSongArtist"
         @voice-podcast-login="loginOpen = true"
         @lyric-contributor="openPlaybackLyricContributor"
         @catalog="

@@ -1,4 +1,4 @@
-import type { TrackView } from './contracts.ts';
+import type { AccountData, LikeResult, TrackView } from './contracts.ts';
 import type { PlayerView, Quality } from './player.ts';
 import type { VoicePlaybackScope } from './voiceDetail.ts';
 
@@ -31,4 +31,11 @@ export interface VoiceSongsClient {
     action: VoiceSongAction,
     quality: Quality,
   ): Promise<PlayerView>;
+  playerVoiceSongLike(
+    epoch: string,
+    playId: string,
+    receipt: string,
+    index: number,
+    liked: boolean,
+  ): Promise<AccountData<LikeResult>>;
 }
