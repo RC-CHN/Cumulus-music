@@ -1810,16 +1810,20 @@ impl MusicClient {
                 .iter()
                 .filter(|item| item.visible_in_queue())
                 .map(|i| {
+                    let like_song_id = ordinary_queue
+                        .then(|| queue_like::song_id(&i.resource))
+                        .flatten();
+                    let collectible =
+                        like_song_id.is_some() && queue_collection::row_namespace(&i.resource);
                     Ok(QueueTrack {
                         entry_id: i.entry_id.clone(),
                         track: track(&i.resource)?,
                         more_recommendation: more_visible
                             && crate::playback::queue_more::active(&queue, i),
                         origin: ordinary_queue.then(|| origin::queue(i)).flatten(),
-                        like_song_id: ordinary_queue
-                            .then(|| queue_like::song_id(&i.resource))
-                            .flatten(),
-                        catalog_menu: ordinary_queue && queue_menu::eligible(&i.resource),
+                        like_song_id,
+                        catalog_menu: collectible,
+                        collectible,
                     })
                 })
                 .collect::<Result<_>>()?,

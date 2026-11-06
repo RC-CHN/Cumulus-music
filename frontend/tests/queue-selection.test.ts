@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   selectQueueRows,
   displayedQueueMove,
+  queueCollectionGesture,
   reorderQueueRows,
   type QueueSelection,
 } from '../src/services/queueSelection.ts';
@@ -34,6 +35,35 @@ test('a vanished anchor starts a new selection without inventing a range', () =>
   assert.deepEqual([...state.selected], ['b']);
   const previous = selection('a');
   assert.equal(selectQueueRows(ids, previous, 'missing'), previous);
+});
+test('queue collect observes row pointer collapse but keyboard preserves live insertion order', () => {
+  const prior = selection('e', 'b', 'removed');
+  const keyboard = { pointer: false, toggle: false, range: false };
+  const pointer = { ...keyboard, pointer: true };
+  assert.deepEqual(queueCollectionGesture(ids, prior, 'b', pointer)?.entryIds, ['b']);
+  assert.deepEqual(queueCollectionGesture(ids, prior, 'c', pointer)?.entryIds, ['c']);
+  assert.deepEqual(queueCollectionGesture(ids, prior, 'c', keyboard)?.entryIds, ['e', 'b']);
+  assert.deepEqual(queueCollectionGesture(ids, selection('e'), 'c', keyboard)?.entryIds, ['c']);
+  assert.equal(queueCollectionGesture(ids, prior, 'removed', keyboard), undefined);
+});
+test('queue collect reads modifier selection after the gesture, including range without anchor', () => {
+  const control = { pointer: true, toggle: true, range: false };
+  const shift = { pointer: true, toggle: false, range: true };
+  assert.deepEqual(queueCollectionGesture(ids, selection('e'), 'b', control)?.entryIds, ['e', 'b']);
+  assert.deepEqual(queueCollectionGesture(ids, selection('e', 'b'), 'b', control)?.entryIds, ['b']);
+  assert.deepEqual(queueCollectionGesture(ids, selection('e'), 'b', shift)?.entryIds, [
+    'b',
+    'c',
+    'd',
+    'e',
+  ]);
+  const absentAnchor = { selected: new Set(['e', 'a']) };
+  assert.deepEqual(queueCollectionGesture(ids, absentAnchor, 'b', shift)?.entryIds, ['e', 'a']);
+  assert.deepEqual(
+    queueCollectionGesture(ids, selection('b', 'a', 'd'), 'c', { ...shift, toggle: true })
+      ?.entryIds,
+    ['a', 'd'],
+  );
 });
 test('queue drag inserts a stable block from display order, regardless of click order', () => {
   assert.deepEqual(reorderQueueRows(ids, new Set(['e', 'b']), 6), ['a', 'c', 'd', 'f', 'b', 'e']);

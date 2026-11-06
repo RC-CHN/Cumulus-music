@@ -161,6 +161,8 @@ pub struct QueueTrack {
     pub like_song_id: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub catalog_menu: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub collectible: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

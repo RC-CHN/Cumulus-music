@@ -1,5 +1,9 @@
 import { computed, shallowRef, watch } from 'vue';
-import { selectQueueRows, type QueueSelection } from '../services/queueSelection';
+import {
+  queueCollectionGesture,
+  selectQueueRows,
+  type QueueSelection,
+} from '../services/queueSelection';
 import type { QueueView } from '../services/player';
 
 export function useQueueSelection(queue: () => QueueView | null | undefined) {
@@ -25,5 +29,11 @@ export function useQueueSelection(queue: () => QueueView | null | undefined) {
   function clear() {
     state.value = { selected: new Set() };
   }
-  return { ids, selected: computed(() => state.value.selected), select, all, clear };
+  function collect(id: string, pointer: boolean, toggle: boolean, range: boolean) {
+    const action = queueCollectionGesture(ids.value, state.value, id, { pointer, toggle, range });
+    if (!action) return;
+    state.value = action.selection;
+    return action.entryIds;
+  }
+  return { ids, selected: computed(() => state.value.selected), select, all, clear, collect };
 }

@@ -48,6 +48,8 @@ export interface QueueTrackMenuRequest {
   point?: { x: number; y: number };
   live(): boolean;
   play(): void;
+  collect(): void;
+  collectionLocked(): boolean;
   remove(): void;
 }
 export function queueSongMenuItems(

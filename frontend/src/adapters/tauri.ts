@@ -455,6 +455,8 @@ export function createTauriClient(): CoreClient {
     queueMoreTip: (epoch, action) => invoke('queue_more_tip', { epoch, action }),
     playerQueueCollection: (epoch, revision) =>
       invoke('player_queue_collection', { epoch, revision }),
+    playerQueueCollectRows: (epoch, revision, entryIds) =>
+      invoke('player_queue_collect_rows', { epoch, revision, entryIds }),
     playerQueueLike: (epoch, revision, entryId, liked) =>
       invoke('player_queue_like', { epoch, revision, entryId, liked }),
     playerQueueCatalogMenu: (epoch, revision, entryId) =>

@@ -254,6 +254,11 @@ impl From<Error> for ClientError {
                     "不能上传 NCM 文件，请先选择可直接播放的音频文件",
                     false,
                 ),
+                Error::InvalidInput("selection contains a row without a catalog song") => (
+                    "queue_collection_ineligible",
+                    "所选队列项包含不能在行内收藏的资源，请重新选择普通歌曲",
+                    false,
+                ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
                 Error::AlbumDropSourceChanged => (

@@ -13,6 +13,8 @@ const paths: Record<string, string> = {
   source:
     'M9.5 14.5l5-5m-7 7-1.5 1.5a3.5 3.5 0 0 1-5-5l4.5-4.5a3.5 3.5 0 0 1 5 0m6 4 4.5-4.5a3.5 3.5 0 0 0-5-5l-1.5 1.5',
   plus: 'M12 4v16M4 12h16',
+  collect:
+    'M6 3h12M6 6h12a3 3 0 0 1 3 3l-.6 9a3 3 0 0 1-3 3H6.6a3 3 0 0 1-3-3L3 9a3 3 0 0 1 3-3zm6 4v7m-3.5-3.5h7',
   copy: 'M9 9h12v12H9zM15 6V3H3v12h3',
   trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',
   settings:

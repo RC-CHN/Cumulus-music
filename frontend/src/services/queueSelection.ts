@@ -32,6 +32,31 @@ export function selectQueueRows(
   return { selected: new Set([id]), anchor: id };
 }
 
+/** The official inline Collect action observes the result of row down/up for
+ * pointer clicks. Keyboard activation does not change the row selection. */
+export function queueCollectionGesture(
+  ids: readonly string[],
+  state: QueueSelection,
+  clicked: string,
+  gesture: { pointer: boolean; toggle: boolean; range: boolean },
+) {
+  const live = new Set(ids);
+  if (!live.has(clicked)) return;
+  const current = {
+    selected: new Set([...state.selected].filter((id) => live.has(id))),
+    anchor: state.anchor && live.has(state.anchor) ? state.anchor : undefined,
+  };
+  const { pointer, toggle, range } = gesture;
+  const selection =
+    pointer && (!range || toggle || current.anchor)
+      ? selectQueueRows(ids, current, clicked, toggle, range)
+      : current;
+  return {
+    selection,
+    entryIds: selection.selected.size > 1 ? [...selection.selected] : [clicked],
+  };
+}
+
 /** Insert the selected block at a boundary in the original displayed order.
  * Identity is entryId, never trackId: the same recording may appear twice. */
 export function reorderQueueRows(

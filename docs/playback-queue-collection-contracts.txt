@@ -69,3 +69,46 @@ python3 scripts/ci/queue_collection_smoke.py --binary PATH_TO_UX_UI_PROBE --root
 授权/播放链路，夹具只替换接口响应；不靠把歌曲改名为声音冒充排除验证。
 同脚本接入Linux/Windows独立runner；本机截图与精确结果另见ui-ux-validation.txt。
 物理声卡、Windows实机视觉、真实账号本次写入、两账号实时一起听不在本专项通过内。
+
+普通歌曲行内「收藏」
+官方 3.1.42.205594 的 PlayingTrackTitleCell.tsx:701–704、746–801 及恢复编译模块
+hybrid_71.chunk.1482700000000.js/3113.js:392–441：按钮位于喜欢与更多之间，
+非声音的悬停操作传真实按钮与嵌套 row.track，资源类型 Track；本地来源标为 local，
+其他为 unknown。图标为 M9:1098–1114 的托盘加号；Cumulus 采用同语义描边图标。
+这不是 Playlist.tsx:114–139、175–182 的顶部「收藏全部」，也不是 M556:250–275
+的右键/更多包装。
+
+M405:291–296 把鼠标按下/抬起交给 M106:206–223，M19:59–85 只停止 click。
+因此普通左键点击按钮时，行选择先收束到被点击项；Ctrl 修改选择，Shift 依现有锚点
+选连续段，Ctrl+Shift 减去锚点区间；无锚点的单独 Shift 不改选择。键盘没有这对
+鼠标事件，保留现选中集合。M106:291–293 按 Set 的插入顺序输出，M352:742–753
+仅在大于一项时提供 selectedData，M3085:700–706、764–818 否则用被点击行。
+Cumulus 对按钮提交按同样规则捕获有序队列 entry ID；没有新增后端多选默认，也不以
+单个被点击的 TrackView 覆盖多选。触摸合成事件随实际 WebView detail 表现，
+本轮合成桌面验证入口只覆盖鼠标与键盘，不能据此宣称各平台触摸完全一致。
+
+新只读 IPC player_queue_collect_rows(epoch,revision,entryIds) 只从主窗口接收。
+Rust 校验登录、当前账号、队列版本、普通非 FM/房间队列以及所有指定原生可见 entry，
+按提交顺序投影匹配目录身份的歌曲，重复歌曲合并、重复 entry 或混入异类则拒绝；
+只返回白名单 TrackView。准备不发送音乐接口、不更改队列/播放、不尝试自动映射。
+无资格的声音、下载、云盘和本地行不显示此按钮；混合多选也不会部分静默收藏。
+官方 M3085/M3160 支持额外的 subPriv、已有映射、本地占位和可配置上传分支；
+本切片只启用可独立验证的普通目录歌曲，不借顶部批量规则替代。也不因喜欢、VIP、
+播放品质或播放禁用猜测收藏权限，实际权限由明确选择目标后的歌单流程判定。
+
+入口沿用收藏到歌单弹窗，但不显示顶部全列表统计。匿名只打开登录；准备迟到或
+已更换显示版本不打开弹窗。打开时转入原弹窗焦点，取消/保存返回原行按钮或现有
+备选控件。弹窗复用原生拥有者/目标版本、日志、回读与未确认操作的显式核对；
+只有选中目标才发送上文 add 请求。官方 M3132:102–145 的列表为
+/api/user/playlist/v2 {uid,offset,limit:10,sortType}；M3160:1208–1230 同一路径
+传 op、pid、JSON trackIds，并可能带歌单匹配来源。现有 Cumulus 记录以 imme:true
+和持久化回读处理，同样不擅自加入「喜欢」列表或自动上传。
+
+验证入口：cargo test -p cumulus-core --test client_queue_collection --locked；
+Node queue-selection.test.ts 覆盖选择、范围、顺序和点击回退。
+Linux 密闭实窗验证：
+/usr/bin/python3 scripts/ci/queue_row_collection_smoke.py --binary PATH_TO_UX_UI_PROBE
+  --root NEW_PRIVATE_ROOT --frontend-dist PATH_TO_FRONTEND_DIST --screenshots --trusted-input
+用专用 Xvfb、非 C locale、隔离账号目录和无出口网络，XTest 验证真实点击和 Return；
+未传 --trusted-input 时仅做程序化 WebView 操作，不称真实输入。夹具验证取消零写入、
+显式目标精确提交和回读、原生暂停/队列恒定、真实声音队列不显示此动作。

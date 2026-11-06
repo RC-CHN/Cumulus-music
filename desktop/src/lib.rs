@@ -496,6 +496,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::intelligence::player_intelligence_cancel,
                 player::intelligence::player_intelligence_eligibility,
                 player::player_queue_collection,
+                player::player_queue_collect_rows,
                 player::player_queue_like,
                 player::player_queue_catalog_menu,
                 player::player_lyrics,

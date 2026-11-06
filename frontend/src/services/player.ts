@@ -242,6 +242,7 @@ export interface QueueTrack {
   origin?: QueueOrigin;
   likeSongId?: string;
   catalogMenu?: boolean;
+  collectible?: boolean;
 }
 export interface QueueCatalogMenu {
   epoch: string;
@@ -785,6 +786,11 @@ export interface PlayerClient extends VinylSimilarClient {
   playerQueue(epoch: string): Promise<QueueView>;
   queueMoreTip(epoch: string, action: QueueMoreTipAction): Promise<string | null>;
   playerQueueCollection(epoch: string, revision: string): Promise<QueueCollectionView>;
+  playerQueueCollectRows(
+    epoch: string,
+    revision: string,
+    entryIds: string[],
+  ): Promise<QueueCollectionView>;
   playerQueueLike(
     epoch: string,
     revision: string,

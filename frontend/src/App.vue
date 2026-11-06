@@ -1868,42 +1868,28 @@ function openExternalPlaylistImport(anchor: HTMLElement, origin: 'sidebar' | 'li
 const queueCollectionReturn = shallowRef<HTMLElement>();
 const queueCollectionOwner = ref('');
 let queueRoomOwner: string | undefined;
-function collectQueue(value: QueueCollectionView, trigger: HTMLElement | undefined) {
+function collectQueue(
+  value: QueueCollectionView,
+  trigger: HTMLElement | undefined,
+  scope: 'all' | 'rows',
+) {
   if (!signedIn.value || value.epoch !== account.value.epoch) return;
   queueCollectionReturn.value = trigger;
   queueCollectionOwner.value = value.epoch;
   playlistDialog.value = {
     kind: 'tracks',
     tracks: value.tracks,
-    selectionSummary: {
-      total: value.total,
-      unsupported: value.unsupported,
-      duplicates: value.duplicates,
-    },
+    selectionSummary:
+      scope === 'all'
+        ? { total: value.total, unsupported: value.unsupported, duplicates: value.duplicates }
+        : undefined,
   };
 }
 function applyQueueMenu(key: QueueMenuAction, input: QueueTrackMenuRequest) {
   if (!input.live() || input.info.epoch !== account.value.epoch) return;
   const { track } = input.info;
   if (key === 'comments') trackComments(track);
-  else if (key === 'collect') {
-    if (!signedIn.value) {
-      loginOpen.value = true;
-      return;
-    }
-    const tracks = [...new Map(input.tracks.map((item) => [item.id, item])).values()];
-    collectQueue(
-      {
-        epoch: input.info.epoch,
-        revision: input.info.revision,
-        total: input.tracks.length,
-        unsupported: 0,
-        duplicates: input.tracks.length - tracks.length,
-        tracks,
-      },
-      input.anchor,
-    );
-  } else if (key === 'download') {
+  else if (key === 'download') {
     if (!signedIn.value) loginOpen.value = true;
     else downloadDialog.value = { kind: 'start', tracks: [...input.tracks] };
   } else if (key === 'artist') {

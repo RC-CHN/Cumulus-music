@@ -8,6 +8,80 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 impl MusicClient {
+    /// Freeze the inline action's ordered visible entry selection. This lane
+    /// never falls back to collecting the queue or mapping a foreign resource.
+    pub async fn player_queue_collect_rows(
+        &self,
+        epoch: &str,
+        revision: &str,
+        entry_ids: &[String],
+    ) -> Result<QueueCollectionView> {
+        let token = self.playlist_token(epoch)?;
+        let revision = revision
+            .parse::<u64>()
+            .map_err(|_| Error::InvalidInput("invalid collection queue revision"))?;
+        if entry_ids.is_empty() || entry_ids.len() > queue_playlist::QUEUE_LIMIT {
+            return Err(Error::InvalidInput("invalid queue collection selection"));
+        }
+        let controller = self.player.controller().await?;
+        let (before, queue) = controller.queue_with_state(&token).await?;
+        if before.queue_revision != revision {
+            return Err(Error::QueueChanged);
+        }
+        if before.fm || self.queue_clear_context(&token)?.room_id.is_some() {
+            return Err(Error::InvalidInput(
+                "song collection requires the ordinary queue",
+            ));
+        }
+        let visible: BTreeMap<_, _> = queue
+            .items
+            .iter()
+            .filter(|entry| entry.visible_in_queue())
+            .map(|entry| (entry.entry_id.as_str(), &entry.resource))
+            .collect();
+        let mut entries = BTreeSet::new();
+        let mut songs = BTreeSet::new();
+        let mut tracks = Vec::new();
+        let mut duplicates = 0;
+        for id in entry_ids {
+            if !entries.insert(id.as_str()) {
+                return Err(Error::InvalidInput("duplicate queue entry in collection"));
+            }
+            let resource = visible.get(id.as_str()).ok_or(Error::QueueChanged)?;
+            let song_id = row_namespace(resource)
+                .then(|| queue_like::song_id(resource))
+                .flatten()
+                .ok_or(Error::InvalidInput(
+                    "selection contains a row without a catalog song",
+                ))?;
+            if songs.insert(song_id.clone()) {
+                let mut view = track(resource)?;
+                view.id = song_id;
+                tracks.push(view);
+            } else {
+                duplicates += 1;
+            }
+        }
+        let after = controller
+            .command(&token, PlaybackCommand::Snapshot)
+            .await?;
+        self.session.with_token(&token, |_| Ok(()))?;
+        if after.queue_revision != revision
+            || after.fm
+            || self.queue_clear_context(&token)?.room_id.is_some()
+        {
+            return Err(Error::QueueChanged);
+        }
+        Ok(QueueCollectionView {
+            epoch: token.generation.to_string(),
+            revision: revision.to_string(),
+            total: entry_ids.len(),
+            unsupported: 0,
+            duplicates,
+            tracks,
+        })
+    }
+
     /// Capture the displayed songs without HTTP. The destination selection uses
     /// the existing journaled playlist flow after this readonly preparation.
     pub async fn player_queue_collection(
@@ -82,6 +156,12 @@ impl MusicClient {
         }
         Ok(value)
     }
+}
+
+pub(super) fn row_namespace(resource: &Value) -> bool {
+    identity::kind(resource) == PlayerResourceKind::Catalog
+        && resource["voice"].is_null()
+        && resource["download_voice_id"].is_null()
 }
 
 fn collection_track(

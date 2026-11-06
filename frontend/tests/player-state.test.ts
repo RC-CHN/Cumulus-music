@@ -684,6 +684,9 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
     playerQueueCollection: async () => {
       throw Error('unexpected queue collection read');
     },
+    playerQueueCollectRows: async () => {
+      throw Error('unexpected queue rows collection read');
+    },
     playerLyrics: async (_e, id) => lyrics(id),
     lyricPreferences: async (_e, id) => lyrics(id),
     lyricOffset: async (_e, id) => lyrics(id),

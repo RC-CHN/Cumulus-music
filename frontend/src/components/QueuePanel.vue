@@ -46,7 +46,7 @@ const props = defineProps<{
   playlistSourceRefresh?: { pending: boolean };
 }>();
 const emit = defineEmits<{
-  collect: [value: QueueCollectionView, trigger: HTMLElement | undefined];
+  collect: [value: QueueCollectionView, trigger: HTMLElement | undefined, scope: 'all' | 'rows'];
   login: [];
   discover: [];
   origin: [target: QueueOrigin];
@@ -322,7 +322,26 @@ onUnmounted(() => {
   )
     focus.focus({ preventScroll: true });
 });
-async function collectAll(event: Event) {
+function collectAll(event: Event) {
+  void prepareCollection(
+    event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined,
+  );
+}
+function collectRow(event: MouseEvent, item: QueueTrack) {
+  if (collectionLocked.value || !item.collectible || !liveNavigationRow(item)) return;
+  const entryIds = selection.collect(
+    item.entryId,
+    event.detail > 0,
+    event.ctrlKey || event.metaKey,
+    event.shiftKey,
+  );
+  if (entryIds?.length)
+    void prepareCollection(
+      event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined,
+      entryIds,
+    );
+}
+async function prepareCollection(trigger: HTMLElement | undefined, entryIds?: string[]) {
   if (collectionLocked.value) return;
   if (!props.authenticated) {
     emit('login');
@@ -330,11 +349,12 @@ async function collectAll(event: Event) {
   }
   const displayed = queue.value!;
   const current = ++collectionRead;
-  const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
   collecting.value = true;
   collectionIssue.value = '';
   try {
-    const value = await client.playerQueueCollection(displayed.epoch, displayed.revision);
+    const value = entryIds
+      ? await client.playerQueueCollectRows(displayed.epoch, displayed.revision, entryIds)
+      : await client.playerQueueCollection(displayed.epoch, displayed.revision);
     if (
       current !== collectionRead ||
       !props.player.queueOpen.value ||
@@ -345,7 +365,7 @@ async function collectAll(event: Event) {
       collectionIssue.value = '播放列表已更新，请核对后重新收藏';
       return;
     }
-    if (value.tracks.length) emit('collect', value, trigger);
+    if (value.tracks.length) emit('collect', value, trigger, entryIds ? 'rows' : 'all');
     else collectionIssue.value = '声音或未匹配的本地音乐无法收藏到歌单';
   } catch (error) {
     if (current === collectionRead) {
@@ -585,6 +605,10 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent) {
       play: () => {
         if (live()) void activateRow(anchor, row.entryId, row.track.missing);
       },
+      collect: () => {
+        if (live()) void prepareCollection(anchor, ids);
+      },
+      collectionLocked: () => collectionLocked.value,
       remove: () => {
         if (live())
           void edit(
@@ -901,6 +925,7 @@ async function confirmClear(event: Event) {
             navigationLocked,
             item.likeSongId && liked.has(item.likeSongId),
             item.likeSongId && busyLikes.has(item.likeSongId),
+            item.collectible && collectionLocked,
             queue.fm,
             menuPending === item.entryId,
             queue.tracks.length,
@@ -1006,6 +1031,20 @@ async function confirmClear(event: Event) {
             <Icon name="heart" />
           </button>
           <button
+            v-if="item.collectible"
+            type="button"
+            class="icon-button queue-collect-row"
+            data-queue-collect-row
+            :disabled="navigationLocked"
+            :aria-disabled="collectionLocked"
+            data-tooltip="收藏"
+            :aria-label="`收藏 ${item.track.name}`"
+            @click.stop="collectRow($event, item)"
+            @dblclick.stop
+          >
+            <Icon name="collect" />
+          </button>
+          <button
             v-if="item.catalogMenu"
             type="button"
             class="icon-button queue-row-more"
@@ -1013,7 +1052,7 @@ async function confirmClear(event: Event) {
             :aria-busy="menuPending === item.entryId"
             :aria-label="`更多操作 ${item.track.name}`"
             aria-haspopup="menu"
-            title="更多"
+            data-tooltip="更多"
             @click.stop="openQueueMenu(item, $event)"
             @dblclick.stop
           >

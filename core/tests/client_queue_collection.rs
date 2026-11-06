@@ -103,6 +103,117 @@ fn online(id: u64) -> Value {
 }
 
 #[tokio::test]
+async fn inline_collection_freezes_visible_entry_order_without_bulk_or_foreign_fallback() {
+    let f = Fixture::new();
+    let mut voice = online(90);
+    voice["voice"] = json!({"radioId":7});
+    let mut cloud = online(91);
+    cloud["cloud_song_id"] = json!(91);
+    let mut download = online(92);
+    download["download_task_id"] = json!("saved");
+    let mut mismatch = online(93);
+    mismatch["song"]["id"] = json!(94);
+    let local = f.scan(1, false).pop().unwrap();
+    f.library
+        .map_online(&f.session, &local.id, &json!(95))
+        .unwrap();
+    f.queue(
+        "9",
+        vec![
+            online(1),
+            online(2),
+            online(1),
+            voice,
+            cloud,
+            download,
+            mismatch,
+            f.resource(&local.id),
+        ],
+    );
+    let before = f.client.player_queue("1").await.unwrap();
+    let entry = |index: usize| before.tracks[index].entry_id.clone();
+    assert_eq!(
+        before
+            .tracks
+            .iter()
+            .map(|row| row.collectible)
+            .collect::<Vec<_>>(),
+        [true, true, true, false, false, false, false, false]
+    );
+    let read = f
+        .client
+        .player_queue_collect_rows("1", &before.revision, &[entry(1), entry(2), entry(0)])
+        .await
+        .unwrap();
+    assert_eq!((read.total, read.duplicates, read.unsupported), (3, 1, 0));
+    assert_eq!(
+        read.tracks
+            .iter()
+            .map(|track| track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["2", "1"]
+    );
+    assert!(!serde_json::to_string(&read).unwrap().contains("PRIVATE"));
+
+    for unsupported in 3..before.tracks.len() {
+        assert!(matches!(
+            f.client
+                .player_queue_collect_rows("1", &before.revision, &[entry(1), entry(unsupported)])
+                .await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    for invalid in [vec![], vec![entry(1), entry(1)]] {
+        assert!(matches!(
+            f.client
+                .player_queue_collect_rows("1", &before.revision, &invalid)
+                .await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    assert!(matches!(
+        f.client
+            .player_queue_collect_rows("1", &before.revision, &["missing".into()])
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let after = f.client.player_queue("1").await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&before).unwrap(),
+        serde_json::to_value(&after).unwrap()
+    );
+
+    f.client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_collect_rows("1", &before.revision, &[entry(0)])
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    f.session
+        .adopt(
+            Arc::new(Offline),
+            json!({"userId":10}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_collect_rows("1", &after.revision, &[entry(0)])
+            .await,
+        Err(Error::StaleResponse)
+    ));
+}
+
+#[tokio::test]
 async fn mixed_queue_collects_songs_downloads_matched_files_and_cue_without_network_or_audio() {
     let f = Fixture::new();
     let items = f.scan(2, true);

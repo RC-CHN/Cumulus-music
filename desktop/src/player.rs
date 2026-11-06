@@ -308,6 +308,22 @@ pub async fn player_queue_collection(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_queue_collect_rows<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_ids: Vec<String>,
+) -> Result<QueueCollectionView, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue song collection requires the main window").into());
+    }
+    client
+        .player_queue_collect_rows(&epoch, &revision, &entry_ids)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_queue_like<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
