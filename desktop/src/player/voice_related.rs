@@ -10,7 +10,9 @@ use cumulus_core::{
     membership::Quality,
 };
 
-fn require_main<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Result<(), ClientError> {
+pub(super) fn require_main<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), ClientError> {
     if window.label() == "main" {
         Ok(())
     } else {

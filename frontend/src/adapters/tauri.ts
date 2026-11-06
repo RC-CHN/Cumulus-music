@@ -18,6 +18,14 @@ import type { SystemMediaStatus } from '../services/systemMedia';
 import type { ShortcutStatus } from '../services/shortcuts';
 import type { SessionRenewalView } from '../services/renewal';
 import type { MessageCountView } from '../services/messages';
+import type { VoiceSongRowTarget } from '../services/voiceSongs';
+
+const voiceSongDownloadTarget = ({ epoch, playId, receipt, index }: VoiceSongRowTarget) => ({
+  epoch,
+  playId,
+  receipt,
+  index,
+});
 
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
@@ -488,6 +496,44 @@ export function createTauriClient(): CoreClient {
       invoke('player_voice_songs_selection', { epoch, playId, receipt, action, quality }),
     playerVoiceSongLike: (epoch, playId, receipt, index, liked) =>
       invoke('player_voice_song_like', { epoch, playId, receipt, index, liked }),
+    playerVoiceSongDownloadPrepare: (target) =>
+      invoke('player_voice_song_download_prepare', { target: voiceSongDownloadTarget(target) }),
+    playerVoiceSongDownloadStart: (target, options) =>
+      invoke('player_voice_song_download_start', {
+        target: voiceSongDownloadTarget(target),
+        options,
+      }),
+    playerVoiceSongDownloadChoosePlaylist: (target, playlistId) =>
+      invoke('player_voice_song_download_choose_playlist', {
+        target: voiceSongDownloadTarget(target),
+        playlistId,
+      }),
+    playerVoiceSongDownloadPickerStatus: (target, reconcile) =>
+      invoke('player_voice_song_download_picker_status', {
+        target: voiceSongDownloadTarget(target),
+        reconcile,
+      }),
+    playerVoiceSongDownloadCreatePlaylist: (target, name, privatePlaylist) =>
+      invoke('player_voice_song_download_create_playlist', {
+        target: voiceSongDownloadTarget(target),
+        name,
+        private: privatePlaylist,
+      }),
+    playerVoiceSongDownloadCreationStatus: (target, reconcile) =>
+      invoke('player_voice_song_download_creation_status', {
+        target: voiceSongDownloadTarget(target),
+        reconcile,
+      }),
+    playerVoiceSongDownloadAddCreatedPlaylist: (target) =>
+      invoke('player_voice_song_download_add_created_playlist', {
+        target: voiceSongDownloadTarget(target),
+      }),
+    playerVoiceSongDownloadStartFromPlaylist: (target, continuation, options) =>
+      invoke('player_voice_song_download_start_from_playlist', {
+        target: voiceSongDownloadTarget(target),
+        continuation,
+        options,
+      }),
     playerVinylCommentsAvailable: (epoch) => invoke('player_vinyl_comments_available', { epoch }),
     playerVinylComments: (epoch, playId, offset) =>
       invoke('player_vinyl_comments', { epoch, playId, offset }),

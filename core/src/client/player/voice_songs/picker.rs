@@ -203,6 +203,7 @@ pub struct VoiceSongDownloadPicker {
     pub playlist_id: String,
     pub operation_id: String,
     pub phase: PlaylistPhase,
+    pub add_failed: bool,
     pub continuation: Option<String>,
 }
 
@@ -230,14 +231,14 @@ fn result(
     // even when the add result is false. A proved service rejection is that
     // case; a never-sent request or an unresolved transport loss is not.
     let existing = matches!(attempt.destination, Destination::Existing(_));
-    let completed = record.phase == PlaylistPhase::Confirmed
-        && (existing || record.error_class.as_deref() != Some("service"))
-        || existing
-            && (record.phase == PlaylistPhase::Unchanged
-                || record.phase == PlaylistPhase::Rejected
-                    && record.checked_at.is_some()
-                    && record.error_class.as_deref() == Some("service")
-                    && record.codes.contains_key("main"));
+    let add_failed = matches!(
+        record.phase,
+        PlaylistPhase::Confirmed | PlaylistPhase::Rejected
+    ) && record.checked_at.is_some()
+        && record.error_class.as_deref() == Some("service")
+        && record.codes.contains_key("main");
+    let completed = record.phase == PlaylistPhase::Confirmed && (existing || !add_failed)
+        || existing && (record.phase == PlaylistPhase::Unchanged || add_failed);
     Ok(VoiceSongDownloadPicker {
         epoch: page.token.generation.to_string(),
         play_id: page.play_id.clone(),
@@ -245,6 +246,7 @@ fn result(
         playlist_id: playlist.into(),
         operation_id: record.operation_id,
         phase: record.phase,
+        add_failed,
         continuation: (completed && !attempt.consumed.load(Ordering::Acquire))
             .then(|| attempt.permit.clone()),
     })

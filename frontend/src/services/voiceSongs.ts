@@ -1,5 +1,7 @@
 import type { AccountData, LikeResult, TrackView } from './contracts.ts';
+import type { DownloadOptions, DownloadResult } from './downloads.ts';
 import type { PlayerView, Quality } from './player.ts';
+import type { PlaylistPhase } from './playlists.ts';
 import type { VoicePlaybackScope } from './voiceDetail.ts';
 
 export type VoiceSongsScope = VoicePlaybackScope;
@@ -28,7 +30,82 @@ export interface VoiceSongRowTarget extends VoiceSongsScope {
   index: number;
 }
 
-export interface VoiceSongsClient {
+export type VoiceSongDownloadDecision =
+  | 'ready'
+  | 'playlist_required'
+  | 'membership_unknown'
+  | 'complete'
+  | 'existing_task'
+  | 'waiting'
+  | 'working'
+  | 'unavailable'
+  | 'extended_rights_unsupported'
+  | 'cloud_unsupported';
+
+export interface VoiceSongDownloadPlan {
+  epoch: string;
+  playId: string;
+  trackId: string;
+  decision: VoiceSongDownloadDecision;
+}
+
+export interface VoiceSongDownloadPicker {
+  epoch: string;
+  playId: string;
+  trackId: string;
+  playlistId: string;
+  operationId: string;
+  phase: PlaylistPhase;
+  /** Definite add failure, even if readback sees a concurrent membership change. */
+  addFailed: boolean;
+  /** Only this opaque native value permits the picker-backed download. */
+  continuation: string | null;
+}
+
+export interface VoiceSongDownloadCreation {
+  epoch: string;
+  playId: string;
+  trackId: string;
+  createOperationId: string;
+  createPhase: PlaylistPhase;
+  playlistId: string | null;
+  add: VoiceSongDownloadPicker | null;
+}
+
+export interface VoiceSongDownloadClient {
+  playerVoiceSongDownloadPrepare(target: VoiceSongRowTarget): Promise<VoiceSongDownloadPlan>;
+  playerVoiceSongDownloadStart(
+    target: VoiceSongRowTarget,
+    options: DownloadOptions,
+  ): Promise<DownloadResult>;
+  playerVoiceSongDownloadChoosePlaylist(
+    target: VoiceSongRowTarget,
+    playlistId: string,
+  ): Promise<VoiceSongDownloadPicker>;
+  playerVoiceSongDownloadPickerStatus(
+    target: VoiceSongRowTarget,
+    reconcile: boolean,
+  ): Promise<VoiceSongDownloadPicker>;
+  playerVoiceSongDownloadCreatePlaylist(
+    target: VoiceSongRowTarget,
+    name: string,
+    privatePlaylist: boolean,
+  ): Promise<VoiceSongDownloadCreation>;
+  playerVoiceSongDownloadCreationStatus(
+    target: VoiceSongRowTarget,
+    reconcile: boolean,
+  ): Promise<VoiceSongDownloadCreation>;
+  playerVoiceSongDownloadAddCreatedPlaylist(
+    target: VoiceSongRowTarget,
+  ): Promise<VoiceSongDownloadCreation>;
+  playerVoiceSongDownloadStartFromPlaylist(
+    target: VoiceSongRowTarget,
+    continuation: string,
+    options: DownloadOptions,
+  ): Promise<DownloadResult>;
+}
+
+export interface VoiceSongsClient extends VoiceSongDownloadClient {
   playerVoiceSongs(epoch: string, playId: string): Promise<VoiceSongsView>;
   playerVoiceSongPlay(
     epoch: string,

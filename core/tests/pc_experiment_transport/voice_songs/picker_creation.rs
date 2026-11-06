@@ -145,6 +145,7 @@ async fn explicit_add_false_is_not_upgraded_by_concurrent_membership_readback() 
     let add = created.add.unwrap();
     assert_eq!(add.phase, PlaylistPhase::Confirmed);
     assert!(add.continuation.is_none());
+    assert!(add.add_failed);
     assert_eq!(
         f.store
             .get("25", "playlist-mutations", &add.operation_id)
