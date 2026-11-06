@@ -86,12 +86,13 @@ impl MusicClient {
             return Err(Error::InvalidInput("local link page exceeds 500"));
         }
         let (service, _) = self.matching_context(epoch).await?;
-        let local = self.local.context().await?;
-        let session = self.session.clone();
-        let expected = token.clone();
+        if service.token() != &token {
+            return Err(Error::StaleResponse);
+        }
         let value = tokio::task::spawn_blocking(move || {
-            let mappings = local.library.online_mappings(&session, &expected, &ids)?;
-            let links = mappings
+            let snapshot = service.snapshot(&ids)?;
+            let links = snapshot
+                .mappings
                 .into_iter()
                 .map(|(id, m)| {
                     Ok(LocalLinkView {
@@ -104,7 +105,7 @@ impl MusicClient {
                 })
                 .collect::<Result<Vec<_>>>()?;
             Ok::<_, Error>(LocalMatchView {
-                job: service.state()?,
+                job: snapshot.job,
                 links,
             })
         })

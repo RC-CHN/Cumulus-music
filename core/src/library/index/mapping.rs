@@ -4,6 +4,7 @@ use crate::{
     account::{AccountSession, SessionToken},
     library::{ListOptions, LocalRevision},
     protocol::api::identifier,
+    storage::StateTransaction,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -92,10 +93,23 @@ impl LocalLibrary {
         token: &SessionToken,
         ids: &[String],
     ) -> Result<BTreeMap<String, LocalMapping>> {
+        self.with_online_mappings_snapshot(session, token, ids, |_, _, mappings| Ok(mappings))
+    }
+
+    /// Observe another account-owned record alongside the current mappings.
+    /// The callback may read only the supplied snapshot, not re-enter the
+    /// account, index, or store locks.
+    pub(in crate::library) fn with_online_mappings_snapshot<T>(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        ids: &[String],
+        observe: impl FnOnce(&StateTransaction<'_>, &str, BTreeMap<String, LocalMapping>) -> Result<T>,
+    ) -> Result<T> {
         if ids.len() > 500 {
             return Err(Error::InvalidInput("local mapping page exceeds 500"));
         }
-        self.online_mappings_inner(session, token, ids)
+        self.online_mappings_inner(session, token, ids, observe)
     }
 
     /// Native collection uses one index scan for the complete queue, retaining
@@ -111,15 +125,16 @@ impl LocalLibrary {
                 "local collection exceeds queue capacity",
             ));
         }
-        self.online_mappings_inner(session, token, ids)
+        self.online_mappings_inner(session, token, ids, |_, _, mappings| Ok(mappings))
     }
 
-    fn online_mappings_inner(
+    fn online_mappings_inner<T>(
         &self,
         session: &AccountSession,
         token: &SessionToken,
         ids: &[String],
-    ) -> Result<BTreeMap<String, LocalMapping>> {
+        observe: impl FnOnce(&StateTransaction<'_>, &str, BTreeMap<String, LocalMapping>) -> Result<T>,
+    ) -> Result<T> {
         let requested = ids.iter().collect::<BTreeSet<_>>();
         let _lock = self.lock()?;
         let current = self
@@ -144,7 +159,7 @@ impl LocalLibrary {
                         mappings.insert(id, mapping);
                     }
                 }
-                Ok(mappings)
+                observe(tx, uid, mappings)
             })
         })
     }

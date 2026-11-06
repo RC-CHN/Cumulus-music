@@ -17,6 +17,9 @@ use crate::{
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone)]
 pub struct LocalMatching {
     session: Arc<AccountSession>,
@@ -24,6 +27,11 @@ pub struct LocalMatching {
     library: LocalLibrary,
     store: Arc<StateStore>,
     probe: Arc<dyn MetadataProbe>,
+}
+
+pub(crate) struct MatchingSnapshot {
+    pub job: Option<MatchJob>,
+    pub mappings: BTreeMap<String, LocalMapping>,
 }
 enum Outcome {
     Matched(Value, MappingSource),
@@ -96,6 +104,21 @@ impl LocalMatching {
         self.session.with_token(&self.token, |uid| {
             self.store.transaction(|tx| read_job(tx, uid))
         })
+    }
+    /// The same batch transaction publishes both links and progress. Read
+    /// them from one snapshot so a completion cannot overtake its links.
+    pub(crate) fn snapshot(&self, ids: &[String]) -> Result<MatchingSnapshot> {
+        self.library.with_online_mappings_snapshot(
+            &self.session,
+            &self.token,
+            ids,
+            |tx, uid, mappings| {
+                Ok(MatchingSnapshot {
+                    job: read_job(tx, uid)?,
+                    mappings,
+                })
+            },
+        )
     }
     fn current_items(&self) -> Result<BTreeMap<String, LibraryItem>> {
         Ok(self
