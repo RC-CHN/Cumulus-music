@@ -55,7 +55,7 @@
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'native capture acknowledgement');
   }
   async function captureOrigin(name, detail) {
-    await wait(() => !one('.page-enter-active,.page-leave-active,.queue-panel-enter-active'),
+    await wait(() => !one('.page-enter-active,.page-leave-active,.queue-panel-enter-active,.modal-enter-active'),
       'source navigation layout settled');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const stage = `ux_${String(states.length + 1).padStart(2, '0')}_${name}`;
@@ -335,6 +335,43 @@
       selectedRows.every((entry) => row(entry).classList.contains('selected')) && await unchanged(),
     'group preserves selected rows and suppresses single-song actions');
     await captureOrigin('queue_menu_group', { keys: menuKeys() });
+    const provides = one('#app').__vue_app__._context.provides;
+    const client = provides[Reflect.ownKeys(provides).find((key) => key.description === 'core-client')];
+    const nativeCollect = client.playerQueueCollectRows.bind(client);
+    const collectionReads = [];
+    client.playerQueueCollectRows = async (owner, revision, entryIds) => {
+      const result = await nativeCollect(owner, revision, entryIds);
+      collectionReads.push({ owner, revision, entryIds: [...entryIds], resultOwner: result.epoch,
+        resultRevision: result.revision, ids: result.tracks.map((track) => track.id), total: result.total });
+      return result;
+    };
+    const picker = () => one('.playlist-collect-dialog[open]:not(.modal-leave-active)');
+    click(menuItem('collect'));
+    const destination = await wait(() => {
+      const dialog = picker(), control = dialog?.querySelector('.collect-row[data-playlist-id="77"]');
+      return dialog?.contains(document.activeElement) && collectionReads.length === 1 &&
+        !dialog.querySelector('.collect-load') && control && !control.disabled && control;
+    },
+      'selected queue rows opened the native collection picker');
+    const expectedEntries = selectedRows.map((entry) => entry.entryId);
+    const collection = collectionReads[0];
+    assert(collection.owner === epoch && collection.resultOwner === epoch &&
+      collection.revision === queued.revision && collection.resultRevision === queued.revision &&
+      collection.entryIds.join(',') === expectedEntries.join(',') && collection.ids.join(',') === '12,13' &&
+      collection.total === 2 && !picker().querySelector('.collect-selection-summary') && await unchanged(),
+      'picker uses only the captured native selection and preserves the paused decoder');
+    assert(destination.textContent.includes('合成队列收藏目标'), 'account playlist list rendered');
+    await captureOrigin('queue_menu_collect', { collection, destination: destination.dataset.playlistId });
+    click(picker().querySelector('[aria-label="关闭歌单操作"]'));
+    await wait(() => !one('.playlist-collect-dialog') &&
+      document.activeElement === row(selectedRows[0]).querySelector('.queue-row-more'),
+    'cancelling collection returns focus to the opening row');
+    assert(collectionReads.length === 1 && selectedRows.every((entry) => row(entry).classList.contains('selected')) &&
+      await unchanged(), 'cancel preserves the original queue selection and paused decoder');
+    client.playerQueueCollectRows = nativeCollect;
+    await captureOrigin('queue_menu_collect_cancelled', { focusReturned: true });
+    rightClick(selectedRows[0]);
+    await wait(() => menuItem('remove'), 'same group reopened after cancelling collection');
     click(menuItem('remove'));
     await wait(async () => queueIds(await queue()) === '900,14,11,901', 'group removed from queue only');
     const remaining = await player();

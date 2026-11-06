@@ -484,7 +484,8 @@ def main():
                  'queue_source_ready', 'queue_source_opened', 'queue_source_back',
                  'queue_artist_ready', 'queue_artist_opened', 'queue_artist_back',
                  'queue_like_ready', 'queue_like_uncertain', 'queue_like_confirmed', 'queue_like_removed',
-                 'queue_menu_other', 'queue_menu_fallback', 'queue_menu_group', 'queue_menu_removed',
+                 'queue_menu_other', 'queue_menu_fallback', 'queue_menu_group', 'queue_menu_collect',
+                 'queue_menu_collect_cancelled', 'queue_menu_removed',
                  'queue_menu_resumed', 'queue_menu_paused')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
@@ -563,7 +564,8 @@ def main():
             assert stage['queueStayedOpen'] is True
         like_names = ('queue_like_ready', 'queue_like_uncertain', 'queue_like_confirmed', 'queue_like_removed')
         for name in ('queue_artist_ready', 'queue_artist_opened', 'queue_artist_back', *like_names,
-                     'queue_menu_other', 'queue_menu_fallback', 'queue_menu_group'):
+                     'queue_menu_other', 'queue_menu_fallback', 'queue_menu_group',
+                     'queue_menu_collect', 'queue_menu_collect_cancelled'):
             stage = stages[name]
             assert stage['queue'] == appended['queue'] and stage['player']['state'] == 'paused'
             assert all(stage['player'][key] == appended['player'][key]
@@ -576,7 +578,7 @@ def main():
             assert detail == [{'id': artist, 'top': 50, 'e_r': False}], detail
             assert dynamic == [{'id': artist}], dynamic
         assert not any(call['path'] in ('/api/v3/song/detail', '/api/song/enhance/player/url/v1')
-                       for call in delta('paused_append', 'queue_menu_group'))
+                       for call in delta('paused_append', 'queue_menu_collect_cancelled'))
         assert stages['queue_like_ready']['staleRejected'] is True
         assert stages['queue_like_uncertain']['reviewAvailable'] is True
         assert stages['queue_like_confirmed']['otherTrackUnaffected'] is True
@@ -601,10 +603,29 @@ def main():
         assert stages['queue_menu_group']['keys'] == [
             'play', 'collect', 'download', 'artist', 'album', 'source', 'remove',
         ]
+        collection = stages['queue_menu_collect']['collection']
+        queue = appended['queue']
+        assert collection == {
+            'owner': queue['epoch'], 'resultOwner': queue['epoch'],
+            'revision': queue['revision'], 'resultRevision': queue['revision'],
+            'entryIds': [next(entry['entryId'] for entry in queue['tracks'] if entry['track']['id'] == song)
+                         for song in ('12', '13')],
+            'ids': ['12', '13'], 'total': 2,
+        }, collection
+        assert stages['queue_menu_collect']['destination'] == '77'
+        assert stages['queue_menu_collect_cancelled']['focusReturned'] is True
+        reads = [call['args'] for call in delta('queue_menu_group', 'queue_menu_collect')
+                 if call['path'] == '/api/user/playlist/v2']
+        assert reads == [{'uid': '2', 'offset': 0, 'limit': 10, 'sortType': 'default'}], reads
+        assert not any(call['path'] == '/api/resource/commentInfo/list'
+                       for call in delta('queue_menu_group', 'queue_menu_collect_cancelled'))
+        assert not any(call['path'].endswith('/playlist/manipulate/tracks')
+                       for call in delta('queue_menu_group', 'queue_menu_removed'))
         for start, end, song in (
             ('queue_like_removed', 'queue_menu_other', '14'),
             ('queue_menu_other', 'queue_menu_fallback', '900'),
             ('queue_menu_fallback', 'queue_menu_group', '12'),
+            ('queue_menu_collect_cancelled', 'queue_menu_removed', '12'),
         ):
             reads = [call['args'] for call in delta(start, end)
                      if call['path'] == '/api/resource/commentInfo/list']
@@ -637,7 +658,7 @@ def main():
                       pausedInsertionPreserved=True, sourceNavigationPreserved=True,
                       queueArtistNavigationPreserved=True,
                       queueLikeReadbackPreserved=True,
-                      queueCatalogMenuVerified=True,
+                      queueCatalogMenuVerified=True, queueCatalogMenuCollectionVerified=True,
                       realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))

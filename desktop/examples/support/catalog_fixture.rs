@@ -187,6 +187,16 @@ impl Api for Library {
                     json!({"code":200,"profile":{"userId":501,"nickname":"合成歌手个人页"}})
                 }
                 "/api/user/playlist" => json!({"code":200,"more":false,"playlist":[]}),
+                "/api/user/playlist/v2" if album_duration_sort => {
+                    if args != json!({"uid":"2","offset":0,"limit":10,"sortType":"default"}) {
+                        return Err(Error::InvalidInput("unexpected queue collection list"));
+                    }
+                    json!({"code":200,"more":false,"playlist":[{
+                        "id":77,"name":"合成队列收藏目标","userId":2,
+                        "creator":{"userId":2,"nickname":"目录界面验证"},
+                        "privacy":10,"specialType":0,"trackCount":0,"subscribed":false
+                    }]})
+                }
                 "/api/song/like/get" => {
                     let ids = if self.queue_song_liked.load(Ordering::SeqCst) {
                         vec![3, 7, 14]

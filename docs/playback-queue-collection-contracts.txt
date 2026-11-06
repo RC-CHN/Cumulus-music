@@ -112,3 +112,6 @@ Linux 密闭实窗验证：
 用专用 Xvfb、非 C locale、隔离账号目录和无出口网络，XTest 验证真实点击和 Return；
 未传 --trusted-input 时仅做程序化 WebView 操作，不称真实输入。夹具验证取消零写入、
 显式目标精确提交和回读、原生暂停/队列恒定、真实声音队列不显示此动作。
+集成 Linux 实窗 7 阶段及截图：`.build/ui-proof/post-rc-queue-row-collect-r1/report.json`。
+Windows CI 使用程序化输入，仍核对原生队列、时钟、写入和回读。右键／更多入口共用
+同一个原生选择检查，实窗验证与报告见 queue-catalog-menu.txt。
