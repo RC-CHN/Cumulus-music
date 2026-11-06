@@ -39,14 +39,15 @@ pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
     PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio,
-    PlayerVoiceSongsView,
-    PlaylistDropRow, PodcastRecommendationAction, QualityChoiceView, QualityDetailsView,
-    QualityTrialCommand, QualityTrialOutcome, QualityTrialView, QueueCatalogMenu,
-    QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,
+    PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction, QualityChoiceView,
+    QualityDetailsView, QualityTrialCommand, QualityTrialOutcome, QualityTrialView,
+    QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,
     QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack, QueueView,
     SearchResultPlayback, SongRowSelection, StartupPreferencesCommand, StartupPreferencesView,
 };
-pub use super::player::{VinylVoiceRecommendationCard, VinylVoiceRecommendationsView};
+pub use super::player::{
+    VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
+};
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlist_creator::PlaylistCreatorProfile;
 pub use super::playlist_essential::{PlaylistEssentialCategory, PlaylistEssentialPage};

@@ -44,7 +44,9 @@ pub use vinyl_similar::{
 mod vinyl_wiki;
 mod voice_detail;
 mod voice_recommendations;
-pub use voice_recommendations::{VinylVoiceRecommendationCard, VinylVoiceRecommendationsView};
+pub use voice_recommendations::{
+    VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
+};
 mod voice_songs;
 pub use voice_detail::{PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio};
 pub use voice_songs::PlayerVoiceSongsView;

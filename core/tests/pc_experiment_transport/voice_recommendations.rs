@@ -198,7 +198,7 @@ async fn voice_recommendations_uses_row_id_directly_and_cycles_locally_without_a
     assert_eq!(
         json["cards"][0],
         json!({
-            "radioId":"1","name":"合成播单 1","coverUrl":"https://p1.music.126.net/test/art.jpg?param=320y320","playCount":1
+            "radioId":"1","name":"合成播单 1","coverUrl":"https://p1.music.126.net/test/art.jpg?param=320y320","playCount":"1"
         })
     );
     assert!(!json.to_string().contains("DO_NOT_EXPORT"));
@@ -208,9 +208,17 @@ async fn voice_recommendations_uses_row_id_directly_and_cycles_locally_without_a
         .await
         .unwrap();
     let first = initial.receipt;
+    let target = |page, id| {
+        f.client
+            .player_vinyl_voice_recommendation_target(&f.epoch, &f.play_id, &first, page, id)
+    };
+    assert_eq!(target(1, "1").unwrap(), "1");
+    assert!(matches!(target(1, "7"), Err(Error::StaleResponse)));
     let second = f.next(&first).unwrap();
     assert_eq!((second.page, second.page_count), (2, 2));
     assert_eq!(ids(&second), [7, 8, 9, 10]);
+    assert!(matches!(target(1, "1"), Err(Error::StaleResponse)));
+    assert_eq!(target(2, "7").unwrap(), "7");
     let wrapped = f.next(&first).unwrap();
     assert_eq!(
         (wrapped.page, wrapped.receipt.as_str()),
@@ -286,6 +294,16 @@ async fn voice_recommendations_rejects_old_receipt_and_late_read_after_play_or_c
         assert!(release.send(Ok(reply(data(10)))).is_ok());
         assert!(matches!(pending.await, Err(Error::StaleResponse)));
         assert!(matches!(f.next(&before.receipt), Err(Error::StaleResponse)));
+        assert!(matches!(
+            f.client.player_vinyl_voice_recommendation_target(
+                &f.epoch,
+                &f.play_id,
+                &before.receipt,
+                1,
+                "1",
+            ),
+            Err(Error::StaleResponse)
+        ));
         if change == "account" {
             let fresh = f.session.token().unwrap().generation.to_string();
             assert!(matches!(

@@ -1,6 +1,7 @@
 //! Current-episode "听了该声音的人也在听"; M/69, M/109, M/182 and M/283.
 use super::{
-    MusicClient, PlaybackSnapshot, PlaybackStatus, vinyl_similar::stale_credentials, voice_detail,
+    MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity,
+    vinyl_similar::stale_credentials, voice_detail,
 };
 use crate::{
     Error, Result,
@@ -23,6 +24,13 @@ const MAX_URL: usize = 2048;
 const MAX_JS_INTEGER: u64 = (1 << 53) - 1;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum VinylVoiceRecommendationCount {
+    Number(u64),
+    Label(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VinylVoiceRecommendationCard {
     /// The response row's own id, sent directly to /audioDetail/:id by M/182.
@@ -30,7 +38,7 @@ pub struct VinylVoiceRecommendationCard {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover_url: Option<String>,
-    pub play_count: u64,
+    pub play_count: VinylVoiceRecommendationCount,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,12 +58,21 @@ struct Seed {
     voice_id: String,
     song_id: String,
     entry_id: String,
+    source: EpisodeSource,
+}
+
+#[derive(PartialEq, Eq)]
+enum EpisodeSource {
+    Voice,
+    Scene { id: String, revision: u64 },
+    Download { task_id: String },
 }
 
 fn seed(snapshot: &PlaybackSnapshot, token: &SessionToken, play_id: &str) -> Result<Seed> {
     if play_id.is_empty()
         || &snapshot.account != token
         || snapshot.play_id.as_deref() != Some(play_id)
+        || snapshot.fm
         || !matches!(
             snapshot.state,
             PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
@@ -68,10 +85,38 @@ fn seed(snapshot: &PlaybackSnapshot, token: &SessionToken, play_id: &str) -> Res
     // voice origins. An ordinary indexed file is not an episode producer.
     let (voice_id, song_id, _) =
         voice_detail::bound_episode(&entry.resource).ok_or(Error::StaleResponse)?;
+    let source = match identity::kind(&entry.resource) {
+        PlayerResourceKind::Voice if entry.source["kind"] == "scene_fm" => {
+            let (scene, voice, revision) = snapshot
+                .committed_scene_voice(token)
+                .ok_or(Error::StaleResponse)?;
+            if voice != voice_id
+                || entry.source["scene_id"].as_str() != Some(scene)
+                || entry.source["scene_revision"].as_u64() != Some(revision)
+            {
+                return Err(Error::StaleResponse);
+            }
+            EpisodeSource::Scene {
+                id: scene.into(),
+                revision,
+            }
+        }
+        PlayerResourceKind::Voice => EpisodeSource::Voice,
+        PlayerResourceKind::Downloaded if entry.source["kind"] != "scene_fm" => {
+            EpisodeSource::Download {
+                task_id: entry.resource["download_task_id"]
+                    .as_str()
+                    .ok_or(Error::StaleResponse)?
+                    .into(),
+            }
+        }
+        _ => return Err(Error::StaleResponse),
+    };
     Ok(Seed {
         voice_id,
         song_id,
         entry_id: entry.entry_id.clone(),
+        source,
     })
 }
 
@@ -109,11 +154,19 @@ fn project(reply: Value) -> Result<Vec<VinylVoiceRecommendationCard>> {
             .filter(|url| url.len() <= MAX_URL)
             .and_then(|_| artwork::square(image));
         let count = &row["playCount"];
-        let play_count = count
-            .as_u64()
-            .or_else(|| count.as_str()?.parse().ok())
-            .filter(|count| *count <= MAX_JS_INTEGER)
-            .unwrap_or(0);
+        // Official PlayCount formats numeric values and displays existing
+        // string labels unchanged (including a string "0").
+        let play_count = match count.as_str() {
+            Some(label) if label.len() <= 128 && !label.chars().any(char::is_control) => {
+                VinylVoiceRecommendationCount::Label(label.into())
+            }
+            _ => VinylVoiceRecommendationCount::Number(
+                count
+                    .as_u64()
+                    .filter(|count| *count <= MAX_JS_INTEGER)
+                    .unwrap_or(0),
+            ),
+        };
         cards.push(VinylVoiceRecommendationCard {
             radio_id,
             name: name.into(),
@@ -142,17 +195,21 @@ struct Shelf {
 }
 
 impl Shelf {
-    fn view(&self) -> VinylVoiceRecommendationsView {
-        let page_count = self.cards.len().div_ceil(PAGE_SIZE);
+    fn page_cards(&self) -> &[VinylVoiceRecommendationCard] {
         let from = self.index * PAGE_SIZE;
         let to = (from + PAGE_SIZE).min(self.cards.len());
+        &self.cards[from..to]
+    }
+
+    fn view(&self) -> VinylVoiceRecommendationsView {
+        let page_count = self.cards.len().div_ceil(PAGE_SIZE);
         VinylVoiceRecommendationsView {
             play_id: self.play_id.clone(),
             voice_id: self.seed.voice_id.clone(),
             receipt: self.receipt.clone(),
             page: if page_count == 0 { 0 } else { self.index + 1 },
             page_count,
-            cards: self.cards[from..to].to_vec(),
+            cards: self.page_cards().to_vec(),
         }
     }
 
@@ -276,6 +333,40 @@ impl MusicClient {
         play_id: &str,
         receipt: &str,
     ) -> Result<VinylVoiceRecommendationsView> {
+        self.with_current_voice_recommendation_shelf(epoch, play_id, receipt, |shelf| {
+            Ok(shelf.next())
+        })
+    }
+
+    /// Resolve only a currently displayed recommendation to its typed route ID.
+    pub fn player_vinyl_voice_recommendation_target(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        page: usize,
+        radio_id: &str,
+    ) -> Result<String> {
+        self.with_current_voice_recommendation_shelf(epoch, play_id, receipt, |shelf| {
+            if page != shelf.index + 1 {
+                return Err(Error::StaleResponse);
+            }
+            shelf
+                .page_cards()
+                .iter()
+                .find(|card| card.radio_id == radio_id)
+                .map(|card| card.radio_id.clone())
+                .ok_or(Error::StaleResponse)
+        })
+    }
+
+    fn with_current_voice_recommendation_shelf<T>(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        apply: impl FnOnce(&mut Shelf) -> Result<T>,
+    ) -> Result<T> {
         let token = self.player_token(epoch)?;
         let api = self.session.native_api(&token)?;
         let controller = self.player.controller.get().ok_or(Error::StaleResponse)?;
@@ -307,7 +398,7 @@ impl MusicClient {
         {
             return Err(Error::StaleResponse);
         }
-        Ok(shelf.next())
+        apply(shelf)
     }
 }
 
