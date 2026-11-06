@@ -74,6 +74,19 @@ impl tauri::Assets<tauri::Wry> for FaultAssets {
         Box::new(std::iter::empty())
     }
 }
+#[cfg(target_os = "linux")]
+fn startup_locale(category: libc::c_int) -> String {
+    // SAFETY: query only, in Tauri startup after GTK and before player
+    // workers. Copy the process-owned string before querying another category.
+    unsafe {
+        let value = libc::setlocale(category, std::ptr::null());
+        assert!(!value.is_null());
+        std::ffi::CStr::from_ptr(value)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 fn main() {
     // SAFETY: before creating any runtime threads or GTK widgets.
     unsafe { cumulus_desktop::prepare_graphics() };
@@ -104,6 +117,12 @@ fn main() {
         lyric_block: lyric_block.clone(),
     }));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
+        #[cfg(target_os = "linux")]
+        fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
+            "numeric":startup_locale(libc::LC_NUMERIC),
+            "messages":startup_locale(libc::LC_MESSAGES),
+            "characters":startup_locale(libc::LC_CTYPE)
+        }))?)?;
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let proof_store=registry.store();
         let api=Arc::new(mini_fixture::Library::default());

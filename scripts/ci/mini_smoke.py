@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from window_manager import launch
 
@@ -42,6 +43,11 @@ def main():
     assert code == 0, f'mini probe exit {code}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['realMusicRequests'] == 0
+    locales = {}
+    if sys.platform.startswith('linux'):
+        locales = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
+        assert locales['numeric'] == 'C' and all(locales[key] not in ['C', 'POSIX']
+                                                  for key in ['messages', 'characters']), locales
     if args.shortcuts:
         states = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
         assert len(states) == complete['stageCount'] == 6
@@ -57,7 +63,8 @@ def main():
         report = dict(ok=True, actualWebViews=2, states=len(states),
                       screenshots=len(states) if args.screenshots else 0,
                       sharedAudioFactoryCount=1, localDomKeys=True, independentGlobalKeys=True,
-                      checks=complete['checks'], realMusicRequests=0, physicalAudioOutputVerified=False)
+                      checks=complete['checks'], locales=locales, realMusicRequests=0,
+                      physicalAudioOutputVerified=False)
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
         return
@@ -96,7 +103,7 @@ def main():
     report = dict(ok=True, actualWebViews=2, states=len(states),
                   screenshots=len(states) if args.screenshots else 0, sharedAudioFactoryCount=1,
                   volumePopupToggleVerified=True, ordinaryVolumeMuteVerified=True,
-                  realMusicRequests=0, physicalAudioOutputVerified=False)
+                  locales=locales, realMusicRequests=0, physicalAudioOutputVerified=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
