@@ -17,6 +17,7 @@ import sys
 import tempfile
 import wave
 
+from release_guard import VERSION
 from windows_zip_smoke import PLATFORM, portable_runtime
 
 
@@ -37,7 +38,7 @@ def verified_installer(packages, commit, ci_run, ci_attempt):
     assert (manifest['platform'], manifest['commit'], manifest['ciRun'], manifest['ciAttempt']) == (
         PLATFORM, commit, ci_run, ci_attempt), 'wrong installer provenance'
     version = manifest['version']
-    assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'invalid package version'
+    assert VERSION.fullmatch(version), 'invalid package version'
     name = f'Cumulus-{version}-{PLATFORM}-setup.exe'
     entries = [row for row in manifest['assets'] if row['name'] == name]
     assert len(entries) == 1, 'missing or duplicate NSIS installer manifest entry'

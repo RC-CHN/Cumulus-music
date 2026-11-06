@@ -14,6 +14,7 @@ import sys
 import tarfile
 import zipfile
 
+from debian_version import stage_debian_installer
 from linux_flac_artifacts import (
     COMPILE_DIGEST_ENV as LINUX_FLAC_DIGEST_ENV,
     stage_decoder as stage_linux_decoder,
@@ -206,9 +207,12 @@ def main():
             archive.add(portable, arcname=portable.name)
     installers = list((target / "release/bundle" / ("nsis" if windows else "deb")).glob("*.exe" if windows else "*.deb"))
     assert len(installers) == 1, f"expected one installer, found {len(installers)}"
-    shutil.copy2(installers[0], output / f"{archive_base}-setup.exe" if windows else output / f"{archive_base}.deb")
-    if not windows:
-        verify_linux_archives(output / f"{archive_base}.deb", output / f"{archive_base}.tar.gz",
+    if windows:
+        shutil.copy2(installers[0], output / f"{archive_base}-setup.exe")
+    else:
+        debian = output / f"{archive_base}.deb"
+        stage_debian_installer(installers[0], debian, version)
+        verify_linux_archives(debian, output / f"{archive_base}.tar.gz",
                               archive_base, flac_decoder, commit=sha, version=version)
     assert git("rev-parse", "HEAD") == sha and not git("status", "--porcelain", "--untracked-files=normal"), "source changed during packaging"
     manifest = {"version": version, "commit": sha, "platform": args.platform,

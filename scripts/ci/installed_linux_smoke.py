@@ -21,9 +21,11 @@ import tarfile
 import tempfile
 import time
 
+from debian_version import verify_debian_version
 from linux_flac_artifacts import (
     DEBIAN_NATIVE, LIBRARY, MAX_NOTICE, NOTICE, validate_receipt, verify_extracted,
 )
+from release_guard import VERSION
 
 
 def digest(path):
@@ -232,12 +234,13 @@ def main():
         if args.verify_packaged_flac:
             validate_receipt(flac_decoder)
         version = manifest['version']
-        assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'invalid package version'
+        assert VERSION.fullmatch(version), 'invalid package version'
         prefix = f'Cumulus-{version}-linux-x64'
         name = prefix + ('.tar.gz' if args.portable else '.deb')
         asset, = (row for row in manifest['assets'] if row['name'] == name)
         archive = args.packages/name
         assert archive.stat().st_size == asset['bytes'] and digest(archive) == asset['sha256']
+        debian_version = None if args.portable else verify_debian_version(archive, version)
         with tempfile.TemporaryDirectory(prefix='cumulus-package-proof-') as extracted:
             directory = Path(extracted)
             if args.portable:
@@ -267,6 +270,8 @@ def main():
         result = dict(ok=True, commit=args.commit, archiveVerified=True, package=name,
                       packageSha256=asset['sha256'], ciRun=manifest['ciRun'],
                       ciAttempt=manifest['ciAttempt'], installedFilterMatchesPortable=True)
+        if debian_version is not None:
+            result['debianVersion'] = debian_version
         if flac is not None:
             result['packagedFlac'] = flac
     result.update(ordinaryWindowPainted=True, noExternalNetwork=True, width=width, height=height)

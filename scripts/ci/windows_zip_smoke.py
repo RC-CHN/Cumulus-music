@@ -11,6 +11,7 @@ import sys
 import tempfile
 import zipfile
 
+from release_guard import VERSION
 from windows_flac import FLAC, FLAC_IMPORTS, decoder_members
 
 
@@ -49,7 +50,7 @@ def verify_packaged_decoder(package, prefix, members, manifest, runtime, require
 def portable_runtime(packages, commit, temporary, *, ci_run=None, ci_attempt=None, require_package_flac=False):
     manifest = json.loads((packages / f'manifest-{PLATFORM}.json').read_text(encoding='utf-8'))
     version = manifest['version']
-    assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'invalid package version'
+    assert VERSION.fullmatch(version), 'invalid package version'
     assert manifest['commit'] == commit and manifest['platform'] == PLATFORM, 'wrong package provenance'
     for key, explicit, env in [('ciRun', ci_run, 'GITHUB_RUN_ID'),
                                ('ciAttempt', ci_attempt, 'GITHUB_RUN_ATTEMPT')]:

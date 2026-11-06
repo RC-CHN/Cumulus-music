@@ -16,13 +16,14 @@ class WindowsNsisProof(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             packages = Path(folder)
             commit = 'a' * 40
-            name = f'Cumulus-1.2.3-{PLATFORM}-setup.exe'
+            version = '1.2.3-rc.1'
+            name = f'Cumulus-{version}-{PLATFORM}-setup.exe'
             setup = packages / name
             setup.write_bytes(b'synthetic')
             asset = dict(name=name, bytes=setup.stat().st_size,
                          sha256=hashlib.sha256(setup.read_bytes()).hexdigest())
             (packages / f'manifest-{PLATFORM}.json').write_text(json.dumps(dict(
-                version='1.2.3', commit=commit, platform=PLATFORM,
+                version=version, commit=commit, platform=PLATFORM,
                 ciRun='37', ciAttempt='2', assets=[asset],
             )), encoding='utf-8')
             self.assertEqual(verified_installer(packages, commit, '37', '2'), setup)
@@ -61,18 +62,19 @@ class WindowsNsisProof(unittest.TestCase):
 
     def test_scratch_registry_requires_exact_current_user_install_and_uninstaller(self):
         directory = PureWindowsPath(r'C:\runner\scratch directory\installed application')
-        row = dict(Key='Cumulus', DisplayName='Cumulus', DisplayVersion='0.1.0',
+        version = '0.2.0-rc.1'
+        row = dict(Key='Cumulus', DisplayName='Cumulus', DisplayVersion=version,
                    InstallLocation=f'"{directory}"', UninstallString=f'"{directory / "uninstall.exe"}"')
-        require_scratch_registration([row], directory, '0.1.0')
+        require_scratch_registration([row], directory, version)
         for changed in (
             row | {'InstallLocation': r'"C:\Users\fixture\AppData\Local\Cumulus"'},
             row | {'UninstallString': row['UninstallString'] + ' /unexpected'},
             row | {'DisplayVersion': '0.2.0'},
         ):
             with self.assertRaisesRegex(AssertionError, 'exact scratch'):
-                require_scratch_registration([changed], directory, '0.1.0')
+                require_scratch_registration([changed], directory, version)
         with self.assertRaisesRegex(AssertionError, 'ambiguous'):
-            require_scratch_registration([row, row], directory, '0.1.0')
+            require_scratch_registration([row, row], directory, version)
 
     def test_webview_runtime_preflight_refuses_bootstrap_or_wrong_registry_data(self):
         self.assertEqual(existing_webview_version('143.0.4.2', None), '143.0.4.2')

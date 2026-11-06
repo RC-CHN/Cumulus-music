@@ -67,10 +67,10 @@ class WindowsZipProof(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'missing or mismatched Windows FLAC manifest'):
             self.check_decoder(fault='no-receipt')
 
-    def exercise(self, *, misplaced=False, changed=False):
+    def exercise(self, *, version='1.2.3', misplaced=False, changed=False):
         with tempfile.TemporaryDirectory() as folder, patch.dict('os.environ', {}, clear=True):
             root = Path(folder)
-            version, commit = '1.2.3', 'a' * 40
+            commit = 'a' * 40
             top = f'Cumulus-{version}-{PLATFORM}'
             archive = root / f'{top}.zip'
             runtime = dict(version=version, commit=commit, platform=PLATFORM, dlls=['libmpv-2.dll'])
@@ -92,7 +92,9 @@ class WindowsZipProof(unittest.TestCase):
             self.assertEqual((portable / 'cumulus.exe').read_bytes(), b'cumulus.exe')
 
     def test_preserves_exact_runtime_content_and_adjacency(self):
-        self.exercise()
+        for version in ('1.2.3', '1.2.3-rc.1'):
+            with self.subTest(version=version):
+                self.exercise(version=version)
 
     def test_rejects_valid_archive_with_misplaced_executable(self):
         with self.assertRaisesRegex(AssertionError, 'missing adjacent runtime files'):
