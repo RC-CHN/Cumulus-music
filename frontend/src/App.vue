@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { voiceCreatorTargetIsCurrent, type VoiceCreatorTarget } from './services/voiceDetail';
+import {
+  voiceCreatorTargetIsCurrent,
+  voicePodcastTargetIsCurrent,
+  type VoiceCreatorTarget,
+  type VoicePodcastTarget,
+} from './services/voiceDetail';
 import {
   confirmLyricContributorTarget,
   type LyricContributorTarget,
@@ -1047,6 +1052,24 @@ async function openPlaybackVoiceCreator(target: VoiceCreatorTarget) {
     music.navigate({ kind: 'playlist_creator', id: target.userId });
   } catch {
     // A stale voice or failed native observation must not open another profile.
+  }
+}
+async function openPlaybackVoicePodcast(target: VoicePodcastTarget) {
+  const route = page.value;
+  const ownsView = () =>
+    route === page.value &&
+    target.epoch === account.value.epoch &&
+    signedIn.value &&
+    !music.initializing.value &&
+    player.lyricsOpen.value;
+  if (!ownsView()) return;
+  try {
+    const current = await player.syncPlayback();
+    if (!ownsView() || !voicePodcastTargetIsCurrent(target, current)) return;
+    player.lyricsOpen.value = false;
+    openSceneRadio(target.radioId);
+  } catch {
+    // A stale episode cannot navigate from its old card.
   }
 }
 async function openPlaybackLyricContributor(target: LyricContributorTarget) {
@@ -5741,6 +5764,7 @@ onUnmounted(() => {
         v-model:comments-open="vinylCommentsOpen"
         v-model:detail-tab="vinylDetailTab"
         :player="player"
+        :account="account"
         :wiki-available="vinylWikiAvailable"
         :recommendation-placement="vinylPlacement"
         :active-detail-tab="vinylActiveDetailTab"
@@ -5758,6 +5782,8 @@ onUnmounted(() => {
         @comment-report-expired="music.bootstrap(false)"
         @source="openPlaybackSource"
         @voice-creator="openPlaybackVoiceCreator"
+        @voice-podcast="openPlaybackVoicePodcast"
+        @voice-podcast-login="loginOpen = true"
         @lyric-contributor="openPlaybackLyricContributor"
         @catalog="
           (target) => {

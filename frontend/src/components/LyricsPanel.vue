@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { computed, ref, shallowRef, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import { time, type PlayerView } from '../services/player';
 import { lyricContributorRows, type LyricContributorTarget } from '../services/lyricContributors';
 import Icon from './Icon.vue';
 import { useCoverImage } from '../composables/useCoverImage';
+import { usePodcastFollow } from '../composables/usePodcastFollow';
+import { useCore } from '../services/core';
+import type { AccountView } from '../services/contracts';
+import type { PodcastSearchFollow } from '../services/podcast';
 import {
   playbackVoiceDetail,
   voiceCreatorTarget,
+  voicePodcastTarget,
+  voicePodcastTargetIsCurrent,
   type VoiceCreatorTarget,
+  type VoicePodcastTarget,
 } from '../services/voiceDetail';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import LyricFontSize from './LyricFontSize.vue';
@@ -19,6 +26,8 @@ import VinylCommentsPane from './VinylCommentsPane.vue';
 import VinylSimilarPane from './VinylSimilarPane.vue';
 import VinylWikiPane from './VinylWikiPane.vue';
 import VoiceDescriptionCard from './VoiceDescriptionCard.vue';
+import VoicePodcastCard from './VoicePodcastCard.vue';
+import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
 import VinylCommentDialog from './VinylCommentDialog.vue';
 import type {
   VinylCommentComposer,
@@ -45,6 +54,7 @@ import {
 } from '../services/playbackMetadata';
 const props = defineProps<{
   player: PlayerModel;
+  account: AccountView;
   wikiAvailable: boolean;
   recommendationPlacement: VinylRecommendationPlacement;
   activeDetailTab: VinylDetailTab;
@@ -65,6 +75,8 @@ const emit = defineEmits<{
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
   voiceCreator: [target: VoiceCreatorTarget];
+  voicePodcast: [target: VoicePodcastTarget];
+  voicePodcastLogin: [];
   lyricContributor: [target: LyricContributorTarget];
   fullComments: [hot: boolean];
   relatedPlaylist: [id: string];
@@ -84,6 +96,11 @@ const panel = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>(),
   modeEntry = ref<HTMLButtonElement>();
 const modeSheetOpen = ref(false);
+const uncollect = shallowRef<{
+  target: VoicePodcastTarget;
+  expected: PodcastSearchFollow;
+}>();
+let uncollectOpener: HTMLElement | null = null;
 const modeAvailable = computed(
   () => !!view.value?.track && view.value.resourceKind !== 'voice' && !view.value.track.voiceId,
 );
@@ -108,7 +125,7 @@ function panelCloseFocus() {
 }
 function escapePanel() {
   // Native modal cancel closes only the mode sheet.
-  if (!modeSheetOpen.value) props.player.lyricsOpen.value = false;
+  if (!modeSheetOpen.value && !uncollect.value) props.player.lyricsOpen.value = false;
 }
 const metadata = computed(() => playbackMetadata(view.value?.track));
 const source = computed(() => playbackSource(view.value));
@@ -142,6 +159,70 @@ watch(lyricFontGain, (value) => {
 });
 const motion = useMotion();
 const commentsVisible = computed(() => props.commentsAvailable && commentsOpen.value);
+const podcastTarget = computed(() => voicePodcastTarget(view.value));
+const podcastFollow = usePodcastFollow(
+  useCore(),
+  () => props.account,
+  () =>
+    props.player.lyricsOpen.value &&
+    !commentsVisible.value &&
+    podcastTarget.value?.epoch === props.account.epoch &&
+    !voiceMetadata.value?.radio?.ownedByViewer,
+  () => emit('commentReportExpired'),
+  {
+    scope: () => podcastTarget.value?.playId ?? '',
+    command: (id, expected) => {
+      const target = podcastTarget.value;
+      if (target?.radioId === id)
+        return { kind: 'change_vinyl_subscription', play_id: target.playId, expected };
+    },
+  },
+);
+function ownsPodcastCard(target: VoicePodcastTarget) {
+  return (
+    props.player.lyricsOpen.value &&
+    !commentsVisible.value &&
+    target.epoch === props.account.epoch &&
+    voiceMetadata.value?.radio?.ownedByViewer !== true &&
+    voicePodcastTargetIsCurrent(target, view.value)
+  );
+}
+function activateVoicePodcast(
+  target: VoicePodcastTarget,
+  expected: PodcastSearchFollow | undefined,
+  opener: HTMLElement,
+) {
+  if (!ownsPodcastCard(target)) return;
+  if (props.account.status !== 'authenticated') {
+    emit('voicePodcastLogin');
+    return;
+  }
+  if (expected?.kind === 'toggle' && expected.subscribed && !expected.busy) {
+    uncollectOpener = opener;
+    uncollect.value = { target, expected };
+    return;
+  }
+  if (expected) void podcastFollow.activate(target.radioId, expected);
+  else if (!podcastFollow.refreshing.value) void podcastFollow.retry();
+}
+function confirmVoicePodcastUncollect() {
+  const saved = uncollect.value;
+  uncollect.value = undefined;
+  if (saved && props.account.status === 'authenticated' && ownsPodcastCard(saved.target))
+    void podcastFollow.activate(saved.target.radioId, saved.expected);
+}
+watch(
+  () => {
+    const current = uncollect.value;
+    return (
+      !current || (props.account.status === 'authenticated' && ownsPodcastCard(current.target))
+    );
+  },
+  (valid) => {
+    if (!valid) uncollect.value = undefined;
+  },
+  { flush: 'sync' },
+);
 const tabs = computed(() => vinylDetailTabs(props.wikiAvailable, props.recommendationPlacement));
 const tabLabel: Record<VinylDetailTab, string> = {
   lyrics: '歌词',
@@ -446,6 +527,7 @@ function copyVinylSelection(event: ClipboardEvent) {
     !view.value?.track ||
     !props.player.lyricsOpen.value ||
     modeSheetOpen.value ||
+    uncollect.value ||
     props.commentComposer.current.value ||
     (event.target instanceof Element &&
       event.target.closest('input, textarea, [contenteditable]:not([contenteditable=false])'))
@@ -782,12 +864,25 @@ const displayedAuxiliary = computed(() =>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
             <div
-              v-if="voiceMetadata?.description"
-              class="voice-description-scroll"
-              :class="{ 'voice-description-only': !lines.length }"
+              v-if="voiceMetadata?.description || podcastTarget"
+              class="voice-playback-cards"
+              :class="{ 'voice-playback-cards-only': !lines.length }"
               @wheel.stop.passive
             >
+              <VoicePodcastCard
+                v-if="voiceMetadata?.radio && podcastTarget"
+                :radio="voiceMetadata.radio"
+                :target="podcastTarget"
+                :episode-cover="view?.track?.coverUrl"
+                :signed-in="account.status === 'authenticated'"
+                :control="podcastFollow.control(podcastTarget.radioId)"
+                :refreshing="podcastFollow.refreshing.value"
+                :status="podcastFollow.status.value"
+                @open="emit('voicePodcast', $event)"
+                @activate="activateVoicePodcast"
+              />
               <VoiceDescriptionCard
+                v-if="voiceMetadata?.description"
                 :key="`${currentEpoch}:${currentPlayId}`"
                 :text="voiceMetadata.description"
               />
@@ -820,7 +915,10 @@ const displayedAuxiliary = computed(() =>
               </button>
             </div>
             <div
-              v-show="activeDetailTab === 'lyrics' && (!voiceMetadata?.description || lines.length)"
+              v-show="
+                activeDetailTab === 'lyrics' &&
+                (!(voiceMetadata?.description || podcastTarget) || lines.length)
+              "
               id="vinyl-lyrics-content"
               class="vinyl-detail-content"
               :role="wikiAvailable ? 'tabpanel' : undefined"
@@ -1071,6 +1169,13 @@ const displayedAuxiliary = computed(() =>
       />
     </ModalTransition>
     <Teleport to="body">
+      <ModalTransition :return-focus="() => uncollectOpener" :fallback-focus="panelCloseFocus">
+        <VoicePodcastUncollectDialog
+          v-if="uncollect"
+          @close="uncollect = undefined"
+          @confirm="confirmVoicePodcastUncollect"
+        />
+      </ModalTransition>
       <ModalTransition :return-focus="commentOpener" :fallback-focus="panelCloseFocus">
         <VinylCommentDialog
           v-if="commentComposer.current.value"

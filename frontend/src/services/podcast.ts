@@ -88,6 +88,7 @@ export interface PodcastPage {
 }
 export type PodcastCommand =
   | { kind: 'change_search_subscription'; id: string; expected: boolean }
+  | { kind: 'change_vinyl_subscription'; play_id: string; expected: boolean }
   | { kind: 'collect_recommendation'; id: string; receipt: string; revision: string }
   | { kind: 'change'; action: PodcastAction; id: string; desired: boolean }
   | { kind: 'reconcile'; action: PodcastAction; id: string };

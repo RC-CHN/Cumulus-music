@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { effectScope, nextTick, ref } from 'vue';
 import { useSearchPodcastFollow } from '../src/composables/useSearchPodcastFollow.ts';
+import { usePodcastFollow } from '../src/composables/usePodcastFollow.ts';
 import type { AccountData, AccountView } from '../src/services/contracts.ts';
 import type {
   PodcastCommand,
@@ -23,6 +24,67 @@ const account = (epoch: string): AccountView => ({
   status: 'authenticated',
   nickname: null,
   avatarUrl: null,
+});
+
+test('vinyl collection binds the write to the played episode and hides old completion notices', async (t) => {
+  const active = ref(true);
+  const target = ref({ playId: 'a', radioId: '301' });
+  const writes: PodcastCommand[] = [];
+  const write = deferred<AccountData<PodcastMutation>>();
+  let reads = 0;
+  const scope = effectScope();
+  t.after(() => scope.stop());
+  const model = scope.run(() =>
+    usePodcastFollow(
+      {
+        async podcastSearchMembership(epoch) {
+          reads++;
+          return { epoch, value: { subscribedIds: [], pendingIds: [] } };
+        },
+        podcastCommand(_epoch, command) {
+          writes.push(command);
+          return write.promise;
+        },
+      },
+      () => account('2'),
+      () => active.value,
+      () => {},
+      {
+        scope: () => target.value.playId,
+        command: (id, expected) =>
+          target.value.radioId === id
+            ? { kind: 'change_vinyl_subscription', play_id: target.value.playId, expected }
+            : undefined,
+      },
+    ),
+  )!;
+  await flush();
+  const shown = model.control('301')!;
+  assert.deepEqual(shown, { kind: 'toggle', subscribed: false, busy: false });
+  const change = model.activate('301', shown);
+  assert.deepEqual(writes, [{ kind: 'change_vinyl_subscription', play_id: 'a', expected: false }]);
+  target.value = { playId: 'b', radioId: '302' };
+  await flush();
+  assert.equal(reads, 1, 'a new episode uses the same account membership');
+  write.resolve({
+    epoch: '2',
+    value: {
+      action: 'subscribe',
+      id: '301',
+      desired: true,
+      observed: true,
+      phase: 'confirmed',
+      acknowledged: true,
+    },
+  });
+  await change;
+  assert.equal(model.status.value, '');
+  assert.deepEqual(model.control('301'), { kind: 'toggle', subscribed: true, busy: false });
+  await model.activate('301', model.control('301')!);
+  assert.equal(writes.length, 1, 'an old radio cannot create a new playback command');
+  active.value = false;
+  await model.retry();
+  assert.equal(reads, 2, 'inactive details cannot reread membership');
 });
 
 test('search podcast membership discards a different account and refreshes only after explicit intent', async (t) => {

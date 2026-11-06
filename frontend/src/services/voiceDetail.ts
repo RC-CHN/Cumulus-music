@@ -5,6 +5,20 @@ export interface VoiceDetail {
   creator: { id: string | null; name: string } | null;
   releaseTime: number | null;
   description?: string;
+  radio?: VoicePlaybackPodcast;
+}
+export interface VoicePlaybackPodcast {
+  id: string;
+  name: string;
+  coverUrl?: string;
+  subscriberCount?: number;
+  ownedByViewer: boolean;
+}
+export interface VoicePodcastTarget {
+  epoch: string;
+  playId: string;
+  voiceId: string;
+  radioId: string;
 }
 export interface VoiceCreatorTarget {
   epoch: string;
@@ -34,13 +48,35 @@ export function playbackVoiceDetail(view: PlayerView | undefined) {
   const creator = detail?.creator?.name
     ? { name: detail.creator.name, id: identifier(detail.creator.id) }
     : null;
+  const radio = detail?.radio && identifier(detail.radio.id) ? detail.radio : undefined;
   return {
     id: voiceId,
     title: track.name,
     creator,
     releaseDate: formatVoiceReleaseDate(detail?.releaseTime),
     ...(view.playId && detail?.description ? { description: detail.description } : {}),
+    ...(view.playId && radio ? { radio } : {}),
   };
+}
+
+export function voicePodcastTarget(view: PlayerView | undefined): VoicePodcastTarget | null {
+  const detail = playbackVoiceDetail(view);
+  if (!view?.playId || !detail?.id || !detail.radio) return null;
+  return { epoch: view.epoch, playId: view.playId, voiceId: detail.id, radioId: detail.radio.id };
+}
+
+export function voicePodcastTargetIsCurrent(
+  target: VoicePodcastTarget,
+  view: PlayerView | undefined,
+) {
+  const current = voicePodcastTarget(view);
+  return (
+    !!current &&
+    current.epoch === target.epoch &&
+    current.playId === target.playId &&
+    current.voiceId === target.voiceId &&
+    current.radioId === target.radioId
+  );
 }
 
 export function voiceCreatorTarget(view: PlayerView | undefined): VoiceCreatorTarget | null {

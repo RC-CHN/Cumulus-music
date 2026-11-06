@@ -1002,16 +1002,22 @@ input[type='range'] {
 .lyrics-panel[data-vinyl-mode='lyric'] .lyric-scroll-shell.browsing .lyric-line {
   padding-inline-start: 80px;
 }
-.voice-description-scroll {
+.voice-playback-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-height: 0;
   max-height: 60%;
   overflow: auto;
   scrollbar-width: thin;
   overscroll-behavior-y: contain;
 }
-.voice-description-scroll.voice-description-only {
+.voice-playback-cards.voice-playback-cards-only {
   flex: 1;
   max-height: none;
+}
+.voice-playback-cards > * {
+  flex: none;
 }
 .vinyl-info {
   display: flex;
