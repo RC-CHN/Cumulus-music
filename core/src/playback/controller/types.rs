@@ -33,6 +33,26 @@ pub struct PrefetchSnapshot {
     pub state: &'static str,
     pub entry_id: Option<String>,
 }
+/// Decoder-backed Scene FM identity. Only the playback actor mints this;
+/// a provisional queue selection or persisted source alone is insufficient.
+#[derive(Clone)]
+pub(super) struct CommittedSceneVoice {
+    scene_id: String,
+    voice_id: String,
+    scene_revision: u64,
+}
+impl CommittedSceneVoice {
+    pub(super) fn from_entry(entry: &QueueEntry) -> Option<Self> {
+        if entry.source["kind"] != "scene_fm" {
+            return None;
+        }
+        Some(Self {
+            scene_id: entry.source["scene_id"].as_str()?.into(),
+            voice_id: entry.resource["voice_id"].as_str()?.into(),
+            scene_revision: entry.source["scene_revision"].as_u64()?,
+        })
+    }
+}
 /// Native snapshot; a host must map selected resources to its public DTO.
 #[derive(Clone)]
 pub struct PlaybackSnapshot {
@@ -62,6 +82,7 @@ pub struct PlaybackSnapshot {
     pub paused: bool,
     pub play_id: Option<String>,
     pub(crate) ended_minibar_receipt: Option<uuid::Uuid>,
+    pub(super) committed_scene_voice: Option<CommittedSceneVoice>,
     pub selected: Option<QueueEntry>,
     pub position: Option<f64>,
     pub buffered_through: Option<f64>,
@@ -99,6 +120,15 @@ pub struct PlaybackFence {
     ended_minibar_receipt: Option<uuid::Uuid>,
 }
 impl PlaybackSnapshot {
+    pub(crate) fn committed_scene_voice(&self, token: &SessionToken) -> Option<(&str, &str, u64)> {
+        let voice = self.committed_scene_voice.as_ref()?;
+        (&self.account == token).then_some((
+            voice.scene_id.as_str(),
+            voice.voice_id.as_str(),
+            voice.scene_revision,
+        ))
+    }
+
     pub(crate) fn headphone_restore_ready(&self) -> bool {
         if self.state == PlaybackStatus::Idle {
             // The UI intentionally skips startup restore on an empty queue.
