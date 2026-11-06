@@ -167,3 +167,8 @@ mini_smoke.py 通过真实双 WebView、原生播放器、暂停时钟和 libmpv
 0%，图标与状态吻合。主窗确认原有悬停、静音和恢复。报告分别在
 .build/ui-proof/phase96-mini-volume/mini-native-r1/report.json 与
 mini-shortcuts-r1/report.json；未验证 Windows 实际窗口或物理输出。
+
+与队列和搜索改动合并后的 Linux 实窗复测同样通过 21 个主流程阶段、6 个快捷键
+阶段。两个窗口共用一次原生播放器创建，原来的主窗静音和恢复也继续通过。
+集成报告：`.build/ui-proof/post-rc-mini-volume-r1/report.json` 和
+`.build/ui-proof/post-rc-mini-volume-keys-r1/report.json`。
