@@ -13,6 +13,7 @@ import type {
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
+import type { DownloadTab } from '../services/downloads';
 import type { QueueLikeTarget } from '../services/player';
 import type { VoiceSongRowTarget } from '../services/voiceSongs';
 export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
@@ -62,7 +63,7 @@ type Destination =
   | { kind: 'daily_batch' }
   | { kind: 'style_recommendations'; seed?: StyleSeedHandle; origin?: 'home_recent' }
   | { kind: 'library' }
-  | { kind: 'downloads'; downloadVisit?: number; initialTab?: 'active' }
+  | { kind: 'downloads'; downloadVisit?: number; initialTab?: DownloadTab }
   | { kind: 'cloud' }
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }

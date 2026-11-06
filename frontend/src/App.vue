@@ -2730,7 +2730,9 @@ watch(
     if (next.kind === 'downloads')
       downloads.enterVisit(
         next,
-        next.initialTab === 'active' ? downloadSectionQuery('active') : undefined,
+        next.initialTab
+          ? downloadSectionQuery(next.initialTab === 'active' ? 'active' : 'song')
+          : undefined,
       );
   },
   { flush: 'sync' },
