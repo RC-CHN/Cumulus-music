@@ -405,7 +405,7 @@ def private_pipewire_stream(pid, env):
                item.get('info', {}).get('input-node-id') in sink for item in objects)
 
 
-def sink_tone(env):
+def sink_tone(env, *, windows=None):
     """Capture one second from the private sink without retaining raw PCM."""
     assert shutil.which('parec'), 'monitor proof requires parec from the PulseAudio utilities'
     expected_bytes = 48000 * 2
@@ -429,6 +429,18 @@ def sink_tone(env):
         stop(process)
     # Analyze the central half second, omitting the stream's startup transient.
     pcm = tuple(value for (value,) in struct.iter_unpack('<h', raw[24000:72000]))
+    if windows is not None:
+        # Each 50 ms slice holds a whole number of periods for all fixture
+        # tones. Retain only summaries to distinguish silence or a phase jump
+        # from a gain change without saving the actual sink capture.
+        for offset in range(0, len(pcm), 2400):
+            window = pcm[offset:offset + 2400]
+            windows.append({'offsetMs': offset // 48, 'zeroFrames': window.count(0),
+                            **tone_metrics(window)})
+    return tone_metrics(pcm)
+
+
+def tone_metrics(pcm):
     rms = math.sqrt(math.fsum(value * value for value in pcm) / len(pcm))
     result = {'rms': round(rms, 3)}
     for frequency in MONITOR_TONES:
@@ -530,9 +542,12 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
     observations = {}
 
     def capture_tone(stage, timing=None):
-        result = sink_tone(env)
+        windows = [] if indexed_flac_library else None
+        result = sink_tone(env, windows=windows)
         monitor[stage] = result
         observations[stage] = {'tone': result, 'nativePosition': timing}
+        if windows is not None:
+            observations[stage]['windows50ms'] = windows
         # Preserve the last actual measurement even when an assertion fails,
         # without retaining PCM or recording anything outside the private sink.
         (root/'monitor-pcm-observations.json').write_text(
