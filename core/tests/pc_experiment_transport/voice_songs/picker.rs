@@ -34,7 +34,7 @@ fn detail(owner: u64, present: bool) -> serde_json::Value {
         "tags":[],"trackIds":if present {vec![json!({"id":301})]} else {vec![]}}})
 }
 
-fn config(f: &Fixture) {
+pub(super) fn config(f: &Fixture) {
     let store = StateStore::open(f.root.path().join("config")).unwrap();
     store
         .put(

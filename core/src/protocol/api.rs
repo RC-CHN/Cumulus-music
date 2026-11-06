@@ -12,10 +12,10 @@ pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type PlaylistAddPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
-/// A native one-song add to an explicitly chosen playlist, never IPC data.
+/// A native bounded song selection for an explicitly chosen playlist, never IPC data.
 pub struct GuardedPlaylistAdd {
     playlist: String,
-    song: String,
+    songs: Vec<String>,
 }
 
 pub struct GuardedPlaylistCreate {
@@ -42,12 +42,23 @@ impl GuardedPlaylistCreate {
 impl GuardedPlaylistAdd {
     pub(crate) const PATH: &str = "/api/v1/playlist/manipulate/tracks";
 
-    pub(crate) fn new(playlist: String, song: String) -> Self {
-        Self { playlist, song }
+    pub(crate) const MAX_SONGS: usize = 100;
+
+    pub(crate) fn new(playlist: String, songs: Vec<String>) -> Result<Self> {
+        if !(1..=Self::MAX_SONGS).contains(&songs.len()) {
+            return Err(Error::InvalidInput("invalid guarded add selection"));
+        }
+        Ok(Self { playlist, songs })
     }
 
     pub fn into_request(self) -> Result<(&'static str, Value)> {
-        let ids = packed_ids(&[json!(self.song)])?;
+        let ids = packed_ids(
+            &self
+                .songs
+                .into_iter()
+                .map(Value::String)
+                .collect::<Vec<_>>(),
+        )?;
         Ok((
             Self::PATH,
             json!({"pid":self.playlist,"trackIds":ids,"op":"add"}),
@@ -425,6 +436,11 @@ pub trait Api: Send + Sync + std::any::Any {
     }
 
     fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// Verified PC authority for the current SongCard and existing owned destination picker.
+    fn song_card_collection_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
     }
 

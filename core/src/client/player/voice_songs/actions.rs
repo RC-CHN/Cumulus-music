@@ -72,6 +72,7 @@ pub(super) struct Row {
     pub(super) copyright_blocked: bool,
     pub(super) download: super::download::Class,
     pub(super) playlist_eligible: bool,
+    pub(super) collection_privilege: super::collect::Privilege,
 }
 
 impl Row {
@@ -89,6 +90,7 @@ pub(super) struct Page {
     pub(super) revision: String,
     pub(super) rows: Vec<Row>,
     pub(super) picker: super::picker::Shelf,
+    pub(super) collect: super::collect::Shelf,
     pub(super) receipt: String,
     pub(super) created: Instant,
 }
@@ -196,6 +198,50 @@ impl Host {
 }
 
 impl MusicClient {
+    pub(super) fn voice_song_write_scope(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        scope: fn(&dyn Api) -> Result<Option<String>>,
+    ) -> Result<(
+        Arc<Page>,
+        impl Fn() -> Result<()> + Send + Sync + 'static + use<>,
+    )> {
+        let token = self.player_token(epoch)?;
+        let host = self.player.voice_songs.clone();
+        let page = host.page(&token, play_id, receipt)?;
+        let api = page.api.upgrade().ok_or(Error::StaleResponse)?;
+        let room = self.together_detached_guard(&token);
+        let controller = self
+            .player
+            .controller
+            .get()
+            .cloned()
+            .ok_or(Error::StaleResponse)?;
+        let auth = self.auth.pending_guard();
+        let session = self.session.clone();
+        let active = page.clone();
+        let check = move || {
+            session.with_verified_profile(&token, &api, |_, _| Ok(()))?;
+            auth()?;
+            if room.is_cancelled()
+                || !host.current(&active)
+                || scope(api.as_ref()).map_err(stale_credentials)?.as_deref()
+                    != Some(active.revision.as_str())
+                || seed(&controller.snapshot(), &token, &active.play_id)
+                    .ok()
+                    .as_ref()
+                    != Some(&active.seed)
+            {
+                return Err(Error::StaleResponse);
+            }
+            Ok(())
+        };
+        check()?;
+        Ok((page, check))
+    }
+
     pub async fn player_voice_song_play(
         &self,
         epoch: &str,

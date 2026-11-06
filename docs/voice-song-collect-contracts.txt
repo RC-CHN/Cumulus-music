@@ -1,0 +1,69 @@
+Episode playback · included song group → collect to an existing playlist
+Official evidence: Windows 3.1.42.205594
+
+- M/556:233–287 offers track Favourite / Ctrl+S for a selection; it does
+  not reuse the menu's single-row restriction or next-play copyright guard.
+  M/3085:768–792 reads selectedData in its existing order. First pass takes
+  missing subPriv and positive subPriv (M/21:362 maps raw privilege.subp).
+  If none, try the first selected item only. The second, truthiness-based
+  check permits explicit numeric zero or null on that first item; negative
+  does not pass. Playback pl/st do not decide collection rights.
+- M/3085 reverses the filtered resources and M/3160:1060–1061 reverses
+  both arrays again. The plain online branch (M/3160:1218–1226, M/15:2099)
+  sends /api/v1/playlist/manipulate/tracks with pid, op="add" and JSON
+  trackIds in the original filtered order. References/algorithms are a
+  separate conditional branch and are not synthesized.
+- FavouriteModal/index.jsx:379–405,444–489 sends the clicked playlist to
+  the existing action and closes on true. M/3132:110–145 uses
+  /api/user/playlist/v2 (M/15:1331), same UID, limit 10, page-index offset,
+  default/recently sort, no pinned overlay. It filters for the user's
+  created playlists, which in the original includes the system liked list.
+
+Native Cumulus scope
+
+- Core prepare freezes two to 100 ordered unique indices from the current
+  native episode shelf. No renderer track IDs. It returns eligible count,
+  omitted indices, and whether the first-row fallback was used. It keeps the
+  first occurrence if the card duplicates a canonical song ID. Unknown
+  privilege forms, mismatched privilege IDs, and local/cloud/alternate
+  identity are omitted; omitting one cannot promote an otherwise skipped
+  first item. An empty result issues no receipt.
+- Destination pages are fetched only on explicit use of the selection,
+  carry the same signed PC account/card revision, and admit only observed
+  regular owned IDs. Refreshing a page revokes its old observations and a
+  late same-page response cannot restore them. Native fetches exact detail
+  and rechecks ID, regular ownership, and absence of local-only entries
+  before a single guarded add. No writes on opening or listing the picker.
+- Account generation, native API, unique URL-scoped account cookie
+  identity, current episode/play ID, shelf receipt and transport credential
+  revision are rechecked through dispatch. An ambiguous response stays in
+  the account's shared durable playlist journal. The same choice returns
+  that operation; readback checks it and never sends another add. A lost
+  shelf/selection cannot reconcile through this action; the general playlist
+  journal still holds it for the same account. A proved existing membership
+  can be Unchanged without a duplicate add; readback proves exact resulting
+  membership and prior-item order, not server insertion position.
+- Rust core candidate; no desktop IPC or UI change in this slice. The
+  sealed HTTP tests exercise concrete ordered wire, account and destination
+  fences, first-item fallback, and lost-response recovery. No real writes.
+
+Separate official destinations, not yet exposed here
+
+- Liked is a real FavouriteModal row. M/3160:1141–1142,1241–1254 compares the
+  chosen ID against native starPlaylistId, uses the same batch-add endpoint,
+  then publishes the liked map/IDs and the corresponding confirmation. It
+  does not issue a sequence of per-song heart requests. A future typed
+  action must bind the positively identified current account's specialType=5
+  destination (and unique cookie scope for /api/song/like/get), use the same
+  group receipt and no-replay journal, then confirm and publish membership by
+  guarded readback. Do not make the generic ordinary playlist editor accept
+  arbitrary system playlists or optimistically patch rights/cache.
+- New (FavouriteModal/index.jsx:419–441,529–534) closes the picker into the
+  create dialog, preserving selectedData, and passes a null destination
+  sentinel. M/3085:823–844 and M/31:451–472 wait for create to return the
+  playlist ID; cancel returns false and never adds. Use independent native
+  create/add operation IDs, explicit name/privacy confirmation, returned ID
+  plus same-owner readback, and exact saved selection. If create succeeded
+  but add is uncertain, only read back the known operations; do not recreate
+  the playlist. Current download-picker single creation is a separate
+  producer and must not be used to confer group authority.

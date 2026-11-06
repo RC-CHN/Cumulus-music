@@ -1,5 +1,6 @@
 //! 「包含歌曲」 card and scoped song actions from a bound current episode.
 mod actions;
+mod collect;
 mod download;
 mod likes;
 mod picker;
@@ -21,6 +22,7 @@ use crate::{
 pub(super) use actions::Host;
 pub use actions::VoiceSongAction;
 use actions::{Page, Row};
+pub use collect::{VoiceSongCollectPlan, VoiceSongCollectResult};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
 pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
@@ -234,6 +236,7 @@ fn track(row: &Value) -> Result<Option<Row>> {
             || row["privilege"]["subp"]
                 .as_i64()
                 .is_some_and(|value| value > 0),
+        collection_privilege: collect::Privilege::from_song(row, &track.id),
         track,
         online_eligible,
         copyright_blocked,
@@ -325,6 +328,7 @@ impl MusicClient {
             revision: revision.clone(),
             rows,
             picker: Default::default(),
+            collect: Default::default(),
             receipt: uuid::Uuid::new_v4().simple().to_string(),
             created: Instant::now(),
         });

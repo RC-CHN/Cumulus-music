@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::Arc};
 
+pub(super) const PLAYLIST_COLLECT_LAST_PAGE: u32 = 999;
+
 pub(super) fn playlist_track_revision(id: &str, detail: &Value) -> Result<String> {
     let ids = detail["trackIds"]
         .as_array()
@@ -144,8 +146,7 @@ impl MusicClient {
         page: u32,
     ) -> Result<AccountData<PlaylistCollectPage>> {
         const LIMIT: usize = 10;
-        const LAST_PAGE: u32 = 999;
-        if page > LAST_PAGE {
+        if page > PLAYLIST_COLLECT_LAST_PAGE {
             return Err(Error::InvalidInput("invalid playlist collection page"));
         }
         let token = self.player_token(epoch)?;
@@ -170,7 +171,7 @@ impl MusicClient {
                     Value::Bool(more) => *more,
                     _ => return Err(Error::Response("invalid playlist collection cursor")),
                 };
-                if more && (rows.is_empty() || page == LAST_PAGE) {
+                if more && (rows.is_empty() || page == PLAYLIST_COLLECT_LAST_PAGE) {
                     return Err(Error::Response("invalid playlist collection continuation"));
                 }
                 let mut seen = std::collections::HashSet::with_capacity(rows.len());

@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    protocol::api::{PlaylistAddPermission, identifier},
+    protocol::api::{Api, GuardedPlaylistAdd, PlaylistAddPermission, identifier},
     storage::{OperationLock, StateStore},
 };
 use serde_json::{Value, json};
@@ -17,6 +17,15 @@ use std::{
 };
 
 const JOURNAL: &str = "playlist-mutations";
+
+enum GuardedReadback<'a> {
+    SingleAdd,
+    SelectionAdd {
+        playlist: &'a str,
+        songs: &'a [String],
+    },
+    Create,
+}
 pub struct PlaylistService {
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
@@ -234,9 +243,45 @@ impl PlaylistService {
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(
+            token,
+            playlist,
+            &[song.into()],
+            operation_id,
+            permission,
+            |api| api.song_card_playlist_scope_revision(),
+        )
+        .await
+    }
+
+    pub(crate) async fn guarded_collect_songs(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        songs: &[String],
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(token, playlist, songs, operation_id, permission, |api| {
+            api.song_card_collection_scope_revision()
+        })
+        .await
+    }
+
+    async fn guarded_add_songs(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        songs: &[String],
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+        scope: fn(&dyn Api) -> Result<Option<String>>,
+    ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
         let playlist = identifier(&json!(playlist))?;
-        let song = identifier(&json!(song))?;
+        if !(1..=GuardedPlaylistAdd::MAX_SONGS).contains(&songs.len()) {
+            return Err(Error::InvalidInput("invalid guarded add selection"));
+        }
         if operation_id.len() != 32 || !operation_id.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(Error::InvalidInput("invalid playlist operation identifier"));
         }
@@ -255,12 +300,11 @@ impl PlaylistService {
             return Err(Error::MutationUncertain);
         }
         let api = self.session.native_api(token)?;
-        let revision = api
-            .song_card_playlist_scope_revision()?
-            .ok_or(Error::State("guarded playlist add is unavailable"))?;
+        let revision =
+            scope(api.as_ref())?.ok_or(Error::State("guarded playlist add is unavailable"))?;
         let credentials = || {
             self.session.require_api(token, &api)?;
-            if api.song_card_playlist_scope_revision()?.as_deref() != Some(revision.as_str()) {
+            if scope(api.as_ref())?.as_deref() != Some(revision.as_str()) {
                 return Err(Error::CredentialChanged);
             }
             Ok(())
@@ -278,12 +322,13 @@ impl PlaylistService {
                 "local-only playlist entries require native matching before editing",
             ));
         }
-        let command = PlaylistCommand::Tracks {
+        let mut command = PlaylistCommand::Tracks {
             id: playlist,
             revision: detail.revision.clone(),
             change: TrackChange::Add,
-            ids: vec![song],
+            ids: songs.to_vec(),
         };
+        command.validate()?;
         self.execute_prepared(
             token,
             &uid,
@@ -487,7 +532,7 @@ impl PlaylistService {
         operation_id: &str,
         check: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
-        self.reconcile_guarded_write(token, operation_id, check, false)
+        self.reconcile_guarded_write(token, operation_id, check, GuardedReadback::SingleAdd)
             .await
     }
 
@@ -497,8 +542,25 @@ impl PlaylistService {
         operation_id: &str,
         check: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
-        self.reconcile_guarded_write(token, operation_id, check, true)
+        self.reconcile_guarded_write(token, operation_id, check, GuardedReadback::Create)
             .await
+    }
+
+    pub(crate) async fn reconcile_guarded_collect(
+        &self,
+        token: &SessionToken,
+        operation_id: &str,
+        playlist: &str,
+        songs: &[String],
+        check: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.reconcile_guarded_write(
+            token,
+            operation_id,
+            check,
+            GuardedReadback::SelectionAdd { playlist, songs },
+        )
+        .await
     }
 
     async fn reconcile_guarded_write(
@@ -506,20 +568,32 @@ impl PlaylistService {
         token: &SessionToken,
         operation_id: &str,
         check: &PlaylistAddPermission<'_>,
-        create: bool,
+        expected: GuardedReadback<'_>,
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
         let _lock = OperationLock::acquire(self.store.directory(), &uid, JOURNAL)?;
         let record = self
             .operation_for(token, operation_id)?
             .ok_or(Error::State("picker playlist operation is missing"))?;
-        let valid = match &record.command {
-            PlaylistCommand::Create { .. } => create,
-            PlaylistCommand::Tracks {
-                change: TrackChange::Add,
-                ids,
-                ..
-            } => !create && ids.len() == 1,
+        let valid = match (&record.command, expected) {
+            (PlaylistCommand::Create { .. }, GuardedReadback::Create) => true,
+            (
+                PlaylistCommand::Tracks {
+                    change: TrackChange::Add,
+                    ids,
+                    ..
+                },
+                GuardedReadback::SingleAdd,
+            ) => ids.len() == 1,
+            (
+                PlaylistCommand::Tracks {
+                    id,
+                    change: TrackChange::Add,
+                    ids,
+                    ..
+                },
+                GuardedReadback::SelectionAdd { playlist, songs },
+            ) => id == playlist && ids == songs,
             _ => false,
         };
         if !valid {

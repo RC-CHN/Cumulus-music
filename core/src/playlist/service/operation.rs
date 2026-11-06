@@ -103,12 +103,9 @@ pub(super) async fn send_guarded(
             ids,
             ..
         } => {
-            let [song] = ids.as_slice() else {
-                return Err(Error::State("invalid guarded add selection"));
-            };
             let response = api
                 .request_guarded_playlist_add(
-                    GuardedPlaylistAdd::new(id, song.clone()),
+                    GuardedPlaylistAdd::new(id, ids)?,
                     permission,
                     dispatched,
                 )

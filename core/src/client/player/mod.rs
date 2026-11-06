@@ -54,9 +54,10 @@ pub use voice_detail::{
     VinylVoiceDetailTarget, VinylVoiceDetailView,
 };
 pub use voice_songs::{
-    PlayerVoiceSongsView, VoiceSongAction, VoiceSongDownloadCreation, VoiceSongDownloadDecision,
-    VoiceSongDownloadPicker, VoiceSongDownloadPlan, VoiceSongRowAvailability,
-    VoiceSongSelectionAction, VoiceSongSelectionKind,
+    PlayerVoiceSongsView, VoiceSongAction, VoiceSongCollectPlan, VoiceSongCollectResult,
+    VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
+    VoiceSongDownloadPlan, VoiceSongRowAvailability, VoiceSongSelectionAction,
+    VoiceSongSelectionKind,
 };
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
