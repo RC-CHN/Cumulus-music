@@ -8,12 +8,14 @@ import subprocess
 import sys
 
 
-def read_report(root, *, graph, peq):
+def read_report(root, *, graph, peq, indexed=False):
     report = json.loads((root / 'report.json').read_text(encoding='utf-8'))
     assert report['ok'] and report['kind'] == 'ordinary_native_local_equalizer_v1'
-    for flag in ('actualActor', 'explicitNativeFile', 'webviewFinished',
+    for flag in ('actualActor', 'webviewFinished',
                  'localGuest', 'sameLogicalPlayAcrossSeek'):
         assert report[flag] is True
+    assert report['explicitNativeFile'] is (not indexed)
+    assert report.get('indexedLocalFile', False) is indexed
     assert report['audioOutput'] == 'null' and report['realMusicRequests'] == report['realAccountWrites'] == 0
     assert report['fixedGraphSelected'] is graph and report['wrongDigestStockFallback'] is (not graph)
     assert report['pausedIndependentPeq'] is peq
@@ -31,7 +33,10 @@ def read_report(root, *, graph, peq):
     assert native['ordinary_loads'] == 0
     load, = native['loads']
     seek, = native['seeks']
-    assert load['native_file'] and load['start'] == 0
+    assert load['native_file'] is (not indexed) and load['start'] == 0
+    assert load.get('indexed_file', False) is indexed
+    if indexed:
+        assert load['codec'] == ('pcm_f32le' if graph else 'flac')
     assert seek['old_entry'] == load['entry'] and seek['seconds'] == .5
     if graph:
         assert load['graph_entry'] == load['entry']
@@ -207,6 +212,8 @@ def main():
     parser.add_argument('--filter-library', type=Path, help='also run the independent paused PEQ handoff')
     parser.add_argument('--frontend-dist', type=Path)
     spatial = parser.add_mutually_exclusive_group()
+    spatial.add_argument('--indexed-flac-only', action='store_true',
+                         help='run trusted graph and held stock via a native Linux library index')
     spatial.add_argument('--spatial-controls-only', action='store_true',
                          help='run the actual EQ UI with the ordinary held FLAC source')
     spatial.add_argument('--spatial-wav-only', action='store_true',
@@ -227,6 +234,8 @@ def main():
         parser.error('the WAV-only proof does not configure a FLAC or independent filter library')
     if not is_wave and not (args.flac_library and args.flac_sha256):
         parser.error('FLAC proofs require --flac-library and --flac-sha256')
+    if args.indexed_flac_only and (not sys.platform.startswith('linux') or args.filter_library):
+        parser.error('--indexed-flac-only requires Linux and no independent filter library')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     binary = args.binary.resolve(strict=True)
@@ -254,6 +263,8 @@ def main():
         cases = [('spatial_wav_48k', True, [])]
     elif args.spatial_flac_48k_only:
         cases = [('spatial_flac_48k', True, [])]
+    elif args.indexed_flac_only:
+        cases = [('indexed_flac', True, []), ('indexed_wrong_digest', False, [])]
     reports = {}
     for case, graph, filter_args in cases:
         work = root / case
@@ -279,7 +290,8 @@ def main():
         reports[case] = (read_spatial_report(work, capture=args.screenshots,
                                              source_kind='wav' if is_wave else 'flac',
                                              rate=48_000 if rate_48k else 44_100) if is_spatial
-                         else read_report(work, graph=graph, peq=bool(filter_args)))
+                         else read_report(work, graph=graph, peq=bool(filter_args),
+                                          indexed=args.indexed_flac_only))
     output = {'ok': True, 'actualWebViewAndActor': True, 'flacSha256': args.flac_sha256,
               'realMusicRequests': 0, 'physicalOutputVerified': False, 'cases': reports}
     (root / 'report.json').write_text(json.dumps(output, indent=2) + '\n', encoding='utf-8')

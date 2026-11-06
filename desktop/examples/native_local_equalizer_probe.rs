@@ -73,6 +73,7 @@ struct Proof {
     expect_graph: bool,
     exercise_peq: bool,
     exercise_spatial: bool,
+    indexed: bool,
     fixture_source: Value,
     started: AtomicBool,
 }
@@ -120,10 +121,12 @@ fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let case = args.first().and_then(|value| value.to_str());
     let wave = matches!(case, Some("spatial_wav" | "spatial_wav_48k"));
+    let indexed = matches!(case, Some("indexed_flac" | "indexed_wrong_digest"));
+    assert!(!indexed || cfg!(all(target_os = "linux", target_arch = "x86_64")));
     let rate_48k = matches!(case, Some("spatial_wav_48k" | "spatial_flac_48k"));
     let (expect_graph, exercise_peq, exercise_spatial) = match case {
-        Some("trusted") => (true, false, false),
-        Some("wrong_digest") => (false, false, false),
+        Some("trusted" | "indexed_flac") => (true, false, false),
+        Some("wrong_digest" | "indexed_wrong_digest") => (false, false, false),
         Some("paused_peq") => (true, true, false),
         Some("spatial_controls" | "spatial_wav" | "spatial_wav_48k" | "spatial_flac_48k") => {
             (true, false, true)
@@ -137,7 +140,7 @@ fn main() {
     };
     assert!(
         (required..=required + 1).contains(&args.len()),
-        "usage: native_local_equalizer_probe trusted|wrong_digest|spatial_controls|spatial_flac_48k ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]; or spatial_wav|spatial_wav_48k NEW_ROOT [ABS_MPV]"
+        "usage: native_local_equalizer_probe trusted|wrong_digest|indexed_flac|indexed_wrong_digest|spatial_controls|spatial_flac_48k ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]; or spatial_wav|spatial_wav_48k NEW_ROOT [ABS_MPV]"
     );
     let decoder = (!wave).then(|| {
         let sdk = PathBuf::from(&args[1]);
@@ -178,7 +181,14 @@ fn main() {
     } else {
         ("flac", flac.to_vec())
     };
-    let file = root.join(format!("合成 原生均衡器.{kind}"));
+    let media_root = if indexed {
+        let media = root.join("media");
+        fs::create_dir(&media).expect("new synthetic indexed media root");
+        media
+    } else {
+        root.clone()
+    };
+    let file = media_root.join(format!("合成 原生均衡器.{kind}"));
     let fixture_source = json!({"kind":kind,"frames":frames,"sampleRate":rate,
         "sha256":format!("{:x}", Sha256::digest(&bytes)),
         "sourcePcmSha256":manifest["pcmSha256"],
@@ -249,6 +259,7 @@ fn main() {
                 expect_graph,
                 exercise_peq,
                 exercise_spatial,
+                indexed,
                 fixture_source,
                 started: AtomicBool::new(false),
             });
@@ -290,6 +301,7 @@ fn main() {
                     &proof.evidence,
                     proof.expect_graph,
                     proof.exercise_peq,
+                    proof.indexed,
                 )
                 .await;
                 let (name, mut report, code) = match result {

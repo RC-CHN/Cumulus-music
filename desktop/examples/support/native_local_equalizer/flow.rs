@@ -5,7 +5,9 @@ use cumulus_core::{
     account::SessionStatus,
     client::{
         MusicClient,
-        dto::{PlayerAction, PlayerResourceKind, PlayerView},
+        dto::{
+            LocalCommand, LocalQuery, PlaySelection, PlayerAction, PlayerResourceKind, PlayerView,
+        },
     },
     effects::{
         equalizer::{EqualizerPreferences, EqualizerSettings, EqualizerStatus},
@@ -207,6 +209,7 @@ pub async fn verify(
     evidence: &Evidence,
     expect_graph: bool,
     exercise_peq: bool,
+    indexed: bool,
 ) -> Result<Value> {
     let account = client.account()?;
     require(
@@ -224,10 +227,48 @@ pub async fn verify(
         .await?;
     configure(client, &epoch, &initial, curve(3.0)?).await?;
     eprintln!("ordinary local EQ proof: settings_committed");
-    let selected = client
-        .play_native_open_files(&epoch, vec![path])
+    let selected = if indexed {
+        let root = path
+            .parent()
+            .and_then(|parent| parent.to_str())
+            .ok_or(Error::State("invalid synthetic library root"))?;
+        client
+            .local_command(LocalCommand::Watch {
+                path: root.to_owned(),
+            })
+            .await?;
+        let page = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let page = client.local_page(LocalQuery::default()).await?;
+                if page.playable == 1 && page.tracks.len() == 1 {
+                    return Ok::<_, Error>(page);
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
         .await
-        .inspect_err(|error| eprintln!("ordinary local EQ file selection: {error}"))?;
+        .map_err(|_| Error::State("indexed FLAC fixture scan did not finish"))??;
+        let row = &page.tracks[0];
+        require(
+            !row.cue && !row.encrypted && row.format == "flac",
+            "unexpected indexed FLAC fixture",
+        )?;
+        client
+            .play_selection(
+                &epoch,
+                PlaySelection::Local {
+                    query: LocalQuery::default(),
+                    start_id: Some(row.track.id.clone()),
+                    revision: page.revision,
+                },
+            )
+            .await?
+    } else {
+        client
+            .play_native_open_files(&epoch, vec![path])
+            .await
+            .inspect_err(|error| eprintln!("ordinary local EQ file selection: {error}"))?
+    };
     eprintln!("ordinary local EQ proof: native_open_acknowledged");
     require(
         selected.resource_kind == Some(PlayerResourceKind::Local)
@@ -346,7 +387,8 @@ pub async fn verify(
     };
     require(
         trace.ordinary_loads == 0
-            && load.native_file
+            && load.native_file != indexed
+            && load.indexed_file == indexed
             && load.start == 0.0
             && seek.old_entry == load.entry
             && seek.seconds == 0.5,
@@ -411,7 +453,8 @@ pub async fn verify(
     )?;
     Ok(json!({
         "ok": true, "kind": "ordinary_native_local_equalizer_v1",
-        "localGuest": true, "actualActor": true, "explicitNativeFile": true, "audioOutput": "null",
+        "localGuest": true, "actualActor": true, "explicitNativeFile": !indexed,
+        "indexedLocalFile": indexed, "audioOutput": "null",
         "wrongDigestStockFallback": !expect_graph, "fixedGraphSelected": expect_graph,
         "sameLogicalPlayAcrossSeek": true, "pausedIndependentPeq": exercise_peq, "peqHandoff": peq_handoff,
         "durableEqualizerRevision": edited.equalizer.revision,

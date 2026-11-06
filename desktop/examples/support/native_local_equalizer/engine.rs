@@ -19,6 +19,7 @@ use std::{
 #[derive(Serialize)]
 pub struct Load {
     pub native_file: bool,
+    pub indexed_file: bool,
     pub start: f64,
     pub entry: i64,
     pub graph_entry: Option<i64>,
@@ -111,7 +112,31 @@ impl AudioEngine for Recorded {
             .load_with_local_equalizer(request, settings, cancel)?;
         self.evidence.lock().unwrap().loads.push(Load {
             native_file,
+            indexed_file: false,
             start,
+            entry: loaded.entry_id,
+            graph_entry: self.engine.local_equalizer_entry(),
+            codec: loaded.codec.clone(),
+        });
+        Ok(loaded)
+    }
+    fn supports_indexed_flac_equalizer(&self) -> bool {
+        self.engine.supports_indexed_flac_equalizer()
+    }
+    fn load_indexed_flac_equalizer(
+        &mut self,
+        receipt: cumulus_core::library::IndexedFlacReceipt,
+        selected: cumulus_core::library::LocalResource,
+        settings: EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let loaded = self
+            .engine
+            .load_indexed_flac_equalizer(receipt, selected, settings, cancel)?;
+        self.evidence.lock().unwrap().loads.push(Load {
+            native_file: false,
+            indexed_file: true,
+            start: 0.0,
             entry: loaded.entry_id,
             graph_entry: self.engine.local_equalizer_entry(),
             codec: loaded.codec.clone(),
