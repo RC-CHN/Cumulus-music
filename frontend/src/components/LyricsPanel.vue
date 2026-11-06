@@ -785,6 +785,7 @@ const displayedAuxiliary = computed(() =>
               v-if="voiceMetadata?.description"
               class="voice-description-scroll"
               :class="{ 'voice-description-only': !lines.length }"
+              @wheel.stop.passive
             >
               <VoiceDescriptionCard
                 :key="`${currentEpoch}:${currentPlayId}`"
