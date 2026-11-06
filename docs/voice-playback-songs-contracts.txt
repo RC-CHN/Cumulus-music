@@ -131,6 +131,12 @@ songs 字段不同。不能拿嵌套的 songs、正在播放的主音轨或下�
   标负版权才在菜单禁用；是否能播放右键触发行仍由原生检查。M556 的 k 过滤掉组菜单
   的评论、分享和复制。现有收藏仍是单曲动作，不从组选中项偷偷改为对触发行写入；
   多项收藏和多项下载要另接原生流程，因此当前组菜单不展示这两项。
+- `scripts/ci/voice_song_multi_smoke.py` 在隔离 Linux X11 WebView 中用 XTest
+  发送真实指针及 Ctrl/Shift 键，四个进程共 23 个阶段和 23 张截图。右键保存的
+  `[1,0,2]` 按选择顺序处理并排除拒播项，下一首保持当前暂停位置与原有播放条目，
+  菜单播放以触发行启动；按 Shift 双击分别核对替换及追加偏好，点封面仍只处理
+  自身。探针同时核对可信 DOM 事件、真实 IPC、原生 libmpv null 输出和无账号写入。
+  Windows 和实体声卡不在这组界面证据内。
 - TrackTitleCell.tsx:605–631、OperCell.tsx:44–58,132–155 的喜欢使用普通歌曲
   类型及全局喜欢映射，不使用节目点赞，也不依赖在线播放权限。IPC
   player_voice_song_like(epoch, playId, receipt, index, liked) 只接受活跃节目卡的
