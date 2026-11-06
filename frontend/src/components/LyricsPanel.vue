@@ -18,6 +18,7 @@ import VinylModeSheet from './VinylModeSheet.vue';
 import VinylCommentsPane from './VinylCommentsPane.vue';
 import VinylSimilarPane from './VinylSimilarPane.vue';
 import VinylWikiPane from './VinylWikiPane.vue';
+import VoiceDescriptionCard from './VoiceDescriptionCard.vue';
 import VinylCommentDialog from './VinylCommentDialog.vue';
 import type {
   VinylCommentComposer,
@@ -781,6 +782,16 @@ const displayedAuxiliary = computed(() =>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
             <div
+              v-if="voiceMetadata?.description"
+              class="voice-description-scroll"
+              :class="{ 'voice-description-only': !lines.length }"
+            >
+              <VoiceDescriptionCard
+                :key="`${currentEpoch}:${currentPlayId}`"
+                :text="voiceMetadata.description"
+              />
+            </div>
+            <div
               v-if="wikiAvailable"
               ref="tabList"
               class="vinyl-detail-tabs"
@@ -808,7 +819,7 @@ const displayedAuxiliary = computed(() =>
               </button>
             </div>
             <div
-              v-show="activeDetailTab === 'lyrics'"
+              v-show="activeDetailTab === 'lyrics' && (!voiceMetadata?.description || lines.length)"
               id="vinyl-lyrics-content"
               class="vinyl-detail-content"
               :role="wikiAvailable ? 'tabpanel' : undefined"

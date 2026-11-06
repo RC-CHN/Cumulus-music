@@ -4,6 +4,7 @@ export interface VoiceDetail {
   id: string;
   creator: { id: string | null; name: string } | null;
   releaseTime: number | null;
+  description?: string;
 }
 export interface VoiceCreatorTarget {
   epoch: string;
@@ -38,6 +39,7 @@ export function playbackVoiceDetail(view: PlayerView | undefined) {
     title: track.name,
     creator,
     releaseDate: formatVoiceReleaseDate(detail?.releaseTime),
+    ...(view.playId && detail?.description ? { description: detail.description } : {}),
   };
 }
 

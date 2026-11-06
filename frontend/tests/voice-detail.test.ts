@@ -109,6 +109,28 @@ test('stray voice metadata never replaces ordinary catalogue/local/cloud/downloa
   }
 });
 
+test('the description keeps the native episode text and clears when the play or episode changes', () => {
+  const description = '  第一段\n\n第二段 <文字>\t尾声';
+  const current = view();
+  const detail = { ...current.voiceDetail!, description };
+  assert.equal(playbackVoiceDetail(view({ voiceDetail: detail }))?.description, description);
+  assert.equal(
+    playbackVoiceDetail(view({ voiceDetail: detail, resourceKind: 'downloaded' }))?.description,
+    description,
+  );
+  for (const replacement of [
+    view({ voiceDetail: detail, playId: null }),
+    view({ voiceDetail: detail, track: { ...current.track!, voiceId: '602' } }),
+    view({
+      voiceDetail: detail,
+      resourceKind: 'catalog',
+      track: { ...current.track!, voiceId: undefined },
+    }),
+  ]) {
+    assert.equal(playbackVoiceDetail(replacement)?.description, undefined);
+  }
+});
+
 test('creator navigation is bound to the native account, play, voice and user identity', () => {
   const current = view();
   const target = voiceCreatorTarget(current)!;
