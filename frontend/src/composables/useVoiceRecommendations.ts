@@ -19,19 +19,10 @@ export function useVoiceRecommendations(
     return current && JSON.stringify([current.epoch, current.playId, current.voiceId]);
   });
   const view = shallowRef<VoiceRecommendationsPage>();
-  const paging = ref(false);
   const generation = ref(0);
-
   function invalidate() {
     generation.value++;
     view.value = undefined;
-    paging.value = false;
-  }
-  function live(ticket: number, current: VoiceRecommendationsSeed) {
-    return ticket === generation.value && voiceRecommendationMatches(seed.value, current);
-  }
-  function replyMatches(reply: VoiceRecommendationsPage, current: VoiceRecommendationsSeed) {
-    return reply.playId === current.playId && reply.voiceId === current.voiceId;
   }
   async function load() {
     const current = seed.value;
@@ -39,10 +30,53 @@ export function useVoiceRecommendations(
     const ticket = generation.value;
     try {
       const reply = await api.playerVinylVoiceRecommendations(current.epoch, current.playId);
-      if (live(ticket, current) && replyMatches(reply, current)) view.value = reply;
+      if (
+        ticket === generation.value &&
+        voiceRecommendationMatches(seed.value, current) &&
+        replyMatches(reply, current)
+      )
+        view.value = reply;
     } catch {
       // This optional shelf remains absent. The next panel visit can read it again.
     }
+  }
+  const actions = useVoiceRecommendationActions(api, {
+    scope: seed,
+    generation,
+    view,
+    replace: (page) => (view.value = page),
+  });
+  watch(scope, invalidate, { flush: 'sync' });
+  watch(generation, () => void load(), { immediate: true });
+  onScopeDispose(invalidate);
+  return actions;
+}
+
+function replyMatches(reply: VoiceRecommendationsPage, current: VoiceRecommendationsSeed) {
+  return reply.playId === current.playId && reply.voiceId === current.voiceId;
+}
+
+// Used both by the independent shelf and by the joint VoicePage snapshot.
+export function useVoiceRecommendationActions(
+  api: Pick<VoiceRecommendationsClient, 'playerVinylVoiceRecommendationsNext'>,
+  {
+    scope: seed,
+    generation,
+    view,
+    replace,
+  }: {
+    scope: Readonly<Ref<VoiceRecommendationsSeed | undefined>>;
+    generation: Readonly<Ref<number>>;
+    view: Readonly<Ref<VoiceRecommendationsPage | undefined>>;
+    replace(page: VoiceRecommendationsPage): void;
+  },
+) {
+  const paging = ref(false);
+  const clearPaging = () => (paging.value = false);
+  watch(generation, clearPaging, { flush: 'sync' });
+  onScopeDispose(clearPaging);
+  function live(ticket: number, current: VoiceRecommendationsSeed) {
+    return ticket === generation.value && voiceRecommendationMatches(seed.value, current);
   }
   async function next() {
     const current = seed.value;
@@ -62,7 +96,7 @@ export function useVoiceRecommendations(
         replyMatches(reply, current) &&
         reply.receipt === previous.receipt
       )
-        view.value = reply;
+        replace(reply);
     } catch {
       // No request is retried and the previously displayed page remains intact.
     } finally {
@@ -84,10 +118,7 @@ export function useVoiceRecommendations(
       page.cards.some((card) => card.radioId === target.radioId)
     );
   }
-  watch(scope, invalidate, { flush: 'sync' });
-  watch(generation, () => void load(), { immediate: true });
-  onScopeDispose(invalidate);
   return { view, paging, next, target, ownsTarget };
 }
 
-export type VoiceRecommendationsModel = ReturnType<typeof useVoiceRecommendations>;
+export type VoiceRecommendationsModel = ReturnType<typeof useVoiceRecommendationActions>;

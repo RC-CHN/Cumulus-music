@@ -22,23 +22,6 @@ export function useVoiceSongs(
     generation.value++;
     view.value = undefined;
   }
-  function contains(page: VoiceSongsView, index: number) {
-    return Number.isInteger(index) && index >= 0 && index < page.tracks.length;
-  }
-  function target(page: VoiceSongsView, index: number): VoiceSongRowTarget | undefined {
-    const current = scope.value;
-    if (!current || view.value !== page || !page.receipt || !contains(page, index)) return;
-    return { ...current, receipt: page.receipt, index };
-  }
-  function ownsTarget(target: VoiceSongRowTarget) {
-    const page = view.value;
-    return (
-      !!page &&
-      page.receipt === target.receipt &&
-      sameVoicePlaybackScope(scope.value, target) &&
-      contains(page, target.index)
-    );
-  }
   watch(key, invalidate, { flush: 'sync' });
   watch(
     generation,
@@ -62,7 +45,31 @@ export function useVoiceSongs(
     { immediate: true },
   );
   onScopeDispose(invalidate);
+  return voiceSongActions(scope, view);
+}
+
+export function voiceSongActions(
+  scope: Readonly<Ref<VoiceSongsScope | undefined>>,
+  view: Readonly<Ref<VoiceSongsView | undefined>>,
+) {
+  function contains(page: VoiceSongsView, index: number) {
+    return Number.isInteger(index) && index >= 0 && index < page.tracks.length;
+  }
+  function target(page: VoiceSongsView, index: number): VoiceSongRowTarget | undefined {
+    const current = scope.value;
+    if (!current || view.value !== page || !page.receipt || !contains(page, index)) return;
+    return { ...current, receipt: page.receipt, index };
+  }
+  function ownsTarget(target: VoiceSongRowTarget) {
+    const page = view.value;
+    return (
+      !!page &&
+      page.receipt === target.receipt &&
+      sameVoicePlaybackScope(scope.value, target) &&
+      contains(page, target.index)
+    );
+  }
   return { view, target, ownsTarget };
 }
 
-export type VoiceSongsModel = ReturnType<typeof useVoiceSongs>;
+export type VoiceSongsModel = ReturnType<typeof voiceSongActions>;
