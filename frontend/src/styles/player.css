@@ -1038,6 +1038,10 @@ input[type='range'] {
   min-width: 0;
   min-height: 0;
 }
+.lyrics-panel[data-voice-page-state] .vinyl-info {
+  /* VoiceCover is anchored independently of VoiceTitle's asynchronous content. */
+  justify-content: flex-start;
+}
 .vinyl-record {
   width: auto;
   height: min(30vw, 320px);
