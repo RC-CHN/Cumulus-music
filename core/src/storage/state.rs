@@ -44,7 +44,22 @@ pub(crate) struct PlaybackDownloadRow {
 
 pub struct StateStore {
     directory: Option<PathBuf>,
+    // Fields drop in order: close SQLite and release the shared native lease
+    // before scheduling a cleanup that needs the exclusive lease.
     connection: Mutex<Connection>,
+    _qr_candidate_lease: Option<fs::File>,
+    after_close: AfterClose,
+}
+
+#[derive(Default)]
+struct AfterClose(Option<Box<dyn FnOnce() + Send + Sync>>);
+
+impl Drop for AfterClose {
+    fn drop(&mut self) {
+        if let Some(operation) = self.0.take() {
+            operation();
+        }
+    }
 }
 
 pub struct StateTransaction<'a> {
@@ -64,6 +79,7 @@ impl StateStore {
         let mut builder = super::private_directory_builder();
         builder.recursive(true);
         builder.create(&directory)?;
+        let lease = super::QrCandidateStore::open_lease(&directory)?;
         let path = directory.join("core.sqlite3");
         let mut options = fs::OpenOptions::new();
         options.create(true).truncate(false).read(true).write(true);
@@ -82,7 +98,9 @@ impl StateStore {
         let connection = Connection::open(&path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;")?;
-        Self::initialize(connection, Some(directory))
+        let mut store = Self::initialize(connection, Some(directory))?;
+        store._qr_candidate_lease = lease;
+        Ok(store)
     }
 
     /// Private candidate credentials must not survive a process restart.
@@ -111,7 +129,16 @@ impl StateStore {
         Ok(Self {
             directory,
             connection: Mutex::new(connection),
+            _qr_candidate_lease: None,
+            after_close: AfterClose::default(),
         })
+    }
+
+    pub(crate) fn on_qr_candidate_close(
+        &mut self,
+        operation: impl FnOnce() + Send + Sync + 'static,
+    ) {
+        self.after_close.0 = Some(Box::new(operation));
     }
 
     pub fn directory(&self) -> &Path {

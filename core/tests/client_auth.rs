@@ -229,6 +229,83 @@ async fn failed_or_aborted_qr_ticket_creation_releases_undisclosed_candidate() {
 }
 
 #[tokio::test]
+async fn cancelled_ordinary_qr_waits_for_late_cookie_then_retires_only_its_own_store() {
+    let (held, release) = gate();
+    let w = World::new([
+        authorized(),
+        identity(2),
+        json!({"code":200,"unikey":"synthetic-retirement-ticket"}).into(),
+        held,
+    ])
+    .await;
+    let login = w.begin(Mode::Email).await;
+    w.client
+        .login_command(&login, password(true))
+        .await
+        .unwrap();
+    let registry = w.registry();
+    let selected = registry.selection().unwrap().unwrap();
+    let before = w.epoch();
+    let qr = w.client.begin_qr().await.unwrap();
+    let sessions = w.root.path().join("sessions");
+    let candidate = std::fs::read_dir(&sessions)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path != &sessions.join(&selected.session_id))
+        .unwrap();
+    let sqlite = candidate.join("core.sqlite3");
+
+    let poll = {
+        let client = w.client.clone();
+        let id = qr.operation_id.clone();
+        tokio::spawn(async move { client.poll_qr(&id).await })
+    };
+    w.http.wait(5).await;
+    w.client.cancel_qr(&qr.operation_id).unwrap();
+    assert!(
+        sqlite.is_file(),
+        "the still-live HTTP poll holds its native store"
+    );
+    let mut late = reply(json!({"code":803}));
+    late.set_cookies = vec!["MUSIC_U=synthetic-late-qr; Path=/; Secure; HttpOnly".into()];
+    assert!(release.send(Ok(late)).is_ok());
+    assert!(matches!(poll.await.unwrap(), Err(Error::StaleResponse)));
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        while sqlite.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(cumulus_core::storage::StateStore::open(&candidate).is_err());
+    assert!(
+        !sqlite.exists(),
+        "the retired path must not recreate credentials"
+    );
+    assert_eq!(registry.selection().unwrap(), Some(selected.clone()));
+    assert_eq!(registry.saved().unwrap()[0].session_id, selected.session_id);
+    let current = registry
+        .current(cumulus_core::protocol::http::ClientProfile::default())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        current
+            .credentials
+            .login_credentials()
+            .unwrap()
+            .token
+            .as_deref(),
+        Some("synthetic-login")
+    );
+    assert_eq!(w.epoch(), before);
+    assert_eq!(
+        w.http.calls().len(),
+        5,
+        "no identity read after cancellation"
+    );
+}
+
+#[tokio::test]
 async fn ordinary_legacy_qr_801_keeps_phone_confirmation_on_the_same_ticket() {
     use cumulus_core::account::QrStatus;
     let w = World::new([

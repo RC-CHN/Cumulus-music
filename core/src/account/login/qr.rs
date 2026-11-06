@@ -64,7 +64,9 @@ impl QrAuthentication {
         state.generation = next_generation(state.generation)?;
         state.status = LoginStatus::Cancelled;
         state.busy = false;
-        self.qr.cancel()
+        self.qr.cancel()?;
+        self.candidate.mark_qr_cancelled();
+        Ok(())
     }
     async fn identity(&self, operation: &Operation<'_>) -> Result<()> {
         operation.check()?;

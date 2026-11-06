@@ -97,6 +97,7 @@ impl ProfileRegistry {
             quick_target: None,
             auto_login: AtomicBool::new(record.auto_login),
             registration_phone: Mutex::new(None),
+            qr_retirement: None,
         })
     }
 

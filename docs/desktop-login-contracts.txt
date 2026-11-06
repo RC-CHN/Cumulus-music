@@ -26,7 +26,7 @@ references/recovered-client/cumulus_core/{auth,session_files,login_refresh}.py�
 退出先显示确认及“同时退出服务器会话”；远端失败保留原账号，可由用户改为仅本地退出。
 游客没有可清理凭据时不展示退出入口。退出保留账号行；再次选择失效行会失败，要求重新登录。
 后续本日已接保存账号移除与凭据清理，见desktop-saved-account-removal.txt。
-历史未登记候选目录的统一回收仍待推进，不能把退出等同于删除所有本地账号资料。
+新建普通二维码候选取消后的本地回收见文末。历史未登记候选目录仍不扫描，退出也不删除所有本地账号资料。
 
 架构与职责
 core/account/login：既有密码/SMS/挑战/二维码状态机、冷却、候选核验；不依赖桌面。
@@ -192,3 +192,22 @@ login_presentation、select_login_country、open_login_document均经过现有ma
 平台浏览器适配器可由可信原生宿主注入，合成WebView测试由此验证6次文档打开/失败/显式重试，
 不让公开CI弹出真实浏览器。生产默认走Linux xdg-open或Windows原生Shell。
 界面协议门槛、地区规则、找回返回、输入清理和已知手机二段入口差异见login-entry-contracts.txt。
+
+普通二维码取消后的候选凭据回收（Cumulus 本地安全策略）
+官方普通二维码登录的取消、代次和迟到回包约束维持不变；现有官方材料未证明其本地 SQLite
+目录处理方式。以下只是 Cumulus 管理自己创建的凭据的规则，不增加远端请求。
+- 仅 MusicClient.begin_qr 为刚创建的隔离会话目录写私有随机所有权标记。只有本次普通 QR
+  的原生取消成功才授权一次清理，未公开票据的显式取消保护和旧二维码被替换也走同一入口。
+  成功采用的会话、正常丢弃但未取消的对象、手机/邮箱、快捷登录、已保存候选不触发此回收。
+- QR 取消立即使旧登录操作无效。迟到 HTTP/JSK 流程持有的同一 SQLite 状态最后关闭后，
+  后台才可尝试清理。支持此标记的 Cumulus StateStore 在整个打开期间持共享文件锁；仍有独立
+  打开的原生状态、锁不可用或关机时直接保留，不等待其它进程，不重试或扫描目录。
+- 注册库写事务内拒绝 active、saved、未完成手机号注册意图引用，记录不可信时也保留。
+  只查该 QR 目录的固定标记及 SQLite 数据库/sidecar 名称；拒绝重定向、陌生文件或子目录。
+  先同步退役标记以拒绝未来 Cumulus 状态重开，再移除固定文件，不递归删除，也不清缓存
+  根目录。保留目录和非凭据标记作为墓碑。没有启动回收、崩溃补扫或磁盘安全擦除保证；旧版本
+  或绕过原生锁直接改写本地数据的外部 SQLite 工具不在协作锁合同内。
+- 合成定向验证：cargo test -p cumulus-core --lib --locked qr_retirement
+  以及 cargo test -p cumulus-core --test client_auth --locked cancelled_ordinary_qr_waits
+  分别验证独立句柄/注册/未知内容拒绝和真实原生扫码状态机的迟到 Cookie、目录退役及当前
+  账号不变。无需真实二维码、账号或网络；这里只列可复跑用例，不代表桌面实机已验证。

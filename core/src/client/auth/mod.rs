@@ -137,42 +137,41 @@ impl MusicClient {
         self.auth.guardian = guardian;
         self
     }
+    fn candidate_backend(&self) -> Result<Arc<dyn HttpBackend>> {
+        match &self.auth.backend {
+            Some(backend) => Ok(backend.clone()),
+            None => Ok(Arc::new(crate::protocol::http::ReqwestBackend::new(
+                std::time::Duration::from_secs(20),
+            )?)),
+        }
+    }
+
     fn login_candidate(&self, saved: Option<&str>) -> Result<LoginCandidate> {
-        match (&self.auth.backend, saved) {
-            (Some(backend), Some(id)) => self.registry.saved_candidate_with_backend(
+        let backend = self.candidate_backend()?;
+        match saved {
+            Some(id) => self.registry.saved_candidate_with_backend(
                 id,
                 self.auth.profile.clone(),
                 self.auth.options,
                 self.auth.context.clone(),
-                backend.clone(),
+                backend,
             ),
-            (Some(backend), None) => self.registry.candidate_with_backend(
+            None => self.registry.candidate_with_backend(
                 self.auth.profile.clone(),
                 self.auth.options,
                 self.auth.context.clone(),
-                backend.clone(),
+                backend,
             ),
-            (None, saved) => {
-                let backend = Arc::new(crate::protocol::http::ReqwestBackend::new(
-                    std::time::Duration::from_secs(20),
-                )?);
-                match saved {
-                    Some(id) => self.registry.saved_candidate_with_backend(
-                        id,
-                        self.auth.profile.clone(),
-                        self.auth.options,
-                        self.auth.context.clone(),
-                        backend,
-                    ),
-                    None => self.registry.candidate_with_backend(
-                        self.auth.profile.clone(),
-                        self.auth.options,
-                        self.auth.context.clone(),
-                        backend,
-                    ),
-                }
-            }
         }
+    }
+
+    fn qr_login_candidate(&self) -> Result<LoginCandidate> {
+        self.registry.fresh_qr_candidate(
+            self.auth.profile.clone(),
+            self.auth.options,
+            self.auth.context.clone(),
+            self.candidate_backend()?,
+        )
     }
     fn auth_token(&self, epoch: &str) -> Result<SessionToken> {
         let token = self.session.token()?;

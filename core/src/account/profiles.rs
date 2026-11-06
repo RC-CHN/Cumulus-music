@@ -4,6 +4,7 @@
 mod offline;
 pub use offline::ColdOfflineGrant;
 pub(crate) use offline::clear_binding_for;
+mod qr_retirement;
 mod quick;
 mod registration;
 mod removal;
@@ -69,6 +70,7 @@ pub struct LoginCandidate {
     quick_target: Option<quick::QuickSavedTarget>,
     auto_login: AtomicBool,
     registration_phone: Mutex<Option<registration::Binding>>,
+    qr_retirement: Option<Arc<qr_retirement::QrCandidateRetirement>>,
 }
 
 /// Native-only handle. It deliberately has no Debug/Serialize implementation.
@@ -172,6 +174,27 @@ impl ProfileRegistry {
         context: Option<Arc<RequestContext>>,
         backend: Arc<dyn HttpBackend>,
     ) -> Result<LoginCandidate> {
+        self.fresh_candidate(profile, options, context, backend, false)
+    }
+
+    pub(crate) fn fresh_qr_candidate(
+        self: &Arc<Self>,
+        profile: ClientProfile,
+        options: RequestOptions,
+        context: Option<Arc<RequestContext>>,
+        backend: Arc<dyn HttpBackend>,
+    ) -> Result<LoginCandidate> {
+        self.fresh_candidate(profile, options, context, backend, true)
+    }
+
+    fn fresh_candidate(
+        self: &Arc<Self>,
+        profile: ClientProfile,
+        options: RequestOptions,
+        context: Option<Arc<RequestContext>>,
+        backend: Arc<dyn HttpBackend>,
+        track_qr: bool,
+    ) -> Result<LoginCandidate> {
         let expected = self.selection()?;
         let parent = self.root.join("sessions");
         match private_directory(&parent) {
@@ -184,8 +207,14 @@ impl ProfileRegistry {
         let id = Uuid::new_v4().simple().to_string();
         private_directory(&parent.join(&id))?;
         let path = self.profile_path(&id)?;
-        let store = Arc::new(StateStore::open(&path)?);
-        let credentials = Arc::new(Credentials::open(store, self.origin)?);
+        let (store, qr_retirement) = if track_qr {
+            let (store, owner) =
+                qr_retirement::QrCandidateRetirement::track(self.clone(), id.clone(), &path)?;
+            (store, Some(owner))
+        } else {
+            (StateStore::open(&path)?, None)
+        };
+        let credentials = Arc::new(Credentials::open(Arc::new(store), self.origin)?);
         let client = Arc::new(MusicHttpClient::with_backend(
             credentials.clone(),
             profile,
@@ -203,6 +232,7 @@ impl ProfileRegistry {
             quick_target: None,
             auto_login: AtomicBool::new(true),
             registration_phone: Mutex::new(None),
+            qr_retirement,
         })
     }
 
@@ -264,6 +294,7 @@ impl LoginCandidate {
         identity: VerifiedAccount,
         artist_login: Option<super::artist_onboarding::ArtistLogin>,
     ) -> Result<Value> {
+        self.check_qr_not_cancelled()?;
         self.registry.profile_path(&self.id)?;
         let profile = &identity.profile;
         let uid = crate::protocol::api::identifier(&profile["userId"])?;

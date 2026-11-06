@@ -103,6 +103,21 @@ impl LoginCandidate {
         })
     }
 }
+pub(super) fn references_candidate(tx: &StateTransaction<'_>, id: &str) -> Result<bool> {
+    for value in tx.values(OWNER, REGISTRATION)?.into_values() {
+        match value["candidate"].as_str() {
+            Some(candidate)
+                if super::id(candidate)
+                    && candidate != id
+                    && value["id"]
+                        .as_str()
+                        .is_some_and(|intent| Uuid::parse_str(intent).is_ok()) => {}
+            _ => return Ok(true),
+        }
+    }
+    Ok(false)
+}
+
 pub(super) fn settle(
     tx: &mut StateTransaction<'_>,
     binding: Option<&Binding>,

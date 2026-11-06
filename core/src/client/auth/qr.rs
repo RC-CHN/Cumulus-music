@@ -93,7 +93,7 @@ impl MusicClient {
             .await?;
         let flow = Arc::new(QrAuthentication::new_with_protocol(
             self.session.clone(),
-            self.login_candidate(None)?,
+            self.qr_login_candidate()?,
             protocol,
         )?);
         let id = uuid::Uuid::new_v4().simple().to_string();
