@@ -39,6 +39,7 @@ pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
     PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio,
+    PlayerVoiceSongsView,
     PlaylistDropRow, PodcastRecommendationAction, QualityChoiceView, QualityDetailsView,
     QualityTrialCommand, QualityTrialOutcome, QualityTrialView, QueueCatalogMenu,
     QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,

@@ -8,8 +8,8 @@ use crate::{
     protocol::{
         api::{
             Api, ApiFuture, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
-            VinylRelatedPlaylistsRead, VinylSimilarSongsRead, VinylWikiRead,
-            VinylWikiReadPermission,
+            VinylPlaybackReadPermission, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
+            VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -69,7 +69,7 @@ enum RequestBinding<'a> {
     Login(&'a super::JskLoginContext),
     VinylComment,
     VinylDiscovery,
-    VinylWiki(&'a VinylWikiReadPermission<'a>),
+    VinylPlaybackRead(&'a VinylPlaybackReadPermission<'a>),
     VinylCommentWrite {
         permission: &'a VinylCommentWritePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -383,6 +383,26 @@ impl MusicHttpClient {
         .await
     }
 
+    async fn vinyl_playback_read(
+        &self,
+        (path, payload): (&str, Value),
+        revision: &str,
+        permission: &VinylPlaybackReadPermission<'_>,
+    ) -> Result<Value> {
+        if self.pc_experiment_revision()? != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.execute(
+            path,
+            payload,
+            false,
+            Some(revision),
+            Jsk::None,
+            Some(RequestBinding::VinylPlaybackRead(permission)),
+        )
+        .await
+    }
+
     async fn execute(
         &self,
         path: &str,
@@ -457,7 +477,7 @@ impl MusicHttpClient {
             Some(
                 RequestBinding::VinylComment
                     | RequestBinding::VinylDiscovery
-                    | RequestBinding::VinylWiki(_)
+                    | RequestBinding::VinylPlaybackRead(_)
                     | RequestBinding::VinylCommentWrite { .. }
             )
         ) {
@@ -620,7 +640,7 @@ impl MusicHttpClient {
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
             }
-            if let Some(RequestBinding::VinylWiki(permission)) = binding {
+            if let Some(RequestBinding::VinylPlaybackRead(permission)) = binding {
                 // Request-context preparation may await a provider. Recheck
                 // the exact target scope before handing this read to HTTP.
                 let current = self.credentials.request_credentials(&target)?;
@@ -1020,27 +1040,22 @@ impl Api for MusicHttpClient {
         Box::pin(self.vinyl_discovery(path, payload, revision))
     }
 
+    fn request_vinyl_voice_songs<'a>(
+        &'a self,
+        read: VinylVoiceSongsRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
+    }
+
     fn request_vinyl_wiki<'a>(
         &'a self,
         read: VinylWikiRead,
         revision: &'a str,
         permission: &'a VinylWikiReadPermission<'a>,
     ) -> ApiFuture<'a, Value> {
-        Box::pin(async move {
-            if self.pc_experiment_revision()? != revision {
-                return Err(Error::CredentialChanged);
-            }
-            let (path, payload) = read.into_request();
-            self.execute(
-                path,
-                payload,
-                false,
-                Some(revision),
-                Jsk::None,
-                Some(RequestBinding::VinylWiki(permission)),
-            )
-            .await
-        })
+        Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
     }
 
     fn request_vinyl_comment_write<'a>(

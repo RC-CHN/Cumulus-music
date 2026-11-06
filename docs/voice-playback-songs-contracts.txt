@@ -1,0 +1,54 @@
+声音播放页「包含歌曲」：原生只读数据
+====================================
+
+官方 PC 3.1.42.205594。该卡的数据来自节目曲目接口，与节目 detail 中可选的
+songs 字段不同。不能拿嵌套的 songs、正在播放的主音轨或下载缓存代替。
+
+官方来源与顺序
+- hybrid_app M182:7107–7132 的节目页使用当前 curVoice，在它变化时 dispatch
+  page:vinylPage/initVoicePage。M69:184–204 从 host.uid 取格式化用户，并用
+  all 同时发起 M109.j（节目详情）、M109.e（推荐）和 M109.f（包含歌曲）。
+  三路完成后，模型一起提交当前节目详情与第三路的 relatedTracks。
+- M109:98–118 的 f→g 将节目 id 交给 M15.Rh，并以空业务对象和
+  {formatOption:{uid}} 调用；M15:741–742,4139–4155 的 Rh→pa 用
+  `/api/v1/dj/program/tracks?id=<节目ID>`，缓存关闭（M15:1012–1014）。
+  M12:115–154 与 M402:387–450 把 URL 的 id 字符串并入请求数据，最终
+  POST 到不带该查询串的标准 API 路径。uid 只给格式化层，不进业务请求。
+- M15 将响应顶层 tracks 交给 M21.D→I（293–325）与 M21.x→D（537–624）。
+  Promise.all 保持输入顺序。D 用 `album ?? al`，R（484–505）用
+  `id || albumId`、`name || albumName`、`cover || picUrl`，D 用
+  `ar || artists` 和 `dt || duration`。M21:1013–1018 格式化嵌套
+  voice.songs 的是另一条路径。官方本地 Database.put 是格式化副作用，
+  并非额外的业务请求。
+- VoicePage/components/SongCard.tsx:43–72 与 M182:7017–7060 过滤掉没有
+  album 的行；空则隐藏，非空显示「包含歌曲」、行数及 VinalPageTrackViewer。
+  VoiceDisplay.tsx:69–78 的顺序为收藏、简介、推荐、包含歌曲。
+  VinalPageTrackViewer.tsx:70–105 是无表头标题列，scene=song-song-recommend，
+  pageType=voicePlaying。TrackTitleCell.tsx:621–634,729–751,816–831 的
+  点赞、适用时下载及封面播歌是另有动作资格的交互；没有普通更多菜单。
+
+原生接口及边界
+- MusicClient::player_voice_songs(epoch, play_id) 返回 {playId, voiceId, tracks}；
+  只实现第三路读取，不加到每次播放 snapshot、音源解析或已下载文件路径，不重复
+  请求详情／推荐。没有 Tauri 命令、前端卡、点赞、下载、播歌或队列动作。
+- 只接已验证账号的普通在线节目；节目、主音轨、队列条目、playId、账号/API 和
+  凭据修订来自原生状态。检查发送前及交付前，使用与百科共用的 PC EAPI
+  有界读取门；不查实验组，不把原始响应、节目 URL、Cookie 或其他授权字段交出去。
+  同修订但节目接口与 PC 凭据校验范围的 Cookie 不同也不发送。不根据调用方传入的
+  节目 ID、下载任务、Scene FM 或一起听状态构造请求。匿名账号、离线节目和其他
+  原宿主读取能力暂未接入，不能由此推断官方也拒绝它们。
+- 按响应保留顺序与重复项。返回现有 TrackView 的普通曲目展示字段，图片限已知
+  公共图片域并移除原始查询串和片段；未用原客户端 picId 推算图、版权替代 MV 图、
+  数据库副作用、权限详情或专用列。没有曲目播放/下载授权、没有原料回写；任何后续
+  动作应独立绑定当次已交付的节目曲目和现有原生权限流程。
+- 缺 tracks 使用空表，显式 null／非数组为无效响应。限制100条曲目、每行32位歌手、
+  文本1024字节、图片 URL 2048字节与32位十进制 ID。保留有 album 对象的原始行，
+  包括空对象；异常形状不猜替代值。标题译名的既有有界原生字段没有新增公开输出。
+
+对照
+- 在隔离 Node VM 执行 M109/M15/M21 原恢复 factory，用密闭 RequestFactory 与
+  Database seam，验证无网络的逻辑请求和 formatter 输出：301→101→301，
+  false album 行被过滤，保留空对象，优先正式 album，ar=[] 不回退。
+- `cargo test --locked -p cumulus-core --test pc_experiment_transport voice_songs`
+  使用真实 MusicHttpClient 请求计划和解包 EAPI 的密闭后端；核验 wire、字段过滤、
+  响应形状及发起前／交付前的当前条目和凭据失效。无真实请求或账户资源写入。

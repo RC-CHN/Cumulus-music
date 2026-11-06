@@ -143,6 +143,11 @@ fn radio(voice: &Value, owner: Option<&str>) -> Option<PlayerVoiceRadio> {
 
 fn bound_voice<'a>(play_id: Option<&str>, resource: &'a Value) -> Option<(&'a Value, String)> {
     play_id.filter(|id| !id.is_empty())?;
+    let (episode, _, voice) = bound_episode(resource)?;
+    Some((voice, episode))
+}
+
+pub(super) fn bound_episode(resource: &Value) -> Option<(String, String, &Value)> {
     // A CUE/local/cloud/song with an embedded `voice` object is not an episode.
     let episode = match identity::kind(resource) {
         PlayerResourceKind::Voice => id(&resource["voice_id"]),
@@ -189,7 +194,7 @@ fn bound_voice<'a>(play_id: Option<&str>, resource: &'a Value) -> Option<(&'a Va
     {
         return None;
     }
-    Some((voice, episode))
+    Some((episode, song, voice))
 }
 
 fn from_resource(

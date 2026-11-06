@@ -43,7 +43,9 @@ pub use vinyl_similar::{
 };
 mod vinyl_wiki;
 mod voice_detail;
+mod voice_songs;
 pub use voice_detail::{PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio};
+pub use voice_songs::PlayerVoiceSongsView;
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;

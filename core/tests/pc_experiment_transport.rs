@@ -14,6 +14,8 @@ mod search_presentation;
 mod support;
 #[path = "pc_experiment_transport/vinyl_wiki.rs"]
 mod vinyl_wiki;
+#[path = "pc_experiment_transport/voice_songs.rs"]
+mod voice_songs;
 use cumulus_core::{
     Error,
     account::credentials::Credentials,

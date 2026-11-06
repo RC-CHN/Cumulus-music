@@ -7,7 +7,8 @@ use std::{future::Future, pin::Pin};
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
 pub type VinylCommentWritePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
-pub type VinylWikiReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type VinylPlaybackReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 
 fn canonical_vinyl_comment_id(id: &str) -> bool {
     !id.is_empty()
@@ -94,6 +95,26 @@ impl VinylRelatedPlaylistsRead {
 
     pub fn into_request(self) -> (&'static str, Value) {
         (Self::PATH, json!({"songid":self.0}))
+    }
+}
+
+/// The current ordinary episode’s SongCard read, not the embedded voice songs.
+pub struct VinylVoiceSongsRead(String);
+
+impl VinylVoiceSongsRead {
+    pub(crate) const PATH: &'static str = "/api/v1/dj/program/tracks";
+
+    pub(crate) fn new(voice_id: &str) -> Result<Self> {
+        if voice_id.len() > 32 || identifier(&json!(voice_id)).is_err() {
+            return Err(Error::InvalidInput("invalid vinyl episode seed"));
+        }
+        Ok(Self(voice_id.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        // M15 puts `id` in the logical URL; M402 moves that string into
+        // the request data before encrypting the normalized path.
+        (Self::PATH, json!({"id":self.0}))
     }
 }
 
@@ -359,6 +380,20 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async {
             Err(Error::State(
                 "vinyl related-playlist dispatch authority unavailable",
+            ))
+        })
+    }
+
+    /// Fixed native read tied to one live episode. No generic API fallback.
+    fn request_vinyl_voice_songs<'a>(
+        &'a self,
+        _read: VinylVoiceSongsRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "vinyl episode songs dispatch authority unavailable",
             ))
         })
     }
