@@ -6,13 +6,16 @@ use crate::{
         settings::{AccountSettings, SettingChange, SettingKey, compatibility_record},
         validate_settings,
     },
-    protocol::api::identifier,
+    protocol::api::{GuardedSongLike, SongLikePermission, identifier, validate_response},
     storage::{OperationLock, StateStore},
 };
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -20,6 +23,43 @@ pub(super) const JOURNAL: &str = "resource-mutations";
 pub struct AccountResources {
     pub(super) session: Arc<AccountSession>,
     pub(super) store: Arc<StateStore>,
+}
+
+// A guarded action can be dropped while native request preparation is awaiting
+// a token. The account operation lease outlives this journal helper, so it can
+// settle a known unsent intent without touching a newer operation for this ID.
+struct GuardedLikeJournal<'a> {
+    store: &'a StateStore,
+    uid: &'a str,
+    key: &'a str,
+    record: &'a MutationRecord,
+    dispatched: AtomicBool,
+    settled: bool,
+}
+
+impl GuardedLikeJournal<'_> {
+    fn was_sent(&self) -> bool {
+        self.dispatched.load(Ordering::Relaxed)
+    }
+
+    fn reject_unsent(&mut self) -> Result<()> {
+        self.settled = true;
+        let mut record = self.record.clone();
+        record.phase = MutationPhase::Rejected;
+        record.error_class = Some("not_sent".into());
+        self.store
+            .put(self.uid, JOURNAL, self.key, &serde_json::to_value(record)?)
+    }
+}
+
+impl Drop for GuardedLikeJournal<'_> {
+    fn drop(&mut self) {
+        if !self.settled && !self.was_sent() {
+            // A process crash or storage failure can still leave Sending;
+            // recovery remains a read-back and never replays that write.
+            let _ = self.reject_unsent();
+        }
+    }
 }
 
 pub(super) fn now() -> Result<f64> {
@@ -151,8 +191,28 @@ impl AccountResources {
                 "settings are not collection memberships",
             ));
         }
-        self.change_for(expected, kind, &identifier(id)?, json!(desired))
+        self.change_for(expected, kind, &identifier(id)?, json!(desired), None)
             .await
+    }
+
+    /// Native-only song membership for an action scoped to a live resource.
+    /// The synchronous permission is checked under the operation lease after
+    /// preflight and again just before the protected transport sends the write.
+    pub async fn set_song_like_guarded_for(
+        &self,
+        token: &SessionToken,
+        id: &Value,
+        desired: bool,
+        permission: &SongLikePermission<'_>,
+    ) -> Result<MutationRecord> {
+        self.change_for(
+            token,
+            ResourceKind::Liked,
+            &identifier(id)?,
+            json!(desired),
+            Some(permission),
+        )
+        .await
     }
     pub async fn set_setting(&self, key: &str, value: Value) -> Result<MutationRecord> {
         validate_settings(&json!({key:value}))?;
@@ -196,6 +256,7 @@ impl AccountResources {
         kind: ResourceKind,
         key: &str,
         desired: Value,
+        permission: Option<&SongLikePermission<'_>>,
     ) -> Result<MutationRecord> {
         self.session.with_token(token, |_| Ok(()))?;
         let uid = token
@@ -210,7 +271,13 @@ impl AccountResources {
         {
             return Err(Error::MutationUncertain);
         }
+        if let Some(permission) = permission {
+            permission()?;
+        }
         let snapshot = self.refresh_for(token, kind).await?;
+        if let Some(permission) = permission {
+            permission()?;
+        }
         let before = snapshot::value(kind, key, &snapshot)?;
         if !snapshot::same_type(&before, &desired) {
             return Err(Error::Response("server returned an unexpected state type"));
@@ -239,11 +306,37 @@ impl AccountResources {
         if record.phase == MutationPhase::Unchanged {
             return Ok(record);
         }
+        let mut guarded_journal = permission.map(|_| GuardedLikeJournal {
+            store: &self.store,
+            uid,
+            key: &journal_key,
+            record: &record,
+            dispatched: AtomicBool::new(false),
+            settled: false,
+        });
+        let guarded_dispatch = permission.zip(guarded_journal.as_ref());
         let desired = record.desired.clone();
         let key = key.to_owned();
         let result = self
             .session
             .run_for(token, |api, uid| async move {
+                if let Some((permission, journal)) = guarded_dispatch {
+                    let write = GuardedSongLike::new(
+                        uid,
+                        key,
+                        desired
+                            .as_bool()
+                            .ok_or(Error::State("invalid desired membership"))?,
+                    );
+                    let check = || {
+                        self.session.require_api(token, &api)?;
+                        permission()
+                    };
+                    let response = api
+                        .request_guarded_song_like(write, &check, &journal.dispatched)
+                        .await?;
+                    return validate_response(GuardedSongLike::PATH, response, &[200, 502]);
+                }
                 if kind == ResourceKind::Mvs {
                     return crate::mv::MvApi::new(api)
                         .collect(
@@ -292,6 +385,16 @@ impl AccountResources {
                 }
             })
             .await;
+        if let Some(journal) = &mut guarded_journal
+            && !journal.was_sent()
+        {
+            journal.reject_unsent()?;
+            return match result {
+                Err(error) => Err(error),
+                Ok(_) => Err(Error::State("guarded song like did not dispatch")),
+            };
+        }
+        drop(guarded_journal);
         match result {
             Ok(response) => {
                 record.phase = MutationPhase::Verifying;

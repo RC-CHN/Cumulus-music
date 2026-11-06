@@ -9,6 +9,33 @@ pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
 pub type VinylCommentWritePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type VinylPlaybackReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
+pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+
+/// A native account membership action. This is not an IPC payload.
+pub struct GuardedSongLike {
+    uid: String,
+    track_id: String,
+    liked: bool,
+}
+
+impl GuardedSongLike {
+    pub(crate) const PATH: &str = "/api/song/like";
+
+    pub(crate) fn new(uid: String, track_id: String, liked: bool) -> Self {
+        Self {
+            uid,
+            track_id,
+            liked,
+        }
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (
+            Self::PATH,
+            json!({"trackId":self.track_id,"userid":self.uid,"like":self.liked}),
+        )
+    }
+}
 
 fn canonical_vinyl_comment_id(id: &str) -> bool {
     !id.is_empty()
@@ -279,6 +306,17 @@ pub type PodcastBadgePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
+
+    /// Call permission and mark dispatched immediately before the transport
+    /// starts the write. No generic request fallback can honor that boundary.
+    fn request_guarded_song_like<'a>(
+        &'a self,
+        _write: GuardedSongLike,
+        _permission: &'a SongLikePermission<'a>,
+        _dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("guarded song like is unavailable")) })
+    }
 
     /// Local scope proof for the ordinary playback URL request. A generic
     /// transport without scoped credentials cannot authorize stock fallback.

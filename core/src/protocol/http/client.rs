@@ -7,9 +7,10 @@ use crate::{
     account::credentials::Credentials,
     protocol::{
         api::{
-            Api, ApiFuture, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
-            VinylPlaybackReadPermission, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
-            VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
+            Api, ApiFuture, GuardedSongLike, SongLikePermission, VinylCommentRead,
+            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
+            VinylRelatedPlaylistsRead, VinylSimilarSongsRead, VinylVoiceSongsRead, VinylWikiRead,
+            VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -88,6 +89,10 @@ enum RequestBinding<'a> {
         dispatched: &'a AtomicBool,
     },
     GuestSearch(&'a (dyn Fn() -> Result<()> + Send + Sync)),
+    SongLike {
+        permission: &'a SongLikePermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     Switch {
         source: &'a MusicHttpClient,
         revision: &'a str,
@@ -672,6 +677,21 @@ impl MusicHttpClient {
                 self.require_guest_search_target(&target, &snapshot)?;
                 permission()?;
             }
+            if let Some(RequestBinding::SongLike {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                let current = self.credentials.request_credentials(&target)?;
+                if snapshot.unique_music_u().is_none()
+                    || current.revision != snapshot.revision
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                permission()?;
+                dispatched.store(true, Ordering::Relaxed);
+            }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
                 permission()?;
@@ -1190,6 +1210,30 @@ impl Api for MusicHttpClient {
     fn local_device_id(&self) -> Result<Option<String>> {
         self.credentials.device_id().map(Some)
     }
+
+    fn request_guarded_song_like<'a>(
+        &'a self,
+        write: GuardedSongLike,
+        permission: &'a SongLikePermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = write.into_request();
+            self.execute(
+                path,
+                payload,
+                false,
+                None,
+                Jsk::None,
+                Some(RequestBinding::SongLike {
+                    permission,
+                    dispatched,
+                }),
+            )
+            .await
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.execute(path, payload, cache, None, Jsk::None, None)

@@ -1,3 +1,5 @@
+#[path = "support/resources_guarded_like.rs"]
+mod guarded_like;
 #[path = "support/resources_recovery.rs"]
 mod recovery;
 mod support;
