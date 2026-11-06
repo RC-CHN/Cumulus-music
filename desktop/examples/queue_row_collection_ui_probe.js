@@ -80,6 +80,28 @@
     song(0).dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
     await wait(() => equals(selected(), [1, 3]), 'reverse ordered selection visible');
   }
+  async function closeQueue() {
+    click(button('关闭播放队列', panel()));
+    await wait(() => !panel(), 'queue closed');
+  }
+  async function pauseNewSource(client, epoch, selection, resourceKind) {
+    const old = bar().dataset.playId;
+    await client.playSelection(epoch, selection);
+    await wait(async () => {
+      const state = await client.playerSnapshot(epoch);
+      return state.resourceKind === resourceKind && state.playId !== old && state.state === 'playing'
+        && state.position > .12;
+    }, 'native playback advances on ' + resourceKind);
+    click(button('暂停', bar()));
+    let last;
+    await wait(async () => {
+      const current = await client.playerSnapshot(epoch);
+      const paused = current.state === 'paused' && current.resourceKind === resourceKind;
+      const settled = paused && current.position === last;
+      last = paused ? current.position : undefined;
+      return settled;
+    }, 'new source paused at a settled native clock');
+  }
   try {
     await wait(() => one('.track-row') && button('列表循环') && !button('列表循环').disabled,
       'authenticated initial page');
@@ -151,8 +173,7 @@
     assert(bar().dataset.playId === playbackId && bar().dataset.state === 'paused', 'same loaded song');
     await capture('saved', () => ({ readback }));
 
-    click(button('关闭播放队列', panel()));
-    await wait(() => !panel(), 'queue closed');
+    await closeQueue();
     const scope = { kind: 'radio', id: '77', ascending: false };
     const page = await client.podcastPage(epoch, { scope, offset: 0, limit: 50, keyword: '', revision: null }, true);
     await client.playSelection(epoch, { kind: 'podcast', scope, start_id: null, revision: page.revision });
@@ -163,12 +184,61 @@
     assert(!all('[data-queue-collect-row]').length && !one('.queue-collect').disabled,
       'voice has no inline collect; separate whole-queue action remains');
     await capture('voice_excluded');
-    assert(bulkReads === 0 && order.length === 2 && gestures.length === 2
+    await closeQueue();
+
+    stage = 'seed_download_and_local';
+    await emit('download-page-fixture', { mode: 'seed_queue_collection' });
+    await wait(() => window.__downloadPageAck, 'one native download and two real local files seeded');
+    assert(window.__downloadPageAck.ok, window.__downloadPageAck.message);
+    const downloads = { tab: 'completed', category: 'song', keyword: '', sort: 'completed',
+      descending: true, offset: 0, limit: 10 };
+    const published = (await client.downloads(epoch, downloads)).tasks;
+    assert(published.length === 1 && published[0].status === 'complete' && published[0].track.id === '7',
+      'completed task belongs to the fixture account and exact song');
+    stage = 'start_download';
+    await pauseNewSource(client, epoch, { kind: 'downloads', query: downloads, start_id: published[0].id }, 'downloaded');
+    await openQueue(1);
+    const offlineButton = collect(0);
+    assert(offlineButton && !one('.queue-row-more', rows()[0]), 'download only uses the proven inline action');
+    click(offlineButton);
+    await showPicker(['7']);
+    await capture('download_picker');
+    click(button('关闭歌单操作', picker()));
+    await closed(offlineButton);
+    await capture('download_cancelled');
+    await closeQueue();
+
+    stage = 'start_local';
+    const query = { keyword: '', sort: 'title', descending: false, group: 'list',
+      groupKey: null, includeMissing: false, offset: 0, limit: 10, revision: null };
+    const local = await client.localPage(query);
+    const indexed = ['linked-queue-song.wav', 'unlinked-queue-song.wav'].map(name =>
+      local.tracks.find(row => row.fileName === name)?.track.id);
+    assert(local.tracks.length === 2 && indexed.every(Boolean), 'both native indexed files are present');
+    await pauseNewSource(client, epoch, { kind: 'local', query: { ...query, revision: local.revision },
+      start_id: indexed[0], revision: local.revision }, 'local');
+    await openQueue(2);
+    const displayed = await client.playerQueue(epoch);
+    const localIndex = indexed.map(id => displayed.tracks.findIndex(row => row.track.id === id));
+    assert(localIndex.every(i => i >= 0) && localIndex.every(i => !one('.queue-row-more', rows()[i])),
+      'local rows use only the inline action without gaining a catalog menu');
+    const mapped = collect(localIndex[0]), unmatched = collect(localIndex[1]);
+    click(mapped);
+    await showPicker(['8']);
+    await capture('local_picker');
+    click(button('关闭歌单操作', picker()));
+    await closed(mapped);
+    await capture('local_cancelled');
+    click(unmatched);
+    await wait(() => !picker() && one('.queue-notice[role="alert"]')?.textContent.includes('尚未关联有效的线上歌曲'),
+      'unmatched file is explained instead of opened or uploaded');
+    await capture('local_unmatched', () => ({ unmatchedRejected: true }));
+    assert(bulkReads === 0 && order.length === 4 && gestures.length === 2
       && gestures.every(gesture => gesture.trusted === trusted), 'exact invocation and input origins');
     await emit('complete', { ok: true, stageCount: count, order, bulkReads, gestures,
       realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
-    await emit('failed', { ok: false, stage, error: String(error), order, bulkReads, gestures,
+    await emit('failed', { ok: false, phase: stage, error: String(error), order, bulkReads, gestures,
       selection: selected(), player: bar() && { ...bar().dataset }, body: document.body.innerText.slice(-1300),
       active: document.activeElement?.outerHTML.slice(0, 450) });
   }

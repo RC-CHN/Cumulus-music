@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 from queue_collection_smoke import isolated_profile
 from search_queue_drop_smoke import TrustedDrag
@@ -16,7 +17,8 @@ from window_manager import launch
 
 
 LABELS = ('pointer_ready', 'pointer_picker', 'pointer_cancelled', 'keyboard_ready',
-          'keyboard_picker', 'saved', 'voice_excluded')
+          'keyboard_picker', 'saved', 'voice_excluded', 'download_picker', 'download_cancelled',
+          'local_picker', 'local_cancelled', 'local_unmatched')
 
 
 class QueueCollectInput(TrustedDrag):
@@ -77,7 +79,8 @@ def run(args):
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_MODE_UI_PROOF='1',
                CUMULUS_QUEUE_UI_PROOF='1', CUMULUS_PLAYLIST_COLLECT_PROOF='1',
-               CUMULUS_QUEUE_COLLECTION_UI_PROOF='1', CUMULUS_QUEUE_ROW_COLLECTION_PROOF='1')
+               CUMULUS_QUEUE_COLLECTION_UI_PROOF='1', CUMULUS_QUEUE_ROW_COLLECTION_PROOF='1',
+               CUMULUS_DOWNLOAD_PAGE_UI_PROOF='1')
     isolated_profile(env, root)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve(strict=True)) + os.pathsep + env.get('PATH', '')
@@ -124,7 +127,7 @@ def run(args):
     assert all(entry['collectible'] is True for entry in entries)
     assert player['state'] == 'paused' and player['track']['id'] == '1' and player['playId']
     assert abs(player['position'] - 10) < .05
-    for label in LABELS[:-1]:
+    for label in LABELS[:6]:
         sample = rows[label]
         current = sample['nativePlayer']
         assert sample['nativeQueue'] == queue, label
@@ -143,11 +146,37 @@ def run(args):
         assert receipt['revision'] == queue['revision'] and receipt['epoch'] == queue['epoch']
         assert receipt['entryIds'] == [entries[index]['entryId'] for index in indices]
         assert receipt['ids'] == [entries[index]['track']['id'] for index in indices]
-    assert complete['order'] == [rows['pointer_picker']['picked'], rows['keyboard_picker']['picked']]
+    assert complete['order'] == [rows[name]['picked'] for name in (
+        'pointer_picker', 'keyboard_picker', 'download_picker', 'local_picker')]
     assert rows['pointer_cancelled']['focus'] == '收藏 ' + entries[1]['track']['name']
     assert rows['saved']['focus'] == '收藏 ' + entries[3]['track']['name']
     voice = rows['voice_excluded']['nativeQueue']['tracks']
     assert len(voice) == 2 and all(entry['track'].get('voiceId') and 'collectible' not in entry for entry in voice)
+    for prefix, kind, expected_id, names in (
+        ('download', 'downloaded', '7', ('download_picker', 'download_cancelled')),
+        ('local', 'local', '8', ('local_picker', 'local_cancelled', 'local_unmatched')),
+    ):
+        first = rows[names[0]]
+        queue, player = first['nativeQueue'], first['nativePlayer']
+        assert player['state'] == 'paused' and player['resourceKind'] == kind and player['playId']
+        assert player['position'] > .12 and not player['error']
+        assert all(entry['collectible'] is True and 'catalogMenu' not in entry for entry in queue['tracks'])
+        entry = next(row for row in queue['tracks'] if row['entryId'] == player['entryId'])
+        assert first['focusInPicker'] and first['picked'] == {
+            'ids': [expected_id], 'total': 1, 'revision': queue['revision'],
+            'epoch': queue['epoch'], 'entryIds': [entry['entryId']],
+        }
+        assert rows[prefix + '_cancelled']['focus'] == '收藏 ' + entry['track']['name']
+        assert not rows[prefix + '_cancelled']['focusInPicker']
+        for name in names:
+            sample = rows[name]
+            current = sample['nativePlayer']
+            assert sample['nativeQueue'] == queue and current['state'] == 'paused', name
+            assert all(current[key] == player[key] for key in (
+                'playId', 'entryId', 'position', 'queueRevision', 'resourceKind')), name
+            assert sample['bulkReads'] == 0 and sample['syntheticCollection']['writes'] == 1
+            assert sample['syntheticCollection']['creates'] == 0
+    assert rows['local_unmatched']['unmatchedRejected'] and not rows['local_unmatched']['focusInPicker']
     server = complete['syntheticCollection']
     assert complete['audioFactoryCount'] >= 1
     assert server['writes'] == 1 and server['creates'] == 0
@@ -155,10 +184,17 @@ def run(args):
     assert set(payload) == {'pid', 'trackIds', 'op', 'imme'}
     assert str(payload['pid']) == '2' and payload['op'] == 'add' and payload['imme'] is True
     assert list(map(str, json.loads(payload['trackIds']))) == rows['saved']['readback'] == ['3', '1']
+    if sys.platform == 'linux':
+        locale = read(output / 'locale.json')
+        assert locale['numeric'] == 'C'
+        assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
+                   for key in ('messages', 'characters')), locale
 
     report = dict(ok=True, states=len(LABELS), actualWebView=True, trustedInput=args.trusted_input,
                   screenshots=len(LABELS) if args.screenshots else 0, pausedNativePlayerPreserved=True,
-                  voiceExcluded=True, syntheticPlaylistWrites=1, realAccountWrites=0,
+                  voiceExcluded=True, downloadedCatalogIdentityVerified=True,
+                  localAssociationVerified=True, unmatchedLocalRejected=True,
+                  syntheticPlaylistWrites=1, realAccountWrites=0,
                   realMusicRequests=0, physicalAudioOutputVerified=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

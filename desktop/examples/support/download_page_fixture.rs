@@ -182,6 +182,65 @@ impl Fixture {
         eprintln!("download UI fixture {mode}: started");
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
+            "seed_queue_collection"
+                if std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() =>
+            {
+                assert_eq!(self.session.token()?.uid.as_deref(), Some("2"));
+                assert!(self.store.values("2", "download_tasks_v1")?.is_empty());
+                let media = self.root.join("media");
+                client
+                    .download_command(
+                        &epoch,
+                        DownloadCommand::Configure {
+                            root: media.to_string_lossy().into_owned(),
+                            path_type: 0,
+                            file_type: 0,
+                        },
+                    )
+                    .await?;
+                let wave = self.root.join("relay-synthetic.wav");
+                DATA.set(Arc::new(std::fs::read(&wave)?)).unwrap();
+                CHUNK.store(usize::MAX, Ordering::Relaxed);
+                let service = DownloadService::with_backend(
+                    self.session.clone(),
+                    Arc::new(NoNetwork),
+                    64 * 1024 * 1024,
+                )?;
+                let task = service.create(
+                    &json!("7"),
+                    DownloadDestination::Path {
+                        path: media.join("published-queue-song.wav"),
+                    },
+                    DownloadOptions {
+                        tags: false,
+                        cover: false,
+                        ..Default::default()
+                    },
+                )?;
+                let published = service.run(&task.id, DownloadRunOptions::default()).await?;
+                assert_eq!(published.status, DownloadStatus::Complete);
+                assert_eq!(published.origin, DownloadOrigin::Song);
+
+                let store = self.store.clone();
+                let session = self.session.clone();
+                tokio::task::spawn_blocking(move || {
+                    let local = media.join("collection-library");
+                    std::fs::create_dir(&local)?;
+                    let mapped = local.join("linked-queue-song.wav");
+                    std::fs::copy(&wave, &mapped)?;
+                    std::fs::copy(wave, local.join("unlinked-queue-song.wav"))?;
+                    let library = cumulus_core::library::LocalLibrary::new(store)?;
+                    library.scan(&local)?;
+                    let item = library
+                        .list(Default::default())?
+                        .into_iter()
+                        .find(|item| item.path.file_name() == mapped.file_name())
+                        .ok_or(Error::State("synthetic indexed track missing"))?;
+                    library.map_online(&session, &item.id, &json!("8"))
+                })
+                .await
+                .map_err(|_| Error::State("synthetic local library worker stopped"))??;
+            }
             "seed_quality" if quality_enabled() => {
                 assert_eq!(self.session.token()?.uid.as_deref(), Some("2"));
                 assert!(self.store.values("2", "download_tasks_v1")?.is_empty());
