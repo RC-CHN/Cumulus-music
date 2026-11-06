@@ -21,6 +21,7 @@ pub struct Library {
     calls: Mutex<Vec<Value>>,
     album_cards: AtomicBool,
     album_duration_sort: AtomicBool,
+    queue_song_liked: AtomicBool,
     artist_cards: AtomicBool,
 }
 impl Library {
@@ -186,7 +187,27 @@ impl Api for Library {
                     json!({"code":200,"profile":{"userId":501,"nickname":"合成歌手个人页"}})
                 }
                 "/api/user/playlist" => json!({"code":200,"more":false,"playlist":[]}),
-                "/api/song/like/get" => json!({"code":200,"ids":[3,7]}),
+                "/api/song/like/get" => {
+                    let ids = if self.queue_song_liked.load(Ordering::SeqCst) {
+                        vec![3, 7, 14]
+                    } else {
+                        vec![3, 7]
+                    };
+                    json!({"code":200,"ids":ids})
+                }
+                "/api/song/like" if album_duration_sort => {
+                    let liked = args["like"]
+                        .as_bool()
+                        .ok_or(Error::InvalidInput("missing synthetic like operation"))?;
+                    if args != json!({"trackId":"14","userid":"2","like":liked}) {
+                        return Err(Error::InvalidInput("unexpected queue like target"));
+                    }
+                    self.queue_song_liked.store(liked, Ordering::SeqCst);
+                    if liked {
+                        return Err(Error::Transport("synthetic like response lost".into()));
+                    }
+                    json!({"code":200})
+                }
                 "/api/v3/discovery/recommend/songs" => {
                     json!({"code":200,"data":{"dailySongs":(1..=40).map(song).collect::<Vec<_>>()}})
                 }

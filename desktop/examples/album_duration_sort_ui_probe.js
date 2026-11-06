@@ -243,6 +243,49 @@
     await wait(artistPage, 'one Back restored the original artist, without duplicate history');
     assert(one('.queue-panel') && await unchanged(), 'artist Back changed the queue or native playback');
     await captureOrigin('queue_artist_back', { artist: artistTitle(), queueStayedOpen: true });
+    const likeButton = (entry) => row(entry)?.querySelector('.queue-like');
+    const shownLike = await wait(() => likeButton(fromAlbum), 'other-song like control');
+    assert(fromAlbum.likeSongId === '14' && unbound.likeSongId === '900' &&
+      shownLike.getAttribute('aria-pressed') === 'false' &&
+      likeButton(unbound)?.getAttribute('aria-pressed') === 'false',
+    'native queue song identity and initial liked state');
+    let stale;
+    try {
+      await invoke('player_queue_like', { epoch, revision: (BigInt(queued.revision) + 1n).toString(),
+        entryId: fromAlbum.entryId, liked: true });
+    } catch (error) { stale = String(error); }
+    assert(stale?.endsWith(': snapshot_changed') && await unchanged(), 'stale queue rejected before writing');
+    shownLike.focus({ preventScroll: true });
+    await wait(() => {
+      const box = shownLike.getBoundingClientRect();
+      return document.activeElement === shownLike && getComputedStyle(shownLike).opacity === '1' &&
+        shownLike.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    }, 'keyboard can reach the row like control');
+    await captureOrigin('queue_like_ready', { staleRejected: true, likePressed: false });
+    click(shownLike);
+    shownLike.click(); // duplicate before the account readback returns
+    const review = await wait(() => one('.queue-like-notice button'), 'lost reply recorded for readback');
+    assert(likeButton(fromAlbum).getAttribute('aria-pressed') === 'false' && await unchanged(),
+      'an uncertain write cannot optimistically flip the row');
+    await captureOrigin('queue_like_uncertain', { likePressed: false, reviewAvailable: true });
+    click(review);
+    const operation = await wait(() => one('.like-recovery-dialog[open] [data-song-id="14"] .secondary'),
+      'review dialog has the original song');
+    click(operation);
+    const closeReview = await wait(() => {
+      const close = one('.like-recovery-dialog[open] [aria-label="关闭喜欢状态核对"]');
+      return likeButton(fromAlbum)?.getAttribute('aria-pressed') === 'true' && close && !close.disabled && close;
+    }, 'explicit readonly reconciliation');
+    click(closeReview);
+    await wait(() => !one('.like-recovery-dialog'), 'review closed');
+    assert(likeButton(unbound).getAttribute('aria-pressed') === 'false' &&
+      await unchanged(), 'liking other row preserves loaded decoder and queue');
+    await captureOrigin('queue_like_confirmed', { likePressed: true, otherTrackUnaffected: true });
+    click(likeButton(fromAlbum));
+    await wait(() => likeButton(fromAlbum)?.getAttribute('aria-pressed') === 'false' &&
+      one('.queue-like-notice')?.textContent.trim() === '已取消喜欢', 'unlike readback');
+    assert(await unchanged(), 'unlike changed playback or queue');
+    await captureOrigin('queue_like_removed', { likePressed: false });
     await emit('complete', { ok: true, states, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, error: String(error), stack: error?.stack, states });

@@ -482,7 +482,8 @@ def main():
         names = ('original', 'ascending', 'descending', 'restored', 'reset',
                  'filtered_row', 'same_row_pause', 'same_row_resume', 'full_album', 'paused_append',
                  'queue_source_ready', 'queue_source_opened', 'queue_source_back',
-                 'queue_artist_ready', 'queue_artist_opened', 'queue_artist_back')
+                 'queue_artist_ready', 'queue_artist_opened', 'queue_artist_back',
+                 'queue_like_ready', 'queue_like_uncertain', 'queue_like_confirmed', 'queue_like_removed')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
@@ -539,7 +540,7 @@ def main():
         assert appended['player']['position'] > 4
         assert [entry['track']['id'] for entry in appended['queue']['tracks']] == ['900','12','14','11','13','901']
         assert stages['queue_source_ready']['sourceFocused'] is True
-        for name in names[-6:-3]:
+        for name in ('queue_source_ready', 'queue_source_opened', 'queue_source_back'):
             stage = stages[name]
             assert stage['source'] == {'kind': 'album', 'id': '8'}
             assert stage['queue'] == appended['queue']
@@ -558,7 +559,7 @@ def main():
         assert back['artist'] == '测试歌手'
         for stage in (opened, back):
             assert stage['queueStayedOpen'] is True
-        for name in names[-3:]:
+        for name in ('queue_artist_ready', 'queue_artist_opened', 'queue_artist_back', *names[-4:]):
             stage = stages[name]
             assert stage['queue'] == appended['queue'] and stage['player']['state'] == 'paused'
             assert all(stage['player'][key] == appended['player'][key]
@@ -571,7 +572,23 @@ def main():
             assert detail == [{'id': artist, 'top': 50, 'e_r': False}], detail
             assert dynamic == [{'id': artist}], dynamic
         assert not any(call['path'] in ('/api/v3/song/detail', '/api/song/enhance/player/url/v1')
-                       for call in delta('paused_append', 'queue_artist_back'))
+                       for call in delta('paused_append', 'queue_like_removed'))
+        assert stages['queue_like_ready']['staleRejected'] is True
+        assert stages['queue_like_uncertain']['reviewAvailable'] is True
+        assert stages['queue_like_confirmed']['otherTrackUnaffected'] is True
+        assert [stages[name]['likePressed'] for name in names[-4:]] == [False, False, True, False]
+        like_paths = ('/api/song/like/get', '/api/song/like')
+        assert not any(call['path'] in like_paths for call in delta('queue_artist_back', 'queue_like_ready'))
+        read_like = ('/api/song/like/get', {'uid': '2'})
+        like, unlike = (('/api/song/like', {'trackId': '14', 'userid': '2', 'like': value})
+                        for value in (True, False))
+        for start, end, expected in (
+            ('queue_like_ready', 'queue_like_uncertain', [read_like, like]),
+            ('queue_like_uncertain', 'queue_like_confirmed', [read_like, read_like]),
+            ('queue_like_confirmed', 'queue_like_removed', [read_like, unlike, read_like]),
+        ):
+            calls_to_like = [(call['path'], call['args']) for call in delta(start, end) if call['path'] in like_paths]
+            assert calls_to_like == expected, calls_to_like
         locale_report = output / 'locale.json'
         if locale_report.is_file():
             import locale
@@ -583,6 +600,7 @@ def main():
                       stableDurationSort=True, sortedNativePlayback=True, sameRowDecoderPreserved=True,
                       pausedInsertionPreserved=True, sourceNavigationPreserved=True,
                       queueArtistNavigationPreserved=True,
+                      queueLikeReadbackPreserved=True,
                       realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
