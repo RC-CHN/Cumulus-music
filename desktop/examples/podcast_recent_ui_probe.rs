@@ -26,6 +26,8 @@ mod voice_page_fixture;
 mod voice_podcast_collect_fixture;
 #[path = "support/voice_recommendation_fixture.rs"]
 mod voice_recommendation_fixture;
+#[path = "support/voice_song_download_fixture.rs"]
+mod voice_song_download_fixture;
 #[path = "support/voice_songs_fixture.rs"]
 mod voice_songs_fixture;
 
@@ -35,7 +37,8 @@ use cumulus_core::{
     client::MusicClient,
     protocol::{
         api::{
-            Api, ApiFuture, GuardedSongLike, PodcastBadgeClear, PodcastBadgePermission,
+            Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
+            PlaylistAddPermission, PodcastBadgeClear, PodcastBadgePermission,
             PodcastProgressPermission, SongLikePermission, VinylPlaybackReadPermission,
             VinylVoiceDetailRead, VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
         },
@@ -76,6 +79,7 @@ struct Library {
     voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
     voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
     voice_songs: Option<voice_songs_fixture::Fixture>,
+    voice_song_download: Option<Arc<voice_song_download_fixture::Fixture>>,
 }
 
 fn radio() -> Value {
@@ -262,8 +266,64 @@ impl Api for Library {
         })
     }
 
+    fn song_card_download_scope_revision(&self) -> Result<Option<String>> {
+        Ok(self
+            .voice_song_download
+            .as_ref()
+            .map(|_| voice_songs_fixture::REVISION.to_owned()))
+    }
+
+    fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {
+        self.song_card_download_scope_revision()
+    }
+
+    fn song_card_playlist_create_scope_revision(&self) -> Result<Option<String>> {
+        self.song_card_download_scope_revision()
+    }
+
+    fn request_guarded_playlist_add<'a>(
+        &'a self,
+        write: GuardedPlaylistAdd,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let proof = self
+                .voice_song_download
+                .as_ref()
+                .expect("isolated SongCard add");
+            let (path, body) = write.into_request()?;
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            proof.add(path, body)
+        })
+    }
+
+    fn request_guarded_playlist_create<'a>(
+        &'a self,
+        write: GuardedPlaylistCreate,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let proof = self
+                .voice_song_download
+                .as_ref()
+                .expect("isolated SongCard create");
+            let (path, body) = write.into_request();
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            Ok(proof.create(path, body))
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(download) = &self.voice_song_download
+                && let Some(reply) = download.read(path, &body, cache)
+            {
+                return reply;
+            }
             if let Some(voice) = &self.voice_detail
                 && let Some(response) = voice.profile(path, &body)
             {
@@ -436,7 +496,12 @@ fn main() {
             .as_deref()
             .is_none_or(|case| matches!(case, "double" | "cover" | "dense"))
     );
-    let voice_songs_enabled = voice_songs_case.is_some();
+    let voice_song_download_case = std::env::var("CUMULUS_VOICE_SONG_DOWNLOAD_PROOF").ok();
+    assert!(!(voice_songs_case.is_some() && voice_song_download_case.is_some()));
+    let voice_song_download = voice_song_download_case
+        .as_deref()
+        .map(|case| Arc::new(voice_song_download_fixture::Fixture::new(case)));
+    let voice_songs_enabled = voice_songs_case.is_some() || voice_song_download.is_some();
     let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
         .ok()
         .or_else(|| voice_detail_enabled.then(|| "header".to_owned()));
@@ -491,7 +556,9 @@ fn main() {
             .then(voice_recommendation_fixture::Fixture::default),
         voice_songs: voice_songs_case
             .as_deref()
+            .or_else(|| voice_song_download.as_ref().map(|_| "download"))
             .map(voice_songs_fixture::Fixture::new),
+        voice_song_download: voice_song_download.clone(),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -500,6 +567,13 @@ fn main() {
         .with_audio_factory(move || Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)));
     if let Some(palette) = palette {
         client = client.with_scene_fm_palette_backend(palette);
+    }
+    if let Some(backend) = voice_song_download {
+        client = client.with_download_backend(backend);
+    }
+    let synthetic_download_root = root.join("download-output");
+    if voice_song_download_case.is_some() {
+        fs::create_dir(&synthetic_download_root).unwrap();
     }
     let mut context = assets::context();
     let mut config = context.config().app.windows[0].clone();
@@ -510,6 +584,8 @@ fn main() {
         || {
             if badges_enabled {
                 include_str!("podcast_badges_ui_probe.js").to_owned()
+            } else if voice_song_download_case.is_some() {
+                include_str!("voice_song_download_ui_probe.js").to_owned()
             } else if voice_songs_enabled {
                 include_str!("voice_songs_ui_probe.js").to_owned()
             } else if voice_recommendations_enabled {
@@ -615,6 +691,23 @@ fn main() {
                     }
                     return;
                 }
+                if let Some(download) = &api.voice_song_download {
+                    if stage == "voice_song_download_poll" {
+                        if let Some(nonce) = value["nonce"].as_u64() {
+                            handle.get_webview_window("main").unwrap().eval(format!(
+                                "window.__voiceSongDownloadNative = [{nonce}, {}];", download.snapshot()
+                            )).unwrap();
+                        }
+                        return;
+                    }
+                    if stage == "voice_song_download_reveal" {
+                        download.reveal_recovery();
+                        handle.get_webview_window("main").unwrap().eval(
+                            "window.__voiceSongDownloadRevealed = true;"
+                        ).unwrap();
+                        return;
+                    }
+                }
                 if progress_enabled && stage == "progress_poll" {
                     if let Some(nonce) = value["nonce"].as_u64() {
                         let count = api.progress_uploads.lock().unwrap().len();
@@ -645,6 +738,9 @@ fn main() {
                 }
                 if let Some(shelf) = &api.voice_recommendations {
                     value["voiceRecommendationsTrace"] = shelf.snapshot();
+                }
+                if let Some(download) = &api.voice_song_download {
+                    value["voiceSongDownloadTrace"] = download.snapshot();
                 }
                 if let Some(songs) = &api.voice_songs {
                     value["voiceSongsTrace"] = songs.snapshot();
@@ -686,6 +782,12 @@ fn main() {
                 }
                 if let Some(case) = &voice_songs_case {
                     view.eval(format!("window.__voiceSongsCase = {};", json!(case))).unwrap();
+                }
+                if let Some(case) = &voice_song_download_case {
+                    view.eval(format!(
+                        "window.__voiceSongDownloadCase = {}; window.__voiceSongDownloadRoot = {};",
+                        json!(case), json!(synthetic_download_root)
+                    )).unwrap();
                 }
                 view.eval(&source).unwrap();
             }

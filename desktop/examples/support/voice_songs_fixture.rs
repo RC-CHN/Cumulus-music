@@ -9,7 +9,7 @@ const LIKE: &str = "/api/song/like";
 const MEDIA: &str = "/api/song/enhance/player/url/v1";
 const FIXTURE_URL: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
 
-pub struct Fixture(Mutex<State>, bool);
+pub struct Fixture(Mutex<State>, bool, bool);
 
 #[derive(Default)]
 struct State {
@@ -29,7 +29,7 @@ fn row(id: u64, name: &str, blocked: bool) -> Value {
 
 impl Fixture {
     pub fn new(case: &str) -> Self {
-        Self(Mutex::default(), case == "dense")
+        Self(Mutex::default(), case == "dense", case == "download")
     }
 
     pub fn songs(&self, path: &str, payload: Value) -> Value {
@@ -39,7 +39,14 @@ impl Fixture {
                 .map(|id| row(id, &format!("合成包含歌曲 {id}"), false))
                 .collect(),
             Some("601") => vec![
-                row(1710, "合成包含歌曲 1710", false),
+                {
+                    let mut song = row(1710, "合成包含歌曲 1710", false);
+                    if self.2 {
+                        song["privilege"]["fee"] = json!(0);
+                        song["privilege"]["dl"] = json!(320000);
+                    }
+                    song
+                },
                 json!({"id":1799,"name":"不应显示的无专辑歌曲"}),
                 row(1601, "与播客音轨同编号的普通歌", false),
                 row(1790, "合成版权受限歌曲", true),
