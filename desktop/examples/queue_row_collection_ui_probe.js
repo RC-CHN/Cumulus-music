@@ -49,11 +49,14 @@
   async function capture(label, extra = {}) {
     stage = label;
     await stablePaint();
-    await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, {
+    const receipt = `ux_${String(++count).padStart(2, '0')}_${label}`;
+    window.__queueUiStageRecorded = '';
+    await emit(receipt, {
       selected: selected(), gestures: [...gestures], picked: picked ?? null, bulkReads,
       focus: document.activeElement?.getAttribute('aria-label'),
       focusInPicker: !!picker()?.contains(document.activeElement), ...extra,
     });
+    await wait(() => window.__queueUiStageRecorded === receipt, 'host captured exact native queue stage');
   }
   async function openQueue(length) {
     click(button('播放队列'));
