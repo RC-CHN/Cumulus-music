@@ -74,6 +74,35 @@ impl MpvEngine {
             return self.load_inner(request, cancel);
         }
         let (file, format) = crate::library::native_open::checked_audio_file(path, fingerprint)?;
+        self.load_held_local_equalizer(file, format, settings, cancel, false)
+    }
+
+    pub(super) fn load_indexed_local_equalizer(
+        &mut self,
+        receipt: crate::library::IndexedFlacReceipt,
+        selected: crate::library::LocalResource,
+        settings: EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        cancel.check()?;
+        let file = receipt.into_ordinary_file(&selected, cancel)?;
+        if !settings.local_graph_requested()
+            || self.parametric.is_some()
+            || (self.loudness.is_some() && !self.loudness_reserved)
+        {
+            return self.load_open_file(file, "flac", cancel.clone(), 0.0, cancel);
+        }
+        self.load_held_local_equalizer(file, "flac", settings, cancel, true)
+    }
+
+    fn load_held_local_equalizer(
+        &mut self,
+        file: File,
+        format: &'static str,
+        settings: EqualizerSettings,
+        cancel: &Cancellation,
+        indexed: bool,
+    ) -> Result<LoadedMedia> {
         let authority = cancel.clone();
         let plan = LocalEqualizerMaterialPlan::from_saved(settings);
         let selection = if format == "wav" && self.local_wave {
@@ -87,7 +116,12 @@ impl MpvEngine {
                 // This is the old load_inner stock authority. A verified WAV
                 // capability must not make a non-graph MP3/FLAC load depend on
                 // the preparation request after it has already committed.
-                return self.load_open_file(file, format, Cancellation::default(), 0.0, cancel);
+                let authority = if indexed {
+                    authority
+                } else {
+                    Cancellation::default()
+                };
+                return self.load_open_file(file, format, authority, 0.0, cancel);
             };
             if format != "flac" {
                 return self.load_open_file(file, format, authority, 0.0, cancel);

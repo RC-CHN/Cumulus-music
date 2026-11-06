@@ -906,6 +906,22 @@ impl AudioEngine for MpvEngine {
     fn supports_local_equalizer(&self) -> bool {
         self.local_flac.is_some() || self.local_wave
     }
+    fn supports_indexed_flac_equalizer(&self) -> bool {
+        cfg!(all(target_os = "linux", target_arch = "x86_64")) && self.local_flac.is_some()
+    }
+    fn load_indexed_flac_equalizer(
+        &mut self,
+        receipt: crate::library::IndexedFlacReceipt,
+        selected: crate::library::LocalResource,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let result = self.load_indexed_local_equalizer(receipt, selected, settings, cancel);
+        if result.is_err() {
+            let _ = self.stop();
+        }
+        result
+    }
     fn local_equalizer_entry(&self) -> Option<i64> {
         self.local_equalizer.as_ref().and(self.entry)
     }

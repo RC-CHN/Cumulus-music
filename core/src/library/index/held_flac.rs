@@ -29,6 +29,52 @@ pub struct IndexedFlacReceipt {
 }
 
 impl LocalLibrary {
+    pub(crate) fn ordinary_indexed_flac_current(
+        &self,
+        selected: &LocalResource,
+        path: &Path,
+    ) -> Result<bool> {
+        let LocalRevision::File { fingerprint } = &selected.local_revision else {
+            return Ok(false);
+        };
+        let indexed = self.indexed_flac_path(selected, fingerprint)?;
+        if indexed != path
+            || !indexed
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("flac"))
+        {
+            // An indexed NCM can legitimately resolve to a different FLAC
+            // cache pathname. It keeps the original stock route.
+            return Ok(false);
+        }
+        let Some(path) = path.to_str() else {
+            return Ok(false);
+        };
+        Ok(!self
+            .store
+            .download_claims_indexed_path(&selected.local_id, path)?)
+    }
+
+    pub(crate) fn hold_ordinary_indexed_flac(
+        &self,
+        selected: &LocalResource,
+        path: &Path,
+        cancel: &Cancellation,
+    ) -> Result<Option<IndexedFlacReceipt>> {
+        if !cfg!(all(target_os = "linux", target_arch = "x86_64"))
+            || !self.ordinary_indexed_flac_current(selected, path)?
+        {
+            return Ok(None);
+        }
+        let Some(held) = self.hold_indexed_flac(selected, cancel)? else {
+            return Ok(None);
+        };
+        if held.path != path || !single_link(&held.file)? {
+            return Ok(None);
+        }
+        Ok(Some(held))
+    }
+
     /// Prepare a native-only handoff for a whole, directly indexed FLAC file.
     /// Use on a blocking worker. No queue metadata or renderer-provided path
     /// chooses the file. Unsupported origins/platform identity return `None`;
@@ -109,6 +155,21 @@ impl LocalLibrary {
 }
 
 impl IndexedFlacReceipt {
+    pub(crate) fn into_ordinary_file(
+        self,
+        selected: &LocalResource,
+        cancel: &Cancellation,
+    ) -> Result<File> {
+        if !single_link(&self.file)?
+            || !self
+                .library
+                .ordinary_indexed_flac_current(selected, &self.path)?
+        {
+            return Err(Error::StaleResponse);
+        }
+        self.into_file(selected, cancel)
+    }
+
     /// Move the same descriptor exactly once after rechecking the current
     /// selected resource and durable index. Neither this step nor a pathname
     /// replacement can open another file. The native caller still owns its
@@ -129,6 +190,17 @@ impl IndexedFlacReceipt {
         cancel.check()?;
         Ok(self.file)
     }
+}
+
+#[cfg(unix)]
+fn single_link(file: &File) -> Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    Ok(file.metadata()?.nlink() == 1)
+}
+
+#[cfg(not(unix))]
+fn single_link(_file: &File) -> Result<bool> {
+    Ok(false)
 }
 
 fn check_fingerprint(file: &File, expected: &FileFingerprint) -> Result<()> {

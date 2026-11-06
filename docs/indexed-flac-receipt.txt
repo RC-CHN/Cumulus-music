@@ -10,9 +10,9 @@ that the file format is eligible for DSP.
 
 Cumulus already uses the recovered fixed local equalizer graph (including
 slot 50) for selected explicitly opened native stereo files. The ordinary
-indexed library still resolves a selected local revision to a pathname
-(library/index/decoded.rs, playback/source/mod.rs). This new core API does
-not change that route. It prepares a possible future native handoff:
+indexed library resolves a selected local revision to a pathname
+(library/index/decoded.rs, playback/source/mod.rs). Before an eligible
+Linux source can enter the same graph it must now acquire this native handoff:
 
 1. Check the selected LocalResource against a single durable ordinary file
    row, including stable local ID, available status and exact File
@@ -61,14 +61,38 @@ Windows native tests must exercise replacement and a real reparse point
 before product admission. No index persistence or scan behavior is changed
 by the helper.
 
-The receipt does not bind an account/download ledger, queue/output lease
-or decoder ownership on its own. A future controller must still fence
-these before native publication, separate eligible ordinary rows from
-protected downloads, and validate the real trusted decoder output format
-before admitting a fixed graph. Stock fallback after choosing a descriptor
-must retain that descriptor; audible seek/replacement must use existing
-retirement and never replay a failed entry. None of these production paths
-or any UI/IPC are changed here.
+Linux ordinary indexed player attachment
+----------------------------------------
+
+A fresh ordinary indexed selection, with enabled local material, can
+prepare the receipt at the controller's existing native-load boundary.
+This requires a full independent timeline, the exact indexed FLAC path
+(not a resolved NCM cache), no separate loudness data or PEQ conflict, and
+a configured native FLAC adapter. The underlying transport remains the
+existing source resolver. A multi-link file is not admitted. A boolean
+native exclusion checks all owners' exact offline path keys and download
+targets, named/configured download roots, and pending file/directory
+migrations. It does not look up an authorization URL, parse another
+account's credentials or expose any owner/path data to the renderer.
+This excludes known managed files, not arbitrary historical copies
+that have no current managed provenance. Typed CUE, NCM, cloud, download
+and room sources keep their existing routes.
+
+Once the held descriptor is chosen, even missing/wrong trusted-library
+digest, unsupported FLAC geometry or a recoverable unpublished preparation
+failure can only choose stock with that same descriptor. Trusted libFLAC
+STREAMINFO and actual callback checks select the same preexisting graph:
+44.1/48 kHz, stereo, signed 16-bit, known bounded length and block size.
+The old pathname never supplies another file after ownership transfers.
+Actor generation and ManagedOutput lease fence preparation. After native
+load and before first unpause, the actor checks the current local index,
+managed exclusion, queue and exact native entry; existing Focused unpause
+still owns presentation. Native seek reclaims the same held file after the
+old sink retires, then resets and republishes the graph. Current-entry
+output reload stops the held indexed entry with an output error rather
+than reopening a retained pathname after audible playback. A separate
+user selection can obtain a new checked receipt. Windows and other
+unsupported sources stay stock. No UI or IPC protocol changes.
 
 Focused regression:
 cargo test -p cumulus-core --locked --test indexed_flac_receipt
@@ -89,3 +113,14 @@ cargo test -p cumulus-core --locked --lib actual_reparse_handle_is_rejected_with
 
 The exact module and tests pass strict Windows GNU cross-Clippy and link
 in an isolated minimal target. This does not run Win32.
+
+The native boolean exclusion also has a targeted other-owner/managed
+path/active operation unit test:
+cargo test -p cumulus-core --locked --lib native_local_admission_cannot_adopt_another_owners_download_paths
+
+The native_local_equalizer_probe and scripts/ci/native_local_equalizer_smoke.py
+--indexed-flac-only exercise an actual isolated GTK/WebView process, native
+library scan and typed indexed row selection, verified graph and wrong-digest
+held stock, paused seek, resumed source clock, EOF and durable settings.
+The probe is prepared; no execution is claimed here. It uses synthetic
+audio, null output and no service egress.

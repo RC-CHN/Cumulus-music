@@ -5,6 +5,7 @@ mod catalog_download;
 mod fetch;
 #[cfg(test)]
 mod fresh_tests;
+mod indexed_flac;
 mod loudness;
 mod streaming;
 use super::{Timeline, engine::MediaInput};

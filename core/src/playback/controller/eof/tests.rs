@@ -98,6 +98,7 @@ async fn actor(store: Arc<StateStore>) -> Actor {
         history: Default::default(),
         podcast_progress: None,
         local_equalizer: false,
+        indexed_flac: false,
         audiobook_skip: None,
     });
     actor.state = PlaybackStatus::Ended;

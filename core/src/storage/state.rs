@@ -180,6 +180,41 @@ impl StateStore {
         Ok(Some((key, serde_json::from_str(&value)?)))
     }
 
+    /// Boolean exclusion only: an ordinary indexed source must not take a
+    /// file owned by any download account, including when the player is a
+    /// guest. Inputs are an exact canonical index path and its offline key.
+    pub(crate) fn download_claims_indexed_path(&self, key: &str, path: &str) -> Result<bool> {
+        let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut query = connection.prepare_cached(
+            "SELECT EXISTS(
+                SELECT 1 FROM state WHERE
+                  (kind='offline_music_v1' AND key=?1)
+                  OR (kind='download_directory_v1' AND key='active')
+                  OR (kind='download_directory_v1' AND key='settings' AND
+                      CASE WHEN json_valid(value) THEN
+                        (json_extract(value,'$.root')='/' OR
+                         substr(?2,1,length(json_extract(value,'$.root'))+1)=
+                             json_extract(value,'$.root')||'/')
+                      ELSE 1 END)
+                  OR (kind='download_tasks_v1' AND
+                      CASE WHEN json_valid(value) THEN
+                        (json_extract(value,'$.target')=?2 OR
+                         json_extract(value,'$.destination.path')=?2 OR
+                         (json_extract(value,'$.destination.kind')='named' AND
+                          (json_extract(value,'$.root')='/' OR
+                           substr(?2,1,length(json_extract(value,'$.root'))+1)=
+                               json_extract(value,'$.root')||'/')))
+                      ELSE 1 END)
+                  OR (kind='download_file_operations_v1' AND
+                      CASE WHEN json_valid(value) THEN
+                        (json_extract(value,'$.phase') IS NULL OR
+                         json_extract(value,'$.phase') NOT IN ('complete','cancelled'))
+                      ELSE 1 END)
+            )",
+        )?;
+        Ok(query.query_row([key, path], |row| row.get(0))?)
+    }
+
     /// Includes commits from other connections and mutations made through this
     /// connection. Capture inside a read/write transaction when binding it to
     /// cached content; a post-commit sample could conceal a competing write.
@@ -369,5 +404,89 @@ impl StateTransaction<'_> {
                 })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod indexed_flac_exclusion {
+    use super::StateStore;
+    use serde_json::json;
+
+    #[test]
+    fn native_local_admission_cannot_adopt_another_owners_download_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let store = StateStore::open(root.path()).unwrap();
+        assert!(
+            !store
+                .download_claims_indexed_path("id", "/music/song.flac")
+                .unwrap()
+        );
+        store
+            .put("other-account", "offline_music_v1", "id", &json!({}))
+            .unwrap();
+        assert!(
+            store
+                .download_claims_indexed_path("id", "/music/song.flac")
+                .unwrap()
+        );
+        assert!(
+            !store
+                .download_claims_indexed_path("different-id", "/music/own.flac")
+                .unwrap()
+        );
+        store.put("other-account", "download_tasks_v1", "task", &json!({
+            "target":"/music/direct.flac","destination":{"kind":"path","path":"/music/requested.flac"}
+        })).unwrap();
+        for path in ["/music/direct.flac", "/music/requested.flac"] {
+            assert!(
+                store
+                    .download_claims_indexed_path("other-id", path)
+                    .unwrap()
+            );
+        }
+        store
+            .put(
+                "other-account",
+                "download_directory_v1",
+                "settings",
+                &json!({"root":"/music/managed"}),
+            )
+            .unwrap();
+        assert!(
+            store
+                .download_claims_indexed_path("other-id", "/music/managed/sub/song.flac")
+                .unwrap()
+        );
+        assert!(
+            !store
+                .download_claims_indexed_path("other-id", "/music/managed-elsewhere/song.flac")
+                .unwrap()
+        );
+        store
+            .put(
+                "other-account",
+                "download_file_operations_v1",
+                "pending",
+                &json!({"phase":"prepared"}),
+            )
+            .unwrap();
+        assert!(
+            store
+                .download_claims_indexed_path("other-id", "/music/unrelated.flac")
+                .unwrap()
+        );
+        store
+            .put(
+                "other-account",
+                "download_file_operations_v1",
+                "pending",
+                &json!({"phase":"complete"}),
+            )
+            .unwrap();
+        assert!(
+            !store
+                .download_claims_indexed_path("other-id", "/music/unrelated.flac")
+                .unwrap()
+        );
     }
 }

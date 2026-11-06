@@ -348,6 +348,34 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     fn supports_local_equalizer(&self) -> bool {
         self.inner.supports_local_equalizer()
     }
+    fn supports_indexed_flac_equalizer(&self) -> bool {
+        self.inner.supports_indexed_flac_equalizer()
+    }
+    fn load_indexed_flac_equalizer(
+        &mut self,
+        receipt: crate::library::IndexedFlacReceipt,
+        selected: crate::library::LocalResource,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let cancel = self.lease.cancellation(cancel);
+        cancel.check()?;
+        self.synchronize(true)?;
+        cancel.check()?;
+        // The only stock fallback is inside the selected decoder, which
+        // still owns this descriptor. Never retry using a pathname here.
+        let result = self
+            .inner
+            .load_indexed_flac_equalizer(receipt, selected, settings, &cancel);
+        if cancel.is_cancelled() {
+            let _ = self.inner.stop();
+            return Err(Error::Cancelled);
+        }
+        if result.as_ref().is_err_and(output_failure) {
+            self.record_load_failure();
+        }
+        self.observe_successful_load(result)
+    }
     fn local_equalizer_entry(&self) -> Option<i64> {
         self.inner.local_equalizer_entry()
     }

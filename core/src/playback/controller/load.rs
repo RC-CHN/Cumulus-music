@@ -40,6 +40,7 @@ pub(super) struct Prepared {
     pub source: Arc<ResolvedSource>,
     pub media: LoadedMedia,
     pub local_equalizer: bool,
+    pub indexed_flac: bool,
     pub timeline: Timeline,
     pub position: f64,
     pub reset: bool,
@@ -182,14 +183,34 @@ impl Actor {
         self.error = None;
         self.reset = false;
         self.parametric.discard_paused_device();
-        let local_equalizer = (item.resource.get("native_open_file").is_some()
-            && self.independent_transport(&item)
+        let local_material = (self.independent_transport(&item)
             && constraint.is_none()
             && self.parametric.admits_local_equalizer()
             && !self.equalizer.damaged
             && self.equalizer.preferences.settings.local_graph_requested())
         .then_some(self.equalizer.preferences.settings);
-        if local_equalizer.is_some() {
+        let native_open = item.resource.get("native_open_file").is_some();
+        let local_equalizer = local_material.filter(|_| native_open);
+        let indexed_equalizer = local_material.filter(|_| {
+            cfg!(all(target_os = "linux", target_arch = "x86_64"))
+                && !native_open
+                && !options.recover
+                && options.position.is_none()
+                && matches!(&options.source, LoadSource::CurrentPreference)
+                && item.source["kind"] == "local"
+                && item.source["revision"].is_string()
+                && item.resource["local_id"].is_string()
+                && item.resource["local_revision"]["kind"] == "file"
+                && [
+                    "download_task_id",
+                    "download_ledger",
+                    "cloud_song_id",
+                    "voice_id",
+                ]
+                .iter()
+                .all(|field| item.resource[*field].is_null())
+        });
+        if local_equalizer.is_some() || indexed_equalizer.is_some() {
             // If preparation displaced a stock filter and then failed, the
             // next accepted source still reconciles the durable EQ controls.
             self.local_equalizer_needs_sync = true;
@@ -236,7 +257,7 @@ impl Actor {
             .and_then(|cache| cache.store.revision().ok());
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
-                let (streaming_revision, pinned_search) =
+                let (streaming_revision, pinned_search, native_indexed) =
                     super::engine(engine.clone(), cancel.clone(), move |engine| {
                         engine.stop()?;
                         // Discard the previous track's gain before priming a new decoder.
@@ -244,6 +265,7 @@ impl Actor {
                         Ok((
                             streaming_revision.filter(|_| engine.streaming_audio_available()),
                             engine.supports_pinned_search_download(),
+                            indexed_equalizer.is_some() && engine.supports_indexed_flac_equalizer(),
                         ))
                     })
                     .await?;
@@ -378,6 +400,20 @@ impl Actor {
                 };
                 let load_cancel = with_stock_fallback(cancel.clone(), stock_fallback.clone());
                 let held_file = held_file.map(|file| (file, item.clone()));
+                let indexed = if native_indexed
+                    && held_file.is_none()
+                    && stream_reader.is_none()
+                    && snapshot.mode == TimelineMode::Full
+                    && snapshot.media_start == 0.0
+                {
+                    resolver
+                        .hold_indexed_local_flac(&item.resource, &source, &load_cancel)
+                        .await?
+                        .zip(indexed_equalizer)
+                } else {
+                    None
+                };
+                let indexed_flac = indexed.is_some();
                 let (media, local_equalizer) =
                     super::engine(engine.clone(), load_cancel.clone(), move |engine| {
                         let media = if let Some((file, expected)) = held_file {
@@ -390,6 +426,13 @@ impl Actor {
                             }
                         } else if let Some(reader) = stream_reader {
                             engine.load_streaming_audio(reader, &load_cancel)?
+                        } else if let Some(((receipt, selected), settings)) = indexed {
+                            engine.load_indexed_flac_equalizer(
+                                receipt,
+                                selected,
+                                settings,
+                                &load_cancel,
+                            )?
                         } else if let Some(settings) = local_equalizer
                             && matches!(&load.source, MediaInput::NativeFile { .. })
                             && snapshot.mode == TimelineMode::Full
@@ -429,6 +472,7 @@ impl Actor {
                     source,
                     media,
                     local_equalizer,
+                    indexed_flac,
                     timeline,
                     position,
                     reset,
@@ -563,6 +607,7 @@ impl Actor {
                         let seek_cancel = transport.clone();
                         let entry = prepared.media.entry_id;
                         let local_equalizer = prepared.local_equalizer;
+                        let indexed_flac = prepared.indexed_flac;
                         let publication = match &prepared.source.input {
                             MediaInput::SearchPublication(source) => {
                                 Some((source.clone(), prepared.item.clone()))
@@ -585,7 +630,7 @@ impl Actor {
                                     source.revalidate_playback(Some(&entry))?;
                                     seek_cancel.check()?;
                                 }
-                                if !local_equalizer {
+                                if !local_equalizer && !indexed_flac {
                                     engine.pause(paused)?;
                                 }
                                 Ok(replacement)
@@ -599,7 +644,16 @@ impl Actor {
                             if self.queue.selected().as_ref() != Some(&prepared.item) {
                                 return Err(Error::QueueChanged);
                             }
-                            if local_equalizer {
+                            if indexed_flac {
+                                self.resolver
+                                    .verify_indexed_local_flac(
+                                        &prepared.item.resource,
+                                        &prepared.source,
+                                        &transport,
+                                    )
+                                    .await?;
+                            }
+                            if local_equalizer || indexed_flac {
                                 if pending
                                     .reply
                                     .as_ref()
@@ -607,13 +661,36 @@ impl Actor {
                                 {
                                     return Err(Error::Cancelled);
                                 }
+                                self.queue.reload()?;
+                                if self.queue.selected().as_ref() != Some(&prepared.item) {
+                                    return Err(Error::QueueChanged);
+                                }
                                 let entry = prepared.media.entry_id;
                                 self.parametric_transport(
                                     paused,
                                     transport.clone(),
                                     move |engine| {
-                                        if engine.local_equalizer_entry() != Some(entry) {
+                                        if local_equalizer
+                                            && engine.local_equalizer_entry() != Some(entry)
+                                        {
                                             return Err(Error::StaleResponse);
+                                        }
+                                        if !local_equalizer {
+                                            use crate::playback::engine::EngineEvent;
+                                            let view = engine.poll()?;
+                                            if view.entry_id != Some(entry)
+                                                || !view.paused
+                                                || view.events.iter().any(|event| match *event {
+                                                    EngineEvent::Ended { entry_id, .. }
+                                                    | EngineEvent::OutputReload { entry_id } => {
+                                                        entry_id == entry
+                                                    }
+                                                    EngineEvent::Shutdown => true,
+                                                    _ => false,
+                                                })
+                                            {
+                                                return Err(Error::StaleResponse);
+                                            }
                                         }
                                         engine.pause(paused)
                                     },
@@ -698,6 +775,7 @@ impl Actor {
                     source: prepared.source,
                     media: prepared.media,
                     local_equalizer: prepared.local_equalizer,
+                    indexed_flac: prepared.indexed_flac,
                     timeline: prepared.timeline,
                 });
                 if let Some(radio) = refresh_radio {

@@ -213,6 +213,14 @@ impl Actor {
                 matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
             })
         {
+            if loaded.indexed_flac {
+                // This entry has consumed a one-shot descriptor. Device
+                // recovery cannot silently replay it via the retained path.
+                let _ = self.stop(false).await;
+                self.state = PlaybackStatus::Error;
+                self.error = Some(PlaybackFailure::Output);
+                return Ok(());
+            }
             let observed = current_position
                 .map(|p| loaded.timeline.from_media(p))
                 .transpose()?;

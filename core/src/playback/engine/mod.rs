@@ -156,6 +156,20 @@ pub trait AudioEngine: Send {
     fn supports_local_equalizer(&self) -> bool {
         false
     }
+    fn supports_indexed_flac_equalizer(&self) -> bool {
+        false
+    }
+    /// Consume the indexed file once, for native processing or same-handle
+    /// stock. The default must never reopen a path after taking this receipt.
+    fn load_indexed_flac_equalizer(
+        &mut self,
+        _receipt: crate::library::IndexedFlacReceipt,
+        _selected: crate::library::LocalResource,
+        _settings: crate::effects::equalizer::EqualizerSettings,
+        _cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        Err(crate::Error::State("held indexed FLAC is unsupported"))
+    }
     /// A native, explicitly opened file can use the recovered combined EQ
     /// material. Backends without that decoder keep their ordinary load.
     fn load_with_local_equalizer(

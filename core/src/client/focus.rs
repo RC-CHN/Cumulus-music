@@ -357,6 +357,19 @@ impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
     fn supports_local_equalizer(&self) -> bool {
         self.inner.supports_local_equalizer()
     }
+    fn supports_indexed_flac_equalizer(&self) -> bool {
+        self.inner.supports_indexed_flac_equalizer()
+    }
+    fn load_indexed_flac_equalizer(
+        &mut self,
+        receipt: crate::library::IndexedFlacReceipt,
+        selected: crate::library::LocalResource,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.inner
+            .load_indexed_flac_equalizer(receipt, selected, settings, cancel)
+    }
     fn local_equalizer_entry(&self) -> Option<i64> {
         self.inner.local_equalizer_entry()
     }
