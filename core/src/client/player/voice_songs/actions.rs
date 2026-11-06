@@ -106,7 +106,12 @@ impl Host {
         Ok(())
     }
 
-    fn page(&self, token: &SessionToken, play_id: &str, receipt: &str) -> Result<Arc<Page>> {
+    pub(super) fn page(
+        &self,
+        token: &SessionToken,
+        play_id: &str,
+        receipt: &str,
+    ) -> Result<Arc<Page>> {
         if receipt.len() != 32 || !receipt.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(Error::StaleResponse);
         }
@@ -133,6 +138,30 @@ impl Host {
                 && page.created.elapsed() <= RECEIPT_LIFETIME
         })
     }
+
+    pub(super) fn check_action_scope(
+        &self,
+        client: &MusicClient,
+        page: &Arc<Page>,
+        api: &Arc<dyn Api>,
+        room: &Cancellation,
+    ) -> Result<()> {
+        client
+            .session
+            .with_verified_profile(&page.token, api, |_, _| Ok(()))?;
+        if client.login_pending()?
+            || room.is_cancelled()
+            || !self.current(page)
+            || api
+                .verified_pc_experiment_revision()
+                .map_err(stale_credentials)?
+                .as_deref()
+                != Some(page.revision.as_str())
+        {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
 }
 
 impl MusicClient {
@@ -149,22 +178,7 @@ impl MusicClient {
         let page = host.page(&token, play_id, receipt)?;
         let api = page.api.upgrade().ok_or(Error::StaleResponse)?;
         let room = self.together_detached_guard(&token);
-        let check = || {
-            self.session
-                .with_verified_profile(&token, &api, |_, _| Ok(()))?;
-            if self.login_pending()?
-                || room.is_cancelled()
-                || !host.current(&page)
-                || api
-                    .verified_pc_experiment_revision()
-                    .map_err(stale_credentials)?
-                    .as_deref()
-                    != Some(page.revision.as_str())
-            {
-                return Err(Error::StaleResponse);
-            }
-            Ok(())
-        };
+        let check = || host.check_action_scope(self, &page, &api, &room);
         check()?;
         let index = match action {
             VoiceSongAction::Cover { index }

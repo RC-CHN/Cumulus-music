@@ -1,7 +1,7 @@
 use super::{MusicClient, dto::*, mapping};
 use crate::{
     Error, Result,
-    account::resources::{AccountResources, ResourceKind},
+    account::resources::{AccountResources, MutationPhase, MutationRecord, ResourceKind},
     catalog::{CatalogApi, SearchOptions},
     playlist::PlaylistApi,
     protocol::api::{Api, identifier},
@@ -373,21 +373,21 @@ impl MusicClient {
         self.session.with_token(&token, |_| Ok(()))?;
         Ok(AccountData {
             epoch: token.generation.to_string(),
-            value: LikeResult {
-                id,
-                phase: result.phase,
-                observed: result
-                    .observed
-                    .as_ref()
-                    .or_else(|| {
-                        matches!(
-                            result.phase,
-                            crate::account::resources::MutationPhase::Unchanged
-                        )
-                        .then_some(&result.before)
-                    })
-                    .and_then(Value::as_bool),
-            },
+            value: LikeResult::from_membership(result),
         })
+    }
+}
+
+impl LikeResult {
+    pub(super) fn from_membership(record: MutationRecord) -> Self {
+        Self {
+            id: record.key,
+            phase: record.phase,
+            observed: record
+                .observed
+                .as_ref()
+                .or_else(|| (record.phase == MutationPhase::Unchanged).then_some(&record.before))
+                .and_then(Value::as_bool),
+        }
     }
 }

@@ -1,5 +1,6 @@
-//! Read-only 「包含歌曲」 card from a bound current episode.
+//! 「包含歌曲」 card and scoped song actions from a bound current episode.
 mod actions;
+mod likes;
 use super::{
     MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity, mapping,
     vinyl_similar::stale_credentials, voice_detail,
