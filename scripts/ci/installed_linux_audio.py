@@ -26,9 +26,12 @@ def stale_accessible_lookup(error):
         return False
     if error.code == 0:
         return error.message == 'The application no longer exists'
-    return error.code == 1 and re.fullmatch(
-        r'No such interface (?:“org\.a11y\.atspi\.Accessible”|"org\.a11y\.atspi\.Accessible")'
-        r' on object at path /org/a11y/atspi/accessible(?:/[a-zA-Z0-9_]+)+',
+    if error.code != 1:
+        return False
+    path = r'/org/a11y/atspi/accessible(?:/[a-zA-Z0-9_]+)+'
+    return re.fullmatch(
+        r'(?:No such interface (?:“org\.a11y\.atspi\.Accessible”|"org\.a11y\.atspi\.Accessible")'
+        rf' on object at path {path}|Object does not exist at path (?:“{path}”|"{path}"))',
         error.message,
     ) is not None
 
