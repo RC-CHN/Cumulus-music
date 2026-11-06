@@ -46,6 +46,9 @@ pub struct PlayerView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download_task_id: Option<String>,
     pub track: Option<TrackView>,
+    /// Bounded plain text from the selected song's classic title metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_alias: Option<String>,
     /// Public episode header metadata bound to this snapshot's native play ID,
     /// episode and main song. Raw podcast records never cross the boundary.
     #[serde(skip_serializing_if = "Option::is_none")]

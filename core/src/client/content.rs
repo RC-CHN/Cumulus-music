@@ -73,6 +73,7 @@ pub(super) async fn playlist_track_page(
             None => TrackView {
                 id: identifier(&item["id"])?,
                 voice_id: None,
+                title_names: Default::default(),
                 name: if local {
                     "本地音乐"
                 } else {

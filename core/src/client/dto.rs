@@ -241,6 +241,9 @@ pub struct TrackView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_id: Option<String>,
     pub name: String,
+    /// Native normalized metadata for typed queue materialization, not card IPC.
+    #[serde(skip)]
+    pub(crate) title_names: super::mapping::SongTitleNames,
     pub artists: Vec<String>,
     pub artist_refs: Vec<ArtistReference>,
     pub album: String,

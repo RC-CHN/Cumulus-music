@@ -104,6 +104,7 @@ fn project(saved: SavedRanking, cached: bool, choice_hours: Option<f64>) -> Resu
                             id: s.id,
                             voice_id: None,
                             name: s.name,
+                            title_names: Default::default(),
                             artists: vec![s.artist.clone()],
                             artist_refs: vec![ArtistReference {
                                 id: None,

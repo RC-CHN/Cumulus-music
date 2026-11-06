@@ -4,6 +4,9 @@ use super::dto::{
 use crate::{Error, Result, protocol::api::identifier};
 use serde_json::Value;
 
+mod title_names;
+pub(crate) use title_names::SongTitleNames;
+
 pub(super) use crate::protocol::artwork::square as artwork;
 pub(super) fn string(value: &Value) -> String {
     value.as_str().unwrap_or_default().into()
@@ -66,6 +69,7 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
             .map(identifier)
             .transpose()?,
         name: string(&value["name"]),
+        title_names: SongTitleNames::from_song(value),
         artists: artists
             .into_iter()
             .flatten()
@@ -112,9 +116,11 @@ pub(super) fn song_metadata(value: &Value) -> Result<Value> {
 }
 
 pub(super) fn projected_song_metadata(view: &TrackView) -> Value {
-    serde_json::json!({"id":view.id,"name":view.name,
+    let mut song = serde_json::json!({"id":view.id,"name":view.name,
         "ar":view.artist_refs.iter().map(|artist|serde_json::json!({"id":artist.id,"name":artist.name})).collect::<Vec<_>>(),
-        "al":{"id":view.album_id,"name":view.album,"picUrl":view.cover_url},"dt":view.duration_ms,"fee":view.fee})
+        "al":{"id":view.album_id,"name":view.album,"picUrl":view.cover_url},"dt":view.duration_ms,"fee":view.fee});
+    view.title_names.write_queue_fields(&mut song);
+    song
 }
 
 pub(super) fn page(offset: usize, limit: usize) -> Result<()> {

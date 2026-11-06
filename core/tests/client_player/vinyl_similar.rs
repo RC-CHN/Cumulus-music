@@ -1,7 +1,7 @@
 use super::*;
 use cumulus_core::{
     client::{VinylRecommendationPlacement as Placement, VinylSimilarAction},
-    playback::controller::PlaybackStatus,
+    playback::{PlaybackQueue, controller::PlaybackStatus},
     protocol::api::VinylSimilarSongsRead,
 };
 
@@ -653,4 +653,112 @@ async fn vinyl_similar_current_first_header_and_current_artwork_keep_the_decoder
     assert_eq!(native.loads, 1);
     assert_eq!(native.view.entry_id, engine_entry);
     assert!(native.pauses.ends_with(&[true, false]));
+}
+
+#[tokio::test]
+async fn classic_song_title_survives_typed_vinyl_queue_persistence_and_uses_only_selected_metadata()
+{
+    let (dir, api, _, client, _) = fixture();
+    api.vinyl_comment_group.store(1, Ordering::SeqCst);
+    let first = seed_middle(&client).await;
+    *api.vinyl_similar.response.lock().unwrap() = Some(json!({"code":200,"songs":[
+        {"id":4,"name":"第一首","dt":120000,"tns":["第一译名","第二译名"],
+         "alia":["不优先"],"authorization":"NOT_PUBLIC","privilege":{"pl":128000}},
+        {"id":5,"name":"第二首","dt":120000,"tns":[],"alia":["必须隐藏"],"privilege":{"pl":128000}},
+        {"id":6,"name":"第三首","dt":120000,"alias":["归一化别名"],"privilege":{"pl":128000}}
+    ]}));
+    let card = client
+        .player_vinyl_similar_songs("1", &first)
+        .await
+        .unwrap();
+    let public_card = serde_json::to_string(&card).unwrap();
+    for private in ["第一译名", "必须隐藏", "NOT_PUBLIC"] {
+        assert!(!public_card.contains(private));
+    }
+    let playing = client
+        .player_vinyl_similar_play(
+            "1",
+            &first,
+            &card.receipt.unwrap(),
+            VinylSimilarAction::Header,
+            Quality::Standard,
+        )
+        .await
+        .unwrap();
+    assert_eq!(playing.track.as_ref().unwrap().id, "4");
+    assert_eq!(
+        serde_json::to_value(&playing).unwrap()["titleAlias"],
+        "第一译名；第二译名"
+    );
+    assert_ne!(playing.play_id.as_deref(), Some(first.as_str()));
+
+    let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let reopened = PlaybackQueue::new(Some(registry.store()), "9")
+        .unwrap()
+        .snapshot();
+    let find = |id: &str| {
+        &reopened
+            .items
+            .iter()
+            .find(|row| row.resource["id"] == id)
+            .unwrap()
+            .resource["song"]
+    };
+    assert_eq!(find("4")["tns"], json!(["第一译名", "第二译名"]));
+    assert!(find("4").get("authorization").is_none());
+    assert_eq!(find("5")["tns"], json!([]));
+    assert_eq!(find("5")["alia"], json!(["必须隐藏"]));
+    assert!(find("6").get("tns").is_none());
+    assert_eq!(find("6")["alia"], json!(["归一化别名"]));
+
+    let next = client.player_action("1", PlayerAction::Next).await.unwrap();
+    assert_eq!(next.track.as_ref().unwrap().id, "5");
+    assert!(
+        serde_json::to_value(next)
+            .unwrap()
+            .get("titleAlias")
+            .is_none()
+    );
+    let last = client.player_action("1", PlayerAction::Next).await.unwrap();
+    assert_eq!(last.track.as_ref().unwrap().id, "6");
+    assert_eq!(last.title_alias.as_deref(), Some("归一化别名"));
+}
+
+#[tokio::test]
+async fn classic_song_title_stays_bound_to_selected_native_song_identity() {
+    for (resource, expected) in [
+        (
+            json!({"id":"4","song":{"id":"4","tns":["歌曲译名"]}}),
+            Some("歌曲译名"),
+        ),
+        (json!({"id":"4","song":{"id":"5","tns":["不同歌曲"]}}), None),
+        (
+            json!({"id":"4","voice_id":"40","song":{"id":"4","tns":["节目内歌曲"]}}),
+            None,
+        ),
+        (
+            json!({"id":"4","download_task_id":"0123456789abcdef0123456789abcdef",
+                "download_voice_id":"40","song":{"id":"4","tns":["下载节目"]}}),
+            None,
+        ),
+        (
+            json!({"id":"4","song":{"id":"4","voice_id":"40","tns":["节目归一化"]}}),
+            None,
+        ),
+        (
+            json!({"id":"4","song":{"id":"4","album":{"tns":["专辑"]},"ar":[{"alias":["歌手"]}]}}),
+            None,
+        ),
+    ] {
+        let (dir, _, _, client, _) = fixture();
+        let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+        let mut queue = PlaybackQueue::new(Some(registry.store()), "9").unwrap();
+        queue
+            .replace(vec![resource], 0, json!({"kind":"songs"}))
+            .unwrap();
+        let snapshot = client.player_snapshot("1").await.unwrap();
+        assert!(snapshot.entry_id.is_some());
+        assert_eq!(snapshot.title_alias.as_deref(), expected);
+        assert!(client.player_snapshot("0").await.is_err());
+    }
 }

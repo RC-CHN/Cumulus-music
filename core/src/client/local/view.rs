@@ -11,6 +11,7 @@ pub(crate) fn track(id: String, metadata: &AudioMetadata, missing: bool) -> Trac
         id,
         voice_id: None,
         name: metadata.title.clone(),
+        title_names: Default::default(),
         artists: metadata.artists.clone(),
         artist_refs: metadata
             .artists

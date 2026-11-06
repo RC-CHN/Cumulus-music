@@ -55,7 +55,7 @@ use crate::{
     playback::{
         controller::{
             PlaybackCommand, PlaybackController, PlaybackHostOptions, PlaybackSnapshot,
-            PlaybackStatus,
+            PlaybackSpeedScope, PlaybackStatus,
         },
         engine::{AudioEngine, Cancellation, MpvConfig, MpvEngine},
         source::SourceResolver,
@@ -262,6 +262,21 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         return Err(Error::StaleResponse);
     }
     let failure = value.error.map(super::ClientError::from);
+    let selected = value.selected.as_ref();
+    let track = selected.map(|item| track(&item.resource)).transpose()?;
+    let title_alias = selected.zip(track.as_ref()).and_then(|(item, track)| {
+        let resource = &item.resource;
+        (value.speed_scope == PlaybackSpeedScope::Song
+            && identity::kind(resource) != PlayerResourceKind::Voice
+            && resource["download_voice_id"].is_null()
+            && track.voice_id.is_none()
+            && crate::protocol::api::identifier(&resource["id"])
+                .ok()
+                .as_deref()
+                == Some(track.id.as_str()))
+        .then(|| track.title_names.display())
+        .flatten()
+    });
     Ok(PlayerView {
         audiobook_skip_available: token.uid.is_some()
             && super::podcast::audiobook::active_radio(value).is_some(),
@@ -325,11 +340,8 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
                 && entry.source["kind"] == "vinyl_similar"
         }),
         search_origin: !value.fm && value.selected.as_ref().is_some_and(origin::search),
-        track: value
-            .selected
-            .as_ref()
-            .map(|i| track(&i.resource))
-            .transpose()?,
+        track,
+        title_alias,
         voice_detail: voice_detail::project(value),
         origin: value
             .selected
