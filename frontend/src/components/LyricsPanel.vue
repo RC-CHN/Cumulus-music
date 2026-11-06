@@ -26,6 +26,7 @@ import VinylCommentsPane from './VinylCommentsPane.vue';
 import VinylSimilarPane from './VinylSimilarPane.vue';
 import VinylWikiPane from './VinylWikiPane.vue';
 import VoiceDescriptionCard from './VoiceDescriptionCard.vue';
+import VoicePlaybackCover from './VoicePlaybackCover.vue';
 import VoicePodcastCard from './VoicePodcastCard.vue';
 import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
 import VoiceRecommendationsCard from './VoiceRecommendationsCard.vue';
@@ -149,6 +150,9 @@ function escapePanel() {
 const metadata = computed(() => playbackMetadata(view.value?.track));
 const source = computed(() => playbackSource(view.value));
 const voiceMetadata = computed(() => playbackVoiceDetail(view.value));
+const currentVoiceArtwork = computed(() =>
+  view.value?.epoch === props.account.epoch ? voiceMetadata.value : null,
+);
 const recommendedPodcasts = computed(() => {
   const page = props.voiceRecommendations.view.value;
   return page?.cards.length ? page : undefined;
@@ -803,8 +807,14 @@ const displayedAuxiliary = computed(() =>
             <Icon name="down" />滚动查看评论<Icon name="down" />
           </button>
           <div class="vinyl-info" :class="{ 'has-track-alias': classicTitleAlias }">
+            <VoicePlaybackCover
+              v-if="voiceMetadata"
+              :epoch="account.epoch"
+              :cover-url="currentVoiceArtwork?.coverUrl"
+              :play-count="currentVoiceArtwork?.playCount"
+            />
             <div
-              v-if="displayMode !== 'lyric'"
+              v-else-if="displayMode !== 'lyric'"
               class="vinyl-record"
               :data-cover-state="cover.state.value"
             >
@@ -814,7 +824,7 @@ const displayedAuxiliary = computed(() =>
                 :key="cover.generation.value"
                 :src="cover.source.value!"
                 :data-cover-generation="cover.generation.value"
-                :alt="voiceMetadata ? '节目封面' : '专辑封面'"
+                alt="专辑封面"
                 referrerpolicy="no-referrer"
                 @load="cover.load"
                 @error="cover.error"
@@ -935,7 +945,7 @@ const displayedAuxiliary = computed(() =>
                 v-if="voiceMetadata?.radio && podcastTarget"
                 :radio="voiceMetadata.radio"
                 :target="podcastTarget"
-                :episode-cover="view?.track?.coverUrl"
+                :episode-cover="currentVoiceArtwork?.coverUrl"
                 :signed-in="account.status === 'authenticated'"
                 :control="podcastFollow.control(podcastTarget.radioId)"
                 :refreshing="podcastFollow.refreshing.value"

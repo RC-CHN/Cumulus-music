@@ -5,6 +5,8 @@ export interface VoiceDetail {
   creator: { id: string | null; name: string } | null;
   releaseTime: number | null;
   description?: string;
+  coverUrl?: string;
+  playCount?: number | string;
   radio?: VoicePlaybackPodcast;
 }
 export interface VoicePlaybackPodcast {
@@ -45,6 +47,15 @@ export function formatVoiceReleaseDate(value: number | null | undefined) {
   return `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+// VoiceCover uses M229: numbers go through M32.f, text is displayed verbatim.
+export function formatVoicePlayCount(value: number | string | null | undefined): string | null {
+  if (typeof value === 'string') return value || null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  if (value > 100_000_000) return `${Math.floor(value / 10_000_000) / 10}亿`;
+  if (value > 100_000) return `${Math.floor(value / 1000) / 10}万`;
+  return String(Math.floor(value));
+}
+
 export function playbackVoiceDetail(view: PlayerView | undefined) {
   const track = view?.track;
   if (!track || !(view?.resourceKind === 'voice' || track.voiceId)) return null;
@@ -60,6 +71,8 @@ export function playbackVoiceDetail(view: PlayerView | undefined) {
     creator,
     releaseDate: formatVoiceReleaseDate(detail?.releaseTime),
     ...(view.playId && detail?.description ? { description: detail.description } : {}),
+    ...(view.playId && detail?.coverUrl ? { coverUrl: detail.coverUrl } : {}),
+    ...(view.playId && detail?.playCount !== undefined ? { playCount: detail.playCount } : {}),
     ...(view.playId && radio ? { radio } : {}),
   };
 }

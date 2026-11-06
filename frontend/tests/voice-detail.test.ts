@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  formatVoicePlayCount,
   formatVoiceReleaseDate,
   playbackVoiceDetail,
   voiceCreatorTarget,
@@ -58,6 +59,50 @@ test('unknown, fractional and invalid date metadata cannot fabricate a date', ()
   ])
     assert.equal(formatVoiceReleaseDate(value), null);
   assert.equal(playbackVoiceDetail(view({ voiceDetail: null }))?.releaseDate, null);
+});
+
+test('the episode cover preserves the original count badge thresholds and raw labels', () => {
+  const cases: [number | string | null | undefined, string | null][] = [
+    [undefined, null],
+    [null, null],
+    [0, null],
+    [-1, null],
+    [NaN, null],
+    [Infinity, null],
+    ['', null],
+    ['0', '0'],
+    ['00123', '00123'],
+    ['<节目 1.2万>', '<节目 1.2万>'],
+    [0.5, '0'],
+    [100_000, '100000'],
+    [100_001, '10万'],
+    [109_999, '10.9万'],
+    [100_000_000, '10000万'],
+    [100_000_001, '1亿'],
+    [129_999_999, '1.2亿'],
+  ];
+  for (const [input, expected] of cases) assert.equal(formatVoicePlayCount(input), expected);
+});
+
+test('episode artwork and count require current play and exact native voice identity', () => {
+  const current = view();
+  const coverUrl = 'https://p1.music.126.net/episode.png';
+  const track = { ...current.track!, coverUrl: 'https://p1.music.126.net/ordinary-song.png' };
+  const voiceDetail = { ...current.voiceDetail!, coverUrl, playCount: '0' };
+  for (const resourceKind of ['voice', 'downloaded'] as const) {
+    const metadata = playbackVoiceDetail(view({ resourceKind, track, voiceDetail }));
+    assert.equal(metadata?.coverUrl, coverUrl);
+    assert.equal(metadata?.playCount, '0');
+  }
+  for (const replacement of [
+    view({ track }),
+    view({ track, voiceDetail, playId: null }),
+    view({ track: { ...track, voiceId: '602' }, voiceDetail }),
+    view({ track: { ...track, voiceId: undefined }, resourceKind: 'downloaded', voiceDetail }),
+  ]) {
+    assert.equal(playbackVoiceDetail(replacement)?.coverUrl, undefined);
+    assert.equal(playbackVoiceDetail(replacement)?.playCount, undefined);
+  }
 });
 
 test('missing or invalid creator links preserve the supplied name without borrowing a song artist', () => {
