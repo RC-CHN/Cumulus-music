@@ -43,7 +43,7 @@
     const about = () => one('[aria-labelledby="settings-about"]');
     await wait(() => about()?.textContent.includes('当前版本'), 'About shows current version');
     const opener = Array.from(about().querySelectorAll('button'))
-      .find((node) => node.textContent.trim() === '检查更新');
+      .find((node) => node.textContent.trim() === '检查 Cumulus 更新');
     assert(opener && !dialog(), 'manual entry without auto-open');
     opener.scrollIntoView({ block: 'end' });
     await deniedWithoutOffer();

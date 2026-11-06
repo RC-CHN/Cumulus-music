@@ -28,7 +28,7 @@ onMounted(async () => {
       <p class="settings-note">检查本机的网络设置，不连接外部服务，也不上传诊断结果。</p>
       <div class="settings-account-actions">
         <button ref="updateOpener" class="secondary" type="button" @click="updateOpen = true">
-          检查更新
+          检查 Cumulus 更新
         </button>
         <button ref="opener" class="secondary" type="button" @click="open = true">网络诊断</button>
       </div>
