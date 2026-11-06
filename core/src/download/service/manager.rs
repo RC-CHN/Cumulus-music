@@ -237,7 +237,7 @@ impl DownloadService {
         origin: DownloadOrigin,
         song: Option<Value>,
     ) -> Result<DownloadTask> {
-        self.create_default_from_with(song_id, options, origin, song, None)
+        self.create_default_from_with(song_id, options, origin, song, None, || {})
     }
 
     pub(crate) fn create_guarded_song(
@@ -245,6 +245,7 @@ impl DownloadService {
         song_id: &Value,
         options: DownloadOptions,
         permission: &dyn Fn() -> Result<()>,
+        committed: impl FnOnce(),
     ) -> Result<DownloadTask> {
         self.create_default_from_with(
             song_id,
@@ -252,6 +253,7 @@ impl DownloadService {
             DownloadOrigin::Song,
             None,
             Some(permission),
+            committed,
         )
     }
 
@@ -262,6 +264,7 @@ impl DownloadService {
         origin: DownloadOrigin,
         song: Option<Value>,
         permission: Option<&dyn Fn() -> Result<()>>,
+        committed: impl FnOnce(),
     ) -> Result<DownloadTask> {
         let _directory = directory_gate::lock(&self.store, &self.owner)?;
         self.guard(&self.session.token()?)?;
@@ -274,7 +277,7 @@ impl DownloadService {
                 .get(&self.owner, directory_gate::SETTINGS, "settings")?
                 .ok_or(Error::State("download directory is not configured"))?,
         )?;
-        self.create_inner_with(
+        let task = self.create_inner_with(
             song_id,
             DownloadDestination::Named {
                 root: settings.root,
@@ -285,7 +288,9 @@ impl DownloadService {
             origin,
             song,
             permission,
-        )
+        )?;
+        committed();
+        Ok(task)
     }
     pub fn create(
         &self,
@@ -546,19 +551,24 @@ mod admission_tests {
             .unwrap();
         let service = DownloadService::new(session).unwrap();
         let seen = Cell::new(0);
-        let result = service.create_guarded_song(&json!(301), DownloadOptions::default(), &|| {
-            let step = seen.get() + 1;
-            seen.set(step);
-            if step == 1 {
-                assert_eq!(fs::read_dir(&out).unwrap().count(), 0);
-                Ok(())
-            } else {
-                assert_eq!(step, 2);
-                assert_eq!(fs::read_dir(&out).unwrap().count(), 1);
-                assert!(store.values("25", KIND).unwrap().is_empty());
-                Err(Error::StaleResponse)
-            }
-        });
+        let result = service.create_guarded_song(
+            &json!(301),
+            DownloadOptions::default(),
+            &|| {
+                let step = seen.get() + 1;
+                seen.set(step);
+                if step == 1 {
+                    assert_eq!(fs::read_dir(&out).unwrap().count(), 0);
+                    Ok(())
+                } else {
+                    assert_eq!(step, 2);
+                    assert_eq!(fs::read_dir(&out).unwrap().count(), 1);
+                    assert!(store.values("25", KIND).unwrap().is_empty());
+                    Err(Error::StaleResponse)
+                }
+            },
+            || panic!("stale intent was reported as committed"),
+        );
         assert!(matches!(result, Err(Error::StaleResponse)));
         assert_eq!(seen.get(), 2);
         assert!(store.values("25", KIND).unwrap().is_empty());

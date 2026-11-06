@@ -87,6 +87,7 @@ pub(super) struct Page {
     pub(super) api: Weak<dyn Api>,
     pub(super) revision: String,
     pub(super) rows: Vec<Row>,
+    pub(super) picker: super::picker::Shelf,
     pub(super) receipt: String,
     pub(super) created: Instant,
 }

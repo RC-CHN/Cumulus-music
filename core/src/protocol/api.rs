@@ -10,6 +10,29 @@ pub type VinylCommentWritePermission<'a> = dyn Fn() -> Result<()> + Send + Sync 
 pub type VinylPlaybackReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type PlaylistAddPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+
+/// A native one-song add to an explicitly chosen playlist, never IPC data.
+pub struct GuardedPlaylistAdd {
+    playlist: String,
+    song: String,
+}
+
+impl GuardedPlaylistAdd {
+    pub(crate) const PATH: &str = "/api/v1/playlist/manipulate/tracks";
+
+    pub(crate) fn new(playlist: String, song: String) -> Self {
+        Self { playlist, song }
+    }
+
+    pub fn into_request(self) -> Result<(&'static str, Value)> {
+        let ids = packed_ids(&[json!(self.song)])?;
+        Ok((
+            Self::PATH,
+            json!({"pid":self.playlist,"trackIds":ids,"op":"add","imme":true}),
+        ))
+    }
+}
 
 /// A native account membership action. This is not an IPC payload.
 pub struct GuardedSongLike {
@@ -335,6 +358,20 @@ pub trait Api: Send + Sync + std::any::Any {
     /// membership read, and ordinary download authorization endpoint.
     fn song_card_download_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// Only a native transport can make the final synchronous dispatch check.
+    fn request_guarded_playlist_add<'a>(
+        &'a self,
+        _write: GuardedPlaylistAdd,
+        _permission: &'a PlaylistAddPermission<'a>,
+        _dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("guarded playlist add is unavailable")) })
     }
 
     /// Call permission and mark dispatched immediately before the transport

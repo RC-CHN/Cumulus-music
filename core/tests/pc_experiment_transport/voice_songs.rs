@@ -3,6 +3,8 @@ use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http_with_cre
 mod download;
 #[path = "voice_songs/likes.rs"]
 mod likes;
+#[path = "voice_songs/picker.rs"]
+mod picker;
 #[path = "voice_songs/selection.rs"]
 mod selection;
 use cumulus_core::{

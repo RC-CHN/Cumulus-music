@@ -7,8 +7,8 @@ use crate::{
     account::credentials::{Credentials, RequestCredentials},
     protocol::{
         api::{
-            Api, ApiFuture, GuardedSongLike, SongLikePermission, VinylCommentRead,
-            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
+            Api, ApiFuture, GuardedPlaylistAdd, GuardedSongLike, PlaylistAddPermission, SongLikePermission,
+            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
             VinylRelatedPlaylistsRead, VinylSimilarSongsRead, VinylVoiceDetailRead,
             VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
         },
@@ -91,6 +91,10 @@ enum RequestBinding<'a> {
     GuestSearch(&'a (dyn Fn() -> Result<()> + Send + Sync)),
     SongLike {
         permission: &'a SongLikePermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
+    PlaylistAdd {
+        permission: &'a PlaylistAddPermission<'a>,
         dispatched: &'a AtomicBool,
     },
     Switch {
@@ -723,6 +727,21 @@ impl MusicHttpClient {
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
             }
+            if let Some(RequestBinding::PlaylistAdd {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                let current = self.credentials.request_credentials(&target)?;
+                if current.revision != snapshot.revision
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                    || current.unique_music_u().is_none()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                permission()?;
+                dispatched.store(true, Ordering::Relaxed);
+            }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
                 permission()?;
@@ -1286,6 +1305,56 @@ impl Api for MusicHttpClient {
             ],
         )?;
         Ok(Some(revision))
+    }
+
+    fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {
+        let revision = self
+            .song_card_download_scope_revision()?
+            .ok_or(Error::CredentialChanged)?;
+        let origin = self.credentials.origin();
+        // Payload does not change routing for this fixed ordinary add path.
+        let route = select_route_with_policy(
+            origin,
+            GuardedPlaylistAdd::PATH,
+            &json!({"op":"add"}),
+            self.options.routing,
+        )?;
+        let target = origin.request_url(route, GuardedPlaylistAdd::PATH)?;
+        let current = self.credentials.request_credentials(&target)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/v6/playlist/detail",
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
+    fn request_guarded_playlist_add<'a>(
+        &'a self,
+        write: GuardedPlaylistAdd,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = write.into_request()?;
+            self.execute(
+                path,
+                payload,
+                false,
+                None,
+                Jsk::None,
+                Some(RequestBinding::PlaylistAdd {
+                    permission,
+                    dispatched,
+                }),
+            )
+            .await
+        })
     }
 
     fn request_guarded_song_like<'a>(

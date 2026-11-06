@@ -2,6 +2,7 @@
 mod actions;
 mod download;
 mod likes;
+mod picker;
 mod selection;
 use super::{
     MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity, mapping,
@@ -21,6 +22,7 @@ pub(super) use actions::Host;
 pub use actions::VoiceSongAction;
 use actions::{Page, Row};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
+pub use picker::VoiceSongDownloadPicker;
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
 use serde::Serialize;
 use serde_json::Value;
@@ -316,6 +318,7 @@ impl MusicClient {
             api: Arc::downgrade(&api),
             revision: revision.clone(),
             rows,
+            picker: Default::default(),
             receipt: uuid::Uuid::new_v4().simple().to_string(),
             created: Instant::now(),
         });

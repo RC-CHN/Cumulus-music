@@ -12,7 +12,10 @@ use crate::{
 };
 use serde::Serialize;
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Class {
@@ -20,6 +23,11 @@ pub(super) enum Class {
     ExtendedRights,
     Cloud,
     Unavailable,
+}
+
+pub(super) enum Admission {
+    Liked,
+    Picker(Arc<AtomicBool>),
 }
 
 pub(super) fn classify(row: &Value, track_id: &str) -> Class {
@@ -92,7 +100,7 @@ fn membership(
 }
 
 impl MusicClient {
-    fn voice_song_download_scope(
+    pub(super) fn voice_song_download_scope(
         &self,
         epoch: &str,
         play_id: &str,
@@ -191,8 +199,7 @@ impl MusicClient {
         })
     }
 
-    /// Core prerequisite only. No UI path admits the required playlist picker
-    /// until that separate mutation can honor the same receipt at dispatch.
+    /// Ordinary direct branch for a song already in the liked library.
     pub async fn player_voice_song_download_start(
         &self,
         epoch: &str,
@@ -202,6 +209,19 @@ impl MusicClient {
         options: DownloadOptions,
     ) -> Result<DownloadResult> {
         let (page, check) = self.voice_song_download_scope(epoch, play_id, receipt)?;
+        self.start_resolved_song_download(epoch, &page, index, options, Admission::Liked, check)
+            .await
+    }
+
+    pub(super) async fn start_resolved_song_download(
+        &self,
+        epoch: &str,
+        page: &Page,
+        index: usize,
+        options: DownloadOptions,
+        admission: Admission,
+        check: impl Fn() -> Result<()> + Send + 'static,
+    ) -> Result<DownloadResult> {
         let row = page
             .rows
             .get(index)
@@ -216,15 +236,27 @@ impl MusicClient {
         let local = self.local.context().await?;
         let session = self.session.clone();
         let token = page.token.clone();
+        let (needs_liked, consumed) = match admission {
+            Admission::Liked => (true, None),
+            Admission::Picker(consumed) => (false, Some(consumed)),
+        };
+        let live_permit = consumed.clone();
         self.start_guarded_song_download(epoch, id, options, move || {
             if !local.library.files_for_online_song(&session, &token, &song)?.is_empty() {
                 return Err(Error::State("song already has a local file"));
             }
-            if membership(session.clone(), &token, &song)? != VoiceSongDownloadDecision::Ready {
+            if needs_liked && membership(session.clone(), &token, &song)? != VoiceSongDownloadDecision::Ready {
                 return Err(Error::State("SongCard download requires confirmed liked membership or an explicit playlist destination"));
+            }
+            if live_permit.as_ref().is_some_and(|permit| permit.load(Ordering::Acquire)) {
+                return Err(Error::StaleResponse);
             }
             // Last after local cache work, immediately before durable admission.
             check()
+        }, move || {
+            if let Some(consumed) = consumed {
+                consumed.store(true, Ordering::Release);
+            }
         }).await
     }
 }

@@ -11,6 +11,7 @@ impl MusicClient {
         id: String,
         options: crate::download::service::DownloadOptions,
         permission: impl Fn() -> Result<()> + Send + 'static,
+        on_commit: impl FnOnce() + Send + 'static,
     ) -> Result<DownloadResult> {
         use std::sync::atomic::{AtomicBool, Ordering};
         struct Retire(Arc<AtomicBool>);
@@ -24,9 +25,10 @@ impl MusicClient {
         let cancelled = Arc::new(AtomicBool::new(false));
         let _retire = Retire(cancelled.clone());
         let task = tokio::task::spawn_blocking(move || {
-            captured
-                .service
-                .create_guarded_song(&json!(id), options, &|| {
+            captured.service.create_guarded_song(
+                &json!(id),
+                options,
+                &|| {
                     if super::song_status::download_state(
                         &captured.store,
                         &captured.owner,
@@ -41,7 +43,9 @@ impl MusicClient {
                         return Err(Error::Cancelled);
                     }
                     Ok(())
-                })
+                },
+                on_commit,
+            )
         })
         .await
         .map_err(|_| Error::State("download command worker stopped"))??;
