@@ -21,6 +21,8 @@ import {
   time,
   type QueueView,
   type QueueEdit,
+  type QueueTrack,
+  type QueueOrigin,
   type QueueCollectionView,
 } from '../services/player';
 import { rowTop, rowExtent } from '../services/virtualWindow';
@@ -41,6 +43,7 @@ const emit = defineEmits<{
   collect: [value: QueueCollectionView, trigger: HTMLElement | undefined];
   login: [];
   discover: [];
+  origin: [target: QueueOrigin];
   together: [];
   cleared: [];
   refreshPlaylistSource: [event: MouseEvent];
@@ -467,6 +470,13 @@ async function activateRow(trigger: EventTarget | null, entryId: string, missing
     }
   } else await edit({ kind: 'select', entry_id: entryId });
 }
+function openOrigin(row: QueueTrack) {
+  const displayed = queue.value;
+  if (!displayed || !queueCurrent.value || queueError.value || queueEditing.value) return;
+  const current = displayed.tracks.find((entry) => entry.entryId === row.entryId);
+  if (current !== row || !row.origin) return;
+  emit('origin', row.origin);
+}
 function selectRow(event: MouseEvent, id: string) {
   // Pointer selection runs on down/up to preserve a group while dragging.
   // Keyboard activation and accessibility tools produce a zero-detail click.
@@ -765,6 +775,9 @@ async function confirmClear(event: Event) {
             currentEntry === item.entryId,
             currentQueueTransport === item.entryId,
             locked,
+            queueCurrent,
+            !!queueError,
+            queueEditing,
             queue.fm,
             queue.tracks.length,
             selected.has(item.entryId),
@@ -826,6 +839,17 @@ async function confirmClear(event: Event) {
                 artistLabel(item.track)
               }}</small>
             </span>
+          </button>
+          <button
+            v-if="item.origin"
+            type="button"
+            class="icon-button queue-origin"
+            :disabled="!queueCurrent || !!queueError || queueEditing"
+            title="来源"
+            :aria-label="`来源：${item.track.name}`"
+            @click="openOrigin(item)"
+          >
+            <Icon name="source" />
           </button>
           <time :title="item.track.durationMs > 0 ? undefined : '时长未知'">{{
             item.track.durationMs > 0 ? time(item.track.durationMs / 1000) : '—'

@@ -138,12 +138,25 @@ pub struct LoudnessView {
     pub gain_db: Option<f32>,
     pub damaged: bool,
 }
+/// A whitelisted route identity stored on this individual queue row.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum QueueOrigin {
+    Album { id: String },
+    Artist { id: String },
+    Playlist { id: String },
+    Local,
+    Cloud,
+    Downloads,
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueTrack {
     pub entry_id: String,
     pub track: TrackView,
     pub more_recommendation: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<QueueOrigin>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

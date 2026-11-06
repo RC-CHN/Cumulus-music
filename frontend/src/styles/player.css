@@ -856,6 +856,22 @@ input[type='range'] {
   width: 15px;
   height: 15px;
 }
+.queue-origin {
+  flex: 0 0 auto;
+  opacity: 0;
+  pointer-events: none;
+}
+.queue-row:hover .queue-origin,
+.queue-row:focus-within .queue-origin {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .queue-origin {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
 .lyrics-panel {
   position: absolute;
   inset: var(--header) 0 var(--player);

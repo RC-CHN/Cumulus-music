@@ -1881,6 +1881,26 @@ function discoverFromQueue() {
   music.navigate({ kind: 'daily' });
   player.queueOpen.value = false;
 }
+function openQueueOrigin(target: import('./services/player').QueueOrigin) {
+  if (!player.queueOpen.value || !player.queueCurrent.value || music.initializing.value) return;
+  const shown = page.value;
+  if (target.kind === 'album' || target.kind === 'artist') {
+    if (
+      shown.kind === 'catalog' &&
+      shown.resource.kind === target.kind &&
+      shown.resource.id === target.id
+    )
+      return;
+  } else if (target.kind === 'playlist') {
+    if (
+      shown.kind === 'playlist' &&
+      shown.id === target.id &&
+      (!shown.section || shown.section === 'songs')
+    )
+      return;
+  } else if (shown.kind === target.kind) return;
+  openPlaybackSource(target);
+}
 function openTogetherFromQueue() {
   queueRoomOwner = account.value.epoch;
   music.navigate({ kind: 'together' });
@@ -5702,6 +5722,7 @@ onUnmounted(() => {
         @collect="collectQueue"
         @login="loginOpen = true"
         @discover="discoverFromQueue"
+        @origin="openQueueOrigin"
         @together="openTogetherFromQueue"
         @cleared="together.load(false, true)"
       />

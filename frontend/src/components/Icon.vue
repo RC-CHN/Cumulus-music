@@ -10,6 +10,8 @@ const paths: Record<string, string> = {
   help: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9 9a3 3 0 0 1 6 0c0 2-3 2-3 5m0 3h.01',
   album: 'M3 3h18v18H3zM16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-4 0h.01',
   share: 'M14 3h7v7M21 3 10 14M10 5H3v16h16v-7',
+  source:
+    'M9.5 14.5l5-5m-7 7-1.5 1.5a3.5 3.5 0 0 1-5-5l4.5-4.5a3.5 3.5 0 0 1 5 0m6 4 4.5-4.5a3.5 3.5 0 0 0-5-5l-1.5 1.5',
   plus: 'M12 4v16M4 12h16',
   copy: 'M9 9h12v12H9zM15 6V3H3v12h3',
   trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',

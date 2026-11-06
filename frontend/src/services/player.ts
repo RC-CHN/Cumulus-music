@@ -232,10 +232,14 @@ export interface EqualizerView {
   damaged: boolean;
   source_bypassed?: boolean;
 }
+export type QueueOrigin =
+  | { kind: 'album' | 'artist' | 'playlist'; id: string }
+  | { kind: 'local' | 'cloud' | 'downloads' };
 export interface QueueTrack {
   entryId: string;
   track: TrackView;
   moreRecommendation?: boolean;
+  origin?: QueueOrigin;
 }
 export interface QueueMoreRecommendations {
   visible: boolean;
