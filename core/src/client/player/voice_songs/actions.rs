@@ -161,7 +161,7 @@ impl Host {
             .ok_or(Error::StaleResponse)
     }
 
-    fn current(&self, page: &Arc<Page>) -> bool {
+    pub(super) fn current(&self, page: &Arc<Page>) -> bool {
         self.0.lock().is_ok_and(|slot| {
             slot.page
                 .as_ref()
