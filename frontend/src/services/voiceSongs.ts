@@ -152,7 +152,92 @@ export interface VoiceSongCollectClient {
   ): Promise<VoiceSongCollectResult>;
 }
 
-export interface VoiceSongsClient extends VoiceSongDownloadClient, VoiceSongCollectClient {
+/** Exact M/3051 choices; the native plan further restricts each row's subset. */
+export type VoiceSongPurchasedQuality = Extract<
+  Quality,
+  'vivid' | 'sky' | 'jymaster' | 'jyeffect' | 'hires' | 'lossless' | 'exhigh' | 'standard'
+>;
+
+declare const purchaseSelection: unique symbol;
+declare const purchaseContinuation: unique symbol;
+
+/** Memory-only round-trip to Rust, never derived from an ID, rights or the playlist operation. */
+export type VoiceSongPurchasedSelection = string & { readonly [purchaseSelection]: true };
+export type VoiceSongPurchasedContinuation = string & { readonly [purchaseContinuation]: true };
+
+export type VoiceSongPurchasedDownloadPlan = Omit<VoiceSongDownloadPlan, 'decision'> &
+  (
+    | {
+        decision: 'purchased_quality_required';
+        purchasedQualities: readonly [VoiceSongPurchasedQuality, ...VoiceSongPurchasedQuality[]];
+      }
+    | { decision: VoiceSongDownloadDecision; purchasedQualities?: never }
+  );
+
+export type VoiceSongPurchasedDownloadOptions = Omit<DownloadOptions, 'quality'> & {
+  quality: VoiceSongPurchasedQuality;
+};
+
+export type VoiceSongPurchasedDownloadCommand =
+  | { kind: 'prepare' }
+  | { kind: 'select'; quality: VoiceSongPurchasedQuality }
+  | { kind: 'cancel'; selection: VoiceSongPurchasedSelection }
+  | { kind: 'choose_playlist'; selection: VoiceSongPurchasedSelection; playlistId: string }
+  | { kind: 'picker_status'; selection: VoiceSongPurchasedSelection; reconcile: boolean }
+  | {
+      kind: 'create_playlist';
+      selection: VoiceSongPurchasedSelection;
+      name: string;
+      privatePlaylist: boolean;
+    }
+  | { kind: 'creation_status'; selection: VoiceSongPurchasedSelection; reconcile: boolean }
+  | { kind: 'add_created_playlist'; selection: VoiceSongPurchasedSelection }
+  | {
+      kind: 'start';
+      selection: VoiceSongPurchasedSelection;
+      continuation: VoiceSongPurchasedContinuation | null;
+      options: VoiceSongPurchasedDownloadOptions;
+    };
+
+export type VoiceSongPurchasedDownloadPicker = Omit<VoiceSongDownloadPicker, 'continuation'> & {
+  continuation: VoiceSongPurchasedContinuation | null;
+};
+
+export type VoiceSongPurchasedDownloadCreation = Omit<VoiceSongDownloadCreation, 'add'> & {
+  add: VoiceSongPurchasedDownloadPicker | null;
+};
+
+export type VoiceSongPurchasedDownloadResult =
+  | { kind: 'plan'; plan: VoiceSongPurchasedDownloadPlan }
+  | ({
+      kind: 'selection';
+      quality: VoiceSongPurchasedQuality;
+    } & (
+      | {
+          decision: 'ready' | 'playlist_required';
+          selection: VoiceSongPurchasedSelection;
+        }
+      | {
+          decision: Exclude<VoiceSongDownloadDecision, 'ready' | 'playlist_required'>;
+          selection: null;
+        }
+    ))
+  | { kind: 'cancelled' }
+  | { kind: 'picker'; picker: VoiceSongPurchasedDownloadPicker }
+  | { kind: 'creation'; creation: VoiceSongPurchasedDownloadCreation }
+  | { kind: 'started'; result: DownloadResult };
+
+export interface VoiceSongPurchasedDownloadClient {
+  playerVoiceSongPurchasedDownload(
+    target: VoiceSongRowTarget,
+    command: VoiceSongPurchasedDownloadCommand,
+  ): Promise<VoiceSongPurchasedDownloadResult>;
+}
+
+export interface VoiceSongsClient
+  extends VoiceSongDownloadClient,
+    VoiceSongPurchasedDownloadClient,
+    VoiceSongCollectClient {
   playerVoiceSongs(epoch: string, playId: string): Promise<VoiceSongsView>;
   playerVoiceSongPlay(
     epoch: string,

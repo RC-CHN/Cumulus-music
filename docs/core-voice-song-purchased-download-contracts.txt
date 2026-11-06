@@ -30,7 +30,7 @@ references/netease-3.1.42.205594-analysis/recovered-js/modules/：
   {id,level,immerseType:"c51"}，采用授权返回的实际音质、内容和容器规则。
 
 Rust 接线
-player_voice_song_purchased_download 为 native-only。Prepare 只提供实际
+MusicClient::player_voice_song_purchased_download 是原生业务入口。Prepare 只提供实际
 可见、排序后的档位；Select 明确提交其中一档，检查当前账号喜欢状态后发出
 绑定当前节目/卡片回执/行号/档位的选择回执。未知喜欢状态不发回执；没有持久
 任务或歌单变更。Cancel 仅让该选择失效。旧桌面 prepare 保留
@@ -45,8 +45,7 @@ extended_rights_unsupported，旧普通 SongCard start、歌单选择、创建�
 高音质转码、加密与离线播放仍使用实际服务授权，选项本身不是媒体授权。
 单曲范围只接受归属相符、已核签名的普通 track，明确非负 status、正下载
 码率、无 bd/云盘/节目身份的数字字段。未知、异常值以及付费但未买、购买/
-收银台、音乐包或 VIP 推定、付费单集等分支不接入此操作。未新增前端、IPC、
-购物或真实账号探测。
+收银台、音乐包或 VIP 推定、付费单集等分支不接入此操作。没有购物或真实账号探测。当前仅新增下述类型化桥接，没有 UI 入口。
 
 对照
 本地用 Node vm 执行恢复的 M/21、M/23.v、M/34.l、M/35.h、M/7、M/59.c、
@@ -60,3 +59,40 @@ M/3051 4a2dc89ffdf6fe306eb2c368cd90c8ebdfefb283ee09a5972cd89b9e70121480
 Rust 使用签名 MusicHttpClient、合成账户和关闭的 HTTP 后端验证回执、请求
 顺序/字段、撤销与失效、无越权写入、持久任务及默认档未改。媒体授权在用例中
 明确拒绝，所以这些检查不声称实际付费资源媒体下载、桌面弹窗或真实权益通过。
+
+
+桌面接口（无界面入口）
+主窗口专用 Tauri 命令 player_voice_song_purchased_download；前端仅通过
+CoreClient.playerVoiceSongPurchasedDownload(target, command)。target 精确为
+{epoch,playId,receipt,index}；仅用于界面判断的 voiceId 不发给 Tauri。
+命令和下载选项拒绝额外字段。轨道只能由当前原生卡片和行号解析；只接受上文
+八档中的实际可选项，不能传 privilege、购买掩码、账号凭据、URL 或任意歌曲 ID。
+
+命令 kind（请求体与结果体）：
+- prepare → {kind:"plan",plan:{epoch,playId,trackId,decision,purchasedQualities?}}。
+  仅 purchased_quality_required 时返回非空且已排序的 purchasedQualities。
+- select {quality} → {kind:"selection",quality,decision,selection}。ready 或
+  playlist_required 时 selection 为当前原生选择回执；其余为 null。
+- cancel {selection} → {kind:"cancelled"}，只撤销该选择，不撤回已派发的日志。
+- choose_playlist {selection,playlistId}、picker_status {selection,reconcile}
+  → {kind:"picker",picker}；沿用原目的歌单 ID、日志状态和 addFailed。
+- create_playlist {selection,name,private}、creation_status {selection,reconcile}、
+  add_created_playlist {selection} → {kind:"creation",creation}；
+  UI 类型的 privatePlaylist 由 adapter 明确投影为必填的 wire private。
+- start {selection,continuation,options} → {kind:"started",result}。
+  continuation 必填：已喜欢直下传 null；歌单分支必须用该次 picker 的 continuation。
+  options 仅 quality/tags/cover/lyrics/container；quality 必须与原选择一致。
+
+卡片 receipt、音质 selection 和歌单 continuation 是互相独立的内存回执。
+后两者由 Rust 生成并按独立 TS 类型回传；有效性由 Rust 校验账号、节目、
+卡片、行号及选择绑定，长度/字符校验本身不赋权。不能存入 localStorage，
+不能由歌单日志 operationId 推导，不能跨节目复用。账号 Cookie、签名、原始
+权益响应和完整授权地址不进入 IPC。
+
+后续 UI：打开时取 plan；purchased_quality_required 才显示原「选择下载音质」
+独立弹窗，第一档预选、取消即关闭，确认才发 select。ready 进入普通文件
+设置并锁住已确认档位；playlist_required 进入现有目的选择或显式创建。
+保留现有已知失败与未知结果的不同提示，未知只走 status/reconcile，不能重发。
+带回执的取消可撤销原生选择；路由或节目变化后不应用旧结果。下载获准后由
+仍挂载的父作用域负责跳转下载管理，避免子弹窗卸载吞掉导航事件。当前不接入
+App、菜单或弹窗，不提供购买、收银台或通用网页入口。

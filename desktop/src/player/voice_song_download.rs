@@ -1,4 +1,5 @@
 //! Main-window typed SongCard picker. The native card resolves the song.
+pub(crate) mod purchased;
 use super::voice_related::require_main;
 use cumulus_core::{
     client::{

@@ -21,6 +21,7 @@ import type { MessageCountView } from '../services/messages';
 import type {
   VoiceSongCollectCard,
   VoiceSongCollectTarget,
+  VoiceSongPurchasedDownloadCommand,
   VoiceSongRowTarget,
 } from '../services/voiceSongs';
 
@@ -41,6 +42,14 @@ const voiceSongCollectTarget = (target: VoiceSongCollectTarget) => ({
   ...voiceSongCollectCard(target),
   selectionReceipt: target.selectionReceipt,
 });
+
+function voiceSongPurchasedCommand(command: VoiceSongPurchasedDownloadCommand) {
+  if (command.kind === 'create_playlist') {
+    const { kind, selection, name, privatePlaylist } = command;
+    return { kind, selection, name, private: privatePlaylist };
+  }
+  return command;
+}
 
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
@@ -575,6 +584,11 @@ export function createTauriClient(): CoreClient {
         target: voiceSongDownloadTarget(target),
         continuation,
         options,
+      }),
+    playerVoiceSongPurchasedDownload: (target, command) =>
+      invoke('player_voice_song_purchased_download', {
+        target: voiceSongDownloadTarget(target),
+        command: voiceSongPurchasedCommand(command),
       }),
     playerVinylCommentsAvailable: (epoch) => invoke('player_vinyl_comments_available', { epoch }),
     playerVinylComments: (epoch, playId, offset) =>

@@ -490,6 +490,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::voice_song_collect::player_voice_songs_collect_existing,
                 player::voice_song_collect::player_voice_songs_collect_status,
                 player::voice_song_download::player_voice_song_download_prepare,
+                player::voice_song_download::purchased::player_voice_song_purchased_download,
                 player::voice_song_download::player_voice_song_download_start,
                 player::voice_song_download::player_voice_song_download_choose_playlist,
                 player::voice_song_download::player_voice_song_download_picker_status,
