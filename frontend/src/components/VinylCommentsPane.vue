@@ -157,9 +157,13 @@ defineExpose({ focusBack });
             <div>
               <strong>{{ item.author?.name || '云音乐用户' }}</strong>
               <p data-vinyl-copy-text><CommentText :text="item.content" /></p>
-              <blockquote v-if="item.replies[0]?.content" class="vinyl-comment-quote">
-                {{ item.replies[0].author?.name || '云音乐用户' }}：
-                <span data-vinyl-copy-text><CommentText :text="item.replies[0].content" /></span>
+              <blockquote
+                v-if="item.replies[0]?.content"
+                class="vinyl-comment-quote"
+                data-vinyl-copy-text
+              >
+                {{ `@${item.replies[0].author?.name || '云音乐用户'}: `
+                }}<CommentText :text="item.replies[0].content" />
               </blockquote>
               <div class="vinyl-comment-actions">
                 <small>{{ item.timeText }}</small>
