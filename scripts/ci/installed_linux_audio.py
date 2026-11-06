@@ -1,7 +1,8 @@
 """Optional local-audio proof for the unmodified Debian executable."""
-from contextlib import ExitStack, closing, contextmanager
+from contextlib import ExitStack, closing, contextmanager, nullcontext
 import ctypes as c
 import hashlib
+from itertools import groupby
 import json
 import math
 import os
@@ -13,6 +14,7 @@ import sqlite3
 import subprocess
 import struct
 import tempfile
+import threading
 import time
 
 
@@ -163,6 +165,8 @@ def isolated_audio(root, env, *, indexed_flac_block_size=None):
             return 'window id #' in subprocess.check_output(['xprop', '-root', '_NET_SUPPORTING_WM_CHECK'], text=True, timeout=3)
 
         wait_for('private window manager', wm_ready)
+        if indexed_flac_block_size is not None and shutil.which('pw-top'):
+            spawn('pw-top', '--batch-mode')
         media = private/'music_fixture'
         media.mkdir()
         source = media/'Synthetic.flac'
@@ -342,6 +346,43 @@ def focus_installed_control(atspi, app, name, roles, dialog=None, *, reveal_side
         assert visible_in_sidebar(), f'installed sidebar control {name!r} moved out of view after focus'
 
 
+
+def focused_picker_location(atspi, app, picker, active_window):
+    """Use only the editable control belonging to the app's active GTK picker."""
+    from gi.repository import GLib
+
+    if active_window() != picker:
+        return None
+    try:
+        desktop = atspi.get_desktop(0)
+        if desktop is None:
+            return None
+        for index in range(desktop.get_child_count()):
+            application = desktop.get_child_at_index(index)
+            if application is None or application.get_process_id() != app.pid:
+                continue
+            pending = [application.get_child_at_index(i) for i in range(application.get_child_count())]
+            visited = 0
+            while pending:
+                node = pending.pop()
+                if node is None:
+                    continue
+                visited += 1
+                assert visited <= 768, 'unexpected GTK picker accessibility subtree'
+                if node.get_role() in (atspi.Role.ENTRY, atspi.Role.TEXT):
+                    states = node.get_state_set()
+                    if (states.contains(atspi.StateType.FOCUSED) and states.contains(atspi.StateType.SHOWING)
+                            and states.contains(atspi.StateType.EDITABLE)):
+                        editable, reader = node.get_editable_text_iface(), node.get_text_iface()
+                        if editable is not None and reader is not None:
+                            return editable, reader
+                pending.extend(node.get_child_at_index(i) for i in range(node.get_child_count()))
+    except GLib.Error as error:
+        if not stale_accessible_lookup(error):
+            raise
+    return None
+
+
 def read_playback(database):
     with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
         rows = db.execute(
@@ -394,7 +435,7 @@ def pipewire_snapshot(output):
 def private_pipewire_stream(pid, env):
     objects = pipewire_snapshot(subprocess.check_output(['pw-dump'], env=env, timeout=4))
     if objects is None:
-        return False  # The existing bounded read-only poll must observe a fresh graph.
+        return None  # The bounded read-only poll must observe a fresh graph.
     props = {item['id']: item.get('info', {}).get('props', {}) for item in objects}
     own_clients = {str(key) for key, row in props.items() if str(row.get('application.process.id')) == str(pid)}
     sink = {item for item, row in props.items() if row.get('node.name') == 'cumulus_private'}
@@ -405,28 +446,81 @@ def private_pipewire_stream(pid, env):
                item.get('info', {}).get('input-node-id') in sink for item in objects)
 
 
-def sink_tone(env, *, windows=None):
-    """Capture one second from the private sink without retaining raw PCM."""
+def start_sink_monitor(env, *, continuous=False):
     assert shutil.which('parec'), 'monitor proof requires parec from the PulseAudio utilities'
-    expected_bytes = 48000 * 2
-    raw = bytearray()
-    deadline = time.monotonic() + 8
-    process = subprocess.Popen(
+    latency = ['--latency-msec=80', '--process-time-msec=20'] if continuous else []
+    return subprocess.Popen(
         ['parec', '--device=cumulus_private.monitor', '--rate=48000',
-         '--channels=1', '--format=s16le', '--raw'],
+         '--channels=1', '--format=s16le', '--raw', *latency],
         env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+
+@contextmanager
+def continuous_sink_monitor(env):
+    """Keep a single monitor alive across control changes, with bounded RAM."""
+    process = start_sink_monitor(env, continuous=True)
+    bytes_per_second = 48000 * 2
+    pending = bytearray()
+    ready = threading.Condition()
+    total = 0
+    ended = False
+
+    def drain():
+        nonlocal total, ended
+        try:
+            while chunk := os.read(process.stdout.fileno(), 8192):
+                with ready:
+                    pending.extend(chunk)
+                    total += len(chunk)
+                    del pending[:max(0, len(pending) - 4 * bytes_per_second)]
+                    ready.notify_all()
+        finally:
+            with ready:
+                ended = True
+                ready.notify_all()
+
+    def capture():
+        with ready:
+            start = total + (total & 1)
+            end = start + bytes_per_second
+            assert ready.wait_for(lambda: total >= end or ended, timeout=8), 'private continuous monitor stalled'
+            offset = start - (total - len(pending))
+            assert total >= end and offset >= 0, 'private continuous monitor closed or overran'
+            return pending[offset:offset + bytes_per_second]
+
+    pump = threading.Thread(target=drain, daemon=True, name='sealed-pipewire-monitor')
+    pump.start()
     try:
-        with process.stdout as stream:
-            while len(raw) < expected_bytes:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0 or not select.select([stream], [], [], remaining)[0]:
-                    raise AssertionError('private sink monitor did not produce a full capture')
-                chunk = os.read(stream.fileno(), expected_bytes - len(raw))
-                if not chunk:
-                    raise AssertionError('private sink monitor closed before a full capture')
-                raw.extend(chunk)
+        yield capture
     finally:
         stop(process)
+        pump.join(timeout=5)
+        assert not pump.is_alive(), 'private monitor pump failed to stop'
+        process.stdout.close()
+
+
+def sink_tone(env, *, windows=None, capture=None):
+    """Capture one second from the private sink without retaining raw PCM."""
+    expected_bytes = 48000 * 2
+    if capture is not None:
+        raw = capture()
+        assert len(raw) == expected_bytes
+    else:
+        raw = bytearray()
+        deadline = time.monotonic() + 8
+        process = start_sink_monitor(env)
+        try:
+            with process.stdout as stream:
+                while len(raw) < expected_bytes:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0 or not select.select([stream], [], [], remaining)[0]:
+                        raise AssertionError('private sink monitor did not produce a full capture')
+                    chunk = os.read(stream.fileno(), expected_bytes - len(raw))
+                    if not chunk:
+                        raise AssertionError('private sink monitor closed before a full capture')
+                    raw.extend(chunk)
+        finally:
+            stop(process)
     # Analyze the central half second, omitting the stream's startup transient.
     pcm = tuple(value for (value,) in struct.iter_unpack('<h', raw[24000:72000]))
     if windows is not None:
@@ -437,7 +531,10 @@ def sink_tone(env, *, windows=None):
             window = pcm[offset:offset + 2400]
             windows.append({'offsetMs': offset // 48, 'zeroFrames': window.count(0),
                             **tone_metrics(window)})
-    return tone_metrics(pcm)
+    return {**tone_metrics(pcm), **({'longestZeroRunFrames': max(
+        (sum(1 for _ in group) for is_zero, group in groupby(pcm, key=lambda frame: frame == 0) if is_zero),
+        default=0,
+    )} if windows is not None else {})}
 
 
 def tone_metrics(pcm):
@@ -543,7 +640,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
 
     def capture_tone(stage, timing=None):
         windows = [] if indexed_flac_library else None
-        result = sink_tone(env, windows=windows)
+        result = sink_tone(env, windows=windows, capture=capture_monitor)
         monitor[stage] = result
         observations[stage] = {'tone': result, 'nativePosition': timing}
         if windows is not None:
@@ -552,6 +649,8 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         # without retaining PCM or recording anything outside the private sink.
         (root/'monitor-pcm-observations.json').write_text(
             json.dumps(observations, indent=2) + '\n', encoding='utf-8')
+        if windows is not None and stage not in {'indexedStopped', 'paused'}:
+            assert result['longestZeroRunFrames'] < 48, f'{stage} dropped at least 1 ms of fixture PCM'
         return result
 
     def indexed_flac_mapped():
@@ -559,7 +658,8 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         maps = Path(f'/proc/{app.pid}/maps').read_text()
         return mapped_regular_file(maps, indexed_flac_library)
 
-    with closing(Input(x, y)) as inputs:
+    monitor_context = continuous_sink_monitor(env) if indexed_flac_library else nullcontext()
+    with closing(Input(x, y)) as inputs, monitor_context as capture_monitor:
         assert accessibility is not None, 'installed playback proof requires a private AT-SPI session'
 
         def activate(name, roles, *, reveal_sidebar=False):
@@ -584,17 +684,30 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         screenshot('installed-local-page.png')
         assert active_window() == window, 'installed app lost keyboard focus before opening the picker'
         inputs.key('Return')
-        wait_for('native file picker focus', lambda: active_window() not in (None, window))
-        inputs.key('l', 'Control_L')
-        time.sleep(.35)
-        for char in str(source.parent):
-            key, modifier = {
-                '/': ('slash', None), '-': ('minus', None), '_': ('minus', 'Shift_L')
-            }.get(char, (char, None))
-            inputs.key(key, modifier)
-        time.sleep(.5)  # GTK resolves the typed location before activation.
-        inputs.key('Return')
-        wait_for('installed main window focus after selection', lambda: active_window() == window)
+        def current_picker():
+            active = active_window()
+            return active if active not in (None, window) else None
+
+        picker = wait_for('native file picker focus', current_picker)
+        location = str(source.parent)
+        picker_status = {'pickerWindow': hex(picker), 'sourceLocationVerified': False}
+        try:
+            inputs.key('l', 'Control_L')
+            editable, _ = wait_for('focused native chooser location entry',
+                                   lambda: focused_picker_location(accessibility, app, picker, active_window))
+            assert editable.set_text_contents(location), 'could not set private chooser location'
+
+            def visible_location():
+                pair = focused_picker_location(accessibility, app, picker, active_window)
+                return pair is not None and accessibility.Text.get_text(pair[1], 0, -1) == location
+
+            wait_for('native chooser exact location', visible_location)
+            picker_status['sourceLocationVerified'] = True
+            inputs.key('Return')
+            wait_for('installed main window focus after selection', lambda: active_window() == window)
+            picker_status['chooserClosed'] = True
+        finally:
+            (root/'picker-observation.json').write_text(json.dumps(picker_status, indent=2)+'\n', encoding='utf-8')
         indexed_row = wait_for('generated FLAC indexed by the installed app', indexed)
         local_id = indexed_row['id']
         time.sleep(1.7)  # Allow one WebView local-index refresh after the native commit.
@@ -637,6 +750,8 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             equalizer_key('关闭均衡器', button_roles, 'Return')
             activate('停止播放', button_roles)
             focus_installed_control(accessibility, app, '播放', button_roles)
+            wait_for('old indexed source detached from the private sink',
+                     lambda: private_pipewire_stream(app.pid, env) is False, 6)
             stopped = capture_tone('indexedStopped')
             assert stopped['rms'] < baseline['rms'] * .01, 'old indexed playback did not stop'
             assert not indexed_flac_mapped(), 'packaged decoder appeared before indexed row reselection'
