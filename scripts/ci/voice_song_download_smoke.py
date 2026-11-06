@@ -96,8 +96,8 @@ def verify(case, root, stages, complete):
         return [ADD, {'pid': pid, 'trackIds': '["1710"]', 'op': 'add'}]
 
     transfer = [
-        [META, {'c': '[{"id":"1710","v":0}]'}],
         [AUTH, {'id': '1710', 'level': 'standard', 'immerseType': 'c51'}],
+        [META, {'c': '[{"id":"1710","v":0}]'}],
         ['media_get', {'offset': 0, 'bytes': MP3.stat().st_size}],
     ]
     expected = {
