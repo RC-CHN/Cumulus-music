@@ -62,6 +62,7 @@ async fn subscription_recommendations_never_return_late_or_guest_reads() {
     *old.recommendation_response.lock().unwrap() =
         json!({"code":200,"data":[{"id":41,"name":"Old"}]});
     old.recommendation_hold.store(true, Ordering::SeqCst);
+    let client = Arc::new(client);
     let pending = {
         let client = client.clone();
         tokio::spawn(async move { client.podcast_subscription_recommendations("1").await })
