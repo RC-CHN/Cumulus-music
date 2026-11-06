@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version without v (must match the unique release commit)'
+        description: 'X.Y.Z or X.Y.Z-rc.N without v (must match the unique release commit)'
         required: true
         type: string
       ci_run_id:

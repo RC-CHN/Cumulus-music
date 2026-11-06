@@ -6,8 +6,14 @@ import re
 import subprocess
 import tomllib
 
-VERSION = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\Z")
+VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.(?P<rc>[1-9][0-9]*))?\Z")
 SUBJECT = re.compile(r"chore:release (.+)\Z")
+
+
+def is_prerelease(version):
+    match = VERSION.fullmatch(version)
+    assert match is not None, "release version must be X.Y.Z or X.Y.Z-rc.N"
+    return match["rc"] is not None
 
 
 def git(*args):
@@ -17,7 +23,7 @@ def git(*args):
 def check_versions(root=Path("."), expected=None):
     cargo = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
     version = cargo["workspace"]["package"]["version"]
-    assert VERSION.fullmatch(version), "release version must be X.Y.Z"
+    assert VERSION.fullmatch(version), "release version must be X.Y.Z or X.Y.Z-rc.N"
     assert expected is None or version == expected, "requested version differs from workspace"
     for file in ["frontend/package.json", "frontend/package-lock.json", "desktop/tauri.conf.json"]:
         data = json.loads((root / file).read_text(encoding="utf-8"))

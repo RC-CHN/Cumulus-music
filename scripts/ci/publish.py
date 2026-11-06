@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 
 from native_receipts import verify_parametric, verify_pinned
-from release_guard import VERSION, check_release, git
+from release_guard import VERSION, check_release, git, is_prerelease
 
 PLATFORMS = ("linux-x64", "windows-x64")
 REQUIRED_JOBS = {
@@ -36,8 +36,14 @@ def validate_tag(reference, tag, sha):
     assert reference["object"]["type"] == "commit" and reference["object"]["sha"] == sha, "tag target changed"
 
 
+def validate_draft(release, tag):
+    assert tag.startswith("v"), "invalid release tag"
+    assert release["tag_name"] == tag and release["draft"] is True, "only the exact unpublished draft can be resumed"
+    assert release["prerelease"] is is_prerelease(tag[1:]), "release draft channel mismatch"
+
+
 def validate_uploaded(release, tag, files):
-    assert release["tag_name"] == tag and release["draft"] is True and not release["prerelease"], "only the exact unpublished draft can be resumed"
+    validate_draft(release, tag)
     assets = release["assets"]
     expected = {path.name: path for path in files}
     assert len(assets) == len(expected) and {asset["name"] for asset in assets} == set(expected), "uploaded asset set mismatch"
@@ -96,6 +102,7 @@ def main():
     assert os.environ["GITHUB_REF"] == "refs/heads/main", "CD must run on main"
     assert git("rev-parse", "HEAD") == os.environ["GITHUB_SHA"], "checkout differs from CD commit"
     tag = f"v{args.version}"
+    prerelease = is_prerelease(args.version)
     if args.resume_draft:
         reference = api(f"repos/{repository}/git/ref/tags/{tag}")
         sha = check_release(args.version, reference["object"]["sha"])
@@ -104,7 +111,8 @@ def main():
         # release from a different lineage or substitute its own source tree.
         subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], check=True)
         draft = find_release(repository, tag)
-        assert draft is not None and draft["draft"] is True, "unpublished draft missing"
+        assert draft is not None, "unpublished draft missing"
+        validate_draft(draft, tag)
     else:
         sha = check_release(args.version)
         assert sha == os.environ["GITHUB_SHA"], "release must target the CD commit"
@@ -154,7 +162,8 @@ def main():
             # No force option: a racing/preexisting tag causes an API failure.
             api(f"repos/{repository}/git/refs", "--method", "POST", "-f", f"ref=refs/tags/{tag}", "-f", f"sha={sha}")
             # Upload into a draft; a failed upload never exposes a partial release.
-            subprocess.run(["gh", "release", "create", tag, "--repo", repository, "--verify-tag", "--draft", "--title", f"Cumulus Music {args.version}", "--notes-file", str(notes), *map(str, uploaded_files)], check=True)
+            draft_channel = ["--prerelease", "--latest=false"] if prerelease else []
+            subprocess.run(["gh", "release", "create", tag, "--repo", repository, "--verify-tag", "--draft", *draft_channel, "--title", f"Cumulus Music {args.version}", "--notes-file", str(notes), *map(str, uploaded_files)], check=True)
         release = find_release(repository, tag)
         assert release is not None, "uploaded draft missing"
         if draft is not None:
@@ -162,8 +171,10 @@ def main():
         validate_uploaded(release, tag, uploaded_files)
         validate_tag(api(f"repos/{repository}/git/ref/tags/{tag}"), tag, sha)
         assert verified_run()["run_attempt"] == run["run_attempt"], "CI was rerun before publication"
-        published = api(f"repos/{repository}/releases/{release['id']}", "--method", "PATCH", "-F", "draft=false", "-f", "make_latest=true")
-        assert published["id"] == release["id"] and published["tag_name"] == tag and published["draft"] is False, "publication was not confirmed"
+        # GitHub accepts a boolean for prerelease and a string for make_latest.
+        channel_fields = ["-F", "prerelease=true", "-f", "make_latest=false"] if prerelease else ["-f", "make_latest=true"]
+        published = api(f"repos/{repository}/releases/{release['id']}", "--method", "PATCH", "-F", "draft=false", *channel_fields)
+        assert published["id"] == release["id"] and published["tag_name"] == tag and published["draft"] is False and published["prerelease"] is prerelease, "publication was not confirmed"
     print(json.dumps({"ok": True, "published": args.publish, "resumedDraft": args.resume_draft, "tag": tag, "commit": sha, "ciRun": run["id"]}))
 
 
