@@ -79,6 +79,8 @@
       downloads: visible(q('.downloads-page')), vinyl: visible(panel()) };
   }
   async function capture(name, extra = {}) {
+    await wait(() => !q('dialog.modal-enter-active,dialog.modal-leave-active,.lyrics-panel-enter-active,.lyrics-panel-leave-active'),
+      'modal and vinyl transitions settle before capture');
     await frame();
     const current = { player: stateView(await state()), queue: await queue() };
     const records = await tasks();
