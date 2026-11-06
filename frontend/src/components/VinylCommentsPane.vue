@@ -156,10 +156,10 @@ defineExpose({ focusBack });
             <Icon v-else name="user" />
             <div>
               <strong>{{ item.author?.name || '云音乐用户' }}</strong>
-              <p><CommentText :text="item.content" /></p>
+              <p data-vinyl-copy-text><CommentText :text="item.content" /></p>
               <blockquote v-if="item.replies[0]?.content" class="vinyl-comment-quote">
                 {{ item.replies[0].author?.name || '云音乐用户' }}：
-                <CommentText :text="item.replies[0].content" />
+                <span data-vinyl-copy-text><CommentText :text="item.replies[0].content" /></span>
               </blockquote>
               <div class="vinyl-comment-actions">
                 <small>{{ item.timeText }}</small>

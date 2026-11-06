@@ -34,7 +34,7 @@ import {
   type VinylSimilarLane,
 } from '../services/vinylSimilar';
 import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay';
-import { vinylLyricSelection, vinylLyricText } from '../services/vinylLyricCopy';
+import { vinylCopyText, vinylSelection } from '../services/vinylTextCopy';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
 import {
@@ -78,7 +78,8 @@ function commentOpener() {
   return props.commentComposer.current.value?.opener ?? null;
 }
 const { view, lyrics, lyricLoading, lyricUpdating, lyricError, loaded, busy } = props.player;
-const container = ref<HTMLElement>(),
+const panel = ref<HTMLElement>(),
+  container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>(),
   modeEntry = ref<HTMLButtonElement>();
 const modeSheetOpen = ref(false);
@@ -401,11 +402,7 @@ function seekLine(line: (typeof lines.value)[number]) {
     void props.player.seekDisplayed(line.target, line.time);
 }
 function clickLyricLine(event: MouseEvent, line: (typeof lines.value)[number]) {
-  if (
-    event.detail &&
-    container.value &&
-    vinylLyricSelection(container.value, window.getSelection())
-  )
+  if (event.detail && container.value && vinylSelection(container.value, window.getSelection()))
     return;
   seekLine(line);
 }
@@ -433,31 +430,29 @@ function endLyricSelection(event: PointerEvent) {
 function resetLyricSelectionPointer() {
   selectingPointer = undefined;
 }
-function copyLyricSelection(event: ClipboardEvent) {
-  const scroller = container.value;
+function copyVinylSelection(event: ClipboardEvent) {
+  const root = panel.value;
   if (
     event.defaultPrevented ||
     !event.clipboardData ||
-    !scroller ||
-    !currentLyric.value ||
+    !root ||
+    !view.value?.track ||
     !props.player.lyricsOpen.value ||
-    props.activeDetailTab !== 'lyrics' ||
-    commentsVisible.value ||
     modeSheetOpen.value ||
+    props.commentComposer.current.value ||
     (event.target instanceof Element &&
       event.target.closest('input, textarea, [contenteditable]:not([contenteditable=false])'))
   )
     return;
-  const text = vinylLyricText(scroller, window.getSelection());
+  const text = vinylCopyText(root, window.getSelection());
   if (!text) return;
   event.clipboardData.setData('text/plain', text);
   event.preventDefault();
 }
-function clearOwnedLyricSelection() {
+function clearOwnedVinylSelection() {
   resetLyricSelectionPointer();
   const selection = window.getSelection();
-  if (container.value && vinylLyricSelection(container.value, selection))
-    selection?.removeAllRanges();
+  if (panel.value && vinylSelection(panel.value, selection)) selection?.removeAllRanges();
 }
 // The manual marker selects the row spanning the center of the lyric viewport.
 function selectBrowsedLine() {
@@ -561,7 +556,7 @@ watch(active, () => {
 watch([currentEpoch, currentPlayId, displayMode], followLyrics);
 watch(
   [currentEpoch, currentPlayId, displayMode, () => props.activeDetailTab, commentsVisible],
-  clearOwnedLyricSelection,
+  clearOwnedVinylSelection,
 );
 watch(lines, () => void nextTick(selectBrowsedLine));
 watch(container, (scroller, _previous, onCleanup) => {
@@ -579,7 +574,7 @@ watch(
 let previous: HTMLElement | null = null;
 let previousEpoch: string | undefined;
 onMounted(() => {
-  document.addEventListener('copy', copyLyricSelection);
+  document.addEventListener('copy', copyVinylSelection);
   window.addEventListener('pointerup', endLyricSelection, true);
   window.addEventListener('pointercancel', endLyricSelection, true);
   window.addEventListener('blur', resetLyricSelectionPointer);
@@ -590,7 +585,7 @@ onMounted(() => {
   void scroll();
 });
 onUnmounted(() => {
-  document.removeEventListener('copy', copyLyricSelection);
+  document.removeEventListener('copy', copyVinylSelection);
   window.removeEventListener('pointerup', endLyricSelection, true);
   window.removeEventListener('pointercancel', endLyricSelection, true);
   window.removeEventListener('blur', resetLyricSelectionPointer);
@@ -610,6 +605,7 @@ const displayedAuxiliary = computed(() =>
 </script>
 <template>
   <section
+    ref="panel"
     class="lyrics-panel"
     :data-vinyl-mode="displayMode"
     :data-vinyl-tab="commentsVisible ? 'comments' : activeDetailTab"
@@ -676,7 +672,7 @@ const displayedAuxiliary = computed(() =>
                 @error="cover.error"
               /><Icon v-if="!cover.loaded.value" name="music" data-cover-placeholder />
             </div>
-            <h1 :title="view?.track?.name">
+            <h1 :title="view?.track?.name" data-vinyl-copy-text>
               {{ view?.track?.name }}
             </h1>
             <ul
@@ -684,6 +680,7 @@ const displayedAuxiliary = computed(() =>
               class="vinyl-voice-meta"
               aria-label="节目资料"
               data-voice-detail
+              data-non-selectable
             >
               <li v-if="voiceMetadata.creator" class="voice-creator">
                 <span>主播：</span>
@@ -708,7 +705,7 @@ const displayedAuxiliary = computed(() =>
                 <span v-else>—</span>
               </li>
             </ul>
-            <p v-else-if="view?.track" class="vinyl-credits" aria-label="歌手">
+            <p v-else-if="view?.track" class="vinyl-credits" aria-label="歌手" data-non-selectable>
               <template v-for="(artist, index) in metadata.artists" :key="index">
                 <span v-if="index > 0" aria-hidden="true"> / </span>
                 <button
@@ -727,6 +724,7 @@ const displayedAuxiliary = computed(() =>
             <small
               v-if="displayMode === 'classic' && view?.track && !voiceMetadata"
               class="vinyl-album"
+              data-non-selectable
             >
               <button
                 v-if="metadata.album.target"
@@ -742,7 +740,11 @@ const displayedAuxiliary = computed(() =>
                 metadata.album.name
               }}</span>
             </small>
-            <small v-if="displayMode === 'classic' && source" class="vinyl-source">
+            <small
+              v-if="displayMode === 'classic' && source"
+              class="vinyl-source"
+              data-non-selectable
+            >
               <span>来源：</span>
               <button
                 v-if="source.target"
@@ -756,8 +758,12 @@ const displayedAuxiliary = computed(() =>
               </button>
               <span v-else>{{ source.name }}</span>
             </small>
-            <span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
-            <p v-if="displayMode === 'cover'" class="vinyl-cover-line">{{ coverLine }}</p>
+            <span v-if="view?.timeline?.mode === 'trial'" class="trial-badge" data-non-selectable
+              >当前为试听片段</span
+            >
+            <p v-if="displayMode === 'cover'" class="vinyl-cover-line" data-vinyl-copy-text>
+              {{ coverLine }}
+            </p>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
             <div
@@ -766,6 +772,7 @@ const displayedAuxiliary = computed(() =>
               class="vinyl-detail-tabs"
               role="tablist"
               aria-label="播放详情"
+              data-non-selectable
               @keydown="detailKey"
             >
               <button
@@ -869,6 +876,7 @@ const displayedAuxiliary = computed(() =>
                       :key="`${currentEpoch}:${currentPlayId}:${credit.kind}`"
                       class="lyric-contributor"
                       :data-lyric-credit="credit.kind"
+                      data-non-selectable
                     >
                       {{ credit.label
                       }}<button

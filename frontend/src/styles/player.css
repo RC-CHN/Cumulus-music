@@ -919,12 +919,25 @@ input[type='range'] {
   opacity: 0.5;
 }
 .lyrics-panel {
+  -webkit-user-select: none;
+  user-select: none;
   position: absolute;
   inset: var(--header) 0 var(--player);
   background: var(--lyrics-background);
   z-index: 10;
   display: flex;
   flex-direction: column;
+}
+.lyrics-panel :is([data-vinyl-copy-text], [data-lyric-text], input, textarea, [contenteditable]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.lyrics-panel [data-non-selectable] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.lyrics-panel :is([data-vinyl-copy-text], [data-lyric-text]) {
+  cursor: text;
 }
 .lyrics-panel > header {
   height: 64px;
@@ -1256,11 +1269,6 @@ input[type='range'] {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   border-radius: 4px;
-}
-.lyric-line [data-lyric-text] {
-  -webkit-user-select: text;
-  user-select: text;
-  cursor: text;
 }
 .lyric-line .timed-word::selection {
   color: HighlightText;
