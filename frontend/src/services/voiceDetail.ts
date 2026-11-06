@@ -26,6 +26,11 @@ export interface VoiceCreatorTarget {
   voiceId: string;
   userId: string;
 }
+export interface VoicePlaybackScope {
+  epoch: string;
+  playId: string;
+  voiceId: string;
+}
 const identifier = (value: string | null | undefined) =>
   typeof value === 'string' && /^[1-9][0-9]*$/.test(value) ? value : null;
 
@@ -57,6 +62,34 @@ export function playbackVoiceDetail(view: PlayerView | undefined) {
     ...(view.playId && detail?.description ? { description: detail.description } : {}),
     ...(view.playId && radio ? { radio } : {}),
   };
+}
+
+export function voicePlaybackScope(
+  view: PlayerView | undefined,
+  epoch: string,
+): VoicePlaybackScope | undefined {
+  if (
+    !view?.playId ||
+    view.epoch !== epoch ||
+    view.fm ||
+    !['playing', 'paused', 'buffering'].includes(view.state)
+  )
+    return;
+  const voiceId = playbackVoiceDetail(view)?.id;
+  if (!voiceId || view.voiceDetail?.id !== voiceId) return;
+  return { epoch, playId: view.playId, voiceId };
+}
+
+export function sameVoicePlaybackScope(
+  current: VoicePlaybackScope | undefined,
+  target: VoicePlaybackScope,
+) {
+  return (
+    !!current &&
+    current.epoch === target.epoch &&
+    current.playId === target.playId &&
+    current.voiceId === target.voiceId
+  );
 }
 
 export function voicePodcastTarget(view: PlayerView | undefined): VoicePodcastTarget | null {
