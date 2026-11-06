@@ -36,7 +36,16 @@
    if(bar().dataset.state!=='playing')click(bar().dataset.trackId?one('.playerbar [aria-label="播放"]'):one('.track-row .track-play:not(:disabled)'));
    await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decode');click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','pause');
   }
-  const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'native seek');playId=bar().dataset.playId;
+  const expectedPlay=bar().dataset.playId,expectedTrack=bar().dataset.trackId;
+  const range=()=>one('[aria-label="播放进度"]');
+  const ready=(input=range())=>expectedPlay&&bar().dataset.playId===expectedPlay&&bar().dataset.trackId===expectedTrack&&
+   bar().dataset.state==='paused'&&input?.isConnected&&!input.disabled&&Number(input.min)<=10&&Number(input.max)>=10;
+  // Wait for the actual control, not just the player's paused event.
+  await wait(()=>ready(),'paused seek control ready');
+  const seek=range();assert(ready(seek),'seek control changed before dispatch');seek.value='10';
+  assert(Math.abs(Number(seek.value)-10)<.2,'seek input clamps the target');
+  seek.dispatchEvent(new Event('change',{bubbles:true}));
+  await wait(()=>ready()&&Math.abs(Number(bar().dataset.position)-10)<.2,'native seek');playId=expectedPlay;
  }
  async function capture(label,edgeSongId){
   last=label;await sleep(300);const p=feedback(),r=p&&rect(p);

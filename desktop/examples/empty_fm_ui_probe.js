@@ -39,8 +39,17 @@
   await wait(()=>trigger()&&!trigger().disabled&&one('.track-row .track-play:not(:disabled)'),'ready');
   if(!window.__modeReopen){
    click(all('.track-row .track-play:not(:disabled)')[1]);await wait(()=>bar().dataset.trackId==='2'&&bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'play normal');
-   click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','pause');
-   const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'seek');normalPlayId=bar().dataset.playId;
+   const expectedPlay=bar().dataset.playId;
+   click(one('.playerbar [aria-label="暂停"]'));
+   const range=()=>one('[aria-label="播放进度"]');
+   const ready=(input=range())=>bar().dataset.playId===expectedPlay&&bar().dataset.trackId==='2'&&
+    bar().dataset.state==='paused'&&input?.isConnected&&!input.disabled&&Number(input.min)<=10&&Number(input.max)>=10;
+   // The paused event can arrive before the pause IPC clears the control's busy state.
+   await wait(()=>ready(),'paused seek control ready');
+   const seek=range();assert(ready(seek),'seek control changed before dispatch');seek.value='10';
+   assert(Math.abs(Number(seek.value)-10)<.2,'seek input clamps the target');
+   seek.dispatchEvent(new Event('change',{bubbles:true}));
+   await wait(()=>ready()&&Math.abs(Number(bar().dataset.position)-10)<.2,'native seek');normalPlayId=expectedPlay;
    for(let i=0;i<4&&bar().dataset.mode!=='random';i++){const old=bar().dataset.mode;click(trigger());await wait(()=>bar().dataset.mode!==old&&trigger().getAttribute('aria-busy')==='false','normal cycle');}
    assert(bar().dataset.mode==='random','saved random mode');await capture('normal_backup');
   }
