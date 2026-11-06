@@ -29,15 +29,13 @@ fn entry<'a>(queue: &'a QueueSnapshot, entry_id: &str) -> Result<&'a QueueEntry>
 fn source_label(item: &QueueEntry) -> &str {
     let source = &item.source;
     match source["kind"].as_str() {
-        Some("album" | "artist" | "playlist") => source["name"]
-            .as_str()
-            .filter(|name| !name.trim().is_empty() && !name.chars().any(char::is_control))
-            .filter(|name| name.chars().take(161).count() <= 160)
-            .unwrap_or(match source["kind"].as_str() {
+        Some("album" | "artist" | "playlist") => {
+            origin::display_name(item).unwrap_or(match source["kind"].as_str() {
                 Some("album") => "专辑",
                 Some("artist") => "歌手",
                 _ => "歌单",
-            }),
+            })
+        }
         Some("songs") if source["scene"] == "search" => "搜索",
         Some("daily_recommendations") => "每日推荐",
         Some("style_recommendations") => "风格推荐",
@@ -130,5 +128,30 @@ impl MusicClient {
             downloaded,
             download_task_id,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn named_menu_source_uses_native_provenance_independently_of_the_song_and_route() {
+        let mut entry = QueueEntry {
+            entry_id: "entry".into(),
+            resource: json!({"id":"1","song":{"id":"1","album":{"id":7,"name":"曲目的专辑"}}}),
+            source: json!({"kind":"album","id":"8","name":"未证实的旧字段"}),
+        };
+        assert_eq!(source_label(&entry), "专辑");
+        entry.source = origin::named(entry.source, Some("实际入队专辑"));
+        assert_eq!(source_label(&entry), "实际入队专辑");
+        assert_eq!(
+            serde_json::to_value(origin::queue(&entry)).unwrap(),
+            json!({"kind":"album","id":"8"})
+        );
+        entry.source = json!({"kind":"songs","scene":"search","source_name":"别的标签"});
+        assert_eq!(source_label(&entry), "搜索");
+        assert!(origin::queue(&entry).is_none());
     }
 }

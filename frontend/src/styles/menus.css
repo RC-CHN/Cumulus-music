@@ -162,6 +162,12 @@
   border-radius: 0;
   line-height: 18px;
 }
+.song-action-menu button[data-menu-key='source'] > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .speed-action-menu {
   width: 178px;
   min-width: 178px;

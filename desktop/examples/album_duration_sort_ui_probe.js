@@ -311,7 +311,7 @@
     click(row(fromAlbum).querySelector('.queue-row-more'));
     await wait(() => menuItem('comments')?.textContent.includes('36'), 'other row comments count');
     assert(menuKeys().join(',') === 'play,comments,collect,download,share,artist,album,source,copy,remove' &&
-      menuItem('album').textContent.includes('测试专辑') && menuItem('source').textContent.includes('来自：专辑') &&
+      menuItem('album').textContent.includes('测试专辑') && menuItem('source').textContent.trim() === `来自：${albumName}` &&
       !menuItem('source').disabled && await unchanged(), 'ordinary queue actions and independent origin');
     await captureOrigin('queue_menu_other', { keys: menuKeys(), staleMenuRejected: true });
     click(menuItem('source'));
