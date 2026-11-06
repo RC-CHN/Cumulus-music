@@ -20,6 +20,8 @@ mod scene_palette_fixture;
 mod settings_fixture;
 #[path = "support/voice_detail_fixture.rs"]
 mod voice_detail_fixture;
+#[path = "support/voice_podcast_collect_fixture.rs"]
+mod voice_podcast_collect_fixture;
 
 use cumulus_core::{
     Error, Result,
@@ -62,6 +64,7 @@ struct Library {
     scene_baseline: settings_fixture::Library,
     palette: Option<Arc<scene_palette_fixture::PaletteMedia>>,
     voice_detail: Option<voice_detail_fixture::VoiceDetail>,
+    voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
 }
 
 fn radio() -> Value {
@@ -142,25 +145,34 @@ impl Api for Library {
             {
                 return Ok(response);
             }
+            if let Some(collect) = &self.voice_podcast_collect
+                && let Some(response) = collect.response(path, &body, cache)
+            {
+                return Ok(response);
+            }
             if let Some(scene) = &self.scene_home {
                 return match scene.response(path, &body) {
                     Some(response) => {
-                        if self.palette.is_some()
+                        if (self.palette.is_some() || self.voice_podcast_collect.is_some())
                             && matches!(
                                 path,
                                 "/api/voice/homepage/block/content" | "/api/dj/program/detail"
                             )
                         {
-                            response.map(|response| {
-                                let response = scene_palette_fixture::artwork_response(
-                                    response,
-                                    self.palette.as_ref().unwrap().shared_cover(),
-                                );
-                                if self.voice_detail.is_some() {
-                                    voice_detail_fixture::enrich(response)
-                                } else {
-                                    response
+                            response.map(|mut response| {
+                                if let Some(palette) = &self.palette {
+                                    response = scene_palette_fixture::artwork_response(
+                                        response,
+                                        palette.shared_cover(),
+                                    );
                                 }
+                                if self.voice_detail.is_some() {
+                                    response = voice_detail_fixture::enrich(response);
+                                }
+                                if let Some(collect) = &self.voice_podcast_collect {
+                                    response = collect.enrich(response);
+                                }
+                                response
                             })
                         } else {
                             response
@@ -294,6 +306,8 @@ fn main() {
     let badges_enabled = recommendations_enabled
         || std::env::var("CUMULUS_PODCAST_BADGES_PROOF").as_deref() == Ok("1");
     let voice_detail_enabled = std::env::var_os("CUMULUS_VOICE_DETAIL_PROOF").is_some();
+    let voice_podcast_collect_enabled =
+        std::env::var("CUMULUS_VOICE_PODCAST_COLLECT_PROOF").as_deref() == Ok("1");
     let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
         .ok()
         .or_else(|| voice_detail_enabled.then(|| "header".to_owned()));
@@ -307,6 +321,14 @@ fn main() {
         .map(scene_home_fixture::SceneHome::new);
     let scene_enabled = scene_home.is_some();
     assert!(!(scene_enabled && progress_enabled));
+    assert!(
+        !voice_podcast_collect_enabled
+            || scene_enabled
+                && !palette_enabled
+                && !voice_detail_enabled
+                && !badges_enabled
+                && !progress_enabled
+    );
     assert!(!badges_enabled || (!scene_enabled && !progress_enabled && !voice_detail_enabled));
     let api = Arc::new(Library {
         progress_enabled,
@@ -314,6 +336,8 @@ fn main() {
         scene_home,
         palette: palette.clone(),
         voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
+        voice_podcast_collect: voice_podcast_collect_enabled
+            .then(voice_podcast_collect_fixture::Fixture::default),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -332,6 +356,8 @@ fn main() {
         || {
             if badges_enabled {
                 include_str!("podcast_badges_ui_probe.js").to_owned()
+            } else if voice_podcast_collect_enabled {
+                include_str!("voice_podcast_collect_ui_probe.js").to_owned()
             } else if voice_detail_enabled {
                 include_str!("voice_detail_ui_probe.js").to_owned()
             } else if palette_enabled {
@@ -412,6 +438,9 @@ fn main() {
                 }
                 if let Some(palette) = &api.palette {
                     value["paletteRequests"] = palette.snapshot();
+                }
+                if let Some(collect) = &api.voice_podcast_collect {
+                    value["voicePodcastCollectTrace"] = json!(collect.trace());
                 }
                 if let Some(scene) = &api.scene_home {
                     value["calls"] = json!(scene.calls());
