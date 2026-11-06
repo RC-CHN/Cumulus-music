@@ -53,7 +53,10 @@ pub use voice_detail::{
     PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount, PlayerVoiceRadio,
     VinylVoiceDetailView,
 };
-pub use voice_songs::{PlayerVoiceSongsView, VoiceSongAction, VoiceSongRowAvailability};
+pub use voice_songs::{
+    PlayerVoiceSongsView, VoiceSongAction, VoiceSongRowAvailability, VoiceSongSelectionAction,
+    VoiceSongSelectionKind,
+};
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;

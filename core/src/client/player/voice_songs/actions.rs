@@ -1,5 +1,5 @@
 //! Native shelf and guarded SongCard song actions (M/3085).
-use super::{Seed, seed};
+use super::{Seed, VoiceSongSelectionAction, VoiceSongSelectionKind, seed};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -38,6 +38,34 @@ pub enum VoiceSongAction {
     NextPlay { index: usize },
 }
 
+enum SongRequest {
+    Single(VoiceSongAction),
+    Selected(VoiceSongSelectionAction),
+}
+
+impl SongRequest {
+    fn index(&self) -> usize {
+        match self {
+            Self::Single(
+                VoiceSongAction::Cover { index }
+                | VoiceSongAction::DoubleClick { index }
+                | VoiceSongAction::NextPlay { index },
+            ) => *index,
+            Self::Selected(selection) => selection.index,
+        }
+    }
+
+    fn is_next(&self) -> bool {
+        matches!(self, Self::Single(VoiceSongAction::NextPlay { .. }))
+            || matches!(self, Self::Selected(action) if action.kind == VoiceSongSelectionKind::NextPlay)
+    }
+
+    fn is_double_click(&self) -> bool {
+        matches!(self, Self::Single(VoiceSongAction::DoubleClick { .. }))
+            || matches!(self, Self::Selected(action) if action.kind == VoiceSongSelectionKind::DoubleClick)
+    }
+}
+
 pub(super) struct Row {
     pub(super) track: TrackView,
     pub(super) online_eligible: bool,
@@ -45,7 +73,7 @@ pub(super) struct Row {
 }
 
 impl Row {
-    fn resource(&self, quality: Quality) -> Value {
+    pub(super) fn resource(&self, quality: Quality) -> Value {
         json!({"id":self.track.id,"level":quality.as_str(),"dt":self.track.duration_ms,
             "missing":false,"song":mapping::projected_song_metadata(&self.track)})
     }
@@ -173,6 +201,42 @@ impl MusicClient {
         action: VoiceSongAction,
         quality: Quality,
     ) -> Result<PlayerView> {
+        self.execute_voice_songs_action(
+            epoch,
+            play_id,
+            receipt,
+            SongRequest::Single(action),
+            quality,
+        )
+        .await
+    }
+
+    pub async fn player_voice_songs_selection(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        action: VoiceSongSelectionAction,
+        quality: Quality,
+    ) -> Result<PlayerView> {
+        self.execute_voice_songs_action(
+            epoch,
+            play_id,
+            receipt,
+            SongRequest::Selected(action),
+            quality,
+        )
+        .await
+    }
+
+    async fn execute_voice_songs_action(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        request: SongRequest,
+        quality: Quality,
+    ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
         let host = self.player.voice_songs.clone();
         let page = host.page(&token, play_id, receipt)?;
@@ -180,12 +244,8 @@ impl MusicClient {
         let room = self.together_detached_guard(&token);
         let check = || host.check_action_scope(self, &page, &api, &room);
         check()?;
-        let index = match action {
-            VoiceSongAction::Cover { index }
-            | VoiceSongAction::DoubleClick { index }
-            | VoiceSongAction::NextPlay { index } => index,
-        };
-        let is_next = matches!(action, VoiceSongAction::NextPlay { .. });
+        let index = request.index();
+        let is_next = request.is_next();
         let controller = self.player.controller.get().ok_or(Error::StaleResponse)?;
         let selection = self.player.selection.clone();
         let observed = selection.load(Ordering::Acquire);
@@ -217,11 +277,12 @@ impl MusicClient {
         }
         let fence = before.fence();
         let source = json!({"kind":"vinyl_voice_songs","id":page.seed.voice_id,"text":"包含歌曲","scene":"unknown"});
+        let replace = request.is_double_click() && self.replace_queue_on_double_click(&token)?;
         // Current playback is always the validated episode, never an
         // ordinary song—even if both point to the same backing song ID.
-        let command = if matches!(action, VoiceSongAction::DoubleClick { .. })
-            && self.replace_queue_on_double_click(&token)?
-        {
+        let command = if let SongRequest::Selected(action) = request {
+            action.command(&page, quality, replace, queue, &fence, source)?
+        } else if replace {
             PlaybackCommand::Replace {
                 resources: page.rows.iter().map(|row| row.resource(quality)).collect(),
                 index,

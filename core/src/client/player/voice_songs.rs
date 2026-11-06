@@ -1,6 +1,7 @@
 //! 「包含歌曲」 card and scoped song actions from a bound current episode.
 mod actions;
 mod likes;
+mod selection;
 use super::{
     MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity, mapping,
     vinyl_similar::stale_credentials, voice_detail,
@@ -18,6 +19,7 @@ use crate::{
 pub(super) use actions::Host;
 pub use actions::VoiceSongAction;
 use actions::{Page, Row};
+pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
 use serde::Serialize;
 use serde_json::Value;
 use std::{sync::Arc, time::Instant};

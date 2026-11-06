@@ -1,6 +1,8 @@
 use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http_with_credentials};
 #[path = "voice_songs/likes.rs"]
 mod likes;
+#[path = "voice_songs/selection.rs"]
+mod selection;
 use cumulus_core::{
     Error,
     account::{AccountSession, credentials::Credentials, profiles::ProfileRegistry},
