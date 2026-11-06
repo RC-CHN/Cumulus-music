@@ -464,3 +464,73 @@ pub async fn verify(
         "native": &*trace,
     }))
 }
+
+/// Production native file admission and Stop through the real actor, with
+/// distinct synthetic paths and no injected native failure.
+pub async fn verify_stop_reselect(
+    client: &MusicClient,
+    first: PathBuf,
+    evidence: &Evidence,
+) -> Result<Value> {
+    let account = client.account()?;
+    require(
+        account.status != SessionStatus::Authenticated,
+        "local guest required",
+    )?;
+    let epoch = account.epoch;
+    let second = first.with_file_name("合成 第二原生曲目.flac");
+    std::fs::copy(&first, &second)?;
+    let view = client.player_snapshot(&epoch).await?;
+    configure(client, &epoch, &view, curve(3.0)?).await?;
+    let mut previous = None;
+    for (index, path) in [&first, &second, &first, &second, &first, &second]
+        .into_iter()
+        .enumerate()
+    {
+        let selected = client
+            .play_native_open_files(&epoch, vec![path.clone()])
+            .await
+            .inspect_err(|error| eprintln!("fresh native selection {index}: {error}"))?;
+        require(
+            selected.play_id != previous,
+            "new explicit file did not create a play",
+        )?;
+        let playing = until(client, &epoch, "reselect_position", |view| {
+            same_play(view, &selected)
+                && view.state == PlaybackStatus::Playing
+                && view.equalizer.status == EqualizerStatus::Processing
+                && view.position.is_some_and(|pos| pos >= 0.10)
+        })
+        .await?;
+        previous = playing.play_id.clone();
+        if index % 2 == 0 {
+            client
+                .player_action(
+                    &epoch,
+                    PlayerAction::PauseFor {
+                        play_id: playing.play_id.unwrap(),
+                        expected_queue_revision: playing.queue_revision,
+                        paused: true,
+                    },
+                )
+                .await?;
+        }
+        let stopped = client.player_action(&epoch, PlayerAction::Stop).await?;
+        require(
+            stopped.state == PlaybackStatus::Idle && stopped.play_id.is_none(),
+            "ordinary Stop did not retire the play",
+        )?;
+    }
+    let trace = evidence.lock().unwrap();
+    require(
+        trace.loads.len() == 6
+            && trace.pinned_stops.len() == 6
+            && trace.pinned_stops.iter().all(|stop| *stop != "unexpected")
+            && trace
+                .loads
+                .iter()
+                .all(|load| load.graph_entry == Some(load.entry)),
+        "expected six real held graph selections and Stops",
+    )?;
+    Ok(json!({"ok":true,"kind":"ordinary_local_stop_reselect_v1","native": &*trace}))
+}

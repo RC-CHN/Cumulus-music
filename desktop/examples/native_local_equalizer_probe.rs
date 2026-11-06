@@ -11,7 +11,7 @@ mod flow;
 mod spatial_ui;
 
 use cumulus_core::{
-    Error, Result,
+    Error,
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
     playback::engine::{MpvConfig, MpvEngine, TrustedFlacRuntime},
@@ -73,6 +73,7 @@ struct Proof {
     expect_graph: bool,
     exercise_peq: bool,
     exercise_spatial: bool,
+    stop_reselect: bool,
     indexed: bool,
     fixture_source: Value,
     started: AtomicBool,
@@ -120,6 +121,8 @@ fn locale(category: libc::c_int) -> String {
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let case = args.first().and_then(|value| value.to_str());
+    let stop_reselect = std::env::var_os("CUMULUS_ORDINARY_STOP_RESELECT_PROOF").is_some();
+    assert!(!stop_reselect || case == Some("trusted"));
     let wave = matches!(case, Some("spatial_wav" | "spatial_wav_48k"));
     let indexed = matches!(case, Some("indexed_flac" | "indexed_wrong_digest"));
     assert!(!indexed || cfg!(all(target_os = "linux", target_arch = "x86_64")));
@@ -246,6 +249,7 @@ fn main() {
                         engine,
                         evidence: native_evidence.clone(),
                         record_rate: rate_48k,
+                        observe_stops: stop_reselect,
                     }))
                 });
             tauri::async_runtime::block_on(client.start_local_library())?;
@@ -259,6 +263,7 @@ fn main() {
                 expect_graph,
                 exercise_peq,
                 exercise_spatial,
+                stop_reselect,
                 indexed,
                 fixture_source,
                 started: AtomicBool::new(false),
@@ -294,16 +299,20 @@ fn main() {
                 let proof = handle.state::<Proof>();
                 let client = handle.state::<MusicClient>();
                 let initial_epoch = client.account().ok().map(|account| account.epoch);
-                let result: Result<Value> = flow::verify(
-                    &client,
-                    &proof.store,
-                    proof.file.clone(),
-                    &proof.evidence,
-                    proof.expect_graph,
-                    proof.exercise_peq,
-                    proof.indexed,
-                )
-                .await;
+                let result = if proof.stop_reselect {
+                    flow::verify_stop_reselect(&client, proof.file.clone(), &proof.evidence).await
+                } else {
+                    flow::verify(
+                        &client,
+                        &proof.store,
+                        proof.file.clone(),
+                        &proof.evidence,
+                        proof.expect_graph,
+                        proof.exercise_peq,
+                        proof.indexed,
+                    )
+                    .await
+                };
                 let (name, mut report, code) = match result {
                     Ok(report) => ("report.json", report, 0),
                     Err(error) => (

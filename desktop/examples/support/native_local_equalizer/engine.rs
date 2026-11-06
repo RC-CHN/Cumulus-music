@@ -51,6 +51,7 @@ pub struct Poll {
 #[derive(Default, Serialize)]
 pub struct Observations {
     pub ordinary_loads: usize,
+    pub pinned_stops: Vec<&'static str>,
     pub stock_codecs: Vec<Option<String>>,
     pub stock_entries: Vec<i64>,
     pub decoded_formats: BTreeMap<i64, [u32; 2]>,
@@ -99,8 +100,12 @@ pub struct Recorded {
     pub engine: MpvEngine,
     pub evidence: Evidence,
     pub record_rate: bool,
+    pub observe_stops: bool,
 }
 impl AudioEngine for Recorded {
+    fn reopen_retired_local_sink(&mut self, cancel: &Cancellation) -> Result<bool> {
+        self.engine.reopen_retired_local_sink(cancel)
+    }
     fn decoded_audio_format(&mut self, entry: i64) -> Result<Option<DecodedAudioFormat>> {
         self.engine.decoded_audio_format(entry)
     }
@@ -244,7 +249,32 @@ impl AudioEngine for Recorded {
         self.engine.speed(value)
     }
     fn stop(&mut self) -> Result<()> {
-        self.engine.stop()
+        let pinned = self
+            .observe_stops
+            .then(|| self.engine.local_equalizer_entry())
+            .flatten();
+        self.engine.stop()?;
+        if let Some(entry) = pinned {
+            let observation = match self.engine.poll() {
+                Ok(value)
+                    if value.entry_id.is_none()
+                        && value.events.iter().any(|event| {
+                            matches!(event, EngineEvent::Ended {
+                        entry_id, reason: EndReason::Stop, error: 0,
+                    } if *entry_id == entry)
+                        }) =>
+                {
+                    "exact_stop"
+                }
+                Err(cumulus_core::Error::Playback {
+                    operation: "native sink retired",
+                    code: -1,
+                }) => "native_destroyed",
+                _ => "unexpected",
+            };
+            self.evidence.lock().unwrap().pinned_stops.push(observation);
+        }
+        Ok(())
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
         let value = self.engine.poll().inspect_err(|error| {
