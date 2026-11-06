@@ -2,6 +2,7 @@
 (async () => {
   const mode = window.__voiceSongDownloadCase;
   const output = window.__voiceSongDownloadRoot;
+  const playCompleted = window.__voiceSongDownloadLocalPlay === true;
   const q = (selector, root = document) => root?.querySelector(selector) ?? null;
   const all = (selector, root = document) => [...(root?.querySelectorAll(selector) ?? [])];
   const panel = () => q('.lyrics-panel:not(.lyrics-panel-leave-active)');
@@ -29,6 +30,7 @@
   const stateView = (value) => ({
     kind: value.resourceKind, trackId: value.track?.id, voiceId: value.track?.voiceId,
     playId: value.playId, entryId: value.entryId, state: value.state, position: value.position,
+    downloadTaskId: value.downloadTaskId ?? null,
     seeking: value.nativeSeeking, error: value.error,
   });
   async function tasks() {
@@ -71,12 +73,16 @@
     return trace.find((call) => call.name === name)?.result;
   }
   function projection() {
+    const finished = q('#download-tab-song[aria-selected="true"]');
+    const finishedRows = finished ? all('[data-download-task]', q('.downloads-page')) : [];
     return { picker: picker()?.dataset.voiceDownloadStage ?? null,
       options: visible(options()), pickerRows: all('.collect-row', picker()).map((node) => node.getAttribute('aria-label')),
       title: (options() ?? picker())?.querySelector('h2')?.textContent.trim() ?? null,
       status: (options() ?? picker())?.querySelector('[role="status"]')?.textContent.trim() ?? null,
       focus: document.activeElement?.getAttribute('data-row-index') ?? null,
-      downloads: visible(q('.downloads-page')), vinyl: visible(panel()) };
+      downloads: visible(q('.downloads-page')), vinyl: visible(panel()),
+      completedRows: finishedRows.map((node) => ({ id: node.dataset.downloadTask,
+        current: node.getAttribute('aria-current'), text: node.textContent.trim() })) };
   }
   async function capture(name, extra = {}) {
     await wait(() => !q('dialog.modal-enter-active,dialog.modal-leave-active,.lyrics-panel-enter-active,.lyrics-panel-leave-active'),
@@ -85,8 +91,9 @@
     const current = { player: stateView(await state()), queue: await queue() };
     const records = await tasks();
     if (!baseline) baseline = current;
-    assert(same(current, baseline), 'same paused episode clock, decoder and queue at every stage');
-    if (name !== 'transferred') assert(!records.active.length && !records.done.length, 'no task before actual start');
+    if (name !== 'played_local')
+      assert(same(current, baseline), 'same paused episode clock, decoder and queue before explicit local playback');
+    if (!['transferred', 'completed_visible', 'played_local'].includes(name)) assert(!records.active.length && !records.done.length, 'no task before actual start');
     const id = `ux_${String(++count).padStart(2, '0')}_${name}`;
     window.__podcastProgressStage = '';
     await emit(id, { ...current, mode, actual: document.visibilityState === 'visible', records,
@@ -128,6 +135,34 @@
     assert(done.source === 'song' && done.trackId === '1710' && done.quality === 'standard' &&
       done.path?.endsWith('.mp3') && done.bytes > 0 && !done.encrypted, 'complete plain standard song artifact');
     await capture('transferred');
+    if (!playCompleted) return;
+    await click(() => q('#download-tab-song'), 'open actual 已下载单曲 tab');
+    const finished = () => q(`[data-download-task="${done.id}"]`, q('.downloads-page'));
+    const item = await wait(() => q('#download-tab-song[aria-selected="true"]') && visible(finished()) &&
+      finished().textContent.includes('合成包含歌曲 1710') &&
+      !q('button[aria-label="播放下载 合成包含歌曲 1710"]', finished())?.disabled && finished(),
+      'exact finished task painted and can play');
+    await capture('completed_visible');
+    item.focus({ preventScroll: true });
+    assert(document.activeElement === item, 'exact finished row owns focus');
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    const playing = await wait(async () => {
+      const current = await state();
+      return current.resourceKind === 'downloaded' && current.track?.id === '1710' &&
+        current.downloadTaskId === done.id && current.playId !== baseline.player.playId &&
+        current.state === 'playing' && current.position > .16 && !current.nativeSeeking && !current.error && current;
+    }, 'native downloaded MP3 starts and clock advances');
+    await click(() => button('暂停'), 'park the exact new downloaded decoder');
+    let prior;
+    await wait(async () => {
+      const current = await state();
+      if (current.state !== 'paused' || current.playId !== playing.playId || current.nativeSeeking ||
+          current.error || current.position < playing.position) return false;
+      const settled = prior === current.position;
+      prior = current.position;
+      return settled && q('[aria-current="true"]', q('.downloads-page')) === finished();
+    }, 'completed row follows the same newly paused decoder');
+    await capture('played_local', { playing: stateView(playing) });
   }
   try {
     assert(['liked', 'cancel', 'existing_rejected', 'create_rejected', 'recover'].includes(mode) &&
@@ -144,7 +179,7 @@
       'playerVoiceSongDownloadChoosePlaylist', 'playerVoiceSongDownloadPickerStatus',
       'playerVoiceSongDownloadCreatePlaylist', 'playerVoiceSongDownloadCreationStatus',
       'playerVoiceSongDownloadAddCreatedPlaylist', 'playerVoiceSongDownloadStartFromPlaylist',
-      'downloadCommand', 'playlistCollectPage'];
+      'downloadCommand', 'playlistCollectPage', ...(playCompleted ? ['playSelection'] : [])];
     const originals = methods.map((name) => core[name]);
     assert(originals.every((method) => typeof method === 'function'), 'real typed adapters installed');
     methods.forEach((name, index) => {
@@ -265,7 +300,7 @@
       }
     }
     reset();
-    await emit('complete', { ok: true, count, mode, realMusicRequests: 0, realAccountWrites: 0, physicalAudioVerified: false });
+    await emit('complete', { ok: true, count, mode, playCompleted, realMusicRequests: 0, realAccountWrites: 0, physicalAudioVerified: false });
   } catch (error) {
     reset?.();
     await emit('failed', { ok: false, mode, last, count, error: String(error),

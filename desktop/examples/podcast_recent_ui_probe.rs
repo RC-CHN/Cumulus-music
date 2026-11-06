@@ -670,15 +670,24 @@ fn main() {
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     let wave = relay_fixture::wave(&root).unwrap();
-    let mut client = MusicClient::with_session(session, registry)
-        .with_audio_factory(move || Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)));
+    let synthetic_download_root = root.join("download-output");
+    let play_completed =
+        std::env::var("CUMULUS_VOICE_SONG_DOWNLOAD_LOCAL_PLAY_PROOF").as_deref() == Ok("1");
+    assert!(!play_completed || voice_song_download_case.as_deref() == Some("liked"));
+    let allowed_download = play_completed.then(|| synthetic_download_root.clone());
+    let mut client = MusicClient::with_session(session, registry).with_audio_factory(move || {
+        let audio = relay_fixture::NativeAudio::open(wave.clone())?;
+        Ok(Box::new(match &allowed_download {
+            Some(directory) => audio.allow_download_directory(directory.clone()),
+            None => audio,
+        }))
+    });
     if let Some(palette) = palette {
         client = client.with_scene_fm_palette_backend(palette);
     }
     if let Some(backend) = voice_song_download {
         client = client.with_download_backend(backend);
     }
-    let synthetic_download_root = root.join("download-output");
     if voice_song_download_case.is_some() {
         fs::create_dir(&synthetic_download_root).unwrap();
     }
@@ -905,7 +914,7 @@ fn main() {
                 }
                 if let Some(case) = &voice_song_download_case {
                     view.eval(format!(
-                        "window.__voiceSongDownloadCase = {}; window.__voiceSongDownloadRoot = {};",
+                        "window.__voiceSongDownloadCase = {}; window.__voiceSongDownloadRoot = {}; window.__voiceSongDownloadLocalPlay = {play_completed};",
                         json!(case), json!(synthetic_download_root)
                     )).unwrap();
                 }

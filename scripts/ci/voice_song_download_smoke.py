@@ -55,10 +55,10 @@ def persisted(root):
     return records
 
 
-def verify(case, root, stages, complete):
-    labels = CASES[case]
+def verify(case, root, stages, complete, play_completed):
+    labels = CASES[case] + (('completed_visible', 'played_local') if play_completed else ())
     assert tuple(stages) == labels and complete['mode'] == case and complete['ok'], complete
-    assert complete['count'] == len(labels)
+    assert complete['count'] == len(labels) and complete['playCompleted'] is play_completed
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert complete['physicalAudioVerified'] is False
     first, last = stages['song_card'], stages[labels[-1]]
@@ -68,10 +68,10 @@ def verify(case, root, stages, complete):
     assert [entry['track']['voiceId'] for entry in first['queue']['tracks']] == ['601', '602'], first['queue']
     assert first['queue']['current'] == player['entryId'], first
     assert all(stage['actual'] and stage['mode'] == case and
-               stage['player'] == player and stage['queue'] == first['queue']
-               for stage in stages.values()), stages
+               (label == 'played_local' or (stage['player'] == player and stage['queue'] == first['queue']))
+               for label, stage in stages.items()), stages
     assert all(stage['records'] == {'active': [], 'done': []}
-               for label, stage in stages.items() if label != 'transferred'), stages
+               for label, stage in stages.items() if label not in ('transferred', 'completed_visible', 'played_local')), stages
     [card_read] = actions(first, 'playerVoiceSongs')
     epoch, play_id = card_read['args']
     card = card_read['result']
@@ -187,6 +187,33 @@ def verify(case, root, stages, complete):
                               [target, choice['continuation'], options])
             assert not actions(last, 'playerVoiceSongDownloadStart')
         assert accepted['accepted'] == [task['id']] and accepted['failed'] == []
+        if play_completed:
+            showing, local = stages['completed_visible'], stages['played_local']
+            assert showing['records'] == local['records'] == stages['transferred']['records']
+            [row] = showing['dom']['completedRows']
+            assert row['id'] == task['id'] and row['current'] is None and '合成包含歌曲 1710' in row['text']
+            [row] = local['dom']['completedRows']
+            assert row['id'] == task['id'] and row['current'] == 'true'
+            [selection] = actions(local, 'playSelection')
+            owner, request = selection['args']
+            assert owner == epoch and request['kind'] == 'downloads' and request['start_id'] == task['id']
+            assert request['query']['tab'] == 'completed' and request['query']['category'] == 'song'
+            assert selection['result']['downloadTaskId'] == task['id'] and 'error' not in selection
+            playing, parked = local['playing'], local['player']
+            assert (playing['kind'], playing['trackId'], playing['downloadTaskId'], playing['state']) == (
+                'downloaded', '1710', task['id'], 'playing',
+            )
+            assert .16 < playing['position'] <= parked['position'] and parked['state'] == 'paused'
+            assert not any(view['error'] or view['seeking'] or 'voiceId' in view for view in (playing, parked))
+            assert parked['playId'] == playing['playId'] != player['playId']
+            assert parked['entryId'] == playing['entryId'] == local['queue']['current']
+            [entry] = local['queue']['tracks']
+            assert entry['entryId'] == parked['entryId'] and entry['track']['id'] == '1710'
+            assert showing['voiceSongsTrace']['mediaReads'] == local['voiceSongsTrace']['mediaReads'] == (
+                complete['voiceSongsTrace']['mediaReads']
+            )
+            assert all(row[2] in ('1601', '1602') for row in complete['voiceSongsTrace']['mediaReads'])
+            assert showing['voiceSongDownloadTrace']['calls'] == local['voiceSongDownloadTrace']['calls'] == expected
     else:
         assert not actions(last, 'playerVoiceSongDownloadStart', 'playerVoiceSongDownloadStartFromPlaylist',
                            'downloadCommand')
@@ -194,7 +221,8 @@ def verify(case, root, stages, complete):
         assert not any(kind == 'download_tasks_v1' for kind, _ in records)
         assert not list((root / 'run/download-output').iterdir())
     return {'syntheticCalls': len(expected), 'journalEntries': len(journal_ids), 'mediaBytes': media_bytes,
-            'mediaSha256': sha256(MP3.read_bytes()).hexdigest() if media_bytes else None}
+            'mediaSha256': sha256(MP3.read_bytes()).hexdigest() if media_bytes else None,
+            'localPlayback': play_completed}
 
 
 def run(args, root, case):
@@ -202,6 +230,8 @@ def run(args, root, case):
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_VOICE_SONG_DOWNLOAD_PROOF=case,
                CUMULUS_PODCAST_SCENE_HOME_PROOF='automatic')
+    if args.play_completed:
+        env['CUMULUS_VOICE_SONG_DOWNLOAD_LOCAL_PLAY_PROOF'] = '1'
     if sys.platform == 'linux':
         env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
     if args.frontend_dist:
@@ -218,12 +248,12 @@ def run(args, root, case):
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert result == 0, (root / 'host.log').read_text(encoding='utf-8')
     stages = {p.stem.split('_', 2)[2]: read(p) for p in sorted(output.glob('ux_*.json'))}
-    evidence = verify(case, root, stages, read(output / 'complete.json'))
+    evidence = verify(case, root, stages, read(output / 'complete.json'), args.play_completed)
     if sys.platform == 'linux':
         locale = read(output / 'locale.json')
         assert locale['numeric'] == 'C' and all(locale[key] != 'C' for key in ('messages', 'characters')), locale
     pngs = list(output.glob('ux_*.png'))
-    assert len(pngs) == (len(CASES[case]) if args.screenshots else 0), pngs
+    assert len(pngs) == (len(stages) if args.screenshots else 0), pngs
     return {'case': case, 'stages': len(stages), 'screenshots': len(pngs), **evidence}
 
 
@@ -235,10 +265,13 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--case', choices=('all', *CASES), default='all')
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--play-completed', action='store_true', help='after the liked case, play the completed local MP3')
     parser.add_argument('--script', type=Path, help='override only the embedded synthetic driver')
     args = parser.parse_args()
     if sys.platform not in ('linux', 'win32') or (args.screenshots and sys.platform != 'linux'):
         parser.error('use Linux X11 or Windows; screenshots require X11')
+    if args.play_completed and args.case != 'liked':
+        parser.error('--play-completed requires --case liked')
     if sys.platform == 'linux':
         require_xvfb()
     if args.runtime:
