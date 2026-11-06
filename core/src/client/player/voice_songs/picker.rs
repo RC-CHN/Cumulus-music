@@ -1,4 +1,5 @@
-//! The existing-owned-playlist completion of official 「下载到歌单」.
+//! Owned playlist destinations for official 「下载到歌单」.
+mod creation;
 use super::{
     MusicClient,
     actions::Page,
@@ -12,6 +13,7 @@ use crate::{
     playlist::{PlaylistCommand, PlaylistMutation, PlaylistPhase, PlaylistService, TrackChange},
     protocol::api::identifier,
 };
+pub use creation::VoiceSongDownloadCreation;
 use serde::Serialize;
 use serde_json::json;
 use std::sync::{
@@ -22,11 +24,57 @@ use std::sync::{
 #[derive(Clone)]
 struct Attempt {
     index: usize,
-    playlist: String,
+    destination: Destination,
     operation: String,
     permit: String,
     consumed: Arc<AtomicBool>,
     busy: bool,
+}
+
+#[derive(Clone)]
+enum Destination {
+    Existing(String),
+    New {
+        name: String,
+        private: bool,
+        create: String,
+        playlist: Option<String>,
+    },
+}
+
+impl Destination {
+    fn playlist(&self) -> Option<&str> {
+        match self {
+            Self::Existing(playlist) => Some(playlist),
+            Self::New { playlist, .. } => playlist.as_deref(),
+        }
+    }
+
+    fn create_operation(&self) -> Option<&str> {
+        match self {
+            Self::Existing(_) => None,
+            Self::New { create, .. } => Some(create),
+        }
+    }
+
+    fn same_request(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Existing(a), Self::Existing(b)) => a == b,
+            (
+                Self::New {
+                    name: a,
+                    private: x,
+                    ..
+                },
+                Self::New {
+                    name: b,
+                    private: y,
+                    ..
+                },
+            ) => a == b && x == y,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -35,6 +83,25 @@ pub(super) struct Shelf(Mutex<Option<Attempt>>);
 struct Lease<'a> {
     shelf: &'a Shelf,
     attempt: Attempt,
+}
+
+impl Lease<'_> {
+    fn bind_created(&mut self, id: &str) -> Result<()> {
+        let mut slot = self.shelf.0.lock().map_err(|_| Error::LockPoisoned)?;
+        let active = slot
+            .as_mut()
+            .filter(|active| active.operation == self.attempt.operation && active.busy)
+            .ok_or(Error::StaleResponse)?;
+        let Destination::New { playlist, .. } = &mut active.destination else {
+            return Err(Error::StaleResponse);
+        };
+        if playlist.as_deref().is_some_and(|existing| existing != id) {
+            return Err(Error::StaleResponse);
+        }
+        *playlist = Some(id.into());
+        self.attempt.destination = active.destination.clone();
+        Ok(())
+    }
 }
 
 impl Drop for Lease<'_> {
@@ -55,32 +122,41 @@ impl Shelf {
         service: &PlaylistService,
         page: &Page,
         index: usize,
-        playlist: &str,
-    ) -> Result<(Lease<'a>, Option<PlaylistMutation>)> {
+        destination: Destination,
+    ) -> Result<(Lease<'a>, bool)> {
         let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         if let Some(active) = slot.as_mut() {
             if active.busy {
                 return Err(Error::MutationBusy);
             }
-            if let Some(record) = service.operation_for(&page.token, &active.operation)? {
-                if active.index == index && active.playlist == playlist {
+            let add = service.operation_for(&page.token, &active.operation)?;
+            let create = match active.destination.create_operation() {
+                Some(operation) => service.operation_for(&page.token, operation)?,
+                None => None,
+            };
+            if add.is_some() || create.is_some() {
+                if active.index == index && active.destination.same_request(&destination) {
                     active.busy = true;
                     return Ok((
                         Lease {
                             shelf: self,
                             attempt: active.clone(),
                         },
-                        Some(record),
+                        true,
                     ));
                 }
-                if record.phase.pending() {
+                if [add.as_ref(), create.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|record| record.phase.pending())
+                {
                     return Err(Error::MutationUncertain);
                 }
             }
         }
         let attempt = Attempt {
             index,
-            playlist: playlist.into(),
+            destination,
             operation: uuid::Uuid::new_v4().simple().to_string(),
             permit: uuid::Uuid::new_v4().simple().to_string(),
             consumed: Arc::new(AtomicBool::new(false)),
@@ -92,7 +168,7 @@ impl Shelf {
                 shelf: self,
                 attempt,
             },
-            None,
+            false,
         ))
     }
 
@@ -141,9 +217,10 @@ fn result(
         .ok_or(Error::StaleResponse)?
         .track
         .id;
+    let playlist = attempt.destination.playlist().ok_or(Error::StaleResponse)?;
     if record.operation_id != attempt.operation
-        || record.playlist_id.as_deref() != Some(attempt.playlist.as_str())
-        || !matches!(&record.command, PlaylistCommand::Tracks {id, change: TrackChange::Add, ids, ..} if id == &attempt.playlist && ids.as_slice() == [song.as_str()])
+        || record.playlist_id.as_deref() != Some(playlist)
+        || !matches!(&record.command, PlaylistCommand::Tracks {id, change: TrackChange::Add, ids, ..} if id == playlist && ids.as_slice() == [song.as_str()])
     {
         return Err(Error::State(
             "picker completion belongs to a different playlist action",
@@ -152,18 +229,20 @@ fn result(
     // FavouriteModal calls modalCallback(false) for an existing destination
     // even when the add result is false. A proved service rejection is that
     // case; a never-sent request or an unresolved transport loss is not.
-    let completed = matches!(
-        record.phase,
-        PlaylistPhase::Confirmed | PlaylistPhase::Unchanged
-    ) || record.phase == PlaylistPhase::Rejected
-        && record.checked_at.is_some()
-        && record.error_class.as_deref() == Some("service")
-        && record.codes.contains_key("main");
+    let existing = matches!(attempt.destination, Destination::Existing(_));
+    let completed = record.phase == PlaylistPhase::Confirmed
+        && (existing || record.error_class.as_deref() != Some("service"))
+        || existing
+            && (record.phase == PlaylistPhase::Unchanged
+                || record.phase == PlaylistPhase::Rejected
+                    && record.checked_at.is_some()
+                    && record.error_class.as_deref() == Some("service")
+                    && record.codes.contains_key("main"));
     Ok(VoiceSongDownloadPicker {
         epoch: page.token.generation.to_string(),
         play_id: page.play_id.clone(),
         track_id: song.clone(),
-        playlist_id: attempt.playlist.clone(),
+        playlist_id: playlist.into(),
         operation_id: record.operation_id,
         phase: record.phase,
         continuation: (completed && !attempt.consumed.load(Ordering::Acquire))
@@ -215,9 +294,16 @@ impl MusicClient {
             .filter(|row| row.download == Class::Ordinary && row.playlist_eligible)
             .ok_or(Error::InvalidInput("invalid vinyl episode download row"))?;
         let service = PlaylistService::new(self.session.clone())?;
-        let (lease, existing) = page.picker.choose(&service, &page, index, &playlist)?;
-        let record = if let Some(record) = existing {
-            record
+        let (lease, existing) = page.picker.choose(
+            &service,
+            &page,
+            index,
+            Destination::Existing(playlist.clone()),
+        )?;
+        let record = if existing {
+            service
+                .operation_for(&page.token, &lease.attempt.operation)?
+                .ok_or(Error::StaleResponse)?
         } else {
             let plan = self
                 .player_voice_song_download_prepare(epoch, play_id, card_receipt, index)

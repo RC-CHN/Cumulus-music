@@ -12,6 +12,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "picker_creation.rs"]
+mod creation;
+
 const LIKED: &str = "/api/song/like/get";
 const DETAIL: &str = "/api/v6/playlist/detail";
 const ADD: &str = "/api/v1/playlist/manipulate/tracks";

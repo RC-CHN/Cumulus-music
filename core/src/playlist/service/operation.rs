@@ -1,4 +1,5 @@
 use super::*;
+use crate::protocol::api::{Api, GuardedPlaylistAdd, GuardedPlaylistCreate, validate_response};
 use serde_json::json;
 use std::collections::{BTreeMap, HashSet};
 pub(super) struct Ack {
@@ -85,6 +86,54 @@ pub(super) async fn send(
         } else {
             BTreeMap::from([("main".into(), 200)])
         },
+    })
+}
+
+pub(super) async fn send_guarded(
+    api: Arc<dyn Api>,
+    uid: String,
+    command: PlaylistCommand,
+    permission: &PlaylistAddPermission<'_>,
+    dispatched: &AtomicBool,
+) -> Result<Ack> {
+    let created = match command {
+        PlaylistCommand::Tracks {
+            id,
+            change: TrackChange::Add,
+            ids,
+            ..
+        } => {
+            let [song] = ids.as_slice() else {
+                return Err(Error::State("invalid guarded add selection"));
+            };
+            let response = api
+                .request_guarded_playlist_add(
+                    GuardedPlaylistAdd::new(id, song.clone()),
+                    permission,
+                    dispatched,
+                )
+                .await?;
+            validate_response(GuardedPlaylistAdd::PATH, response, &[200])?;
+            None
+        }
+        PlaylistCommand::Create { name, private } => {
+            let response = api
+                .request_guarded_playlist_create(
+                    GuardedPlaylistCreate::new(uid, name, private),
+                    permission,
+                    dispatched,
+                )
+                .await?;
+            let response = validate_response(GuardedPlaylistCreate::PATH, response, &[200])?;
+            Some(identifier(&response["id"]).map_err(|_| {
+                Error::Response("creation response has no playlist id; reconcile before retrying")
+            })?)
+        }
+        _ => return Err(Error::State("invalid guarded playlist command")),
+    };
+    Ok(Ack {
+        created,
+        codes: BTreeMap::from([("main".into(), 200)]),
     })
 }
 fn code(v: &Value) -> Option<i64> {

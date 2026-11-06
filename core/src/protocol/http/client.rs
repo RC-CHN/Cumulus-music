@@ -7,10 +7,10 @@ use crate::{
     account::credentials::{Credentials, RequestCredentials},
     protocol::{
         api::{
-            Api, ApiFuture, GuardedPlaylistAdd, GuardedSongLike, PlaylistAddPermission, SongLikePermission,
-            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
-            VinylRelatedPlaylistsRead, VinylSimilarSongsRead, VinylVoiceDetailRead,
-            VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
+            Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
+            PlaylistAddPermission, SongLikePermission, VinylCommentRead, VinylCommentWrite,
+            VinylCommentWritePermission, VinylPlaybackReadPermission, VinylRelatedPlaylistsRead,
+            VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -93,7 +93,7 @@ enum RequestBinding<'a> {
         permission: &'a SongLikePermission<'a>,
         dispatched: &'a AtomicBool,
     },
-    PlaylistAdd {
+    PlaylistWrite {
         permission: &'a PlaylistAddPermission<'a>,
         dispatched: &'a AtomicBool,
     },
@@ -217,6 +217,24 @@ impl MusicHttpClient {
             }
         }
         Ok(())
+    }
+
+    fn require_song_card_playlist_target<'a>(
+        &self,
+        path: &str,
+        revision: &str,
+        read_paths: impl IntoIterator<Item = &'a str>,
+    ) -> Result<()> {
+        let origin = self.credentials.origin();
+        // Both fixed playlist mutations are selected by path, not payload.
+        let route = select_route_with_policy(origin, path, &json!({}), self.options.routing)?;
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, path)?)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(&current, read_paths)
     }
 
     fn pc_experiment_revision_for(&self, require_account: bool) -> Result<String> {
@@ -727,7 +745,7 @@ impl MusicHttpClient {
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
             }
-            if let Some(RequestBinding::PlaylistAdd {
+            if let Some(RequestBinding::PlaylistWrite {
                 permission,
                 dispatched,
             }) = binding
@@ -1311,23 +1329,26 @@ impl Api for MusicHttpClient {
         let revision = self
             .song_card_download_scope_revision()?
             .ok_or(Error::CredentialChanged)?;
-        let origin = self.credentials.origin();
-        // Payload does not change routing for this fixed ordinary add path.
-        let route = select_route_with_policy(
-            origin,
+        self.require_song_card_playlist_target(
             GuardedPlaylistAdd::PATH,
-            &json!({"op":"add"}),
-            self.options.routing,
-        )?;
-        let target = origin.request_url(route, GuardedPlaylistAdd::PATH)?;
-        let current = self.credentials.request_credentials(&target)?;
-        if current.revision != revision {
-            return Err(Error::CredentialChanged);
-        }
-        self.check_account_cookie_scope(
-            &current,
+            &revision,
             [
                 "/api/v6/playlist/detail",
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
+    fn song_card_playlist_create_scope_revision(&self) -> Result<Option<String>> {
+        let revision = self
+            .song_card_playlist_scope_revision()?
+            .ok_or(Error::CredentialChanged)?;
+        self.require_song_card_playlist_target(
+            GuardedPlaylistCreate::PATH,
+            &revision,
+            [
+                "/api/user/playlist",
                 crate::protocol::pc_experiments::ASSIGNMENT_PATH,
             ],
         )?;
@@ -1348,7 +1369,30 @@ impl Api for MusicHttpClient {
                 false,
                 None,
                 Jsk::None,
-                Some(RequestBinding::PlaylistAdd {
+                Some(RequestBinding::PlaylistWrite {
+                    permission,
+                    dispatched,
+                }),
+            )
+            .await
+        })
+    }
+
+    fn request_guarded_playlist_create<'a>(
+        &'a self,
+        write: GuardedPlaylistCreate,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = write.into_request();
+            self.execute(
+                path,
+                payload,
+                false,
+                None,
+                Jsk::None,
+                Some(RequestBinding::PlaylistWrite {
                     permission,
                     dispatched,
                 }),

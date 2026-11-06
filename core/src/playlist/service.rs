@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    protocol::api::{GuardedPlaylistAdd, PlaylistAddPermission, identifier, validate_response},
+    protocol::api::{PlaylistAddPermission, identifier},
     storage::{OperationLock, StateStore},
 };
 use serde_json::{Value, json};
@@ -95,12 +95,7 @@ impl PlaylistService {
         self.session.with_token(token, |uid| self.records(uid))
     }
     pub async fn list(&self, token: &SessionToken) -> Result<PlaylistList> {
-        let value = self
-            .session
-            .run_for(token, |api, uid| async move {
-                PlaylistList::read(&PlaylistApi::new(api), &uid).await
-            })
-            .await?;
+        let value = self.read_list(token).await?;
         self.session.save_result(
             token,
             "playlist-cache",
@@ -108,6 +103,14 @@ impl PlaylistService {
             &serde_json::to_value(&value)?,
         )?;
         Ok(value)
+    }
+
+    async fn read_list(&self, token: &SessionToken) -> Result<PlaylistList> {
+        self.session
+            .run_for(token, |api, uid| async move {
+                PlaylistList::read(&PlaylistApi::new(api), &uid).await
+            })
+            .await
     }
     pub async fn detail(&self, token: &SessionToken, id: &str) -> Result<PlaylistSnapshot> {
         let value = self.read_detail(token, id).await?;
@@ -292,6 +295,68 @@ impl PlaylistService {
         .await
     }
 
+    /// The explicit name/privacy confirmation is the only producer; the
+    /// picker holds its separate add intent until the returned ID is verified.
+    pub(crate) async fn guarded_create_song_card(
+        &self,
+        token: &SessionToken,
+        operation_id: &str,
+        name: &str,
+        private: bool,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        let uid = self.owner(token)?;
+        let mut command = PlaylistCommand::Create {
+            name: name.into(),
+            private,
+        };
+        command.validate()?;
+        if operation_id.len() != 32 || !operation_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(Error::InvalidInput("invalid playlist operation identifier"));
+        }
+        let _lock = OperationLock::acquire(self.store.directory(), &uid, JOURNAL)?;
+        let records = self.records(&uid)?;
+        if records.iter().any(|r| r.operation_id == operation_id) {
+            return Err(Error::State(
+                "picker operation already exists; read back instead",
+            ));
+        }
+        if records
+            .iter()
+            .any(|r| r.phase.pending() && r.command.conflicts(&command))
+        {
+            return Err(Error::MutationUncertain);
+        }
+        let api = self.session.native_api(token)?;
+        let revision = api
+            .song_card_playlist_create_scope_revision()?
+            .ok_or(Error::State("guarded playlist create is unavailable"))?;
+        let credentials = || {
+            self.session.require_api(token, &api)?;
+            if api.song_card_playlist_create_scope_revision()?.as_deref() != Some(revision.as_str())
+            {
+                return Err(Error::CredentialChanged);
+            }
+            Ok(())
+        };
+        let check = || {
+            credentials()?;
+            permission()
+        };
+        check()?;
+        let before = self.read_list(token).await?;
+        check()?;
+        self.execute_prepared(
+            token,
+            &uid,
+            operation_id,
+            command,
+            serde_json::to_value(before)?,
+            Some((&check, &credentials)),
+        )
+        .await
+    }
+
     async fn execute_prepared(
         &self,
         token: &SessionToken,
@@ -340,30 +405,14 @@ impl PlaylistService {
             .session
             .run_for(token, |api, uid| async move {
                 if let Some(((permission, _), marker)) = dispatch {
-                    let PlaylistCommand::Tracks {
-                        id,
-                        ids,
-                        change: TrackChange::Add,
-                        ..
-                    } = command
-                    else {
-                        return Err(Error::State("invalid guarded add command"));
-                    };
-                    let [song] = ids.as_slice() else {
-                        return Err(Error::State("invalid guarded add selection"));
-                    };
-                    let response = api
-                        .request_guarded_playlist_add(
-                            GuardedPlaylistAdd::new(id, song.clone()),
-                            permission,
-                            &marker.dispatched,
-                        )
-                        .await?;
-                    validate_response(GuardedPlaylistAdd::PATH, response, &[200])?;
-                    return Ok(operation::Ack {
-                        created: None,
-                        codes: std::collections::BTreeMap::from([("main".into(), 200)]),
-                    });
+                    return operation::send_guarded(
+                        api,
+                        uid,
+                        command,
+                        permission,
+                        &marker.dispatched,
+                    )
+                    .await;
                 }
                 operation::send(PlaylistApi::new(api), &uid, command, before).await
             })
@@ -438,13 +487,42 @@ impl PlaylistService {
         operation_id: &str,
         check: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
+        self.reconcile_guarded_write(token, operation_id, check, false)
+            .await
+    }
+
+    pub(crate) async fn reconcile_guarded_create(
+        &self,
+        token: &SessionToken,
+        operation_id: &str,
+        check: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.reconcile_guarded_write(token, operation_id, check, true)
+            .await
+    }
+
+    async fn reconcile_guarded_write(
+        &self,
+        token: &SessionToken,
+        operation_id: &str,
+        check: &PlaylistAddPermission<'_>,
+        create: bool,
+    ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
         let _lock = OperationLock::acquire(self.store.directory(), &uid, JOURNAL)?;
         let record = self
             .operation_for(token, operation_id)?
             .ok_or(Error::State("picker playlist operation is missing"))?;
-        if !matches!(&record.command, PlaylistCommand::Tracks { change: TrackChange::Add, ids, .. } if ids.len() == 1)
-        {
+        let valid = match &record.command {
+            PlaylistCommand::Create { .. } => create,
+            PlaylistCommand::Tracks {
+                change: TrackChange::Add,
+                ids,
+                ..
+            } => !create && ids.len() == 1,
+            _ => false,
+        };
+        if !valid {
             return Err(Error::State("picker playlist operation is invalid"));
         }
         check()?;
@@ -473,7 +551,18 @@ impl PlaylistService {
             PlaylistCommand::Create { .. }
             | PlaylistCommand::Delete { .. }
             | PlaylistCommand::Subscribe { .. }
-            | PlaylistCommand::Order { .. } => serde_json::to_value(self.list(token).await?)?,
+            | PlaylistCommand::Order { .. } => {
+                if let Some(guard) = guard {
+                    guard()?;
+                    let list = serde_json::to_value(self.read_list(token).await?)?;
+                    guard()?;
+                    self.session
+                        .save_result(token, "playlist-cache", "list", &list)?;
+                    list
+                } else {
+                    serde_json::to_value(self.list(token).await?)?
+                }
+            }
             _ => {
                 let id = record.command.playlist_id().expect("detail command");
                 if let Some(guard) = guard {

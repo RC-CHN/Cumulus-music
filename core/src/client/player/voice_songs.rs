@@ -22,7 +22,7 @@ pub(super) use actions::Host;
 pub use actions::VoiceSongAction;
 use actions::{Page, Row};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
-pub use picker::VoiceSongDownloadPicker;
+pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
 use serde::Serialize;
 use serde_json::Value;

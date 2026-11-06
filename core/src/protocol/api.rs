@@ -18,6 +18,27 @@ pub struct GuardedPlaylistAdd {
     song: String,
 }
 
+pub struct GuardedPlaylistCreate {
+    uid: String,
+    name: String,
+    private: bool,
+}
+
+impl GuardedPlaylistCreate {
+    pub(crate) const PATH: &str = "/api/playlist/create";
+
+    pub(crate) fn new(uid: String, name: String, private: bool) -> Self {
+        Self { uid, name, private }
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (
+            Self::PATH,
+            json!({"uid":self.uid,"name":self.name,"privacy":if self.private {10} else {0}}),
+        )
+    }
+}
+
 impl GuardedPlaylistAdd {
     pub(crate) const PATH: &str = "/api/v1/playlist/manipulate/tracks";
 
@@ -364,6 +385,10 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    fn song_card_playlist_create_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Only a native transport can make the final synchronous dispatch check.
     fn request_guarded_playlist_add<'a>(
         &'a self,
@@ -372,6 +397,15 @@ pub trait Api: Send + Sync + std::any::Any {
         _dispatched: &'a std::sync::atomic::AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async { Err(Error::State("guarded playlist add is unavailable")) })
+    }
+
+    fn request_guarded_playlist_create<'a>(
+        &'a self,
+        _write: GuardedPlaylistCreate,
+        _permission: &'a PlaylistAddPermission<'a>,
+        _dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("guarded playlist create is unavailable")) })
     }
 
     /// Call permission and mark dispatched immediately before the transport
