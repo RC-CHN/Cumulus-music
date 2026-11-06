@@ -261,3 +261,28 @@ ERR counters stayed zero. See `.build/ui-proof/phase86-indexed-1024-i-speed-nobl
 The next Debian package gate runs the 4608-frame sequence including speed,
 seek and fresh selection against the exact hosted build. These results
 cover synthetic audio on the private output, not physical devices or Windows.
+
+An opt-in `Ffprobe::inspect_held_flac` can compare Windows scan metadata
+without giving FFprobe a pathname to reopen. It accepts a previously checked
+regular file with a plain FLAC marker and a separate leaf filename used only
+for metadata projection. It duplicates the existing file as child stdin,
+forces the FLAC demuxer, permits only the `fd` protocol, and restores the
+caller's original cursor after child exit. A failed probe has no pathname
+fallback. This helper does not validate the original open or enable a new
+scanner, queue, or playback route.
+
+The pinned Windows source archive in `scripts/ci/windows_media.lock.json`
+is FFmpeg 9.0.2. Its `libavformat/file.c:494–533` selects fd 0 for reads,
+checks it with `fstat`, and exposes seek on a regular input. Source recovery
+does not establish UCRT inheritance or installed metadata parity. To verify
+the exact staged Windows executable with its accompanying DLLs, set
+`CUMULUS_HELD_FFPROBE` to its absolute `ffprobe.exe` path, then run:
+
+cargo test -p cumulus-core --locked --test held_flac_probe -- --ignored --exact actual_ffprobe_held_flac_matches_path_metadata_and_never_reopens
+
+The test compares every projected field, including tagged and untagged title,
+duration, and bitrate. It substitutes another valid file at the same name,
+probes the original held file again, checks both cursor and following bytes,
+and requires a corrupt held FLAC to fail even when a valid pathname exists.
+These cases ran with the local Linux FFprobe 8.0.1; the bundled Windows
+FFprobe 9.0.2 test remains pending on an actual Windows runner.

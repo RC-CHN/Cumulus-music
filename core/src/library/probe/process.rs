@@ -1,6 +1,7 @@
 use crate::{Error, Result};
 use serde_json::Value;
 use std::{
+    fs::File,
     io::Read,
     path::Path,
     process::{Child, Command, Stdio},
@@ -28,7 +29,12 @@ fn drain(
         })
 }
 
-pub(super) fn run(executable: &Path, path: &Path, timeout: Duration) -> Result<Value> {
+pub(super) enum Input<'a> {
+    Path(&'a Path),
+    HeldFlac(File),
+}
+
+pub(super) fn run(executable: &Path, input: Input<'_>, timeout: Duration) -> Result<Value> {
     const ENTRIES: &str = concat!(
         "format=duration,bit_rate:",
         "format_tags=title,artist,album,track:",
@@ -53,21 +59,26 @@ pub(super) fn run(executable: &Path, path: &Path, timeout: Duration) -> Result<V
             .env_remove("PATH")
             .creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
+    let protocols = match &input {
+        Input::Path(_) => "file,pipe",
+        Input::HeldFlac(_) => "fd",
+    };
     command.args([
         "-v",
         "error",
         "-protocol_whitelist",
-        "file,pipe",
+        protocols,
         "-show_entries",
         ENTRIES,
         "-of",
         "json",
     ]);
-    command
-        .arg(path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    match input {
+        Input::Path(path) => command.arg(path).stdin(Stdio::null()),
+        Input::HeldFlac(file) => command.args(["-f", "flac", "-i", "fd:"]).stdin(file),
+    }
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
     let mut child = ChildGuard(command.spawn()?);
     const OUTPUT_LIMIT: usize = 1024 * 1024;
     let stdout = drain(child.0.stdout.take().expect("piped stdout"), OUTPUT_LIMIT)?;
