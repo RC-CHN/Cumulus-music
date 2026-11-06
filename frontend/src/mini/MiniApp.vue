@@ -631,7 +631,7 @@ onUnmounted(() => {
           (media?.state === 'loading' ? '正在加载…' : media?.item?.album || '云间音乐')
         }}</span
       >
-      <PlaybackVolume v-if="musicVolumeView" :player="musicVolume" />
+      <PlaybackVolume v-if="musicVolumeView" :player="musicVolume" mini />
       <template v-else>
         <Icon :name="media?.volume === 0 ? 'muted' : 'volume'" />
         <input

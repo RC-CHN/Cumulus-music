@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import { usePlaybackVolume, type VolumeControls } from '../composables/usePlaybackVolume';
 import Icon from './Icon.vue';
 import MenuTransition from './MenuTransition.vue';
-const props = defineProps<{ player: VolumeControls }>();
+const props = defineProps<{ player: VolumeControls; mini?: boolean }>();
 const model = usePlaybackVolume(props.player);
+const buttonLabel = computed(() =>
+  props.mini ? '音量调节' : model.value.value === 0 ? '取消静音' : '静音',
+);
 const opened = ref(false),
   root = ref<HTMLElement>(),
   trigger = ref<HTMLButtonElement>(),
@@ -29,8 +32,14 @@ function leave() {
     if (!root.value?.contains(document.activeElement) && !model.dragging.value) close();
   }, 120);
 }
+function hover() {
+  if (!props.mini) show();
+}
+function pointerLeave() {
+  if (!props.mini) leave();
+}
 function focus(event: FocusEvent) {
-  if (root.value?.contains(event.relatedTarget as Node)) return;
+  if (props.mini || root.value?.contains(event.relatedTarget as Node)) return;
   show();
 }
 function keydown(event: KeyboardEvent) {
@@ -44,6 +53,11 @@ function keydown(event: KeyboardEvent) {
     show();
     void nextTick(() => slider.value?.focus({ preventScroll: true }));
   }
+}
+function clickTrigger() {
+  if (!props.mini) model.toggleMute();
+  else if (opened.value) close(true);
+  else show();
 }
 function outside(event: PointerEvent) {
   if (!root.value?.contains(event.target as Node)) close();
@@ -74,8 +88,8 @@ onUnmounted(() => {
   <div
     ref="root"
     class="volume-control"
-    @pointerenter="show"
-    @pointerleave="leave"
+    @pointerenter="hover"
+    @pointerleave="pointerLeave"
     @focusin="focus"
     @focusout="leave"
     @keydown="keydown"
@@ -91,12 +105,14 @@ onUnmounted(() => {
     <button
       ref="trigger"
       class="icon-button volume-trigger"
-      :aria-label="model.value.value === 0 ? '取消静音' : '静音'"
-      :title="`${model.value.value === 0 ? '取消静音' : '静音'} · 音量 ${model.percent.value}%`"
+      :aria-label="buttonLabel"
+      :title="
+        mini ? `音量 ${model.percent.value}%` : `${buttonLabel} · 音量 ${model.percent.value}%`
+      "
       :aria-controls="opened ? id : undefined"
       :aria-expanded="opened"
       :disabled="!player.ready.value"
-      @click="model.toggleMute"
+      @click="clickTrigger"
     >
       <Icon :name="model.value.value === 0 ? 'muted' : 'volume'" />
     </button>

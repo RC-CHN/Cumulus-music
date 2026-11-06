@@ -64,14 +64,16 @@ def main():
     assert all(complete[k] for k in ['timeoutVerified', 'staleControlRejected', 'ipcIsolation',
                                     'reloadFallback', 'sharedAudio', 'closePolicy', 'accountIsolation',
                                     'ordinaryModeCycle', 'togetherModeCycle', 'roomModeTicketsRejected',
-                                    'volumeControlsVerified'])
+                                    'volumeControlsVerified', 'volumePopupToggleVerified', 'ordinaryVolumeMuteVerified'])
     states = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
-    assert len(states) == complete['stageCount'] == 20
+    assert len(states) == complete['stageCount'] == 21
     assert all(v['factoryCount'] == 1 and not v['mainVisible'] and len(v['miniWindows']) == 1 for v in states)
     assert all(not v['overflow'] and v['width'] == 420 and v['height'] in [206, 516] for v in states)
     assert states[0]['nativePlayer']['playId'] == states[1]['nativePlayer']['playId']
     assert states[0]['nativePlayer']['state'] == states[1]['nativePlayer']['state'] == 'paused'
     by_name=lambda name:next(s for s in states if s['stage'].endswith('_'+name))
+    assert by_name('volume_opened')['nativePlayer']['volume'] == states[0]['nativePlayer']['volume']
+    assert by_name('volume_opened')['nativePlayer']['playId'] == by_name('volume_muted')['nativePlayer']['playId']
     assert by_name('volume_muted')['nativePlayer']['volume'] == 0
     assert by_name('volume_muted')['nativeMini']['unmuteVolume'] == 31
     assert by_name('queue_first_page')['rows']==30 and by_name('queue_second_page')['rows']==10
@@ -93,6 +95,7 @@ def main():
         assert len(list(output.glob('ux_*.png'))) == len(states)
     report = dict(ok=True, actualWebViews=2, states=len(states),
                   screenshots=len(states) if args.screenshots else 0, sharedAudioFactoryCount=1,
+                  volumePopupToggleVerified=True, ordinaryVolumeMuteVerified=True,
                   realMusicRequests=0, physicalAudioOutputVerified=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
