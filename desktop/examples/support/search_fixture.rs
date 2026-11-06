@@ -1173,6 +1173,38 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     CALLS.fetch_add(1, Ordering::SeqCst);
     let mode = MODE.lock().unwrap().clone();
+    if std::env::var("CUMULUS_SEARCH_VOICE_AUTHOR_PROOF").as_deref() == Ok("1")
+        && category == "voices"
+        && args["keyword"] == "合成主播"
+    {
+        let rows = (401..=410)
+            .map(|id| {
+                let mut row = json!({"id":id,"name":format!("合成节目 {id}"),
+                "mainSong":{"id":1,"duration":60000},"duration":60000,
+                "radio":{"id":301,"name":"父播单","dj":{"userId":805,"nickname":"父播单作者"}}});
+                match id {
+                    407 => {
+                        row["dj"] =
+                            json!({"userId":501,"nickName":"合成主播甲","signature":"PRIVATE_DJ"});
+                        row["creator"] = json!({"userId":804,"nickname":"另一对象不能覆盖 DJ"});
+                    }
+                    408 => {
+                        row["dj"] =
+                            json!({"userId":502,"nickname":"停用合成主播","accountStatus":30})
+                    }
+                    409 => {
+                        row["creatorName"] = json!("文本合成主播");
+                        row["userId"] = json!(805);
+                    }
+                    _ => {}
+                }
+                json!({"type":"voice","baseInfo":row})
+            })
+            .collect::<Vec<_>>();
+        return Some(Ok(json!({"code":200,"data":{
+            "resources":rows,"totalCount":10,"hasMore":false
+        }})));
+    }
     if mode == "scroll_error" && args["offset"].as_u64().unwrap_or(0) > 0 {
         return Some(Err(Error::Transport("合成续页失败".into())));
     }

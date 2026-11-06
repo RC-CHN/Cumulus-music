@@ -160,6 +160,7 @@ def main():
     mode.add_argument('--hot-card', action='store_true')
     mode.add_argument('--hot-playback', action='store_true')
     mode.add_argument('--voice-direct', action='store_true')
+    mode.add_argument('--voice-author', action='store_true')
     mode.add_argument('--voice-download-submit', action='store_true')
     mode.add_argument('--card-matches', action='store_true')
     mode.add_argument('--correction-original', action='store_true')
@@ -209,6 +210,9 @@ def main():
         prefix = 'window.__cumulusSearchNextProof = true;\n'
     if args.song_waterfall:
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
+    if args.voice_author:
+        prefix = 'window.__cumulusSearchVoiceAuthorProof = true;\n'
+        env['CUMULUS_SEARCH_VOICE_AUTHOR_PROOF'] = '1'
     if args.voice_queue:
         prefix = 'window.__cumulusSearchVoiceQueueProof = true;\n'
     if args.voice_next:
@@ -288,6 +292,23 @@ def main():
     assert code == 0, f'probe exited {code}'
     if args.artist_top50:
         verify_artist_top50(root, args.artist_top50, args.screenshots)
+        return
+    if args.voice_author:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['voiceAuthorVerified'] and complete['stageCount'] == 3
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert complete['searchProfileCalls'] == [
+            {'all': True, 'userId': '501'}, {'uid': '501', 'offset': 0, 'limit': 1000},
+        ]
+        states = {p.stem.split('_', 2)[2]: json.loads(p.read_text(encoding='utf-8'))
+                  for p in first.glob('ux_*.json')}
+        assert set(states) == {'voice_author_link', 'voice_author_profile', 'voice_author_return'}
+        assert states['voice_author_link']['position'] > 0
+        assert abs(states['voice_author_return']['position'] - states['voice_author_link']['position']) <= 1
+        assert states['voice_author_return']['focus']
+        assert len(list(first.glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, voiceAuthorVerified=True, stageCount=3)))
         return
     if args.hot_playback:
         first = root / 'first'

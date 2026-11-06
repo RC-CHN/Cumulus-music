@@ -60,6 +60,49 @@
       await emit('complete',{ok:true,artistTop50Verified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusSearchVoiceAuthorProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(920,590,'light');
+      await fresh('合成主播');
+      assert(!one('[data-result-action="voice-creator"]'),'comprehensive keeps its own voice card contract');
+      await choose('voices');
+      const panel=()=>one('#search-result-panel');
+      const row=id=>one(`[data-result-key="voice:${id}"]`);
+      const author=()=>row(407)?.querySelector('[data-result-action="voice-creator"]');
+      panel().scrollTop=260;
+      await wait(()=>author()&&row(408)&&row(409),'scrolled native voice rows');
+      author().scrollIntoView({block:'nearest'});
+      await wait(()=>panel().scrollTop>0,'voice table can retain scrolling');
+      assert(author().getAttribute('aria-label')==='查看主播 合成主播甲 的主页'&&
+        author().querySelector('mark')?.textContent==='合成主播','official author name and keyword highlight');
+      assert(!row(408).querySelector('[data-result-action="voice-creator"]')&&
+        row(408).textContent.includes('停用合成主播'),'unavailable account stays plain text');
+      assert(!row(409).querySelector('[data-result-action="voice-creator"]')&&
+        row(409).textContent.includes('文本合成主播')&&
+        row(409).querySelector('[data-result-action="voice-radio"]'),'flat ID never replaces verified author or parent podcast');
+      assert(!row(407).outerHTML.includes('PRIVATE'),'native projection excludes private author metadata');
+      const position=panel().scrollTop;
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const before=await invoke('player_snapshot',{epoch});
+      author().focus({preventScroll:true});
+      await capture('voice_author_link',{position,author:'501'});
+      click(author());
+      await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成用户主页 501'&&
+        one('.playlist-creator-page [data-library-open="30"]'),'real public profile and owned playlist');
+      assert(!one('.podcast-page'),'author action never opened parent podcast');
+      await capture('voice_author_profile');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one('[data-category="voices"]')?.getAttribute('aria-selected')==='true'&&
+        document.activeElement===author()&&Math.abs(panel().scrollTop-position)<=1,'Back returns to exact voice-author focus and scroll');
+      const after=await invoke('player_snapshot',{epoch});
+      assert(after.queueRevision===before.queueRevision&&after.playId===before.playId&&
+        after.queueLen===before.queueLen,'author navigation does not mutate playback');
+      await capture('voice_author_return',{position:panel().scrollTop,author:'501',focus:true});
+      await emit('complete',{ok:true,voiceAuthorVerified:true,stageCount:count,
+        realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchHotPlaybackProof){
       await wait(()=>one('.track-row'),'daily ready');
       await theme(920,590,'light');
