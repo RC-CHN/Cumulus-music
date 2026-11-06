@@ -72,8 +72,10 @@ struct Slot {
 pub(in crate::client::player) struct Host(Mutex<Slot>);
 
 impl Host {
-    pub(super) fn start(&self) -> Result<u64> {
+    pub(super) fn start(&self, check: impl FnOnce() -> Result<()>) -> Result<u64> {
         let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        // A late stale read cannot replace a newer in-flight ticket.
+        check()?;
         slot.ticket = slot
             .ticket
             .checked_add(1)
@@ -89,11 +91,17 @@ impl Host {
         Ok(())
     }
 
-    pub(super) fn install(&self, ticket: u64, page: Arc<Page>) -> Result<()> {
+    pub(super) fn install(
+        &self,
+        ticket: u64,
+        page: Arc<Page>,
+        check: impl FnOnce() -> Result<()>,
+    ) -> Result<()> {
         let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         if slot.ticket != ticket {
             return Err(Error::StaleResponse);
         }
+        check()?;
         slot.page = (!page.rows.is_empty()).then_some(page);
         Ok(())
     }

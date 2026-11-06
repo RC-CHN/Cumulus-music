@@ -36,7 +36,7 @@ pub struct PlayerVoiceSongsView {
     pub tracks: Vec<TrackView>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct Seed {
     voice_id: String,
     entry_id: String,
@@ -44,7 +44,7 @@ struct Seed {
     source: EpisodeSource,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum EpisodeSource {
     Voice,
     Scene { id: String, revision: u64 },
@@ -274,12 +274,7 @@ impl MusicClient {
             .ok_or(Error::State(
                 "vinyl episode songs require signed native PC credentials",
             ))?;
-        let ticket = host.start()?;
-        let check_play = || {
-            check_scope()?;
-            host.reading(ticket)
-        };
-        let check_revision = || {
+        let check_authority = || {
             if api
                 .verified_pc_experiment_revision()
                 .map_err(stale_credentials)?
@@ -288,25 +283,29 @@ impl MusicClient {
             {
                 return Err(Error::StaleResponse);
             }
-            check_play()
+            check_scope()
+        };
+        let ticket = host.start(check_authority)?;
+        let check_read = || {
+            check_authority()?;
+            host.reading(ticket)
         };
         let reply = api
-            .request_vinyl_voice_songs(read, &revision, &check_play)
+            .request_vinyl_voice_songs(read, &revision, &check_read)
             .await;
-        check_revision()?;
+        check_read()?;
         let rows = tracks(reply.map_err(stale_credentials)?)?;
-        check_revision()?;
         let page = Arc::new(Page {
             token: token.clone(),
             play_id: play_id.into(),
-            seed: initial,
+            seed: initial.clone(),
             api: Arc::downgrade(&api),
-            revision,
+            revision: revision.clone(),
             rows,
             receipt: uuid::Uuid::new_v4().simple().to_string(),
             created: Instant::now(),
         });
-        host.install(ticket, page.clone())?;
+        host.install(ticket, page.clone(), check_authority)?;
         Ok(PlayerVoiceSongsView {
             play_id: page.play_id.clone(),
             voice_id: page.seed.voice_id.clone(),
