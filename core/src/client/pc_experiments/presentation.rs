@@ -566,6 +566,62 @@ mod tests {
     }
 
     #[test]
+    fn anonymous_speed_assignment_cannot_enable_or_leak_from_a_signed_player_scope() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
+        let saved = Flags {
+            search_footer: true,
+            song_speed: Some(true),
+            ..Flags::default()
+        };
+        store::save(&registry.store(), "anonymous:9001", saved).unwrap();
+        store::save(&registry.store(), "71", saved).unwrap();
+        let api: Arc<dyn Api> = Arc::new(GuestSample {
+            new_revision: AtomicBool::new(false),
+            rotate_during_owner_read: AtomicBool::new(false),
+        });
+        let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
+        session
+            .clear_current(&session.token().unwrap(), &api, || Ok(()))
+            .unwrap();
+        let client = MusicClient::with_session(session.clone(), registry);
+        let mut speed = client.pc_experiments.song_speed();
+
+        let guest = client.pc_presentation().unwrap();
+        assert!(guest.search_footer);
+        assert_eq!(speed.borrow_and_update().enabled, None);
+        let assigned = PcExperimentGroups::refreshed(&json!({"data":[
+            {"expName":"PH-PC-playSpeed","expGroupName":"t1"},
+            {"expName":"PH-PC-minibarNew","expGroupName":"t1"}
+        ]}))
+        .unwrap();
+        client
+            .pc_presentation_context()
+            .commit_presentation(&session.token().unwrap(), &api, "r1", &assigned)
+            .unwrap();
+        assert!(!client.pc_presentation().unwrap().search_footer);
+        assert!(!speed.has_changed().unwrap());
+
+        session
+            .adopt(api.clone(), json!({"userId":71}), &session.token().unwrap())
+            .unwrap();
+        let signed = client.pc_presentation().unwrap();
+        assert_ne!(signed.epoch, guest.epoch);
+        let observed = *speed.borrow_and_update();
+        assert_eq!(observed.enabled, Some(true));
+        assert_eq!(observed.epoch.to_string(), signed.epoch);
+
+        session
+            .clear_current(&session.token().unwrap(), &api, || Ok(()))
+            .unwrap();
+        let signed_out = client.pc_presentation().unwrap();
+        let observed = *speed.borrow_and_update();
+        assert_ne!(signed_out.epoch, signed.epoch);
+        assert_eq!(observed.enabled, None);
+        assert_eq!(observed.epoch.to_string(), signed_out.epoch);
+    }
+
+    #[test]
     fn mixed_anonymous_revision_sample_cannot_detour_through_local_guest_and_restore_old_flags() {
         let root = tempfile::tempdir().unwrap();
         let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
