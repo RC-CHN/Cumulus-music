@@ -166,6 +166,25 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     error.value = '';
     if (visible) void load(true);
   }
+  function openCard(id: string) {
+    const shown = page.value;
+    const receipt =
+      visible &&
+      !recentSelected.value &&
+      !loading.value &&
+      !busy.value &&
+      query.value.scope.kind === 'podcasts' &&
+      shown?.scope.kind === 'podcasts' &&
+      shown.epoch === epoch.value &&
+      shown.cards.some((card) => card.id === id && (card.newEpisodeCount ?? 0) > 0)
+        ? shown.subscribedBadgeReceipt
+        : undefined;
+    const owner = epoch.value;
+    navigate({ kind: 'radio', id, ascending: true });
+    // Only an explicit subscribed card navigation can submit this mutation.
+    // Unavailable/ambiguous clear never prevents ordinary detail navigation.
+    if (receipt) void core.podcastClearSubscribedBadge(owner, receipt, id).catch(() => {});
+  }
   function open(reference: string) {
     if (busy.value) return;
     const id = podcastReference(reference);
@@ -317,6 +336,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     state,
     externalLikeChanged,
     navigate,
+    openCard,
     open,
     back,
     search,

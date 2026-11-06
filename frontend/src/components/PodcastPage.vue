@@ -320,16 +320,25 @@ const pending = props.model.pending;
           :key="card.id"
           class="podcast-card"
           :data-radio-id="card.id"
-          @click="tab({ kind: 'radio', id: card.id, ascending: true })"
+          @click="model.openCard(card.id)"
         >
-          <img
-            v-if="card.coverUrl"
-            :src="card.coverUrl"
-            alt=""
-            loading="lazy"
-            referrerpolicy="no-referrer"
-          />
-          <div v-else class="podcast-art"><Icon name="music" /></div>
+          <div class="podcast-card-cover">
+            <img
+              v-if="card.coverUrl"
+              :src="card.coverUrl"
+              alt=""
+              loading="lazy"
+              referrerpolicy="no-referrer"
+            />
+            <div v-else class="podcast-art"><Icon name="music" /></div>
+            <span
+              v-if="card.newEpisodeCount"
+              class="podcast-new-badge"
+              data-podcast-new-badge
+              :aria-label="`${card.newEpisodeCount} 集新节目`"
+              >{{ card.newEpisodeCount > 99 ? '99+' : card.newEpisodeCount }}</span
+            >
+          </div>
           <strong>{{ card.name }}</strong
           ><span>{{ card.creator || '播客' }} · {{ card.programCount }} 集</span
           ><small v-if="card.unavailable">部分内容暂不可用</small>

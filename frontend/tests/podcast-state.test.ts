@@ -44,6 +44,7 @@ function deferred<T>() {
 function client(extra: Partial<PodcastClient> = {}): PodcastClient {
   return {
     podcastPage: async (e) => page(e),
+    podcastClearSubscribedBadge: async () => {},
     podcastRadioOrder: async (e) => ({ epoch: e, value: null }),
     podcastState: async (e) => ({ epoch: e, value: { likedIds: [], operations: [] } }),
     podcastCommand: async (e) => ({ epoch: e, value: operation('confirmed') }),
@@ -299,4 +300,59 @@ test('late saved-order read cannot issue a request for the abandoned radio', asy
   assert.deepEqual(radioReads, ['8']);
   assert.deepEqual(m.page.value?.scope, { kind: 'radio', id: '8', ascending: true });
   assert.equal(m.loading.value, false);
+});
+
+test('only an explicit positive subscribed card opens and consumes its exact native receipt', async () => {
+  const clears: string[][] = [];
+  const reads: string[] = [];
+  const m = usePodcasts(
+    client({
+      podcastPage: async (owner, q) => {
+        reads.push(q.scope.kind);
+        if (q.scope.kind !== 'podcasts') return { ...page(owner), scope: q.scope };
+        return {
+          ...page(owner),
+          scope: q.scope,
+          subscribedBadgeReceipt: `subscribed-${owner}`,
+          cards: [
+            {
+              id: '7',
+              name: 'Observed',
+              coverUrl: null,
+              creator: '',
+              description: '',
+              programCount: 50,
+              subscribed: true,
+              feeType: 0,
+              unavailable: false,
+              newEpisodeCount: 108,
+            },
+          ],
+        };
+      },
+      podcastClearSubscribedBadge: async (...args) => {
+        clears.push(args);
+        throw new Error('ambiguous synthetic response');
+      },
+    }),
+  );
+  m.connect(account());
+  m.show(true);
+  await m.load(true);
+  assert.deepEqual(clears, [], 'mount/read cannot clear');
+  m.open('7');
+  assert.deepEqual(clears, [], 'typed input deep link cannot clear');
+  assert.equal(m.query.value.scope.kind, 'radio');
+  m.back();
+  await m.load(true);
+  m.openCard('7');
+  assert.deepEqual(clears, [['1', 'subscribed-1', '7']]);
+  assert.equal(m.query.value.scope.kind, 'radio');
+  await m.load(true);
+  assert.equal(m.page.value?.scope.kind, 'radio');
+  await Promise.resolve();
+  assert.equal(m.error.value, '', 'ordinary detail survives an unknown clear result');
+  assert.equal(reads.includes('radio'), true);
+  assert.deepEqual(clears, [['1', 'subscribed-1', '7']], 'generic reload never retries');
+  m.dispose();
 });

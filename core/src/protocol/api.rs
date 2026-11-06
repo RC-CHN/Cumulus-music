@@ -216,6 +216,26 @@ impl VinylCommentWrite {
     }
 }
 
+/// Fixed same-account mutation from a previously observed subscribed row.
+pub struct PodcastBadgeClear(String);
+
+impl PodcastBadgeClear {
+    pub(crate) const PATH: &'static str = "/api/djradio/newcount/clear/byradio";
+
+    pub(crate) fn new(radio_id: &str) -> Result<Self> {
+        if radio_id.len() > 64 {
+            return Err(Error::InvalidInput("invalid podcast badge radio ID"));
+        }
+        Ok(Self(identifier(&json!(radio_id))?))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (Self::PATH, json!({"radioId": self.0}))
+    }
+}
+
+pub type PodcastBadgePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
@@ -238,6 +258,20 @@ pub trait Api: Send + Sync + std::any::Any {
         _allowed: &'a PodcastProgressPermission,
     ) -> ApiFuture<'a, ()> {
         Box::pin(async { Err(Error::State("podcast progress write is unavailable")) })
+    }
+
+    fn podcast_badge_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn clear_podcast_badge<'a>(
+        &'a self,
+        _write: PodcastBadgeClear,
+        _revision: &'a str,
+        _permission: &'a PodcastBadgePermission<'a>,
+        _dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async { Err(Error::State("podcast badge write is unavailable")) })
     }
 
     /// Native signed authority only. A generic API adapter does not acquire

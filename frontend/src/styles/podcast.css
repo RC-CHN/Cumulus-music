@@ -114,6 +114,23 @@
   object-fit: cover;
   border-radius: 12px;
 }
+.podcast-card-cover {
+  position: relative;
+  min-width: 0;
+}
+.podcast-card .podcast-new-badge {
+  position: absolute;
+  inset: 3px 3px auto auto;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  color: white;
+  background: #d42248;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .podcast-card strong {
   font-size: 14px;
   line-height: 1.5;

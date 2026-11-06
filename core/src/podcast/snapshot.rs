@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, sync::Arc};
 const CACHE: &str = "podcast-lists-v1";
 const VERSION: &str = "podcast-cache-generation-v1";
+const BADGE_OBSERVATION: &str = "podcast-badge-observation-v1";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PodcastScope {
@@ -32,6 +33,8 @@ pub struct PodcastSnapshot {
     pub source_ids: Vec<String>,
     pub remote_total: u64,
     generation: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) badge_observation: Option<String>,
 }
 pub struct PodcastLibrary {
     session: Arc<AccountSession>,
@@ -151,6 +154,22 @@ impl PodcastLibrary {
             Ok(snapshot.filter(|s| s.generation == version))
         })
     }
+    pub(crate) fn badge_observation_is_current(
+        &self,
+        token: &SessionToken,
+        observed: &str,
+    ) -> Result<bool> {
+        self.session.with_token(token, |owner| {
+            self.store.read_snapshot(|tx| {
+                let generation = tx
+                    .get(owner, VERSION, "current")?
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                Ok(tx.get(owner, BADGE_OBSERVATION, "current")?
+                    == Some(json!([generation, observed])))
+            })
+        })
+    }
     pub async fn read_for(
         &self,
         token: &SessionToken,
@@ -185,6 +204,9 @@ impl PodcastLibrary {
             })
             .await?;
         snapshot.generation = version;
+        if matches!(scope, PodcastScope::Podcasts) {
+            snapshot.badge_observation = Some(uuid::Uuid::new_v4().simple().to_string());
+        }
         snapshot.revision = hex::encode(Sha256::digest(serde_json::to_vec(&json!([
             scope,
             snapshot.source_ids,
@@ -204,6 +226,14 @@ impl PodcastLibrary {
                 if current != version {
                     return Err(Error::StaleResponse);
                 }
+                if let Some(observed) = &snapshot.badge_observation {
+                    tx.put(
+                        owner,
+                        BADGE_OBSERVATION,
+                        "current",
+                        &json!([version, observed]),
+                    )?;
+                }
                 tx.put(owner, CACHE, &key, &serde_json::to_value(&snapshot)?)
             })
         })?;
@@ -219,6 +249,7 @@ async fn fetch(api: PodcastApi, scope: &PodcastScope) -> Result<PodcastSnapshot>
         source_ids: vec![],
         remote_total: 0,
         generation: 0,
+        badge_observation: None,
     };
     match scope {
         PodcastScope::Podcasts | PodcastScope::Audiobooks => {

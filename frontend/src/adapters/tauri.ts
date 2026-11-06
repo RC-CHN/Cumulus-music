@@ -314,6 +314,8 @@ export function createTauriClient(): CoreClient {
     togetherCommand: (epoch, command) => invoke('together_command', { epoch, command }),
     podcastRadioOrder: (epoch, query) => invoke('podcast_radio_order', { epoch, query }),
     podcastPage: (epoch, query, refresh) => invoke('podcast_page', { epoch, query, refresh }),
+    podcastClearSubscribedBadge: (epoch, receipt, id) =>
+      invoke('podcast_clear_subscribed_badge', { epoch, receipt, id }),
     audiobookSkipSettings: (epoch, context, action) =>
       invoke('audiobook_skip_settings', { epoch, context, action }),
     podcastRecent: (epoch, query) => invoke('podcast_recent', { epoch, query }),

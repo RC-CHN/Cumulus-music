@@ -279,6 +279,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 podcast::podcast_radio_order,
                 podcast::audiobook_skip_settings,
                 podcast::podcast_recent,
+                podcast::podcast_clear_subscribed_badge,
                 podcast::profile_podcasts,
                 podcast::open_profile_podcast_management,
                 podcast::podcast_catalogue,

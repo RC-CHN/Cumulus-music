@@ -182,6 +182,25 @@ pub async fn podcast_page(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn podcast_clear_subscribed_badge<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "podcast badge action requires the main window",
+        )
+        .into());
+    }
+    client
+        .podcast_clear_subscribed_badge(&epoch, &receipt, &id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn podcast_recent(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

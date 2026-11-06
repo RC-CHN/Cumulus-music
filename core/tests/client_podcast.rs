@@ -1,5 +1,7 @@
 #[path = "client_podcast/audiobook.rs"]
 mod audiobook;
+#[path = "client_podcast/badges.rs"]
+mod badges;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;

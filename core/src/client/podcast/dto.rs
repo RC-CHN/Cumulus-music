@@ -47,6 +47,8 @@ pub struct PodcastCard {
     pub creator: String,
     pub description: String,
     pub program_count: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_episode_count: Option<u64>,
     pub subscribed: Option<bool>,
     pub fee_type: i64,
     pub unavailable: bool,
@@ -72,6 +74,8 @@ pub struct PodcastPage {
     pub scope: PodcastScope,
     pub revision: String,
     pub cards: Vec<PodcastCard>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscribed_badge_receipt: Option<String>,
     pub episodes: Vec<EpisodeView>,
     pub total: usize,
     pub offset: usize,

@@ -1,4 +1,6 @@
 pub(in crate::client) mod audiobook;
+mod badges;
+pub(super) use badges::Host as PodcastBadgeHost;
 mod discovery;
 mod dto;
 mod home;
@@ -128,6 +130,14 @@ impl MusicClient {
         if query.keyword.chars().count() > 200 {
             return Err(Error::InvalidInput("podcast search exceeds limit"));
         }
+        let badges = matches!(query.scope, PodcastScope::Podcasts)
+            .then(|| {
+                self.podcast_badges
+                    .begin(&self.session, &token, refresh)
+                    .ok()
+                    .flatten()
+            })
+            .flatten();
         let library = PodcastLibrary::new(self.session.clone())?;
         let snapshot = library.read_for(&token, &query.scope, refresh).await?;
         if query
@@ -185,15 +195,19 @@ impl MusicClient {
                     .is_ok_and(|value| value != AudiobookSkip::Close),
             ))
         })?;
-        view::page(
+        let mut page = view::page(
             epoch,
-            snapshot,
+            &snapshot,
             query,
             liked_ids,
             resume,
             operations,
             audiobook_skip_enabled,
-        )
+        )?;
+        self.podcast_badges
+            .project(&self.session, &token, badges, &snapshot, &mut page)?;
+        self.session.with_token(&token, |_| Ok(()))?;
+        Ok(page)
     }
     pub async fn podcast_command(
         &self,

@@ -33,6 +33,7 @@ export interface PodcastCard {
   creator: string;
   description: string;
   programCount: number;
+  newEpisodeCount?: number;
   subscribed: boolean | null;
   feeType: number;
   unavailable: boolean;
@@ -69,6 +70,7 @@ export interface PodcastPage {
   scope: PodcastScope;
   revision: string;
   cards: PodcastCard[];
+  subscribedBadgeReceipt?: string;
   episodes: EpisodeView[];
   total: number;
   offset: number;
@@ -99,6 +101,7 @@ export interface PodcastClient {
   podcastState(epoch: string, refresh: boolean): Promise<AccountData<PodcastState>>;
   podcastRadioOrder(epoch: string, query: PodcastRadioOrder): Promise<AccountData<boolean | null>>;
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;
+  podcastClearSubscribedBadge(epoch: string, receipt: string, id: string): Promise<void>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }
 export interface PodcastRecentEpisode extends EpisodeView {

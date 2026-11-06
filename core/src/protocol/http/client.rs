@@ -74,6 +74,10 @@ enum RequestBinding<'a> {
         dispatched: &'a AtomicBool,
     },
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
+    PodcastBadge {
+        permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     LegacyRenewal {
         permission: &'a (dyn Fn() -> Result<()> + Sync),
         dispatched: &'a AtomicBool,
@@ -432,11 +436,16 @@ impl MusicHttpClient {
                 .lock()
                 .map_err(|_| Error::LockPoisoned)? = None;
         }
+        if let Some(RequestBinding::PodcastBadge { permission, .. }) = binding {
+            permission()?;
+        }
         let target = origin.request_url(route, path)?;
         let snapshot = self.credentials.request_credentials(&target)?;
         if expected.is_some_and(|revision| revision != snapshot.revision)
-            || (matches!(binding, Some(RequestBinding::PodcastProgress(_)))
-                && snapshot.unique_music_u().is_none())
+            || (matches!(
+                binding,
+                Some(RequestBinding::PodcastProgress(_) | RequestBinding::PodcastBadge { .. })
+            ) && snapshot.unique_music_u().is_none())
             || (legacy_renewal && snapshot.unique_music_u().is_none())
         {
             return Err(Error::CredentialChanged);
@@ -620,6 +629,22 @@ impl MusicHttpClient {
                     return Err(Error::CredentialChanged);
                 }
                 permission()?;
+            }
+            if let Some(RequestBinding::PodcastBadge {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                let current = self.credentials.request_credentials(&target)?;
+                if origin != super::ApiOrigin::Pc
+                    || route != WireRoute::Eapi
+                    || current.revision != snapshot.revision
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                permission()?;
+                dispatched.store(true, Ordering::Relaxed);
             }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
@@ -823,6 +848,46 @@ impl Api for MusicHttpClient {
                 )
                 .await?;
             crate::protocol::api::validate_response(PLAYRECORD_PATH, response, &[200])?;
+            Ok(())
+        })
+    }
+
+    fn podcast_badge_revision(&self) -> Result<Option<String>> {
+        use crate::protocol::api::PodcastBadgeClear;
+        if self.credentials.origin() != super::ApiOrigin::Pc {
+            return Ok(None);
+        }
+        let target = super::ApiOrigin::Pc.request_url(WireRoute::Eapi, PodcastBadgeClear::PATH)?;
+        let snapshot = self.credentials.request_credentials(&target)?;
+        Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
+    }
+
+    fn clear_podcast_badge<'a>(
+        &'a self,
+        write: crate::protocol::api::PodcastBadgeClear,
+        revision: &'a str,
+        permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            if self.podcast_badge_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            let (path, payload) = write.into_request();
+            let value = self
+                .execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::PodcastBadge {
+                        permission,
+                        dispatched,
+                    }),
+                )
+                .await?;
+            crate::protocol::api::validate_response(path, value, &[200])?;
             Ok(())
         })
     }

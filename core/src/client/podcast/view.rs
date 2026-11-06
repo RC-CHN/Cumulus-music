@@ -21,6 +21,7 @@ pub(in crate::client) fn card(r: &Radio) -> PodcastCard {
         creator: creator(&r.raw),
         description: r.description.clone(),
         program_count: r.program_count,
+        new_episode_count: None,
         subscribed: r.subscribed,
         fee_type: r.raw["radioFeeType"].as_i64().unwrap_or(0),
         unavailable: r.raw["grayDisplay"] == true || r.raw["underShelf"] == true,
@@ -56,7 +57,7 @@ pub(super) fn operation(v: PodcastMutation) -> PodcastMutationView {
 }
 pub(super) fn page(
     epoch: &str,
-    snapshot: PodcastSnapshot,
+    snapshot: &PodcastSnapshot,
     query: PodcastQuery,
     liked_ids: Vec<String>,
     resume_enabled: Option<bool>,
@@ -100,7 +101,8 @@ pub(super) fn page(
     Ok(PodcastPage {
         epoch: epoch.into(),
         scope: query.scope,
-        revision: snapshot.revision,
+        revision: snapshot.revision.clone(),
+        subscribed_badge_receipt: None,
         cards: cards
             .into_iter()
             .skip(query.offset)
