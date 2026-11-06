@@ -1132,13 +1132,8 @@ fn main() {
                 }
                 let main=handle.get_webview_window("main").unwrap();
                 if value["stage"]=="queue-more-tip-focus" {
-                    queue_more_fixture::phase_milestone("focus_enter");
-                    let helper=handle.get_window("queue-tip-focus-helper").unwrap();
-                    if value["focus"]==true { helper.hide().unwrap(); main.set_focus().unwrap(); }
-                    else {helper.show().unwrap(); helper.set_focus().unwrap();}
                     let sequence=value["sequence"].as_u64().unwrap();
-                    main.eval(format!("window.__queueTipFocusAck={sequence};")).unwrap();
-                    queue_more_fixture::phase_milestone("focus_returned");
+                    queue_more_fixture::request_tip_focus(&handle, value["focus"]==true, sequence);
                     return;
                 }
                 let owner=fixture_session.token().unwrap().uid.unwrap_or_default();

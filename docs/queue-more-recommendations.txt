@@ -191,3 +191,18 @@ PC 3.1.42.205594 普通播放列表「更多推荐」
   主窗焦点检查、SQLite 收据校验或独立进程重启断言。
   Linux 使用该轮 CI 前端产物实跑全部 7 阶段并保留截图和 SQLite 证据：
   .build/ui-proof/rc02-native-queue-tip-r1/audit.json。Windows 以修复提交的 CI 为准。
+
+
+  后续 Windows CI 42154941650/127686729221 已完成原生辅助窗口创建与首次失焦，
+  不再崩溃；首轮下一次回焦在实际暂停且定位至零后失败。失败回执显示
+  nativeFocused=true、nativeVisible=true、document.hasFocus()=false、seen=false。
+  c5d225b4 的会员探针修改不涉及此路径。已锁 Tauri 2.11.5 的
+  WebviewWindow::set_focus 只调用 Tao Window::set_focus；Tao 0.35.3 只激活
+  顶层 HWND。测试辅助窗口保持可见至 Windows 观察到主 HWND 是 foreground，
+  再调用主窗口已存在的 Webview::set_focus；Wry 0.55.1 将它交给 WebView2
+  MoveFocus(PROGRAMMATIC)。这不是新建控制器、合成 DOM 焦点或跳过门槛。
+
+  测试分别等待顶层 foreground、现有控制器聚焦请求和主窗口原生焦点，
+  JS 再独立检查可见文档实际有无焦点。超时记录固定分类，未采集 HWND 或
+  任意错误串到诊断摘要；原有真实播放、原生 IPC、cue 时钟与 SQLite
+  校验不变。Windows 实际通过与否仍以修复提交自己的 CI 为准。

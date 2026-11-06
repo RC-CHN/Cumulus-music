@@ -31,8 +31,17 @@
   async function setFocus(focus) {
     const request = ++sequence;
     await emit('queue-more-tip-focus', { focus, sequence: request });
-    await wait(() => window.__queueTipFocusAck === request && document.hasFocus() === focus,
-      'native focus switched to ' + focus);
+    await wait(() => window.__queueTipFocusAck?.sequence === request, 'native focus receipt');
+    const ack = window.__queueTipFocusAck;
+    assert(ack.desired === focus && ack.outcome === 'focus_native_observed' &&
+      ack.nativeFocused === focus && ack.nativeVisible === true &&
+      (focus || ack.helperFocused === true), 'native focus failed: ' + ack.outcome);
+    try {
+      await wait(() => document.hasFocus() === focus, 'WebView document focus switched to ' + focus);
+    } catch (error) {
+      if (window.__queueTipPhaseMilestones) await milestone('focus_renderer_mismatch');
+      throw error;
+    }
     assert(document.visibilityState === 'visible', 'main window remains visible during focus test');
     if (window.__queueTipPhaseMilestones) await milestone('focus_observed');
   }
