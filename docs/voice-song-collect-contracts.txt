@@ -43,9 +43,21 @@ Native Cumulus scope
   journal still holds it for the same account. A proved existing membership
   can be Unchanged without a duplicate add; readback proves exact resulting
   membership and prior-item order, not server insertion position.
-- Rust core candidate; no desktop IPC or UI change in this slice. The
-  sealed HTTP tests exercise concrete ordered wire, account and destination
-  fences, first-item fallback, and lost-response recovery. No real writes.
+- Desktop uses four typed commands: prepare, read destination page, add to
+  observed destination, and read/reconcile the same operation. The renderer
+  sends card and selection receipts plus displayed indices; no raw song ID
+  can be selected for the write. The modal has default/recently tabs,
+  loading/empty/error and waiting states, an explicit “核对结果” action,
+  and returns focus to the originating episode row. Ordinary tracks keep
+  their existing independent menu and single-track action.
+- The Linux sealed WebKitGTK proof drives the group menu with trusted
+  pointer input: four selected, three eligible in selection order, one
+  blocked by collection privilege, one ordinary owned destination, zero
+  writes after cancellation, and one lost-reply add confirmed by readback.
+  The paused libmpv instance, clock and queue remain the same through all
+  thirteen stages; no real service access or account writes. Ctrl+S
+  enters the same workflow from a focused selected row; Windows desktop
+  gestures and real-account rights were not verified in this proof.
 
 Separate official destinations, not yet exposed here
 
