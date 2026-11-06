@@ -1,6 +1,6 @@
 //! Ordinary native file owner. No path can be opened through this module.
 use super::{
-    DecoderKind, FlacProfile, HeldInput, HeldPass, HeldSource, PcmWave, Selection, SourceAuthority,
+    DecoderKind, FlacRates, HeldInput, HeldPass, HeldSource, PcmWave, Selection, SourceAuthority,
     SourceGraph, Start,
 };
 use crate::{
@@ -41,30 +41,9 @@ impl NativeStereoSource {
         library: &Path,
         plan: LocalEqualizerMaterialPlan,
     ) -> Result<NativeStereoSelection> {
-        Self::select_flac(file, authority, library, plan, FlacProfile::NativeOpen)
-    }
-
-    /// The ordinary indexed caller has consumed its one-shot verified FLAC
-    /// receipt. Only that lane opts into reframing larger decoder callbacks.
-    pub(crate) fn select_indexed(
-        file: File,
-        authority: Cancellation,
-        library: &Path,
-        plan: LocalEqualizerMaterialPlan,
-    ) -> Result<NativeStereoSelection> {
-        Self::select_flac(file, authority, library, plan, FlacProfile::IndexedLocal)
-    }
-
-    fn select_flac(
-        file: File,
-        authority: Cancellation,
-        library: &Path,
-        plan: LocalEqualizerMaterialPlan,
-        profile: FlacProfile,
-    ) -> Result<NativeStereoSelection> {
         let reader = NativeStereoFile::new(file, authority)?;
         Ok(
-            match HeldSource::select_flac(reader, library, profile, |format| {
+            match HeldSource::select_flac(reader, library, FlacRates::Local, |format| {
                 SourceGraph::new_local(format, plan)
             })? {
                 Selection::Qualified(source) => {

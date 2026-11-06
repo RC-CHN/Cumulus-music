@@ -250,7 +250,7 @@ fn native_48k_flac_and_wave_share_source_rate_but_not_cold_flac_authority() {
     let (file, _) = checked_audio_file(&path, &fingerprint).unwrap();
     let reader = NativeStereoFile::new(file, Cancellation::default()).unwrap();
     assert!(matches!(
-        HeldSource::select_flac(reader, &library, FlacProfile::Cold, |_| panic!(
+        HeldSource::select_flac(reader, &library, FlacRates::Cold, |_| panic!(
             "cold rejects 48 kHz"
         ))
         .unwrap(),
@@ -282,83 +282,6 @@ fn native_48k_flac_and_wave_share_source_rate_but_not_cold_flac_authority() {
             drain_active_pcm(*wav, first, 48_000),
             drain_active_pcm(*flac, first, 48_000)
         );
-    }
-}
-
-#[test]
-#[ignore = "real trusted libFLAC 1.5.0 and paced fixed graph, no audio device"]
-fn indexed_4608_flac_matches_1024_flac_and_wav_through_seek_and_tail() {
-    use super::super::super::{Api, FLAC_BLOCK, INDEXED_FLAC_BLOCK};
-    let library = super::super::super::sdk_path();
-    let api = Api::open(&library).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let total = u64::from(INDEXED_FLAC_BLOCK) * 3 + 7;
-
-    for rate in [44_100, 48_000] {
-        let wide = dir.path().join(format!("wide-{rate}.flac"));
-        let narrow = dir.path().join(format!("narrow-{rate}.flac"));
-        for (path, block) in [(&wide, INDEXED_FLAC_BLOCK), (&narrow, FLAC_BLOCK)] {
-            api.encode_fixture_with_index(path, rate, block, total, Some(block), |frame| {
-                frozen_samples(frame).map(i32::from)
-            })
-            .unwrap();
-        }
-        let open = |path: &Path| {
-            let path = path.canonicalize().unwrap();
-            checked_audio_file(&path, &fingerprint(&path).unwrap())
-                .unwrap()
-                .0
-        };
-        let original = fs::read(&wide).unwrap();
-        assert_eq!(&original[10..12], &INDEXED_FLAC_BLOCK.to_be_bytes()[2..]);
-        let NativeStereoSelection::Stock(reader) =
-            NativeStereoSource::select(open(&wide), Cancellation::default(), &library, plan(3))
-                .unwrap()
-        else {
-            panic!("native Open File must retain its original callback limit")
-        };
-        let (mut file, _) = reader.into_stock().unwrap();
-        let mut stock = Vec::new();
-        file.read_to_end(&mut stock).unwrap();
-        assert_eq!(stock, original);
-        let reader = NativeStereoFile::new(open(&wide), Cancellation::default()).unwrap();
-        assert!(matches!(
-            HeldSource::select_flac(reader, &library, FlacProfile::Cold, |_| panic!(
-                "cold must reject larger callback blocks"
-            ))
-            .unwrap(),
-            Selection::Stock(_)
-        ));
-
-        let wave = wave_at(rate, (0..total).map(frozen_samples));
-        for first in [0, u64::from(INDEXED_FLAC_BLOCK) + 513] {
-            let wav = wave_source(
-                &dir.path().join("reference.wav"),
-                &wave,
-                Cancellation::default(),
-            );
-            let NativeStereoSelection::Qualified(wide) = NativeStereoSource::select_indexed(
-                open(&wide),
-                Cancellation::default(),
-                &library,
-                plan(3),
-            )
-            .unwrap() else {
-                panic!("eligible indexed 4608-frame FLAC must qualify")
-            };
-            let NativeStereoSelection::Qualified(narrow) = NativeStereoSource::select(
-                open(&narrow),
-                Cancellation::default(),
-                &library,
-                plan(3),
-            )
-            .unwrap() else {
-                panic!("existing 1024-frame FLAC must still qualify")
-            };
-            let expected = drain_active_pcm(*wav, first, rate);
-            assert_eq!(drain_active_pcm(*narrow, first, rate), expected);
-            assert_eq!(drain_active_pcm(*wide, first, rate), expected);
-        }
     }
 }
 
@@ -462,22 +385,6 @@ fn native_flac_metadata_failure_returns_original_unpublished_reader() {
     let mut actual = Vec::new();
     file.read_to_end(&mut actual).unwrap();
     assert_eq!(actual, wide);
-
-    // The larger ordinary indexed lane still returns the same held reader
-    // for declarations above its independent absolute limit.
-    let mut above_limit = FLAC.to_vec();
-    above_limit[10..12].copy_from_slice(&4609_u16.to_be_bytes());
-    let (file, _) = checked_file(dir.path(), "above-limit.flac", &above_limit);
-    let NativeStereoSelection::Stock(reader) =
-        NativeStereoSource::select_indexed(file, Cancellation::default(), &library, plan(3))
-            .unwrap()
-    else {
-        panic!("4609-frame indexed source must remain stock")
-    };
-    let (mut file, _) = reader.into_stock().unwrap();
-    let mut actual = Vec::new();
-    file.read_to_end(&mut actual).unwrap();
-    assert_eq!(actual, above_limit);
 
     // The valid STREAMINFO is not marked as the last metadata block. With
     // its following block omitted, the actual decoder must fail to prepare.

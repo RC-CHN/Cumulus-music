@@ -2,7 +2,7 @@
 mod graph;
 mod native;
 mod wave;
-use super::{Api, Decoder, FLAC_BLOCK, Generation, INDEXED_FLAC_BLOCK, MAX_COMPRESSED, RATE};
+use super::{Api, Decoder, FLAC_BLOCK, Generation, MAX_COMPRESSED, RATE};
 use crate::{
     Error, Result,
     download::offline::{ColdOfflineFlacAuthority, ColdOfflineFlacReader},
@@ -63,7 +63,7 @@ impl ColdStereoSource {
         plan: LocalStereoMaterialPlan,
     ) -> Result<ColdStereoSelection> {
         Ok(
-            match HeldSource::select_flac(reader, library, FlacProfile::Cold, |format| {
+            match HeldSource::select_flac(reader, library, FlacRates::Cold, |format| {
                 SourceGraph::new(format, plan)
             })? {
                 Selection::Qualified(source) => {
@@ -146,26 +146,17 @@ struct HeldSource<R> {
     rate: u32,
     total: u64,
 }
-enum FlacProfile {
+enum FlacRates {
     Cold,
-    NativeOpen,
-    IndexedLocal,
+    Local,
 }
-impl FlacProfile {
+impl FlacRates {
     fn allows(&self, rate: u32) -> bool {
-        rate == RATE || (!matches!(self, Self::Cold) && rate == 48_000)
-    }
-
-    fn callback_limit(&self, stream_max: u32) -> Option<u32> {
-        if matches!(self, Self::IndexedLocal) {
-            (stream_max <= INDEXED_FLAC_BLOCK).then_some(stream_max)
-        } else {
-            (stream_max <= FLAC_BLOCK).then_some(FLAC_BLOCK)
-        }
+        rate == RATE || (matches!(self, Self::Local) && rate == 48_000)
     }
 }
 enum DecoderKind {
-    Flac { api: Api, max_block: u32 },
+    Flac(Api),
     Wave(PcmWave),
 }
 struct HeldPass<R> {
@@ -178,7 +169,7 @@ impl<R: HeldInput> HeldSource<R> {
     fn select_flac(
         mut reader: R,
         library: &Path,
-        profile: FlacProfile,
+        rates: FlacRates,
         graph: impl FnOnce(Format) -> Result<SourceGraph>,
     ) -> Result<Selection<R>> {
         let authority = reader.source_authority();
@@ -202,12 +193,10 @@ impl<R: HeldInput> HeldSource<R> {
         let bits = ((format >> 36) & 31) + 1;
         let total = format & ((1 << 36) - 1);
         authority.validate()?;
-        let Some(max_callback) = profile.callback_limit(u32::from(max_block)) else {
-            return Ok(Selection::Stock(reader));
-        };
         if min_block < 16
             || min_block > max_block
-            || !profile.allows(rate)
+            || u32::from(max_block) > FLAC_BLOCK
+            || !rates.allows(rate)
             || channels != 2
             || bits != 16
             || !(1..=u64::from(rate) * 3600).contains(&total)
@@ -218,16 +207,7 @@ impl<R: HeldInput> HeldSource<R> {
             authority.validate()?;
             return Ok(Selection::Stock(reader));
         };
-        Self::qualified(
-            reader,
-            DecoderKind::Flac {
-                api,
-                max_block: max_callback,
-            },
-            rate,
-            total,
-            graph,
-        )
+        Self::qualified(reader, DecoderKind::Flac(api), rate, total, graph)
     }
 
     fn qualified(
@@ -419,14 +399,13 @@ fn run<R: HeldInput>(
     let rate = source.rate;
     let total = source.total;
     match &source.decoder {
-        DecoderKind::Flac { api, max_block } => {
-            let mut decoder = match Decoder::open_with_limits(
+        DecoderKind::Flac(api) => {
+            let mut decoder = match Decoder::open_with_rate(
                 api,
                 Box::new(next),
                 Generation(1),
                 shared.authority_clone(),
                 rate,
-                *max_block,
             ) {
                 Ok(decoder) if decoder.total == total => decoder,
                 _ => {
