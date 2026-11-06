@@ -87,6 +87,12 @@ const modeAvailable = computed(
   () => !!view.value?.track && view.value.resourceKind !== 'voice' && !view.value.track.voiceId,
 );
 const displayMode = computed(() => (modeAvailable.value ? preferredMode.value : 'classic'));
+const classicTitleAlias = computed(() =>
+  displayMode.value === 'classic' ? view.value?.titleAlias : undefined,
+);
+const displayedTitle = computed(
+  () => view.value?.track?.name || (classicTitleAlias.value ? '未知歌曲' : ''),
+);
 watch(modeAvailable, (available) => {
   if (!available) modeSheetOpen.value = false;
 });
@@ -654,7 +660,7 @@ const displayedAuxiliary = computed(() =>
           >
             <Icon name="down" />滚动查看评论<Icon name="down" />
           </button>
-          <div class="vinyl-info">
+          <div class="vinyl-info" :class="{ 'has-track-alias': classicTitleAlias }">
             <div
               v-if="displayMode !== 'lyric'"
               class="vinyl-record"
@@ -672,9 +678,17 @@ const displayedAuxiliary = computed(() =>
                 @error="cover.error"
               /><Icon v-if="!cover.loaded.value" name="music" data-cover-placeholder />
             </div>
-            <h1 :title="view?.track?.name" data-vinyl-copy-text>
-              {{ view?.track?.name }}
+            <h1 :title="displayedTitle" data-vinyl-copy-text>
+              {{ displayedTitle }}
             </h1>
+            <p
+              v-if="classicTitleAlias"
+              class="vinyl-track-alias"
+              :title="classicTitleAlias"
+              data-vinyl-copy-text
+            >
+              {{ classicTitleAlias }}
+            </p>
             <ul
               v-if="voiceMetadata"
               class="vinyl-voice-meta"

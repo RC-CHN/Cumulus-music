@@ -1048,6 +1048,13 @@ input[type='range'] {
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
+.vinyl-info.has-track-alias h1 {
+  -webkit-line-clamp: 1;
+}
+.vinyl-info .vinyl-track-alias {
+  margin-block-start: -8px;
+  line-height: 20px;
+}
 .vinyl-info p {
   font-size: 14px;
   color: var(--text-secondary);

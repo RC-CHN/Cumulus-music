@@ -104,6 +104,7 @@ export interface PlayerView {
   entryId: string | null;
   downloadTaskId?: string;
   track: TrackView | null;
+  titleAlias?: string;
   position: number | null;
   bufferedThrough?: number | null;
   nativeSeeking?: boolean;
