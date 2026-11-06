@@ -115,7 +115,8 @@ def check_library_capture(output, screenshots):
 
 def check_recommendations(output, stages, complete, screenshots):
     assert set(stages) == {
-        'recommended_first', 'recommended_next', 'recommended_detail', 'recommended_back',
+        'recommended_first', 'recommended_next', 'recommended_playing', 'recommended_paused',
+        'recommended_resumed', 'recommended_detail', 'recommended_back',
     }, stages
     assert complete['detailReads'] == ['81']
     assert stages['recommended_detail']['detail'] == '合成确认播客'
@@ -125,7 +126,17 @@ def check_recommendations(output, stages, complete, screenshots):
     assert sorted(row[0] for row in trace) == sorted([
         '/api/my/podcast/page/list', '/api/my/podcast/page/list',
         '/api/djradio/my/radio/recommend', '/api/djradio/v3/get',
+        '/api/v6/dj/program/byradio', '/api/dj/program/detail', '/api/dj/play/url/check',
+        '/api/song/enhance/player/url/v1',
     ]), trace
+    for suffix, state in [('playing', 'playing'), ('paused', 'paused'), ('resumed', 'playing')]:
+        row = stages['recommended_' + suffix]
+        player = row['player']
+        assert player['state'] == state and player['track']['voiceId'] == '9081'
+        assert player['origin'] == {'kind': 'podcast', 'id': '81'}
+        assert player['mode'] == 'sequential' and player['queueLen'] == 1 and row['detail'] is None
+        assert len([call for call in row['podcastBadgeTrace']
+                    if call[0] == '/api/v6/dj/program/byradio']) == 1
     assert [row[1] for row in trace if row[0] == '/api/djradio/my/radio/recommend'] == [{}]
     check_library_capture(output, screenshots)
 
@@ -222,7 +233,7 @@ def main():
             assert by_voice['506'] == [detail, permission, media][:len(by_voice['506'])], calls
     pictures = len(list(output.glob('ux_*.png')))
     assert not args.screenshots or pictures == len(stages)
-    runtime = {} if library_proof else {'decoder': 'libmpv', 'audioOutput': 'null'}
+    runtime = {} if args.badges else {'decoder': 'libmpv', 'audioOutput': 'null'}
     result = {'actualWebView': True, 'screenshots': pictures, 'states': list(stages), **runtime, **complete}
     (root / 'report.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n',
                                     encoding='utf-8')

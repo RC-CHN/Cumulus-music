@@ -67,9 +67,29 @@ impl Fixture {
             "/api/v6/dj/program/byradio" => {
                 let id = id(&body["radioId"]);
                 assert_eq!(body["offset"], 0);
-                let episode = json!({"id":9000+id,"name":format!("合成单集 {id}"),
-                    "mainSong":{"id":10000+id,"duration":30000},"duration":30000,"radio":radio(id)});
-                json!({"code":200,"data":{"programs":[episode],"count":1,"more":false,"asc":body["asc"]}})
+                if body["limit"] == 250 {
+                    assert!(self.recommendations && id == 81);
+                    assert_eq!(body, &json!({"radioId":"81","offset":0,"limit":250}));
+                    self.trace.lock().unwrap().push(json!([path, body]));
+                }
+                json!({"code":200,"data":{"programs":[program(id)],"count":1,"more":false,"asc":body["asc"]}})
+            }
+            "/api/dj/program/detail" if self.recommendations => {
+                assert_eq!(body, &json!({"id":"9081"}));
+                self.trace.lock().unwrap().push(json!([path, body]));
+                json!({"code":200,"program":program(81)})
+            }
+            "/api/dj/play/url/check" if self.recommendations => {
+                assert_eq!(body["voiceId"], "9081");
+                self.trace.lock().unwrap().push(json!([path, body]));
+                json!({"code":200,"data":{"voiceId":9081,"songId":10081,"canPlay":true}})
+            }
+            "/api/song/enhance/player/url/v1" if self.recommendations => {
+                let ids: Value = serde_json::from_str(body["ids"].as_str().unwrap()).unwrap();
+                assert!(ids == json!([10081]) || ids == json!(["10081"]));
+                self.trace.lock().unwrap().push(json!([path, body]));
+                json!({"code":200,"data":[{"id":10081,"url":super::MEDIA,"code":200,
+                    "md5":"fixture","level":"standard","expi":120}]})
             }
             CLEAR | "/api/djradio/newcount/clear" => {
                 panic!("badge write escaped the sealed typed fixture")
@@ -123,4 +143,9 @@ fn radio(id: u64) -> Value {
     };
     json!({"id":id,"name":name,"newVoiceCount":count,
         "lastProgramCreateTime":1_700_000_000_123u64,"programCount":1,"subed":true})
+}
+
+fn program(id: u64) -> Value {
+    json!({"id":9000+id,"name":format!("合成单集 {id}"),
+        "mainSong":{"id":10000+id,"duration":30000},"duration":30000,"radio":radio(id)})
 }

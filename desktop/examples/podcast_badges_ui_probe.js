@@ -69,14 +69,14 @@
   }
   const requests = [], detailReads = [];
   let index = 0, last = 'startup';
-  async function capture(label, target, captureBadges = true) {
+  async function capture(label, target, captureBadges = true, extra = {}) {
     last = label;
     await wait(() => shown(target()) && opaque(target()), 'settled visible stage: ' + label);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const badges = captureBadges ? ['81', '82', '83'].map(badgeLayout).filter(Boolean) : [];
     assert(pane().scrollWidth <= pane().clientWidth + 1, 'podcast layout fits viewport');
     await emit(`ux_${String(++index).padStart(2, '0')}_${label}`, {
-      actual: document.visibilityState === 'visible', badges,
+      ...extra, actual: document.visibilityState === 'visible', badges,
       detail: one('.podcast-summary h2', pane())?.textContent.trim() ?? null,
       clearOutcomes: requests.slice(), readCount: detailReads.length,
       screenX, screenY, ratio: devicePixelRatio,
@@ -101,7 +101,7 @@
   function refresh() {
     return button('刷新', pane());
   }
-  async function checkRecommendations() {
+  async function checkRecommendations(epoch) {
     const shelf = () => one('[data-podcast-subscription-recommendations]', pane());
     const rec = (id) => one(`[data-recommended-radio-id="${id}"]`, shelf());
     const recOpen = (id) => one('.recommendation-open', rec(id));
@@ -129,6 +129,37 @@
     const previous = () => button('上一组推荐播客', shelf());
     click(await wait(() => shown(previous()) && previous(), 'accessible previous group'));
     await wait(() => shown(rec('81')) && !rec('81').inert, 'first group restored');
+    const overlay = () => one('.recommendation-play', rec('81'));
+    const playingState = async (state) => {
+      const player = await invoke('player_snapshot', { epoch });
+      return player.state === state && player.track?.voiceId === '9081' &&
+        player.origin?.kind === 'podcast' && player.origin.id === '81' &&
+        player.mode === 'sequential' && player.playId && player;
+    };
+    overlay().focus({ preventScroll: true });
+    await wait(() => shown(overlay()) && opaque(overlay()), 'visible overlay on focus');
+    assert(overlay().getAttribute('aria-label') === '播放 合成推荐 81', 'play label before selection');
+    click(overlay());
+    const started = await wait(async () => {
+      const player = await playingState('playing');
+      return player?.position > .2 && player;
+    }, 'real native recommendation playback');
+    assert(shelf() && !detailReady('81'), 'overlay stays on library');
+    await capture('recommended_playing', overlay, false, { player: started });
+    for (const [state, label] of [['paused', '继续播放'], ['playing', '暂停']]) {
+      const previous = state === 'paused' ? '暂停' : '继续播放';
+      await wait(() => overlay().getAttribute('aria-label') === previous + ' 合成推荐 81' &&
+        shown(overlay()), 'ready current-source overlay: ' + previous);
+      click(overlay());
+      const result = await wait(() => playingState(state), 'bound overlay ' + state);
+      await wait(() => overlay().getAttribute('aria-label') === label + ' 合成推荐 81',
+        'updated overlay state: ' + label);
+      assert(result.playId === started.playId && result.entryId === started.entryId &&
+        result.queueRevision === started.queueRevision && result.position >= started.position - .05,
+        'same original play, entry, queue and position');
+      await capture('recommended_' + (state === 'paused' ? 'paused' : 'resumed'),
+        overlay, false, { player: result });
+    }
     click(recOpen('81'));
     await wait(() => detailReady('81') && detailReads.length === 1, 'recommended detail');
     assert(!shelf() && !requests.length, 'detail is normal and never clears subscription badge');
@@ -182,7 +213,7 @@
     await wait(() => shown(card('81')) && shown(card('82')) && shown(card('83')),
       'signed subscription cards');
     if (window.__podcastRecommendationsProof) {
-      await checkRecommendations();
+      await checkRecommendations(account.epoch);
       return;
     }
     assert(badge('81')?.textContent.trim() === '99+' &&
