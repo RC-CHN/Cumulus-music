@@ -31,3 +31,49 @@ Windows 设备或真实音频输出。私有合成报告及复现命令位于
 asetnsamples=n=2048:p=0，但仅凭声明不能确认实际回调边界、尾帧或实例重建。
 正式替换须先验证实际流与滤镜实例的对应、帧块和尾部、热更新与定位重置顺序。
 仅有解码器的采样率和声道数，不能当作滤镜输入或真实设备几何的证明。
+
+真实 HTTPS 预滤镜帧与定位后的首段输出
+------------------------------------
+
+手动探针 scripts/research/probe_stock_online_pcm.py 使用已固定的 Linux x86_64
+libmpv 0.41.0-2ubuntu4（SHA256
+2051bdd3bce70349ffa9513c5db4ac0d7fa4aad869004b243f39da93768e8bc5）和仓库的
+合成 stereo-pcm-source.flac。它直接调用 libmpv 的 stock loadfile，
+不把网络输入替换成本地文件。唯一 HTTPS 域名符合当前 MediaUrl 的域名形态，
+但只在独立网络／挂载命名空间的 loopback 提供固定字节，使用仅此次探针
+显式信任的 TLS 证书。请求不带 Cookie 或 Authorization，不调用任何业务 API。
+它不执行 Cumulus 的授权、播放器 actor 或 WebView，不能代替桌面回归。
+
+复现时从仓库根目录执行（最后一个参数须为不存在的私有输出目录）：
+
+    unshare -Urnm --propagation private bash -eu -c '
+      ip link set lo up
+      hosts=$(mktemp)
+      trap "umount /etc/hosts; rm -f \"$hosts\"" EXIT
+      printf "%s\n" "127.0.0.1 localhost cumulus-tone-fixture.music.126.net" > "$hosts"
+      mount --bind "$hosts" /etc/hosts
+      env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy \
+        LC_ALL=en_US.UTF-8 python3 "$1" --mpv "$2" --source "$3" --output "$4"
+    ' tone-ns "$PWD/scripts/research/probe_stock_online_pcm.py" \
+      /usr/lib/x86_64-linux-gnu/libmpv.so.2 \
+      "$PWD/core/tests/fixtures/stereo-pcm-source.flac" "$PWD/.build/NEW_PCM_PROOF"
+
+在已测运行中，真实 HTTPS 请求收到 7 个 206 字节区间；同一原生条目 1
+在仍然暂停时完成 absolute+exact 定位，并从网络读到非零偏移的区间。
+解码和文件输出设备实际均为 44,100 Hz、双声道、s16；仅文件输出的表示
+显式设为 s16，没有强制声道或采样率。首个 ashowinfo 滤镜记录真实 AVFrame 的
+PTS、几何、帧数与 Adler32；所有记录均逐帧对上冻结的源 PCM。
+
+请求位置 0.500 秒，即源帧 22,050。定位后首个滤镜输入块从源帧 21,504
+（0.487619 秒）开始，长度为 1,024；其中前 546 帧在请求位置之前。
+两个暂停阶段没有文件输出字节，继续播放后 ao=pcm 收到从源帧 22,050
+开始的 66,157 帧直至条目 1 EOF；全部逐字节相同，SHA256
+9782a4e8840b2d568665516826b59e59a310f4f7428b1c8518aa69cc89b79431。
+报告同时保留首段 PCM 和实际滤镜的原始 PTS，不用 time-pos 代替 PCM 边界。
+
+因此，暂停读到实际格式和同条目 seek 的确可以证明 stock 输出无旧 PCM，
+但复位后第一个滤镜输入块并不等于首个呈现样本。不能直接让 slot 50 从
+LADSPA 的首次回调处理并据此声称原版定位复位。后续先取证原 SDK 在定位时
+是否处理这些目标前样本；必要时用真正携带帧 PTS 的同步宿主保住已证的
+边界。ashowinfo 这里只观察，不是生产准入闸门；没有启用 tone、替换默认
+音效、使用真实账户或验证物理声卡。
