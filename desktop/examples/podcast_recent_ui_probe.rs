@@ -24,6 +24,8 @@ mod voice_detail_fixture;
 mod voice_podcast_collect_fixture;
 #[path = "support/voice_recommendation_fixture.rs"]
 mod voice_recommendation_fixture;
+#[path = "support/voice_songs_fixture.rs"]
+mod voice_songs_fixture;
 
 use cumulus_core::{
     Error, Result,
@@ -31,8 +33,9 @@ use cumulus_core::{
     client::MusicClient,
     protocol::{
         api::{
-            Api, ApiFuture, PodcastBadgeClear, PodcastBadgePermission, PodcastProgressPermission,
-            VinylPlaybackReadPermission, VinylVoiceRecommendationsRead,
+            Api, ApiFuture, GuardedSongLike, PodcastBadgeClear, PodcastBadgePermission,
+            PodcastProgressPermission, SongLikePermission, VinylPlaybackReadPermission,
+            VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
         },
         http::ApiOrigin,
     },
@@ -69,6 +72,7 @@ struct Library {
     voice_detail: Option<voice_detail_fixture::VoiceDetail>,
     voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
     voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
+    voice_songs: Option<voice_songs_fixture::Fixture>,
 }
 
 fn radio() -> Value {
@@ -84,6 +88,8 @@ impl Api for Library {
         Ok(self.scene_home.as_ref().map(|_| {
             if self.voice_recommendations.is_some() {
                 voice_recommendation_fixture::REVISION.to_owned()
+            } else if self.voice_songs.is_some() {
+                voice_songs_fixture::REVISION.to_owned()
             } else {
                 "scene-home-fixture-revision".to_owned()
             }
@@ -163,6 +169,48 @@ impl Api for Library {
         })
     }
 
+    fn request_vinyl_voice_songs<'a>(
+        &'a self,
+        read: VinylVoiceSongsRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let fixture = self
+                .voice_songs
+                .as_ref()
+                .ok_or(Error::State("included songs proof unavailable"))?;
+            assert_eq!(revision, voice_songs_fixture::REVISION);
+            permission()?;
+            let (path, body) = read.into_request();
+            Ok(fixture.songs(path, body))
+        })
+    }
+
+    fn song_like_scope_revision(&self, _signed_pc: bool) -> Result<Option<String>> {
+        Ok(self
+            .voice_songs
+            .as_ref()
+            .map(|_| voice_songs_fixture::REVISION.to_owned()))
+    }
+
+    fn request_guarded_song_like<'a>(
+        &'a self,
+        write: GuardedSongLike,
+        permission: &'a SongLikePermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let fixture = self.voice_songs.as_ref().ok_or(Error::State(
+                "included songs guarded like proof unavailable",
+            ))?;
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            let (path, body) = write.into_request();
+            Ok(fixture.like(path, body))
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if let Some(voice) = &self.voice_detail
@@ -177,6 +225,11 @@ impl Api for Library {
             }
             if let Some(shelf) = &self.voice_recommendations
                 && let Some(response) = shelf.route(path, &body, cache)
+            {
+                return Ok(response);
+            }
+            if let Some(songs) = &self.voice_songs
+                && let Some(response) = songs.read(path, &body, cache)
             {
                 return Ok(response);
             }
@@ -340,6 +393,13 @@ fn main() {
         std::env::var("CUMULUS_VOICE_PODCAST_COLLECT_PROOF").as_deref() == Ok("1");
     let voice_recommendations_enabled =
         std::env::var("CUMULUS_VOICE_RECOMMENDATIONS_PROOF").as_deref() == Ok("1");
+    let voice_songs_case = std::env::var("CUMULUS_VOICE_SONGS_PROOF").ok();
+    assert!(
+        voice_songs_case
+            .as_deref()
+            .is_none_or(|case| matches!(case, "double" | "cover" | "dense"))
+    );
+    let voice_songs_enabled = voice_songs_case.is_some();
     let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
         .ok()
         .or_else(|| voice_detail_enabled.then(|| "header".to_owned()));
@@ -371,6 +431,16 @@ fn main() {
                 && !badges_enabled
                 && !progress_enabled
     );
+    assert!(
+        !voice_songs_enabled
+            || scene_enabled
+                && !palette_enabled
+                && !voice_detail_enabled
+                && !voice_podcast_collect_enabled
+                && !voice_recommendations_enabled
+                && !badges_enabled
+                && !progress_enabled
+    );
     let api = Arc::new(Library {
         progress_enabled,
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
@@ -381,6 +451,9 @@ fn main() {
             .then(voice_podcast_collect_fixture::Fixture::default),
         voice_recommendations: voice_recommendations_enabled
             .then(voice_recommendation_fixture::Fixture::default),
+        voice_songs: voice_songs_case
+            .as_deref()
+            .map(voice_songs_fixture::Fixture::new),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -399,6 +472,8 @@ fn main() {
         || {
             if badges_enabled {
                 include_str!("podcast_badges_ui_probe.js").to_owned()
+            } else if voice_songs_enabled {
+                include_str!("voice_songs_ui_probe.js").to_owned()
             } else if voice_recommendations_enabled {
                 include_str!("voice_recommendation_ui_probe.js").to_owned()
             } else if voice_podcast_collect_enabled {
@@ -476,6 +551,16 @@ fn main() {
                         return;
                     }
                 }
+                if let Some(songs) = &api.voice_songs
+                    && stage == "voice_songs_poll"
+                {
+                    if let Some(nonce) = value["nonce"].as_u64() {
+                        handle.get_webview_window("main").unwrap().eval(format!(
+                            "window.__voiceSongsNative = [{nonce}, {}];", songs.snapshot()
+                        )).unwrap();
+                    }
+                    return;
+                }
                 if progress_enabled && stage == "progress_poll" {
                     if let Some(nonce) = value["nonce"].as_u64() {
                         let count = api.progress_uploads.lock().unwrap().len();
@@ -503,6 +588,9 @@ fn main() {
                 }
                 if let Some(shelf) = &api.voice_recommendations {
                     value["voiceRecommendationsTrace"] = shelf.snapshot();
+                }
+                if let Some(songs) = &api.voice_songs {
+                    value["voiceSongsTrace"] = songs.snapshot();
                 }
                 if let Some(scene) = &api.scene_home {
                     value["calls"] = json!(scene.calls());
@@ -538,6 +626,9 @@ fn main() {
                 } else if scene_enabled {
                     let case = std::env::var("CUMULUS_PODCAST_SCENE_HOME_PROOF").unwrap();
                     view.eval(format!("window.__podcastSceneHomeCase = {};", json!(case))).unwrap();
+                }
+                if let Some(case) = &voice_songs_case {
+                    view.eval(format!("window.__voiceSongsCase = {};", json!(case))).unwrap();
                 }
                 view.eval(&source).unwrap();
             }
