@@ -1,5 +1,11 @@
 // Native Episode metadata → real program title/profile navigation and image error fallback.
 (async () => {
+  // Force a real WebView image error in this proof, without relying on a
+  // particular host DNS timeout or allowing a synthetic CDN request to escape.
+  const imagePolicy = document.createElement('meta');
+  imagePolicy.httpEquiv = 'Content-Security-Policy';
+  imagePolicy.content = "img-src 'none'";
+  document.head.append(imagePolicy);
   const one = (s, root = document) => root?.querySelector(s);
   const visible = (n) => n && n.getClientRects().length && !n.disabled && !n.closest('[inert]');
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
@@ -112,8 +118,11 @@
       native.creator.name === '合成主播' && native.releaseTime === 1700049600000 &&
       native.coverUrl === 'https://p1.music.126.net/obj/cumulus-palette/cover601.png' &&
       native.playCount === 123456 &&
-      Object.keys(native).sort().join(',') === 'coverUrl,creator,id,playCount,releaseTime' &&
-      Object.keys(native.creator).sort().join(',') === 'id,name',
+      native.radio?.id === '80' && native.radio.name === '合成场景播客' &&
+      native.radio.subscriberCount === 0 && native.radio.ownedByViewer === false &&
+      Object.keys(native).sort().join(',') === 'coverUrl,creator,id,playCount,radio,releaseTime' &&
+      Object.keys(native.creator).sort().join(',') === 'id,name' &&
+      Object.keys(native.radio).sort().join(',') === 'id,name,ownedByViewer,subscriberCount',
       'current native episode metadata is exactly whitelisted');
   }
   try {

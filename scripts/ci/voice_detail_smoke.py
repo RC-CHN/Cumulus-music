@@ -60,6 +60,7 @@ def main():
     expected_detail = {
         'id': '601', 'creator': {'id': '55', 'name': '合成主播'}, 'releaseTime': 1700049600000,
         'coverUrl': 'https://p1.music.126.net/obj/cumulus-palette/cover601.png', 'playCount': 123456,
+        'radio': {'id': '80', 'name': '合成场景播客', 'subscriberCount': 0, 'ownedByViewer': False},
     }
     for name in STAGES[1:]:
         stage = stages[name]
@@ -93,6 +94,7 @@ def main():
     assert not args.screenshots or pictures == len(stages), pictures
     report = dict(actualWebView=True, nativeVoiceMetadata=True, creatorTarget='user:55',
                   squareCover=stages['voice_metadata']['artwork'],
+                  imageFailure='probe CSP blocks image requests',
                   nativeDecoder='libmpv/null', screenshots=pictures, stages=STAGES,
                   voiceDetailCalls=requests, realAccountWrites=0)
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
