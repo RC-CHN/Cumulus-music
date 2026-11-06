@@ -148,7 +148,7 @@ def main():
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_VOICE_SONG_COLLECT_PROOF='1',
                CUMULUS_PODCAST_SCENE_HOME_PROOF='automatic', LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
     env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
-    isolated_profile(env, root)
+    isolated_profile(env, root / 'application')
     output = root / 'run/first'
     with suite_window_manager(root), (root / 'host.log').open('x', encoding='utf-8') as log:
         driver = TrustedSongInput()

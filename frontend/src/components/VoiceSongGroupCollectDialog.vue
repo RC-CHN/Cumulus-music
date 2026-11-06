@@ -107,7 +107,8 @@ watch(
     if (kind === 'picking') void load(true);
     await nextTick();
     if (!alive || phase.value !== kind) return;
-    if (kind === 'picking') dialog.value?.querySelector<HTMLElement>('.collect-list')?.focus();
+    if (kind === 'picking')
+      dialog.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     else if (kind === 'pending') reconcileButton.value?.focus();
     else if (!saving.value) closeButton.value?.focus();
   },
@@ -163,15 +164,11 @@ function choose(id: string) {
               : message
       }}
     </p>
-    <button
-      v-if="phase === 'pending'"
-      ref="reconcileButton"
-      type="button"
-      class="text-button collect-more"
-      @click="model.reconcile"
-    >
-      核对结果
-    </button>
+    <footer v-if="phase === 'pending'" class="group-collect-footer">
+      <button ref="reconcileButton" type="button" class="text-button" @click="model.reconcile">
+        核对结果
+      </button>
+    </footer>
     <div v-if="phase === 'picking'" class="collect-body">
       <div class="collect-sort-tabs" role="tablist" aria-label="收藏歌单排序" @keydown="sortKeys">
         <button
@@ -215,3 +212,11 @@ function choose(id: string) {
     </div>
   </dialog>
 </template>
+
+<style scoped>
+.group-collect-footer {
+  display: flex;
+  justify-content: center;
+  padding: 8px 20px 18px;
+}
+</style>
