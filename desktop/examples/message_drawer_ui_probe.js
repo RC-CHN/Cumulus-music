@@ -127,7 +127,10 @@
     if (window.__cumulusMessagePollProof) {
       await fixture('poll-zero');
       await wait(async () => !dot() && await countCalls() === 3, 'real 30-second native interval', 950);
-      assert(!one('[data-message-tab="notices"] .message-drawer-badge'), 'zero hides tab badges and header dot');
+      await wait(() => ready() && !one('[data-message-tab="notices"] .message-drawer-badge')
+        && !one('[data-message-peer="501"] .message-drawer-badge')
+        && !one('[data-message-peer="505"] .message-drawer-badge'),
+      'numeric zero hides tab, header and private row badges');
       await capture('poll_zero');
       await fixture('poll-positive');
       await emit('message-poll-hide');
@@ -135,6 +138,8 @@
       assert(reveal.baseline === 3 && reveal.hidden === 4,
         'window hiding rearmed once and suppressed the next 30-second read');
       await wait(async () => dot() && await countCalls() === 5, 'window reveal returns the drawer to fast cadence');
+      await wait(() => ready() && one('[data-message-peer="501"] .message-drawer-badge')
+        && one('[data-message-peer="505"] .message-drawer-badge'), 'positive response removes row mask');
       await capture('poll_foreground');
       await fixture('poll-fail');
       await wait(() => !button('刷新消息')?.disabled, 'current poll settled before manual refresh');
@@ -443,20 +448,40 @@
     const badge = (selector) => one(selector)?.querySelector('.message-drawer-badge')?.textContent.trim();
     const peerRow = (id) => `[data-message-peer="${id}"]`;
     const privateTab = '[data-message-tab="private"]';
+    const categoryBadge = (key) => badge(`[data-message-tab="${key}"]`);
+    async function navigate(action, category, expected) {
+      const before = await countCalls();
+      await fixture('count-hold');
+      action();
+      await wait(async () => {
+        const sample = await fixture();
+        return sample.countHeld && sample.requests.filter(([path]) => path === '/api/pl/count').length === before + 1;
+      }, 'navigation immediately rearms the existing count reader');
+      if (category) {
+        await wait(() => !categoryBadge(category) && badge(privateTab) === '3' && dot(),
+          'only the new category clears locally while the count response is held');
+      } else {
+        assert(dot() && (!one(privateTab) || badge(privateTab) === '3'),
+          'conversation navigation does not clear the private aggregate');
+      }
+      await fixture('count-release');
+      await wait(async () => !(await fixture()).countHeld &&
+        (!category || categoryBadge(category) === expected), 'server response can restore selected category unread');
+    }
     assert(badge(peerRow(501)) === '1' && badge(peerRow(505)) === '2' && badge(privateTab) === '3',
       'both synthetic peers and the private aggregate are initially unread');
     await fixture('history-hold');
-    click(one(peerRow(505)));
+    await navigate(() => click(one(peerRow(505))));
     await wait(async () => (await fixture()).historyHeld && button('返回私信列表'), 'first history held');
-    click(button('返回私信列表'));
-    await wait(() => document.activeElement?.dataset.messagePeer === '505'
+    await navigate(() => click(button('返回私信列表')));
+    await wait(() => ready() && document.activeElement?.dataset.messagePeer === '505'
       && Math.abs(scroller().scrollTop - before) < 1, 'return before history resolves restores focus and scroll');
     assert((await fixture()).historyHeld && !badge(peerRow(505)) && badge(peerRow(501)) === '1'
       && badge(privateTab) === '3' && dot(), 'only the opened peer clears before history responds');
     await capture('peer_unread_while_history_pending');
     await fixture('history-release');
     await wait(async () => !(await fixture()).historyHeld, 'stale history released');
-    click(one('[data-message-peer="505"]'));
+    await navigate(() => click(one(peerRow(505))));
     await wait(() => ready() && contains('较新的自己消息'), 'selected private thread');
     let items = all('.message-drawer-item');
     assert(items.length === 2 && items[1].classList.contains('message-drawer-own'),
@@ -468,51 +493,55 @@
       !drawer().querySelector('a, iframe, img') && !drawer().textContent.includes('private.invalid'),
       'oldest thread entry prepended with inert attachment');
     await capture('thread');
-    click(button('返回私信列表'));
-    await wait(() => document.activeElement?.dataset.messagePeer === '505'
+    await fixture('inbox-delivery');
+    await navigate(() => click(button('返回私信列表')));
+    await wait(() => ready() && contains('合成新私信') && badge(peerRow(505)) === '6'
+      && document.activeElement?.dataset.messagePeer === '505'
       && Math.abs(scroller().scrollTop - before) < 1, 'private list return restores scroll and focus');
     scroller().scrollTop = scroller().scrollHeight;
     await wait(() => ready() && contains('合成较早联系人'), 'private list cursor pagination');
     await capture('private_return');
-    pick('comments');
+    await navigate(() => pick('comments'), 'comments', '2');
     await wait(() => ready() && contains('评论正文') && contains('引用原文'), 'received comments');
+    pick('comments'); // same-key click only returns to the top; final wire count must not change.
     click(button('加载更多'));
     await wait(() => ready() && contains('更早的消息读取失败') && contains('评论正文'),
       'continuation failure preserves loaded comment');
     await capture('comment_retry');
     click(button('重试'));
     await wait(() => ready() && contains('较早评论') && contains('评论正文'), 'same comment cursor retries');
-    pick('forwards');
+    await navigate(() => pick('forwards'), 'forwards', '1');
     await wait(() => ready() && contains('@合成自己') && contains('引用的笔记'), 'mentions rendered');
     click(button('加载更多'));
     await wait(() => ready() && !button('加载更多'), 'forward server cursor and end');
     await capture('forwards');
-    pick('notices');
+    await navigate(() => pick('notices'), 'notices', '4');
     await wait(() => ready() && contains('收藏了你的歌单') && contains('合成歌单'),
       'known notification shape');
     click(button('加载更多'));
     await wait(() => ready() && !button('加载更多'), 'notice server cursor and end');
-    assert(one('[data-message-tab="notices"] .message-drawer-badge')?.textContent.trim() === '4',
-      'visiting notifications does not clear unread count');
+    assert(categoryBadge('notices') === '4', 'server can restore a locally cleared notification count');
     await capture('notices');
     await fixture('hold');
+    await fixture('notice-refresh');
     click(button('刷新消息'));
-    await wait(async () => (await fixture()).noticeHeld, 'native notice refresh held');
+    await wait(async () => (await fixture()).noticeHeld && categoryBadge('notices') === '7',
+      'native notice refresh held and independent manual count read settled');
     drawer().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await Promise.resolve();
     assert(!drawer() && document.activeElement === trigger(), 'Escape purges private DOM immediately and restores focus');
-    await wait(async () => await countCalls() === 4, 'closing returns the same poller to normal cadence');
+    await wait(async () => await countCalls() === 11, 'closing returns the same poller to normal cadence');
     click(trigger());
     await wait(() => ready() && contains('私信预览 1'), 'new private list session');
     assert(badge(peerRow(505)) === '2' && badge(peerRow(501)) === '1' && badge(privateTab) === '3',
       'a fresh authoritative inbox can show a positive peer count again');
     await fixture('release');
     await wait(async () => !(await fixture()).noticeHeld, 'stale notice reply released');
-    pick('notices');
+    await navigate(() => pick('notices'), 'notices', '7');
     await wait(() => ready() && contains('合成歌单'), 'fresh notification tab after reopen');
     assert(!contains('旧面板数据不能显示'), 'old drawer response is ignored');
     await capture('reopened');
-    await wait(async () => await countCalls() === 5, 'reopening rearmed once');
+    assert(await countCalls() === 13, 'each committed navigation rearmed, same-tab click did not');
     const result = await fixture();
     assert(!result.blockedWrite, 'native service observed no clear/send/delete request');
     await emit('complete', { ok: true, count, staleVisitDiscarded: true, peerUnreadVerified: true,

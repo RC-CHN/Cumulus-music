@@ -40,7 +40,7 @@
   const initialTabs = ['3', '2', '1', '4'];
   const initialPeers = ['1', '2'];
   const newTabs = ['6', '1', '2', '3'];
-  const newPeers = ['4', '2'];
+  const newPeers = ['4', null];
   const zeroTabs = [null, null, null, null];
   const zeroPeers = [null, null];
   let step = 'startup';
@@ -138,17 +138,16 @@
       click(modalButton('确定'), 'accept the explicit confirmation');
       await wait(async () => !modal()?.open && !dot() && equals(tabs(), zeroTabs) &&
         equals(peers(), zeroPeers) && readAll()?.disabled &&
-        statusText().includes('已清除全部新消息提醒。') && (await requests()).writes === 1,
+        statusText().includes('已清除全部新消息提醒。') &&
+        equals(await requests(), { reads: 2, lists: 2, writes: 1 }),
       'accepted code 200 clears the four counts and existing rows in place');
-      assert(equals(await requests(), { reads: 2, lists: 1, writes: 1 }),
-        'confirmed clear does not reread or rewrite message rows');
       await capture('confirmed');
 
       await fixture('read-all-delivery');
       click(refresh(), 'manually read newly delivered synthetic messages');
       await wait(async () => dot() && equals(tabs(), newTabs) && equals(peers(), newPeers) &&
-        !readAll()?.disabled && equals(await requests(), { reads: 3, lists: 2, writes: 1 }),
-      'fresh server delivery can become positive again after a successful clear');
+        !readAll()?.disabled && equals(await requests(), { reads: 3, lists: 4, writes: 1 }),
+      'new message timestamp restores one peer; unchanged timestamp keeps the local read state');
       await capture('delivery');
 
       await confirmation();
@@ -175,10 +174,10 @@
       click(check(), 'verify a second explicit read-only result');
       await wait(async () => !check() && !dot() && equals(tabs(), zeroTabs) &&
         statusText().includes('未读提醒总数已归零，已结束核对。') &&
-        equals(await requests(), { reads: 4, lists: 1, writes: 0 }),
-      'four authoritative zeros resolve the old operation without write or list refresh');
+        equals(await requests(), { reads: 4, lists: 2, writes: 0 }),
+      'four authoritative zeros resolve the old operation without replay');
       assert(readAll()?.disabled, 'nothing positive remains to prepare another clear');
-      assert(equals(peers(), initialPeers), 'aggregate readback did not infer a per-row acknowledgement');
+      assert(equals(peers(), zeroPeers), 'numeric aggregate zero masks row badges without a write');
       await capture('checked_zero');
     }
     await emit('complete', { ok: true, reopened, count: counter, realAccountWrites: 0, realMusicRequests: 0 });

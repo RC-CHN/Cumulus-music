@@ -117,6 +117,11 @@ pub fn control(mode: &str) -> Value {
         "poll-fail" if polling() => COUNT_MODE.store(2, Ordering::SeqCst),
         "poll-hold" if polling() => HOLD_COUNT.store(true, Ordering::SeqCst),
         "poll-release" if polling() => HOLD_COUNT.store(false, Ordering::SeqCst),
+        "count-hold" if !read_all() => HOLD_COUNT.store(true, Ordering::SeqCst),
+        "count-release" if !read_all() => HOLD_COUNT.store(false, Ordering::SeqCst),
+        "inbox-delivery" if !read_all() => COUNT_MODE.store(4, Ordering::SeqCst),
+        "inbox-reset" if !read_all() => COUNT_MODE.store(0, Ordering::SeqCst),
+        "notice-refresh" if !read_all() => COUNT_MODE.store(5, Ordering::SeqCst),
         "read-all-delivery" if read_all() => COUNT_MODE.store(3, Ordering::SeqCst),
         "read-all-zero" if read_all() => COUNT_MODE.store(1, Ordering::SeqCst),
         "read" => {}
@@ -254,20 +259,28 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 1 => json!({"code":200,"msg":0,"comment":0,"forward":0,"notice":0}),
                 2 => json!({"code":503}),
                 3 if read_all() => json!({"code":200,"msg":6,"comment":1,"forward":2,"notice":3}),
+                5 if !read_all() => json!({"code":200,"msg":3,"comment":2,"forward":1,"notice":7}),
                 _ => json!({"code":200,"msg":3,"comment":2,"forward":1,"notice":4}),
             }
         }
         "/api/msg/private/users" if args == &json!({"limit":15,"offset":0,"time":-1}) => {
             let mode = COUNT_MODE.load(Ordering::SeqCst);
             let rows = (0..15).filter(|idx| !deletion() || *idx != 0 || !REMOVED_CONVERSATION.load(Ordering::SeqCst)).map(|idx| json!({"fromUser":{"userId":501+idx,"nickname":format!("合成联系人 {:02}",idx+1)},
-                "lastMsgTime":T-idx,"newMsgCount":match (read_all(), mode, idx) {
+                "lastMsgTime":match (read_all(), mode, idx) {
+                    (true, 3, 0) => T+100,
+                    (false, 4, 4) => T+100,
+                    _ => T-idx,
+                },"newMsgCount":match (read_all(), mode, idx) {
                     (true, 1, _) => 0,
                     (true, 3, 0) => 4,
+                    (false, 4, 4) => 6,
                     (_, _, 0) => 1,
                     (_, _, 4) => 2,
                     _ => 0,
                 },
-                "lastMsg":json!({"type":6,"msg":format!("私信预览 {}",idx+1)}).to_string()})).collect::<Vec<_>>();
+                "lastMsg":json!({"type":6,"msg":if !read_all() && mode == 4 && idx == 4 {
+                    "合成新私信".to_string()
+                } else { format!("私信预览 {}",idx+1) }}).to_string()})).collect::<Vec<_>>();
             json!({"code":200,"more":true,"msgs":rows})
         }
         "/api/msg/private/users" if args == &json!({"limit":15,"offset":0,"time":T-14}) => {

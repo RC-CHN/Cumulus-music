@@ -74,7 +74,9 @@ def main():
         assert not report['messageRequests']['blockedWrite'] and report['hiddenCount'] == 4
         requests = report['messageRequests']['requests']
         assert [args for path, args in requests if path == '/api/pl/count'] == [{}] * 8
-        assert [path for path, _ in requests if path != '/api/pl/count'] == ['/api/msg/private/users'] * 2
+        assert [(path, payload) for path, payload in requests if path != '/api/pl/count'] == [
+            ('/api/msg/private/users', dict(limit=15, offset=0, time=-1)),
+        ] * 4
         assert len(list(output.glob('ux_*.png'))) == (4 if args.screenshots else 0)
         report['actualWebView'] = True
         (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -108,8 +110,10 @@ def main():
     for path, request in report['messageRequests']['requests']:
         reads.setdefault(path, []).append(request)
     assert reads == {
-        '/api/pl/count': [{}, {}, {}, {}, {}],
+        '/api/pl/count': [{}] * 13,
         '/api/msg/private/users': [
+            dict(limit=15, offset=0, time=-1),
+            dict(limit=15, offset=0, time=-1),
             dict(limit=15, offset=0, time=-1),
             dict(limit=15, offset=0, time=t-14),
             dict(limit=15, offset=0, time=-1),
@@ -147,20 +151,20 @@ def run_read_all(args, root, common):
             'initial': (2, 1, 0, None),
             'confirmation': (2, 1, 0, None),
             'cancelled': (2, 1, 0, None),
-            'confirmed': (2, 1, 1, 'confirmed'),
-            'delivery': (3, 2, 1, 'confirmed'),
-            'lost': (3, 2, 2, 'uncertain'),
+            'confirmed': (2, 2, 1, 'confirmed'),
+            'delivery': (3, 4, 1, 'confirmed'),
+            'lost': (3, 4, 2, 'uncertain'),
         },
         'reopen': {
             'reopened_pending': (2, 1, 0, 'uncertain'),
             'checked_positive': (3, 1, 0, 'uncertain'),
-            'checked_zero': (4, 1, 0, 'checked_clear'),
+            'checked_zero': (4, 2, 0, 'checked_clear'),
         },
     }
     positive = ['3', '2', '1', '4']
     delivery = ['6', '1', '2', '3']
     first_peers = ['1', '2']
-    new_peers = ['4', '2']
+    new_peers = ['4', None]
     zero_tabs = [None] * 4
     result = {}
     acknowledged = uncertain = None
@@ -208,7 +212,7 @@ def run_read_all(args, root, common):
             expected_tabs = (zero_tabs if label in ('confirmed', 'checked_zero') else
                              delivery if label in ('delivery', 'lost') else positive)
             assert row['tabs'] == expected_tabs and row['dot'] == (expected_tabs != zero_tabs), label
-            expected_peers = ([None, None] if label == 'confirmed' else
+            expected_peers = ([None, None] if label in ('confirmed', 'checked_zero') else
                               new_peers if label in ('delivery', 'lost') else first_peers)
             assert row['peers'] == expected_peers, label
             pending = label in ('lost', 'reopened_pending', 'checked_positive')
