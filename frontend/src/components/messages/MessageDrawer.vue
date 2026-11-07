@@ -33,7 +33,7 @@ const model = useMessageDrawer(
   () => props.account,
   () => emit('expired'),
 );
-const { shown, tab, peer, current, counts, countsBusy, countsError } = model;
+const { shown, tab, peer, current, counts, countsBusy, countsError, hidePrivateRowBadges } = model;
 const trigger = ref<HTMLButtonElement>();
 const drawer = ref<HTMLElement>();
 const scroller = ref<HTMLElement>();
@@ -670,7 +670,7 @@ function refresh() {
               </span>
               <span class="message-drawer-meta">
                 <time v-if="item.time">{{ timestamp(item.time) }}</time>
-                <span v-if="item.unread" class="message-drawer-badge">{{
+                <span v-if="item.unread && !hidePrivateRowBadges" class="message-drawer-badge">{{
                   item.unread > 99 ? '99+' : item.unread
                 }}</span>
               </span>

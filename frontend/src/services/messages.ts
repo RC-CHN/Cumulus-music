@@ -8,14 +8,17 @@ export type MessageQuery =
   | { tab: 'thread'; cursor: number | null; peerId: string };
 
 export type MessageCounts = Record<MessageTab, number | null>;
+export type MessageCountNavigation = MessageTab | 'conversation';
 export interface MessageCountView {
   epoch: string;
   counts: MessageCounts | null;
+  hidePrivateRowBadges: boolean;
   refreshing: boolean;
   failed: boolean;
 }
 export interface MessageCountStream {
   visibility(epoch: string, sequence: number, visible: boolean): Promise<void>;
+  navigate(epoch: string, sequence: number, navigation: MessageCountNavigation): Promise<void>;
   refresh(epoch: string): Promise<void>;
   close(): void;
 }

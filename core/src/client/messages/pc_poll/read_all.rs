@@ -184,21 +184,27 @@ impl Scope {
 
 pub(super) struct CountSample {
     pub(super) counts: MessageCounts,
+    pub(super) hide_private_row_badges: bool,
     scope: Option<Scope>,
 }
 
 impl CountSample {
     pub(super) async fn read(session: &AccountSession, token: &SessionToken) -> Result<Self> {
         let scope = Scope::capture(session, token).ok();
-        let counts = read_counts(session, token).await?;
+        let observed = read_counts(session, token).await?;
         let scope = scope.filter(|scope| scope.verify(session, token).is_ok());
-        Ok(Self { counts, scope })
+        Ok(Self {
+            counts: observed.counts,
+            hide_private_row_badges: observed.hide_private_row_badges,
+            scope,
+        })
     }
 }
 
 struct Observation {
     scope: Scope,
     observed: Instant,
+    has_unread: bool,
 }
 
 struct Intent {
@@ -225,6 +231,7 @@ impl ReadAll {
             Some(Observation {
                 scope: sample.scope.take()?,
                 observed: Instant::now(),
+                has_unread: has_unread(&sample.counts),
             })
         });
     }
@@ -330,6 +337,7 @@ impl State {
             let now = Instant::now();
             let Some(observed) = self.read_all.observed.as_ref().filter(|observed| {
                 self.drawer
+                    && observed.has_unread
                     && self.view.counts.as_ref().is_some_and(has_unread)
                     && now < observed.observed + INTENT_TTL
                     && observed.scope.verify(&self.session, &self.token).is_ok()
@@ -415,6 +423,7 @@ impl State {
                     }
                     if record.phase == Phase::Confirmed {
                         self.view.counts = Some(zero_counts());
+                        self.view.hide_private_row_badges = true;
                         self.view.last_count_read_failed = false;
                     }
                     Ok(record.view())
@@ -426,6 +435,7 @@ impl State {
                         settle(&store, uid, &record)?;
                     }
                     self.read_all.observe(Some(&mut sample));
+                    self.view.hide_private_row_badges = sample.hide_private_row_badges;
                     self.view.counts = Some(sample.counts);
                     self.view.last_count_read_failed = false;
                     Ok(if cleared {
@@ -497,10 +507,11 @@ impl Start {
                 Task::Check(scope) => {
                     let result = async {
                         scope.verify(&session, &token)?;
-                        let counts = read_counts(&session, &token).await?;
+                        let observed = read_counts(&session, &token).await?;
                         scope.verify(&session, &token)?;
                         Ok(CountSample {
-                            counts,
+                            counts: observed.counts,
+                            hide_private_row_badges: observed.hide_private_row_badges,
                             scope: Some(scope),
                         })
                     };

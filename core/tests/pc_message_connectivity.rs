@@ -1,7 +1,10 @@
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
-    client::{MusicClient, messages::MessageCounts},
+    client::{
+        MusicClient,
+        messages::{MessageCountNavigation, MessageCounts},
+    },
     pc_connectivity::PcRequestObservation as Request,
     protocol::{
         api::{Api, ApiFuture},
@@ -21,6 +24,7 @@ use tokio::{sync::oneshot, time::Instant};
 struct Counter {
     start: Instant,
     value: u64,
+    private: Mutex<Value>,
     code: AtomicU16,
     times: Mutex<Vec<u64>>,
     hold: Mutex<Option<oneshot::Receiver<()>>>,
@@ -30,6 +34,7 @@ impl Counter {
         Arc::new(Self {
             start: Instant::now(),
             value,
+            private: Mutex::new(json!(value)),
             code: AtomicU16::new(200),
             times: Mutex::new(Vec::new()),
             hold: Mutex::new(None),
@@ -56,10 +61,14 @@ impl Api for Counter {
             if let Some(hold) = hold {
                 hold.await.unwrap();
             }
-            Ok(
-                json!({"code":self.code.load(Ordering::SeqCst), "msg":self.value, "notice":self.value+1,
-                "lastPrivateMsg":"should not cross the native count boundary"}),
-            )
+            Ok(json!({
+                "code": self.code.load(Ordering::SeqCst),
+                "msg": self.private.lock().unwrap().clone(),
+                "comment": self.value + 2,
+                "forward": self.value + 3,
+                "notice": self.value + 1,
+                "lastPrivateMsg": "should not cross the native count boundary",
+            }))
         })
     }
 }
@@ -162,6 +171,106 @@ async fn probe_and_sheet_visibility_rearm_one_poll_schedule_and_manual_refresh_d
     host.shutdown().await;
     step(240_000).await;
     assert_eq!(f.api.times().last(), Some(&516_000));
+}
+
+#[tokio::test(start_paused = true)]
+async fn visible_drawer_navigation_clears_only_string_categories_and_restarts_the_same_timer() {
+    use MessageCountNavigation::{Comments, Conversation, Forwards, Notices, Private};
+    let f = Fixture::new(true);
+    let host = f.client.start_pc_message_count_polling().unwrap();
+    let view = host.subscribe();
+    settle().await;
+    let server_counts = view.borrow().counts.clone().unwrap();
+    host.try_drawer_navigated(1, Comments).unwrap();
+    settle().await;
+    assert_eq!(f.api.times(), [0], "hidden drawer cannot rearm");
+
+    host.drawer_visible(1, true).await.unwrap();
+    settle().await;
+    assert_eq!(f.api.times(), [0, 0]);
+    for (transition, changed) in [
+        (Comments, Some("comments")),
+        (Forwards, Some("forwards")),
+        (Notices, Some("notices")),
+        (Private, None),
+        (Conversation, None),
+        (Conversation, None),
+    ] {
+        step(5000).await;
+        let previous = f.api.times().len();
+        let release = f.api.hold_next();
+        host.try_drawer_navigated(1, transition).unwrap();
+        settle().await;
+        assert_eq!(f.api.times().len(), previous + 1);
+        let mut expected = server_counts.clone();
+        match changed {
+            Some("comments") => expected.comments = Some(0),
+            Some("forwards") => expected.forwards = Some(0),
+            Some("notices") => expected.notices = Some(0),
+            None => {}
+            Some(_) => unreachable!(),
+        }
+        assert_eq!(view.borrow().counts, Some(expected));
+        assert!(!view.borrow().hide_private_row_badges);
+        release.send(()).unwrap();
+        settle().await;
+        assert_eq!(view.borrow().counts.as_ref(), Some(&server_counts));
+    }
+    let last = f.api.times().len();
+    step(29_999).await;
+    assert_eq!(
+        f.api.times().len(),
+        last,
+        "all earlier deadlines were replaced"
+    );
+    step(1).await;
+    assert_eq!(f.api.times().len(), last + 1);
+    assert_eq!(f.api.times().last(), Some(&60_000));
+
+    host.try_drawer_navigated(2, Comments).unwrap();
+    host.drawer_visible(1, false).await.unwrap();
+    settle().await;
+    assert_eq!(f.api.times().len(), last + 2, "only hide rearmed");
+    host.try_drawer_navigated(1, Comments).unwrap();
+    settle().await;
+    step(239_999).await;
+    assert_eq!(
+        f.api.times().len(),
+        last + 2,
+        "normal cadence and no hidden navigation"
+    );
+    step(1).await;
+    assert_eq!(f.api.times().last(), Some(&300_000));
+}
+
+#[tokio::test(start_paused = true)]
+async fn only_a_numeric_server_zero_hides_all_private_row_badges() {
+    let f = Fixture::new(true);
+    let host = f.client.start_pc_message_count_polling().unwrap();
+    let view = host.subscribe();
+    settle().await;
+    for (sample, hidden, projected) in [
+        (json!(0), true, Some(0)),
+        (json!(0.0), true, None),
+        (json!("0"), false, Some(0)),
+        (Value::Null, false, None),
+        (json!(3), false, Some(3)),
+    ] {
+        *f.api.private.lock().unwrap() = sample;
+        host.refresh_counts(1).await.unwrap();
+        settle().await;
+        assert_eq!(view.borrow().hide_private_row_badges, hidden);
+        assert_eq!(view.borrow().counts.as_ref().unwrap().private, projected);
+    }
+    *f.api.private.lock().unwrap() = json!(0);
+    host.refresh_counts(1).await.unwrap();
+    settle().await;
+    f.api.code.store(403, Ordering::SeqCst);
+    *f.api.private.lock().unwrap() = json!(3);
+    host.refresh_counts(1).await.unwrap();
+    settle().await;
+    assert!(view.borrow().last_count_read_failed);
+    assert!(view.borrow().hide_private_row_badges);
 }
 
 #[tokio::test(start_paused = true)]

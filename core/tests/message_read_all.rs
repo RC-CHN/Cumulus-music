@@ -7,8 +7,8 @@ use cumulus_core::{
     client::{
         MusicClient,
         messages::{
-            MessageCounts, MessageReadAllAction as Action, MessageReadAllState as Status,
-            PcMessageConnectivity,
+            MessageCountNavigation, MessageCounts, MessageReadAllAction as Action,
+            MessageReadAllState as Status, PcMessageConnectivity,
         },
     },
     protocol::http::{ApiOrigin, ClientProfile, MusicHttpClient, RequestOptions},
@@ -137,6 +137,39 @@ async fn prepare(host: &PcMessageConnectivity) -> String {
         panic!("visible verified positive count did not allow preparation")
     };
     intent
+}
+
+#[tokio::test(start_paused = true)]
+async fn local_tab_zero_cannot_complete_a_partial_signed_observation_for_read_all() {
+    let partial = json!({"code":200,"msg":5,"forward":0,"notice":0});
+    let (held, answer) = gate();
+    let f = Fixture::new([partial.clone().into(), partial.into(), held]);
+    let host = f.start();
+    open(&host, &f.http, 2).await;
+    assert_eq!(state(&host, Action::Prepare).await, Status::Unavailable);
+    host.try_drawer_navigated(1, MessageCountNavigation::Comments)
+        .unwrap();
+    f.http.wait(3).await;
+    settle().await;
+    let view = host.subscribe();
+    assert_eq!(view.borrow().counts.as_ref().unwrap().comments, Some(0));
+    assert_eq!(view.borrow().counts.as_ref().unwrap().private, Some(5));
+    assert_eq!(state(&host, Action::Prepare).await, Status::Unavailable);
+    assert!(f.journal("71").is_none());
+
+    assert!(
+        answer
+            .send(Ok(reply(
+                json!({"code":200,"msg":5,"comment":2,"forward":0,"notice":0})
+            )))
+            .is_ok()
+    );
+    settle().await;
+    let intent = prepare(&host).await;
+    assert_eq!(state(&host, Action::Cancel { intent }).await, Status::Idle);
+    assert_eq!(f.paths(), [COUNT, COUNT, COUNT]);
+    assert!(f.journal("71").is_none());
+    host.shutdown().await;
 }
 
 #[tokio::test(start_paused = true)]

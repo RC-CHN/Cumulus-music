@@ -3,6 +3,7 @@ import type { AccountView } from '../services/contracts';
 import {
   messageTabs,
   type MessageClient,
+  type MessageCountNavigation,
   type MessageCountStream,
   type MessageCountView,
   type MessageQuery,
@@ -47,6 +48,7 @@ export function useMessageDrawer(
       : undefined;
   });
   const counts = computed(() => currentCounts.value?.counts);
+  const hidePrivateRowBadges = computed(() => currentCounts.value?.hidePrivateRowBadges === true);
   const refreshing = ref<string>();
   const streamFailure = ref<string>();
   const countsBusy = computed(
@@ -59,11 +61,39 @@ export function useMessageDrawer(
   let disposed = false;
   let countVisibility = false;
   let sequence = 0;
+  let countActions = Promise.resolve();
+  let visit = 0;
+  let threadVisit = 0;
+
+  function queueCountAction(
+    send: (stream: MessageCountStream, epoch: string, sequence: number) => Promise<void>,
+  ) {
+    const owner = account();
+    const stream = countStream;
+    if (!stream || owner.status !== 'authenticated') return;
+    const order = ++sequence;
+    countActions = countActions
+      .then(() => {
+        if (!disposed && countStream === stream && account().epoch === owner.epoch)
+          return send(stream, owner.epoch, order);
+      })
+      .catch(() => {});
+  }
 
   function syncCountVisibility() {
-    const owner = account();
-    if (!countStream || owner.status !== 'authenticated') return;
-    void countStream.visibility(owner.epoch, ++sequence, countVisibility).catch(() => {});
+    const visible = countVisibility;
+    queueCountAction((stream, epoch, order) => stream.visibility(epoch, order, visible));
+  }
+
+  function countNavigated(navigation: MessageCountNavigation) {
+    const generation = visit;
+    // The official tab clears its host count on the next turn, after the
+    // selected view changes. Returning to private or leaving a conversation
+    // rearms the same counter without clearing the private total.
+    setTimeout(() => {
+      if (disposed || generation !== visit || !shown.value || !countVisibility) return;
+      queueCountAction((stream, epoch, order) => stream.navigate(epoch, order, navigation));
+    }, 0);
   }
 
   function setCountVisibility(visible: boolean) {
@@ -90,9 +120,6 @@ export function useMessageDrawer(
     disposed = true;
     countStream?.close();
   });
-  let visit = 0;
-  let threadVisit = 0;
-
   function close() {
     visit++;
     threadVisit++;
@@ -179,7 +206,9 @@ export function useMessageDrawer(
     void load();
   }
   function select(next: MessageTab) {
+    if (!shown.value || peer.value || next === tab.value) return;
     tab.value = next;
+    countNavigated(next);
     if (!lists[next].loaded && !lists[next].error) void load();
   }
   function enter(item: MessageRow) {
@@ -192,12 +221,15 @@ export function useMessageDrawer(
     threadVisit++;
     thread.value = createList();
     peer.value = { id: item.peerId, name: row.author };
+    countNavigated('conversation');
     return load();
   }
   function back() {
+    if (!shown.value || !peer.value) return;
     threadVisit++;
     peer.value = undefined;
     thread.value = createList();
+    countNavigated('conversation');
   }
   function clearConversationBadges() {
     const rows = lists.private.rows;
@@ -209,6 +241,7 @@ export function useMessageDrawer(
     peer,
     current,
     counts,
+    hidePrivateRowBadges,
     countsBusy,
     countsError,
     setCountVisibility,

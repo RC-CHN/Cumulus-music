@@ -10,7 +10,8 @@ pub(super) use deletion::DeletionHost;
 pub use deletion::{MessageDeleteAction, MessageDeleteOutcome, MessagePendingDeletion};
 pub(super) use pc_poll::PcMessagePollHost;
 pub use pc_poll::{
-    MessageReadAllAction, MessageReadAllState, PcMessageConnectivity, PcMessageConnectivityView,
+    MessageCountNavigation, MessageReadAllAction, MessageReadAllState, PcMessageConnectivity,
+    PcMessageConnectivityView,
 };
 pub use projection::attachment::MessageTarget;
 use projection::project;
@@ -46,7 +47,12 @@ pub struct MessageCounts {
     pub notices: Option<u64>,
 }
 
-async fn read_counts(session: &AccountSession, token: &SessionToken) -> Result<MessageCounts> {
+struct ObservedCounts {
+    counts: MessageCounts,
+    hide_private_row_badges: bool,
+}
+
+async fn read_counts(session: &AccountSession, token: &SessionToken) -> Result<ObservedCounts> {
     session
         .run_for(token, |api, _| async move {
             let response = api
@@ -57,11 +63,16 @@ async fn read_counts(session: &AccountSession, token: &SessionToken) -> Result<M
                     &[200],
                 )
                 .await?;
-            Ok(MessageCounts {
-                private: projection::number(&response["msg"]),
-                comments: projection::number(&response["comment"]),
-                forwards: projection::number(&response["forward"]),
-                notices: projection::number(&response["notice"]),
+            Ok(ObservedCounts {
+                counts: MessageCounts {
+                    private: projection::number(&response["msg"]),
+                    comments: projection::number(&response["comment"]),
+                    forwards: projection::number(&response["forward"]),
+                    notices: projection::number(&response["notice"]),
+                },
+                // M/3090 uses a numeric strict equality for the row display;
+                // the general counter projection also accepts decimal strings.
+                hide_private_row_badges: response["msg"].as_f64() == Some(0.0),
             })
         })
         .await
@@ -146,7 +157,7 @@ fn endpoint(query: &MessageQuery, uid: &str) -> Result<(String, Value, usize)> {
 impl MusicClient {
     pub async fn message_counts(&self, epoch: &str) -> Result<AccountData<MessageCounts>> {
         let token = self.player_token(epoch)?;
-        let value = read_counts(&self.session, &token).await?;
+        let value = read_counts(&self.session, &token).await?.counts;
         Ok(AccountData {
             epoch: token.generation.to_string(),
             value,
