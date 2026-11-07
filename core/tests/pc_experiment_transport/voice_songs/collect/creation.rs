@@ -125,6 +125,7 @@ async fn acknowledged_create_uses_returned_id_and_exact_filtered_group_once() {
     let plan = prepare(&f, &card, &[2, 1, 0, 4, 3, 5, 7]);
     assert_eq!((plan.selected_count, plan.eligible_count), (7, 2));
     assert_eq!(plan.omitted_indices, [1, 4, 3, 5, 7]);
+    assert!(plan.can_create);
     let selection = plan.selection_receipt.unwrap();
     destinations(&f, &card, &selection, "81").await;
     let created = create(&f, &card, &selection, &format!(" {NAME} "), true)
@@ -410,7 +411,9 @@ async fn group_authority_alone_does_not_admit_create_with_foreign_scoped_cookie(
         [],
     )
     .await;
-    let selection = prepare(&f, &card, &[2, 0]).selection_receipt.unwrap();
+    let plan = prepare(&f, &card, &[2, 0]);
+    assert!(!plan.can_create);
+    let selection = plan.selection_receipt.unwrap();
     assert!(matches!(
         create(&f, &card, &selection, NAME, true).await,
         Err(Error::StaleResponse)

@@ -1,17 +1,37 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import type { VoiceSongGroupCollectModel } from '../composables/useVoiceSongGroupCollect';
+import {
+  validVoiceSongCollectionName,
+  type VoiceSongGroupCollectModel,
+} from '../composables/useVoiceSongGroupCollect';
 import { failure, type PlaylistView } from '../services/contracts';
+import { playlistLength } from '../services/playlists';
 import Icon from './Icon.vue';
 import PlaylistCollectList from './PlaylistCollectList.vue';
 import '../styles/playlist-collect.css';
 
 const props = defineProps<{ model: VoiceSongGroupCollectModel }>();
 const emit = defineEmits<{ expired: [] }>();
-const { phase, plan, selected, message, saving, liked, likedLoading, likedError } = props.model;
+const {
+  phase,
+  plan,
+  selected,
+  message,
+  saving,
+  liked,
+  likedLoading,
+  likedError,
+  newDestination,
+  canCreate,
+} = props.model;
 const dialog = ref<HTMLDialogElement>();
 const closeButton = ref<HTMLButtonElement>();
 const reconcileButton = ref<HTMLButtonElement>();
+const continueButton = ref<HTMLButtonElement>();
+const nameInput = ref<HTMLInputElement>();
+const name = ref('');
+const privatePlaylist = ref(false);
+const validName = computed(() => validVoiceSongCollectionName(name.value));
 const sorts = [
   { value: 'default', label: '默认排序' },
   { value: 'recently', label: '常用优先' },
@@ -105,11 +125,17 @@ watch(
   phase,
   async (kind) => {
     if (kind === 'picking') void load(true);
+    if (kind === 'creating') {
+      name.value = '';
+      privatePlaylist.value = false;
+    }
     await nextTick();
     if (!alive || phase.value !== kind) return;
     if (kind === 'picking')
       dialog.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     else if (kind === 'pending') reconcileButton.value?.focus();
+    else if (kind === 'creating') nameInput.value?.focus();
+    else if (kind === 'created_ready') continueButton.value?.focus();
     else if (!saving.value) closeButton.value?.focus();
   },
   { immediate: true },
@@ -130,7 +156,7 @@ function choose(id: string) {
     @cancel.prevent="model.close"
   >
     <header>
-      <h2 id="voice-song-collect-title">收藏到歌单</h2>
+      <h2 id="voice-song-collect-title">{{ newDestination ? '创建歌单' : '收藏到歌单' }}</h2>
       <button
         ref="closeButton"
         type="button"
@@ -149,7 +175,7 @@ function choose(id: string) {
       >
     </p>
     <p
-      v-if="phase !== 'picking'"
+      v-if="phase !== 'picking' && phase !== 'creating'"
       data-voice-song-collect-status
       class="collect-feedback"
       role="status"
@@ -158,7 +184,9 @@ function choose(id: string) {
         phase === 'preparing'
           ? '正在确认可收藏的歌曲…'
           : phase === 'saving'
-            ? '正在收藏…'
+            ? newDestination
+              ? message
+              : '正在收藏…'
             : phase === 'reading'
               ? '正在核对收藏结果…'
               : message
@@ -169,6 +197,38 @@ function choose(id: string) {
         核对结果
       </button>
     </footer>
+    <footer v-if="phase === 'created_ready'" class="group-collect-footer">
+      <button ref="continueButton" type="button" class="primary" @click="model.addCreated">
+        继续收藏
+      </button>
+    </footer>
+    <form
+      v-if="phase === 'creating'"
+      class="collect-create"
+      @submit.prevent="model.create(name, privatePlaylist)"
+    >
+      <label
+        >歌单名称<input
+          ref="nameInput"
+          v-model="name"
+          aria-label="歌单名称"
+          aria-describedby="voice-song-collect-name-length"
+          :aria-invalid="!!name && !validName"
+          placeholder="输入歌单标题"
+          maxlength="40"
+        /><small id="voice-song-collect-name-length"
+          >{{ playlistLength(name.trim()) }} / 40</small
+        ></label
+      >
+      <label class="private-checkbox"
+        ><input v-model="privatePlaylist" type="checkbox" />设为隐私歌单</label
+      >
+      <p v-if="!privatePlaylist" class="muted">公开歌单可被其他用户查看和收藏。</p>
+      <p v-if="name && !validName" class="form-warning">
+        名称不能包含 @ 或 #，并请保持在字数上限内。
+      </p>
+      <footer><button class="primary" type="submit" :disabled="!validName">创建</button></footer>
+    </form>
     <div v-if="phase === 'picking'" class="collect-body">
       <div class="collect-sort-tabs" role="tablist" aria-label="收藏歌单排序" @keydown="sortKeys">
         <button
@@ -206,7 +266,7 @@ function choose(id: string) {
       </div>
       <PlaylistCollectList
         :key="sort"
-        :include-create="false"
+        :include-create="canCreate"
         :playlists="current.rows"
         :disabled="false"
         :selected-id="selected"
@@ -215,6 +275,7 @@ function choose(id: string) {
         @scroll="current.top = $event"
         @near-end="load(true)"
         @select="choose"
+        @create="model.chooseCreate"
       />
       <button
         v-if="current.next !== null && current.next !== 0 && !current.error"

@@ -115,7 +115,7 @@ Native system-liked destination
   The separate regular case still passes 13 stages without an invented
   system target. Neither case uses a real account or physical audio.
 
-Native new destination (no desktop route in this change)
+New destination
 
 - FavouriteModal/index.jsx:419–441,529–534 closes the picker into the
   create form and sends a null destination sentinel, keeping selectedData.
@@ -162,3 +162,18 @@ Native new destination (no desktop route in this change)
   Once either write exists, no action resends it. An old card or process
   cannot resume a write; the general account journal still allows readback
   of persisted operations. No automatic publication or real-account tests.
+- The desktop only exposes the Create row on a current verified group plan
+  with the native `canCreate` hint. The main-window typed command accepts
+  the same card and group receipts and one action (`create` with explicit
+  name and privacy, `status`, `add_created`, or `cancel_prepared`). The UI
+  closes the picker into the 创建歌单 form, focuses the name, and defaults
+  the visible privacy checkbox to unchecked, as in M/3034. Closing before
+  submission cancels the original picker and returns to the source row;
+  no server read or mutation is produced by cancelling the form. The
+  regular and verified liked destinations retain their own commands.
+- Creation and collection stay distinct in the dialog: pending shows
+  核对结果, verified creation without an add shows 继续收藏, and a definite
+  add failure remains visible even when readback proves membership. The
+  renderer checks both returned operation IDs against the current opening
+  and cannot change the frozen group's order, adopt a different playlist
+  or automatically repeat a mutation.

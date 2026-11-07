@@ -88,6 +88,7 @@ pub struct VoiceSongCollectPlan {
     pub eligible_count: usize,
     pub omitted_indices: Vec<usize>,
     pub used_first_fallback: bool,
+    pub can_create: bool,
 }
 
 #[derive(Serialize)]
@@ -403,6 +404,14 @@ impl MusicClient {
         let service = PlaylistService::new(self.session.clone())?;
         check()?;
         let selection_receipt = page.collect.replace(&service, &page, songs)?;
+        let can_create = selection_receipt.is_some()
+            && page.api.upgrade().is_some_and(|api| {
+                api.song_card_collection_create_scope_revision()
+                    .ok()
+                    .flatten()
+                    .as_deref()
+                    == Some(page.revision.as_str())
+            });
         check()?;
         Ok(VoiceSongCollectPlan {
             epoch: epoch.into(),
@@ -412,6 +421,7 @@ impl MusicClient {
             eligible_count,
             omitted_indices,
             used_first_fallback,
+            can_create,
         })
     }
 

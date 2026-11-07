@@ -1,9 +1,12 @@
 import { computed, shallowRef, watch } from 'vue';
 import { failure } from '../services/contracts.ts';
-import { playlistPending, playlistSaved } from '../services/playlists.ts';
+import { playlistLength, playlistPending, playlistSaved } from '../services/playlists.ts';
 import type {
   VoiceSongCollectCard,
   VoiceSongCollectClient,
+  VoiceSongCollectCreation,
+  VoiceSongCollectCreationCommand,
+  VoiceSongCollectCreationReply,
   VoiceSongCollectPlan,
   VoiceSongCollectResult,
   VoiceSongCollectTarget,
@@ -17,7 +20,21 @@ export interface VoiceSongCollectOpening {
   live: () => boolean;
 }
 
-type Phase = 'preparing' | 'picking' | 'saving' | 'pending' | 'reading' | 'failed' | 'empty';
+type Phase =
+  | 'preparing'
+  | 'picking'
+  | 'creating'
+  | 'created_ready'
+  | 'saving'
+  | 'pending'
+  | 'reading'
+  | 'failed'
+  | 'empty';
+
+export function validVoiceSongCollectionName(name: string) {
+  const value = name.trim();
+  return !!value && !/[@#]/.test(value) && playlistLength(value) <= 40;
+}
 
 export function useVoiceSongGroupCollect(
   core: VoiceSongCollectClient & VoiceSongLikedCollectClient,
@@ -35,7 +52,16 @@ export function useVoiceSongGroupCollect(
   const liked = shallowRef<VoiceSongLikedDestination>();
   const likedLoading = shallowRef(false);
   const likedError = shallowRef('');
+  const newDestination = shallowRef(false);
+  const creation = shallowRef<VoiceSongCollectCreation>();
   const saving = computed(() => phase.value === 'saving' || phase.value === 'reading');
+  const canCreate = computed(
+    () =>
+      phase.value === 'picking' &&
+      plan.value?.canCreate === true &&
+      !!target.value &&
+      owns(opening.value),
+  );
 
   function reset() {
     visible.value = false;
@@ -48,6 +74,8 @@ export function useVoiceSongGroupCollect(
     liked.value = undefined;
     likedLoading.value = false;
     likedError.value = '';
+    newDestination.value = false;
+    creation.value = undefined;
     phase.value = 'preparing';
   }
   watch(
@@ -64,8 +92,16 @@ export function useVoiceSongGroupCollect(
     if (saving.value) return;
     // A still-live pending receipt remains available to reopen and reconcile.
     // Once the card changes, the normal playlist journal owns recovery.
-    if (phase.value === 'pending' && owns(opening.value)) visible.value = false;
-    else reset();
+    if (['pending', 'created_ready'].includes(phase.value) && owns(opening.value)) {
+      visible.value = false;
+      return;
+    }
+    const destination = target.value;
+    if (phase.value === 'creating' && destination && owns(opening.value))
+      void core
+        .playerVoiceSongsCollectCreateAction(destination, { kind: 'cancel_prepared' })
+        .catch(() => {});
+    reset();
   }
   function issue(error: unknown) {
     const problem = failure(error);
@@ -74,7 +110,7 @@ export function useVoiceSongGroupCollect(
   }
   async function open(intent: VoiceSongCollectOpening) {
     if (!intent.live() || visible.value || saving.value) return;
-    if (phase.value === 'pending' && owns(opening.value)) {
+    if (['pending', 'created_ready'].includes(phase.value) && owns(opening.value)) {
       visible.value = true;
       return;
     }
@@ -91,7 +127,8 @@ export function useVoiceSongGroupCollect(
         reply.selectedCount !== view.indices.length ||
         reply.eligibleCount < 0 ||
         reply.eligibleCount + reply.omittedIndices.length !== reply.selectedCount ||
-        !!reply.selectionReceipt !== reply.eligibleCount > 0
+        !!reply.selectionReceipt !== reply.eligibleCount > 0 ||
+        (reply.canCreate && !reply.selectionReceipt)
       ) {
         phase.value = 'failed';
         message.value = '所选歌曲已变化，请重新选择';
@@ -208,6 +245,7 @@ export function useVoiceSongGroupCollect(
     }
   }
   async function reconcile() {
+    if (newDestination.value) return creationAction('pending', { kind: 'status', reconcile: true });
     const view = opening.value;
     const destination = target.value;
     if (!view || !owns(view) || !destination || phase.value !== 'pending') return;
@@ -218,6 +256,116 @@ export function useVoiceSongGroupCollect(
       if (!owns(view)) return;
       phase.value = 'pending';
       message.value = issue(error).message;
+    }
+  }
+  function chooseCreate() {
+    if (!visible.value || !canCreate.value) return;
+    newDestination.value = true;
+    phase.value = 'creating';
+  }
+  function create(name: string, privatePlaylist: boolean) {
+    if (!validVoiceSongCollectionName(name) || typeof privatePlaylist !== 'boolean') return;
+    return creationAction('creating', { kind: 'create', name: name.trim(), privatePlaylist });
+  }
+  function addCreated() {
+    if (!creation.value?.canAdd) return;
+    return creationAction('created_ready', { kind: 'add_created' });
+  }
+  function settleCreation(view: VoiceSongCollectOpening, reply: VoiceSongCollectCreationReply) {
+    const destination = target.value;
+    if (!owns(view) || !destination) return;
+    const result = reply.kind === 'creation' ? reply.creation : undefined;
+    const previous = creation.value;
+    const add = result?.add;
+    if (
+      !result ||
+      result.epoch !== destination.epoch ||
+      result.playId !== destination.playId ||
+      result.selectionReceipt !== destination.selectionReceipt ||
+      !result.createOperationId ||
+      (previous && previous.createOperationId !== result.createOperationId) ||
+      (previous?.playlistId && previous.playlistId !== result.playlistId) ||
+      (previous?.add && previous.add.operationId !== add?.operationId) ||
+      (result.playlistId !== null && result.createPhase !== 'confirmed') ||
+      result.canAdd !== (result.playlistId !== null && !add) ||
+      (result.addFailed && !add) ||
+      (add &&
+        (add.epoch !== destination.epoch ||
+          add.playId !== destination.playId ||
+          add.selectionReceipt !== destination.selectionReceipt ||
+          add.playlistId !== result.playlistId ||
+          !add.operationId ||
+          add.operationId === result.createOperationId))
+    ) {
+      phase.value = 'pending';
+      message.value = '无法确认此次创建或收藏，请核对结果';
+      return;
+    }
+    creation.value = result;
+    if (result.canAdd) {
+      phase.value = 'created_ready';
+      message.value = '已确认新歌单，可以继续收藏所选歌曲。';
+    } else if (result.addFailed) {
+      phase.value = 'failed';
+      message.value = '歌单已创建，但所选歌曲未能收藏。';
+    } else if (add && playlistSaved(add.phase)) {
+      reset();
+      completed();
+    } else if (playlistPending(result.createPhase) || (add && playlistPending(add.phase))) {
+      phase.value = 'pending';
+      message.value = add ? '歌单已创建，收藏结果待核对。' : '歌单创建结果待核对。';
+    } else {
+      phase.value = 'failed';
+      message.value = add
+        ? '歌单已创建，但所选歌曲未能收藏。'
+        : result.createPhase === 'confirmed'
+          ? '已核对创建结果，但没有可确认的新歌单编号，未收藏歌曲。'
+          : '未能创建歌单，也未收藏歌曲。';
+    }
+  }
+  async function creationAction(
+    from: 'creating' | 'created_ready' | 'pending',
+    command: VoiceSongCollectCreationCommand,
+  ) {
+    const view = opening.value;
+    const destination = target.value;
+    if (
+      !view ||
+      !owns(view) ||
+      !destination ||
+      !visible.value ||
+      !newDestination.value ||
+      phase.value !== from
+    )
+      return;
+    phase.value = command.kind === 'status' ? 'reading' : 'saving';
+    message.value = command.kind === 'create' ? '正在创建歌单并收藏…' : '正在收藏所选歌曲…';
+    try {
+      settleCreation(view, await core.playerVoiceSongsCollectCreateAction(destination, command));
+    } catch (error) {
+      if (!owns(view)) return;
+      const problem = issue(error);
+      if (!owns(view)) return;
+      if (command.kind !== 'status') {
+        try {
+          // A transport error is never a reason to submit a second write.
+          settleCreation(
+            view,
+            await core.playerVoiceSongsCollectCreateAction(destination, {
+              kind: 'status',
+              reconcile: false,
+            }),
+          );
+          return;
+        } catch {
+          if (!owns(view)) return;
+        }
+      }
+      const pending =
+        command.kind === 'status' ||
+        ['connection', 'network', 'mutation_uncertain', 'write_uncertain'].includes(problem.code);
+      phase.value = pending ? 'pending' : 'failed';
+      message.value = problem.message;
     }
   }
   function destinations(sort: 'default' | 'recently', page: number) {
@@ -235,10 +383,15 @@ export function useVoiceSongGroupCollect(
     liked,
     likedLoading,
     likedError,
+    newDestination,
+    canCreate,
     open,
     close,
     choose,
     chooseLiked,
+    chooseCreate,
+    create,
+    addCreated,
     readLiked,
     reconcile,
     destinations,

@@ -128,6 +128,7 @@ export interface VoiceSongCollectPlan {
   eligibleCount: number;
   omittedIndices: number[];
   usedFirstFallback: boolean;
+  canCreate: boolean;
 }
 
 export interface VoiceSongCollectResult {
@@ -138,6 +139,28 @@ export interface VoiceSongCollectResult {
   operationId: string;
   phase: PlaylistPhase;
 }
+
+export interface VoiceSongCollectCreation {
+  epoch: string;
+  playId: string;
+  selectionReceipt: string;
+  createOperationId: string;
+  createPhase: PlaylistPhase;
+  playlistId: string | null;
+  canAdd: boolean;
+  addFailed: boolean;
+  add: VoiceSongCollectResult | null;
+}
+
+export type VoiceSongCollectCreationCommand =
+  | { kind: 'create'; name: string; privatePlaylist: boolean }
+  | { kind: 'status'; reconcile: boolean }
+  | { kind: 'add_created' }
+  | { kind: 'cancel_prepared' };
+
+export type VoiceSongCollectCreationReply =
+  | { kind: 'creation'; creation: VoiceSongCollectCreation }
+  | { kind: 'cancelled' };
 
 export interface VoiceSongCollectClient {
   playerVoiceSongsCollectPrepare(
@@ -157,6 +180,10 @@ export interface VoiceSongCollectClient {
     target: VoiceSongCollectTarget,
     reconcile: boolean,
   ): Promise<VoiceSongCollectResult>;
+  playerVoiceSongsCollectCreateAction(
+    target: VoiceSongCollectTarget,
+    command: VoiceSongCollectCreationCommand,
+  ): Promise<VoiceSongCollectCreationReply>;
 }
 
 /** Exact M/3051 choices; the native plan further restricts each row's subset. */
