@@ -177,3 +177,12 @@ New destination
   renderer checks both returned operation IDs against the current opening
   and cannot change the frozen group's order, adopt a different playlist
   or automatically repeat a mutation.
+- The Linux WebKitGTK probes `voice_song_collect_smoke.py --create recover`
+  and `--create add_false` cover trusted pointer selection and confirmation,
+  form cancellation without writes, explicit verification then a first add,
+  terminal false despite observed membership, and focus returned to the
+  invoking song row. They preserve the paused libmpv decoder, clock and
+  queue in 21 and 18 stages respectively. The GUI transport uses a sealed
+  native API fixture; the separate Rust transport tests exercise the
+  production EAPI encoding, signed cookie scopes and dispatch guards. No
+  live account or physical audio, and no new Windows UI exercise here.
