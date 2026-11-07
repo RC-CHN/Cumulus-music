@@ -31,6 +31,7 @@ enum GuardedReadback<'a> {
 
 enum AddDestination<'a> {
     Owned(&'a str),
+    DownloadPicker(&'a str),
     Created(&'a str),
     SystemLiked(&'a str),
 }
@@ -297,7 +298,7 @@ impl PlaylistService {
     ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
-            AddDestination::Owned(playlist),
+            AddDestination::DownloadPicker(playlist),
             &[song.into()],
             operation_id,
             permission,
@@ -394,9 +395,13 @@ impl PlaylistService {
             })
         };
         let (playlist, revision, before) = match destination {
-            owned @ (AddDestination::Owned(_) | AddDestination::Created(_)) => {
+            owned @ (AddDestination::Owned(_)
+            | AddDestination::DownloadPicker(_)
+            | AddDestination::Created(_)) => {
                 let (playlist, creation) = match owned {
-                    AddDestination::Owned(playlist) => (identifier(&json!(playlist))?, None),
+                    AddDestination::Owned(playlist) | AddDestination::DownloadPicker(playlist) => {
+                        (identifier(&json!(playlist))?, None)
+                    }
                     AddDestination::Created(operation) => {
                         let record = records
                             .iter()
@@ -414,6 +419,9 @@ impl PlaylistService {
                 }
                 let detail = if let Some((name, private)) = creation {
                     self.read_created_detail(token, &playlist, &uid, name, private)
+                        .await?
+                } else if matches!(owned, AddDestination::DownloadPicker(_)) {
+                    self.read_download_picker_detail(token, &playlist, &uid)
                         .await?
                 } else {
                     self.read_detail(token, &playlist).await?
@@ -466,6 +474,32 @@ impl PlaylistService {
             }),
         )
         .await
+    }
+
+    async fn read_download_picker_detail(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        uid: &str,
+    ) -> Result<PlaylistSnapshot> {
+        self.session
+            .run_for(token, |api, _| async move {
+                let row = PlaylistApi::new(api).detail(&json!(playlist)).await?;
+                let detail = PlaylistSnapshot::from_detail(&row, playlist)?;
+                detail.writable(uid)?;
+                // A conflicting explicit creator cannot be treated as an
+                // owned row merely because one field repeats the viewer UID.
+                for owner in [&row["userId"], &row["creator"]["userId"]] {
+                    if !owner.is_null() && identifier(owner)? != uid {
+                        return Err(Error::StaleResponse);
+                    }
+                }
+                if !row["specialType"].is_null() && row["specialType"].as_i64().is_none() {
+                    return Err(Error::StaleResponse);
+                }
+                Ok(detail)
+            })
+            .await
     }
 
     async fn read_created_detail(

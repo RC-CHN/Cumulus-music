@@ -52,12 +52,10 @@ impl Api for Transport {
                 }
                 DETAIL => {
                     assert_eq!(payload, json!({"id":"81","n":100000,"s":0}));
-                    let owner = if self.changed.load(Ordering::Acquire) {
-                        2
-                    } else {
-                        1
-                    };
-                    let mut row = list("81", owner, 0);
+                    let mut row = list("81", 1, 0);
+                    if self.changed.load(Ordering::Acquire) {
+                        row["creator"]["userId"] = json!(2);
+                    }
                     row["trackIds"] = json!(
                         self.saved
                             .lock()

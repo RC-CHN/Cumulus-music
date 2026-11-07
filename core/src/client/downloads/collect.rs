@@ -308,8 +308,11 @@ impl MusicClient {
             source: source.clone(),
         };
         let check = || {
-            with_visit(slot, &source, |_| Ok(()))?;
-            source.require()
+            source.require()?;
+            // Check the live visit after the task/credential reads, so a
+            // cancellation that wins while those reads are in progress also
+            // wins the final synchronous dispatch permission.
+            with_visit(slot, &source, |_| Ok(()))
         };
         let service = PlaylistService::new(ctx.session.clone())?;
         let record = if let Some(previous) =
