@@ -1,5 +1,19 @@
 Cumulus 桌面主流程验收
 
+2026-11-08 Linux 合并树回归（8edb3452）
+  原生旧版重新登录引导、消息抽屉与每日推荐队列偏好合并后，以同一个正式
+  Vue 构建和 Tauri IPC 运行合成主流程。默认封闭流程通过 20 个检查点、
+  19 张截图；回环 HTTPS 加 --eof-next --hard-network-cut 的独立场景通过
+  19 个检查点、18 张截图。两组均由实际 libmpv 推进时钟，并由第二进程恢复
+  已保存的合成账号，不需要再次取码。
+  独立 SQLite 核对暂停时的 4096 字节、续传 Range、成品 FLAC 和离线账本摘要，
+  以及只清理本次目标文件。HTTPS 场景验证两个合成音源的先后顺序和原生
+  EOF 换曲；关闭回环后已建立与新 TCP、HTTPS 连接均阻断，同窗仍能从下载
+  文件播放。没有真实账号写入、真实音乐请求或物理声卡验收。
+  本机报告 `.build/ui-proof/phase126-main-flow-8edb/{default-r1,https-eof-cut-r2}/report.json`；
+  同目录有 SQLite 旁证、构建哈希与截图清单。复跑使用
+  `scripts/ci/main_flow_smoke.py` 及 `scripts/ci/main_flow_https_smoke.py`。
+
 2026-11-06 后续开发分支 Linux 回归
   在搜索恢复和队列收藏改动后的开发树运行 main_flow_ui_probe 的默认合成流程。
   真实 Tauri WebView、Rust IPC、SQLite 与 libmpv 空输出通过 20 个检查点、
