@@ -1885,7 +1885,7 @@ function voiceSongGroupCollectFocus() {
 }
 const voiceDownloadRoute = shallowRef<typeof page.value>();
 const voiceDownloadOpener = shallowRef<HTMLElement>();
-const voiceDownloadFeedback = shallowRef<VoiceSongRowTarget>();
+const voiceDownloadFeedback = shallowRef<{ target: VoiceSongRowTarget; addFailed: boolean }>();
 const voiceSongDownload = useVoiceSongDownload(
   core,
   (target) => page.value === voiceDownloadRoute.value && voiceSongs.ownsTarget(target),
@@ -1900,9 +1900,9 @@ const voiceSongDownload = useVoiceSongDownload(
         throw { code: 'stale', message: '下载设置已变化，请重新选择歌曲。' };
       return current.options;
     },
-    started(opening) {
+    started(opening, addFailed) {
       if (page.value === voiceDownloadRoute.value && voiceSongs.ownsTarget(opening.target))
-        voiceDownloadFeedback.value = opening.target;
+        voiceDownloadFeedback.value = { target: opening.target, addFailed };
     },
     settings(opening) {
       if (page.value !== voiceDownloadRoute.value || !voiceSongs.ownsTarget(opening.target)) return;
@@ -6039,8 +6039,10 @@ onUnmounted(() => {
           voiceRouteFailure?.detail === voicePage.detail.value ? voiceRouteFailure?.text : undefined
         "
         :voice-download-notice="
-          voiceDownloadFeedback && voiceSongs.ownsTarget(voiceDownloadFeedback)
-            ? '已添加到下载'
+          voiceDownloadFeedback && voiceSongs.ownsTarget(voiceDownloadFeedback.target)
+            ? voiceDownloadFeedback.addFailed
+              ? '加入歌单失败，已添加到下载'
+              : '已添加到下载'
             : undefined
         "
         :liked-songs="liked"

@@ -4,15 +4,18 @@ import type { PlaylistView } from '../services/contracts';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import Icon from './Icon.vue';
 
-const props = defineProps<{
-  playlists: PlaylistView[];
-  disabled: boolean;
-  selectedId: string;
-  scrollTop: number;
-  loading: boolean;
-  purpose?: 'download' | 'collect';
-  includeCreate?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    playlists: PlaylistView[];
+    disabled: boolean;
+    selectedId: string;
+    scrollTop: number;
+    loading: boolean;
+    purpose?: 'download' | 'collect';
+    includeCreate?: boolean;
+  }>(),
+  { includeCreate: true },
+);
 const emit = defineEmits<{
   select: [id: string];
   create: [];
@@ -20,7 +23,7 @@ const emit = defineEmits<{
   nearEnd: [];
 }>();
 const entries = computed(() =>
-  props.includeCreate === false ? props.playlists : [null, ...props.playlists],
+  props.includeCreate ? [null, ...props.playlists] : props.playlists,
 );
 const { container, start, end, onScroll, restore } = useVirtualRows(
   () => entries.value.length,
