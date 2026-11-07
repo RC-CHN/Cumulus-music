@@ -55,7 +55,11 @@ def verify(case, root, stages, complete):
     epoch, play_id = card['args']
     page = card['result']
     assert page['voiceId'] == '601' and play_id == player['playId'] == page['playId'] and page['receipt']
-    assert page['tracks'][0]['id'] == '1710' and page['tracks'][0]['fee'] == 4
+    row = page['tracks'][0]
+    assert row['id'] == '1710' and row['fee'] == 0, row
+    # The fixture sets privilege.fee, not the public song's top-level fee.
+    # Only the native purchase plan and transport can observe that privilege.
+    assert not {'privilege', 'payed', 'maxbr', 'flag'}.intersection(row), row
     assert complete['voiceSongsTrace']['songReads'] == [[TRACKS, {'id': '601'}]]
     assert complete['voiceSongsTrace']['likes'] == []
     assert all(row[2] in ('1601', '1602') for row in complete['voiceSongsTrace']['mediaReads'])
