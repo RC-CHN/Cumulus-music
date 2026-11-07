@@ -13,8 +13,9 @@ const props = withDefaults(
     loading: boolean;
     purpose?: 'download' | 'collect';
     includeCreate?: boolean;
+    showWorking?: boolean;
   }>(),
-  { includeCreate: true },
+  { includeCreate: true, showWorking: true },
 );
 const emit = defineEmits<{
   select: [id: string];
@@ -138,7 +139,11 @@ async function move(event: KeyboardEvent) {
         <span class="collect-name">{{ playlist?.name ?? '创建新歌单' }}</span>
         <span v-if="playlist" class="collect-count">{{ playlist.trackCount }}首</span>
       </span>
-      <Icon v-if="playlist?.id === selectedId && disabled" class="collect-working" name="refresh" />
+      <Icon
+        v-if="playlist?.id === selectedId && disabled && showWorking"
+        class="collect-working"
+        name="refresh"
+      />
     </button>
     <div :style="{ height: `${(entries.length - end) * 64}px` }" aria-hidden="true" />
     <p v-if="!playlists.length && !loading" class="collect-empty">

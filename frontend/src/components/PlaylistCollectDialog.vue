@@ -349,7 +349,7 @@ async function reconcile() {
           <button
             v-if="current.error"
             class="text-button"
-            :aria-disabled="current.loading"
+            :aria-disabled="current.loading || fixedDestination"
             @click="reload()"
           >
             {{ current.loading ? '正在重试…' : '重试' }}
@@ -360,6 +360,7 @@ async function reconcile() {
           :playlists="current.rows"
           :disabled="busy || pending || fixedDestination"
           :include-create="!downloadCollection"
+          :show-working="!downloadCollection || busy"
           :selected-id="selected"
           :scroll-top="current.top"
           :loading="current.loading || !!current.error || current.next !== null"
@@ -372,8 +373,8 @@ async function reconcile() {
           v-if="current.next !== null && current.next !== 0 && !current.error"
           type="button"
           class="text-button collect-more"
-          :aria-disabled="current.loading || busy || pending"
-          @click="!busy && !pending && reload()"
+          :aria-disabled="current.loading || busy || pending || fixedDestination"
+          @click="reload()"
         >
           {{ current.loading ? '正在加载…' : '加载更多歌单' }}
         </button>
