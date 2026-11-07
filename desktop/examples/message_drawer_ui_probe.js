@@ -440,6 +440,22 @@
     scroller().scrollTop = 170;
     await wait(() => scroller().scrollTop > 0, 'private scroller moved');
     const before = scroller().scrollTop;
+    const badge = (selector) => one(selector)?.querySelector('.message-drawer-badge')?.textContent.trim();
+    const peerRow = (id) => `[data-message-peer="${id}"]`;
+    const privateTab = '[data-message-tab="private"]';
+    assert(badge(peerRow(501)) === '1' && badge(peerRow(505)) === '2' && badge(privateTab) === '3',
+      'both synthetic peers and the private aggregate are initially unread');
+    await fixture('history-hold');
+    click(one(peerRow(505)));
+    await wait(async () => (await fixture()).historyHeld && button('返回私信列表'), 'first history held');
+    click(button('返回私信列表'));
+    await wait(() => document.activeElement?.dataset.messagePeer === '505'
+      && Math.abs(scroller().scrollTop - before) < 1, 'return before history resolves restores focus and scroll');
+    assert((await fixture()).historyHeld && !badge(peerRow(505)) && badge(peerRow(501)) === '1'
+      && badge(privateTab) === '3' && dot(), 'only the opened peer clears before history responds');
+    await capture('peer_unread_while_history_pending');
+    await fixture('history-release');
+    await wait(async () => !(await fixture()).historyHeld, 'stale history released');
     click(one('[data-message-peer="505"]'));
     await wait(() => ready() && contains('较新的自己消息'), 'selected private thread');
     let items = all('.message-drawer-item');
@@ -488,6 +504,8 @@
     await wait(async () => await countCalls() === 4, 'closing returns the same poller to normal cadence');
     click(trigger());
     await wait(() => ready() && contains('私信预览 1'), 'new private list session');
+    assert(badge(peerRow(505)) === '2' && badge(peerRow(501)) === '1' && badge(privateTab) === '3',
+      'a fresh authoritative inbox can show a positive peer count again');
     await fixture('release');
     await wait(async () => !(await fixture()).noticeHeld, 'stale notice reply released');
     pick('notices');
@@ -497,7 +515,8 @@
     await wait(async () => await countCalls() === 5, 'reopening rearmed once');
     const result = await fixture();
     assert(!result.blockedWrite, 'native service observed no clear/send/delete request');
-    await emit('complete', { ok: true, count, staleVisitDiscarded: true, realAccountWrites: 0, realMusicRequests: 0 });
+    await emit('complete', { ok: true, count, staleVisitDiscarded: true, peerUnreadVerified: true,
+      realAccountWrites: 0, realMusicRequests: 0 });
   } catch (error) {
     await emit('failed', { stageLabel: stage, message: String(error) });
   }

@@ -10,6 +10,8 @@ static REQUESTS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 static FAILED_COMMENT_PAGE: AtomicBool = AtomicBool::new(false);
 static HOLD_NOTICE: AtomicBool = AtomicBool::new(false);
 static NOTICE_HELD: AtomicBool = AtomicBool::new(false);
+static HOLD_HISTORY: AtomicBool = AtomicBool::new(false);
+static HISTORY_HELD: AtomicBool = AtomicBool::new(false);
 static WRITE_ATTEMPT: AtomicBool = AtomicBool::new(false);
 static REMOVED_SINGLE: AtomicBool = AtomicBool::new(false);
 static REMOVED_CONVERSATION: AtomicBool = AtomicBool::new(false);
@@ -76,6 +78,8 @@ pub fn control(mode: &str) -> Value {
     match mode {
         "hold" => HOLD_NOTICE.store(true, Ordering::SeqCst),
         "release" => HOLD_NOTICE.store(false, Ordering::SeqCst),
+        "history-hold" => HOLD_HISTORY.store(true, Ordering::SeqCst),
+        "history-release" => HOLD_HISTORY.store(false, Ordering::SeqCst),
         "deletion-omit" if deletion() => OMIT_UNKNOWN.store(true, Ordering::SeqCst),
         "reply-hold" if reply_mode() => HOLD_REPLY.store(true, Ordering::SeqCst),
         "reply-release" if reply_mode() => HOLD_REPLY.store(false, Ordering::SeqCst),
@@ -93,7 +97,7 @@ pub fn control(mode: &str) -> Value {
 pub fn report() -> Value {
     json!({"requests":*REQUESTS.lock().unwrap(),"blockedWrite":WRITE_ATTEMPT.load(Ordering::SeqCst),
         "noticeHeld":NOTICE_HELD.load(Ordering::SeqCst),"replyHeld":REPLY_HELD.load(Ordering::SeqCst),
-        "countHeld":COUNT_HELD.load(Ordering::SeqCst)})
+        "countHeld":COUNT_HELD.load(Ordering::SeqCst),"historyHeld":HISTORY_HELD.load(Ordering::SeqCst)})
 }
 
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
@@ -223,7 +227,7 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         "/api/msg/private/users" if args == &json!({"limit":15,"offset":0,"time":-1}) => {
             let rows = (0..15).filter(|idx| !deletion() || *idx != 0 || !REMOVED_CONVERSATION.load(Ordering::SeqCst)).map(|idx| json!({"fromUser":{"userId":501+idx,"nickname":format!("合成联系人 {:02}",idx+1)},
-                "lastMsgTime":T-idx,"newMsgCount":if idx==0 {3} else {0},
+                "lastMsgTime":T-idx,"newMsgCount":match idx {0=>1,4=>2,_=>0},
                 "lastMsg":json!({"type":6,"msg":format!("私信预览 {}",idx+1)}).to_string()})).collect::<Vec<_>>();
             json!({"code":200,"more":true,"msgs":rows})
         }
@@ -240,6 +244,13 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             };
             if !(501..516).contains(&peer) {
                 return Some(Err(Error::InvalidInput("history picked another user")));
+            }
+            if HOLD_HISTORY.load(Ordering::SeqCst) {
+                HISTORY_HELD.store(true, Ordering::SeqCst);
+                while HOLD_HISTORY.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                }
+                HISTORY_HELD.store(false, Ordering::SeqCst);
             }
             if args["time"] == -1 && reply_mode() {
                 let attempts = REPLY_SENDS.load(Ordering::SeqCst);

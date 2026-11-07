@@ -184,9 +184,14 @@ export function useMessageDrawer(
   }
   function enter(item: MessageRow) {
     if (!shown.value || tab.value !== 'private' || peer.value || !item.peerId) return;
+    const rows = lists.private.rows;
+    const index = rows.findIndex((row) => row.id === item.id && row.peerId === item.peerId);
+    const row = rows[index];
+    if (!row) return;
+    if (row.unread) rows[index] = { ...row, unread: 0 };
     threadVisit++;
     thread.value = createList();
-    peer.value = { id: item.peerId, name: item.author };
+    peer.value = { id: item.peerId, name: row.author };
     return load();
   }
   function back() {

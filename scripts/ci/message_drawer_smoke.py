@@ -93,11 +93,11 @@ def main():
         (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False))
         return
-    assert report['ok'] and report['staleVisitDiscarded'] and report['count'] == 7
+    assert report['ok'] and report['staleVisitDiscarded'] and report['peerUnreadVerified'] and report['count'] == 8
     assert report['realAccountWrites'] == report['realMusicRequests'] == 0
     assert not report['messageRequests']['blockedWrite']
-    assert len(list(output.glob('ux_*.json'))) == 7
-    assert len(list(output.glob('ux_*.png'))) == (7 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.json'))) == 8
+    assert len(list(output.glob('ux_*.png'))) == (8 if args.screenshots else 0)
     t = 1_700_000_100_000
     reads = {}
     for path, request in report['messageRequests']['requests']:
@@ -110,6 +110,7 @@ def main():
             dict(limit=15, offset=0, time=-1),
         ],
         '/api/msg/private/history': [
+            dict(limit=10, offset=0, time=-1, userId='505'),
             dict(limit=10, offset=0, time=-1, userId='505'),
             dict(limit=10, offset=0, time=t, userId='505'),
         ],
