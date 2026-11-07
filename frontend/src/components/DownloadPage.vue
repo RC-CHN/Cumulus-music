@@ -216,6 +216,7 @@ function play(task?: DownloadTask) {
         />
         <DownloadTable
           v-else
+          :epoch="view?.epoch ?? ''"
           :growth="columnGrowth"
           @columns="columnGrowth = $event"
           :tasks="tasks"

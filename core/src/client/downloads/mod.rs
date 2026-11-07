@@ -1,4 +1,5 @@
 mod commands;
+mod comments;
 mod dto;
 mod jobs;
 mod quality;

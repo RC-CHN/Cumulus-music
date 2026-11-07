@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { DownloadTask } from '../../services/downloads';
-import { downloadMenuItems, type DownloadFileAction } from '../../services/downloadMenu';
+import {
+  downloadCommentCountCandidate,
+  downloadMenuItems,
+  type DownloadFileAction,
+} from '../../services/downloadMenu';
 import { songLink } from '../../services/trackMenu';
 import { useCore } from '../../services/core';
 import ActionMenu from '../ActionMenu.vue';
 import ModalTransition from '../ModalTransition.vue';
 import TrackShareDialog from '../TrackShareDialog.vue';
 const props = defineProps<{
+  epoch: string;
   tasks: DownloadTask[];
   locked: boolean;
   playable: boolean;
@@ -25,9 +30,20 @@ const emit = defineEmits<{
 }>();
 const menu = ref<InstanceType<typeof ActionMenu>>(),
   id = ref(''),
-  shared = shallowRef<DownloadTask>();
+  shared = shallowRef<DownloadTask>(),
+  commentCount = ref<number>();
 const task = computed(() => props.tasks.find((t) => t.id === id.value));
-const items = computed(() => (task.value ? downloadMenuItems(task.value, props) : []));
+const items = computed(() => {
+  const { locked, playable, queueable } = props;
+  return task.value
+    ? downloadMenuItems(task.value, {
+        locked,
+        playable,
+        queueable,
+        commentCount: commentCount.value,
+      })
+    : [];
+});
 const client = useCore(),
   message = ref(''),
   failed = ref(false),
@@ -35,10 +51,13 @@ const client = useCore(),
   retrying = ref(false);
 let origin: HTMLElement | undefined,
   host: HTMLElement | undefined,
-  version = 0;
+  version = 0,
+  preparingComment = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 function close() {
   version++;
+  preparingComment = false;
+  commentCount.value = undefined;
   clearTimeout(timer);
   menu.value?.close();
   shared.value = undefined;
@@ -63,7 +82,32 @@ watch(task, (value) => {
     if (owned) host?.focus({ preventScroll: true });
   }
 });
-onBeforeUnmount(close);
+function abandonPreparation() {
+  if (!preparingComment) return;
+  preparingComment = false;
+  version++;
+}
+function abandonForOtherTarget(event: Event) {
+  if (!(event.target instanceof Node) || !origin?.contains(event.target)) abandonPreparation();
+}
+watch(() => props.epoch, close, { flush: 'sync' });
+onMounted(() => {
+  // The event that opens the menu reached capture before preparation started.
+  // A subsequent gesture belongs to the user, even inside the same row.
+  document.addEventListener('pointerdown', abandonPreparation, true);
+  document.addEventListener('focusin', abandonForOtherTarget, true);
+  document.addEventListener('keydown', abandonPreparation, true);
+  window.addEventListener('blur', abandonPreparation);
+  window.addEventListener('resize', abandonPreparation);
+});
+onBeforeUnmount(() => {
+  close();
+  document.removeEventListener('pointerdown', abandonPreparation, true);
+  document.removeEventListener('focusin', abandonForOtherTarget, true);
+  document.removeEventListener('keydown', abandonPreparation, true);
+  window.removeEventListener('blur', abandonPreparation);
+  window.removeEventListener('resize', abandonPreparation);
+});
 async function show(event: MouseEvent | KeyboardEvent, selected: DownloadTask) {
   if (
     event instanceof KeyboardEvent &&
@@ -78,15 +122,44 @@ async function show(event: MouseEvent | KeyboardEvent, selected: DownloadTask) {
   origin = (event.target as HTMLElement).closest<HTMLElement>('button') ?? row ?? undefined;
   host = row?.closest<HTMLElement>('.download-scroll') ?? undefined;
   if (!origin) return;
-  origin.focus({ preventScroll: true });
-  const r = origin.getBoundingClientRect();
+  const anchor = origin;
+  const ticket = version;
+  const epoch = props.epoch;
+  const live = () =>
+    ticket === version &&
+    epoch === props.epoch &&
+    anchor.isConnected &&
+    task.value?.id === selected.id;
+  anchor.focus({ preventScroll: true });
+  const r = anchor.getBoundingClientRect();
   const pointer = event instanceof MouseEvent && event.type === 'contextmenu' && event.button === 2;
+  if (epoch && !props.locked && downloadCommentCountCandidate(selected)) {
+    preparingComment = true;
+    try {
+      const response = await client.downloadSongCommentCount(epoch, selected.id);
+      const current = task.value;
+      if (
+        !live() ||
+        response.epoch !== epoch ||
+        !current ||
+        !downloadCommentCountCandidate(current)
+      )
+        return;
+      commentCount.value = response.value ?? undefined;
+    } catch {
+      // Native reports a failed count as null only if the task still belongs
+      // to this account and is present. A rejected call cannot open a menu.
+      return;
+    } finally {
+      if (ticket === version) preparingComment = false;
+    }
+  }
   await nextTick();
-  if (!origin.isConnected) return;
+  if (!live()) return;
   await menu.value?.showAt(
     pointer ? event.clientX : r.left,
     pointer ? event.clientY : r.bottom,
-    origin,
+    anchor,
   );
 }
 async function copy() {
@@ -136,6 +209,7 @@ function choose(key: string) {
   else if (key === 'copy') void copy();
 }
 function scroll() {
+  abandonPreparation();
   if (
     document.activeElement?.closest('.action-menu')?.getAttribute('aria-label') === '下载资源操作'
   ) {
