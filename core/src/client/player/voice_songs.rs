@@ -26,7 +26,9 @@ pub use actions::VoiceSongAction;
 use actions::{Page, Row};
 pub use collect::{VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongLikedDestination};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
-pub use group_download::{VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadPlan};
+pub use group_download::{
+    VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadPlan,
+};
 pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
 pub use purchased::{VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult};
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};

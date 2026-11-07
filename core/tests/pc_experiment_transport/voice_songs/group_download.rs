@@ -8,6 +8,9 @@ use cumulus_core::{
 };
 use std::{path::Path, sync::Arc, time::Duration};
 
+#[path = "group_download/purchased.rs"]
+mod purchased;
+
 const LIKED: &str = "/api/song/like/get";
 const AUTH: &str = "/api/song/enhance/download/url/v1";
 const TASKS: &str = "download_tasks_v1";
@@ -25,6 +28,17 @@ fn card() -> HttpResponse {
     rows[7]["privilege"]["payed"] = json!(2);
     rows[8]["privilege"]["cs"] = json!(1);
     rows.push(ordinary(301));
+    let purchased = |id, maxbr, flag| {
+        json!({"id":id,"name":"合成已购歌曲","album":{},"privilege":{
+            "id":id,"fee":4,"st":0,"dl":128000,"payed":2,"maxbr":maxbr,"flag":flag
+        }})
+    };
+    rows.push(purchased(310, 320000, (1 << 12) | (1 << 21)));
+    rows.push(purchased(311, 128000, 1 << 18));
+    let mut unbought = purchased(312, 999000, 1 << 18);
+    unbought["privilege"]["payed"] = json!(0);
+    rows.push(unbought);
+    rows.push(purchased(313, 999000, 1 << 16));
     json!({"code":200,"tracks":rows}).into()
 }
 
