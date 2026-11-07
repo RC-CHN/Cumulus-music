@@ -147,6 +147,13 @@
     if (document.body.textContent.includes('不能显示的合成优惠') ||
         one('.member-card-offer').getAttribute('aria-haspopup') !== 'dialog')
       throw Error('unsafe offer was promoted or made actionable');
+    // The label falls back as soon as Vue clears the displayed offer. Wait for
+    // native refresh to replace the receipt before challenging its old revision.
+    const refreshedOffer = await wait(async () => {
+      const {value} = await invoke('member_card_offer', {epoch, refresh:false});
+      return value.revision !== observedOffer.revision && value;
+    }, 'native offer receipt replaced');
+    if (refreshedOffer.mode !== 'app') throw Error('protected redirect did not resolve to App mode');
     const rejected = await invoke('member_card_offer_qr', {epoch, revision:observedOffer.revision}).then(
       () => false, (error) => error.code === 'stale',
     );
