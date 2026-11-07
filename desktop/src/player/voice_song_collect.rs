@@ -48,7 +48,9 @@ pub enum VoiceSongCollectCreationCommand {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VoiceSongCollectCreationReply {
-    Creation { creation: VoiceSongCollectCreation },
+    Creation {
+        creation: Box<VoiceSongCollectCreation>,
+    },
     Cancelled {},
 }
 
@@ -121,7 +123,9 @@ pub async fn player_voice_songs_collect_create_action<R: tauri::Runtime>(
             return Ok(Reply::Cancelled {});
         }
     };
-    Ok(Reply::Creation { creation })
+    Ok(Reply::Creation {
+        creation: Box::new(creation),
+    })
 }
 
 #[tauri::command]
