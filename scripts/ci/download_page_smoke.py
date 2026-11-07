@@ -71,7 +71,7 @@ def main():
         parser.error('select a single proof')
     if args.quality_settings and args.seed_delay_ms:
         parser.error('--seed-delay-ms is for inventory fixtures')
-    expected = 36 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
+    expected = 41 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
@@ -91,6 +91,8 @@ def main():
         env['CUMULUS_DOWNLOAD_QUALITY_UI_PROOF'] = '1'
     if script == 'download_page_ui_probe.js':
         env['CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF'] = '1'
+    if args.menu:
+        env['CUMULUS_DOWNLOAD_MENU_COMMENT_PROOF'] = '1'
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script)
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
@@ -121,6 +123,11 @@ def main():
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
     if args.menu:
         assert result['playerDownloadStateVerified']
+        assert result['downloadMenuCommentVerified']
+        assert result['downloadMenuCommentReads'][:7] == [
+            {'resourceType': 4, 'resourceIds': json.dumps([song], separators=(',', ':'))}
+            for song in ('1', '2', '3', '1', '1', '1', '1')
+        ]
         plays = set()
         for status in ('waiting', 'working', 'complete'):
             stage, = (root / 'first').glob(f'ux_*_player_download_{status}.json')

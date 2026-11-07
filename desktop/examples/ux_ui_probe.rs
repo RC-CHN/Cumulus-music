@@ -547,6 +547,11 @@ impl Api for Library {
             if let Some(result) = voice_download_fixture::response(path, &args) {
                 return result;
             }
+            if let Some(result) =
+                download_page_fixture::menu_comment_response(path, &args, cached).await
+            {
+                return result;
+            }
             if let Some(result) = download_page_fixture::response(path, &args) {
                 return result;
             }
@@ -1414,7 +1419,7 @@ fn main() {
                 let handle=handle.clone();let fixture=fixture.clone();
                 tauri::async_runtime::spawn(async move {
                     let result=fixture.control(&handle.state::<MusicClient>(),&value).await;
-                    let ack=match result {Ok(())=>json!({"ok":true}),Err(error)=>json!({"ok":false,"message":error.to_string()})};
+                    let ack=match result {Ok(())=>json!({"ok":true,"menuCommentHeld":download_page_fixture::menu_comment_held()}),Err(error)=>json!({"ok":false,"message":error.to_string()})};
                     handle.get_webview_window("main").unwrap().eval(format!("window.__downloadPageAck={ack};")).unwrap();
                 });return;
             }
@@ -1554,6 +1559,9 @@ fn main() {
             }
             if download_page_fixture::voice_podcast_enabled() {
                 value["downloadVoicePodcastReads"] = download_page_fixture::voice_podcast_report();
+            }
+            if download_page_fixture::menu_comments_enabled() {
+                value["downloadMenuCommentReads"] = json!(download_page_fixture::menu_comment_calls());
             }
             if let Some(signed)=signed_search.as_ref() { value["signedSearch"] = signed.report(); }
             if message_fixture::enabled() { value["messageRequests"] = message_fixture::report(); }

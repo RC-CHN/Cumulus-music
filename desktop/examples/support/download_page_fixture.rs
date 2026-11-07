@@ -29,6 +29,54 @@ pub fn enabled() -> bool {
 pub fn quality_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_QUALITY_UI_PROOF").is_some()
 }
+pub fn menu_comments_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_DOWNLOAD_MENU_COMMENT_PROOF").is_some()
+}
+static HOLD_MENU_COMMENT: AtomicBool = AtomicBool::new(false);
+static MENU_COMMENT_HELD: AtomicBool = AtomicBool::new(false);
+static MENU_COMMENT_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static RETIRED_MENU_TASK: Mutex<Option<(String, Value)>> = Mutex::new(None);
+pub fn menu_comment_held() -> bool {
+    MENU_COMMENT_HELD.load(Ordering::SeqCst)
+}
+pub fn menu_comment_calls() -> Vec<Value> {
+    MENU_COMMENT_CALLS.lock().unwrap().clone()
+}
+pub async fn menu_comment_response(
+    path: &str,
+    args: &Value,
+    cached: bool,
+) -> Option<Result<Value>> {
+    if !menu_comments_enabled() || path != "/api/resource/commentInfo/list" {
+        return None;
+    }
+    let ids = args["resourceIds"].as_str()?;
+    let (song, thread, count) = match ids {
+        "[\"1\"]" => (1, "R_SO_4_1", 321),
+        "[\"2\"]" => (2, "R_SO_4_2", 0),
+        "[\"3\"]" => (3, "R_SO_4_4", 987),
+        _ => return None,
+    };
+    assert_eq!(*args, json!({"resourceType":4,"resourceIds":ids}));
+    assert!(!cached);
+    MENU_COMMENT_CALLS.lock().unwrap().push(args.clone());
+    if song == 1 && HOLD_MENU_COMMENT.load(Ordering::SeqCst) {
+        struct Held;
+        impl Drop for Held {
+            fn drop(&mut self) {
+                MENU_COMMENT_HELD.store(false, Ordering::SeqCst);
+            }
+        }
+        let _held = Held;
+        MENU_COMMENT_HELD.store(true, Ordering::SeqCst);
+        while HOLD_MENU_COMMENT.load(Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+    Some(Ok(
+        json!({"code":200,"data":[{"threadId":thread,"commentCount":count}]}),
+    ))
+}
 pub fn voice_podcast_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_VOICE_PODCAST_PROOF").is_some()
 }
@@ -232,6 +280,33 @@ impl Fixture {
         eprintln!("download UI fixture {mode}: started");
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
+            "menu_comment_hold" if menu_comments_enabled() => {
+                HOLD_MENU_COMMENT.store(true, Ordering::SeqCst);
+            }
+            "menu_comment_release" if menu_comments_enabled() => {
+                HOLD_MENU_COMMENT.store(false, Ordering::SeqCst);
+            }
+            "menu_comment_observe" if menu_comments_enabled() => {}
+            "menu_comment_retire" if menu_comments_enabled() => {
+                assert!(menu_comment_held());
+                let mut retired = RETIRED_MENU_TASK.lock().unwrap();
+                assert!(retired.is_none());
+                let task = self.records.lock().unwrap()[0].0.clone();
+                let record = self
+                    .store
+                    .get("2", "download_tasks_v1", &task)?
+                    .ok_or(Error::State("missing synthetic menu task"))?;
+                self.store.delete("2", "download_tasks_v1", &task)?;
+                *retired = Some((task, record));
+            }
+            "menu_comment_restore" if menu_comments_enabled() => {
+                let (task, record) = RETIRED_MENU_TASK
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .ok_or(Error::State("no retired synthetic menu task"))?;
+                self.store.put("2", "download_tasks_v1", &task, &record)?;
+            }
             "seed_queue_collection"
                 if std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() =>
             {

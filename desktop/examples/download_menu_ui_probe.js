@@ -50,6 +50,7 @@
       mode === "seed" ? 1200 : undefined,
     );
     assert(window.__downloadPageAck.ok, window.__downloadPageAck.message);
+    return window.__downloadPageAck;
   };
   const ready = () =>
     one(".downloads-page") &&
@@ -62,7 +63,7 @@
     click(one("#download-tab-" + id));
     await wait(() => ready() && row(), "category " + id);
   };
-  const open = async (i = 0, mode = "more") => {
+  const requestMenu = (i = 0, mode = "more") => {
     const r = row(i);
     assert(r, "source row");
     const more = r.querySelector('[aria-label^="管理下载"]');
@@ -81,6 +82,9 @@
         }),
       );
     } else click(more);
+  };
+  const open = async (i = 0, mode = "more") => {
+    requestMenu(i, mode);
     await wait(
       () =>
         menu()?.style.visibility === "visible" &&
@@ -148,6 +152,106 @@
           )
         ],
       epoch = (await client.accountSnapshot()).epoch;
+    await select("song");
+    assert(await client.downloadSongCommentCount(epoch + "0", row().dataset.downloadTask).then(
+      () => false, (error) => error.code === "stale"), "old account generation cannot query a count");
+    const originalCommentCount = client.downloadSongCommentCount;
+    const commentReads = [];
+    client.downloadSongCommentCount = async (...args) => {
+      const read = { done: false };
+      commentReads.push(read);
+      try {
+        const reply = await originalCommentCount(...args);
+        read.count = reply.value;
+        return reply;
+      } finally {
+        read.done = true;
+      }
+    };
+    const expectHeldCount = () =>
+      wait(async () => (await fixture("menu_comment_observe")).menuCommentHeld,
+        "download comment information is held in the native fixture", 10);
+    await fixture("menu_comment_hold");
+    requestMenu();
+    await expectHeldCount();
+    assert(!menu(), "the menu is still preparing its text");
+    await open(1, "keyboard");
+    assert(button("查看评论", menu()) && commentReads[1]?.count === 0, "known zero is not labeled");
+    await fixture("menu_comment_release");
+    await wait(() => commentReads[0]?.done, "old count has returned");
+    assert(commentReads[0]?.count === 321 && button("查看评论", menu()) &&
+      !button("查看评论(321)", menu()), "old song count never updates the current row menu");
+    await capture("comment_zero_survives_late_reply");
+    key(menu(), "Escape");
+    await wait(() => !menu(), "second row menu dismissed");
+    await open(2);
+    assert(commentReads[2]?.done && commentReads[2].count === null &&
+      button("查看评论", menu()), "wrong response thread preserves plain comments action");
+    await capture("comment_wrong_thread");
+    key(menu(), "Escape");
+    await wait(() => !menu(), "third row menu dismissed");
+    await fixture("menu_comment_hold");
+    requestMenu();
+    await expectHeldCount();
+    key(document.activeElement, "Escape");
+    await fixture("menu_comment_release");
+    await wait(() => commentReads[3]?.done, "cancelled menu count has returned");
+    assert(commentReads[3]?.count === 321 && !menu(), "Escape prevents a late menu from opening");
+    await fixture("menu_comment_hold");
+    requestMenu(0, "pointer");
+    await expectHeldCount();
+    row().dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    row().click();
+    await fixture("menu_comment_release");
+    await wait(() => commentReads[4]?.done, "same-row click's stale count has returned");
+    assert(commentReads[4]?.count === 321 && !menu() && document.activeElement === row(),
+      "a new click on the same row prevents a late menu from stealing focus");
+    await capture("comment_pending_cancelled");
+    // Keep the rendered inventory old on purpose. The original model's poll
+    // may otherwise remove this row before the held comment response arrives.
+    const listDownloads = client.downloads;
+    let resumeInventory;
+    const pausedInventory = new Promise((resolve) => (resumeInventory = resolve));
+    client.downloads = async (...args) => {
+      await pausedInventory;
+      return listDownloads(...args);
+    };
+    let taskRetired = false;
+    try {
+      await fixture("menu_comment_hold");
+      const stillRendered = row().dataset.downloadTask;
+      requestMenu();
+      await expectHeldCount();
+      await fixture("menu_comment_retire");
+      taskRetired = true;
+      await fixture("menu_comment_release");
+      await wait(() => commentReads[5]?.done, "retired task lookup has finished");
+      assert(row()?.dataset.downloadTask === stillRendered && commentReads[5].count === undefined &&
+        !menu(), "native retirement cancels the still-rendered task's menu: " + JSON.stringify({
+          sameRow: row()?.dataset.downloadTask === stillRendered,
+          count: commentReads[5].count, shown: !!menu(),
+        }));
+    } finally {
+      if (taskRetired) await fixture("menu_comment_restore");
+      client.downloads = listDownloads;
+      resumeInventory();
+    }
+    await capture("comment_retired_task");
+    client.downloadSongCommentCount = originalCommentCount;
+    const observeSongComments = client.commentsPage;
+    let songCommentTarget;
+    client.commentsPage = (e, resource, ...args) => {
+      songCommentTarget = resource;
+      return observeSongComments(e, resource, ...args);
+    };
+    await open();
+    await action("查看评论(321)");
+    await wait(() => songCommentTarget?.kind === "track" && songCommentTarget?.id === "1",
+      "counted action opens the same downloaded song");
+    await capture("comment_count_opens_song");
+    client.commentsPage = observeSongComments;
+    click(button("返回上一页"));
+    await wait(() => ready() && row(), "return to downloaded songs");
     for (const [w, h, theme] of [
       [1120, 760, "浅色"],
       [1120, 760, "深色"],
@@ -172,7 +276,7 @@
           .slice(0, 8)
           .map((n) => n.textContent.trim())
           .join("|") ===
-          "播放|下一首播放|查看评论|收藏|分享|复制链接|打开文件所在目录|删除下载",
+          "播放|下一首播放|查看评论(321)|收藏|分享|复制链接|打开文件所在目录|删除下载",
         "recovered resource order",
       );
       await capture(
@@ -228,6 +332,8 @@
     await emit("resize", { width: 1120, height: 760 });
     await wait(() => innerWidth === 1120, "wide");
     await select("voice");
+    assert(await client.downloadSongCommentCount(epoch, row().dataset.downloadTask).then(
+      () => false, () => true), "a voice task cannot query the song comment API");
     await open();
     assert(
       !button("收藏", menu()) && !button("复制链接", menu()),
@@ -640,6 +746,7 @@
     await emit("complete", {
       ok: true,
       downloadMenuUi: true,
+      downloadMenuCommentVerified: true,
       playerDownloadStateVerified: true,
       stageCount: count,
       realMusicRequests: 0,
