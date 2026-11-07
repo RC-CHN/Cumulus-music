@@ -26,6 +26,9 @@ pub enum Case {
     ExistingRejected,
     CreateRejected,
     Recover,
+    PurchasedLiked,
+    PurchasedCancel,
+    PurchasedExisting,
 }
 
 #[derive(Default)]
@@ -51,6 +54,9 @@ impl Fixture {
                 "existing_rejected" => Case::ExistingRejected,
                 "create_rejected" => Case::CreateRejected,
                 "recover" => Case::Recover,
+                "purchased_liked" => Case::PurchasedLiked,
+                "purchased_cancel" => Case::PurchasedCancel,
+                "purchased_existing" => Case::PurchasedExisting,
                 _ => panic!("unknown isolated SongCard download proof"),
             },
             state: Mutex::default(),
@@ -63,7 +69,7 @@ impl Fixture {
                 assert!(!cache);
                 assert_eq!(*body, json!({"uid":"2"}));
                 self.state.lock().unwrap().liked_reads += 1;
-                let ids = if self.case == Case::Liked {
+                let ids = if matches!(self.case, Case::Liked | Case::PurchasedLiked) {
                     vec![1710]
                 } else {
                     vec![]
@@ -71,7 +77,13 @@ impl Fixture {
                 Some(Ok(json!({"code":200,"ids":ids})))
             }
             COLLECT => {
-                assert!(!cache && self.case != Case::Liked);
+                assert!(
+                    !cache
+                        && !matches!(
+                            self.case,
+                            Case::Liked | Case::PurchasedLiked | Case::PurchasedCancel
+                        )
+                );
                 assert_eq!(
                     *body,
                     json!({"uid":"2","offset":0,"limit":10,"sortType":"default"})
@@ -130,18 +142,33 @@ impl Fixture {
                 assert!(!cache && self.transfers());
                 assert_eq!(*body, json!({"c":r#"[{"id":"1710","v":0}]"#}));
                 self.record(path, body);
+                let privilege = if matches!(
+                    self.case,
+                    Case::PurchasedLiked | Case::PurchasedExisting
+                ) {
+                    json!({"id":1710,"fee":4,"payed":2,"st":0,"dl":320000,"maxbr":999000,"flag":69632})
+                } else {
+                    json!({"id":1710,"fee":0,"st":0,"dl":320000})
+                };
                 Some(Ok(
                     json!({"code":200,"songs":[{"id":1710,"name":"合成包含歌曲 1710",
                     "dt":30000,"ar":[{"id":57,"name":"合成歌曲作者"}],"al":{"id":55,"name":"合成包含歌曲专辑"}}],
-                    "privileges":[{"id":1710,"fee":0,"st":0,"dl":320000}]}),
+                    "privileges":[privilege]}),
                 ))
             }
             AUTH => {
                 assert!(!cache && self.transfers());
+                let selected = match self.case {
+                    Case::PurchasedLiked => "exhigh",
+                    Case::PurchasedExisting => "lossless",
+                    _ => "standard",
+                };
                 assert_eq!(
                     *body,
-                    json!({"id":"1710","level":"standard","immerseType":"c51"})
+                    json!({"id":"1710","level":selected,"immerseType":"c51"})
                 );
+                // All synthetic transfers use one pinned MP3. The actual
+                // service level can differ from the explicitly requested one.
                 self.record(path, body);
                 Some(Ok(
                     json!({"code":200,"data":{"id":1710,"code":200,"url":MEDIA,"type":"mp3",
@@ -161,14 +188,17 @@ impl Fixture {
 
     fn destination(&self) -> u64 {
         match self.case {
-            Case::ExistingRejected | Case::Recover => 81,
+            Case::ExistingRejected | Case::Recover | Case::PurchasedExisting => 81,
             Case::CreateRejected => 84,
             _ => panic!("SongCard case cannot query playlist detail"),
         }
     }
 
     fn transfers(&self) -> bool {
-        matches!(self.case, Case::Liked | Case::ExistingRejected)
+        matches!(
+            self.case,
+            Case::Liked | Case::ExistingRejected | Case::PurchasedLiked | Case::PurchasedExisting
+        )
     }
 
     pub fn add(&self, path: &str, body: Value) -> Result<Value> {
@@ -182,7 +212,10 @@ impl Fixture {
         assert_eq!(state.created, self.case == Case::CreateRejected);
         state.add_sent = true;
         state.calls.push(json!([path, body]));
-        if self.case == Case::Recover {
+        if self.case == Case::PurchasedExisting {
+            state.membership_visible = true;
+            Ok(json!({"code":200}))
+        } else if self.case == Case::Recover {
             Err(Error::Transport(
                 "synthetic lost playlist acknowledgment".into(),
             ))

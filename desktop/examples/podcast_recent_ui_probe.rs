@@ -660,7 +660,15 @@ fn main() {
             .then(voice_recommendation_fixture::Fixture::default),
         voice_songs: voice_songs_case
             .as_deref()
-            .or_else(|| voice_song_download.as_ref().map(|_| "download"))
+            .or_else(|| {
+                voice_song_download_case.as_deref().map(|case| {
+                    if case.starts_with("purchased_") {
+                        "purchased_download"
+                    } else {
+                        "download"
+                    }
+                })
+            })
             .or(voice_song_collect_enabled.then_some("collect"))
             .map(voice_songs_fixture::Fixture::new),
         voice_song_download: voice_song_download.clone(),

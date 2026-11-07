@@ -9,7 +9,7 @@ const LIKE: &str = "/api/song/like";
 const MEDIA: &str = "/api/song/enhance/player/url/v1";
 const FIXTURE_URL: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
 
-pub struct Fixture(Mutex<State>, bool, bool, bool);
+pub struct Fixture(Mutex<State>, bool, bool, bool, bool);
 
 #[derive(Default)]
 struct State {
@@ -32,8 +32,9 @@ impl Fixture {
         Self(
             Mutex::default(),
             case == "dense",
-            case == "download",
+            matches!(case, "download" | "purchased_download"),
             case == "collect",
+            case == "purchased_download",
         )
     }
 
@@ -49,6 +50,12 @@ impl Fixture {
                     if self.2 {
                         song["privilege"]["fee"] = json!(0);
                         song["privilege"]["dl"] = json!(320000);
+                    }
+                    if self.4 {
+                        song["privilege"]["fee"] = json!(4);
+                        song["privilege"]["payed"] = json!(2);
+                        song["privilege"]["maxbr"] = json!(999000);
+                        song["privilege"]["flag"] = json!((1 << 12) | (1 << 16));
                     }
                     song
                 },
