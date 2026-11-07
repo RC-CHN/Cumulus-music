@@ -17,6 +17,7 @@ import { useTableColumns } from '../../composables/useTableColumns';
 import DownloadRowMenu from './DownloadRowMenu.vue';
 import type { DownloadFileAction } from '../../services/downloadMenu';
 const props = defineProps<{
+  epoch: string;
   tasks: DownloadTask[];
   growth: number[];
   total: number;
@@ -296,6 +297,7 @@ async function key(event: KeyboardEvent, index: number) {
     </div>
     <DownloadRowMenu
       ref="menu"
+      :epoch="epoch"
       :tasks="tasks"
       :locked="locked"
       :playable="playable"

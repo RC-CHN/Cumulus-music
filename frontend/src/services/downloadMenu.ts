@@ -7,6 +7,10 @@ export interface DownloadMenuState {
   locked: boolean;
   playable: boolean;
   queueable: boolean;
+  commentCount?: number;
+}
+export function downloadCommentCountCandidate(task: DownloadTask): boolean {
+  return task.source === 'song' && task.status === 'complete';
 }
 export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState): MenuItem[] {
   const blocked = state.locked || !!task.fileOperation || task.status === 'cancelling';
@@ -27,6 +31,11 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
   const voice = task.source === 'voice';
   const link = !voice && songLink(task.track);
   const filesBlocked = blocked || task.cleanupPending;
+  const commentCount = state.commentCount ?? 0;
+  const comments =
+    downloadCommentCountCandidate(task) && Number.isSafeInteger(commentCount) && commentCount > 0
+      ? '查看评论(' + commentCount + ')'
+      : '查看评论';
   return [
     {
       key: 'play',
@@ -41,7 +50,7 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
       disabled: blocked || !state.queueable || !downloadPlaybackReady(task),
     },
     ...(!voice || task.track.voiceId
-      ? [{ key: 'comments', label: '查看评论', icon: 'comment', disabled: state.locked }]
+      ? [{ key: 'comments', label: comments, icon: 'comment', disabled: state.locked }]
       : []),
     { key: 'resource-divider', label: '', separator: true },
     ...(!voice

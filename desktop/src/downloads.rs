@@ -12,6 +12,21 @@ pub async fn downloads(
     client.downloads(&epoch, query).await.map_err(Into::into)
 }
 #[tauri::command]
+pub async fn download_song_comment_count<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    task_id: String,
+) -> Result<AccountData<Option<u64>>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download comment menu requires main window").into());
+    }
+    client
+        .download_song_comment_count(&epoch, &task_id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn download_quality_preferences<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

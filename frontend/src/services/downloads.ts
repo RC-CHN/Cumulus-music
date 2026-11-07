@@ -1,4 +1,4 @@
-import type { AccountView, TrackView } from './contracts';
+import type { AccountData, AccountView, TrackView } from './contracts';
 import type { PlayerView, Quality } from './player';
 export interface DownloadOptions {
   quality: Quality;
@@ -156,6 +156,7 @@ export interface DownloadQualityPreferences {
 }
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
+  downloadSongCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;
