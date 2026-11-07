@@ -40,4 +40,8 @@
   创建回执返回 playlistId 后加歌，取消不加。下载批量收藏的独立原有行为
   不在本次范围。
 - 合成 Rust 测试在 client_downloads/download_collection；WebView 证据脚本为
-  scripts/ci/download_collection_smoke.py，不使用真实账号或真实写入。
+  scripts/ci/download_collection_smoke.py。封闭 Linux Xvfb / GTK WebKit 实跑
+  7 个阶段、7 张 PNG：取消归焦同一下载行且零写入、普通歌曲 1 确认、
+  私有与无目录身份旧行不出现收藏、已匹配云盘文件 5 只写目录 ID 9010、
+  丢回执显示核对而不显示正在写、只读核对不重发。原生合成端仅收到两个
+  {pid:"2",trackIds,op:"add"}。没有真实账号、真实写入或 Windows 运行证据。
