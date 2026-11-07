@@ -53,22 +53,67 @@ fn owned_star(row: &Value, uid: &str) -> Result<String> {
     Ok(id)
 }
 
-impl PlaylistService {
-    async fn liked_read(
-        &self,
-        token: &SessionToken,
-        read: Read,
-        path: &'static str,
-        revision: &str,
-        check: &PlaylistAddPermission<'_>,
-    ) -> Result<Value> {
+struct Scope<'a> {
+    service: &'a PlaylistService,
+    token: &'a SessionToken,
+    owner: String,
+    api: Arc<dyn Api>,
+    revision: String,
+    outer: Option<&'a PlaylistAddPermission<'a>>,
+}
+
+impl<'a> Scope<'a> {
+    fn new(
+        service: &'a PlaylistService,
+        token: &'a SessionToken,
+        outer: Option<&'a PlaylistAddPermission<'a>>,
+    ) -> Result<Self> {
+        let owner = service.owner(token)?;
+        let api = service.session.native_api(token)?;
+        let revision = api
+            .song_card_system_liked_scope_revision()?
+            .ok_or(Error::State("signed system liked playlist is unavailable"))?;
+        let scope = Self {
+            service,
+            token,
+            owner,
+            api,
+            revision,
+            outer,
+        };
+        scope.check()?;
+        Ok(scope)
+    }
+
+    fn check_revision(&self) -> Result<()> {
+        if self.api.song_card_system_liked_scope_revision()?.as_deref()
+            != Some(self.revision.as_str())
+        {
+            return Err(Error::CredentialChanged);
+        }
+        Ok(())
+    }
+
+    fn check(&self) -> Result<()> {
+        self.service.session.require_api(self.token, &self.api)?;
+        self.check_revision()?;
+        if let Some(outer) = self.outer {
+            outer()?;
+        }
+        Ok(())
+    }
+
+    async fn read(&self, read: Read, path: &'static str) -> Result<Value> {
+        let check = || self.check();
         check()?;
+        let revision = self.revision.as_str();
         let response = self
+            .service
             .session
-            .run_for(token, |api, _| async move {
+            .run_for(self.token, |api, _| async move {
                 validate_response(
                     path,
-                    api.request_song_card_system_liked(read, revision, check)
+                    api.request_song_card_system_liked(read, revision, &check)
                         .await?,
                     &[200],
                 )
@@ -78,34 +123,12 @@ impl PlaylistService {
         Ok(response)
     }
 
-    pub(super) async fn observe_system_liked(
-        &self,
-        token: &SessionToken,
-        expected: Option<&str>,
-        outer: Option<&PlaylistAddPermission<'_>>,
-    ) -> Result<Observation> {
-        let uid = self.owner(token)?;
-        let api = self.session.native_api(token)?;
-        let revision = api
-            .song_card_system_liked_scope_revision()?
-            .ok_or(Error::State("signed system liked playlist is unavailable"))?;
-        let check = || {
-            self.session.require_api(token, &api)?;
-            if api.song_card_system_liked_scope_revision()?.as_deref() != Some(revision.as_str()) {
-                return Err(Error::CredentialChanged);
-            }
-            if let Some(outer) = outer {
-                outer()?;
-            }
-            Ok(())
-        };
+    async fn playlist(&self, expected: Option<&str>) -> Result<Option<PlaylistSnapshot>> {
         let mut star = None;
         let mut seen = HashSet::new();
         let mut complete = false;
         for page in 0..Read::MAX_PAGES {
-            let reply = self
-                .liked_read(token, Read::list(&uid, page), Read::LIST, &revision, &check)
-                .await?;
+            let reply = self.read(Read::list(&self.owner, page), Read::LIST).await?;
             let rows = reply["playlist"]
                 .as_array()
                 .ok_or(Error::Response("system liked host list missing"))?;
@@ -121,7 +144,7 @@ impl PlaylistService {
                     return Err(Error::Response("duplicate system liked host list ID"));
                 }
                 if row["specialType"].as_i64() == Some(5) {
-                    let id = owned_star(row, &uid)?;
+                    let id = owned_star(row, &self.owner)?;
                     if star.replace(id).is_some() {
                         return Err(Error::Response("ambiguous system liked playlist"));
                     }
@@ -132,15 +155,17 @@ impl PlaylistService {
                 break;
             }
         }
-        let id = star
-            .filter(|id| complete && expected.is_none_or(|expected| expected == id))
-            .ok_or(Error::State(
-                "current system liked playlist could not be verified",
-            ))?;
-        let detail = self
-            .liked_read(token, Read::detail(&id), Read::DETAIL, &revision, &check)
-            .await?;
-        if owned_star(&detail["playlist"], &uid)? != id {
+        if !complete {
+            return Err(Error::Response("system liked host list is incomplete"));
+        }
+        if expected.is_some_and(|expected| star.as_deref() != Some(expected)) {
+            return Err(Error::StaleResponse);
+        }
+        let Some(id) = star else {
+            return Ok(None);
+        };
+        let detail = self.read(Read::detail(&id), Read::DETAIL).await?;
+        if owned_star(&detail["playlist"], &self.owner)? != id {
             return Err(Error::Response("system liked playlist identity mismatch"));
         }
         let playlist = PlaylistSnapshot::from_detail(&detail["playlist"], &id)?;
@@ -149,14 +174,13 @@ impl PlaylistService {
                 "system liked playlist has unsupported entries",
             ));
         }
+        Ok(Some(playlist))
+    }
+
+    async fn observe(&self, id: &str) -> Result<Observation> {
+        let playlist = self.playlist(Some(id)).await?.ok_or(Error::StaleResponse)?;
         let membership = self
-            .liked_read(
-                token,
-                Read::membership(&uid),
-                Read::MEMBERSHIP,
-                &revision,
-                &check,
-            )
+            .read(Read::membership(&self.owner), Read::MEMBERSHIP)
             .await?;
         let ids = membership["ids"]
             .as_array()
@@ -172,6 +196,31 @@ impl PlaylistService {
             liked_ids,
         })
     }
+}
+
+impl PlaylistService {
+    pub(crate) async fn system_liked_destination(
+        &self,
+        token: &SessionToken,
+        check: &PlaylistAddPermission<'_>,
+    ) -> Result<Option<String>> {
+        let scope = Scope::new(self, token, Some(check))?;
+        Ok(scope
+            .playlist(None)
+            .await?
+            .map(|playlist| playlist.summary.id))
+    }
+
+    pub(super) async fn observe_system_liked(
+        &self,
+        token: &SessionToken,
+        expected: &str,
+        check: &PlaylistAddPermission<'_>,
+    ) -> Result<Observation> {
+        Scope::new(self, token, Some(check))?
+            .observe(expected)
+            .await
+    }
 
     pub(super) async fn check_system_liked(
         &self,
@@ -179,44 +228,24 @@ impl PlaylistService {
         mut record: PlaylistMutation,
         guard: Option<&PlaylistAddPermission<'_>>,
     ) -> Result<PlaylistMutation> {
-        let uid = self.owner(token)?;
-        let api = self.session.native_api(token)?;
-        let revision = api
-            .song_card_system_liked_scope_revision()?
-            .ok_or(Error::State("signed system liked playlist is unavailable"))?;
-        let revision_current = || {
-            if api.song_card_system_liked_scope_revision()?.as_deref() != Some(revision.as_str()) {
-                return Err(Error::CredentialChanged);
-            }
-            Ok(())
-        };
-        let current = || {
-            self.session.require_api(token, &api)?;
-            revision_current()?;
-            if let Some(guard) = guard {
-                guard()?;
-            }
-            Ok(())
-        };
+        let scope = Scope::new(self, token, guard)?;
         let id = record
             .command
             .playlist_id()
             .ok_or(Error::State("system liked operation missing playlist"))?
             .to_owned();
-        let observation = self
-            .observe_system_liked(token, Some(&id), Some(&current))
-            .await?;
+        let observation = scope.observe(&id).await?;
         let observed = serde_json::to_value(&observation)?;
-        record.phase = if matches(&record, &observed, &uid)? {
+        record.phase = if matches(&record, &observed, &scope.owner)? {
             PlaylistPhase::Confirmed
         } else {
             operation::unmatched_phase(&record)
         };
         record.observed = Some(observed);
         record.checked_at = Some(now()?);
-        current()?;
+        scope.check()?;
         self.session.with_token(token, |owner| {
-            revision_current()?;
+            scope.check_revision()?;
             self.store.transaction(|tx| {
                 tx.put(
                     owner,

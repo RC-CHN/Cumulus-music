@@ -25,6 +25,24 @@ fn observation(rows: &[u64], likes: &[u64]) -> [HttpResponse; 3] {
     ]
 }
 
+fn preview() -> [HttpResponse; 2] {
+    let [list, detail, _] = observation(&[], &[]);
+    [list, detail]
+}
+
+async fn observed(f: &Fixture, card: &str, selection: &str) -> String {
+    let reply = f
+        .client
+        .player_voice_songs_collect_liked_destination(&f.epoch, &f.play_id, card, selection)
+        .await
+        .unwrap();
+    assert_eq!(reply.epoch, f.epoch);
+    let row = reply.value.unwrap();
+    assert_eq!(row.playlist_id, "83");
+    assert_eq!(row.destination_receipt.len(), 32);
+    row.destination_receipt
+}
+
 fn selection(f: &Fixture, card: &str) -> String {
     let plan = prepare(f, card, &[2, 1, 0, 5]);
     assert_eq!(plan.eligible_count, 2);
@@ -64,17 +82,33 @@ fn exact_wire(f: &Fixture, paths: &[&str]) {
 async fn system_liked_adds_once_in_selected_order_and_publishes_observed_likes() {
     let (f, card) = setup(
         &[COOKIE],
-        observation(&[701], &[701])
+        preview()
             .into_iter()
+            .chain(observation(&[701], &[701]))
             .chain([json!({"code":200}).into()])
             .chain(observation(&[303, 301, 701], &[701, 301, 303])),
     )
     .await;
     let selection = selection(&f, &card);
+    assert!(matches!(
+        f.client
+            .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection, "83")
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    calls(&f, &[]);
+    let destination = observed(&f, &card, &selection).await;
+    calls(&f, &[STAR_LIST, DETAIL]);
+    assert!(
+        f.store
+            .values("25", "playlist-mutations")
+            .unwrap()
+            .is_empty()
+    );
     for _ in 0..2 {
         let done = f
             .client
-            .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection)
+            .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection, &destination)
             .await
             .unwrap();
         assert_eq!(done.playlist_id, "83");
@@ -82,7 +116,9 @@ async fn system_liked_adds_once_in_selected_order_and_publishes_observed_likes()
     }
     exact_wire(
         &f,
-        &[STAR_LIST, DETAIL, LIKED, ADD, STAR_LIST, DETAIL, LIKED],
+        &[
+            STAR_LIST, DETAIL, STAR_LIST, DETAIL, LIKED, ADD, STAR_LIST, DETAIL, LIKED,
+        ],
     );
     assert_eq!(
         f.store.get("25", "resources", "liked").unwrap(),
@@ -100,8 +136,9 @@ async fn system_liked_adds_once_in_selected_order_and_publishes_observed_likes()
 async fn system_liked_journal_restarts_read_only_and_requires_liked_ids_after_ack_loss() {
     let (f, card) = setup(
         &[COOKIE],
-        observation(&[701], &[701])
+        preview()
             .into_iter()
+            .chain(observation(&[701], &[701]))
             .chain([HttpResponse::Ready(Err(Error::Transport(
                 "synthetic lost batch reply".into(),
             )))])
@@ -112,15 +149,16 @@ async fn system_liked_journal_restarts_read_only_and_requires_liked_ids_after_ac
     )
     .await;
     let selection = selection(&f, &card);
+    let destination = observed(&f, &card, &selection).await;
     let first = f
         .client
-        .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection)
+        .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection, &destination)
         .await
         .unwrap();
     assert_eq!(first.phase, PlaylistPhase::Uncertain);
     let repeat = f
         .client
-        .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection)
+        .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection, &destination)
         .await
         .unwrap();
     assert_eq!(first.operation_id, repeat.operation_id);
@@ -170,16 +208,24 @@ async fn system_liked_journal_restarts_read_only_and_requires_liked_ids_after_ac
     exact_wire(
         &f,
         &[
-            STAR_LIST, DETAIL, LIKED, ADD, STAR_LIST, DETAIL, LIKED, STAR_LIST, STAR_LIST, DETAIL,
-            LIKED,
+            STAR_LIST, DETAIL, STAR_LIST, DETAIL, LIKED, ADD, STAR_LIST, DETAIL, LIKED, STAR_LIST,
+            STAR_LIST, DETAIL, LIKED,
         ],
     );
 }
 
 #[tokio::test]
 async fn system_liked_refuses_regular_foreign_ambiguous_or_inconsistent_star() {
+    let (f, card) = setup(&[COOKIE], [list(vec![star(83, 25, 0)])]).await;
+    let chosen = selection(&f, &card);
+    let absent = f
+        .client
+        .player_voice_songs_collect_liked_destination(&f.epoch, &f.play_id, &card, &chosen)
+        .await
+        .unwrap();
+    assert!(absent.value.is_none());
+    calls(&f, &[STAR_LIST]);
     let mismatches = [
-        vec![list(vec![star(83, 25, 0)])],
         vec![list(vec![star(83, 76, 5), star(84, 25, 5)])],
         vec![list(vec![star(83, 25, 5), star(84, 25, 5)])],
         vec![
@@ -196,7 +242,6 @@ async fn system_liked_refuses_regular_foreign_ambiguous_or_inconsistent_star() {
             "id":83,"specialType":5,"userId":25,"creator":{"userId":76}}})
             .into(),
         ],
-        observation(&[303], &[]).into(),
     ];
     for responses in mismatches {
         let n = responses.len();
@@ -204,11 +249,13 @@ async fn system_liked_refuses_regular_foreign_ambiguous_or_inconsistent_star() {
         let selection = selection(&f, &card);
         assert!(
             f.client
-                .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection)
+                .player_voice_songs_collect_liked_destination(
+                    &f.epoch, &f.play_id, &card, &selection
+                )
                 .await
                 .is_err()
         );
-        calls(&f, &[STAR_LIST, DETAIL, LIKED][..n]);
+        calls(&f, &[STAR_LIST, DETAIL][..n]);
         assert!(
             f.store
                 .values("25", "playlist-mutations")
@@ -216,6 +263,56 @@ async fn system_liked_refuses_regular_foreign_ambiguous_or_inconsistent_star() {
                 .is_empty()
         );
     }
+    let (f, card) = setup(
+        &[COOKIE],
+        preview().into_iter().chain(observation(&[303], &[])),
+    )
+    .await;
+    let selection = selection(&f, &card);
+    let destination = observed(&f, &card, &selection).await;
+    assert!(matches!(
+        f.client
+            .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection, &destination)
+            .await,
+        Err(Error::Response("system liked preflight membership differs"))
+    ));
+    calls(&f, &[STAR_LIST, DETAIL, STAR_LIST, DETAIL, LIKED]);
+    assert!(
+        f.store
+            .values("25", "playlist-mutations")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn system_liked_refresh_retires_the_old_receipt_and_submit_refuses_replacement_pid() {
+    let (f, card) = setup(
+        &[COOKIE],
+        preview()
+            .into_iter()
+            .chain(preview())
+            .chain([list(vec![star(84, 25, 5)])]),
+    )
+    .await;
+    let selection = selection(&f, &card);
+    let old = observed(&f, &card, &selection).await;
+    let current = observed(&f, &card, &selection).await;
+    assert_ne!(old, current);
+    let submit = |receipt| {
+        f.client
+            .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection, receipt)
+    };
+    assert!(matches!(submit(&old).await, Err(Error::StaleResponse)));
+    calls(&f, &[STAR_LIST, DETAIL, STAR_LIST, DETAIL]);
+    assert!(matches!(submit(&current).await, Err(Error::StaleResponse)));
+    calls(&f, &[STAR_LIST, DETAIL, STAR_LIST, DETAIL, STAR_LIST]);
+    assert!(
+        f.store
+            .values("25", "playlist-mutations")
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -228,7 +325,7 @@ async fn system_liked_scope_rejects_foreign_cookie_before_membership_or_write() 
     let selection = selection(&f, &card);
     assert!(matches!(
         f.client
-            .player_voice_songs_collect_liked(&f.epoch, &f.play_id, &card, &selection)
+            .player_voice_songs_collect_liked_destination(&f.epoch, &f.play_id, &card, &selection)
             .await,
         Err(Error::StaleResponse)
     ));
@@ -245,15 +342,16 @@ async fn system_liked_scope_rejects_foreign_cookie_before_membership_or_write() 
 async fn system_liked_does_not_send_after_current_episode_leaves_during_liked_read() {
     let [list, detail, _] = observation(&[], &[]);
     let (held, release) = gate();
-    let (f, card) = setup(&[COOKIE], [list, detail, held]).await;
+    let (f, card) = setup(&[COOKIE], preview().into_iter().chain([list, detail, held])).await;
     let selection = selection(&f, &card);
+    let destination = observed(&f, &card, &selection).await;
     let (client, epoch, play_id) = (f.client.clone(), f.epoch.clone(), f.play_id.clone());
     let pending = tokio::spawn(async move {
         client
-            .player_voice_songs_collect_liked(&epoch, &play_id, &card, &selection)
+            .player_voice_songs_collect_liked(&epoch, &play_id, &card, &selection, &destination)
             .await
     });
-    f.http.wait(STARTUP.len() + 4).await;
+    f.http.wait(STARTUP.len() + 6).await;
     f.client
         .player_action(&f.epoch, PlayerAction::Stop)
         .await
@@ -264,7 +362,7 @@ async fn system_liked_does_not_send_after_current_episode_leaves_during_liked_re
             .is_ok()
     );
     assert!(matches!(pending.await.unwrap(), Err(Error::StaleResponse)));
-    calls(&f, &[STAR_LIST, DETAIL, LIKED]);
+    calls(&f, &[STAR_LIST, DETAIL, STAR_LIST, DETAIL, LIKED]);
     assert!(
         f.store
             .values("25", "playlist-mutations")

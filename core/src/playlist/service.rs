@@ -22,15 +22,16 @@ const JOURNAL: &str = "playlist-mutations";
 enum GuardedReadback<'a> {
     SingleAdd,
     SelectionAdd {
-        playlist: Option<&'a str>,
+        playlist: &'a str,
         songs: &'a [String],
+        system_liked: bool,
     },
     Create,
 }
 
 enum AddDestination<'a> {
     Owned(&'a str),
-    SystemLiked,
+    SystemLiked(&'a str),
 }
 
 struct WriteGuard<'a> {
@@ -288,13 +289,14 @@ impl PlaylistService {
     pub(crate) async fn guarded_collect_system_liked(
         &self,
         token: &SessionToken,
+        playlist: &str,
         songs: &[String],
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
-            AddDestination::SystemLiked,
+            AddDestination::SystemLiked(playlist),
             songs,
             operation_id,
             permission,
@@ -313,7 +315,7 @@ impl PlaylistService {
         scope: fn(&dyn Api) -> Result<Option<String>>,
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
-        let system_liked_group = matches!(destination, AddDestination::SystemLiked);
+        let system_liked_group = matches!(destination, AddDestination::SystemLiked(_));
         if !(1..=GuardedPlaylistAdd::MAX_SONGS).contains(&songs.len()) {
             return Err(Error::InvalidInput("invalid guarded add selection"));
         }
@@ -370,8 +372,8 @@ impl PlaylistService {
                     serde_json::to_value(detail)?,
                 )
             }
-            AddDestination::SystemLiked => {
-                let liked = self.observe_system_liked(token, None, Some(&check)).await?;
+            AddDestination::SystemLiked(expected) => {
+                let liked = self.observe_system_liked(token, expected, &check).await?;
                 liked.check_selected_membership(songs)?;
                 let playlist = liked.playlist.summary.id.clone();
                 if conflict(&playlist) {
@@ -627,15 +629,20 @@ impl PlaylistService {
         &self,
         token: &SessionToken,
         operation_id: &str,
-        playlist: Option<&str>,
+        playlist: &str,
         songs: &[String],
+        system_liked: bool,
         check: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
         self.reconcile_guarded_write(
             token,
             operation_id,
             check,
-            GuardedReadback::SelectionAdd { playlist, songs },
+            GuardedReadback::SelectionAdd {
+                playlist,
+                songs,
+                system_liked,
+            },
         )
         .await
     }
@@ -669,12 +676,12 @@ impl PlaylistService {
                     ids,
                     ..
                 },
-                GuardedReadback::SelectionAdd { playlist, songs },
-            ) => {
-                playlist.map_or(record.system_liked_group, |playlist| {
-                    !record.system_liked_group && id == playlist
-                }) && ids == songs
-            }
+                GuardedReadback::SelectionAdd {
+                    playlist,
+                    songs,
+                    system_liked,
+                },
+            ) => record.system_liked_group == system_liked && id == playlist && ids == songs,
             _ => false,
         };
         if !valid {

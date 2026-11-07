@@ -99,11 +99,20 @@ pub struct VoiceSongCollectResult {
     pub phase: PlaylistPhase,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceSongLikedDestination {
+    pub playlist_id: String,
+    pub destination_receipt: String,
+}
+
 struct Selection {
     receipt: String,
     songs: Arc<[String]>,
     destinations: BTreeMap<(&'static str, u32), DestinationPage>,
     next_destination_ticket: u64,
+    liked_ticket: Option<u64>,
+    liked: Option<VoiceSongLikedDestination>,
     attempt: Option<Attempt>,
     busy: bool,
 }
@@ -122,16 +131,20 @@ struct Attempt {
 #[derive(Clone, PartialEq, Eq)]
 enum Destination {
     Owned(String),
-    SystemLiked,
+    SystemLiked(String),
 }
 
 impl Destination {
-    fn owned_id(&self) -> Option<&str> {
+    fn id(&self) -> &str {
         match self {
-            Self::Owned(id) => Some(id),
-            Self::SystemLiked => None,
+            Self::Owned(id) | Self::SystemLiked(id) => id,
         }
     }
+}
+
+enum Choice<'a> {
+    Owned(&'a str),
+    SystemLiked(&'a str),
 }
 
 #[derive(Default)]
@@ -185,6 +198,8 @@ impl Shelf {
             songs: songs.into(),
             destinations: BTreeMap::new(),
             next_destination_ticket: 0,
+            liked_ticket: None,
+            liked: None,
             attempt: None,
             busy: false,
         });
@@ -209,7 +224,7 @@ impl Shelf {
         service: &PlaylistService,
         page: &Page,
         receipt: &'a str,
-        destination: Option<Destination>,
+        choice: Option<Choice<'_>>,
     ) -> Result<(Lease<'a>, Option<PlaylistMutation>)> {
         self.with_selection(receipt, |active| {
             if active.busy {
@@ -221,16 +236,28 @@ impl Shelf {
                 .map(|attempt| service.operation_for(&page.token, &attempt.operation))
                 .transpose()?
                 .flatten();
-            if let Some(destination) = destination {
-                if let Some(playlist) = destination.owned_id()
-                    && !active
-                        .destinations
-                        .values()
-                        .flat_map(|page| &page.ids)
-                        .any(|id| id == playlist)
-                {
-                    return Err(Error::StaleResponse);
-                }
+            if let Some(choice) = choice {
+                let destination = match choice {
+                    Choice::Owned(playlist) => {
+                        if !active
+                            .destinations
+                            .values()
+                            .flat_map(|page| &page.ids)
+                            .any(|id| id == playlist)
+                        {
+                            return Err(Error::StaleResponse);
+                        }
+                        Destination::Owned(playlist.into())
+                    }
+                    Choice::SystemLiked(receipt) => {
+                        let liked = active
+                            .liked
+                            .as_ref()
+                            .filter(|liked| liked.destination_receipt == receipt)
+                            .ok_or(Error::StaleResponse)?;
+                        Destination::SystemLiked(liked.playlist_id.clone())
+                    }
+                };
                 if let Some(attempt) = &active.attempt
                     && attempt.destination != destination
                     && previous.is_some()
@@ -272,11 +299,8 @@ fn result(
         .as_ref()
         .ok_or(Error::State("collection playlist missing"))?;
     if record.operation_id != attempt.operation
-        || record.system_liked_group != (attempt.destination == Destination::SystemLiked)
-        || attempt
-            .destination
-            .owned_id()
-            .is_some_and(|owned| owned != playlist_id)
+        || record.system_liked_group != matches!(attempt.destination, Destination::SystemLiked(_))
+        || attempt.destination.id() != playlist_id
         || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
             if id == playlist_id && ids.as_slice() == lease.songs.as_ref())
     {
@@ -429,7 +453,7 @@ impl MusicClient {
             &service,
             &page,
             selection_receipt,
-            Some(Destination::Owned(playlist_id.into())),
+            Some(Choice::Owned(playlist_id)),
         )?;
         let record = if let Some(previous) = previous {
             previous
@@ -449,14 +473,62 @@ impl MusicClient {
         result(&page, &lease, record)
     }
 
-    /// The system-liked destination is resolved by native account reads. A
-    /// renderer cannot substitute a PID or turn this into individual hearts.
+    /// Read a verified system row independently of the regular destination pages.
+    pub async fn player_voice_songs_collect_liked_destination(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        card_receipt: &str,
+        selection_receipt: &str,
+    ) -> Result<AccountData<Option<VoiceSongLikedDestination>>> {
+        let (page, check) = self.voice_song_write_scope(epoch, play_id, card_receipt, |api| {
+            api.song_card_system_liked_scope_revision()
+        })?;
+        let ticket = page.collect.with_selection(selection_receipt, |active| {
+            if active.busy {
+                return Err(Error::MutationBusy);
+            }
+            let ticket = active
+                .next_destination_ticket
+                .checked_add(1)
+                .ok_or(Error::State("collection destination reads exhausted"))?;
+            active.next_destination_ticket = ticket;
+            active.liked_ticket = Some(ticket);
+            active.liked = None;
+            Ok(ticket)
+        })?;
+        let service = PlaylistService::new(self.session.clone())?;
+        let liked = service
+            .system_liked_destination(&page.token, &check)
+            .await
+            .map_err(stale_credentials)?
+            .map(|playlist_id| VoiceSongLikedDestination {
+                playlist_id,
+                destination_receipt: uuid(),
+            });
+        check()?;
+        page.collect.with_selection(selection_receipt, |active| {
+            if active.liked_ticket != Some(ticket) || active.busy {
+                return Err(Error::StaleResponse);
+            }
+            active.liked = liked.clone();
+            Ok(())
+        })?;
+        check()?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value: liked,
+        })
+    }
+
+    /// A renderer can only choose the current verified row via its receipt.
     pub async fn player_voice_songs_collect_liked(
         &self,
         epoch: &str,
         play_id: &str,
         card_receipt: &str,
         selection_receipt: &str,
+        destination_receipt: &str,
     ) -> Result<VoiceSongCollectResult> {
         let (page, check) = self.voice_song_write_scope(epoch, play_id, card_receipt, |api| {
             api.song_card_system_liked_scope_revision()
@@ -466,7 +538,7 @@ impl MusicClient {
             &service,
             &page,
             selection_receipt,
-            Some(Destination::SystemLiked),
+            Some(Choice::SystemLiked(destination_receipt)),
         )?;
         let record = if let Some(previous) = previous {
             previous
@@ -474,6 +546,7 @@ impl MusicClient {
             service
                 .guarded_collect_system_liked(
                     &page.token,
+                    lease.attempt.destination.id(),
                     &lease.songs,
                     &lease.attempt.operation,
                     &check,
@@ -503,10 +576,9 @@ impl MusicClient {
         let system_liked = pending
             .collect
             .with_selection(selection_receipt, |active| {
-                Ok(active
-                    .attempt
-                    .as_ref()
-                    .is_some_and(|attempt| attempt.destination == Destination::SystemLiked))
+                Ok(active.attempt.as_ref().is_some_and(|attempt| {
+                    matches!(attempt.destination, Destination::SystemLiked(_))
+                }))
             })?;
         let (page, check) = self.voice_song_write_scope(
             epoch,
@@ -528,8 +600,9 @@ impl MusicClient {
                 .reconcile_guarded_collect(
                     &page.token,
                     &lease.attempt.operation,
-                    lease.attempt.destination.owned_id(),
+                    lease.attempt.destination.id(),
                     &lease.songs,
+                    system_liked,
                     &check,
                 )
                 .await
