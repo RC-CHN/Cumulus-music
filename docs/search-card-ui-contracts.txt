@@ -318,3 +318,10 @@ Linux WebView 八个检查点和截图：.build/search-album-metadata-webview/fi
   两组均核对相同 playId/entryId/队列代次、19 秒合成断点、失败前后暂停时钟
   完全相等及无重复选中音源 URL 请求。V3 还核对同账号合成签名实验请求。
   本机证据是 GTK/WebKit 加 libmpv null 输出，不代表 Windows 或真实账号/声卡验收。
+
+2026-11-08 综合搜索播单补充：V1/V3 各 4 个真实 WebKit 状态及 PNG，
+见 `.build/ui-proof/phase125-search-podcast/{v1-r4,v3-r1}/report.json`。
+两组使用同一原生程序和前端包，封闭合成账号。进入点分别是最佳匹配和普通
+卡片；后续由同播单的其他卡片控制同一条目，另一播单失败保持原暂停时钟。
+正式 Linux WebView CI 增加两个同一脚本入口，保留 Windows 原生测试与独立的
+播单分类表路径；没有 Windows 卡片 GUI、真实账号或物理声卡证据。
