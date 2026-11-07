@@ -17,7 +17,8 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_LIBRARY_UI_PROOF='1',
-               CUMULUS_SEARCH_UI_PROOF='1', CUMULUS_CARD_SOURCE_PROOF='1',
+               CUMULUS_SEARCH_UI_PROOF='1', CUMULUS_SEARCH_CARDS_PROOF='1',
+               CUMULUS_CARD_SOURCE_PROOF='1',
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2]/'desktop/examples/card_source_ui_probe.js'))
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -34,6 +35,7 @@ def main():
     assert code == 0, f'card source process exited {code}'
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['cardSources'] and complete['stageCount'] == 37
+    assert complete['searchCardArtistSongCalls'] == [{'id': '101', 'limit': 50, 'offset': 0}] * 2
     states = {value['stage'].split('_', 2)[2]: value for path in output.glob('ux_*.json')
               if (value := json.loads(path.read_text(encoding='utf-8')))}
     assert len(states) == 37
