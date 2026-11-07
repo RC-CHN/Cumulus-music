@@ -36,6 +36,8 @@ static HOLD_MENU_COMMENT: AtomicBool = AtomicBool::new(false);
 static MENU_COMMENT_HELD: AtomicBool = AtomicBool::new(false);
 static MENU_COMMENT_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static RETIRED_MENU_TASK: Mutex<Option<(String, Value)>> = Mutex::new(None);
+static CLOUD_MENU_TASKS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
+static CLOUD_MENU_ACTIVE: AtomicBool = AtomicBool::new(false);
 pub fn menu_comment_held() -> bool {
     MENU_COMMENT_HELD.load(Ordering::SeqCst)
 }
@@ -55,6 +57,13 @@ pub async fn menu_comment_response(
         "[\"1\"]" => (1, "R_SO_4_1", 321),
         "[\"2\"]" => (2, "R_SO_4_2", 0),
         "[\"3\"]" => (3, "R_SO_4_4", 987),
+        "[\"9010\"]" if CLOUD_MENU_ACTIVE.load(Ordering::SeqCst) => (9010, "R_SO_4_9010", 654),
+        "[\"5\"]" | "[\"6\"]" | "[\"7\"]" if CLOUD_MENU_ACTIVE.load(Ordering::SeqCst) => {
+            MENU_COMMENT_CALLS.lock().unwrap().push(args.clone());
+            return Some(Err(Error::InvalidInput(
+                "cloud file ID reached the comment API",
+            )));
+        }
         _ => return None,
     };
     assert_eq!(*args, json!({"resourceType":4,"resourceIds":ids}));
@@ -306,6 +315,42 @@ impl Fixture {
                     .take()
                     .ok_or(Error::State("no retired synthetic menu task"))?;
                 self.store.put("2", "download_tasks_v1", &task, &record)?;
+            }
+            "cloud_comment_targets" if menu_comments_enabled() => {
+                let mut saved = CLOUD_MENU_TASKS.lock().unwrap();
+                assert!(saved.is_empty());
+                let tasks = self.records.lock().unwrap();
+                for (index, song, public) in
+                    [(4, "5", Some("9010")), (5, "6", None), (6, "7", None)]
+                {
+                    let id = tasks[index].0.clone();
+                    let mut task = self
+                        .store
+                        .get("2", "download_tasks_v1", &id)?
+                        .ok_or(Error::State("missing synthetic cloud comment task"))?;
+                    assert_eq!(task["song_id"], song);
+                    assert_eq!(task["status"], "complete");
+                    saved.push((id.clone(), task.clone()));
+                    task["origin"] = json!({"kind":"cloud","file_name":format!("private-{song}.wav"),
+                        "file_size":task["bytes"]});
+                    if let Some(public) = public {
+                        task["song"]["_cloud_catalog_id"] = json!(public);
+                        task["song"]["_cloud_public_id"] = json!(public);
+                    } else if song == "6" {
+                        task["song"]["_cloud_catalog_id"] = json!("9011");
+                        task["song"]["_cloud_public_id"] = Value::Null;
+                    }
+                    self.store.put("2", "download_tasks_v1", &id, &task)?;
+                }
+                CLOUD_MENU_ACTIVE.store(true, Ordering::SeqCst);
+            }
+            "cloud_comment_restore" if menu_comments_enabled() => {
+                let mut saved = CLOUD_MENU_TASKS.lock().unwrap();
+                assert_eq!(saved.len(), 3);
+                for (task, record) in saved.drain(..) {
+                    self.store.put("2", "download_tasks_v1", &task, &record)?;
+                }
+                CLOUD_MENU_ACTIVE.store(false, Ordering::SeqCst);
             }
             "seed_queue_collection"
                 if std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() =>

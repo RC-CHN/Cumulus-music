@@ -252,6 +252,62 @@
     client.commentsPage = observeSongComments;
     click(button("返回上一页"));
     await wait(() => ready() && row(), "return to downloaded songs");
+    await select("active");
+    await fixture("cloud_comment_targets");
+    await select("song");
+    const cloudInventory = await client.downloads(epoch, {
+      tab: "completed", category: "song", keyword: "", sort: "none", descending: false,
+      offset: 0, limit: 20,
+    });
+    const cloud = (id) => cloudInventory.tasks.find((task) => task.track.id === id);
+    const [matchedCloud, privateCloud, legacyCloud] = ["5", "6", "7"].map(cloud);
+    assert(
+      [matchedCloud, privateCloud, legacyCloud].every((task) => task?.source === "cloud") &&
+      matchedCloud.commentTrackId === "9010" &&
+      !privateCloud.commentTrackId && !legacyCloud.commentTrackId,
+      "native download view separates cloud file IDs from catalogue comments",
+    );
+    const openCloud = async (task) => {
+      const node = one('[data-download-task="' + CSS.escape(task.id) + '"]');
+      assert(node, "cloud file row is materialized");
+      node.scrollIntoView({ block: "nearest" });
+      await sleep(130);
+      await open(Number(node.dataset.downloadIndex), "keyboard");
+      assert(menu().getBoundingClientRect().left >= one(".download-scroll").getBoundingClientRect().left - 1,
+        "keyboard menu stays beside its download row, not the window corner");
+    };
+    await openCloud(matchedCloud);
+    assert(button("查看评论(654)", menu()), "matched cloud download uses catalogue count");
+    await capture("cloud_download_comment_count");
+    let cloudCommentTarget;
+    client.commentsPage = (e, resource, ...args) => {
+      cloudCommentTarget = resource;
+      return observeSongComments(e, resource, ...args);
+    };
+    await action("查看评论(654)");
+    await wait(() => cloudCommentTarget?.kind === "track" && cloudCommentTarget?.id === "9010",
+      "matched cloud comments open the catalogue song, not the cloud file");
+    client.commentsPage = observeSongComments;
+    click(button("返回上一页"));
+    await wait(() => ready() && row(), "return to the cloud download inventory");
+    for (const [task, stage] of [
+      [privateCloud, "cloud_private_no_comments"], [legacyCloud, "cloud_legacy_no_comments"],
+    ]) {
+      assert(await client.downloadSongCommentCount(epoch, task.id).then(() => false, () => true),
+        "native IPC rejects cloud task without an authorized catalogue identity");
+      await openCloud(task);
+      assert(!menu().querySelector('[data-menu-key="comments"]') &&
+        button("播放", menu()) && button("打开文件所在目录", menu()),
+        "private or legacy cloud file keeps local operations without a comments entry");
+      await capture(stage);
+      key(menu(), "Escape");
+      await wait(() => !menu(), "cloud file menu dismissed");
+    }
+    await select("active");
+    await fixture("cloud_comment_restore");
+    await select("song");
+    one(".download-scroll").scrollTop = 0;
+    await wait(() => row() && one(".download-scroll").scrollTop === 0, "ordinary song inventory restored");
     for (const [w, h, theme] of [
       [1120, 760, "浅色"],
       [1120, 760, "深色"],
@@ -747,6 +803,7 @@
       ok: true,
       downloadMenuUi: true,
       downloadMenuCommentVerified: true,
+      downloadCloudCommentVerified: true,
       playerDownloadStateVerified: true,
       stageCount: count,
       realMusicRequests: 0,

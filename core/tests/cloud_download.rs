@@ -22,6 +22,7 @@ use std::{
 const AUDIO: &[u8] = include_bytes!("fixtures/tag_audio/seed.flac");
 const LIST: &str = "/api/v1/cloud/get";
 const DOWNLOAD: &str = "/api/cloud/dowonload";
+const COMMENTS: &str = "/api/resource/commentInfo/list";
 #[tokio::test]
 async fn cloud_suffix_matches_executed_official_javascript_including_unicode_whitespace() {
     let oracle: Value = serde_json::from_str(include_str!("fixtures/cloud_download.json")).unwrap();
@@ -110,9 +111,62 @@ impl Api for Server {
                     );
                     Ok(json!({"code":200,"lrc":"[00:01]cloud original lyric\n"}))
                 }
+                COMMENTS => {
+                    assert_eq!(payload, json!({"resourceType":4,"resourceIds":"[\"987\"]"}));
+                    Ok(json!({"code":200,"data":[{"threadId":"R_SO_4_987","commentCount":42}]}))
+                }
                 _ => panic!("cloud workflow must not call {path}"),
             }
         })
+    }
+}
+
+#[tokio::test]
+async fn downloaded_cloud_comments_keep_the_catalogue_id_separate_from_the_original() {
+    use cumulus_core::{
+        account::profiles::ProfileRegistry,
+        client::{MusicClient, dto::*},
+        protocol::http::ApiOrigin,
+    };
+    for (kind, expected_id) in [(0, Some("987")), (1, None)] {
+        let f = Fixture::new();
+        f.api.rows.lock().unwrap()[0]["simpleSong"]["t"] = json!(kind);
+        let client = MusicClient::with_session(
+            f.session.clone(),
+            ProfileRegistry::open(f.store.directory(), ApiOrigin::Pc).unwrap(),
+        )
+        .with_download_backend(f.media.clone());
+        let task = f.create(false).await;
+        let complete = f.service.run(&task.id, Run::default()).await.unwrap();
+        assert_eq!(complete.song_id, "123");
+        let page = client
+            .downloads(
+                "1",
+                DownloadQuery {
+                    tab: DownloadTab::Completed,
+                    category: DownloadCategory::Song,
+                    keyword: String::new(),
+                    sort: DownloadSort::None,
+                    descending: false,
+                    offset: 0,
+                    limit: 10,
+                },
+            )
+            .await
+            .unwrap();
+        let [row] = page.tasks.as_slice() else {
+            panic!("expected the completed cloud original");
+        };
+        assert_eq!(row.track.id, "123");
+        assert_eq!(row.comment_track_id.as_deref(), expected_id);
+        let result = client.download_song_comment_count("1", &task.id).await;
+        if expected_id.is_some() {
+            assert_eq!(result.unwrap().value, Some(42));
+            assert_eq!(f.api.count(COMMENTS), 1);
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput(_))));
+            assert_eq!(f.api.count(COMMENTS), 0);
+        }
     }
 }
 struct Fixture {
