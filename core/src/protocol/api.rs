@@ -525,6 +525,10 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    fn song_card_collection_create_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Only a native transport can make the final synchronous dispatch check.
     fn request_guarded_playlist_add<'a>(
         &'a self,

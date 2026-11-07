@@ -558,6 +558,11 @@ export function createTauriClient(): CoreClient {
         target: voiceSongCollectTarget(target),
         reconcile,
       }),
+    playerVoiceSongsCollectCreateAction: (target, command) =>
+      invoke('player_voice_songs_collect_create_action', {
+        target: voiceSongCollectTarget(target),
+        command,
+      }),
     playerVoiceSongDownloadPrepare: (target) =>
       invoke('player_voice_song_download_prepare', { target: voiceSongDownloadTarget(target) }),
     playerVoiceSongDownloadStart: (target, options) =>

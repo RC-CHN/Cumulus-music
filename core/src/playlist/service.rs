@@ -31,6 +31,7 @@ enum GuardedReadback<'a> {
 
 enum AddDestination<'a> {
     Owned(&'a str),
+    Created(&'a str),
     SystemLiked(&'a str),
 }
 
@@ -286,6 +287,27 @@ impl PlaylistService {
         .await
     }
 
+    /// Resolve the verified create journal under the same lock as the fresh
+    /// detail and ordered add. A list-inferred ID is not write authority.
+    pub(crate) async fn guarded_collect_created_songs(
+        &self,
+        token: &SessionToken,
+        creation_operation: &str,
+        songs: &[String],
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(
+            token,
+            AddDestination::Created(creation_operation),
+            songs,
+            operation_id,
+            permission,
+            |api| api.song_card_collection_scope_revision(),
+        )
+        .await
+    }
+
     pub(crate) async fn guarded_collect_system_liked(
         &self,
         token: &SessionToken,
@@ -353,12 +375,30 @@ impl PlaylistService {
             })
         };
         let (playlist, revision, before) = match destination {
-            AddDestination::Owned(playlist) => {
-                let playlist = identifier(&json!(playlist))?;
+            owned @ (AddDestination::Owned(_) | AddDestination::Created(_)) => {
+                let (playlist, creation) = match owned {
+                    AddDestination::Owned(playlist) => (identifier(&json!(playlist))?, None),
+                    AddDestination::Created(operation) => {
+                        let record = records
+                            .iter()
+                            .find(|record| record.operation_id == operation)
+                            .ok_or(Error::StaleResponse)?;
+                        let (playlist, name, private) = record
+                            .confirmed_created_target()
+                            .ok_or(Error::StaleResponse)?;
+                        (identifier(&json!(playlist))?, Some((name, private)))
+                    }
+                    AddDestination::SystemLiked(_) => unreachable!(),
+                };
                 if conflict(&playlist) {
                     return Err(Error::MutationUncertain);
                 }
-                let detail = self.read_detail(token, &playlist).await?;
+                let detail = if let Some((name, private)) = creation {
+                    self.read_created_detail(token, &playlist, &uid, name, private)
+                        .await?
+                } else {
+                    self.read_detail(token, &playlist).await?
+                };
                 check()?;
                 detail.writable(&uid)?;
                 if detail.has_local {
@@ -409,6 +449,38 @@ impl PlaylistService {
         .await
     }
 
+    async fn read_created_detail(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        uid: &str,
+        name: &str,
+        private: bool,
+    ) -> Result<PlaylistSnapshot> {
+        self.session
+            .run_for(token, |api, _| async move {
+                let row = PlaylistApi::new(api).detail(&json!(playlist)).await?;
+                let detail = PlaylistSnapshot::from_detail(&row, playlist)?;
+                detail.writable(uid)?;
+                // The general projection can fall back to creator.userId.
+                // Here every asserted owner must agree with the create account.
+                for owner in [&row["userId"], &row["creator"]["userId"]] {
+                    if !owner.is_null() && identifier(owner)? != uid {
+                        return Err(Error::StaleResponse);
+                    }
+                }
+                let special = &row["specialType"];
+                if detail.summary.name != name
+                    || detail.summary.private != private
+                    || !special.is_null() && special.as_i64().is_none()
+                {
+                    return Err(Error::StaleResponse);
+                }
+                Ok(detail)
+            })
+            .await
+    }
+
     /// The explicit name/privacy confirmation is the only producer; the
     /// picker holds its separate add intent until the returned ID is verified.
     pub(crate) async fn guarded_create_song_card(
@@ -418,6 +490,35 @@ impl PlaylistService {
         name: &str,
         private: bool,
         permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_create_playlist(token, operation_id, name, private, permission, |api| {
+            api.song_card_playlist_create_scope_revision()
+        })
+        .await
+    }
+
+    pub(crate) async fn guarded_create_collect_playlist(
+        &self,
+        token: &SessionToken,
+        operation_id: &str,
+        name: &str,
+        private: bool,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_create_playlist(token, operation_id, name, private, permission, |api| {
+            api.song_card_collection_create_scope_revision()
+        })
+        .await
+    }
+
+    async fn guarded_create_playlist(
+        &self,
+        token: &SessionToken,
+        operation_id: &str,
+        name: &str,
+        private: bool,
+        permission: &PlaylistAddPermission<'_>,
+        scope: fn(&dyn Api) -> Result<Option<String>>,
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
         let mut command = PlaylistCommand::Create {
@@ -442,13 +543,11 @@ impl PlaylistService {
             return Err(Error::MutationUncertain);
         }
         let api = self.session.native_api(token)?;
-        let revision = api
-            .song_card_playlist_create_scope_revision()?
-            .ok_or(Error::State("guarded playlist create is unavailable"))?;
+        let revision =
+            scope(api.as_ref())?.ok_or(Error::State("guarded playlist create is unavailable"))?;
         let credentials = || {
             self.session.require_api(token, &api)?;
-            if api.song_card_playlist_create_scope_revision()?.as_deref() != Some(revision.as_str())
-            {
+            if scope(api.as_ref())?.as_deref() != Some(revision.as_str()) {
                 return Err(Error::CredentialChanged);
             }
             Ok(())

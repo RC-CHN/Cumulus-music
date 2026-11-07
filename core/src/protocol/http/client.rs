@@ -1527,6 +1527,23 @@ impl Api for MusicHttpClient {
         Ok(Some(revision))
     }
 
+    fn song_card_collection_create_scope_revision(&self) -> Result<Option<String>> {
+        let revision = self
+            .song_card_collection_scope_revision()?
+            .ok_or(Error::CredentialChanged)?;
+        self.require_song_card_playlist_target(
+            GuardedPlaylistCreate::PATH,
+            &revision,
+            [
+                "/api/w/nuser/account/get",
+                VinylVoiceSongsRead::PATH,
+                "/api/user/playlist",
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
     fn request_guarded_playlist_add<'a>(
         &'a self,
         write: GuardedPlaylistAdd,
