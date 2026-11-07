@@ -86,7 +86,10 @@
     const cleared=()=>one('.lyrics-column .empty-state')?.textContent.trim()==='暂无播放中的歌曲';
     await wait(cleared,'stopping clears the old lyric spinner');
     await sleep(2300);
-    assert(cleared()&&one('.lyrics-panel > header > span').textContent==='播放详情'&&!one('.lyric-line')&&!one('.lyric-tools [aria-label="歌词提前半秒"]'),'late lyrics never replace the stopped view');
+    const stopped={cleared:cleared(),title:one('.lyrics-panel > header > span')?.textContent,
+      lines:all('.lyric-line').length,offset:!!one('.lyric-tools [aria-label="歌词提前半秒"]')};
+    assert(stopped.cleared&&stopped.title?.trim()==='播放详情'&&!stopped.lines&&!stopped.offset,
+      'late lyrics never replace the stopped view: '+JSON.stringify(stopped));
     await emit(`ux_${String(++stageCount).padStart(2,'0')}_lyrics_stopped_read`,{cleared:cleared(),playId:one('.playerbar').dataset.playId??null});
   }
   async function verifyLyricModes() {
@@ -353,9 +356,12 @@
     await wait(()=>!one('.track-share-dialog')&&document.activeElement===trackActionTrigger(),'share closes back to the playback trigger');
     await openTrackActions();
     click(trackAction('effects'));
-    await wait(()=>one('.effect-directory[open]')?.textContent.includes('此分类暂无音效。'),'audio effects open the existing directory and load its category');
-    click(one('.effect-directory [aria-label="关闭音效目录"]'));
-    await wait(()=>!one('.effect-directory')&&document.activeElement===trackActionTrigger(),'effect directory closes back to the playback trigger');
+    await wait(()=>one('.audio-effects-panel[open] [data-audio-effect-tab="catalogue"][aria-selected="true"]')
+      && one('.audio-effects-panel .effect-directory')?.textContent.includes('此分类暂无音效。'),
+      'current-song effects opens the default tab and loads its category');
+    click(one('.audio-effects-panel [aria-label="关闭音效"]'));
+    await wait(()=>!one('.audio-effects-panel')&&document.activeElement===trackActionTrigger(),
+      'effects closes back to the playback trigger');
     await openTrackActions();
     click(trackAction('artist'));
     await wait(()=>one('.artist-header h1')?.textContent==='测试歌手','the first artist route loads');
