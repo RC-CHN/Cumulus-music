@@ -24,9 +24,26 @@ pub(crate) struct GroupDownloadPlaylistProof {
     pub playlist: String,
     pub songs: Arc<[String]>,
     pub creation: Option<String>,
+    pub system_liked: bool,
 }
 
 impl GroupDownloadPlaylistProof {
+    pub(crate) fn outcome(&self, record: &PlaylistMutation, owner: &str) -> Result<(bool, bool)> {
+        if record.operation_id != self.operation
+            || record.system_liked_group != self.system_liked
+            || record.playlist_id.as_deref() != Some(self.playlist.as_str())
+            || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
+                if id == &self.playlist && ids.as_slice() == self.songs.as_ref())
+        {
+            return Err(Error::StaleResponse);
+        }
+        let outcome = record.download_picker_outcome(self.creation.is_none());
+        if outcome.0 && self.system_liked {
+            liked::verify_download_readback(record, owner, &self.playlist, &self.songs)?;
+        }
+        Ok(outcome)
+    }
+
     pub(crate) fn verify_in(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
         let read = |id: &str| {
             PlaylistService::parse_record(
@@ -34,13 +51,7 @@ impl GroupDownloadPlaylistProof {
                 tx.get(owner, JOURNAL, id)?.ok_or(Error::StaleResponse)?,
             )
         };
-        let record = read(&self.operation)?;
-        if record.system_liked_group
-            || record.playlist_id.as_deref() != Some(self.playlist.as_str())
-            || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
-                if id == &self.playlist && ids.as_slice() == self.songs.as_ref())
-            || !record.download_picker_outcome(self.creation.is_none()).0
-        {
+        if !self.outcome(&read(&self.operation)?, owner)?.0 {
             return Err(Error::StaleResponse);
         }
         if let Some(id) = &self.creation

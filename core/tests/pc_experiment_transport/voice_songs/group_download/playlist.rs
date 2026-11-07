@@ -7,6 +7,9 @@ use cumulus_core::{
 };
 use serde_json::Value;
 
+#[path = "playlist/liked.rs"]
+mod liked;
+
 const LIST: &str = "/api/user/playlist/v2";
 const DETAIL: &str = "/api/v6/playlist/detail";
 const ADD: &str = "/api/v1/playlist/manipulate/tracks";

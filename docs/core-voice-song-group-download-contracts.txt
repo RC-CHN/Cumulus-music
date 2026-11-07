@@ -81,8 +81,10 @@ VoicePage「包含歌曲」多选下载：直达及原生歌单目的地
   云盘及扩展未购行不发送空 add 或猜测一个成功回调。
 - `download_destinations` 只读当前账号可编辑的普通自建列表分页；
   `download_choose_playlist` 必须选该回执确实观察到的 ID，重新核对同账号签名范围、
-  当前节目/卡片与目标详情后只发一次有序添加。官方收藏选择器亦可有系统喜欢行；
-  本批不把 specialType=5 当普通目标，独立系统喜欢回执仍未接这个下载流程。
+  当前节目/卡片与目标详情后只发一次有序添加。系统喜欢由
+  `download_liked_destination` 单独验证同账号 specialType=5 完整列表和详情，
+  只以不透明的行回执交给 `download_choose_liked`。普通目的地入口不接受系统 ID；
+  验证、添加和读回均使用同一签名账号/凭据及现有系统喜欢有序批量协议，不逐首点心。
 - 新建由 `download_create_playlist` 采用原生名称/隐私规则、独立持久 create 和 add。
   当前 create 回包明确成功且读回匹配时才接首次 add；`download_creation_status`
   和 `download_playlist_status` 只能查原日志或显式只读核对。缺 create ACK 时即使
@@ -91,7 +93,11 @@ VoicePage「包含歌曲」多选下载：直达及原生歌单目的地
 - 已有目标的肯定确认、既有成员无变化、或明确否且权威详情已读回才能返回
   continuation；新建目标明确否不继续。`download_start_from_playlist` 只消费该
   批次的一次性原生 continuation，无歌曲/音质/目录/URL 参数。同一 SQLite 事务
-  重新核对同账号普通目的地、确切操作及有序收藏集合；新建还核对应成功创建。
+  重新核对同账号目的地类型、确切操作及有序收藏集合；新建还核对应成功创建。
+  系统喜欢另查该日志已标记系统目标，且当前确认记录对相同目标和全部所选曲的
+  歌单详情、喜欢 ID 一致。明确否但两份数据矛盾仍是待核对；只有一致的权威负回执
+  才走已有歌单明确否继续。未知响应只读回核对，不把其中一个数据源或 HTTP 200
+  当成续下授权。
   本机目录、索引、任务竞争、取消、凭据及队列检查保持原边界。入队仍由既有下载
   任务独立逐首取授权；收歌单的回执不是媒体授权。
 
@@ -145,6 +151,9 @@ VoicePage「包含歌曲」多选下载：直达及原生歌单目的地
 未知/未喜欢、不可选已购/云盘、非法或过期凭据，以及取消喜欢或出现任务冲突后的整批
 回滚。桌面 MockRuntime 经真实注册的 dispatcher 验证主窗口及 IPC schema；
 前端测试验证保留顺序、只投影声明字段、取消和明确提交。没有访问真实账户或服务。
+原生目的地回归另覆盖 `group_download/playlist.rs` 及 `playlist/liked.rs`：独立收藏筛选
+和反向入队、已购先确认、明确否与未知回执、创建回执缺失、陈旧节目/目标、当前系统
+歌单的双来源矛盾和一致读回。签名夹具只观察合成传输；没有新增桌面入口或实服验证。
 
 Linux 实测：scripts/ci/voice_song_group_download_smoke.py 使用真实 WebKitGTK、
 Tauri IPC、XTest 与 libmpv null 输出，单独 Xvfb/Openbox、非 C 系统 locale、

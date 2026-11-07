@@ -14,6 +14,17 @@ pub(super) struct Observation {
 }
 
 impl Observation {
+    fn validate(&self, id: &str, owner: &str) -> Result<()> {
+        if self.playlist.summary.id != id
+            || !self.playlist.summary.favorite
+            || self.playlist.summary.owner != owner
+            || self.playlist.has_local
+        {
+            return Err(Error::Response("system liked journal observation differs"));
+        }
+        Ok(())
+    }
+
     pub(super) fn check_selected_membership(&self, songs: &[String]) -> Result<()> {
         let playlist = self.playlist.tracks.iter().collect::<HashSet<_>>();
         let liked = self.liked_ids.iter().collect::<HashSet<_>>();
@@ -229,15 +240,24 @@ impl PlaylistService {
         guard: Option<&PlaylistAddPermission<'_>>,
     ) -> Result<PlaylistMutation> {
         let scope = Scope::new(self, token, guard)?;
-        let id = record
-            .command
-            .playlist_id()
-            .ok_or(Error::State("system liked operation missing playlist"))?
-            .to_owned();
+        let PlaylistCommand::Tracks {
+            id,
+            change: TrackChange::Add,
+            ids,
+            ..
+        } = &record.command
+        else {
+            return Err(Error::State("invalid system liked journal command"));
+        };
+        let id = id.clone();
         let observation = scope.observe(&id).await?;
         let observed = serde_json::to_value(&observation)?;
         record.phase = if matches(&record, &observed, &scope.owner)? {
             PlaylistPhase::Confirmed
+        } else if observation.check_selected_membership(ids).is_err() {
+            // A definitive negative callback still does not settle contrary
+            // signed membership views. Keep a read-only recovery available.
+            PlaylistPhase::Uncertain
         } else {
             operation::unmatched_phase(&record)
         };
@@ -292,15 +312,39 @@ pub(super) fn matches(record: &PlaylistMutation, observed: &Value, uid: &str) ->
     let before: Observation = serde_json::from_value(record.before.clone())?;
     let after: Observation = serde_json::from_value(observed.clone())?;
     for obs in [&before, &after] {
-        if obs.playlist.summary.id != *id
-            || !obs.playlist.summary.favorite
-            || obs.playlist.summary.owner != uid
-            || obs.playlist.has_local
-        {
-            return Err(Error::Response("system liked journal observation differs"));
-        }
+        obs.validate(id, uid)?;
     }
     let liked = after.liked_ids.iter().collect::<HashSet<_>>();
     Ok(ids.iter().all(|id| liked.contains(id))
         && reconcile::tracks_added(&before.playlist, &after.playlist, ids))
+}
+
+/// System-liked continuation is based on the exact checked star in both
+/// signed sources, including a coherent readback after a definitive false.
+pub(super) fn verify_download_readback(
+    record: &PlaylistMutation,
+    owner: &str,
+    id: &str,
+    songs: &[String],
+) -> Result<()> {
+    let before: Observation = serde_json::from_value(record.before.clone())?;
+    before.validate(id, owner)?;
+    before.check_selected_membership(songs)?;
+    if record.phase == PlaylistPhase::Unchanged {
+        let liked = before.liked_ids.iter().collect::<HashSet<_>>();
+        if songs.iter().all(|id| liked.contains(id)) {
+            return Ok(());
+        }
+        return Err(Error::StaleResponse);
+    }
+    let after: Observation =
+        serde_json::from_value(record.observed.clone().ok_or(Error::StaleResponse)?)?;
+    after.validate(id, owner)?;
+    after.check_selected_membership(songs)?;
+    if record.phase == PlaylistPhase::Confirmed
+        && !reconcile::tracks_added(&before.playlist, &after.playlist, songs)
+    {
+        return Err(Error::StaleResponse);
+    }
+    Ok(())
 }

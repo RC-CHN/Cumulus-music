@@ -1,6 +1,6 @@
 //! New download destination. Its create and add are separate durable writes.
 use super::{
-    Attempt, Lease, MusicClient, Page, PlaylistCommand, PlaylistMutation, PlaylistPhase,
+    Attempt, Authority, Lease, MusicClient, Page, PlaylistCommand, PlaylistMutation, PlaylistPhase,
     PlaylistService, Target, VoiceSongGroupPlaylistResult, current_attempt, fresh_id, membership,
 };
 use crate::{
@@ -26,7 +26,7 @@ pub struct VoiceSongGroupPlaylistCreation {
 fn creation_id(attempt: &Attempt) -> Result<&str> {
     match &attempt.target {
         Target::Created { operation, .. } => Ok(operation),
-        Target::Existing(_) => Err(Error::StaleResponse),
+        Target::Existing(_) | Target::SystemLiked { .. } => Err(Error::StaleResponse),
     }
 }
 
@@ -104,8 +104,13 @@ impl MusicClient {
         Lease,
         impl Fn() -> Result<()> + Send + Sync + 'static + use<>,
     )> {
-        let (page, lease, _, destination) =
-            self.group_destination_scope(epoch, play_id, card_receipt, selection_receipt)?;
+        let (page, lease, _, destination) = self.group_destination_scope(
+            epoch,
+            play_id,
+            card_receipt,
+            selection_receipt,
+            Authority::Regular,
+        )?;
         let api = page.api.upgrade().ok_or(Error::StaleResponse)?;
         let revision = page.revision.clone();
         let check = move || {
