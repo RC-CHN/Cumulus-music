@@ -32,6 +32,9 @@ pub enum Case {
     GroupLiked,
     GroupDirectory,
     GroupPurchased,
+    GroupPlaylist,
+    GroupPlaylistLiked,
+    GroupPurchasedPlaylist,
 }
 
 #[derive(Default)]
@@ -63,10 +66,73 @@ impl Fixture {
                 "group_liked" => Case::GroupLiked,
                 "group_directory" => Case::GroupDirectory,
                 "group_purchased" => Case::GroupPurchased,
+                "group_playlist" => Case::GroupPlaylist,
+                "group_playlist_liked" => Case::GroupPlaylistLiked,
+                "group_purchased_playlist" => Case::GroupPurchasedPlaylist,
                 _ => panic!("unknown isolated SongCard download proof"),
             },
             state: Mutex::default(),
         }
+    }
+
+    pub fn uses_signed_liked(&self) -> bool {
+        self.case == Case::GroupPlaylistLiked
+    }
+
+    pub fn group_picker(&self) -> bool {
+        matches!(
+            self.case,
+            Case::GroupPlaylist | Case::GroupPlaylistLiked | Case::GroupPurchasedPlaylist
+        )
+    }
+
+    pub fn signed_liked(&self, path: &str, body: &Value) -> Result<Value> {
+        assert!(self.uses_signed_liked());
+        let mut state = self.state.lock().unwrap();
+        let tracks = if state.add_sent {
+            vec![701, 1710]
+        } else {
+            vec![701]
+        };
+        let star = json!({"id":82,"name":"合成系统喜欢","userId":2,"creator":{"userId":2},
+            "privacy":10,"specialType":5,"tags":[],"trackIds":tracks.into_iter().map(|id| json!({"id":id})).collect::<Vec<_>>()});
+        let seen = state.membership_visible;
+        let result = match path {
+            LIST => {
+                assert_eq!(*body, json!({"uid":"2","offset":"0","limit":"1000"}));
+                json!({"code":200,"more":false,"playlist":[star]})
+            }
+            DETAIL => {
+                assert_eq!(*body, json!({"id":"82","n":"100000","s":"0"}));
+                if state.add_sent {
+                    state.details_after_send += 1;
+                }
+                json!({"code":200,"playlist":star})
+            }
+            LIKED => {
+                assert_eq!(*body, json!({"uid":"2"}));
+                json!({"code":200,"ids":if seen { vec![701,1710] } else { vec![701] }})
+            }
+            ADD => {
+                assert_eq!(
+                    *body,
+                    json!({"pid":"82","op":"add","trackIds":"[\"1710\"]"})
+                );
+                assert!(!state.add_sent);
+                state.add_sent = true;
+                state.calls.push(json!([path, body, "lost_ack"]));
+                return Err(Error::Transport(
+                    "synthetic lost signed group download add".into(),
+                ));
+            }
+            _ => panic!("unexpected signed group download operation"),
+        };
+        state.calls.push(json!([path, body, seen]));
+        Ok(result)
+    }
+
+    pub fn group_picker_create(&self) -> bool {
+        self.case == Case::GroupPurchasedPlaylist
     }
 
     pub fn read(&self, path: &str, body: &Value, cache: bool) -> Option<Result<Value>> {
@@ -95,9 +161,11 @@ impl Fixture {
                                 | Case::GroupPurchased
                         )
                 );
+                let sort = body["sortType"].as_str().unwrap();
+                assert!(sort == "default" || (self.group_picker() && sort == "recently"));
                 assert_eq!(
                     *body,
-                    json!({"uid":"2","offset":0,"limit":10,"sortType":"default"})
+                    json!({"uid":"2","offset":0,"limit":10,"sortType":sort})
                 );
                 self.record(path, body);
                 // Owned ordinary, owned Favorites, and followed playlists:
@@ -117,7 +185,7 @@ impl Fixture {
                 let mut state = self.state.lock().unwrap();
                 // Also serves the ordinary signed-in bootstrap. Journal
                 // reads for the create branch occur after picker discovery.
-                if self.case == Case::CreateRejected
+                if (self.case == Case::CreateRejected || self.case == Case::GroupPurchasedPlaylist)
                     && state.calls.iter().any(|call| call[0] == COLLECT)
                 {
                     state.calls.push(json!([path, body]));
@@ -179,7 +247,10 @@ impl Fixture {
             AUTH => {
                 assert!(!cache && self.transfers());
                 let selected = match self.case {
-                    Case::PurchasedLiked | Case::GroupLiked => "exhigh",
+                    Case::PurchasedLiked
+                    | Case::GroupLiked
+                    | Case::GroupPlaylist
+                    | Case::GroupPlaylistLiked => "exhigh",
                     Case::PurchasedExisting => "lossless",
                     Case::GroupPurchased => "hires",
                     _ => "standard",
@@ -208,15 +279,19 @@ impl Fixture {
 
     fn destination(&self) -> u64 {
         match self.case {
-            Case::ExistingRejected | Case::Recover | Case::PurchasedExisting => 81,
-            Case::CreateRejected => 84,
+            Case::ExistingRejected
+            | Case::Recover
+            | Case::PurchasedExisting
+            | Case::GroupPlaylist => 81,
+            Case::CreateRejected | Case::GroupPurchasedPlaylist => 84,
             _ => panic!("SongCard case cannot query playlist detail"),
         }
     }
 
     fn song(&self, id: &str) -> bool {
         id == "1710"
-            || matches!(self.case, Case::GroupLiked | Case::GroupPurchased) && id == "1712"
+            || (matches!(self.case, Case::GroupLiked | Case::GroupPurchased) || self.group_picker())
+                && id == "1712"
             || self.case == Case::GroupPurchased && id == "1791"
     }
 
@@ -229,6 +304,8 @@ impl Fixture {
                 | Case::PurchasedExisting
                 | Case::GroupLiked
                 | Case::GroupPurchased
+                | Case::GroupPlaylist
+                | Case::GroupPlaylistLiked
         )
     }
 
@@ -240,7 +317,13 @@ impl Fixture {
         );
         let mut state = self.state.lock().unwrap();
         assert!(!state.add_sent, "never replay the synthetic add");
-        assert_eq!(state.created, self.case == Case::CreateRejected);
+        assert_eq!(
+            state.created,
+            matches!(
+                self.case,
+                Case::CreateRejected | Case::GroupPurchasedPlaylist
+            )
+        );
         state.add_sent = true;
         state.calls.push(json!([path, body]));
         if self.case == Case::PurchasedExisting {
@@ -257,7 +340,10 @@ impl Fixture {
 
     pub fn create(&self, path: &str, body: Value) -> Value {
         assert_eq!(path, CREATE);
-        assert!(self.case == Case::CreateRejected);
+        assert!(matches!(
+            self.case,
+            Case::CreateRejected | Case::GroupPurchasedPlaylist
+        ));
         assert_eq!(body, json!({"uid":"2","name":NAME,"privacy":10}));
         let mut state = self.state.lock().unwrap();
         assert!(!state.created && !state.add_sent);
@@ -269,7 +355,10 @@ impl Fixture {
     // Only the fixture's synthetic server state changes. The app must request
     // a real status read to see it, and cannot replay the write.
     pub fn reveal_recovery(&self) {
-        assert!(self.case == Case::Recover);
+        assert!(matches!(
+            self.case,
+            Case::Recover | Case::GroupPlaylistLiked
+        ));
         let mut state = self.state.lock().unwrap();
         assert!(state.add_sent && state.details_after_send == 1 && !state.membership_visible);
         state.membership_visible = true;

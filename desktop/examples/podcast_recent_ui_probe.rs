@@ -330,6 +330,9 @@ impl Api for Library {
     }
 
     fn song_card_download_scope_revision(&self) -> Result<Option<String>> {
+        if let Some(liked) = &self.voice_song_group_liked {
+            return liked.client.song_card_download_scope_revision();
+        }
         Ok(self
             .voice_song_download
             .as_ref()
@@ -348,18 +351,24 @@ impl Api for Library {
         if let Some(liked) = &self.voice_song_group_liked {
             return liked.client.song_card_collection_scope_revision();
         }
-        Ok(self
-            .voice_song_collect
-            .as_ref()
-            .map(|_| voice_songs_fixture::REVISION.to_owned()))
+        let enabled = self.voice_song_collect.is_some()
+            || self
+                .voice_song_download
+                .as_ref()
+                .is_some_and(|proof| proof.group_picker());
+        Ok(enabled.then(|| voice_songs_fixture::REVISION.to_owned()))
     }
 
     fn song_card_collection_create_scope_revision(&self) -> Result<Option<String>> {
-        Ok(self
+        let enabled = self
             .voice_song_collect
             .as_ref()
-            .filter(|fixture| fixture.create_enabled())
-            .map(|_| voice_songs_fixture::REVISION.to_owned()))
+            .is_some_and(|proof| proof.create_enabled())
+            || self
+                .voice_song_download
+                .as_ref()
+                .is_some_and(|proof| proof.group_picker_create());
+        Ok(enabled.then(|| voice_songs_fixture::REVISION.to_owned()))
     }
 
     fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
@@ -730,8 +739,12 @@ fn main() {
         .as_deref()
         .or_else(|| {
             voice_song_download_case.as_deref().map(|case| {
-                if case == "group_purchased" {
+                if case == "group_purchased_playlist" {
+                    "group_purchased_playlist_download"
+                } else if case == "group_purchased" {
                     "group_purchased_download"
+                } else if case.starts_with("group_playlist") {
+                    "group_playlist_download"
                 } else if case.starts_with("group_") {
                     "group_download"
                 } else if case.starts_with("purchased_") {
@@ -743,16 +756,22 @@ fn main() {
         })
         .or(voice_song_collect_enabled.then_some("collect"))
         .map(|case| Arc::new(voice_songs_fixture::Fixture::new(case)));
-    let voice_song_group_liked = voice_song_group_liked_enabled.then(|| {
-        voice_song_group_liked_fixture::Fixture::open(
-            registry.store(),
-            voice_songs
-                .as_ref()
-                .expect("isolated group liked mode")
-                .clone(),
-        )
-        .unwrap()
-    });
+    let signed_group_download = voice_song_download
+        .as_ref()
+        .filter(|fixture| fixture.uses_signed_liked())
+        .cloned();
+    let voice_song_group_liked =
+        (voice_song_group_liked_enabled || signed_group_download.is_some()).then(|| {
+            voice_song_group_liked_fixture::Fixture::open(
+                registry.store(),
+                voice_songs
+                    .as_ref()
+                    .expect("isolated group liked mode")
+                    .clone(),
+                signed_group_download,
+            )
+            .unwrap()
+        });
     let api = Arc::new(Library {
         progress_enabled,
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),

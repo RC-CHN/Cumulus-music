@@ -14,8 +14,19 @@ from voice_songs_smoke import TRACKS, read
 from window_manager import launch
 
 PREFIX = ('baseline', 'select_second', 'select_first', 'select_anchor',
-          'open_unliked', 'unliked_hidden', 'open_liked', 'click_download')
+          'open_unliked', 'unliked_offered', 'open_liked', 'click_download')
 PURCHASED = 'group_purchased'
+DESTINATION = 'playerVoiceSongsDownloadDestination'
+PICKER_PREFIX = (*PREFIX[:6], 'click_unliked_download')
+PICKERS = {
+    'group_playlist': (*PICKER_PREFIX, 'picker', 'sort_recently', 'select_destination', 'queued', 'transferred'),
+    'group_playlist_liked': (*PICKER_PREFIX, 'picker', 'close_prepared_picker', 'reopen_unliked_menu',
+                            'reopen_unliked_download', 'select_destination', 'pending', 'hide_pending',
+                            'resume_pending', 'reconcile', 'queued', 'transferred'),
+    'group_purchased_playlist': (*PREFIX[:4], 'select_purchased', *PICKER_PREFIX[4:],
+                                'picker_choose_hires', 'picker_confirm_hires', 'picker',
+                                'open_create', 'private_create', 'confirm_create', 'create_failed'),
+}
 PURCHASED_PREFIX = (*PREFIX[:4], 'select_purchased', *PREFIX[4:])
 CASES = {
     'group_liked': PREFIX + ('queued', 'transferred'),
@@ -24,6 +35,7 @@ CASES = {
         'open_guide', 'close_chooser', 'cancelled', 'reopen_menu', 'reopen_chooser',
         'choose_hires', 'confirm_hires', 'queued', 'transferred',
     ),
+    **PICKERS,
 }
 CARD = 'playerVoiceSongs'
 PREPARE = 'playerVoiceSongsDownloadPrepare'
@@ -51,10 +63,12 @@ def verify(case, root, output):
     assert all(stage['actual'] and stage['player'] == first['player'] and stage['queue'] == first['queue']
                for stage in stages.values())
     assert all(not stage['dom']['singlePicker'] for stage in stages.values())
-    assert stages['unliked_hidden']['dom']['collect'] and not stages['unliked_hidden']['dom']['download']
+    assert stages['unliked_offered']['dom']['collect'] and stages['unliked_offered']['dom']['download']
+    if case in PICKERS:
+        return verify_picker(case, root, output, stages, done)
     assert stages['click_download']['dom']['collect'] and stages['click_download']['dom']['download']
     selected = [0, 1, 2, 3] if purchased else [0, 1, 2]
-    assert stages['unliked_hidden']['selected'] == stages['click_download']['selected'] == selected
+    assert stages['unliked_offered']['selected'] == stages['click_download']['selected'] == selected
     for name in PURCHASED_PREFIX if purchased else PREFIX:
         stage = stages[name]
         assert not stage['tasks']['active'] and not stage['tasks']['complete']
@@ -183,6 +197,134 @@ def verify(case, root, output):
                 'savedQuality': last['savedQuality'], 'explicitConfirmations': 1} if purchased else {}),
             'syntheticMp3Sha256': sha256(MP3.read_bytes()).hexdigest() if records else None}
 
+
+def verify_picker(case, root, output, stages, done):
+    star = case == 'group_playlist_liked'
+    purchased = case == 'group_purchased_playlist'
+    last = list(stages.values())[-1]
+    playlist = '/api/v6/playlist/detail'
+    liked = '/api/song/like/get'
+    owned = '/api/user/playlist'
+    add = '/api/v1/playlist/manipulate/tracks'
+    create = '/api/playlist/create'
+    listing = '/api/user/playlist/v2'
+    records = persisted(root)
+    wire = done['voiceSongDownloadTrace']['calls']
+    [card] = actions(last, CARD)
+    epoch, play_id = card['args']
+    scope = {'epoch': epoch, 'playId': play_id, 'cardReceipt': card['result']['receipt']}
+    prepares = actions(last, PREPARE)
+    assert len(prepares) == (2 if star else 1)
+    for item in prepares:
+        assert item['args'] == [{**scope, 'anchorIndex': 0, 'indices': [1, 0, 2, 3] if purchased else [1, 0, 2]}]
+        assert item['result']['eligibleIndices'] == ([1, 0, 3] if purchased else [1, 0])
+        assert item['result']['omittedIndices'] == [2]
+        assert item['result']['decision'] == ('purchased_quality_required' if purchased else 'playlist_required')
+    selection = prepares[-1]['result']['selectionReceipt']
+    assert selection
+    target = {**scope, 'selectionReceipt': selection}
+    assert not actions(last, START)
+    assert not done['voiceSongsTrace']['likes']
+    assert done['voiceSongsTrace']['songReads'] == [[TRACKS, {'id': '601'}]]
+    picker = stages['picker']['dom']['destination']
+    assert picker['heading'] == '下载到歌单' and picker['stage'] == 'pick'
+    assert picker['star'] is star
+    assert picker['rows'] == ['创建新歌单', *(['我喜欢的音乐'] if star else []),
+                              '下载到：合成已有下载歌单'], picker
+    assert picker['focus'] == '选择下载歌单'
+    assert not any(stage['tasks']['active'] or stage['tasks']['complete']
+                   for name, stage in stages.items() if name not in ('queued', 'transferred'))
+    assert all(stage['dom']['vinyl'] and not stage['dom']['downloads'] and not stage['dom']['settings']
+               for stage in stages.values())
+    assert not any(row[0] in (add, create, AUTH) for row in stages['picker']['voiceSongDownloadTrace']['calls'])
+    for path, stage in zip(sorted(output.glob('ux_*.json')), stages.values(), strict=True):
+        assert path.with_suffix('.png').is_file()
+        if 'input' not in stage:
+            continue
+        receipt = read(path.with_name('input-' + path.name))
+        assert receipt['request'] == stage['input']
+        expected = stage['input']
+        assert any(event['trusted'] and event['target'] == expected['target'] and
+                   event['type'] == ('contextmenu' if expected['button'] == 3 else 'click') and
+                   event['ctrl'] == expected['ctrl'] for event in last['events'])
+    for action in actions(last, DESTINATION):
+        args, command = action['args']
+        assert args in [{**scope, 'selectionReceipt': item['result']['selectionReceipt']} for item in prepares]
+        if command['kind'] not in ('page', 'liked_destination'):
+            assert args == target
+    calls = {row['args'][1]['kind']: row for row in actions(last, DESTINATION)}
+    [sent] = [row for row in wire if row[0] == add]
+    assert sent[1] == {'pid': '82' if star else '84' if purchased else '81',
+                       'op': 'add', 'trackIds': '["1710"]'}
+    if purchased:
+        [confirmation] = actions(last, CONFIRM)
+        assert confirmation['args'] == [target, 'hires']
+        assert confirmation['result'] == {'kind': 'playlist_required'}
+        assert not actions(stages['picker_confirm_hires'], DESTINATION)
+        assert 'start' not in calls and not any(row[0] in (AUTH, META, 'media_get') for row in wire)
+        [made] = [row for row in wire if row[0] == create]
+        assert made[1] == {'uid': '2', 'name': '合成私密下载歌单', 'privacy': 10}
+        result = calls['create']['result']['creation']
+        assert result['createPhase'] == 'confirmed' and result['playlistId'] == '84'
+        attempt = result['add']
+        assert attempt['phase'] == 'rejected' and not attempt['continuation']
+        assert set(records) == {('playlist-mutations', result['createOperationId']),
+                                ('playlist-mutations', attempt['operationId'])}
+        assert last['dom']['destination']['stage'] == 'failed'
+        return {'case': case, 'stages': len(stages), 'screenshots': len(stages), 'tasks': 0,
+                'playlistCreates': 1, 'playlistAdds': 1, 'requestedQuality': 'hires'}
+
+    chosen = calls['choose_liked' if star else 'choose']['result']['playlist']
+    if star:
+        assert len(actions(last, CANCEL)) == 1
+        assert prepares[0]['result']['selectionReceipt'] != selection
+        assert stages['pending']['dom']['destination']['focusedReconcile']
+        assert stages['resume_pending']['dom']['noticeKind'] == 'playlist_pending'
+        assert stages['resume_pending']['dom']['focusRow'] == '0'
+        assert chosen['phase'] == 'uncertain' and not chosen['continuation'] and 'likedIds' not in chosen
+        assert calls['status']['args'] == [target, {'kind': 'status', 'reconcile': True}]
+        assert len([x for x in actions(last, DESTINATION) if x['args'][1]['kind'] == 'status']) == 1
+        reconciled = calls['status']['result']['playlist']
+        assert reconciled['operationId'] == chosen['operationId'] and reconciled['phase'] == 'confirmed'
+        assert reconciled['continuation'] and sent[2] == 'lost_ack'
+        assert reconciled['likedIds'] == ['1710']
+        assert stages['pending']['dom']['heartPressed'] == ['false', 'false']
+        assert stages['queued']['dom']['heartPressed'] == ['true', 'false']
+        assert done['voiceSongGroupLikedTrace']['transport'] == 'MusicHttpClient'
+        signed_paths = [row[0] for row in wire if row[0] in (owned, playlist, liked, add)]
+        assert signed_paths == [owned, playlist, owned, playlist, owned, playlist, liked, add,
+                                owned, playlist, liked, owned, playlist, liked], signed_paths
+        assert [row[2] for row in wire if row[0] == liked] == [False, False, True]
+        assert len([row for row in stages['pending']['voiceSongDownloadTrace']['calls'] if row[0] == liked]) == 2
+        allowed = reconciled
+    else:
+        assert [row[1]['sortType'] for row in wire if row[0] == listing] == ['default', 'recently']
+        assert [row[0] for row in wire if row[0] not in (AUTH, META, 'media_get')] == [
+            listing, listing, playlist, add, playlist]
+        assert chosen['phase'] == 'rejected' and chosen['addFailed'] and chosen['continuation']
+        assert 'likedIds' not in chosen and stages['queued']['dom']['heartPressed'] == ['false', 'false']
+        assert stages['queued']['dom']['notice'].startswith('未能收藏到歌单，')
+        allowed = chosen
+    journal = records.pop(('playlist-mutations', chosen['operationId']))
+    assert journal['phase'] == ('confirmed' if star else 'rejected')
+    assert journal.get('system_liked_group', False) is star
+    assert calls['start']['args'] == [target, {'kind': 'start', 'continuation': allowed['continuation']}]
+    [started] = [row for row in actions(last, DESTINATION) if row['args'][1]['kind'] == 'start']
+    result = started['result']['result']
+    assert result['operationId'] == selection and not result['failed']
+    assert len(result['accepted']) == len(records) == 2
+    tasks = [records['download_tasks_v1', ident] for ident in result['accepted']]
+    assert [row['song_id'] for row in tasks] == ['1710', '1712']
+    for task in tasks:
+        assert task['status'] == 'complete' and task['origin'] == {'kind': 'song'}
+        assert task['options']['quality'] == 'exhigh' and task['authorization_count'] == 1
+        path = Path(task['target']).resolve(strict=True)
+        assert path.parent == (root / 'run/download-output').resolve()
+        assert path.read_bytes() == MP3.read_bytes()
+    assert sorted(row[1]['id'] for row in wire if row[0] == AUTH) == ['1710', '1712']
+    return {'case': case, 'stages': len(stages), 'screenshots': len(stages), 'tasks': len(tasks),
+            'playlistAdds': 1, 'explicitReconciles': int(star),
+            'syntheticMp3Sha256': sha256(MP3.read_bytes()).hexdigest()}
 
 def run(args, case, root):
     root.mkdir()

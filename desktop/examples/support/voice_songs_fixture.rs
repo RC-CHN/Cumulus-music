@@ -9,7 +9,7 @@ const LIKE: &str = "/api/song/like";
 const MEDIA: &str = "/api/song/enhance/player/url/v1";
 const FIXTURE_URL: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
 
-pub struct Fixture(Mutex<State>, bool, bool, bool, bool, bool, bool);
+pub struct Fixture(Mutex<State>, bool, bool, bool, bool, bool, bool, bool);
 
 #[derive(Default)]
 struct State {
@@ -35,8 +35,21 @@ impl Fixture {
             matches!(case, "download" | "purchased_download"),
             case == "collect",
             case == "purchased_download",
-            matches!(case, "group_download" | "group_purchased_download"),
-            case == "group_purchased_download",
+            matches!(
+                case,
+                "group_download"
+                    | "group_purchased_download"
+                    | "group_playlist_download"
+                    | "group_purchased_playlist_download"
+            ),
+            matches!(
+                case,
+                "group_purchased_download" | "group_purchased_playlist_download"
+            ),
+            matches!(
+                case,
+                "group_playlist_download" | "group_purchased_playlist_download"
+            ),
         )
     }
 
@@ -66,6 +79,12 @@ impl Fixture {
                     song["privilege"]["dl"] = json!(320000);
                 }
                 rows[3]["privilege"]["fee"] = json!(4);
+                if self.7 {
+                    // This row is independently download-eligible, but the
+                    // source picker excludes it from playlist collection.
+                    rows[1]["privilege"]["subp"] = json!(-1);
+                    rows[3]["privilege"]["subp"] = json!(-1);
+                }
                 if self.6 {
                     for (index, maxbr, flag) in [(1, 320000, 1 << 12), (3, 128000, 1 << 18)] {
                         rows[index]["privilege"]["fee"] = json!(4);

@@ -1,5 +1,5 @@
 //! Closed PC EAPI transport for the real episode system-liked collector.
-use super::voice_songs_fixture;
+use super::{voice_song_download_fixture, voice_songs_fixture};
 use cumulus_core::{
     Error, Result,
     account::credentials::Credentials,
@@ -63,10 +63,15 @@ struct Wire {
     config: Arc<PcConfig>,
     device: String,
     calls: Mutex<Vec<Value>>,
+    download: Option<Arc<voice_song_download_fixture::Fixture>>,
 }
 
 impl Fixture {
-    pub fn open(store: Arc<StateStore>, songs: Arc<voice_songs_fixture::Fixture>) -> Result<Self> {
+    pub fn open(
+        store: Arc<StateStore>,
+        songs: Arc<voice_songs_fixture::Fixture>,
+        download: Option<Arc<voice_song_download_fixture::Fixture>>,
+    ) -> Result<Self> {
         let origin = ApiOrigin::Pc;
         let previous = store.get("transport", "credentials", "session")?;
         let credentials = Arc::new(Credentials::open(store.clone(), origin)?);
@@ -110,6 +115,7 @@ impl Fixture {
             config,
             device: initial.device_id,
             calls: Mutex::default(),
+            download,
         });
         let client = MusicHttpClient::with_backend(
             credentials,
@@ -131,6 +137,9 @@ impl Fixture {
     /// Ordinary page refreshes observe server state without consuming any of
     /// the three independent signed journal membership observations.
     pub fn resource_membership(&self, body: &Value) -> Value {
+        if let Some(download) = &self.backend.download {
+            return download.read(LIKED, body, false).unwrap().unwrap();
+        }
         assert_eq!(*body, json!({"uid":"2"}));
         let ids = if self.backend.calls.lock().unwrap().len() == EXPECTED.len() {
             &[701, 1710, 1601, 1791][..]
@@ -190,6 +199,11 @@ impl Wire {
     }
 
     fn respond(&self, path: &str, body: &Value) -> Result<Value> {
+        if let Some(download) = &self.download
+            && !matches!(path, ACCOUNT | SONGS)
+        {
+            return download.signed_liked(path, body);
+        }
         // Reject duplicate writes and premature or repeated reconciliation at
         // the actual signed backend boundary, not just in renderer receipts.
         let mut calls = self.calls.lock().unwrap();

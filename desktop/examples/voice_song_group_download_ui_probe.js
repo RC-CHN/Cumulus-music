@@ -1,7 +1,9 @@
 // Sealed WebView SongCard group download; the host sends trusted XTest inputs.
 (async () => {
   const mode = window.__voiceSongDownloadCase;
-  const purchased = mode === 'group_purchased';
+  const picker = mode.includes('playlist');
+  const star = mode === 'group_playlist_liked';
+  const purchased = mode.startsWith('group_purchased');
   const tiers = ['sky', 'hires', 'exhigh', 'standard'];
   const q = (selector, root = document) => root?.querySelector(selector) ?? null;
   const all = (selector, root = document) => [...(root?.querySelectorAll(selector) ?? [])];
@@ -16,6 +18,15 @@
   const action = () => q('[data-voice-song-group-download-action]', notice());
   const quality = () => q('dialog[open][data-voice-purchased-scope="group"]:not(.modal-leave-active)');
   const choice = (tier) => q(`input[data-voice-purchased-quality="${tier}"]`, quality());
+  const destination = () => q('dialog[open][data-voice-group-destination]:not(.modal-leave-active)');
+  const destinationStage = () => destination()?.dataset.voiceGroupDestinationStage;
+  const targetRow = () => q(star ? '[data-voice-group-destination-liked]' : '[data-playlist-id="81"]', destination());
+  const closeDestination = () => label('关闭歌曲下载', destination());
+  const createRow = () => label('创建新歌单', destination());
+  const recent = () => q('[data-collect-sort="recently"]', destination());
+  const reconcile = () => q('[data-voice-group-destination-reconcile]', destination());
+  const privateBox = () => q('input[type="checkbox"]', destination());
+  const createSubmit = () => q('button[type="submit"]', destination());
   const picked = () => q('input[data-voice-purchased-quality]:checked', quality())?.value ?? null;
   const help = () => label('了解音质', quality());
   const close = () => label('关闭音质选择', quality());
@@ -39,7 +50,14 @@
   const hit = (target) => {
     if (!(target instanceof Element)) return null;
     if (target.closest('[data-menu-key="download"]')) return 'menu:download';
-    if (target.closest('[data-voice-song-group-download-action]')) return 'directory:settings';
+    if (target.closest('[data-voice-song-group-download-action]'))
+      return picker ? 'destination:reopen' : 'directory:settings';
+    if (destination()) {
+      for (const [find, label] of [[targetRow, 'choose'], [closeDestination, 'close'], [createRow, 'create'],
+        [recent, 'recently'], [reconcile, 'reconcile'], [privateBox, 'private'], [createSubmit, 'confirm_create']]) {
+        if (find() && find().contains(target)) return `destination:${label}`;
+      }
+    }
     if (quality()) {
       if (target.closest('button[aria-label="了解音质"]') === help() && help()) return 'quality:guide';
       if (target.closest('button[aria-label="关闭音质选择"]') === close() && close()) return 'quality:close';
@@ -71,6 +89,8 @@
   const startName = 'playerVoiceSongsDownloadStart';
   const guideName = 'openVoiceSongGroupPurchasedQualityGuide';
   const confirmName = 'playerVoiceSongsDownloadConfirmQuality';
+  const destinationName = 'playerVoiceSongsDownloadDestination';
+  const destinationCalls = () => commands.filter((item) => item.name === destinationName);
   const cancelName = 'playerVoiceSongsDownloadCancel';
   const completed = (name) => commands.find((command) => command.name === name && 'result' in command);
 
@@ -120,6 +140,14 @@
         action: enabled(action()) ? action().textContent.trim() : null,
         settings: q('h2', settings())?.textContent.trim() ?? null,
         settingsDirectory: visible(q('input[aria-label="下载目录"]', settings())),
+        heartPressed: [0,1].map((index) => q('[data-voice-song-heart]', row(index))?.getAttribute('aria-pressed')),
+        destination: destination() && {
+          heading: q('h2', destination())?.textContent.trim(),
+          stage: destinationStage(), star: !!q('[data-voice-group-destination-liked]', destination()),
+          rows: all('.collect-list .collect-row', destination()).map((node) => node.getAttribute('aria-label')),
+          focus: document.activeElement?.getAttribute('aria-label'),
+          focusedReconcile: document.activeElement === reconcile(),
+        },
         singlePicker: !!q('dialog[open][data-voice-download-picker]'),
         quality: quality() && { heading: q('h2', quality())?.textContent.trim(), selected: picked(),
           tiers: all('input[data-voice-purchased-quality]', quality()).map((node) => node.value),
@@ -146,7 +174,7 @@
   }
 
   try {
-    assert(purchased || mode === 'group_liked' || mode === 'group_directory', 'known isolated group mode');
+    assert(picker || purchased || mode === 'group_liked' || mode === 'group_directory', 'known isolated group mode');
     await wait(async () => {
       const account = await invoke('account_snapshot');
       if (account.status !== 'authenticated' || !enabled(label('打开设置'))) return false;
@@ -165,7 +193,7 @@
     }
     const provides = q('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
-    const names = ['playerVoiceSongs', prepareName, startName, cancelName, guideName, confirmName,
+    const names = ['playerVoiceSongs', prepareName, startName, cancelName, guideName, confirmName, destinationName,
       'playerVoiceSongDownloadPrepare', 'playerVoiceSongPurchasedDownload', 'playerVoiceSongsCollectPrepare',
       'pickDownloadDirectory', 'downloadCommand', 'mutatePlaylist', 'playerVoiceSongsSelection'];
     const originals = names.map((name) => core[name]);
@@ -226,8 +254,97 @@
     const display = purchased ? [0,1,2,3] : [0,1,2];
     await wait(() => same(selected(), display), 'complete selected group');
     await input('open_unliked', () => title(0), 'row:0', { button: 3 });
-    await wait(() => enabled(collect()) && !download(), 'unliked trigger keeps Collect and hides group Download');
-    await capture('unliked_hidden');
+    await wait(() => enabled(collect()) && enabled(download()), 'unliked trigger offers both distinct actions');
+    await capture('unliked_offered');
+    if (picker) {
+      assert(!result(prepareName), 'opening the menu does not prepare or write');
+      await input('click_unliked_download', download, 'menu:download');
+      const prepared = await wait(() => result(prepareName), 'native unliked group plan');
+      const intent = { epoch, playId: playing.playId, cardReceipt: card.receipt,
+        selectionReceipt: prepared.selectionReceipt };
+      assert(same(commands.find((item) => item.name === prepareName).args, [{
+        epoch, playId: playing.playId, cardReceipt: card.receipt,
+        anchorIndex: 0, indices: purchased ? [1,0,2,3] : [1,0,2],
+      }]), 'native unliked trigger remains the click ordinal');
+      if (purchased) {
+        await wait(() => quality() && picked() === 'sky', 'purchased quality before any destination');
+        assert(!destination() && !destinationCalls().length, 'no picker read before chosen quality');
+        await input('picker_choose_hires', () => choice('hires'), 'quality:hires');
+        await input('picker_confirm_hires', confirm, 'quality:confirm');
+        assert(prepared.decision === 'purchased_quality_required', 'native purchased selection');
+      } else assert(prepared.decision === 'playlist_required', 'native playlist branch');
+      await wait(() => destinationStage() === 'pick' && enabled(targetRow()), 'actual native destination rows');
+      assert(destinationCalls().every((item) => ['page', 'liked_destination'].includes(item.args[1].kind)),
+        'listing has no write or continuation');
+      await capture('picker');
+
+      if (purchased) {
+        await input('open_create', createRow, 'destination:create');
+        const name = await wait(() => q('input[aria-label="歌单名称"]', destination()), 'actual create name input');
+        await wait(() => document.activeElement === name, 'create focuses name');
+        name.value = '合成私密下载歌单';
+        name.dispatchEvent(new Event('input', { bubbles: true }));
+        await input('private_create', privateBox, 'destination:private');
+        await input('confirm_create', createSubmit, 'destination:confirm_create');
+        await wait(() => destinationStage() === 'failed', 'new playlist false does not continue');
+        assert(!destinationCalls().some((item) => item.args[1].kind === 'start'), 'new add false leaves zero download tasks');
+        await capture('create_failed');
+      } else {
+        if (star) {
+          await input('close_prepared_picker', closeDestination, 'destination:close');
+          await wait(() => !destination() && completed(cancelName) && document.activeElement === row(0),
+            'closing prepared picker restores exact invoking row without writing');
+          await input('reopen_unliked_menu', () => title(0), 'row:0', { button: 3 });
+          await input('reopen_unliked_download', download, 'menu:download');
+          await wait(() => destinationStage() === 'pick' && enabled(targetRow()), 'new same-card picker');
+        } else {
+          await input('sort_recently', recent, 'destination:recently');
+          await wait(() => destinationCalls().some((item) => item.args[1].kind === 'page' &&
+            item.args[1].sort === 'recently' && item.result?.kind === 'page') && enabled(targetRow()),
+            'actual recently-sorted native page');
+        }
+        await input('select_destination', targetRow, 'destination:choose');
+        if (star) {
+          await wait(() => destinationStage() === 'pending' && document.activeElement === reconcile(),
+            'lost signed receipt leaves an explicit focused reconcile button');
+          assert(!destinationCalls().some((item) => ['status', 'start'].includes(item.args[1].kind)),
+            'no automatic remote reconcile or download');
+          await capture('pending');
+          await input('hide_pending', closeDestination, 'destination:close');
+          await wait(() => !destination() && enabled(action()) && document.activeElement === row(0),
+            'pending receipt hidden without losing exact focus');
+          await input('resume_pending', action, 'destination:reopen');
+          await wait(() => destinationStage() === 'pending' && document.activeElement === reconcile(),
+            'reopen the same pending receipt');
+          await emit('voice_song_download_reveal');
+          await wait(() => window.__voiceSongDownloadRevealed, 'closed synthetic server reveals like membership');
+          await input('reconcile', reconcile, 'destination:reconcile');
+        }
+        await wait(() => !destination() && notice()?.dataset.kind === 'queued', 'verified journal permits one download');
+        assert(!result(startName), 'ordinary direct start is never used by picker');
+        const hearts = [0,1].map((index) => q('[data-voice-song-heart]', row(index))?.getAttribute('aria-pressed'));
+        assert(same(hearts, [star ? 'true' : 'false', 'false']),
+          'only the signed confirmed collection subset updates the local hearts');
+        await capture('queued');
+        await wait(async () => {
+          const view = await tasks();
+          return !view.active.length && view.complete.length === 2 &&
+            view.complete.every((item) => item.status === 'complete');
+        }, 'both sealed downloads publish');
+        await capture('transferred');
+      }
+      assert(destinationCalls().every((item) => item.args[0].epoch === epoch &&
+        item.args[0].playId === playing.playId && item.args[0].cardReceipt === card.receipt),
+        'only active card receipts used throughout picker');
+      if (purchased)
+        assert(completed(confirmName)?.result.kind === 'playlist_required' &&
+          same(completed(confirmName).args, [intent, 'hires']), 'one explicit tier frozen before picker');
+      assert(commands.every((item) => ['playerVoiceSongs', prepareName, cancelName, confirmName, destinationName].includes(item.name)),
+        'no unrelated, single or generic write path');
+      await emit('complete', { ok: true, mode, count, realMusicRequests: 0,
+        realAccountWrites: 0, physicalAudioVerified: false });
+      return;
+    }
     document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await wait(() => !visible(collect()), 'context menu closed without an action');
 
