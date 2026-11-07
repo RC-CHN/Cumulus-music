@@ -137,6 +137,7 @@ impl Host {
                     .is_some_and(|r| r.status == crate::download::transfer::TransferStatus::Error);
             let error = task_error(&task, needs_transfer_restart);
             let voice_podcast = super::voice_podcast(&task);
+            let comment_track_id = super::comments::comment_track_id(&task);
             values.push(DownloadTaskView {
                 id: task.id,
                 source: if task.origin.is_cloud() {
@@ -149,6 +150,7 @@ impl Host {
                     "song"
                 },
                 track,
+                comment_track_id,
                 voice_podcast,
                 status: task.status,
                 phase: task.phase,

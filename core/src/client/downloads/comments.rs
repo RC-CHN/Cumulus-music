@@ -1,10 +1,10 @@
-//! M556's ordinary completed-download menu comment information.
+//! M556's completed-download comment menu and its catalogue identity.
 use super::{Context, MusicClient};
 use crate::{
     Error, Result,
     client::dto::AccountData,
     comments::{CommentApi, ResourceKind},
-    download::service::{DownloadOrigin, DownloadStatus},
+    download::service::{DownloadOrigin, DownloadStatus, DownloadTask},
     protocol::api::identifier,
 };
 use serde_json::json;
@@ -12,14 +12,31 @@ use std::time::Duration;
 
 const MENU_READ_LIMIT: Duration = Duration::from_millis(1_500);
 
-fn download_comment_song(context: &Context, task_id: &str) -> Result<String> {
-    let task = context.service.get_for(&context.token, task_id)?;
-    if task.status != DownloadStatus::Complete || task.origin != DownloadOrigin::Song {
-        return Err(Error::InvalidInput(
-            "comment information requires an ordinary completed song download",
-        ));
+pub(super) fn comment_track_id(task: &DownloadTask) -> Option<String> {
+    if task.status != DownloadStatus::Complete {
+        return None;
     }
-    identifier(&json!(task.song_id))
+    match &task.origin {
+        DownloadOrigin::Song => identifier(&json!(task.song_id)).ok(),
+        DownloadOrigin::Cloud { .. } => {
+            // CloudApi records this identity separately from the account's
+            // original file ID and omits it for a private songType=1 row.
+            let metadata = task.song.as_ref()?;
+            let public = identifier(&metadata["_cloud_public_id"]).ok()?;
+            let catalog = &metadata["_cloud_catalog_id"];
+            if !catalog.is_null() && identifier(catalog).ok().as_ref() != Some(&public) {
+                return None;
+            }
+            Some(public)
+        }
+        DownloadOrigin::Voice { .. } | DownloadOrigin::Mv { .. } => None,
+    }
+}
+
+fn download_comment_song(context: &Context, task_id: &str) -> Result<String> {
+    comment_track_id(&context.service.get_for(&context.token, task_id)?).ok_or(Error::InvalidInput(
+        "download has no completed catalogue song comment target",
+    ))
 }
 
 impl MusicClient {

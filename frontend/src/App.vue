@@ -270,7 +270,8 @@ import type { CommentResource } from './services/comments';
 import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
 import { useDownloads } from './composables/useDownloads';
-import type { DownloadDialogTarget, DownloadTab } from './services/downloads';
+import type { DownloadDialogTarget, DownloadTab, DownloadTask } from './services/downloads';
+import { downloadMenuCommentResource } from './services/downloadMenu';
 import type {
   VoiceSongAction,
   VoiceSongRowTarget,
@@ -1763,6 +1764,10 @@ function trackComments(track: TrackView) {
     track.voiceId ? { kind: 'voice', id: track.voiceId } : { kind: 'track', id: track.id },
     track.name,
   );
+}
+function downloadComments(task: DownloadTask) {
+  const resource = downloadMenuCommentResource(task);
+  if (resource) openComments(resource, task.track.name);
 }
 const local = useLocal();
 const localPageRef = ref<InstanceType<typeof LocalPage>>();
@@ -5696,7 +5701,7 @@ onUnmounted(() => {
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
                 @podcast="openDownloadPodcast"
                 @collect="(task) => (playlistDialog = { kind: 'tracks', tracks: [task.track] })"
-                @comments="(task) => trackComments(task.track)"
+                @comments="downloadComments"
                 @next="queueDownload"
                 :preparing="player.busy.value"
                 @select="player.select"

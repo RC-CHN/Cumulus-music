@@ -1,4 +1,5 @@
 import { downloadPlaybackReady, type DownloadTask } from './downloads.ts';
+import type { CommentResource } from './comments.ts';
 import type { MenuItem } from './menu.ts';
 import { songLink } from './trackMenu.ts';
 
@@ -9,8 +10,15 @@ export interface DownloadMenuState {
   queueable: boolean;
   commentCount?: number;
 }
+export function downloadMenuCommentResource(task: DownloadTask): CommentResource | undefined {
+  if (task.status !== 'complete') return undefined;
+  if (task.source === 'voice' && task.track.voiceId)
+    return { kind: 'voice', id: task.track.voiceId };
+  if ((task.source === 'song' || task.source === 'cloud') && task.commentTrackId)
+    return { kind: 'track', id: task.commentTrackId };
+}
 export function downloadCommentCountCandidate(task: DownloadTask): boolean {
-  return task.source === 'song' && task.status === 'complete';
+  return downloadMenuCommentResource(task)?.kind === 'track';
 }
 export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState): MenuItem[] {
   const blocked = state.locked || !!task.fileOperation || task.status === 'cancelling';
@@ -49,7 +57,7 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
       icon: 'next',
       disabled: blocked || !state.queueable || !downloadPlaybackReady(task),
     },
-    ...(!voice || task.track.voiceId
+    ...(downloadMenuCommentResource(task)
       ? [{ key: 'comments', label: comments, icon: 'comment', disabled: state.locked }]
       : []),
     { key: 'resource-divider', label: '', separator: true },

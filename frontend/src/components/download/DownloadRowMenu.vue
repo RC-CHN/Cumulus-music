@@ -118,11 +118,20 @@ async function show(event: MouseEvent | KeyboardEvent, selected: DownloadTask) {
   event.stopPropagation();
   close();
   id.value = selected.id;
-  const row = (event.currentTarget as HTMLElement).closest<HTMLElement>('[data-download-task]');
-  origin = (event.target as HTMLElement).closest<HTMLElement>('button') ?? row ?? undefined;
-  host = row?.closest<HTMLElement>('.download-scroll') ?? undefined;
-  if (!origin) return;
-  const anchor = origin;
+  const row =
+    event.currentTarget instanceof Element
+      ? event.currentTarget.closest<HTMLElement>('[data-download-task]')
+      : null;
+  if (!row) return;
+  const button = event.target instanceof Element ? event.target.closest('button') : null;
+  const rowButton = button && row.contains(button) && !button.disabled ? button : null;
+  // Keyboard access can target a row action hidden until the row receives
+  // focus. Reveal it first; fall back to the row if it cannot receive focus.
+  if (document.activeElement !== rowButton) row.focus({ preventScroll: true });
+  rowButton?.focus({ preventScroll: true });
+  const anchor = rowButton && document.activeElement === rowButton ? rowButton : row;
+  origin = anchor;
+  host = row.closest<HTMLElement>('.download-scroll') ?? undefined;
   const ticket = version;
   const epoch = props.epoch;
   const live = () =>
@@ -130,7 +139,6 @@ async function show(event: MouseEvent | KeyboardEvent, selected: DownloadTask) {
     epoch === props.epoch &&
     anchor.isConnected &&
     task.value?.id === selected.id;
-  anchor.focus({ preventScroll: true });
   const r = anchor.getBoundingClientRect();
   const pointer = event instanceof MouseEvent && event.type === 'contextmenu' && event.button === 2;
   if (epoch && !props.locked && downloadCommentCountCandidate(selected)) {

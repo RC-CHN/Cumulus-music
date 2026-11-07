@@ -80,6 +80,8 @@ pub struct DownloadTaskView {
     pub source: &'static str,
     pub track: TrackView,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment_track_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_podcast: Option<DownloadVoicePodcastView>,
     pub status: DownloadStatus,
     pub phase: DownloadPhase,

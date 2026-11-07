@@ -65,6 +65,8 @@ resource保留cloud标记、实际原文件size/type/URL和可选服务端MD5，
 云盘原文件是plain离线记录；完整性通过即可本地播放，不请求额外会员解锁。
 旧离线表quality枚举需要默认Standard，但这只是内部占位兼容字段；对外cloud actualQuality=None。
 完成页播放资源保留cloud_song_id标记，走本地文件解码，并可继续选择云盘专用歌词端点。
+已匹配目录的完成项，评论读取和菜单使用独立的目录歌曲 ID；私有或缺旧映射的文件
+没有歌曲评论入口。不会把云盘 songId 发给目录评论接口。见 download-row-menu-contracts.txt。
 改名/移动/目录迁移同步任务、离线表、本地库和队列；删除同步移除关联记录与自有sidecar。
 移除下载列表后仍保留对应普通文件，不把它变成受会员锁定资源。
 
