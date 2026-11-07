@@ -71,7 +71,7 @@ def main():
         parser.error('select a single proof')
     if args.quality_settings and args.seed_delay_ms:
         parser.error('--seed-delay-ms is for inventory fixtures')
-    expected = 44 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
+    expected = 48 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
@@ -131,7 +131,11 @@ def main():
         ]
         assert [row for row in result['downloadMenuCommentReads']
                 if row['resourceIds'] in ('["5"]', '["6"]', '["7"]', '["9010"]')] == [
-                    {'resourceType': 4, 'resourceIds': '["9010"]'}]
+                    {'resourceType': 4, 'resourceIds': '["9010"]'}] * 3
+        assert result['downloadCloudShareVerified']
+        assert result['downloadMenuShareReads'] == [
+            {'ids': '["9010"]'}, {'ids': '["9010"]'}, {'ids': '["9010"]'}, {'ids': '["1"]'},
+        ]
         plays = set()
         for status in ('waiting', 'working', 'complete'):
             stage, = (root / 'first').glob(f'ux_*_player_download_{status}.json')

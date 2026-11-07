@@ -86,6 +86,36 @@ pub async fn menu_comment_response(
         json!({"code":200,"data":[{"threadId":thread,"commentCount":count}]}),
     ))
 }
+static MENU_SHARE_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static CLOUD_MENU_SHARES: AtomicUsize = AtomicUsize::new(0);
+pub fn menu_share_calls() -> Vec<Value> {
+    MENU_SHARE_CALLS.lock().unwrap().clone()
+}
+pub fn menu_share_response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>> {
+    if !menu_comments_enabled() || path != "/api/song/enhance/privilege" {
+        return None;
+    }
+    let ids = args["ids"].as_str()?;
+    let cloud = CLOUD_MENU_ACTIVE.load(Ordering::SeqCst);
+    let (id, share) = match ids {
+        "[\"1\"]" => (1, 1),
+        "[\"9010\"]" if cloud => (
+            9010,
+            i32::from(CLOUD_MENU_SHARES.fetch_add(1, Ordering::SeqCst) != 1),
+        ),
+        "[\"5\"]" | "[\"6\"]" | "[\"7\"]" if cloud => {
+            MENU_SHARE_CALLS.lock().unwrap().push(args.clone());
+            return Some(Err(Error::InvalidInput(
+                "cloud file ID reached share privileges",
+            )));
+        }
+        _ => return None,
+    };
+    assert_eq!(*args, json!({"ids":ids}));
+    assert!(!cached);
+    MENU_SHARE_CALLS.lock().unwrap().push(args.clone());
+    Some(Ok(json!({"code":200,"data":[{"id":id,"sp":share}]})))
+}
 pub fn voice_podcast_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_VOICE_PODCAST_PROOF").is_some()
 }

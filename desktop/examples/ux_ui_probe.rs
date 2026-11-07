@@ -554,6 +554,9 @@ impl Api for Library {
             {
                 return result;
             }
+            if let Some(result) = download_page_fixture::menu_share_response(path, &args, cached) {
+                return result;
+            }
             if let Some(result) = download_page_fixture::response(path, &args) {
                 return result;
             }
@@ -1570,6 +1573,7 @@ fn main() {
             }
             if download_page_fixture::menu_comments_enabled() {
                 value["downloadMenuCommentReads"] = json!(download_page_fixture::menu_comment_calls());
+                value["downloadMenuShareReads"] = json!(download_page_fixture::menu_share_calls());
             }
             if let Some(signed)=signed_search.as_ref() { value["signedSearch"] = signed.report(); }
             if message_fixture::enabled() { value["messageRequests"] = message_fixture::report(); }

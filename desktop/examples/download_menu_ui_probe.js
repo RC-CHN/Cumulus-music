@@ -263,8 +263,9 @@
     const [matchedCloud, privateCloud, legacyCloud] = ["5", "6", "7"].map(cloud);
     assert(
       [matchedCloud, privateCloud, legacyCloud].every((task) => task?.source === "cloud") &&
-      matchedCloud.commentTrackId === "9010" &&
-      !privateCloud.commentTrackId && !legacyCloud.commentTrackId,
+      matchedCloud.commentTrackId === "9010" && matchedCloud.linkTrackId === "9010" &&
+      !privateCloud.commentTrackId && !legacyCloud.commentTrackId &&
+      !privateCloud.linkTrackId && !legacyCloud.linkTrackId,
       "native download view separates cloud file IDs from catalogue comments",
     );
     const openCloud = async (task) => {
@@ -290,13 +291,57 @@
     client.commentsPage = observeSongComments;
     click(button("返回上一页"));
     await wait(() => ready() && row(), "return to the cloud download inventory");
+    const expectedCloudLink = "https://music.163.com/song?id=9010";
+    const clipboard = client.copyText, shareAccess = client.downloadSongShareAccess;
+    let cloudCopies = 0, cloudPrivilegeReads = 0;
+    client.copyText = (text) => {
+      assert(text === expectedCloudLink, "native clipboard gets the catalogue link, never cloud file ID");
+      cloudCopies++;
+      return clipboard(text);
+    };
+    client.downloadSongShareAccess = (...args) => {
+      assert(args.length === 2 && args[0] === epoch && args[1] === matchedCloud.id,
+        "WebView asks native by account and task only");
+      cloudPrivilegeReads++;
+      return shareAccess(...args);
+    };
+    await openCloud(matchedCloud);
+    await action("复制链接");
+    await wait(() => one(".track-action-feedback")?.textContent.includes("链接已复制"),
+      "direct copy is complete");
+    assert(cloudCopies === 1 && cloudPrivilegeReads === 0,
+      "direct copy does not check sharing privileges");
+    await capture("cloud_direct_copy");
+    click(button("关闭", one(".track-action-feedback")));
+    await openCloud(matchedCloud);
+    await action("分享");
+    const shareDialog = () => one(".track-share-dialog[open]");
+    await wait(() => shareDialog(), "matching share privilege opens the dialog");
+    assert(!shareDialog().querySelector("input") &&
+      cloudPrivilegeReads === 1, "share popup opens after one read and does not bypass the copy gate");
+    await capture("cloud_share_public");
+    click(button("复制链接", shareDialog()));
+    await wait(() => shareDialog()?.textContent.includes("暂无分享版权"),
+      "second share check denies copying after rights change");
+    assert(cloudCopies === 1 && cloudPrivilegeReads === 2, "denied modal copy never touches clipboard");
+    await capture("cloud_share_revoked_copy");
+    click(button("复制链接", shareDialog()));
+    await wait(() => shareDialog()?.textContent.includes("链接已复制"), "explicit copy retry succeeds");
+    assert(cloudCopies === 2 && cloudPrivilegeReads === 3, "third explicit read before clipboard");
+    await capture("cloud_share_copy_restored");
+    click(button("关闭分享", shareDialog()));
+    await wait(() => !shareDialog(), "cloud share dialog dismissed");
+    client.copyText = clipboard;
+    client.downloadSongShareAccess = shareAccess;
     for (const [task, stage] of [
       [privateCloud, "cloud_private_no_comments"], [legacyCloud, "cloud_legacy_no_comments"],
     ]) {
       assert(await client.downloadSongCommentCount(epoch, task.id).then(() => false, () => true),
         "native IPC rejects cloud task without an authorized catalogue identity");
+      assert(await client.downloadSongShareAccess(epoch, task.id).then(() => false, () => true),
+        "native IPC rejects cloud task without a public song sharing target");
       await openCloud(task);
-      assert(!menu().querySelector('[data-menu-key="comments"]') &&
+      assert(!menu().querySelector('[data-menu-key="comments"],[data-menu-key="copy"],[data-menu-key="share"]') &&
         button("播放", menu()) && button("打开文件所在目录", menu()),
         "private or legacy cloud file keeps local operations without a comments entry");
       await capture(stage);
@@ -804,6 +849,7 @@
       downloadMenuUi: true,
       downloadMenuCommentVerified: true,
       downloadCloudCommentVerified: true,
+      downloadCloudShareVerified: true,
       playerDownloadStateVerified: true,
       stageCount: count,
       realMusicRequests: 0,

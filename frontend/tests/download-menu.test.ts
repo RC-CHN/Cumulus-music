@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { downloadMenuCommentResource, downloadMenuItems } from '../src/services/downloadMenu.ts';
+import {
+  downloadMenuCommentResource,
+  downloadMenuItems,
+  downloadMenuShareTrack,
+} from '../src/services/downloadMenu.ts';
 import type { DownloadTask } from '../src/services/downloads.ts';
 const task = {
   id: 'task',
@@ -9,6 +13,7 @@ const task = {
   path: '/synthetic.wav',
   track: { id: '9', name: 'Synthetic', artists: [], missing: false },
   commentTrackId: '9',
+  linkTrackId: '9',
 } as DownloadTask;
 const state = { locked: false, playable: true, queueable: true };
 test('downloaded song menu keeps recovered resource order and separates file additions', () => {
@@ -40,6 +45,21 @@ test('a completed cloud file needs its native catalogue identity for the comment
       (item) => item.key === 'comments',
     )?.label,
     '查看评论(12)',
+  );
+});
+test('public actions use only the native link target, independently of comments', () => {
+  const removed = { ...task, linkTrackId: undefined };
+  assert.deepEqual(downloadMenuCommentResource(removed), { kind: 'track', id: '9' });
+  assert.equal(downloadMenuShareTrack(removed), undefined);
+  const cloud = { ...removed, source: 'cloud', commentTrackId: undefined } as DownloadTask;
+  assert.equal(
+    downloadMenuItems(cloud, state).some((item) => ['share', 'copy'].includes(item.key)),
+    false,
+  );
+  assert.equal(downloadMenuShareTrack({ ...cloud, linkTrackId: '71' })?.id, '71');
+  assert.equal(
+    downloadMenuShareTrack({ ...cloud, linkTrackId: '71?credential=synthetic' }),
+    undefined,
   );
 });
 test('voice audio id is never treated as a song or program identifier', () => {

@@ -23,6 +23,7 @@ const AUDIO: &[u8] = include_bytes!("fixtures/tag_audio/seed.flac");
 const LIST: &str = "/api/v1/cloud/get";
 const DOWNLOAD: &str = "/api/cloud/dowonload";
 const COMMENTS: &str = "/api/resource/commentInfo/list";
+const SHARE: &str = "/api/song/enhance/privilege";
 #[tokio::test]
 async fn cloud_suffix_matches_executed_official_javascript_including_unicode_whitespace() {
     let oracle: Value = serde_json::from_str(include_str!("fixtures/cloud_download.json")).unwrap();
@@ -69,6 +70,7 @@ struct Server {
     calls: Mutex<Vec<(String, Value)>>,
     gate: Mutex<Option<Arc<Gate>>>,
     fallback: Mutex<Value>,
+    share: Mutex<Value>,
 }
 impl Server {
     fn count(&self, path: &str) -> usize {
@@ -114,6 +116,10 @@ impl Api for Server {
                 COMMENTS => {
                     assert_eq!(payload, json!({"resourceType":4,"resourceIds":"[\"987\"]"}));
                     Ok(json!({"code":200,"data":[{"threadId":"R_SO_4_987","commentCount":42}]}))
+                }
+                SHARE => {
+                    assert_eq!(payload, json!({"ids":"[\"987\"]"}));
+                    Ok(self.share.lock().unwrap().clone())
                 }
                 _ => panic!("cloud workflow must not call {path}"),
             }
@@ -169,6 +175,71 @@ async fn downloaded_cloud_comments_keep_the_catalogue_id_separate_from_the_origi
         }
     }
 }
+#[tokio::test]
+async fn cloud_sharing_reads_only_the_published_song_privilege_and_checks_its_result() {
+    use cumulus_core::{
+        account::profiles::ProfileRegistry,
+        client::{MusicClient, dto::*},
+        protocol::http::ApiOrigin,
+    };
+    for (kind, status, allowed_link) in [(0, 0, true), (1, 0, false), (0, -100, false)] {
+        let f = Fixture::new();
+        {
+            let mut rows = f.api.rows.lock().unwrap();
+            rows[0]["simpleSong"]["t"] = json!(kind);
+            rows[0]["simpleSong"]["privilege"]["st"] = json!(status);
+            rows[0]["simpleSong"]["privilege"]["fee"] = json!(4);
+        }
+        let client = MusicClient::with_session(
+            f.session.clone(),
+            ProfileRegistry::open(f.store.directory(), ApiOrigin::Pc).unwrap(),
+        );
+        let task = f.create(false).await;
+        f.service.run(&task.id, Run::default()).await.unwrap();
+        let page = client
+            .downloads(
+                "1",
+                DownloadQuery {
+                    tab: DownloadTab::Completed,
+                    category: DownloadCategory::Song,
+                    keyword: String::new(),
+                    sort: DownloadSort::None,
+                    descending: false,
+                    offset: 0,
+                    limit: 10,
+                },
+            )
+            .await
+            .unwrap();
+        let [row] = page.tasks.as_slice() else {
+            panic!("expected the completed cloud original");
+        };
+        assert_eq!(row.track.id, "123");
+        assert_eq!(row.link_track_id.as_deref(), allowed_link.then_some("987"));
+        let result = client.download_song_share_access("1", &task.id).await;
+        if !allowed_link {
+            assert!(matches!(result, Err(Error::InvalidInput(_))));
+            assert_eq!(f.api.count(SHARE), 0);
+            continue;
+        }
+        assert_eq!(result.unwrap().value, DownloadShareAccess::Allowed);
+        *f.api.share.lock().unwrap() = json!({"code":200,"data":[{"id":987,"sp":0}]});
+        assert_eq!(
+            client
+                .download_song_share_access("1", &task.id)
+                .await
+                .unwrap()
+                .value,
+            DownloadShareAccess::AlbumRequired,
+        );
+        *f.api.share.lock().unwrap() = json!({"code":200,"data":[{"id":123,"sp":1}]});
+        assert!(matches!(
+            client.download_song_share_access("1", &task.id).await,
+            Err(Error::Response(_))
+        ));
+        assert_eq!(f.api.count(SHARE), 3);
+    }
+}
 struct Fixture {
     root: tempfile::TempDir,
     api: Arc<Server>,
@@ -191,6 +262,7 @@ impl Fixture {
             calls: Mutex::new(vec![]),
             gate: Mutex::new(None),
             fallback: Mutex::new(json!({"code":404})),
+            share: Mutex::new(json!({"code":200,"data":[{"id":987,"sp":1}]})),
         });
         let media = Arc::new(support::download::Backend::new(AUDIO.into()));
         let session = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
