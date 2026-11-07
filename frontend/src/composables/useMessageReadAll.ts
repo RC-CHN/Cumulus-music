@@ -73,7 +73,7 @@ export function useMessageReadAll(
         }
         break;
       case 'checked_clear':
-        if (kind === 'check') notice.value = '当前没有未读消息，已结束核对。';
+        if (kind === 'check') notice.value = '未读提醒总数已归零，已结束核对。';
         break;
       case 'not_sent':
         if (kind === 'confirm') notice.value = '请求未发送，请刷新未读数后重试。';

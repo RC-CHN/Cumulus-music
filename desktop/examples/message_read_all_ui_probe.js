@@ -174,7 +174,7 @@
       await fixture('read-all-zero');
       click(check(), 'verify a second explicit read-only result');
       await wait(async () => !check() && !dot() && equals(tabs(), zeroTabs) &&
-        statusText().includes('当前没有未读消息，已结束核对。') &&
+        statusText().includes('未读提醒总数已归零，已结束核对。') &&
         equals(await requests(), { reads: 4, lists: 1, writes: 0 }),
       'four authoritative zeros resolve the old operation without write or list refresh');
       assert(readAll()?.disabled, 'nothing positive remains to prepare another clear');

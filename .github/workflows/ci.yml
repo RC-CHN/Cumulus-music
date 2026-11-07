@@ -625,6 +625,7 @@ jobs:
           python scripts/ci/search_results_smoke.py --voice-author --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-author-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-drawer-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-polling-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-read-all-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-deletion-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-reply-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-latest-releases-windows --runtime .build/package-stage/windows-x64/native
@@ -985,7 +986,7 @@ jobs:
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --indexed-flac-only --binary .build/target/debug/examples/native_local_equalizer_probe \
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --frontend-dist frontend/dist --root .build/ci-indexed-flac-linux
-      - name: Verify natural playback completion and live history settings on Linux
+      - name: Verify natural playback completion, live history settings, and message read-all on Linux
         run: |
           cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
           outer_network=$(readlink /proc/self/ns/net)
@@ -1010,6 +1011,7 @@ jobs:
           isolated_proof scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe --root .build/ci-natural-eof-linux --screenshots
           isolated_proof scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-history-settings-cohort-linux --screenshots
           isolated_proof scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-quality-linux --screenshots
+          isolated_proof scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-read-all-linux --screenshots
       - name: Linux native media and desktop WebView regression
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:

@@ -16,7 +16,7 @@ Rust 与桌面边界：
 - 只在已有 PcMessageConnectivity 主计数 actor 上新增
   message_read_all(epoch, action) -> AccountData<MessageReadAllState>。
   status 不发请求；prepare/cancel 不写远端；confirm 只认一次性的本机 intent；
-  check 只接受当前账号持久操作编号。桌面只向主窗口注册
+  check 只接受当前账号持久操作编号。桌面只接受主窗口调用
   `message_read_all(epoch, action)`；命令先取当前计数 actor 的请求句柄，再释放桌面锁，
   等待 actor 返回。状态只包含本机不透明编号、账号代际和结果，不含地址、签名或凭据。
 - Prepare 需要原生抽屉已打开、同一认证代际、最近 30 秒完整四类成功样本且至少
@@ -52,3 +52,11 @@ Rust 与桌面边界：
 core/tests/message_read_all.rs 使用真实 Rust EAPI 构造与内存 HTTP 后端，校验
 空业务对象、单次写、持久化先于传输、旧计数取消、新未读回归、重开核对、
 凭据/账号/可见性/超时拒绝；既有 pc_message_connectivity 用例保留。
+
+实际桌面：`scripts/ci/message_drawer_smoke.py --read-all --binary <ux_ui_probe> --root <新目录>`
+在 Linux WebKitGTK 和关闭外网的 X11 环境中，以两个独立应用进程验证 9 个状态：
+进入、打开确认、取消、收到 200 清除、再次来信、回执丢失、重启恢复、正值仍未决、
+四类零值结束核对。验证已知写入仅两次（每次均由用户动作确认），重启与核对零写；
+合成截图与各阶段记录见 `.build/ui-proof/phase122-message-read-all-r2/`。
+普通消息抽屉的 8 阶段回归见 `.build/ui-proof/phase122-message-baseline-r1/`。
+已将同一场景加入 Linux/Windows CI；本轮未在 Windows 或真实账号上验证清除写入。
