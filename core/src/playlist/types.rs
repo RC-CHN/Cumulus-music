@@ -189,6 +189,20 @@ pub struct PlaylistMutation {
 }
 
 impl PlaylistMutation {
+    /// FavouriteModal resumes an existing target even after an authoritative
+    /// negative add callback; a new target requires a positive callback.
+    pub(crate) fn download_picker_outcome(&self, existing: bool) -> (bool, bool) {
+        let failed = matches!(
+            self.phase,
+            PlaylistPhase::Confirmed | PlaylistPhase::Rejected
+        ) && self.checked_at.is_some()
+            && self.error_class.as_deref() == Some("service")
+            && self.codes.contains_key("main");
+        let completed = self.phase == PlaylistPhase::Confirmed && (existing || !failed)
+            || existing && (self.phase == PlaylistPhase::Unchanged || failed);
+        (completed, failed)
+    }
+
     /// A real create acknowledgement supplies an ID; a later list delta can
     /// settle the journal, but cannot give another action permission to write.
     pub(crate) fn confirmed_created_target(&self) -> Option<(&str, &str, bool)> {

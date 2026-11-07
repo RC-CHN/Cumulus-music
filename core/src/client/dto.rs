@@ -48,8 +48,9 @@ pub use super::player::{
     VoiceSongCollectResult, VoiceSongDownloadCreation, VoiceSongDownloadDecision,
     VoiceSongDownloadPicker, VoiceSongDownloadPlan, VoiceSongGroupDownloadConfirmation,
     VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint, VoiceSongGroupDownloadPlan,
-    VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult,
-    VoiceSongRowAvailability, VoiceSongSelectionAction, VoiceSongSelectionKind,
+    VoiceSongGroupPlaylistCreation, VoiceSongGroupPlaylistResult, VoiceSongLikedDestination,
+    VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability,
+    VoiceSongSelectionAction, VoiceSongSelectionKind,
 };
 pub use super::player::{
     VinylVoiceDetailTarget, VinylVoiceDetailView, VinylVoiceRecommendationCard,

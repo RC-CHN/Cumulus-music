@@ -14,6 +14,7 @@ mod records;
 mod run;
 mod scheduler;
 mod voice;
+pub(crate) use batch::SongBatchAdmission;
 pub use manager::DownloadService;
 pub(super) use manager::{CONTROL as TASK_CONTROL, KIND as TASKS};
 pub(crate) use missing_playback::MissingCatalogDownload;

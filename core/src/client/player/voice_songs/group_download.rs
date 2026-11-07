@@ -1,7 +1,9 @@
-//! M/3085 direct included-song batches with an authoritatively liked trigger.
+//! M/3085 included-song batches with a liked trigger or explicit destination.
+mod playlist;
 use super::{
     MAX_TRACKS, MusicClient,
-    actions::Row,
+    actions::{Page, Row},
+    collect::Privilege,
     download::Class,
     id,
     purchased::{Offer, purchased_quality_guide_url, vivid_enabled},
@@ -10,10 +12,12 @@ use crate::{
     Error, Result,
     account::resources::{AccountResources, ResourceKind},
     client::{downloads::GuardedSongBatch, dto::DownloadResult},
+    download::service::SongBatchAdmission,
     membership::Quality,
     protocol::wire::serialization::js_truthy,
     storage::PlaybackDownloadKind,
 };
+pub use playlist::{VoiceSongGroupPlaylistCreation, VoiceSongGroupPlaylistResult};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -97,6 +101,9 @@ struct Selection {
     receipt: String,
     anchor: String,
     songs: Arc<[String]>,
+    collection: Arc<[String]>,
+    destination_enabled: bool,
+    destination: Mutex<playlist::State>,
     purchased_qualities: Vec<Quality>,
     busy: AtomicBool,
     committed: OnceLock<Commit>,
@@ -238,6 +245,33 @@ impl MusicClient {
         anchor_index: usize,
         indices: &[usize],
     ) -> Result<VoiceSongGroupDownloadPlan> {
+        self.prepare_voice_song_group(epoch, play_id, card_receipt, anchor_index, indices, false)
+            .await
+    }
+
+    /// Prepare a native picker. The existing desktop prepare intentionally
+    /// continues to treat PlaylistRequired as a blocked plan.
+    pub async fn player_voice_songs_download_prepare_with_destination(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        card_receipt: &str,
+        anchor_index: usize,
+        indices: &[usize],
+    ) -> Result<VoiceSongGroupDownloadPlan> {
+        self.prepare_voice_song_group(epoch, play_id, card_receipt, anchor_index, indices, true)
+            .await
+    }
+
+    async fn prepare_voice_song_group(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        card_receipt: &str,
+        anchor_index: usize,
+        indices: &[usize],
+        destination_enabled: bool,
+    ) -> Result<VoiceSongGroupDownloadPlan> {
         use VoiceSongGroupDownloadDecision as D;
         let (page, check) = self.voice_song_download_scope(epoch, play_id, card_receipt)?;
         ordered_rows(&page.rows, anchor_index, indices)?;
@@ -247,102 +281,125 @@ impl MusicClient {
         let store = session.persistent_store()?;
         let native = page.clone();
         let indices = indices.to_vec();
-        let (eligible, omitted, songs, offers, decision) = tokio::task::spawn_blocking(move || {
-            let selected = ordered_rows(&native.rows, anchor_index, &indices)?;
-            let anchor = &native.rows[anchor_index];
-            let ids: BTreeSet<_> = selected
-                .iter()
-                .map(|(_, row)| row.track.id.as_str())
-                .collect();
-            let local = local
-                .library
-                .matched_online_song_ids(&session, &native.token, &ids)?;
-            let statuses = session.with_token(&native.token, |owner| {
-                store.read_snapshot(|tx| {
-                    ids.iter()
-                        .map(|&id| {
-                            let statuses =
-                                tx.playback_download_rows(owner, id, PlaybackDownloadKind::Song)?;
-                            let complete = statuses.iter().any(|row| row.status == "complete");
-                            let exists = statuses.iter().any(|row| row.status != "cancelled");
-                            Ok((id, (complete, exists)))
-                        })
-                        .collect::<Result<BTreeMap<_, _>>>()
-                })
-            })?;
+        let (eligible, omitted, songs, collection, offers, decision) =
+            tokio::task::spawn_blocking(move || {
+                let selected = ordered_rows(&native.rows, anchor_index, &indices)?;
+                let anchor = &native.rows[anchor_index];
+                let ids: BTreeSet<_> = selected
+                    .iter()
+                    .map(|(_, row)| row.track.id.as_str())
+                    .collect();
+                let local = local
+                    .library
+                    .matched_online_song_ids(&session, &native.token, &ids)?;
+                let statuses = session.with_token(&native.token, |owner| {
+                    store.read_snapshot(|tx| {
+                        ids.iter()
+                            .map(|&id| {
+                                let statuses = tx.playback_download_rows(
+                                    owner,
+                                    id,
+                                    PlaybackDownloadKind::Song,
+                                )?;
+                                let complete = statuses.iter().any(|row| row.status == "complete");
+                                let exists = statuses.iter().any(|row| row.status != "cancelled");
+                                Ok((id, (complete, exists)))
+                            })
+                            .collect::<Result<BTreeMap<_, _>>>()
+                    })
+                })?;
 
-            let mut eligible = Vec::new();
-            let mut omitted = Vec::new();
-            let mut songs = Vec::new();
-            let mut survivors = BTreeMap::new();
-            let mut seen = BTreeSet::new();
-            let mut unsupported = false;
-            for (index, row) in selected {
-                let id = row.track.id.as_str();
-                let (complete, exists) = statuses[id];
-                // M/3085 initial completed/local/copyright filtering occurs
-                // before any purchased group branch, not the postfilter.
-                if complete || local.contains(id) || row.download_copyright_blocked {
-                    omitted.push(index);
-                } else if row.group_download_unsupported {
-                    unsupported = true;
-                    omitted.push(index);
-                } else if matches!(row.download, Class::Ordinary | Class::Purchased(_)) {
-                    // M/3085 forms the purchase union from initial survivors,
-                    // even if the ordinary task ledger later suppresses a row.
-                    if survivors
-                        .insert(id, row.download)
-                        .is_some_and(|previous| previous != row.download)
-                    {
+                let mut eligible = Vec::new();
+                let mut omitted = Vec::new();
+                let mut songs = Vec::new();
+                let mut collection = Vec::new();
+                let mut collected = BTreeSet::new();
+                let mut survivors = BTreeMap::new();
+                let mut seen = BTreeSet::new();
+                let mut unsupported = false;
+                for (index, row) in selected {
+                    let id = row.track.id.as_str();
+                    let (complete, exists) = statuses[id];
+                    // M/3085 initial completed/local/copyright filtering occurs
+                    // before any purchased group branch, not the postfilter.
+                    if complete || local.contains(id) || row.download_copyright_blocked {
+                        omitted.push(index);
+                        continue;
+                    } else if row.group_download_unsupported {
                         unsupported = true;
+                        omitted.push(index);
+                        continue;
+                    } else {
+                        // The download picker passes the initial survivors, not
+                        // the task-ledger subset or ordinary collect selectedData.
+                        // M/3085's second filter keeps absent/falsy/positive subPriv;
+                        // the favorite's two reversals restore this relative order.
+                        if matches!(
+                            row.collection_privilege,
+                            Privilege::Preferred | Privilege::FirstFallback
+                        ) && collected.insert(id)
+                        {
+                            collection.push(id.to_owned());
+                        }
                     }
-                    if !exists && seen.insert(id) {
-                        eligible.push(index);
-                        songs.push(id.to_owned());
+                    if matches!(row.download, Class::Ordinary | Class::Purchased(_)) {
+                        // M/3085 forms the purchase union from initial survivors,
+                        // even if the ordinary task ledger later suppresses a row.
+                        if survivors
+                            .insert(id, row.download)
+                            .is_some_and(|previous| previous != row.download)
+                        {
+                            unsupported = true;
+                        }
+                        if !exists && seen.insert(id) {
+                            eligible.push(index);
+                            songs.push(id.to_owned());
+                        } else {
+                            omitted.push(index);
+                        }
                     } else {
                         omitted.push(index);
                     }
-                } else {
-                    omitted.push(index);
                 }
-            }
 
-            let offers = survivors
-                .values()
-                .filter_map(|class| match class {
-                    Class::Purchased(offer) => Some(*offer),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            let id = anchor.track.id.as_str();
-            let decision = if statuses[id].0 || local.contains(id) {
-                D::Unavailable // M/556 menu hidden for this trigger.
-            } else if unsupported || anchor.group_download_unsupported {
-                D::UnsupportedSelection
-            } else if songs.is_empty() {
-                D::Unavailable
-            } else if offers.is_empty() {
-                membership(session, &native.token, id)?
-            } else if survivors.len() >= 2 {
-                // The official chooser precedes clicked-anchor membership
-                // and directory checks. No choice commits or queues yet.
-                D::PurchasedQualityRequired
-            } else {
-                // The original single-survivor preflight also inspects the
-                // clicked resource; leave it to the existing single lane.
-                D::UnsupportedSelection
-            };
-            Ok::<_, Error>((eligible, omitted, songs, offers, decision))
-        })
-        .await
-        .map_err(|_| Error::State("download selection worker stopped"))??;
+                let offers = survivors
+                    .values()
+                    .filter_map(|class| match class {
+                        Class::Purchased(offer) => Some(*offer),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                let id = anchor.track.id.as_str();
+                let decision = if statuses[id].0 || local.contains(id) {
+                    D::Unavailable // M/556 menu hidden for this trigger.
+                } else if unsupported || anchor.group_download_unsupported {
+                    D::UnsupportedSelection
+                } else if songs.is_empty() {
+                    D::Unavailable
+                } else if offers.is_empty() {
+                    membership(session, &native.token, id)?
+                } else if survivors.len() >= 2 {
+                    // The official chooser precedes clicked-anchor membership
+                    // and directory checks. No choice commits or queues yet.
+                    D::PurchasedQualityRequired
+                } else {
+                    // The original single-survivor preflight also inspects the
+                    // clicked resource; leave it to the existing single lane.
+                    D::UnsupportedSelection
+                };
+                Ok::<_, Error>((eligible, omitted, songs, collection, offers, decision))
+            })
+            .await
+            .map_err(|_| Error::State("download selection worker stopped"))??;
         check()?;
         let qualities = if decision == D::PurchasedQualityRequired {
             purchased_qualities(offers, vivid_enabled(&self.pc_experiments, &page)?)
         } else {
             Vec::new()
         };
-        let decision = if decision == D::PurchasedQualityRequired && qualities.is_empty() {
+        let decision = if (decision == D::PurchasedQualityRequired && qualities.is_empty())
+            || (destination_enabled && decision == D::PlaylistRequired && collection.is_empty())
+        {
             D::UnsupportedSelection
         } else if decision == D::Ready
             && !self.configured_download_directory_available(epoch).await?
@@ -354,14 +411,19 @@ impl MusicClient {
         check()?;
         let selection_receipt = page.group_download.install(
             ticket,
-            matches!(decision, D::Ready | D::PurchasedQualityRequired).then(|| Selection {
-                receipt: uuid::Uuid::new_v4().simple().to_string(),
-                anchor: page.rows[anchor_index].track.id.clone(),
-                songs: songs.into(),
-                purchased_qualities: qualities.clone(),
-                busy: AtomicBool::new(false),
-                committed: OnceLock::new(),
-            }),
+            (matches!(decision, D::Ready | D::PurchasedQualityRequired)
+                || destination_enabled && decision == D::PlaylistRequired)
+                .then(|| Selection {
+                    receipt: uuid::Uuid::new_v4().simple().to_string(),
+                    anchor: page.rows[anchor_index].track.id.clone(),
+                    songs: songs.into(),
+                    collection: collection.into(),
+                    destination_enabled,
+                    destination: Mutex::new(playlist::State::new(decision == D::PlaylistRequired)),
+                    purchased_qualities: qualities.clone(),
+                    busy: AtomicBool::new(false),
+                    committed: OnceLock::new(),
+                }),
         )?;
         Ok(VoiceSongGroupDownloadPlan {
             epoch: epoch.into(),
@@ -417,6 +479,13 @@ impl MusicClient {
         let lease = page.group_download.lease(selection_receipt)?;
         let vivid = vivid_enabled(&self.pc_experiments, &page)?;
         if lease.0.committed.get().is_some()
+            || lease
+                .0
+                .destination
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?
+                .quality
+                .is_some()
             || !lease
                 .0
                 .purchased_qualities
@@ -432,7 +501,7 @@ impl MusicClient {
     }
 
     /// Explicitly confirm one of this native selection's purchased tiers.
-    /// A group needing a destination does not enter the ordinary picker.
+    /// The same offered quality is frozen before any destination can be chosen.
     pub async fn player_voice_songs_download_confirm_quality(
         &self,
         epoch: &str,
@@ -485,6 +554,20 @@ impl MusicClient {
                 },
             });
         }
+        if let Some(frozen) = lease
+            .0
+            .destination
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .quality
+        {
+            if frozen != quality {
+                return Err(Error::InvalidInput(
+                    "group destination quality is already selected",
+                ));
+            }
+            return Ok(C::PlaylistRequired);
+        }
         let experiments = self.pc_experiments.clone();
         let bound = page.clone();
         let check = move || {
@@ -508,7 +591,20 @@ impl MusicClient {
             check()?;
             match decision {
                 D::Ready => {}
-                D::PlaylistRequired => return Ok(C::PlaylistRequired),
+                D::PlaylistRequired => {
+                    if lease.0.destination_enabled {
+                        if lease.0.collection.is_empty() {
+                            return Err(Error::State("no group songs can be added to a playlist"));
+                        }
+                        lease
+                            .0
+                            .destination
+                            .lock()
+                            .map_err(|_| Error::LockPoisoned)?
+                            .quality = Some(quality);
+                    }
+                    return Ok(C::PlaylistRequired);
+                }
                 D::MembershipUnknown => return Ok(C::MembershipUnknown),
                 _ => return Err(Error::State("invalid group membership decision")),
             }
@@ -518,45 +614,68 @@ impl MusicClient {
                 return Ok(C::DirectoryRequired);
             }
         }
-        let local = self.local.context().await?;
         let songs = lease.0.songs.clone();
-        let checked_anchor = anchor.clone();
+        let result = self
+            .enqueue_voice_song_group(
+                epoch,
+                &page,
+                lease,
+                songs,
+                (quality, SongBatchAdmission::LikedAnchor(anchor)),
+                check,
+            )
+            .await?;
+        Ok(C::Started { result })
+    }
+
+    async fn enqueue_voice_song_group(
+        &self,
+        epoch: &str,
+        page: &Page,
+        lease: Lease,
+        songs: Arc<[String]>,
+        (quality, admission): (Option<Quality>, SongBatchAdmission),
+        check: impl Fn() -> Result<()> + Send + 'static,
+    ) -> Result<DownloadResult> {
+        let local = self.local.context().await?;
+        let session = self.session.clone();
+        let token = page.token.clone();
+        let checked_anchor = lease.0.anchor.clone();
+        let selection_receipt = lease.0.receipt.clone();
         let mut options = self.download_quality_preferences(epoch)?.options;
         if let Some(quality) = quality {
             // M/754 sends the one chosen tier for every new authorized row.
             // The service, not a local per-track clamp, decides if it allows it.
             options.quality = quality;
         }
-        let result = self
-            .start_guarded_song_batch(
-                epoch,
-                GuardedSongBatch {
-                    receipt: selection_receipt.into(),
-                    anchor,
-                    songs: songs.clone(),
-                    options,
-                },
-                move || {
-                    let ids = songs
-                        .iter()
-                        .map(String::as_str)
-                        .chain([checked_anchor.as_str()])
-                        .collect();
-                    let lock = local
-                        .library
-                        .hold_unmatched_online_songs(&session, &token, &ids)?;
-                    check()?;
-                    Ok(lock)
-                },
-                move |ids| {
-                    let _ = lease.0.committed.set(Commit {
-                        quality,
-                        ids: ids.to_vec(),
-                    });
-                    drop(lease);
-                },
-            )
-            .await?;
-        Ok(C::Started { result })
+        self.start_guarded_song_batch(
+            epoch,
+            GuardedSongBatch {
+                receipt: selection_receipt,
+                admission,
+                songs: songs.clone(),
+                options,
+            },
+            move || {
+                let ids = songs
+                    .iter()
+                    .map(String::as_str)
+                    .chain([checked_anchor.as_str()])
+                    .collect();
+                let lock = local
+                    .library
+                    .hold_unmatched_online_songs(&session, &token, &ids)?;
+                check()?;
+                Ok(lock)
+            },
+            move |ids| {
+                let _ = lease.0.committed.set(Commit {
+                    quality,
+                    ids: ids.to_vec(),
+                });
+                drop(lease);
+            },
+        )
+        .await
     }
 }

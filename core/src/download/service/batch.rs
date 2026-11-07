@@ -7,6 +7,7 @@ use crate::{
     Error, Result,
     account::resources::{AccountResources, ResourceKind},
     download::directory::{DirectorySettings, gate as directory_gate},
+    playlist::GroupDownloadPlaylistProof,
     protocol::api::identifier,
     storage::{OperationLock, PlaybackDownloadKind},
 };
@@ -26,12 +27,17 @@ struct Commit {
     tasks: Vec<String>,
 }
 
+pub(crate) enum SongBatchAdmission {
+    LikedAnchor(String),
+    Playlist(GroupDownloadPlaylistProof),
+}
+
 impl DownloadService {
     pub(crate) fn create_guarded_song_batch(
         &self,
         ids: &[String],
         receipt: &str,
-        anchor: &str,
+        admission: SongBatchAdmission,
         options: DownloadOptions,
         permission: &dyn Fn() -> Result<OperationLock>,
         cancelled: &AtomicBool,
@@ -119,12 +125,23 @@ impl DownloadService {
                 return Err(Error::StaleResponse);
             }
             self.store.transaction(|tx| {
-                let (liked, operation) =
-                    AccountResources::membership_in(tx, owner, ResourceKind::Liked, anchor)?;
-                if liked != Some(true) || operation.is_some_and(|record| record.phase.pending()) {
-                    return Err(Error::State(
-                        "SongCard batch requires a confirmed liked anchor",
-                    ));
+                match &admission {
+                    SongBatchAdmission::LikedAnchor(anchor) => {
+                        let (liked, operation) = AccountResources::membership_in(
+                            tx,
+                            owner,
+                            ResourceKind::Liked,
+                            anchor,
+                        )?;
+                        if liked != Some(true)
+                            || operation.is_some_and(|record| record.phase.pending())
+                        {
+                            return Err(Error::State(
+                                "SongCard batch requires a confirmed liked anchor",
+                            ));
+                        }
+                    }
+                    SongBatchAdmission::Playlist(proof) => proof.verify_in(tx, owner)?,
                 }
                 for task in &staged {
                     let task = task.task();

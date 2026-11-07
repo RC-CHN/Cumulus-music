@@ -6,7 +6,7 @@ use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
     protocol::api::{Api, GuardedPlaylistAdd, PlaylistAddPermission, identifier},
-    storage::{OperationLock, StateStore},
+    storage::{OperationLock, StateStore, StateTransaction},
 };
 use serde_json::{Value, json};
 use std::{
@@ -18,6 +18,39 @@ use std::{
 };
 
 const JOURNAL: &str = "playlist-mutations";
+
+pub(crate) struct GroupDownloadPlaylistProof {
+    pub operation: String,
+    pub playlist: String,
+    pub songs: Arc<[String]>,
+    pub creation: Option<String>,
+}
+
+impl GroupDownloadPlaylistProof {
+    pub(crate) fn verify_in(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
+        let read = |id: &str| {
+            PlaylistService::parse_record(
+                id,
+                tx.get(owner, JOURNAL, id)?.ok_or(Error::StaleResponse)?,
+            )
+        };
+        let record = read(&self.operation)?;
+        if record.system_liked_group
+            || record.playlist_id.as_deref() != Some(self.playlist.as_str())
+            || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
+                if id == &self.playlist && ids.as_slice() == self.songs.as_ref())
+            || !record.download_picker_outcome(self.creation.is_none()).0
+        {
+            return Err(Error::StaleResponse);
+        }
+        if let Some(id) = &self.creation
+            && read(id)?.confirmed_created_target().map(|(id, _, _)| id) != Some(&self.playlist)
+        {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
+}
 
 enum GuardedReadback<'a> {
     SingleAdd,

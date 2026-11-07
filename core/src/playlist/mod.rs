@@ -13,6 +13,7 @@ pub use external_input::{
     ExternalPlaylistInput, ExternalPlaylistSource, MAX_EXTERNAL_PLAYLIST_LINKS,
     preview_external_playlist_inputs,
 };
+pub(crate) use service::GroupDownloadPlaylistProof;
 pub use service::PlaylistService;
 pub use snapshot::{PlaylistList, PlaylistSnapshot, PlaylistSummary};
 pub use types::*;

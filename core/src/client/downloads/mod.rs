@@ -35,7 +35,7 @@ use tokio::sync::Notify;
 
 pub(in crate::client) struct GuardedSongBatch {
     pub receipt: String,
-    pub anchor: String,
+    pub admission: crate::download::service::SongBatchAdmission,
     pub songs: Arc<[String]>,
     pub options: crate::download::service::DownloadOptions,
 }

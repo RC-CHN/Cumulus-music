@@ -76,7 +76,7 @@ impl MusicClient {
             let accepted = context.service.create_guarded_song_batch(
                 &batch.songs,
                 &batch.receipt,
-                &batch.anchor,
+                batch.admission,
                 batch.options,
                 &permission,
                 &cancelled,

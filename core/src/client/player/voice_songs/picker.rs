@@ -239,14 +239,7 @@ fn result(
     // even when the add result is false. A proved service rejection is that
     // case; a never-sent request or an unresolved transport loss is not.
     let existing = matches!(attempt.destination, Destination::Existing(_));
-    let add_failed = matches!(
-        record.phase,
-        PlaylistPhase::Confirmed | PlaylistPhase::Rejected
-    ) && record.checked_at.is_some()
-        && record.error_class.as_deref() == Some("service")
-        && record.codes.contains_key("main");
-    let completed = record.phase == PlaylistPhase::Confirmed && (existing || !add_failed)
-        || existing && (record.phase == PlaylistPhase::Unchanged || add_failed);
+    let (completed, add_failed) = record.download_picker_outcome(existing);
     Ok(VoiceSongDownloadPicker {
         epoch: page.token.generation.to_string(),
         play_id: page.play_id.clone(),

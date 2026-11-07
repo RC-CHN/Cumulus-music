@@ -8,6 +8,8 @@ use cumulus_core::{
 };
 use std::{path::Path, sync::Arc, time::Duration};
 
+#[path = "group_download/playlist.rs"]
+mod playlist;
 #[path = "group_download/purchased.rs"]
 mod purchased;
 
@@ -22,8 +24,10 @@ fn ordinary(id: u64) -> serde_json::Value {
 
 fn card() -> HttpResponse {
     let mut rows: Vec<_> = (301..=309).map(ordinary).collect();
+    rows[1]["privilege"]["subp"] = json!(-1);
     rows[2]["privilege"]["st"] = json!(-100);
     rows[6]["privilege"]["dl"] = json!(0);
+    rows[6]["privilege"]["subp"] = json!(0);
     rows[6]["privilege"]["pl"] = json!(320000);
     rows[7]["privilege"]["payed"] = json!(2);
     rows[8]["privilege"]["cs"] = json!(1);

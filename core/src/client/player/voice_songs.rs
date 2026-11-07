@@ -31,6 +31,7 @@ pub use collect::{
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
 pub use group_download::{
     VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadPlan,
+    VoiceSongGroupPlaylistCreation, VoiceSongGroupPlaylistResult,
 };
 pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
 pub use purchased::{VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult};
