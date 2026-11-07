@@ -953,6 +953,9 @@ input[type='range'] {
   align-items: center;
   gap: 8px;
 }
+.vinyl-download-notice {
+  margin-inline-start: 12px;
+}
 .vinyl-mode-entry {
   min-height: 34px;
   padding: 0 12px;

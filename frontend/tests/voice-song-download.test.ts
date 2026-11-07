@@ -7,6 +7,8 @@ import type {
   VoiceSongDownloadClient,
   VoiceSongDownloadPicker,
   VoiceSongDownloadPlan,
+  VoiceSongPurchasedContinuation,
+  VoiceSongPurchasedSelection,
 } from '../src/services/voiceSongs.ts';
 
 const target = { epoch: '1', playId: 'play', voiceId: '601', receipt: 'receipt', index: 4 };
@@ -23,7 +25,10 @@ const picker = (value: Partial<VoiceSongDownloadPicker> = {}): VoiceSongDownload
   ...value,
 });
 
-function setup(options: Partial<VoiceSongDownloadClient> = {}) {
+function setup(
+  options: Partial<VoiceSongDownloadClient> = {},
+  purchased?: Parameters<typeof useVoiceSongDownload>[3],
+) {
   const available = ref(true);
   const calls: string[] = [];
   const implementation: VoiceSongDownloadClient = {
@@ -95,6 +100,7 @@ function setup(options: Partial<VoiceSongDownloadClient> = {}) {
       () => {
         available.value = false;
       },
+      purchased,
     ),
   )!;
   return { available, calls, lifetime, model };
@@ -115,6 +121,92 @@ test('liked songs bypass the picker; cancellation cannot start an ordinary or pi
     assert.equal(await f.model.start(defaultDownloadOptions), true);
     assert.equal(f.model.stage.value.kind, 'idle');
     assert.deepEqual(f.calls, ['Prepare', 'Prepare', 'Start']);
+  } finally {
+    f.lifetime.stop();
+  }
+});
+
+test('a lost purchased playlist reply can only be reconciled before starting at the confirmed tier', async () => {
+  const selection = 'synthetic-choice' as VoiceSongPurchasedSelection;
+  const continuation = 'synthetic-permit' as VoiceSongPurchasedContinuation;
+  const calls: string[] = [];
+  const f = setup(
+    {
+      async playerVoiceSongDownloadPrepare() {
+        return { ...scope, decision: 'extended_rights_unsupported' };
+      },
+    },
+    {
+      client: {
+        async playerVoiceSongPurchasedDownload(value, command) {
+          assert.deepEqual(value, target);
+          calls.push(command.kind);
+          switch (command.kind) {
+            case 'prepare':
+              return {
+                kind: 'plan',
+                plan: {
+                  ...scope,
+                  decision: 'purchased_quality_required',
+                  purchasedQualities: ['lossless', 'standard'],
+                },
+              };
+            case 'select':
+              assert.equal(command.quality, 'lossless');
+              return {
+                kind: 'selection',
+                decision: 'playlist_required',
+                selection,
+                quality: 'lossless',
+              };
+            case 'choose_playlist':
+              assert.deepEqual(command, { kind: 'choose_playlist', selection, playlistId: '51' });
+              throw { code: 'transport', message: 'lost reply' };
+            case 'picker_status':
+              assert.deepEqual(command, { kind: 'picker_status', selection, reconcile: true });
+              return { kind: 'picker', picker: { ...picker(), continuation } };
+            case 'start':
+              assert.deepEqual(command, {
+                kind: 'start',
+                selection,
+                continuation,
+                options: { ...defaultDownloadOptions, quality: 'lossless' },
+              });
+              return { kind: 'started', result: added };
+            default:
+              return assert.fail(command.kind);
+          }
+        },
+      },
+      async preferences() {
+        return defaultDownloadOptions;
+      },
+      started() {
+        calls.push('show queued');
+      },
+      settings: assert.fail,
+    },
+  );
+  try {
+    await f.model.request(opening);
+    await f.model.selectQuality('vivid');
+    assert.deepEqual(calls, ['prepare']);
+    await f.model.selectQuality('lossless');
+    await f.model.selectPlaylist('51');
+    assert.equal(f.model.stage.value.kind, 'recover');
+    await f.model.selectPlaylist('51');
+    assert.deepEqual(calls, ['prepare', 'select', 'choose_playlist']);
+    await f.model.reconcile();
+    assert.equal(f.model.stage.value.kind, 'idle');
+    assert.deepEqual(calls, [
+      'prepare',
+      'select',
+      'choose_playlist',
+      'picker_status',
+      'start',
+      'show queued',
+    ]);
+    assert.deepEqual(f.calls, ['Prepare']);
   } finally {
     f.lifetime.stop();
   }

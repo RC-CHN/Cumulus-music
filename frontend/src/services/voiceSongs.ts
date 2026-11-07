@@ -225,6 +225,7 @@ export type VoiceSongPurchasedDownloadResult =
   | { kind: 'cancelled' }
   | { kind: 'picker'; picker: VoiceSongPurchasedDownloadPicker }
   | { kind: 'creation'; creation: VoiceSongPurchasedDownloadCreation }
+  | { kind: 'directory_required' }
   | { kind: 'started'; result: DownloadResult };
 
 export interface VoiceSongPurchasedDownloadClient {

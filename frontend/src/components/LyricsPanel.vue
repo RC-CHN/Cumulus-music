@@ -73,6 +73,7 @@ const props = defineProps<{
   wikiModel: VinylWikiModel;
   voicePage: VoicePageModel;
   voiceRouteError?: string;
+  voiceDownloadNotice?: string;
   likedSongs: ReadonlySet<string>;
   busyLikes: ReadonlySet<string>;
   commentsAvailable: boolean;
@@ -839,7 +840,17 @@ const displayedAuxiliary = computed(() =>
     @keydown.esc.stop="escapePanel"
   >
     <header>
-      <span>{{ view?.playId ? '正在播放' : '播放详情' }}</span>
+      <span>
+        {{ view?.playId ? '正在播放' : '播放详情' }}
+        <span
+          v-if="voiceDownloadNotice"
+          class="vinyl-download-notice"
+          role="status"
+          data-voice-song-download-notice
+        >
+          {{ voiceDownloadNotice }}
+        </span>
+      </span>
       <DesktopLyricToggle v-if="view" :epoch="view.epoch" />
       <div class="vinyl-header-actions">
         <button

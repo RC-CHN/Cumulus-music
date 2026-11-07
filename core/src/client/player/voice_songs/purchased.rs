@@ -189,6 +189,7 @@ pub enum VoiceSongPurchasedDownloadResult {
     Creation {
         creation: VoiceSongDownloadCreation,
     },
+    DirectoryRequired,
     Started {
         result: DownloadResult,
     },
@@ -316,11 +317,16 @@ impl MusicClient {
                 options,
             } => {
                 let target = target.purchased(&selection);
+                let (bound, check) = self.voice_song_bound_download(target)?;
+                let available = self.configured_download_directory_available(epoch).await?;
+                check()?;
+                if !available {
+                    return Ok(R::DirectoryRequired);
+                }
                 let result = if let Some(continuation) = continuation {
                     self.voice_song_start_from_playlist(target, &continuation, options)
                         .await?
                 } else {
-                    let (bound, check) = self.voice_song_bound_download(target)?;
                     self.start_resolved_song_download(
                         epoch,
                         &bound,

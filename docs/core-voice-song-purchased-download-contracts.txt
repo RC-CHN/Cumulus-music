@@ -45,7 +45,7 @@ extended_rights_unsupported，旧普通 SongCard start、歌单选择、创建�
 高音质转码、加密与离线播放仍使用实际服务授权，选项本身不是媒体授权。
 单曲范围只接受归属相符、已核签名的普通 track，明确非负 status、正下载
 码率、无 bd/云盘/节目身份的数字字段。未知、异常值以及付费但未买、购买/
-收银台、音乐包或 VIP 推定、付费单集等分支不接入此操作。没有购物或真实账号探测。当前仅新增下述类型化桥接，没有 UI 入口。
+收银台、音乐包或 VIP 推定、付费单集等分支不接入此操作。没有购物或真实账号探测。
 
 对照
 本地用 Node vm 执行恢复的 M/21、M/23.v、M/34.l、M/35.h、M/7、M/59.c、
@@ -61,7 +61,7 @@ Rust 使用签名 MusicHttpClient、合成账户和关闭的 HTTP 后端验证�
 明确拒绝，所以这些检查不声称实际付费资源媒体下载、桌面弹窗或真实权益通过。
 
 
-桌面接口（无界面入口）
+桌面接口
 主窗口专用 Tauri 命令 player_voice_song_purchased_download；前端仅通过
 CoreClient.playerVoiceSongPurchasedDownload(target, command)。target 精确为
 {epoch,playId,receipt,index}；仅用于界面判断的 voiceId 不发给 Tauri。
@@ -79,7 +79,8 @@ CoreClient.playerVoiceSongPurchasedDownload(target, command)。target 精确为
 - create_playlist {selection,name,private}、creation_status {selection,reconcile}、
   add_created_playlist {selection} → {kind:"creation",creation}；
   UI 类型的 privatePlaylist 由 adapter 明确投影为必填的 wire private。
-- start {selection,continuation,options} → {kind:"started",result}。
+- start {selection,continuation,options} → {kind:"started",result} 或
+  {kind:"directory_required"}。后一分支不创建目录、不排队、不消耗回执。
   continuation 必填：已喜欢直下传 null；歌单分支必须用该次 picker 的 continuation。
   options 仅 quality/tags/cover/lyrics/container；quality 必须与原选择一致。
 
@@ -89,10 +90,19 @@ CoreClient.playerVoiceSongPurchasedDownload(target, command)。target 精确为
 不能由歌单日志 operationId 推导，不能跨节目复用。账号 Cookie、签名、原始
 权益响应和完整授权地址不进入 IPC。
 
-后续 UI：打开时取 plan；purchased_quality_required 才显示原「选择下载音质」
-独立弹窗，第一档预选、取消即关闭，确认才发 select。ready 进入普通文件
-设置并锁住已确认档位；playlist_required 进入现有目的选择或显式创建。
-保留现有已知失败与未知结果的不同提示，未知只走 status/reconcile，不能重发。
-带回执的取消可撤销原生选择；路由或节目变化后不应用旧结果。下载获准后由
-仍挂载的父作用域负责跳转下载管理，避免子弹窗卸载吞掉导航事件。当前不接入
-App、菜单或弹窗，不提供购买、收银台或通用网页入口。
+桌面界面与触发顺序
+M/31:1152–1193、M/3051:17–39 和 M/3:4558–4589：从节目单曲菜单的
+「下载」进入「选择下载音质」，按原生给出的顺序显示，42px 行和 216px 最大
+列表高度，第一档预选，只有「确定」发 select；关闭或 Esc 都不会发 select。
+M/31 的「了解音质」通过实验选取官方外部帮助页；本版未接入这一外链。
+M/3085:3965–4018 与 M/754:347–455、737–794：已喜欢直接使用保存的下载
+设置，仅替换此任务的音质；未喜欢才进「下载到歌单」或显式新建。不再
+弹第三个文件设置窗口，不覆盖默认档位，也不跳离当前节目。原版只改当前
+条目下载状态图标；这里由播放详情顶部反馈「已添加到下载」。
+原版 Windows 目录异常走「更改下载目录」再去 /setting/download；
+Cumulus 在两平台检查保存的目录仍可解析且未被重定向，缺失时提示
+「取消下载／更改目录」，后者进入 Cumulus 下载设置，由用户重新发起。
+目录存在检查不替代真正的文件写入及原生目录安全校验。
+已知与未知歌单结果继续分开，后者只走 status/reconcile，不能重发。
+带回执的取消撤销原生选择；账号、路由或节目变化后不应用旧结果。
+本入口仅单曲；原版多选下载另有按多条权益合并档位的流程，尚未接入。

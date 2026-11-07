@@ -268,6 +268,33 @@ async fn exact_offers_follow_maxbr_ceiling_and_flag_order_only_signed_vivid_grou
 }
 
 #[tokio::test]
+async fn missing_purchased_download_folder_returns_settings_branch_without_creating_task_or_folder()
+{
+    let (f, receipt) = fixture([json!({"code":200,"ids":[301]}).into()]).await;
+    f.client.liked_ids().await.unwrap();
+    let choice = select(&f, &receipt, ExHigh, D::Ready).await;
+    assert!(matches!(
+        command(&f, &receipt, 0, start(&choice, None, ExHigh))
+            .await
+            .unwrap(),
+        R::DirectoryRequired
+    ));
+    configure(&f).await;
+    let folder = f.root.path().join("output");
+    assert!(folder.is_dir());
+    std::fs::remove_dir(&folder).unwrap();
+    assert!(matches!(
+        command(&f, &receipt, 0, start(&choice, None, ExHigh))
+            .await
+            .unwrap(),
+        R::DirectoryRequired
+    ));
+    assert!(!folder.exists());
+    no_tasks(&f);
+    paths(&f, &[LIKED]);
+}
+
+#[tokio::test]
 async fn no_old_command_or_forged_selection_can_start_add_or_create_and_selected_quality_is_frozen()
 {
     let (f, receipt) = fixture([

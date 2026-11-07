@@ -209,6 +209,7 @@ import type { BatchCategory } from './services/downloadBatch';
 import type { DownloadQuery } from './services/downloads';
 import DownloadDialog from './components/DownloadDialog.vue';
 import VoiceSongDownloadPicker from './components/VoiceSongDownloadPicker.vue';
+import VoiceSongPurchasedQuality from './components/VoiceSongPurchasedQuality.vue';
 import { useVoiceSongDownload } from './composables/useVoiceSongDownload';
 import VoiceSongGroupCollectDialog from './components/VoiceSongGroupCollectDialog.vue';
 import { useVoiceSongGroupCollect } from './composables/useVoiceSongGroupCollect';
@@ -1224,6 +1225,7 @@ function showPlaybackVoiceSongMenu(
         : undefined,
       download() {
         if (!live() || selection) return;
+        voiceDownloadFeedback.value = undefined;
         voiceDownloadRoute.value = route;
         voiceDownloadOpener.value = opener;
         void voiceSongDownload.request({ target, trackId: row.track.id, title: row.track.name });
@@ -1883,11 +1885,30 @@ function voiceSongGroupCollectFocus() {
 }
 const voiceDownloadRoute = shallowRef<typeof page.value>();
 const voiceDownloadOpener = shallowRef<HTMLElement>();
+const voiceDownloadFeedback = shallowRef<VoiceSongRowTarget>();
 const voiceSongDownload = useVoiceSongDownload(
   core,
   (target) => page.value === voiceDownloadRoute.value && voiceSongs.ownsTarget(target),
   () => {
     void music.bootstrap(false);
+  },
+  {
+    client: core,
+    async preferences(epoch) {
+      const current = await core.downloadQualityPreferences(epoch, false);
+      if (current.epoch !== epoch)
+        throw { code: 'stale', message: '下载设置已变化，请重新选择歌曲。' };
+      return current.options;
+    },
+    started(opening) {
+      if (page.value === voiceDownloadRoute.value && voiceSongs.ownsTarget(opening.target))
+        voiceDownloadFeedback.value = opening.target;
+    },
+    settings(opening) {
+      if (page.value !== voiceDownloadRoute.value || !voiceSongs.ownsTarget(opening.target)) return;
+      openVoiceSongDownloads();
+      downloadDialog.value = { kind: 'settings' };
+    },
   },
 );
 const voiceSongDownloadOptions = computed<DownloadDialogTarget | undefined>(() => {
@@ -6017,6 +6038,11 @@ onUnmounted(() => {
         :voice-route-error="
           voiceRouteFailure?.detail === voicePage.detail.value ? voiceRouteFailure?.text : undefined
         "
+        :voice-download-notice="
+          voiceDownloadFeedback && voiceSongs.ownsTarget(voiceDownloadFeedback)
+            ? '已添加到下载'
+            : undefined
+        "
         :liked-songs="liked"
         :busy-likes="busyLikes"
         :comments-available="!!vinylCommentTarget"
@@ -6288,6 +6314,13 @@ onUnmounted(() => {
         :model="downloads"
         :target="voiceSongDownloadOptions"
         @close="voiceSongDownload.close"
+      />
+      <VoiceSongPurchasedQuality
+        v-else-if="voiceSongDownload.stage.value.kind === 'quality'"
+        :choices="voiceSongDownload.stage.value.choices"
+        :busy="voiceSongDownload.busy.value"
+        @close="voiceSongDownload.close"
+        @confirm="voiceSongDownload.selectQuality"
       />
       <VoiceSongDownloadPicker
         v-else-if="voiceSongDownload.stage.value.kind !== 'idle'"

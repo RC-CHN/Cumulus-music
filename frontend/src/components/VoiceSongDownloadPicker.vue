@@ -20,11 +20,13 @@ const name = ref('');
 const privateList = ref(false);
 const selected = ref('');
 const title = computed(() =>
-  stage.value.kind === 'create'
-    ? '创建新歌单'
-    : stage.value.kind === 'pick'
-      ? '下载到歌单'
-      : '下载歌曲',
+  stage.value.kind === 'directory'
+    ? '更改下载目录'
+    : stage.value.kind === 'create'
+      ? '创建新歌单'
+      : stage.value.kind === 'pick'
+        ? '下载到歌单'
+        : '下载歌曲',
 );
 const canClose = computed(() => !busy.value || stage.value.kind === 'checking');
 const invalid = computed(
@@ -182,6 +184,15 @@ function openDownloads() {
     <p v-if="stage.kind === 'checking'" class="collect-feedback" role="status">
       正在确认歌曲的下载状态…
     </p>
+    <p v-else-if="stage.kind === 'starting'" class="collect-feedback" role="status">
+      正在添加到下载…
+    </p>
+    <div v-else-if="stage.kind === 'directory'" class="collect-create">
+      <footer>
+        <button type="button" class="secondary" @click="model.close">取消下载</button>
+        <button type="button" class="primary" @click="model.openDirectorySettings">更改目录</button>
+      </footer>
+    </div>
     <div v-else-if="stage.kind === 'pick'" class="collect-body">
       <div class="collect-sort-tabs" role="tablist" aria-label="下载歌单排序" @keydown="sortKeys">
         <button

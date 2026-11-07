@@ -417,6 +417,34 @@ impl MusicClient {
     pub fn validate_download_epoch(&self, epoch: &str) -> Result<()> {
         self.downloads.inner.context(epoch).map(|_| ())
     }
+    pub(super) async fn configured_download_directory_available(
+        &self,
+        epoch: &str,
+    ) -> Result<bool> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            let available = match context.directory.settings()? {
+                None => false,
+                Some(settings) => match settings.root.canonicalize() {
+                    Ok(path) => path == settings.root && path.is_dir(),
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+                        ) =>
+                    {
+                        false
+                    }
+                    Err(error) => return Err(error.into()),
+                },
+            };
+            context.guard()?;
+            Ok(available)
+        })
+        .await
+        .map_err(|_| Error::State("directory view worker stopped"))?
+    }
     pub async fn download_directory_path(
         &self,
         epoch: &str,
