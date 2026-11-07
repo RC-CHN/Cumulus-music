@@ -72,9 +72,14 @@ VoicePage「包含歌曲」多选直达下载：已喜欢触发行（Rust）
 主窗口 IPC 与桌面交互
 - player_voice_songs_download_prepare：平铺 JSON
   {epoch,playId,cardReceipt,anchorIndex,indices}。cancel/start 为
-  {epoch,playId,cardReceipt,selectionReceipt}。三者由主窗口调用，整体解码
-  严格拒绝未知字段；不能传 voiceId、歌曲 ID、质量、目录、options 或在
-  后续提交覆盖触发行/选择。Tauri adapter 只投影该命令声明字段。
+  {epoch,playId,cardReceipt,selectionReceipt}；仅 confirm_quality 在相同
+  回执范围中增加 quality。全部由主窗口调用，整体解码严格拒绝未知字段；
+  不接收 voiceId、歌曲 ID、目录、options、歌单或替代目标回执，后续提交
+  不能覆盖触发行/选择。Tauri adapter 只投影该命令声明字段。
+- 已购准备只投影有批次回执、非空且降序的 purchasedQualities。与单曲已购
+  共用八档 allowlist：vivid、sky、jymaster、jyeffect、hires、lossless、
+  exhigh、standard。IPC 只做类型/范围检查；原生仍逐回执验证确实可选的档位。
+  普通和阻塞计划不出现 purchasedQualities。
 - 界面使用 VoiceSongsCard / voiceSongSelectionSnapshot 已冻结的
   indices，使用右键 VoiceSongRowTarget.index 作为 anchorIndex，而非
   indices[0] 或后来的焦点；该行即使在 omittedIndices 仍是触发行。
@@ -85,8 +90,11 @@ VoicePage「包含歌曲」多选直达下载：已喜欢触发行（Rust）
   原生 ordinary 提示时显示「下载」；unknown 或 unsupported 隐藏。提示来自
   当前卡片已解析的权益，不能替代本地索引、现有任务、Cookie 或喜欢日志核验。
   保守隐藏已知非普通混选，即使有些行可能被后续本地筛掉。
-- 只有 decision=ready 有原生批次回执。关闭未开始的确认时可显式 cancel；
-  确认才提交 start。directory_required 只指向既有下载目录设置，返回后
+- decision=ready 和 purchased_quality_required 有原生批次回执。关闭未
+  开始的确认时可显式 cancel；普通提交 start，已购只在明确确认后提交
+  confirm_quality。后者结果为 kind=started（带入队结果）、playlist_required、
+  membership_unknown 或 directory_required。directory_required 只指向
+  既有下载目录设置，返回后
   显式重新 prepare。playlist_required、unsupported_selection 不跳过现有
   安全门，也不循环单曲接口；membership_unknown、unavailable 保持未启动。
   start 的 accepted 是入队任务而非已下载文件。只有返回 epoch 仍属当前账号、
@@ -116,5 +124,7 @@ Windows 或真实服务。旧普通单曲下载同一二进制回归亦通过。
 
 已购原生分支另验：group_download/purchased.rs 额外覆盖两首已购的不相同档位、选定档位的
 批次范围（含普通行）、取消/过期分组/凭据轮换、单曲和未购/云盘的拒绝、确认后
-才读本地喜欢/目录，以及任务和授权不重发。未访问真实账户或服务，无 GUI 或线上
-通过声明。
+才读本地喜欢/目录，以及任务和授权不重发。桌面 MockRuntime 经真实注册的 dispatcher
+验证主窗口、四条 schema 及明确音质 allowlist；原生投影测试覆盖拒绝空/失序或
+越界音质。前端测试验证保留顺序且只投影已声明字段。未访问真实账户或服务，无 GUI
+或线上通过声明。

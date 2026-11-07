@@ -10,7 +10,7 @@ use cumulus_core::{
     download::service::{DownloadOptions, OutputContainer},
     membership::Quality,
 };
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Deserialize)]
 #[serde(try_from = "String")]
@@ -34,8 +34,8 @@ fn explicit_continuation<'de, D: Deserializer<'de>>(
     Option::deserialize(deserializer)
 }
 
-#[derive(Deserialize)]
-#[serde(try_from = "Quality")]
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(try_from = "Quality", into = "Quality")]
 pub(crate) struct PurchasedQuality(Quality);
 
 impl TryFrom<Quality> for PurchasedQuality {
@@ -55,6 +55,12 @@ impl TryFrom<Quality> for PurchasedQuality {
                 Err("quality cannot be selected for a purchased SongCard download")
             }
         }
+    }
+}
+
+impl From<PurchasedQuality> for Quality {
+    fn from(value: PurchasedQuality) -> Self {
+        value.0
     }
 }
 

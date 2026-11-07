@@ -284,7 +284,10 @@ type VoiceSongGroupDownloadBlocked =
   | 'unsupported_selection'
   | 'directory_required';
 
-export type VoiceSongGroupDownloadDecision = 'ready' | VoiceSongGroupDownloadBlocked;
+export type VoiceSongGroupDownloadDecision =
+  | 'ready'
+  | 'purchased_quality_required'
+  | VoiceSongGroupDownloadBlocked;
 
 export type VoiceSongGroupDownloadPlan = {
   epoch: string;
@@ -293,9 +296,24 @@ export type VoiceSongGroupDownloadPlan = {
   eligibleIndices: readonly number[];
   omittedIndices: readonly number[];
 } & (
-  | { decision: 'ready'; selectionReceipt: VoiceSongGroupDownloadReceipt }
-  | { decision: VoiceSongGroupDownloadBlocked; selectionReceipt: null }
+  | {
+      decision: 'ready';
+      selectionReceipt: VoiceSongGroupDownloadReceipt;
+      purchasedQualities?: never;
+    }
+  | {
+      decision: 'purchased_quality_required';
+      selectionReceipt: VoiceSongGroupDownloadReceipt;
+      purchasedQualities: readonly [VoiceSongPurchasedQuality, ...VoiceSongPurchasedQuality[]];
+    }
+  | { decision: VoiceSongGroupDownloadBlocked; selectionReceipt: null; purchasedQualities?: never }
 );
+
+export type VoiceSongGroupDownloadConfirmation =
+  | { kind: 'started'; result: DownloadResult }
+  | { kind: 'playlist_required' }
+  | { kind: 'membership_unknown' }
+  | { kind: 'directory_required' };
 
 export interface VoiceSongGroupDownloadClient {
   playerVoiceSongsDownloadPrepare(
@@ -303,6 +321,10 @@ export interface VoiceSongGroupDownloadClient {
   ): Promise<VoiceSongGroupDownloadPlan>;
   playerVoiceSongsDownloadCancel(target: VoiceSongGroupDownloadTarget): Promise<void>;
   playerVoiceSongsDownloadStart(target: VoiceSongGroupDownloadTarget): Promise<DownloadResult>;
+  playerVoiceSongsDownloadConfirmQuality(
+    target: VoiceSongGroupDownloadTarget,
+    quality: VoiceSongPurchasedQuality,
+  ): Promise<VoiceSongGroupDownloadConfirmation>;
 }
 
 export interface VoiceSongsClient

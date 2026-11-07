@@ -26,5 +26,7 @@ export function createVoiceSongGroupDownloadBridge(invoke: Invoke): VoiceSongGro
       invoke('player_voice_songs_download_cancel', prepared(target)),
     playerVoiceSongsDownloadStart: (target) =>
       invoke('player_voice_songs_download_start', prepared(target)),
+    playerVoiceSongsDownloadConfirmQuality: (target, quality) =>
+      invoke('player_voice_songs_download_confirm_quality', { ...prepared(target), quality }),
   };
 }
