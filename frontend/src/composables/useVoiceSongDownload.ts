@@ -37,7 +37,7 @@ type DestinationCommand = Extract<
 type PurchasedFlow = {
   client: VoiceSongPurchasedDownloadClient;
   preferences: (epoch: string) => Promise<DownloadOptions>;
-  started: (opening: VoiceSongDownloadOpening) => void;
+  started: (opening: VoiceSongDownloadOpening, addFailed: boolean) => void;
   settings: (opening: VoiceSongDownloadOpening) => void;
 };
 
@@ -223,6 +223,7 @@ export function useVoiceSongDownload(
   async function finishPurchased(
     opening: VoiceSongDownloadOpening,
     continuation: VoiceSongPurchasedContinuation | null,
+    addFailed = false,
   ) {
     if (!purchased || !purchase || !active(opening)) return;
     const { selection, quality } = purchase;
@@ -241,7 +242,7 @@ export function useVoiceSongDownload(
         stage.value = { kind: 'directory', opening };
         message.value = '当前下载目录不可用，请更改目录后重新发起下载。';
       } else if (reply.kind === 'started' && acceptStart(opening, reply.result)) {
-        purchased.started(opening);
+        purchased.started(opening, addFailed);
       } else if (reply.kind !== 'started') {
         notice(opening, '请到下载管理核对任务状态。', 'active');
       }
@@ -290,8 +291,12 @@ export function useVoiceSongDownload(
       !playlistPending(reply.phase) &&
       (recovery.kind === 'existing' || (!reply.addFailed && playlistSaved(reply.phase)))
     ) {
-      message.value = reply.addFailed ? '加入歌单失败；仍可继续设置下载。' : '';
-      if (continuation && purchase) await finishPurchased(opening, continuation);
+      message.value = reply.addFailed
+        ? purchase
+          ? '加入歌单失败，仍会下载。'
+          : '加入歌单失败；仍可继续设置下载。'
+        : '';
+      if (continuation && purchase) await finishPurchased(opening, continuation, reply.addFailed);
       else if (!purchase)
         stage.value = { kind: 'options', opening, continuation: reply.continuation };
       else notice(opening, '无法核对歌单下载许可，下载未开始。');

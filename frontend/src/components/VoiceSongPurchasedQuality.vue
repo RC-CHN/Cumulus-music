@@ -80,9 +80,12 @@ function confirm() {
 }
 .purchased-quality-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
+  gap: 8px;
   min-height: 42px;
   position: relative;
+  margin: 0;
   padding: 0 12px;
   cursor: pointer;
   border-radius: 6px;
