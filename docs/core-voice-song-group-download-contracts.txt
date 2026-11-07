@@ -1,4 +1,4 @@
-VoicePage「包含歌曲」多选直达下载：已喜欢触发行（Rust）
+VoicePage「包含歌曲」多选直达下载：已喜欢触发行
 
 官方恢复（3.1.42.205594）
 - SongCard.tsx:43–72、VinalPageTrackViewer.tsx:89–105、TableViewer/Row.tsx:126–150
@@ -76,6 +76,10 @@ VoicePage「包含歌曲」多选直达下载：已喜欢触发行（Rust）
   回执范围中增加 quality。全部由主窗口调用，整体解码严格拒绝未知字段；
   不接收 voiceId、歌曲 ID、目录、options、歌单或替代目标回执，后续提交
   不能覆盖触发行/选择。Tauri adapter 只投影该命令声明字段。
+  open_voice_song_group_purchased_quality_guide 同 cancel 的回执范围，
+  只对当前未提交的已购准备有效。原生在同一已验证分组中复用单曲的固定公共
+  帮助地址，交给系统浏览器，不在解析时访问网络，也不向 WebView 返回地址、
+  Cookie 或授权数据。
 - 已购准备只投影有批次回执、非空且降序的 purchasedQualities。与单曲已购
   共用八档 allowlist：vivid、sky、jymaster、jyeffect、hires、lossless、
   exhigh、standard。IPC 只做类型/范围检查；原生仍逐回执验证确实可选的档位。
@@ -87,9 +91,11 @@ VoicePage「包含歌曲」多选直达下载：已喜欢触发行（Rust）
   epoch/playId/anchorIndex 和当前卡片，再按 eligibleIndices、omittedIndices
   显示实际接纳范围。不把 onlineEligible 或当前行红心自行当作下载权限。
   多选菜单只在本账号观察到触发行已喜欢、该行不在喜欢操作中且整组至少有一个
-  原生 ordinary 提示时显示「下载」；unknown 或 unsupported 隐藏。提示来自
-  当前卡片已解析的权益，不能替代本地索引、现有任务、Cookie 或喜欢日志核验。
-  保守隐藏已知非普通混选，即使有些行可能被后续本地筛掉。
+  原生 ordinary 或 purchased 提示时显示「下载」；unknown 或 unsupported
+  隐藏。只提示当前卡片已解析的权益，不能替代本地索引、任务、Cookie 或喜欢
+  日志核验。保守隐藏包含已知不支持行的选择，即使该行随后可能被本地筛掉。
+  原客户端会在选音质后为未喜欢触发行打开歌单选择；该目的地未接入，桌面
+  只显示已确认喜欢的直达入口，确认时状态已变化则给出当前原生阻塞结果。
 - decision=ready 和 purchased_quality_required 有原生批次回执。关闭未
   开始的确认时可显式 cancel；普通提交 start，已购只在明确确认后提交
   confirm_quality。后者结果为 kind=started（带入队结果）、playlist_required、
@@ -99,7 +105,9 @@ VoicePage「包含歌曲」多选直达下载：已喜欢触发行（Rust）
   安全门，也不循环单曲接口；membership_unknown、unavailable 保持未启动。
   start 的 accepted 是入队任务而非已下载文件。只有返回 epoch 仍属当前账号、
   operationId 等于当前批次回执且卡片仍有效时才显示结果；结果不明不自动重放。
-  实际菜单点击即是确认，ready 直接排队，不弹单曲音质、歌单或下载选项。
+  普通 ready 在菜单点击后直接排队；已购与单曲共用「选择下载音质」弹窗，
+  最高档只预选。改选和打开帮助不提交；「确定」才用冻结的批次回执提交一次。
+  关闭或切换页面会撤销尚未确认的回执；已提交结果不明时不重放。
   留在当前播放详情，在标题旁报告接纳、跳过数量或失败原因；未确认结果只能
   手动查看下载。缺目录时明确点击「下载设置」才进入既有「音质与下载」，
   不自动打开系统目录选择器，也不从设置保存自动回放批次。既有单曲下载及
@@ -109,8 +117,8 @@ VoicePage「包含歌曲」多选直达下载：已喜欢触发行（Rust）
 合成签名 EAPI，覆盖下架但已喜欢的原始触发行、局部不可用/本地/完成/已有任务、
 选择与去重顺序、原生保存音质、无重复授权和播放队列不变；另验证目录未设、
 未知/未喜欢、不可选已购/云盘、非法或过期凭据，以及取消喜欢或出现任务冲突后的整批
-回滚。桌面 MockRuntime 经真实注册的 dispatcher 验证主窗口及三条 schema；
-前端测试验证保留顺序且只投影已声明字段。未访问真实账户或服务，无 GUI 或线上通过声明。
+回滚。桌面 MockRuntime 经真实注册的 dispatcher 验证主窗口及 IPC schema；
+前端测试验证保留顺序、只投影声明字段、取消和明确提交。没有访问真实账户或服务。
 
 Linux 实测：scripts/ci/voice_song_group_download_smoke.py 使用真实 WebKitGTK、
 Tauri IPC、XTest 与 libmpv null 输出，单独 Xvfb/Openbox、非 C 系统 locale、
@@ -125,6 +133,5 @@ Windows 或真实服务。旧普通单曲下载同一二进制回归亦通过。
 已购原生分支另验：group_download/purchased.rs 额外覆盖两首已购的不相同档位、选定档位的
 批次范围（含普通行）、取消/过期分组/凭据轮换、单曲和未购/云盘的拒绝、确认后
 才读本地喜欢/目录，以及任务和授权不重发。桌面 MockRuntime 经真实注册的 dispatcher
-验证主窗口、四条 schema 及明确音质 allowlist；原生投影测试覆盖拒绝空/失序或
-越界音质。前端测试验证保留顺序且只投影已声明字段。未访问真实账户或服务，无 GUI
-或线上通过声明。
+验证主窗口、五条 schema 及明确音质 allowlist；原生投影测试覆盖拒绝空/失序或
+越界音质，合成原生测试另证固定指南随观察分组选择、旧回执失效，解析不发请求。

@@ -4,7 +4,7 @@ use super::{
     actions::Row,
     download::Class,
     id,
-    purchased::{Offer, vivid_enabled},
+    purchased::{Offer, purchased_quality_guide_url, vivid_enabled},
 };
 use crate::{
     Error, Result,
@@ -402,6 +402,33 @@ impl MusicClient {
             return Err(Error::State("ordinary group returned a purchase decision"));
         };
         Ok(result)
+    }
+
+    /// Resolve a fixed public browser handoff only for the live group chooser.
+    /// This never reads the network or returns credentials.
+    pub fn voice_song_group_purchased_quality_guide(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        card_receipt: &str,
+        selection_receipt: &str,
+    ) -> Result<&'static str> {
+        let (page, check) = self.voice_song_download_scope(epoch, play_id, card_receipt)?;
+        let lease = page.group_download.lease(selection_receipt)?;
+        let vivid = vivid_enabled(&self.pc_experiments, &page)?;
+        if lease.0.committed.get().is_some()
+            || !lease
+                .0
+                .purchased_qualities
+                .iter()
+                .any(|quality| *quality != Quality::Vivid || vivid)
+        {
+            return Err(Error::State(
+                "group has no current purchased quality chooser",
+            ));
+        }
+        check()?;
+        Ok(purchased_quality_guide_url(vivid))
     }
 
     /// Explicitly confirm one of this native selection's purchased tiers.

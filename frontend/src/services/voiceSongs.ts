@@ -18,7 +18,7 @@ export interface VoiceSongRowAvailability {
   onlineEligible: boolean;
   copyrightBlocked: boolean;
   /** A card-local affordance, never an admission receipt. */
-  groupDownload?: 'ordinary' | 'omitted' | 'unsupported';
+  groupDownload?: 'ordinary' | 'purchased' | 'omitted' | 'unsupported';
 }
 
 export type VoiceSongAction =
@@ -325,6 +325,7 @@ export interface VoiceSongGroupDownloadClient {
     target: VoiceSongGroupDownloadTarget,
     quality: VoiceSongPurchasedQuality,
   ): Promise<VoiceSongGroupDownloadConfirmation>;
+  openVoiceSongGroupPurchasedQualityGuide(target: VoiceSongGroupDownloadTarget): Promise<void>;
 }
 
 export interface VoiceSongsClient

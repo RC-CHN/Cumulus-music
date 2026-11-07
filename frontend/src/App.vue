@@ -1208,6 +1208,7 @@ function showPlaybackVoiceSongMenu(
   const groupDownloadAvailable = () =>
     live() &&
     !!selection &&
+    voiceSongDownload.stage.value.kind === 'idle' &&
     offerVoiceSongGroupDownload(
       voiceSongs.view.value,
       target.index,
@@ -1240,7 +1241,7 @@ function showPlaybackVoiceSongMenu(
       downloadGroup: selection
         ? {
             available: groupDownloadAvailable,
-            busy: () => voiceSongGroupDownload.busy.value,
+            busy: () => voiceSongGroupDownload.busy.value || !!voiceSongGroupDownload.quality.value,
             start() {
               if (!groupDownloadAvailable()) return;
               voiceDownloadFeedback.value = undefined;
@@ -1252,13 +1253,20 @@ function showPlaybackVoiceSongMenu(
                   anchorIndex: target.index,
                   indices: selection.indices,
                 },
-                live,
+                opener,
+                live: () => player.lyricsOpen.value && live(),
               });
             },
           }
         : undefined,
       download() {
-        if (!live() || selection) return;
+        if (
+          !live() ||
+          selection ||
+          voiceSongGroupDownload.busy.value ||
+          voiceSongGroupDownload.quality.value
+        )
+          return;
         voiceDownloadFeedback.value = undefined;
         voiceDownloadRoute.value = route;
         voiceDownloadOpener.value = opener;
@@ -1981,8 +1989,33 @@ const voiceSongDownloadOptions = computed<DownloadDialogTarget | undefined>(() =
     },
   };
 });
+const voiceSongQualityDialog = computed(() => {
+  const group = voiceSongGroupDownload.quality.value;
+  if (group)
+    return {
+      scope: 'group',
+      key: `group:${group.target.selectionReceipt}`,
+      choices: group.plan.purchasedQualities,
+      busy: voiceSongGroupDownload.busy.value,
+      openGuide: voiceSongGroupDownload.openQualityGuide,
+      close: voiceSongGroupDownload.closeQuality,
+      confirm: voiceSongGroupDownload.confirmQuality,
+    };
+  const single = voiceSongDownload.stage.value;
+  if (single.kind === 'quality')
+    return {
+      scope: 'single',
+      key: `single:${single.opening.target.receipt}:${single.opening.target.index}`,
+      choices: single.choices,
+      busy: voiceSongDownload.busy.value,
+      openGuide: openVoiceSongPurchasedQualityGuide,
+      close: voiceSongDownload.close,
+      confirm: voiceSongDownload.selectQuality,
+    };
+});
 function voiceSongDownloadFocus() {
-  return voiceDownloadOpener.value ?? null;
+  const group = voiceSongGroupDownload.quality.value;
+  return (group ? group.opening.opener : voiceDownloadOpener.value) ?? null;
 }
 async function openVoiceSongPurchasedQualityGuide() {
   const stage = voiceSongDownload.stage.value;
@@ -6376,12 +6409,14 @@ onUnmounted(() => {
         @close="voiceSongDownload.close"
       />
       <VoiceSongPurchasedQuality
-        v-else-if="voiceSongDownload.stage.value.kind === 'quality'"
-        :choices="voiceSongDownload.stage.value.choices"
-        :busy="voiceSongDownload.busy.value"
-        :open-guide="openVoiceSongPurchasedQualityGuide"
-        @close="voiceSongDownload.close"
-        @confirm="voiceSongDownload.selectQuality"
+        v-else-if="voiceSongQualityDialog"
+        :key="voiceSongQualityDialog.key"
+        :data-voice-purchased-scope="voiceSongQualityDialog.scope"
+        :choices="voiceSongQualityDialog.choices"
+        :busy="voiceSongQualityDialog.busy"
+        :open-guide="voiceSongQualityDialog.openGuide"
+        @close="voiceSongQualityDialog.close"
+        @confirm="voiceSongQualityDialog.confirm"
       />
       <VoiceSongDownloadPicker
         v-else-if="voiceSongDownload.stage.value.kind !== 'idle'"

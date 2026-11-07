@@ -84,9 +84,13 @@ async fn fixture(replies: impl IntoIterator<Item = HttpResponse>) -> (Fixture, S
             "ordinary",
             "ordinary",
             "omitted",
-            "unsupported",
+            "purchased",
             "unsupported",
             "ordinary",
+            "purchased",
+            "purchased",
+            "unsupported",
+            "purchased",
         ]
     );
     let receipt = view.receipt.unwrap();

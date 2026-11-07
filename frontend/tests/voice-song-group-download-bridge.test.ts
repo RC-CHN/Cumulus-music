@@ -111,4 +111,9 @@ test('purchased group choice is explicit and sends one quality with only the nat
     'player_voice_songs_download_confirm_quality',
     { ...card, selectionReceipt, quality: 'hires' },
   ]);
+  await bridge.openVoiceSongGroupPurchasedQualityGuide(wide);
+  assert.deepEqual(calls[2], [
+    'open_voice_song_group_purchased_quality_guide',
+    { ...card, selectionReceipt },
+  ]);
 });

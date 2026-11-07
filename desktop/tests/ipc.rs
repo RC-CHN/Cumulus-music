@@ -54,6 +54,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "player_voice_songs_download_cancel",
             "player_voice_songs_download_start",
             "player_voice_songs_download_confirm_quality",
+            "open_voice_song_group_purchased_quality_guide",
             "change_fresh_vinyl_podcast_subscription",
             "reconcile_fresh_vinyl_podcast_subscription",
             "player_voice_songs_collect_liked_destination",
@@ -245,6 +246,18 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         request(command, prepared.clone()),
         Err(invalid.clone()),
     );
+    let guide = "open_voice_song_group_purchased_quality_guide";
+    assert_ipc_response(&window, request(guide, prepared.clone()), Err(stale));
+    for (key, value) in [
+        ("url", json!("https://untrusted.invalid/help")),
+        ("index", json!(2)),
+        ("quality", json!("hires")),
+        ("selectionReceipt", json!("301")),
+    ] {
+        let mut injected = prepared.clone();
+        injected[key] = value;
+        assert_ipc_response(&window, request(guide, injected), Err(invalid.clone()));
+    }
     let mut confirmed = prepared;
     confirmed["quality"] = json!("hires");
     for (key, value) in [

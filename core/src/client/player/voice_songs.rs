@@ -66,6 +66,7 @@ pub struct VoiceSongRowAvailability {
 #[serde(rename_all = "snake_case")]
 pub enum VoiceSongGroupDownloadHint {
     Ordinary,
+    Purchased,
     Omitted,
     Unsupported,
 }
@@ -371,10 +372,12 @@ impl MusicClient {
                     copyright_blocked: row.copyright_blocked,
                     group_download: if row.group_download_unsupported {
                         VoiceSongGroupDownloadHint::Unsupported
-                    } else if row.download == download::Class::Ordinary {
-                        VoiceSongGroupDownloadHint::Ordinary
                     } else {
-                        VoiceSongGroupDownloadHint::Omitted
+                        match row.download {
+                            download::Class::Ordinary => VoiceSongGroupDownloadHint::Ordinary,
+                            download::Class::Purchased(_) => VoiceSongGroupDownloadHint::Purchased,
+                            _ => VoiceSongGroupDownloadHint::Omitted,
+                        }
                     },
                 })
                 .collect(),

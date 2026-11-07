@@ -1,6 +1,6 @@
 VoicePage 「包含歌曲」普通单曲下载
 
-已喜欢触发行的普通多选 Rust 准入及主窗口 IPC 见 core-voice-song-group-download-contracts.txt；
+已喜欢触发行的普通与已购多选直达路径见 core-voice-song-group-download-contracts.txt；
 本文件继续说明既有单曲桌面入口。
 
 官方证据（3.1.42.205594）：

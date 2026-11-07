@@ -7,6 +7,7 @@ import {
 } from '../src/composables/useVoiceSongGroupDownload.ts';
 import type {
   VoiceSongGroupDownloadClient,
+  VoiceSongGroupDownloadConfirmation,
   VoiceSongGroupDownloadPlan,
   VoiceSongGroupDownloadReceipt,
   VoiceSongGroupDownloadTarget,
@@ -33,6 +34,8 @@ function client(override: Partial<VoiceSongGroupDownloadClient>): VoiceSongGroup
     playerVoiceSongsDownloadPrepare: async () => assert.fail('unexpected prepare'),
     playerVoiceSongsDownloadCancel: async () => assert.fail('unexpected cancel'),
     playerVoiceSongsDownloadStart: async () => assert.fail('unexpected start'),
+    playerVoiceSongsDownloadConfirmQuality: async () => assert.fail('unexpected confirmation'),
+    openVoiceSongGroupPurchasedQualityGuide: async () => assert.fail('unexpected guide'),
     ...override,
   };
 }
@@ -79,6 +82,10 @@ test('the group menu requires the observed liked trigger and verified ordinary c
   assert.equal(offerVoiceSongGroupDownload(card, 2, [1, 2, 3], liked, new Set()), false);
   assert.equal(offerVoiceSongGroupDownload(card, 2, [0, 1], liked, new Set()), false);
   assert.equal(offerVoiceSongGroupDownload(card, 2, [2, 3], liked, new Set()), false);
+  card.availability[0]!.groupDownload = 'purchased';
+  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set()), true);
+  card.availability[1]!.groupDownload = 'purchased';
+  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set()), true);
   card.availability[0] = { onlineEligible: true, copyrightBlocked: false };
   assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set()), false);
 });
@@ -211,6 +218,182 @@ test('a mismatched order cannot start; an ambiguous acknowledgement prompts read
     model.action();
     assert.equal(starts, 1);
     assert.deepEqual(navigation, ['downloads:4']);
+  } finally {
+    scope.stop();
+  }
+});
+
+const purchased = {
+  ...plan,
+  decision: 'purchased_quality_required',
+  purchasedQualities: ['sky', 'hires', 'standard'],
+} satisfies VoiceSongGroupDownloadPlan;
+
+test('a purchased group opens without starting, guides the exact chooser, and only confirms once', async () => {
+  const calls: unknown[] = [];
+  let finish!: (value: VoiceSongGroupDownloadConfirmation) => void;
+  const accepted = {
+    epoch: owner.epoch,
+    accepted: ['one', 'two'],
+    failed: [],
+    operationId: selectionReceipt,
+  };
+  const secondReceipt = 'next-native-selection' as VoiceSongGroupDownloadReceipt;
+  let prepares = 0;
+  const { scope, model } = setup(
+    client({
+      playerVoiceSongsDownloadPrepare: async (request) => {
+        calls.push(['prepare', request]);
+        return prepares++ ? { ...purchased, selectionReceipt: secondReceipt } : purchased;
+      },
+      playerVoiceSongsDownloadCancel: async (target) => {
+        calls.push(['cancel', target]);
+      },
+      openVoiceSongGroupPurchasedQualityGuide: async (target) => {
+        calls.push(['guide', target]);
+      },
+      playerVoiceSongsDownloadConfirmQuality: (target, tier) => {
+        calls.push(['confirm', target, tier]);
+        return new Promise((resolve) => (finish = resolve));
+      },
+    }),
+  );
+  try {
+    await model.run(opening);
+    assert.deepEqual(model.quality.value?.plan.purchasedQualities, ['sky', 'hires', 'standard']);
+    assert.deepEqual(calls, [['prepare', opening.request]]);
+    await model.openQualityGuide();
+    await model.confirmQuality('vivid');
+    model.closeQuality();
+    assert.equal(model.quality.value, undefined);
+    await model.confirmQuality('hires');
+    assert.deepEqual(calls, [
+      ['prepare', opening.request],
+      ['guide', target],
+      ['cancel', target],
+    ]);
+
+    await model.run(opening);
+    const choice = model.confirmQuality('hires');
+    assert.equal(model.busy.value, true);
+    model.closeQuality();
+    await model.confirmQuality('sky');
+    assert.deepEqual(calls.slice(3), [
+      ['prepare', opening.request],
+      ['confirm', { ...target, selectionReceipt: secondReceipt }, 'hires'],
+    ]);
+    finish({ kind: 'started', result: { ...accepted, operationId: secondReceipt } });
+    await choice;
+    assert.equal(model.quality.value, undefined);
+    assert.equal(model.notice.value?.kind, 'queued');
+    assert.equal(calls.length, 5);
+  } finally {
+    scope.stop();
+  }
+});
+
+test('known blocked confirmations retire only the chooser and never retry after the settings link', async () => {
+  const calls: unknown[] = [];
+  const navigation: string[] = [];
+  let reply: VoiceSongGroupDownloadConfirmation = { kind: 'directory_required' };
+  const { scope, model } = setup(
+    client({
+      playerVoiceSongsDownloadPrepare: async () => purchased,
+      playerVoiceSongsDownloadConfirmQuality: async (...args) => {
+        calls.push(['confirm', ...args]);
+        return reply;
+      },
+      playerVoiceSongsDownloadCancel: async (target) => {
+        calls.push(['cancel', target]);
+      },
+    }),
+    navigation,
+  );
+  try {
+    await model.run(opening);
+    await model.confirmQuality('hires');
+    assert.equal(model.quality.value, undefined);
+    assert.equal(model.notice.value?.kind, 'directory');
+    assert.deepEqual(navigation, []);
+    model.action();
+    assert.deepEqual(navigation, ['settings:4']);
+    assert.deepEqual(calls, [
+      ['confirm', target, 'hires'],
+      ['cancel', target],
+    ]);
+
+    for (const kind of ['playlist_required', 'membership_unknown'] as const) {
+      reply = { kind };
+      await model.run(opening);
+      await model.confirmQuality('standard');
+      assert.equal(model.notice.value?.kind, 'blocked');
+      model.action();
+    }
+    assert.deepEqual(calls.slice(2), [
+      ['confirm', target, 'standard'],
+      ['cancel', target],
+      ['confirm', target, 'standard'],
+      ['cancel', target],
+    ]);
+    assert.deepEqual(navigation, ['settings:4']);
+  } finally {
+    scope.stop();
+  }
+});
+
+test('retiring a purchased visit cancels only prepared work and never retries a submitted or lost reply', async () => {
+  const live = ref(true);
+  const calls: unknown[] = [];
+  const navigation: string[] = [];
+  let finish!: (value: VoiceSongGroupDownloadConfirmation) => void;
+  let drop = false;
+  const { scope, model } = setup(
+    client({
+      playerVoiceSongsDownloadPrepare: async () => purchased,
+      playerVoiceSongsDownloadConfirmQuality: async (...args) => {
+        calls.push(['confirm', ...args]);
+        if (drop) throw new Error('synthetic lost confirmation');
+        return new Promise((resolve) => (finish = resolve));
+      },
+      playerVoiceSongsDownloadCancel: async (target) => {
+        calls.push(['cancel', target]);
+      },
+    }),
+    navigation,
+  );
+  try {
+    await model.run({ ...opening, live: () => live.value });
+    live.value = false;
+    assert.deepEqual(calls, [['cancel', target]]);
+    assert.equal(model.quality.value, undefined);
+    live.value = true;
+    await model.run({ ...opening, live: () => live.value });
+    const pending = model.confirmQuality('sky');
+    live.value = false;
+    finish({
+      kind: 'started',
+      result: {
+        epoch: owner.epoch,
+        accepted: ['one', 'two'],
+        failed: [],
+        operationId: selectionReceipt,
+      },
+    });
+    await pending;
+    assert.equal(model.notice.value, undefined);
+    assert.deepEqual(calls, [
+      ['cancel', target],
+      ['confirm', target, 'sky'],
+    ]);
+
+    drop = true;
+    await model.run(opening);
+    await model.confirmQuality('hires');
+    assert.equal(model.quality.value, undefined);
+    assert.equal(model.notice.value?.kind, 'uncertain');
+    model.action();
+    assert.deepEqual(navigation, ['downloads:4']);
+    assert.deepEqual(calls.slice(2), [['confirm', target, 'hires']]);
   } finally {
     scope.stop();
   }

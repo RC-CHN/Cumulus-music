@@ -247,6 +247,16 @@ async fn purchased_group_requires_current_vivid_cohort_and_revokes_cancelled_or_
     let (f, card) = fixture([assignment("t1"), assignment("c")]).await;
     let cold = prepare(&f, &card, 0, &[10, 0]).await;
     assert!(!cold.purchased_qualities.contains(&Vivid));
+    let guide = |receipt: &str| {
+        f.client
+            .voice_song_group_purchased_quality_guide(&f.epoch, &f.play_id, &card, receipt)
+    };
+    assert_eq!(
+        guide(cold.selection_receipt.as_deref().unwrap()).unwrap(),
+        "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81"
+    );
+    assert!(matches!(guide("unissued"), Err(Error::StaleResponse)));
+    calls(&f, &[]);
     f.client
         .official_pc_ordinary_skip_assignment(&f.epoch)
         .await
@@ -261,7 +271,15 @@ async fn purchased_group_requires_current_vivid_cohort_and_revokes_cancelled_or_
         Err(Error::StaleResponse)
     ));
     let receipt = enabled.selection_receipt.unwrap();
+    assert_eq!(
+        guide(&receipt).unwrap(),
+        "https://music.163.com/g/st-vip-audio-quality"
+    );
     f.client.refresh_pc_presentation().await.unwrap();
+    assert_eq!(
+        guide(&receipt).unwrap(),
+        "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81"
+    );
     assert!(matches!(
         confirm(&f, &card, &receipt, Vivid).await,
         Err(Error::StaleResponse)
@@ -269,6 +287,7 @@ async fn purchased_group_requires_current_vivid_cohort_and_revokes_cancelled_or_
     f.client
         .player_voice_songs_download_cancel(&f.epoch, &f.play_id, &card, &receipt)
         .unwrap();
+    assert!(matches!(guide(&receipt), Err(Error::StaleResponse)));
     assert!(matches!(
         confirm(&f, &card, &receipt, HiRes).await,
         Err(Error::StaleResponse)

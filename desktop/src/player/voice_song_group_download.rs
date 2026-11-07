@@ -11,7 +11,10 @@ use cumulus_core::{
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use tauri::ipc::{InvokeBody, Request};
+use tauri::{
+    Manager,
+    ipc::{InvokeBody, Request},
+};
 
 #[derive(Deserialize)]
 #[serde(try_from = "String")]
@@ -196,6 +199,30 @@ pub(crate) async fn player_voice_songs_download_confirm_quality<R: tauri::Runtim
         )
         .await
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub(crate) async fn open_voice_song_group_purchased_quality_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    request: Request<'_>,
+) -> Result<(), ClientError> {
+    require_main(&window)?;
+    let input: Prepared = decode(request.body())?;
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = app
+            .state::<MusicClient>()
+            .voice_song_group_purchased_quality_guide(
+                &input.epoch,
+                &input.play_id,
+                &input.card_receipt.0,
+                &input.selection_receipt.0,
+            )?;
+        crate::browser::launch(url)
+    })
+    .await
+    .map_err(|_| ClientError::from(Error::State("browser worker stopped")))?
+    .map_err(Into::into)
 }
 
 #[cfg(test)]
