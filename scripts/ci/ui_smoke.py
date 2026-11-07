@@ -26,7 +26,14 @@ def main():
     run = root / 'first'
     complete = json.loads((run / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] is True and complete['legacyPolicy'] == args.legacy
-    for stage, count, status in [('restored', 0, 'authenticated'), ('retained', 1, 'authenticated'), ('expired', 2, 'expired'), ('login', 2, 'expired')]:
+    states = [('restored', 0, 'authenticated'), ('retained', 1, 'authenticated'),
+              ('expired', 2, 'expired'), ('login', 2, 'expired')]
+    if args.legacy:
+        states += [('guide_retry', 2, 'expired'), ('guide_closed', 2, 'expired')]
+        assert len(complete['classicQrTicketDelayMs']) == 2
+        assert complete['classicQrTicketDelayMs'][0] >= 1000
+        assert complete['classicQrPolls'] == complete['pollsBeforeClose'] >= 1
+    for stage, count, status in states:
         raw = (run / f'interception_{stage}.json').read_text(encoding='utf-8')
         row = json.loads(raw)
         assert row['nativeAccount']['status'] == status
@@ -38,6 +45,11 @@ def main():
             assert row['nativeAccount']['loginNotice'] == {'kind': 'reauthenticate', 'title': '请重新确认登录', 'message': '登录状态已失效，请重新登录'}
         if args.legacy:
             assert row['queueCounts'] == [0 if status == 'expired' else 1, 1, 1]
+            assert row['guide'] == (stage in ('login', 'guide_retry')), stage
+            assert ('classicRemoveGuide' in row['nativeAccount']) == (stage == 'expired'), stage
+            assert len(row['classicQrTicketDelayMs']) == {'login': 1, 'guide_retry': 2, 'guide_closed': 2}.get(stage, 0), stage
+        else:
+            assert not row['guide']
     with sqlite3.connect((root / 'profile/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
         credentials = json.loads(db.execute("SELECT value FROM state WHERE owner='transport' AND kind='credentials' AND key='session'").fetchone()[0])
     assert credentials['cookies'] == [] and credentials['refresh_token'] is None and credentials['login_rotation'] is None
@@ -46,7 +58,7 @@ def main():
         assert credentials.get('queue_reset') is None
         with sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
             assert db.execute("SELECT value FROM state WHERE owner='2' AND kind='login-queue-reset-v1'").fetchall() == [('"cleared"',)]
-    proof = {'ok': True, 'platform': os.name, 'legacy': args.legacy, 'domStages': 4,
+    proof = {'ok': True, 'platform': os.name, 'legacy': args.legacy, 'domStages': len(states),
              'actualWebView': True, 'actualProductionUiAndIpc': True, 'syntheticHttpOnly': True,
              'realMusicRequests': 0, 'screenshotsCaptured': False, 'credentialsInvalidated': True}
     (root / 'ci-ui-audit.json').write_text(json.dumps(proof, indent=2) + '\n', encoding='utf-8')

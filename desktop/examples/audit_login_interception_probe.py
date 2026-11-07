@@ -9,13 +9,17 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('root', type=Path)
 root = parser.parse_args().root.resolve()
 run = root / 'first'
-legacy = json.loads((run / 'complete.json').read_text()).get('legacyPolicy', False)
-for name, checks, status in [
-    ('restored', 0, 'authenticated'), ('retained', 1, 'authenticated'),
-    ('expired', 2, 'expired'), ('login', 2, 'expired'),
-]:
+complete = json.loads((run / 'complete.json').read_text(encoding='utf-8'))
+legacy = complete.get('legacyPolicy', False)
+states = [('restored', 0, 'authenticated'), ('retained', 1, 'authenticated'),
+          ('expired', 2, 'expired'), ('login', 2, 'expired')]
+if legacy:
+    states += [('guide_retry', 2, 'expired'), ('guide_closed', 2, 'expired')]
+    assert len(complete['classicQrTicketDelayMs']) == 2 and complete['classicQrTicketDelayMs'][0] >= 1000
+    assert complete['classicQrPolls'] == complete['pollsBeforeClose'] >= 1
+for name, checks, status in states:
     path = run / ('interception_' + name + '.json')
-    raw = path.read_text()
+    raw = path.read_text(encoding='utf-8')
     row = json.loads(raw)
     assert row['nativeAccount']['status'] == status
     assert row['validationRequests'] == checks and row['searchRequests'] == checks
@@ -23,6 +27,11 @@ for name, checks, status in [
     assert row['fixtureRequests'].get('/api/login/token/refresh/v1', 0) == 0
     if legacy:
         assert row['queueCounts'] == [0 if status == 'expired' else 1, 1, 1]
+        assert row['guide'] == (name in ('login', 'guide_retry')), name
+        assert ('classicRemoveGuide' in row['nativeAccount']) == (name == 'expired'), name
+        assert len(row['classicQrTicketDelayMs']) == {'login': 1, 'guide_retry': 2, 'guide_closed': 2}.get(name, 0), name
+    else:
+        assert not row['guide']
     for secret in ['MUSIC_U', 'fixture-refresh', 'fixture-password', '_sign', 'deviceId']:
         assert secret not in raw
     if status == 'expired':
@@ -39,10 +48,10 @@ if legacy:
     with sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
         receipts = db.execute("SELECT value FROM state WHERE owner='2' AND kind='login-queue-reset-v1'").fetchall()
         assert receipts == [('"cleared"',)]
-assert json.loads((run / 'complete.json').read_text())['ok']
+assert complete['ok']
 assert json.loads((run / 'capture.json').read_text())['ok']
 result = {'ok': True, 'syntheticOnly': True, 'realMusicRequests': 0,
-          'screenshots': 4, 'failedSearchesNotReplayed': True,
+          'screenshots': len(states), 'failedSearchesNotReplayed': True,
           'validTokenRetainedAccount': True, 'explicitInvalidationClearedCredentials': True,
           'nativeEventReachedUi': True, 'reloginEntryOpened': True,
           'experimentAssignmentPersisted': True, 'legacyPolicy': legacy,

@@ -39,3 +39,8 @@ Cumulus 边界
 - login_interception_ui_probe 的 CUMULUS_PROOF_LEGACY=1 模式以合成 HTTP
   验证保留→失效→自动打开→过期手动重试→关闭，独立审计 SQLite 和请求；
   默认 JSK 模式继续验证手动入口。只用合成二维码，不进行真实账号或服务验证。
+- 本机 Linux GTK/WebKitGTK 在隔离网络、en_US.UTF-8 系统 locale 下运行两个
+  独立进程：旧外壳 6 阶段／6 PNG，默认 JSK 对照 4 阶段／4 PNG，独立审计
+  均通过。旧外壳首张票据在合成 action 2 回复后 1068ms 请求，第二张来自
+  显式重试，关闭前后轮询总数均为 1；默认对照无引导许可、取码或轮询。
+  每支各 2 次原始搜索、2 次校验，无重放或真实网络请求。未运行 Windows。
