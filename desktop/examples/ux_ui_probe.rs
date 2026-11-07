@@ -82,6 +82,8 @@ mod search_download_ui_fixture;
 mod search_fixture;
 #[path = "support/search_mv_fixture.rs"]
 mod search_mv_fixture;
+#[path = "support/search_podcast_playback_fixture.rs"]
+mod search_podcast_playback_fixture;
 #[path = "support/search_privilege_fixture.rs"]
 mod search_privilege_fixture;
 #[allow(dead_code)]
@@ -590,6 +592,9 @@ impl Api for Library {
             if let Some(result) = search_artist_top50_fixture::response(path, &args, cached) {
                 return result;
             }
+            if let Some(result) = search_podcast_playback_fixture::response(path, &args, cached) {
+                return result;
+            }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
             }
@@ -905,6 +910,8 @@ fn main() {
     let playback_cache_proof = std::env::var_os("CUMULUS_PLAYBACK_CACHE_PROOF").is_some();
     assert!(!playback_cache_proof || motion_proof);
     assert!(!vertical_zone_fixture::enabled() || motion_proof);
+    let search_podcast_playback_proof = search_podcast_playback_fixture::enabled();
+    assert!(!search_podcast_playback_proof || (motion_proof && search_fixture::enabled()));
     let search_download_row_proof = search_download_ui_fixture::enabled();
     assert!(
         !search_download_row_proof
@@ -1006,7 +1013,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() {
+        if search_podcast_playback_proof || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1019,6 +1026,7 @@ fn main() {
         queue_more_fixture::phase_milestone("registry_opened");
         let proof_store=registry.store();
         search_fixture::initialize(&proof_store)?;
+        search_podcast_playback_fixture::initialize(&proof_store)?;
         let older_verified=vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || search_artist_top50_fixture::enabled() || vertical_zone_fixture::enabled();
         let guest_search=guest_search_fixture::enabled().then(||guest_search_fixture::Wire::open(proof_store.clone())).transpose()?;
         let signed_search=(search_fixture::enabled() && !older_verified && guest_search.is_none()).then(||search_signed_fixture::SignedSearch::open(proof_store.clone())).transpose()?;
@@ -1606,7 +1614,7 @@ fn main() {
                     // Queue proof stages await this actor barrier before the
                     // script releases an intentionally held clear/edit. A watch
                     // snapshot may still describe the previous queue revision.
-                    let player = if queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() {
+                    let player = if search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
@@ -1623,6 +1631,9 @@ fn main() {
                             }
                         }
                     } else { value["nativePlayerUnavailable"]=json!(true); }
+                    if search_podcast_playback_proof {
+                        value["searchPodcastCalls"]=search_podcast_playback_fixture::report();
+                    }
                     if tone_geometry_proof { value["toneGeometry"]=tone_geometry::report(); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if queue_more_fixture::tip_enabled() { queue_more_fixture::capture_milestone(&stage); }
@@ -1676,6 +1687,9 @@ fn main() {
                     }
                     if search_download_row_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__searchDownloadStageRecorded={};",json!(stage))).unwrap();
+                    }
+                    if search_podcast_playback_proof && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__searchPodcastPlaybackRecorded={};",json!(stage))).unwrap();
                     }
                     if search_footer_ui_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__searchFooterRecorded={};",json!(stage))).unwrap();

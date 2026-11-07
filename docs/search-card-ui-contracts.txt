@@ -300,7 +300,7 @@ Linux WebView 八个检查点和截图：.build/search-album-metadata-webview/fi
   around 接口。已观察到精确 t1 时使用 /api/dj/user/setting/resumeplay/get；
   其余分组沿用原默认，保存的节目和位置只在当前账号内读取。
 - Rust 重用播客推荐已有 M404/M3085 准备，不重读 /api/djradio/v3/get 或订阅列表。
-  V1 与 V3 的综合最佳匹配/普通播单为各自展示的卡片生成不透明收据，绑定当前账号、
+  V1 与 V3 的综合最佳匹配、热点主结果、普通播单为各自投影的卡片生成不透明收据，绑定当前账号、
   Api 实例和凭据代次；最多 16 页、每页 128 个有界播单身份、30 分钟。
   未观察 ID、已下架项、不可信分区、旧账号或凭据不得发起播放。浏览器只交付公开播单 ID、
   不透明收据及既有播放准备票据。类型化 origin 仍为 podcast；不暴露私有音源 URL。
@@ -311,3 +311,10 @@ Linux WebView 八个检查点和截图：.build/search-album-metadata-webview/fi
   授权后实际解码失败沿用普通播放恢复，不承诺回滚已有队列提交。
 - 合成 native 测试覆盖降序 251 集、第二页第 1 集 19 秒续播、最佳匹配和普通卡复用
   decoder、恶意/无效 ID、初次音源授权拒绝以及授权等待中凭据变化。不使用真实账号。
+- 实窗回归：构建 custom-protocol 的 ux_ui_probe 与 frontend/dist，在无出站路由的
+  Linux Xvfb/DBus 图形会话中运行 scripts/ci/search_podcast_playback_smoke.py，
+  传 --binary、--frontend-dist、--root；分别运行默认 V1 与 --v3，--screenshots
+  可保存四个状态。V1 从最佳匹配首播，V3 从普通卡首播再经热点主结果暂停/继续；
+  两组均核对相同 playId/entryId/队列代次、19 秒合成断点、失败前后暂停时钟
+  完全相等及无重复选中音源 URL 请求。V3 还核对同账号合成签名实验请求。
+  本机证据是 GTK/WebKit 加 libmpv null 输出，不代表 Windows 或真实账号/声卡验收。
