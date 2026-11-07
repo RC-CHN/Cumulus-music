@@ -192,6 +192,7 @@ impl MusicClient {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RetainedRow {
     Catalog,
+    DailyRecommendation,
     SearchCatalog,
     SearchSong,
     SearchVoice,
@@ -210,7 +211,7 @@ pub(super) struct AlbumTableRows {
     pub double_click: bool,
 }
 
-fn current_album_table_song(before: &PlaybackSnapshot, id: &str) -> bool {
+fn current_table_song(before: &PlaybackSnapshot, id: &str) -> bool {
     !before.fm
         && before.play_id.is_some()
         && before
@@ -225,8 +226,8 @@ fn current_album_table_song(before: &PlaybackSnapshot, id: &str) -> bool {
 
 impl MusicClient {
     /// M/3085 toggles the current ID before applying a double-click queue
-    /// replacement. Call after validating the album anchor, before hydration.
-    pub(super) async fn toggle_active_album_row(
+    /// replacement. Call after validating the source row, before hydration.
+    pub(super) async fn toggle_active_song_row(
         &self,
         token: &SessionToken,
         id: &str,
@@ -244,13 +245,13 @@ impl MusicClient {
             let Some(controller) = self.player.controller.get() else {
                 return Ok(None);
             };
-            if !current_album_table_song(&controller.snapshot(), id) {
+            if !current_table_song(&controller.snapshot(), id) {
                 return Ok(None);
             }
             let (before, queue) = controller.queue_with_state(token).await?;
             (before, queue.intelligence.is_some())
         };
-        if !current_album_table_song(&before, id) || intelligence {
+        if !current_table_song(&before, id) || intelligence {
             return Ok(None);
         }
         let _room = self
@@ -315,7 +316,7 @@ impl MusicClient {
             .ok_or(Error::QueueChanged)?
             .to_owned();
         let expected = before.fence();
-        let command = if current_album_table_song(&before, &id) {
+        let command = if current_table_song(&before, &id) {
             if double_click {
                 PlaybackCommand::Pause(!before.paused)
             } else {
@@ -456,6 +457,42 @@ impl MusicClient {
         let id = resource[identity]
             .as_str()
             .ok_or(Error::State("selected resource has no identifier"))?;
+        if policy == RetainedRow::DailyRecommendation {
+            let expected = before.fence();
+            // M/308 offsets a non-clearing row play to the current display
+            // position; M/1384 moves an older copy into that insertion slot.
+            let selected = id.to_owned();
+            let mut source = source;
+            source["single_row"] = json!(true);
+            let mut queue = super::queue_playlist::insert_collection_bound(
+                queue,
+                vec![resource],
+                source,
+                false,
+                true,
+                true,
+            );
+            queue.current = Some(
+                queue
+                    .items
+                    .iter()
+                    .find(|entry| online_song(&entry.resource, &selected))
+                    .ok_or(Error::State("missing inserted Daily recommendation"))?
+                    .entry_id
+                    .clone(),
+            );
+            let command = PlaybackCommand::UpdateQueue(QueueUpdate {
+                expected: expected.clone(),
+                queue,
+                transport: Some(QueueTransport {
+                    position: None,
+                    paused: false,
+                }),
+            });
+            return self
+                .submit_retained_row(token, command, expected, attempt, lease, source_guard)
+                .await;
+        }
         let existing = queue.items.iter().position(|entry| {
             entry.visible_in_queue()
                 && if policy == RetainedRow::SearchVoice {
