@@ -270,6 +270,8 @@ async fn exact_offers_follow_maxbr_ceiling_and_flag_order_only_signed_vivid_grou
 #[tokio::test]
 async fn missing_purchased_download_folder_returns_settings_branch_without_creating_task_or_folder()
 {
+    use Quality::ExHigh;
+
     let (f, receipt) = fixture([json!({"code":200,"ids":[301]}).into()]).await;
     f.client.liked_ids().await.unwrap();
     let choice = select(&f, &receipt, ExHigh, D::Ready).await;

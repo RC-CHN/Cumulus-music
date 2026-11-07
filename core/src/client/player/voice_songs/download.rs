@@ -4,7 +4,6 @@ use super::{
     actions::{Page, Row},
     id,
     purchased::{Offer, Selection, vivid_enabled},
-    seed, stale_credentials,
 };
 use crate::{
     Error, Result,
