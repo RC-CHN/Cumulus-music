@@ -28,7 +28,7 @@ VoicePage「包含歌曲」多选普通下载：已喜欢触发行（Rust）
   继续；取消中止。该分支不能复用普通多选收藏的两段筛选，也未开放任何写。
 
 本批实现
-- 只有 Rust API，尚无桌面 IPC、菜单或新交互。prepare 接 epoch、playId、
+- 业务由 Rust API 负责。prepare 接 epoch、playId、
   原生卡片回执、触发行号和 2..100 个有序唯一行号（必须含触发行），输出已选
   批次的可用/省略行号与决定。不会因一个旁边的行已喜欢而跳过目的地；未知和
   尚待核对均不发凭据。准备、取消（丢弃旧计划）、被替换计划均不发送下载或
@@ -52,8 +52,29 @@ VoicePage「包含歌曲」多选普通下载：已喜欢触发行（Rust）
   候选顺序，不承诺并发授权/完成的实际先后。下载失败仍由任务管理显示；
   播放器队列不动，不借播放 URL、节目或试听权限。
 
+主窗口 IPC 与界面接入边界
+- player_voice_songs_download_prepare：平铺 JSON
+  {epoch,playId,cardReceipt,anchorIndex,indices}。cancel/start 为
+  {epoch,playId,cardReceipt,selectionReceipt}。三者由主窗口调用，整体解码
+  严格拒绝未知字段；不能传 voiceId、歌曲 ID、质量、目录、options 或在
+  后续提交覆盖触发行/选择。Tauri adapter 只投影该命令声明字段。
+- 接线时，使用 VoiceSongsCard / voiceSongSelectionSnapshot 已冻结的
+  indices，使用右键 VoiceSongRowTarget.index 作为 anchorIndex，而非
+  indices[0] 或后来的焦点；该行即使在 omittedIndices 仍是触发行。
+  UI 在本地保持原卡片、节目、账号代次与页面归属；异步返回后检查相同
+  epoch/playId/anchorIndex 和当前卡片，再按 eligibleIndices、omittedIndices
+  显示实际接纳范围。不把 onlineEligible 或当前行红心自行当作下载权限。
+- 只有 decision=ready 有原生批次回执。关闭未开始的确认时可显式 cancel；
+  确认才提交 start。directory_required 只指向既有下载目录设置，返回后
+  显式重新 prepare。playlist_required、unsupported_selection 不跳过现有
+  安全门，也不循环单曲接口；membership_unknown、unavailable 保持未启动。
+  start 的 accepted 是入队任务而非已下载文件。只有返回 epoch 仍属当前账号、
+  operationId 等于当前批次回执且卡片仍有效时才显示结果；结果不明不自动重放。
+  App、菜单和确认界面本批未接线。
+
 验证：core/tests/pc_experiment_transport/voice_songs/group_download.rs 使用封闭
 合成签名 EAPI，覆盖下架但已喜欢的原始触发行、局部不可用/本地/完成/已有任务、
 选择与去重顺序、原生保存音质、无重复授权和播放队列不变；另验证目录未设、
 未知/未喜欢、已购/云盘、非法或过期凭据，以及取消喜欢或出现任务冲突后的整批
-回滚。未访问真实账户或服务，无 GUI 或线上通过声明。
+回滚。桌面 MockRuntime 经真实注册的 dispatcher 验证主窗口及三条 schema；
+前端测试验证保留顺序且只投影已声明字段。未访问真实账户或服务，无 GUI 或线上通过声明。

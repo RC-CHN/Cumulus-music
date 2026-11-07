@@ -4,6 +4,7 @@ import type { PcPresentationView } from '../services/pcPresentation';
 import type { NativeLikeChanged } from '../services/nativeLikes';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { createVoiceSongGroupDownloadBridge } from './voiceSongGroupDownload';
 import type { PlayerUpdate } from '../services/player';
 import type {
   AccountData,
@@ -594,6 +595,7 @@ export function createTauriClient(): CoreClient {
         continuation,
         options,
       }),
+    ...createVoiceSongGroupDownloadBridge(invoke),
     playerVoiceSongPurchasedDownload: (target, command) =>
       invoke('player_voice_song_purchased_download', {
         target: voiceSongDownloadTarget(target),
