@@ -1,5 +1,8 @@
 VoicePage 「包含歌曲」普通单曲下载
 
+已喜欢触发行的普通多选 Rust 准入见 core-voice-song-group-download-contracts.txt；
+本文件继续说明既有单曲桌面入口。
+
 官方证据（3.1.42.205594）：
 - SongCard.tsx:43–72 仅显示有专辑的关联歌曲；TrackTitleCell.tsx:605–618 将
   行数据交给 ResourceType.track 的 DownloadButton，不使用当前节目的 ID。

@@ -3,6 +3,8 @@ use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http_with_cre
 mod collect;
 #[path = "voice_songs/download.rs"]
 mod download;
+#[path = "voice_songs/group_download.rs"]
+mod group_download;
 #[path = "voice_songs/likes.rs"]
 mod likes;
 #[path = "voice_songs/picker.rs"]

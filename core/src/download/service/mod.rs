@@ -1,5 +1,6 @@
 //! Official stage ordering with account-scoped, recoverable download tasks.
 mod authorize;
+mod batch;
 mod cloud;
 mod control;
 pub(super) mod files;

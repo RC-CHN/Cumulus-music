@@ -161,30 +161,11 @@ impl StateStore {
         id: &str,
         kind: PlaybackDownloadKind,
     ) -> Result<Vec<PlaybackDownloadRow>> {
-        let (index, task, identity) = match kind {
-            PlaybackDownloadKind::Song => {
-                ("download_song_v1", DOWNLOAD_SONG_TASK, DOWNLOAD_SONG_ID)
-            }
-            PlaybackDownloadKind::Voice => {
-                ("download_voice_v1", DOWNLOAD_VOICE_TASK, DOWNLOAD_VOICE_ID)
-            }
-        };
         let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
-        let mut query = connection.prepare_cached(&format!(
-            "SELECT json_extract(value,'$.status'), json_extract(value,'$.target'),
-                    json_extract(value,'$.file_operation') IS NOT NULL
-             FROM state INDEXED BY {index}
-             WHERE owner=? AND {task} AND ({identity})=?"
-        ))?;
-        let rows = query.query_map([owner, id], |row| {
-            Ok(PlaybackDownloadRow {
-                status: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                path: row.get::<_, Option<String>>(1)?.map(PathBuf::from),
-                moving: row.get(2)?,
-            })
-        })?;
-        rows.collect::<std::result::Result<_, _>>()
-            .map_err(Into::into)
+        StateTransaction {
+            connection: &connection,
+        }
+        .playback_download_rows(owner, id, kind)
     }
 
     /// Read the exact completed song publication, if unique. The song
@@ -319,6 +300,37 @@ impl StateStore {
 }
 
 impl StateTransaction<'_> {
+    pub(crate) fn playback_download_rows(
+        &self,
+        owner: &str,
+        id: &str,
+        kind: PlaybackDownloadKind,
+    ) -> Result<Vec<PlaybackDownloadRow>> {
+        let (index, task, identity) = match kind {
+            PlaybackDownloadKind::Song => {
+                ("download_song_v1", DOWNLOAD_SONG_TASK, DOWNLOAD_SONG_ID)
+            }
+            PlaybackDownloadKind::Voice => {
+                ("download_voice_v1", DOWNLOAD_VOICE_TASK, DOWNLOAD_VOICE_ID)
+            }
+        };
+        let mut query = self.connection.prepare_cached(&format!(
+            "SELECT json_extract(value,'$.status'), json_extract(value,'$.target'),
+                    json_extract(value,'$.file_operation') IS NOT NULL
+             FROM state INDEXED BY {index}
+             WHERE owner=? AND {task} AND ({identity})=?"
+        ))?;
+        let rows = query.query_map([owner, id], |row| {
+            Ok(PlaybackDownloadRow {
+                status: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                path: row.get::<_, Option<String>>(1)?.map(PathBuf::from),
+                moving: row.get(2)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<_, _>>()
+            .map_err(Into::into)
+    }
+
     pub(crate) fn unresolved_style_tag(&self, owner: &str) -> Result<Option<(String, Value)>> {
         let mut statement = self.connection.prepare_cached(&format!(
             "SELECT key,value FROM state INDEXED BY style_tag_unresolved_v1

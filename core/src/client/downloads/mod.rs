@@ -29,6 +29,13 @@ use std::{
 };
 use tokio::sync::Notify;
 
+pub(in crate::client) struct GuardedSongBatch {
+    pub receipt: String,
+    pub anchor: String,
+    pub songs: Arc<[String]>,
+    pub options: crate::download::service::DownloadOptions,
+}
+
 const PREFERENCES: &str = "download_preferences_v1";
 
 // A download's typed origin owns its namespace. Raw metadata remains intact in

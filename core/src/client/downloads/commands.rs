@@ -4,6 +4,15 @@ use crate::{
     protocol::api::identifier,
 };
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+struct Retire(Arc<AtomicBool>);
+impl Drop for Retire {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
 impl MusicClient {
     pub(in crate::client) async fn start_guarded_song_download(
         &self,
@@ -13,13 +22,6 @@ impl MusicClient {
         permission: impl Fn() -> Result<()> + Send + 'static,
         on_commit: impl FnOnce() + Send + 'static,
     ) -> Result<DownloadResult> {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        struct Retire(Arc<AtomicBool>);
-        impl Drop for Retire {
-            fn drop(&mut self) {
-                self.0.store(true, Ordering::Release);
-            }
-        }
         let context = self.downloads.inner.context(epoch)?;
         let captured = context.clone();
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -53,6 +55,45 @@ impl MusicClient {
         Ok(DownloadResult {
             epoch: epoch.into(),
             accepted: vec![task.id],
+            ..Default::default()
+        })
+    }
+
+    pub(in crate::client) async fn start_guarded_song_batch(
+        &self,
+        epoch: &str,
+        batch: GuardedSongBatch,
+        permission: impl Fn() -> Result<crate::storage::OperationLock> + Send + 'static,
+        on_commit: impl FnOnce(&[String]) + Send + 'static,
+    ) -> Result<DownloadResult> {
+        let context = self.downloads.inner.context(epoch)?;
+        let host = self.downloads.inner.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let _retire = Retire(cancelled.clone());
+        let runtime = tokio::runtime::Handle::current();
+        let operation_id = batch.receipt.clone();
+        let accepted = tokio::task::spawn_blocking(move || {
+            let accepted = context.service.create_guarded_song_batch(
+                &batch.songs,
+                &batch.receipt,
+                &batch.anchor,
+                batch.options,
+                &permission,
+                &cancelled,
+            )?;
+            // The worker wakes even if the caller lost its response after the
+            // transaction committed. The callback also retires the one lease.
+            on_commit(&accepted);
+            let _runtime = runtime.enter();
+            host.kick(&context)?;
+            Ok::<_, Error>(accepted)
+        })
+        .await
+        .map_err(|_| Error::State("download batch command worker stopped"))??;
+        Ok(DownloadResult {
+            epoch: epoch.into(),
+            accepted,
+            operation_id: Some(operation_id),
             ..Default::default()
         })
     }

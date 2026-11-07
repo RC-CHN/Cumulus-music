@@ -71,6 +71,8 @@ pub(super) struct Row {
     pub(super) online_eligible: bool,
     pub(super) copyright_blocked: bool,
     pub(super) download: super::download::Class,
+    pub(super) download_copyright_blocked: bool,
+    pub(super) group_download_unsupported: bool,
     pub(super) playlist_eligible: bool,
     pub(super) collection_privilege: super::collect::Privilege,
 }
@@ -92,6 +94,7 @@ pub(super) struct Page {
     pub(super) picker: super::picker::Shelf,
     pub(super) collect: super::collect::Shelf,
     pub(super) purchase: super::purchased::Shelf,
+    pub(super) group_download: super::group_download::Shelf,
     pub(super) receipt: String,
     pub(super) created: Instant,
 }
