@@ -8,7 +8,7 @@ import '../styles/playlist-collect.css';
 
 const props = defineProps<{ model: VoiceSongGroupCollectModel }>();
 const emit = defineEmits<{ expired: [] }>();
-const { phase, plan, selected, message, saving } = props.model;
+const { phase, plan, selected, message, saving, liked, likedLoading, likedError } = props.model;
 const dialog = ref<HTMLDialogElement>();
 const closeButton = ref<HTMLButtonElement>();
 const reconcileButton = ref<HTMLButtonElement>();
@@ -188,6 +188,22 @@ function choose(id: string) {
         {{ current.error || '正在读取歌单…' }}
         <button v-if="current.error" type="button" class="text-button" @click="load()">重试</button>
       </div>
+      <button
+        v-if="liked"
+        type="button"
+        class="collect-row group-collect-liked"
+        data-voice-song-collect-liked
+        @click="model.chooseLiked"
+      >
+        <span class="collect-cover"><Icon name="heart" /></span>
+        <span class="collect-name">我喜欢的音乐</span>
+      </button>
+      <div v-else-if="likedLoading || likedError" class="collect-load" role="status">
+        {{ likedError ? '暂时无法核对喜欢歌单' : '正在读取喜欢歌单…' }}
+        <button v-if="likedError" type="button" class="text-button" @click="model.readLiked">
+          重试
+        </button>
+      </div>
       <PlaylistCollectList
         :key="sort"
         :include-create="false"
@@ -218,5 +234,8 @@ function choose(id: string) {
   display: flex;
   justify-content: center;
   padding: 8px 20px 18px;
+}
+.group-collect-liked {
+  flex: 0 0 64px;
 }
 </style>

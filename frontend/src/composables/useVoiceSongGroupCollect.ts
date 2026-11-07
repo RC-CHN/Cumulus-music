@@ -7,6 +7,8 @@ import type {
   VoiceSongCollectPlan,
   VoiceSongCollectResult,
   VoiceSongCollectTarget,
+  VoiceSongLikedCollectClient,
+  VoiceSongLikedDestination,
 } from '../services/voiceSongs.ts';
 
 export interface VoiceSongCollectOpening {
@@ -18,7 +20,7 @@ export interface VoiceSongCollectOpening {
 type Phase = 'preparing' | 'picking' | 'saving' | 'pending' | 'reading' | 'failed' | 'empty';
 
 export function useVoiceSongGroupCollect(
-  core: VoiceSongCollectClient,
+  core: VoiceSongCollectClient & VoiceSongLikedCollectClient,
   expired: () => void,
   completed: () => void,
 ) {
@@ -30,6 +32,9 @@ export function useVoiceSongGroupCollect(
   const selected = shallowRef('');
   const operation = shallowRef('');
   const message = shallowRef('');
+  const liked = shallowRef<VoiceSongLikedDestination>();
+  const likedLoading = shallowRef(false);
+  const likedError = shallowRef('');
   const saving = computed(() => phase.value === 'saving' || phase.value === 'reading');
 
   function reset() {
@@ -40,6 +45,9 @@ export function useVoiceSongGroupCollect(
     selected.value = '';
     operation.value = '';
     message.value = '';
+    liked.value = undefined;
+    likedLoading.value = false;
+    likedError.value = '';
     phase.value = 'preparing';
   }
   watch(
@@ -93,6 +101,7 @@ export function useVoiceSongGroupCollect(
       if (reply.selectionReceipt) {
         target.value = { ...view.card, selectionReceipt: reply.selectionReceipt };
         phase.value = 'picking';
+        void readLiked();
       } else {
         phase.value = 'empty';
         message.value = '所选歌曲没有可加入歌单的曲目';
@@ -101,6 +110,30 @@ export function useVoiceSongGroupCollect(
       if (!owns(view)) return;
       phase.value = 'failed';
       message.value = issue(error).message;
+    }
+  }
+  async function readLiked() {
+    const view = opening.value;
+    const destination = target.value;
+    if (!owns(view) || !destination || phase.value !== 'picking' || likedLoading.value) return;
+    liked.value = undefined;
+    likedError.value = '';
+    likedLoading.value = true;
+    const current = () => owns(view) && destination === target.value;
+    try {
+      const reply = await core.playerVoiceSongsCollectLikedDestination(destination);
+      if (!current() || phase.value !== 'picking') return;
+      if (reply.epoch !== destination.epoch) {
+        likedError.value = '喜欢歌单已变化，请重试';
+        return;
+      }
+      liked.value = reply.value ?? undefined;
+    } catch (error) {
+      if (!current() || phase.value !== 'picking') return;
+      const problem = issue(error);
+      if (current()) likedError.value = problem.message;
+    } finally {
+      if (current()) likedLoading.value = false;
     }
   }
   function settle(view: VoiceSongCollectOpening, result: VoiceSongCollectResult) {
@@ -130,7 +163,22 @@ export function useVoiceSongGroupCollect(
       message.value = '所选歌曲未能收藏到这个歌单';
     }
   }
-  async function choose(playlistId: string) {
+  function choose(playlistId: string) {
+    return chooseDestination(playlistId, (destination) =>
+      core.playerVoiceSongsCollectExisting(destination, playlistId),
+    );
+  }
+  function chooseLiked() {
+    const row = liked.value;
+    if (!row || likedLoading.value) return;
+    return chooseDestination(row.playlistId, (destination) =>
+      core.playerVoiceSongsCollectLiked(destination, row.destinationReceipt),
+    );
+  }
+  async function chooseDestination(
+    playlistId: string,
+    write: (destination: VoiceSongCollectTarget) => Promise<VoiceSongCollectResult>,
+  ) {
     const view = opening.value;
     const destination = target.value;
     if (!view || !owns(view) || !destination || phase.value !== 'picking') return;
@@ -138,7 +186,7 @@ export function useVoiceSongGroupCollect(
     phase.value = 'saving';
     message.value = '';
     try {
-      settle(view, await core.playerVoiceSongsCollectExisting(destination, playlistId));
+      settle(view, await write(destination));
     } catch (error) {
       if (!owns(view)) return;
       const problem = issue(error);
@@ -184,9 +232,14 @@ export function useVoiceSongGroupCollect(
     selected,
     message,
     saving,
+    liked,
+    likedLoading,
+    likedError,
     open,
     close,
     choose,
+    chooseLiked,
+    readLiked,
     reconcile,
     destinations,
   };

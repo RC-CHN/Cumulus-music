@@ -43,8 +43,8 @@ Native Cumulus scope
   journal still holds it for the same account. A proved existing membership
   can be Unchanged without a duplicate add; readback proves exact resulting
   membership and prior-item order, not server insertion position.
-- Desktop uses four typed commands: prepare, read destination page, add to
-  observed destination, and read/reconcile the same operation. The renderer
+- The ordinary destination path uses four typed commands: prepare, read a
+  destination page, add to an observed destination, and read/reconcile. The renderer
   sends card and selection receipts plus displayed indices; no raw song ID
   can be selected for the write. The modal has default/recently tabs,
   loading/empty/error and waiting states, an explicit “核对结果” action,
@@ -76,13 +76,16 @@ Native system-liked destination
   specialType=5 and no local-only entries. It never reads liked IDs or writes.
   A successful list with no star returns null. Reloading the row revokes the
   older receipt even when the playlist ID did not change.
-- A future picker can load this row once for the current selection alongside
-  the regular list, without rereading it for each page or sort. Only a non-null
-  verified row enables its system-liked action. Use its playlistId for display
-  identity and to check the result; send only destinationReceipt with the
+- The picker loads this row once for the current selection alongside the
+  regular list, without rereading it for each page or sort. A read failure
+  only hides the liked row and offers a retry; ordinary rows stay available.
+  Only a non-null verified row enables the action. The UI compares its
+  playlistId with the result and sends only destinationReceipt with the
   selection target to `player_voice_songs_collect_liked`. A changed star fails
-  before write rather than retargeting the selection. The independent regular
-  picker and generic editor still do not permit system playlists.
+  before write rather than retargeting. Unlike the official picker, the
+  verified row has a dedicated position above the regular list: the host
+  read proves identity, not the liked row's rank in the v2 sort or its art
+  and count. The regular picker and generic editor still reject system lists.
 - M/3160:990–1028, M/232:310–329 and M/15:1409–1414 independently describe
   refresh of the star's detail trackIds and a native local-only overlay. For
   confirmation Cumulus requires both the complete star detail and its existing
@@ -98,8 +101,8 @@ Native system-liked destination
   and independently observed membership on readback. The shared journal can
   read back an interrupted operation after a new session opens the same
   account and database, even when the original episode receipt is gone. It
-  never sends the batch again. Main-window typed desktop bridge only in this
-  slice; no UI wiring or live account writes.
+  never sends the batch again. Both destination commands are restricted to
+  the main window. Verification uses synthetic account state, not live writes.
 
 Separate official destination not yet exposed here
 - New (FavouriteModal/index.jsx:419–441,529–534) closes the picker into the
