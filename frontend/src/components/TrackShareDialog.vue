@@ -13,6 +13,7 @@ const props = defineProps<{
   playlist?: PlaylistActionTarget;
   album?: AlbumCard;
   podcast?: { id: string; name: string };
+  beforeCopy?: () => Promise<string | undefined>;
 }>();
 const kind = computed(() =>
   props.podcast ? '播客' : props.album ? '专辑' : props.playlist ? '歌单' : '歌曲',
@@ -54,6 +55,15 @@ async function copy() {
   message.value = '';
   failed.value = false;
   try {
+    if (props.beforeCopy) {
+      const restriction = await props.beforeCopy();
+      if (!alive) return;
+      if (restriction) {
+        message.value = restriction;
+        failed.value = true;
+        return;
+      }
+    }
     await client.copyText(link.value);
     if (alive) message.value = '链接已复制';
   } catch {
@@ -84,6 +94,7 @@ async function copy() {
       <p class="muted">{{ subtitle }}</p>
       <p>复制{{ kind }}链接，与朋友分享</p>
       <input
+        v-if="!beforeCopy"
         :aria-label="`${kind}分享链接`"
         :value="link"
         readonly

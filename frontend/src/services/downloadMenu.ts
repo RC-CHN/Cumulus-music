@@ -1,7 +1,7 @@
-import { downloadPlaybackReady, type DownloadTask } from './downloads.ts';
+import { downloadPlaybackReady, type DownloadShareAccess, type DownloadTask } from './downloads.ts';
 import type { CommentResource } from './comments.ts';
+import type { TrackView } from './contracts.ts';
 import type { MenuItem } from './menu.ts';
-import { songLink } from './trackMenu.ts';
 
 export type DownloadFileAction = 'rename' | 'move' | 'delete' | 'forget';
 export interface DownloadMenuState {
@@ -20,6 +20,16 @@ export function downloadMenuCommentResource(task: DownloadTask): CommentResource
 export function downloadCommentCountCandidate(task: DownloadTask): boolean {
   return downloadMenuCommentResource(task)?.kind === 'track';
 }
+export function downloadMenuShareTrack(task: DownloadTask): TrackView | undefined {
+  if (task.status !== 'complete' || !['song', 'cloud'].includes(task.source)) return;
+  const id = task.linkTrackId;
+  if (id && /^[1-9][0-9]*$/.test(id)) return { ...task.track, id, local: false };
+}
+export function downloadShareRestriction(access: DownloadShareAccess): string | undefined {
+  if (access === 'allowed') return;
+  if (access === 'album_required') return '该歌曲需要购买数字专辑，暂不能分享';
+  return '分享失败，该歌曲暂无分享版权';
+}
 export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState): MenuItem[] {
   const blocked = state.locked || !!task.fileOperation || task.status === 'cancelling';
   if (task.status !== 'complete')
@@ -37,7 +47,7 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
       { key: 'cancel', label: '删除下载', icon: 'trash', danger: true, disabled: blocked },
     ];
   const voice = task.source === 'voice';
-  const link = !voice && songLink(task.track);
+  const link = downloadMenuShareTrack(task);
   const filesBlocked = blocked || task.cleanupPending;
   const commentCount = state.commentCount ?? 0;
   const comments =

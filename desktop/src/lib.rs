@@ -560,6 +560,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 playlist_cover::pick_playlist_cover,
                 downloads::downloads,
                 downloads::download_song_comment_count,
+                downloads::download_song_share_access,
                 downloads::download_command,
                 downloads::download_quality_preferences,
                 downloads::song_download_state,

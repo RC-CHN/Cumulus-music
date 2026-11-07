@@ -3,6 +3,7 @@ mod comments;
 mod dto;
 mod jobs;
 mod quality;
+mod resource;
 mod song_status;
 mod view;
 use super::MusicClient;

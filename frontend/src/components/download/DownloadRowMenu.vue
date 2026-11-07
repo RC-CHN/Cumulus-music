@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { DownloadTask } from '../../services/downloads';
+import type { TrackView } from '../../services/contracts';
 import {
   downloadCommentCountCandidate,
   downloadMenuItems,
+  downloadMenuShareTrack,
+  downloadShareRestriction,
   type DownloadFileAction,
 } from '../../services/downloadMenu';
 import { songLink } from '../../services/trackMenu';
@@ -30,7 +33,7 @@ const emit = defineEmits<{
 }>();
 const menu = ref<InstanceType<typeof ActionMenu>>(),
   id = ref(''),
-  shared = shallowRef<DownloadTask>(),
+  shared = shallowRef<{ taskId: string; epoch: string; track: TrackView }>(),
   commentCount = ref<number>();
 const task = computed(() => props.tasks.find((t) => t.id === id.value));
 const items = computed(() => {
@@ -48,7 +51,9 @@ const client = useCore(),
   message = ref(''),
   failed = ref(false),
   copying = ref(false),
-  retrying = ref(false);
+  sharing = ref(false),
+  retrying = ref(false),
+  feedbackAction = ref<'copy' | 'share'>('copy');
 let origin: HTMLElement | undefined,
   host: HTMLElement | undefined,
   version = 0,
@@ -63,15 +68,19 @@ function close() {
   shared.value = undefined;
   message.value = '';
   copying.value = false;
+  sharing.value = false;
   failed.value = false;
   retrying.value = false;
 }
-function dismiss() {
-  close();
+function restoreOrigin() {
   if (origin?.isConnected) {
     origin.closest<HTMLElement>('[data-download-task]')?.focus({ preventScroll: true });
     origin.focus({ preventScroll: true });
   } else host?.focus({ preventScroll: true });
+}
+function dismiss() {
+  close();
+  restoreOrigin();
 }
 watch(task, (value) => {
   if (!value) {
@@ -171,8 +180,10 @@ async function show(event: MouseEvent | KeyboardEvent, selected: DownloadTask) {
   );
 }
 async function copy() {
-  const link = task.value && songLink(task.value.track);
-  if (!link || copying.value) return;
+  const track = task.value && downloadMenuShareTrack(task.value);
+  const link = track && songLink(track);
+  if (!link || copying.value || sharing.value || props.locked) return;
+  feedbackAction.value = 'copy';
   const ticket = version;
   retrying.value = !!document.activeElement?.closest('.track-action-feedback');
   copying.value = true;
@@ -200,6 +211,70 @@ async function copy() {
     }
   }
 }
+type ShareTarget = NonNullable<typeof shared.value>;
+function sameShareTarget(target: ShareTarget) {
+  const current = task.value;
+  return (
+    !props.locked &&
+    props.epoch === target.epoch &&
+    current?.id === target.taskId &&
+    downloadMenuShareTrack(current)?.id === target.track.id
+  );
+}
+async function share() {
+  const current = task.value;
+  const track = current && downloadMenuShareTrack(current);
+  if (!current || !track || !props.epoch || props.locked || sharing.value || copying.value) return;
+  const target = { taskId: current.id, track, epoch: props.epoch };
+  const ticket = version;
+  feedbackAction.value = 'share';
+  sharing.value = true;
+  retrying.value = !!document.activeElement?.closest('.track-action-feedback');
+  failed.value = false;
+  message.value = '正在查询分享权限…';
+  try {
+    const response = await client.downloadSongShareAccess(target.epoch, target.taskId);
+    if (ticket !== version) return;
+    if (response.epoch !== target.epoch || !sameShareTarget(target)) {
+      message.value = '下载记录已变化，请重新选择歌曲';
+      return;
+    }
+    const restriction = downloadShareRestriction(response.value);
+    if (restriction) {
+      message.value = restriction;
+      return;
+    }
+    if (retrying.value && document.activeElement?.closest('.track-action-feedback'))
+      restoreOrigin();
+    message.value = '';
+    shared.value = target;
+  } catch {
+    if (ticket !== version) return;
+    failed.value = sameShareTarget(target);
+    message.value = failed.value ? '无法确认分享权限，请重试' : '下载记录已变化，请重新选择歌曲';
+  } finally {
+    if (ticket === version) {
+      sharing.value = false;
+      retrying.value = false;
+    }
+  }
+}
+async function verifySharedCopy() {
+  const target = shared.value;
+  if (!target || !sameShareTarget(target)) return '下载记录已变化，请重新选择歌曲';
+  try {
+    const response = await client.downloadSongShareAccess(target.epoch, target.taskId);
+    if (shared.value !== target || response.epoch !== target.epoch || !sameShareTarget(target))
+      return '下载记录已变化，请重新选择歌曲';
+    return downloadShareRestriction(response.value);
+  } catch {
+    return '无法确认分享权限，请重试';
+  }
+}
+function retryFeedback() {
+  if (feedbackAction.value === 'share') void share();
+  else void copy();
+}
 function choose(key: string) {
   const current = task.value;
   if (!current || !items.value.some((i) => i.key === key && !i.disabled)) return;
@@ -213,7 +288,7 @@ function choose(key: string) {
   else if (key === 'manage') emit('file', current);
   else if (['rename', 'move', 'delete', 'forget'].includes(key))
     emit('file', current, key as DownloadFileAction);
-  else if (key === 'share') shared.value = current;
+  else if (key === 'share') void share();
   else if (key === 'copy') void copy();
 }
 function scroll() {
@@ -242,13 +317,23 @@ defineExpose({ show, scroll, close });
     :items="items"
     @select="choose"
   />
-  <ModalTransition
-    ><TrackShareDialog v-if="shared" :track="shared.track" @close="shared = undefined"
-  /></ModalTransition>
+  <ModalTransition>
+    <TrackShareDialog
+      v-if="shared"
+      :track="shared.track"
+      :before-copy="verifySharedCopy"
+      @close="shared = undefined"
+    />
+  </ModalTransition>
   <div v-if="message" class="track-action-feedback" :class="{ failed }" role="status">
     {{ message }}
-    <button v-if="failed || retrying" class="text-button" :aria-disabled="copying" @click="copy">
-      {{ copying ? '正在复制…' : '重试' }}
+    <button
+      v-if="failed || retrying"
+      class="text-button"
+      :aria-disabled="copying || sharing"
+      @click="retryFeedback"
+    >
+      {{ copying || sharing ? '正在重试…' : '重试' }}
     </button>
     <button class="text-button" @click="dismiss">关闭</button>
   </div>

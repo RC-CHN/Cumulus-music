@@ -82,6 +82,8 @@ pub struct DownloadTaskView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comment_track_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_track_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_podcast: Option<DownloadVoicePodcastView>,
     pub status: DownloadStatus,
     pub phase: DownloadPhase,
@@ -102,6 +104,14 @@ pub struct DownloadTaskView {
     pub lyrics_status: LyricsStatus,
     pub error: Option<&'static str>,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadShareAccess {
+    Allowed,
+    Unavailable,
+    AlbumRequired,
+}
+
 #[derive(Clone, Serialize)]
 pub struct DownloadVoicePodcastView {
     pub name: String,

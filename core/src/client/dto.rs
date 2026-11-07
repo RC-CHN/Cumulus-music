@@ -3,8 +3,8 @@ pub use super::collections::{CollectionPageView, CollectionView, FollowCard, Fol
 pub use super::community::topic::{CommunityTopic, CommunityTopicAction, CommunityTopicSlice};
 pub use super::downloads::{
     DownloadCategory, DownloadCommand, DownloadFailure, DownloadJobView,
-    DownloadQualityPreferences, DownloadQuery, DownloadResult, DownloadSort, DownloadTab,
-    DownloadTaskView, DownloadsView, SongDownloadState, TaskControl,
+    DownloadQualityPreferences, DownloadQuery, DownloadResult, DownloadShareAccess, DownloadSort,
+    DownloadTab, DownloadTaskView, DownloadsView, SongDownloadState, TaskControl,
 };
 pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};

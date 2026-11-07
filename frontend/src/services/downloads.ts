@@ -38,6 +38,7 @@ export interface DownloadTask {
   source: 'song' | 'cloud' | 'mv' | 'voice';
   track: TrackView;
   commentTrackId?: string;
+  linkTrackId?: string;
   voicePodcast?: { name: string; id?: string };
   status:
     | 'queued'
@@ -155,9 +156,11 @@ export interface DownloadQualityPreferences {
     access: 'allowed' | 'requires_vip' | 'requires_svip' | 'unknown';
   }[];
 }
+export type DownloadShareAccess = 'allowed' | 'unavailable' | 'album_required';
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
   downloadSongCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
+  downloadSongShareAccess(epoch: string, taskId: string): Promise<AccountData<DownloadShareAccess>>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;

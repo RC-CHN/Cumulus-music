@@ -27,6 +27,21 @@ pub async fn download_song_comment_count<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn download_song_share_access<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    task_id: String,
+) -> Result<AccountData<DownloadShareAccess>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download song sharing requires main window").into());
+    }
+    client
+        .download_song_share_access(&epoch, &task_id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn download_quality_preferences<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
