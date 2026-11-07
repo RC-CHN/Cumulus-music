@@ -707,7 +707,9 @@ fn main() {
         .as_deref()
         .or_else(|| {
             voice_song_download_case.as_deref().map(|case| {
-                if case.starts_with("purchased_") {
+                if case.starts_with("group_") {
+                    "group_download"
+                } else if case.starts_with("purchased_") {
                     "purchased_download"
                 } else {
                     "download"
@@ -779,6 +781,11 @@ fn main() {
                 include_str!("podcast_badges_ui_probe.js").to_owned()
             } else if voice_song_collect_enabled {
                 include_str!("voice_song_collect_ui_probe.js").to_owned()
+            } else if voice_song_download_case
+                .as_deref()
+                .is_some_and(|case| case.starts_with("group_"))
+            {
+                include_str!("voice_song_group_download_ui_probe.js").to_owned()
             } else if voice_song_download_case.is_some() {
                 include_str!("voice_song_download_ui_probe.js").to_owned()
             } else if voice_songs_enabled {
