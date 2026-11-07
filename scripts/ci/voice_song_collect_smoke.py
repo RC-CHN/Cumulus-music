@@ -113,7 +113,7 @@ def verify_create(root, mode):
     host = lambda observed: [STAR_LIST, {'uid': '2', 'includeVideo': True, 'limit': 200, 'offset': 0}, observed]
     detail = lambda observed: [DETAIL, {'id': '91', 'n': 100000, 's': 0}, observed]
     write = [ADD, {'pid': '91', 'trackIds': json.dumps(IDS, separators=(',', ':')), 'op': 'add'}]
-    wire = [listed, listed, host(False), [CREATE, {'uid': '2', 'name': CREATED_NAME, 'privacy': 10}]]
+    wire = [host(False), listed, listed, host(False), [CREATE, {'uid': '2', 'name': CREATED_NAME, 'privacy': 10}]]
     if mode == 'recover':
         wire.append(host(False))
         assert stages['creation_pending']['voiceSongCollectTrace']['calls'] == wire
@@ -121,7 +121,11 @@ def verify_create(root, mode):
     if mode == 'recover':
         assert stages['created_ready']['voiceSongCollectTrace']['calls'] == wire
     wire.extend([detail(False), write, detail(True)])
-    assert stages['cancelled']['voiceSongCollectTrace']['calls'] == [listed]
+    if mode == 'recover':
+        wire.append(host(True))  # Completed action refreshes the ordinary account playlist list.
+        refresh = commands(last, 'playlists')[-1]['result']
+        assert any(row['id'] == '91' and row['name'] == CREATED_NAME for row in refresh['value'])
+    assert stages['cancelled']['voiceSongCollectTrace']['calls'] == [host(False), listed]
     assert complete['voiceSongCollectTrace']['calls'] == wire
     assert all(stage['voiceSongCollectTrace']['calls'] == wire[:len(stage['voiceSongCollectTrace']['calls'])]
                for stage in stages.values())
@@ -235,7 +239,7 @@ def verify(root, liked=False):
         assert isinstance(selection, str) and len(selection) == 32
         assert plan == {'epoch': epoch, 'playId': play_id, 'selectionReceipt': selection,
                         'selectedCount': 4, 'eligibleCount': 3, 'omittedIndices': [2],
-                        'usedFirstFallback': False}
+                        'usedFirstFallback': False, 'canCreate': False}, plan
         target = {**source, 'selectionReceipt': selection}
         assert listed['args'] == [target, 'default', 0] and 'error' not in listed
         assert [row['id'] for row in listed['result']['value']['playlists']] == ['81']

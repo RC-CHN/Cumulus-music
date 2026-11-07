@@ -152,7 +152,7 @@
     const names = ['playerVoiceSongs', planName, destinationsName, existingName, statusName,
       'playlistCollectPage', 'mutatePlaylist', 'playerVoiceSongsSelection', 'playerVoiceSongPlay'];
     if (likedMode) names.push(likedDestinationName, likedName);
-    if (creationMode) names.push(creationName);
+    if (creationMode) names.push(creationName, 'playlists');
     const originals = names.map((name) => core[name]);
     assert(originals.every((method) => typeof method === 'function'), 'actual typed command adapters');
     for (const [index, name] of names.entries()) {
@@ -261,9 +261,12 @@
         await wait(() => results(creationName)[2]?.creation?.canAdd === true &&
           enabled(firstAdd()) && !enabled(reconcile()), 'verified create separately enables first add');
         await capture('created_ready');
+        const playlistReads = results('playlists').length;
         await input('first_add', firstAdd, 'create:add');
         await wait(() => results(creationName)[3]?.creation?.add?.phase === 'confirmed' &&
-          !dialog() && document.activeElement === row(0), 'confirmed first add returns source focus');
+          !dialog() && document.activeElement === row(0) && results('playlists').slice(playlistReads).some(
+            (value) => value?.value?.some((row) => row.id === '91' && row.name === '合成新收藏歌单')),
+          'confirmed first add returns source focus and refreshes account playlists');
         await capture('reconciled');
       } else {
         await wait(() => results(creationName)[1]?.creation?.addFailed === true &&

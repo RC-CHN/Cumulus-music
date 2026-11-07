@@ -68,8 +68,8 @@ impl Fixture {
                 if state.created {
                     state.lists_after_create += 1;
                 }
-                let observed = self.1 == Some(Creation::AddFalse) && state.lists_after_create == 1
-                    || self.1 == Some(Creation::Recover) && state.lists_after_create == 2;
+                let observed = self.1 == Some(Creation::AddFalse) && state.lists_after_create >= 1
+                    || self.1 == Some(Creation::Recover) && state.lists_after_create >= 2;
                 if observed {
                     rows.push(json!({"id":91,"name":CREATED_NAME,"userId":2,"privacy":10}));
                 }
