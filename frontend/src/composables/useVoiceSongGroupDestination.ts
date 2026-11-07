@@ -17,6 +17,7 @@ interface Picker {
   live: () => boolean;
   start: (continuation: string, addFailed: boolean) => Promise<void>;
   retired: () => void;
+  likedConfirmed: (ids: readonly string[]) => void;
   tail: Promise<unknown>;
 }
 
@@ -35,6 +36,7 @@ export function useVoiceSongGroupDestination(
   let selected = '';
   let operation = '';
   let creating = false;
+  let selectedSystemLiked = false;
   let creation: VoiceSongGroupPlaylistCreation | undefined;
   const busy = computed(() => phase.value === 'saving' || phase.value === 'reading');
   const owns = (owner: Picker) => picker.value === owner && owner.live();
@@ -67,6 +69,7 @@ export function useVoiceSongGroupDestination(
     selected = '';
     operation = '';
     creating = false;
+    selectedSystemLiked = false;
     creation = undefined;
     liked.value = undefined;
     likedLoading.value = false;
@@ -151,6 +154,13 @@ export function useVoiceSongGroupDestination(
       return;
     }
     operation = result.operationId;
+    if (
+      selectedSystemLiked &&
+      result.likedIds?.length &&
+      !result.addFailed &&
+      (result.phase === 'confirmed' || result.phase === 'unchanged')
+    )
+      owner.likedConfirmed(result.likedIds);
     if (result.continuation) {
       // Only the native journal can issue this one continuation. Closing the
       // picker never sends an add or starts a download.
@@ -240,6 +250,7 @@ export function useVoiceSongGroupDestination(
     const row = liked.value;
     if (!row || phase.value !== 'pick') return;
     selected = row.playlistId;
+    selectedSystemLiked = true;
     return apply({ kind: 'choose_liked', destinationReceipt: row.destinationReceipt }, 'pick');
   }
 

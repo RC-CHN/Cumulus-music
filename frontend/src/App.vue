@@ -1950,6 +1950,7 @@ const voiceSongGroupDownload = useVoiceSongGroupDownload(
   (epoch) => {
     if (epoch === music.account.value.epoch) openVoiceSongDownloads();
   },
+  music.mergeVerifiedPlaylistLikes,
 );
 function voiceSongGroupCollectFocus() {
   return voiceGroupCollectOpener.value ?? null;

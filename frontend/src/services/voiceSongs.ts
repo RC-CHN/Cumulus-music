@@ -354,6 +354,7 @@ export type VoiceSongGroupDestinationCommand =
 
 export interface VoiceSongGroupPlaylistResult extends VoiceSongGroupDownloadTargetIdentity {
   playlistId: string;
+  likedIds?: string[];
   operationId: string;
   phase: PlaylistPhase;
   addFailed: boolean;

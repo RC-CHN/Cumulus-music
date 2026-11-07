@@ -82,6 +82,8 @@ pub struct VoiceSongGroupPlaylistResult {
     pub phase: PlaylistPhase,
     pub add_failed: bool,
     pub continuation: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub liked_ids: Vec<String>,
 }
 
 impl Attempt {
@@ -118,7 +120,19 @@ impl Attempt {
         record: PlaylistMutation,
     ) -> Result<VoiceSongGroupPlaylistResult> {
         let owner = page.token.uid.as_deref().ok_or(Error::StaleResponse)?;
-        let (completed, add_failed) = self.proof(lease, id.into()).outcome(&record, owner)?;
+        let proof = self.proof(lease, id.into());
+        let (completed, add_failed) = proof.outcome(&record, owner)?;
+        let liked_ids = if proof.system_liked
+            && completed
+            && !add_failed
+            && matches!(
+                record.phase,
+                PlaylistPhase::Confirmed | PlaylistPhase::Unchanged
+            ) {
+            proof.songs.to_vec()
+        } else {
+            Vec::new()
+        };
         Ok(VoiceSongGroupPlaylistResult {
             epoch: page.token.generation.to_string(),
             play_id: page.play_id.clone(),
@@ -129,6 +143,7 @@ impl Attempt {
             add_failed,
             continuation: (completed && lease.0.committed.get().is_none())
                 .then(|| self.continuation.clone()),
+            liked_ids,
         })
     }
 }

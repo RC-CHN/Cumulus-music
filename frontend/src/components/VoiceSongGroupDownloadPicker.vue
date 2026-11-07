@@ -185,17 +185,7 @@ function choose(id: string) {
         {{ current.error || '正在读取歌单…' }}
         <button v-if="current.error" class="text-button" type="button" @click="load()">重试</button>
       </div>
-      <button
-        v-if="liked"
-        class="collect-row group-download-liked"
-        type="button"
-        data-voice-group-destination-liked
-        @click="model.chooseLiked"
-      >
-        <span class="collect-cover"><Icon name="heart" /></span>
-        <span class="collect-name">我喜欢的音乐</span>
-      </button>
-      <div v-else-if="likedLoading || likedError" class="collect-load" role="status">
+      <div v-if="!liked && (likedLoading || likedError)" class="collect-load" role="status">
         {{ likedError ? '暂时无法核对喜欢歌单' : '正在读取喜欢歌单…' }}
         <button v-if="likedError" class="text-button" type="button" @click="model.readLiked">
           重试
@@ -204,6 +194,7 @@ function choose(id: string) {
       <PlaylistCollectList
         :key="sort"
         purpose="download"
+        :system-liked="!!liked"
         :playlists="current.rows"
         :disabled="false"
         selected-id=""
@@ -212,6 +203,7 @@ function choose(id: string) {
         @scroll="current.top = $event"
         @near-end="load(true)"
         @select="choose"
+        @liked="model.chooseLiked"
         @create="model.openCreate"
       />
       <button
@@ -272,9 +264,3 @@ function choose(id: string) {
     </div>
   </dialog>
 </template>
-
-<style scoped>
-.group-download-liked {
-  flex: 0 0 64px;
-}
-</style>

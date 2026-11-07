@@ -14,18 +14,23 @@ const props = withDefaults(
     purpose?: 'download' | 'collect';
     includeCreate?: boolean;
     showWorking?: boolean;
+    systemLiked?: boolean;
   }>(),
   { includeCreate: true, showWorking: true },
 );
 const emit = defineEmits<{
   select: [id: string];
   create: [];
+  liked: [];
   scroll: [top: number];
   nearEnd: [];
 }>();
-const entries = computed(() =>
-  props.includeCreate ? [null, ...props.playlists] : props.playlists,
-);
+const entries = computed(() => [
+  ...(props.includeCreate ? [null] : []),
+  ...(props.systemLiked ? (['liked'] as const) : []),
+  ...props.playlists,
+]);
+const playlistRow = (row: (typeof entries.value)[number]) => (typeof row === 'object' ? row : null);
 const { container, start, end, onScroll, restore } = useVirtualRows(
   () => entries.value.length,
   64,
@@ -107,46 +112,54 @@ async function move(event: KeyboardEvent) {
   >
     <div :style="{ height: `${start * 64}px` }" aria-hidden="true" />
     <button
-      v-for="(playlist, offset) in entries.slice(start, end)"
-      :key="playlist?.id ?? 'create'"
+      v-for="(row, offset) in entries.slice(start, end)"
+      :key="row === 'liked' ? 'system-liked' : (row?.id ?? 'create')"
       class="collect-row"
-      :class="{ 'collect-selected': playlist?.id === selectedId }"
-      :data-playlist-id="playlist?.id"
+      :class="{ 'collect-selected': playlistRow(row)?.id === selectedId }"
+      :data-playlist-id="playlistRow(row)?.id"
       :data-index="start + offset"
+      :data-voice-group-destination-liked="row === 'liked' ? '' : undefined"
       :tabindex="start + offset === active ? 0 : -1"
       :aria-disabled="disabled"
       :aria-label="
-        playlist
-          ? `${purpose === 'download' ? '下载到' : '收藏到'}：${playlist.name}`
-          : '创建新歌单'
+        row === 'liked'
+          ? '我喜欢的音乐'
+          : row
+            ? `${purpose === 'download' ? '下载到' : '收藏到'}：${row.name}`
+            : '创建新歌单'
       "
       @focus="active = start + offset"
-      @click="!disabled && (playlist ? emit('select', playlist.id) : emit('create'))"
+      @click="
+        !disabled &&
+        (row === 'liked' ? emit('liked') : row ? emit('select', row.id) : emit('create'))
+      "
     >
-      <span class="collect-cover" :class="{ 'collect-add': !playlist }">
+      <span class="collect-cover" :class="{ 'collect-add': row === null }">
         <img
-          v-if="playlist?.coverUrl && !broken.has(playlist.coverUrl)"
-          :src="playlist.coverUrl"
+          v-if="row && row !== 'liked' && row.coverUrl && !broken.has(row.coverUrl)"
+          :src="row.coverUrl"
           alt=""
           loading="lazy"
           decoding="async"
           referrerpolicy="no-referrer"
-          @error="broken.add(playlist.coverUrl!)"
+          @error="broken.add(row.coverUrl!)"
         />
-        <Icon v-else :name="playlist ? 'music' : 'plus'" />
+        <Icon v-else :name="row === 'liked' ? 'heart' : row ? 'music' : 'plus'" />
       </span>
       <span class="collect-text">
-        <span class="collect-name">{{ playlist?.name ?? '创建新歌单' }}</span>
-        <span v-if="playlist" class="collect-count">{{ playlist.trackCount }}首</span>
+        <span class="collect-name">{{
+          row === 'liked' ? '我喜欢的音乐' : (row?.name ?? '创建新歌单')
+        }}</span>
+        <span v-if="row && row !== 'liked'" class="collect-count">{{ row.trackCount }}首</span>
       </span>
       <Icon
-        v-if="playlist?.id === selectedId && disabled && showWorking"
+        v-if="playlistRow(row)?.id === selectedId && disabled && showWorking"
         class="collect-working"
         name="refresh"
       />
     </button>
     <div :style="{ height: `${(entries.length - end) * 64}px` }" aria-hidden="true" />
-    <p v-if="!playlists.length && !loading" class="collect-empty">
+    <p v-if="!playlists.length && !systemLiked && !loading" class="collect-empty">
       {{ purpose === 'download' ? '还没有可下载到的自建歌单' : '还没有可收藏歌曲的自建歌单' }}
     </p>
   </div>

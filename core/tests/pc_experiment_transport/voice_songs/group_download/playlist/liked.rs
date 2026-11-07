@@ -82,6 +82,7 @@ async fn system_liked_requires_coherent_readback_after_definite_false_or_lost_ac
         let first = choose(&destination).await.unwrap();
         assert_eq!(first.phase, PlaylistPhase::Uncertain);
         assert!(first.continuation.is_none());
+        assert!(first.liked_ids.is_empty());
         assert_eq!(
             choose(&destination).await.unwrap().operation_id,
             first.operation_id
@@ -106,6 +107,14 @@ async fn system_liked_requires_coherent_readback_after_definite_false_or_lost_ac
                 PlaylistPhase::Rejected
             } else {
                 PlaylistPhase::Confirmed
+            }
+        );
+        assert_eq!(
+            readback.liked_ids,
+            if known_false {
+                Vec::<String>::new()
+            } else {
+                vec!["307".to_owned(), "301".to_owned()]
             }
         );
         let permit = readback.continuation.unwrap();

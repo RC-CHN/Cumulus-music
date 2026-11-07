@@ -49,6 +49,7 @@ function setup(api: VoiceSongGroupDownloadClient, callbacks: string[] = []) {
       () => callbacks.push('expired'),
       (epoch) => callbacks.push(`settings:${epoch}`),
       (epoch) => callbacks.push(`downloads:${epoch}`),
+      (epoch, ids) => callbacks.push(`liked:${epoch}:${ids.join()}`),
     ),
   )!;
   return { scope, model };
@@ -403,6 +404,7 @@ test('ordinary picker is read-only before an explicit target; unknown add is nev
     addFailed: false,
     continuation: null,
   } as const;
+  const callbacks: string[] = [];
   const { scope, model } = setup(
     client({
       playerVoiceSongsDownloadPrepare: async () => ({ ...plan, decision: 'playlist_required' }),
@@ -425,7 +427,12 @@ test('ordinary picker is read-only before an explicit target; unknown add is nev
           assert.equal(command.reconcile, true);
           return {
             kind: 'playlist',
-            playlist: { ...playlist, phase: 'confirmed', continuation: 'journal' },
+            playlist: {
+              ...playlist,
+              phase: 'confirmed',
+              continuation: 'journal',
+              likedIds: ['301'],
+            },
           };
         }
         if (command.kind === 'start') {
@@ -443,6 +450,7 @@ test('ordinary picker is read-only before an explicit target; unknown add is nev
         return assert.fail('unexpected command');
       },
     }),
+    callbacks,
   );
   try {
     await model.run(opening);
@@ -452,6 +460,7 @@ test('ordinary picker is read-only before an explicit target; unknown add is nev
     assert.equal(model.destination.liked.value?.playlistId, '81');
     await model.destination.chooseLiked();
     assert.equal(model.destination.phase.value, 'pending');
+    assert.deepEqual(callbacks, []);
     model.destination.close();
     assert.equal(model.destination.visible.value, false);
     assert.equal(model.notice.value?.kind, 'playlist_pending');
@@ -459,6 +468,7 @@ test('ordinary picker is read-only before an explicit target; unknown add is nev
     assert.equal(model.destination.visible.value, true);
     await model.destination.reconcile();
     assert.deepEqual(calls, ['liked_destination', 'choose_liked', 'status', 'start']);
+    assert.deepEqual(callbacks, ['liked:4:301']);
     assert.equal(model.notice.value?.kind, 'queued');
     assert.equal(model.destination.visible.value, false);
   } finally {

@@ -511,6 +511,21 @@ test('native like read-back cannot overwrite a newer UI like or a replacement ac
   assert.equal(other.liked.value.size, 0);
 });
 
+test('verified playlist likes reject a stale owner and a newer in-flight individual write', async () => {
+  const stale = deferred<AccountData<string[]>>();
+  const music = useMusic(backend({ likedIds: () => stale.promise }));
+  music.account.value = { epoch: '2', status: 'authenticated', nickname: null, avatarUrl: null };
+  music.liked.value = new Set(['301']);
+  music.busyLikes.value = new Set(['302']);
+  const pending = music.refreshLikes();
+  music.mergeVerifiedPlaylistLikes('1', ['303']);
+  music.mergeVerifiedPlaylistLikes('2', ['301', '302']);
+  stale.resolve(data([], '2'));
+  await pending;
+  assert.deepEqual([...music.liked.value], ['301']);
+  assert.deepEqual([...music.busyLikes.value], ['302']);
+});
+
 test('an old native like refresh failure cannot expire the replacement account', async () => {
   const stale = deferred<AccountData<string[]>>();
   const music = useMusic(backend({ likedIds: () => stale.promise }));

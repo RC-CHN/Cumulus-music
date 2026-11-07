@@ -92,6 +92,7 @@ export function useVoiceSongGroupDownload(
   expired: () => void,
   settings: (epoch: string) => void,
   downloads: (epoch: string) => void,
+  likedConfirmed: (epoch: string, ids: readonly string[]) => void,
 ) {
   const opening = shallowRef<VoiceSongGroupDownloadOpening>();
   const state = shallowRef<VoiceSongGroupDownloadNotice>();
@@ -292,6 +293,9 @@ export function useVoiceSongGroupDownload(
       live: () => owns(intent),
       retired: () => {
         if (owns(intent)) retire();
+      },
+      likedConfirmed: (ids) => {
+        if (owns(intent)) likedConfirmed(target.epoch, ids);
       },
       async start(continuation, addFailed) {
         if (!owns(intent)) return;

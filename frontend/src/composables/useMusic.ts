@@ -205,6 +205,14 @@ export function useMusic(
       handle(likes.reason);
     }
   }
+  function mergeVerifiedPlaylistLikes(epoch: string, ids: readonly string[]) {
+    if (epoch !== account.value.epoch || !signedIn.value) return;
+    const confirmed = ids.filter((id) => !busyLikes.value.has(id));
+    if (!confirmed.length) return;
+    likeRevision++;
+    const next = new Set([...liked.value, ...confirmed]);
+    if (next.size !== liked.value.size) liked.value = next;
+  }
   async function refreshLikes() {
     const revision = ++likeRevision;
     const epoch = account.value.epoch;
@@ -602,6 +610,7 @@ export function useMusic(
     signedIn,
     resources,
     refreshLikes,
+    mergeVerifiedPlaylistLikes,
     load,
     retryDailyCache,
     bootstrap,
