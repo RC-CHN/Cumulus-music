@@ -2,9 +2,10 @@
 (async () => {
   const fixtureMode = window.__voiceSongDownloadCase;
   const directoryAction = window.__voiceSongPurchasedDirectoryAction;
+  const qualityGuide = window.__voiceSongPurchasedGuide === true;
   const noDirectory = directoryAction === 'cancel' || directoryAction === 'settings';
   const mode = directoryAction === 'settings' ? 'purchased_directory_settings' :
-    noDirectory ? 'purchased_no_directory' : fixtureMode;
+    noDirectory ? 'purchased_no_directory' : qualityGuide ? 'purchased_quality_guide' : fixtureMode;
   const expected = mode === 'purchased_existing' ? 'lossless' : 'exhigh';
   const qualityOrder = ['jymaster', 'hires', 'lossless', 'exhigh', 'standard'];
   const q = (selector, root = document) => root?.querySelector(selector) ?? null;
@@ -157,6 +158,7 @@
     const provides = q('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     const methods = ['playerVoiceSongs', 'playerVoiceSongDownloadPrepare', 'playerVoiceSongPurchasedDownload',
+      'openVoiceSongPurchasedQualityGuide',
       'playlistCollectPage', 'downloadCommand', 'playerVoiceSongDownloadStart', 'playerVoiceSongDownloadStartFromPlaylist',
       'playerVoiceSongDownloadChoosePlaylist', 'playerVoiceSongDownloadCreatePlaylist', 'pickDownloadDirectory'];
     const originals = methods.map((name) => core[name]);
@@ -167,9 +169,11 @@
         calls.push(call);
         try {
           const result = await originals[index].apply(core, args);
-          assert(!JSON.stringify(result).includes('SYNTHETIC_INCLUDED_PRIVATE') &&
-            !JSON.stringify(result).includes('m1.music.126.net'), 'no private rights or URLs in typed reply');
+          const serialized = JSON.stringify(result) ?? '';
+          assert(!serialized.includes('SYNTHETIC_INCLUDED_PRIVATE') &&
+            !serialized.includes('m1.music.126.net'), 'no private rights or URLs in typed reply');
           call.result = result;
+          call.completed = true;
           return result;
         } catch (error) {
           call.error = error?.code ?? String(error);
@@ -235,7 +239,16 @@
     await wait(() => currentQuality() === expected, 'explicit local radio choice');
     assert(!action('select') && !action('start'), 'local radio change never dispatches');
     await capture('chosen');
-    if (mode === 'purchased_cancel') {
+    if (qualityGuide) {
+      const help = () => button('了解音质', modal());
+      await click(help, 'user opens the quality guide from the actual dialog');
+      await wait(() => calls.some((call) => call.name === 'openVoiceSongPurchasedQualityGuide' &&
+        call.completed) && currentQuality() === expected && enabled(help()),
+      'native browser handoff leaves the selected tier unchanged');
+      assert(!action('select') && !action('start'), 'help does not confirm or download');
+      await capture('guide_opened');
+    }
+    if (fixtureMode === 'purchased_cancel') {
       await click(() => button('关闭音质选择', modal()), 'dismiss official quality choice');
       await wait(() => !modal() && !picker() && document.activeElement === row(),
         'quality dismisses without entering picker and restores source focus');

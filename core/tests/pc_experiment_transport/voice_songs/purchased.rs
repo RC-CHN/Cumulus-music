@@ -200,6 +200,14 @@ async fn exact_offers_follow_maxbr_ceiling_and_flag_order_only_signed_vivid_grou
     let initial = plan(&f, &receipt, 0).await;
     assert_eq!(initial.decision, D::PurchasedQualityRequired);
     assert_eq!(initial.purchased_qualities, visible);
+    let guide = |index| {
+        f.client
+            .voice_song_purchased_quality_guide(&f.epoch, &f.play_id, &receipt, index)
+    };
+    const STANDARD_GUIDE: &str = "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81";
+    const VIVID_GUIDE: &str = "https://music.163.com/g/st-vip-audio-quality";
+    assert_eq!(guide(0).unwrap(), STANDARD_GUIDE);
+    assert!(guide(3).is_err());
     assert_eq!(
         plan(&f, &receipt, 1).await.purchased_qualities,
         [ExHigh, Standard]
@@ -245,6 +253,10 @@ async fn exact_offers_follow_maxbr_ceiling_and_flag_order_only_signed_vivid_grou
     let mut vivid = vec![Vivid];
     vivid.extend(visible.clone());
     assert_eq!(plan(&f, &receipt, 0).await.purchased_qualities, vivid);
+    assert_eq!(guide(0).unwrap(), VIVID_GUIDE);
+    // Help reflects the observed global cohort even on a row that does not
+    // itself offer Vivid. Merely resolving a guide never fetches assignment.
+    assert_eq!(guide(1).unwrap(), VIVID_GUIDE);
     let R::Selection {
         decision: D::MembershipUnknown,
         selection: None,
@@ -259,6 +271,7 @@ async fn exact_offers_follow_maxbr_ceiling_and_flag_order_only_signed_vivid_grou
     let chosen = select(&f, &receipt, Vivid, D::Ready).await;
     f.client.refresh_pc_presentation().await.unwrap();
     assert_eq!(plan(&f, &receipt, 0).await.purchased_qualities, visible);
+    assert_eq!(guide(0).unwrap(), STANDARD_GUIDE);
     assert!(matches!(
         command(&f, &receipt, 0, start(&chosen, None, Vivid)).await,
         Err(Error::StaleResponse)

@@ -17,12 +17,15 @@ PREFS = {'quality': 'standard', 'tags': False, 'cover': False, 'lyrics': False, 
 OFFER = ['jymaster', 'hires', 'lossless', 'exhigh', 'standard']
 NO_DIRECTORY = 'purchased_no_directory'
 DIRECTORY_SETTINGS = 'purchased_directory_settings'
+QUALITY_GUIDE = 'purchased_quality_guide'
+STANDARD_GUIDE = 'https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81'
 LABELS = {
     'purchased_liked': ('song_card', 'quality', 'chosen', 'transferred'),
     'purchased_cancel': ('song_card', 'quality', 'chosen', 'cancelled'),
     'purchased_existing': ('song_card', 'quality', 'chosen', 'picker', 'transferred'),
     NO_DIRECTORY: ('song_card', 'quality', 'chosen', 'directory', 'directory_cancelled'),
     DIRECTORY_SETTINGS: ('song_card', 'quality', 'chosen', 'directory', 'settings', 'settings_closed'),
+    QUALITY_GUIDE: ('song_card', 'quality', 'chosen', 'guide_opened', 'cancelled'),
 }
 
 
@@ -109,10 +112,19 @@ def verify(case, root, stages, complete):
     wire = complete['voiceSongDownloadTrace']
     assert wire['likedReads'] > 0
     records = persisted(root)
-    if case == 'purchased_cancel':
+    if case in ('purchased_cancel', QUALITY_GUIDE):
         assert last['dom']['focusedRow'] == '0' and proof == proof[:1] and not wire['calls']
         assert not records and not list((root / 'run/download-output').iterdir())
-        return {'syntheticCalls': 0, 'playlistWrites': 0, 'mediaBytes': 0}
+        if case == QUALITY_GUIDE:
+            opened = stages['guide_opened']
+            assert opened['dom']['qualityModal'] and opened['dom']['quality'] == expected_quality
+            assert purchased(opened) == proof and not opened['voiceSongDownloadTrace']['calls']
+            call = action(opened, 'openVoiceSongPurchasedQualityGuide')
+            assert call['args'] == [target] and call['completed'] is True and call.get('result') is None
+            assert action(last, 'openVoiceSongPurchasedQualityGuide') == call
+            assert (root / 'browser-arguments').read_text(encoding='utf-8').splitlines() == ['1', STANDARD_GUIDE]
+        return {'syntheticCalls': 0, 'playlistWrites': 0, 'mediaBytes': 0,
+                **({'fixedBrowserHandoffVerified': True} if case == QUALITY_GUIDE else {})}
     if case in (NO_DIRECTORY, DIRECTORY_SETTINGS):
         prompt = stages['directory']
         assert prompt['dom']['directory'] and prompt['dom']['directoryTitle'] == '更改下载目录', prompt['dom']
@@ -213,7 +225,8 @@ def verify(case, root, stages, complete):
 def run(args, root, case):
     root.mkdir()
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    fixture = 'purchased_liked' if case in (NO_DIRECTORY, DIRECTORY_SETTINGS) else case
+    fixture = 'purchased_liked' if case in (NO_DIRECTORY, DIRECTORY_SETTINGS) else (
+        'purchased_cancel' if case == QUALITY_GUIDE else case)
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_VOICE_SONG_DOWNLOAD_PROOF=fixture,
                CUMULUS_PODCAST_SCENE_HOME_PROOF='automatic')
     if sys.platform == 'linux':
@@ -224,6 +237,20 @@ def run(args, root, case):
         env['PATH'] = str(args.runtime) + os.pathsep + env.get('PATH', '')
     script = args.script or (Path(__file__).resolve().parents[2] /
                             'desktop/examples/voice_song_purchased_download_ui_probe.js')
+    if case == QUALITY_GUIDE:
+        # Real main-window command, safe stand-in for the operating system launcher.
+        # Keep the isolated WebView and the fake launcher off the network.
+        launcher = root / 'bin/xdg-open'
+        launcher.parent.mkdir()
+        launcher.write_text('#!/bin/sh\nprintf "%s\\n" "$#" "$1" >> "$CUMULUS_PROOF_BROWSER_ARGUMENTS"\n',
+                            encoding='utf-8')
+        launcher.chmod(0o700)
+        env['PATH'] = str(launcher.parent) + os.pathsep + env.get('PATH', '')
+        env['CUMULUS_PROOF_BROWSER_ARGUMENTS'] = str(root / 'browser-arguments')
+        driver = root / 'quality-guide-driver.js'
+        driver.write_text('window.__voiceSongPurchasedGuide = true;\n' +
+                          script.read_text(encoding='utf-8'), encoding='utf-8')
+        script = driver
     if case in (NO_DIRECTORY, DIRECTORY_SETTINGS):
         # Reuse the exact signed already-liked fixture without configuring a directory.
         action = 'settings' if case == DIRECTORY_SETTINGS else 'cancel'
@@ -263,6 +290,8 @@ def main():
     args = parser.parse_args()
     if sys.platform not in ('linux', 'win32') or (args.screenshots and sys.platform != 'linux'):
         parser.error('use Linux X11 or Windows; screenshots require X11')
+    if args.case == QUALITY_GUIDE and sys.platform != 'linux':
+        parser.error('the browser handoff receipt uses the Linux xdg-open stand-in')
     if sys.platform == 'linux':
         require_xvfb()
     if args.runtime:
@@ -273,7 +302,7 @@ def main():
         parser.error('Windows requires --runtime with the packaged libmpv-2.dll')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    cases = (case for case in LABELS if case != DIRECTORY_SETTINGS) if args.case == 'all' else (args.case,)
+    cases = (case for case in LABELS if case not in (DIRECTORY_SETTINGS, QUALITY_GUIDE)) if args.case == 'all' else (args.case,)
     results = [run(args, root / case, case) for case in cases]
     report = {'actualWebView': True, 'actualNullAudio': True,
               'webViewRuntime': 'WebKitGTK' if sys.platform == 'linux' else 'WebView2',
