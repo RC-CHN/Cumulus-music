@@ -8,10 +8,11 @@ use crate::{
     protocol::{
         api::{
             Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
-            PlaylistAddPermission, SongLikePermission, VinylCommentRead, VinylCommentWrite,
-            VinylCommentWritePermission, VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
-            VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
-            VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
+            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, VinylCommentRead,
+            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
+            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
+            VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead,
+            VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -1457,6 +1458,38 @@ impl Api for MusicHttpClient {
             ],
         )?;
         Ok(Some(revision))
+    }
+
+    fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
+        let revision = self.pc_experiment_revision()?;
+        self.require_song_card_playlist_target(
+            GuardedPlaylistAdd::PATH,
+            &revision,
+            [
+                "/api/w/nuser/account/get",
+                VinylVoiceSongsRead::PATH,
+                SongCardLikedRead::LIST,
+                SongCardLikedRead::DETAIL,
+                SongCardLikedRead::MEMBERSHIP,
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
+    fn request_song_card_system_liked<'a>(
+        &'a self,
+        read: SongCardLikedRead,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.song_card_system_liked_scope_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            self.vinyl_playback_read(read.into_request(), revision, permission)
+                .await
+        })
     }
 
     fn song_card_playlist_create_scope_revision(&self) -> Result<Option<String>> {

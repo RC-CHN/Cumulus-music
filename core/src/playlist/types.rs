@@ -183,4 +183,7 @@ pub struct PlaylistMutation {
     /// Only scalar response codes; never persist server error bodies/tokens.
     pub codes: BTreeMap<String, i64>,
     pub error_class: Option<String>,
+    /// This batch can only settle against the account's verified star and likes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub system_liked_group: bool,
 }

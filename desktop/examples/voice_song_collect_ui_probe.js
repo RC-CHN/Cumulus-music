@@ -11,6 +11,9 @@
   const textButton = (name, root) => all('button', root).find((node) => node.textContent.trim() === name);
   const menu = () => q('[data-menu-key="collect"]');
   const playlist = () => q('[data-playlist-id="81"]', dialog());
+  const likedMode = window.__voiceSongGroupLikedProof === true;
+  const liked = () => q('[data-voice-song-collect-liked]', dialog());
+  const reconcile = () => textButton('核对结果', dialog());
   const selected = () => all('[data-voice-song-row][aria-selected="true"]', shelf())
     .map((item) => Number(item.dataset.rowIndex));
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
@@ -30,6 +33,9 @@
   const hit = (target) => {
     if (!(target instanceof Element)) return null;
     if (target.closest('[data-menu-key="collect"]')) return 'menu:collect';
+    if (likedMode && target.closest('[data-voice-song-collect-liked]')) return 'picker:liked';
+    const button = target.closest('button');
+    if (likedMode && button && button === reconcile()) return 'picker:reconcile';
     const index = target.closest('[data-voice-song-row]')?.dataset.rowIndex;
     return index === undefined ? null : `row:${index}`;
   };
@@ -55,6 +61,9 @@
   const existingName = 'playerVoiceSongsCollectExisting';
   const statusName = 'playerVoiceSongsCollectStatus';
   const destinationsName = 'playerVoiceSongsCollectDestinations';
+  const likedDestinationName = 'playerVoiceSongsCollectLikedDestination';
+  const likedName = 'playerVoiceSongsCollectLiked';
+  const submitName = likedMode ? likedName : existingName;
   const expectedIndices = [1, 2, 3, 0];
 
   async function wait(check, reason) {
@@ -91,6 +100,7 @@
         status: q('[data-voice-song-collect-status]', dialog())?.textContent.trim() ?? null,
         playlistIds: all('[data-playlist-id]', dialog()).map((item) => item.dataset.playlistId),
         reconcile: enabled(textButton('核对结果', dialog())) },
+      ...(likedMode ? { likedRow: liked()?.textContent.trim() ?? null } : {}),
       events: clone(events), commands: clone(commands), ...detail,
     });
     await wait(() => window.__podcastProgressStage === stage, 'native stage persisted before next input');
@@ -123,6 +133,7 @@
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     const names = ['playerVoiceSongs', planName, destinationsName, existingName, statusName,
       'playlistCollectPage', 'mutatePlaylist', 'playerVoiceSongsSelection', 'playerVoiceSongPlay'];
+    if (likedMode) names.push(likedDestinationName, likedName);
     const originals = names.map((name) => core[name]);
     assert(originals.every((method) => typeof method === 'function'), 'actual typed command adapters');
     for (const [index, name] of names.entries()) {
@@ -184,6 +195,15 @@
         !ready.usedFirstFallback && ready.selectionReceipt, 'collection filters subp independent of playback');
       assert(all('[data-playlist-id]', dialog()).length === 1 &&
         q('[data-voice-song-collect-summary]', dialog())?.textContent.trim(), 'owned only and visible group counts');
+      if (likedMode) {
+        const destination = await wait(() => enabled(liked()) && results(likedDestinationName)[attempt - 1],
+          'verified native system liked receipt renders independent picker row');
+        assert(liked().textContent.trim() === '我喜欢的音乐' && destination.epoch === epoch &&
+          destination.value?.playlistId === '82' && destination.value?.destinationReceipt,
+          'visible localized liked destination uses verified native identity');
+      } else {
+        assert(!liked(), 'unsigned picker has no system liked row');
+      }
       return ready;
     }
     const cancelled = await open(1);
@@ -194,12 +214,21 @@
 
     const active = await open(2);
     assert(active.selectionReceipt !== cancelled.selectionReceipt, 'new modal has its own selection receipt');
-    await click(playlist, 'choose observed regular owned playlist');
-    await wait(() => results(existingName)[0]?.phase === 'uncertain' && dialog() &&
+    if (likedMode) {
+      await input('choose_liked', liked, 'picker:liked');
+    } else {
+      await click(playlist, 'choose observed regular owned playlist');
+    }
+    await wait(() => results(submitName)[0]?.phase === 'uncertain' && dialog() &&
       q('[data-voice-song-collect-status]', dialog())?.textContent.trim() &&
-      enabled(textButton('核对结果', dialog())), 'actual lost acknowledgement shows readback affordance');
+      enabled(reconcile()), 'actual lost acknowledgement shows readback affordance');
     await capture('pending');
-    await click(() => textButton('核对结果', dialog()), 'explicit user readback without resubmission');
+    if (likedMode) {
+      assert(!liked(), 'no second liked submit available while the outcome is uncertain');
+      await input('readback', reconcile, 'picker:reconcile');
+    } else {
+      await click(reconcile, 'explicit user readback without resubmission');
+    }
     await wait(() => results(statusName)[0]?.phase === 'confirmed' && !dialog() &&
       document.activeElement === row(0), 'confirmed readback closes and restores row focus');
     await capture('reconciled');

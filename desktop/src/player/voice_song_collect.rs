@@ -4,7 +4,7 @@ use cumulus_core::client::{
     ClientError, MusicClient,
     dto::{
         AccountData, PlaylistCollectPage, PlaylistCollectSort, VoiceSongCollectPlan,
-        VoiceSongCollectResult,
+        VoiceSongCollectResult, VoiceSongLikedDestination,
     },
 };
 use serde::Deserialize;
@@ -81,6 +81,44 @@ pub async fn player_voice_songs_collect_existing<R: tauri::Runtime>(
             &target.card_receipt,
             &target.selection_receipt,
             &playlist_id,
+        )
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn player_voice_songs_collect_liked_destination<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    target: VoiceSongCollectTarget,
+) -> Result<AccountData<Option<VoiceSongLikedDestination>>, ClientError> {
+    require_main(&window)?;
+    client
+        .player_voice_songs_collect_liked_destination(
+            &target.epoch,
+            &target.play_id,
+            &target.card_receipt,
+            &target.selection_receipt,
+        )
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn player_voice_songs_collect_liked<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    target: VoiceSongCollectTarget,
+    destination_receipt: String,
+) -> Result<VoiceSongCollectResult, ClientError> {
+    require_main(&window)?;
+    client
+        .player_voice_songs_collect_liked(
+            &target.epoch,
+            &target.play_id,
+            &target.card_receipt,
+            &target.selection_receipt,
+            &destination_receipt,
         )
         .await
         .map_err(Into::into)

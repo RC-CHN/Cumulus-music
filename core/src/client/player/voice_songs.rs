@@ -23,7 +23,7 @@ use crate::{
 pub(super) use actions::Host;
 pub use actions::VoiceSongAction;
 use actions::{Page, Row};
-pub use collect::{VoiceSongCollectPlan, VoiceSongCollectResult};
+pub use collect::{VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongLikedDestination};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
 pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
 pub use purchased::{VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult};

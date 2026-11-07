@@ -6,6 +6,7 @@ import type {
   VoiceSongCollectClient,
   VoiceSongCollectPlan,
   VoiceSongCollectResult,
+  VoiceSongLikedCollectClient,
 } from '../src/services/voiceSongs.ts';
 
 const card = { epoch: '1', playId: 'play', voiceId: '601', cardReceipt: 'card' };
@@ -27,12 +28,21 @@ const confirmed: VoiceSongCollectResult = {
   operationId: 'add',
   phase: 'confirmed',
 };
+const withoutLiked: VoiceSongLikedCollectClient = {
+  async playerVoiceSongsCollectLikedDestination() {
+    return { epoch: card.epoch, value: null };
+  },
+  async playerVoiceSongsCollectLiked() {
+    return assert.fail('no verified system liked destination');
+  },
+};
 
 test('a lost add acknowledgement stays bound after closing and explicit reconciliation does not replay it', async () => {
   const scope = effectScope();
   const calls: string[] = [];
   let completed = 0;
-  const client: VoiceSongCollectClient = {
+  const client: VoiceSongCollectClient & VoiceSongLikedCollectClient = {
+    ...withoutLiked,
     async playerVoiceSongsCollectPrepare(value, indices) {
       calls.push('prepare');
       assert.deepEqual(value, card);
@@ -84,7 +94,8 @@ test('an asynchronously prepared selection cannot reappear after its playback vi
   const scope = effectScope();
   const live = ref(true);
   let resolve!: (result: VoiceSongCollectPlan) => void;
-  const client: VoiceSongCollectClient = {
+  const client: VoiceSongCollectClient & VoiceSongLikedCollectClient = {
+    ...withoutLiked,
     playerVoiceSongsCollectPrepare: () => new Promise((done) => (resolve = done)),
     async playerVoiceSongsCollectDestinations() {
       return assert.fail();
@@ -107,6 +118,69 @@ test('an asynchronously prepared selection cannot reappear after its playback vi
     assert.equal(model.visible.value, false);
     assert.equal(model.plan.value, undefined);
     assert.equal(model.destinations('default', 0), undefined);
+  } finally {
+    scope.stop();
+  }
+});
+
+test('the system liked row is revoked with the card and submits only its current native receipt', async () => {
+  const scope = effectScope();
+  const live = ref(true);
+  const old = Promise.withResolvers<{
+    epoch: string;
+    value: { playlistId: string; destinationReceipt: string };
+  }>();
+  const actions: string[] = [];
+  const liked = { playlistId: '82', destinationReceipt: 'fresh-destination' };
+  let reads = 0;
+  const client: VoiceSongCollectClient & VoiceSongLikedCollectClient = {
+    async playerVoiceSongsCollectPrepare() {
+      return plan;
+    },
+    async playerVoiceSongsCollectDestinations() {
+      return { epoch: '1', value: { playlists: [], nextPage: null } };
+    },
+    async playerVoiceSongsCollectExisting() {
+      return assert.fail('must not use ordinary add');
+    },
+    async playerVoiceSongsCollectLikedDestination(value) {
+      assert.deepEqual(value, target);
+      actions.push('read liked');
+      return ++reads === 1 ? old.promise : { epoch: '1', value: liked };
+    },
+    async playerVoiceSongsCollectLiked(value, receipt) {
+      assert.deepEqual(value, target);
+      assert.equal(receipt, liked.destinationReceipt);
+      actions.push('add liked');
+      return { ...confirmed, playlistId: '82', phase: 'uncertain' };
+    },
+    async playerVoiceSongsCollectStatus(value, reconcile) {
+      assert.deepEqual(value, target);
+      assert.equal(reconcile, true);
+      actions.push('check liked');
+      return { ...confirmed, playlistId: '82' };
+    },
+  };
+  const model = scope.run(() =>
+    useVoiceSongGroupCollect(client, assert.fail, () => actions.push('saved')),
+  )!;
+  try {
+    const origin = { card, indices: [1, 2, 0], live: () => live.value };
+    await model.open(origin);
+    await model.chooseLiked();
+    assert.deepEqual(actions, ['read liked']);
+    live.value = false;
+    old.resolve({ epoch: '1', value: { playlistId: '93', destinationReceipt: 'retired' } });
+    await Promise.resolve();
+    assert.equal(model.liked.value, undefined);
+    live.value = true;
+    await model.open(origin);
+    assert.deepEqual(model.liked.value, liked);
+    await model.chooseLiked();
+    assert.equal(model.phase.value, 'pending');
+    await model.chooseLiked();
+    await model.reconcile();
+    assert.deepEqual(actions, ['read liked', 'read liked', 'add liked', 'check liked', 'saved']);
   } finally {
     scope.stop();
   }

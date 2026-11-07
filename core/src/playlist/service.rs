@@ -1,3 +1,4 @@
+mod liked;
 mod operation;
 mod reconcile;
 use super::*;
@@ -23,8 +24,20 @@ enum GuardedReadback<'a> {
     SelectionAdd {
         playlist: &'a str,
         songs: &'a [String],
+        system_liked: bool,
     },
     Create,
+}
+
+enum AddDestination<'a> {
+    Owned(&'a str),
+    SystemLiked(&'a str),
+}
+
+struct WriteGuard<'a> {
+    permission: &'a PlaylistAddPermission<'a>,
+    credentials: &'a PlaylistAddPermission<'a>,
+    system_liked_group: bool,
 }
 pub struct PlaylistService {
     session: Arc<AccountSession>,
@@ -245,7 +258,7 @@ impl PlaylistService {
     ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
-            playlist,
+            AddDestination::Owned(playlist),
             &[song.into()],
             operation_id,
             permission,
@@ -262,23 +275,47 @@ impl PlaylistService {
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
-        self.guarded_add_songs(token, playlist, songs, operation_id, permission, |api| {
-            api.song_card_collection_scope_revision()
-        })
+        self.guarded_add_songs(
+            token,
+            AddDestination::Owned(playlist),
+            songs,
+            operation_id,
+            permission,
+            |api| api.song_card_collection_scope_revision(),
+        )
         .await
     }
 
-    async fn guarded_add_songs(
+    pub(crate) async fn guarded_collect_system_liked(
         &self,
         token: &SessionToken,
         playlist: &str,
         songs: &[String],
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(
+            token,
+            AddDestination::SystemLiked(playlist),
+            songs,
+            operation_id,
+            permission,
+            |api| api.song_card_system_liked_scope_revision(),
+        )
+        .await
+    }
+
+    async fn guarded_add_songs(
+        &self,
+        token: &SessionToken,
+        destination: AddDestination<'_>,
+        songs: &[String],
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
         scope: fn(&dyn Api) -> Result<Option<String>>,
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
-        let playlist = identifier(&json!(playlist))?;
+        let system_liked_group = matches!(destination, AddDestination::SystemLiked(_));
         if !(1..=GuardedPlaylistAdd::MAX_SONGS).contains(&songs.len()) {
             return Err(Error::InvalidInput("invalid guarded add selection"));
         }
@@ -291,13 +328,6 @@ impl PlaylistService {
             return Err(Error::State(
                 "picker operation already exists; read back instead",
             ));
-        }
-        if records.iter().any(|r| {
-            r.phase.pending()
-                && (r.command.playlist_id() == Some(playlist.as_str())
-                    || r.playlist_id.as_deref() == Some(playlist.as_str()))
-        }) {
-            return Err(Error::MutationUncertain);
         }
         let api = self.session.native_api(token)?;
         let revision =
@@ -314,17 +344,52 @@ impl PlaylistService {
             permission()
         };
         check()?;
-        let detail = self.read_detail(token, &playlist).await?;
+        let conflict = |playlist: &str| {
+            records.iter().any(|r| {
+                r.phase.pending()
+                    && (r.command.playlist_id() == Some(playlist)
+                        || r.playlist_id.as_deref() == Some(playlist)
+                        || system_liked_group && r.system_liked_group)
+            })
+        };
+        let (playlist, revision, before) = match destination {
+            AddDestination::Owned(playlist) => {
+                let playlist = identifier(&json!(playlist))?;
+                if conflict(&playlist) {
+                    return Err(Error::MutationUncertain);
+                }
+                let detail = self.read_detail(token, &playlist).await?;
+                check()?;
+                detail.writable(&uid)?;
+                if detail.has_local {
+                    return Err(Error::State(
+                        "local-only playlist entries require native matching before editing",
+                    ));
+                }
+                (
+                    playlist,
+                    detail.revision.clone(),
+                    serde_json::to_value(detail)?,
+                )
+            }
+            AddDestination::SystemLiked(expected) => {
+                let liked = self.observe_system_liked(token, expected, &check).await?;
+                liked.check_selected_membership(songs)?;
+                let playlist = liked.playlist.summary.id.clone();
+                if conflict(&playlist) {
+                    return Err(Error::MutationUncertain);
+                }
+                (
+                    playlist,
+                    liked.playlist.revision.clone(),
+                    serde_json::to_value(liked)?,
+                )
+            }
+        };
         check()?;
-        detail.writable(&uid)?;
-        if detail.has_local {
-            return Err(Error::State(
-                "local-only playlist entries require native matching before editing",
-            ));
-        }
         let mut command = PlaylistCommand::Tracks {
             id: playlist,
-            revision: detail.revision.clone(),
+            revision,
             change: TrackChange::Add,
             ids: songs.to_vec(),
         };
@@ -334,8 +399,12 @@ impl PlaylistService {
             &uid,
             operation_id,
             command,
-            serde_json::to_value(detail)?,
-            Some((&check, &credentials)),
+            before,
+            Some(WriteGuard {
+                permission: &check,
+                credentials: &credentials,
+                system_liked_group,
+            }),
         )
         .await
     }
@@ -397,7 +466,11 @@ impl PlaylistService {
             operation_id,
             command,
             serde_json::to_value(before)?,
-            Some((&check, &credentials)),
+            Some(WriteGuard {
+                permission: &check,
+                credentials: &credentials,
+                system_liked_group: false,
+            }),
         )
         .await
     }
@@ -409,7 +482,7 @@ impl PlaylistService {
         operation_id: &str,
         command: PlaylistCommand,
         before: Value,
-        guard: Option<(&PlaylistAddPermission<'_>, &PlaylistAddPermission<'_>)>,
+        guard: Option<WriteGuard<'_>>,
     ) -> Result<PlaylistMutation> {
         let mut record = PlaylistMutation {
             operation_id: operation_id.into(),
@@ -422,8 +495,14 @@ impl PlaylistService {
             checked_at: None,
             codes: Default::default(),
             error_class: None,
+            system_liked_group: guard.as_ref().is_some_and(|guard| guard.system_liked_group),
         };
-        if reconcile::matches(&mut record, &before, uid)? {
+        let unchanged = if record.system_liked_group {
+            liked::matches(&record, &before, uid)?
+        } else {
+            reconcile::matches(&mut record, &before, uid)?
+        };
+        if unchanged {
             record.phase = PlaylistPhase::Unchanged;
             record.observed = Some(before);
         }
@@ -436,25 +515,25 @@ impl PlaylistService {
         if record.phase == PlaylistPhase::Unchanged {
             return Ok(record);
         }
-        let mut unsent = guard.map(|_| Unsent {
+        let mut unsent = guard.as_ref().map(|_| Unsent {
             service: self,
             uid,
             record: &record,
             dispatched: AtomicBool::new(false),
             settled: false,
         });
-        let dispatch = guard.zip(unsent.as_ref());
+        let dispatch = guard.as_ref().zip(unsent.as_ref());
         let command = record.command.clone();
         let before = record.before.clone();
         let reply = self
             .session
             .run_for(token, |api, uid| async move {
-                if let Some(((permission, _), marker)) = dispatch {
+                if let Some((guard, marker)) = dispatch {
                     return operation::send_guarded(
                         api,
                         uid,
                         command,
-                        permission,
+                        guard.permission,
                         &marker.dispatched,
                     )
                     .await;
@@ -505,7 +584,7 @@ impl PlaylistService {
             }
         }
         self.persist(uid, &record)?;
-        self.check_with(token, record, guard.map(|(_, credentials)| credentials))
+        self.check_with(token, record, guard.map(|guard| guard.credentials))
             .await
     }
     pub async fn reconcile(
@@ -552,13 +631,18 @@ impl PlaylistService {
         operation_id: &str,
         playlist: &str,
         songs: &[String],
+        system_liked: bool,
         check: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
         self.reconcile_guarded_write(
             token,
             operation_id,
             check,
-            GuardedReadback::SelectionAdd { playlist, songs },
+            GuardedReadback::SelectionAdd {
+                playlist,
+                songs,
+                system_liked,
+            },
         )
         .await
     }
@@ -584,7 +668,7 @@ impl PlaylistService {
                     ..
                 },
                 GuardedReadback::SingleAdd,
-            ) => ids.len() == 1,
+            ) => ids.len() == 1 && !record.system_liked_group,
             (
                 PlaylistCommand::Tracks {
                     id,
@@ -592,8 +676,12 @@ impl PlaylistService {
                     ids,
                     ..
                 },
-                GuardedReadback::SelectionAdd { playlist, songs },
-            ) => id == playlist && ids == songs,
+                GuardedReadback::SelectionAdd {
+                    playlist,
+                    songs,
+                    system_liked,
+                },
+            ) => record.system_liked_group == system_liked && id == playlist && ids == songs,
             _ => false,
         };
         if !valid {
@@ -620,6 +708,9 @@ impl PlaylistService {
         mut record: PlaylistMutation,
         guard: Option<&PlaylistAddPermission<'_>>,
     ) -> Result<PlaylistMutation> {
+        if record.system_liked_group {
+            return self.check_system_liked(token, record, guard).await;
+        }
         let uid = self.owner(token)?;
         let observed = match record.command {
             PlaylistCommand::Create { .. }

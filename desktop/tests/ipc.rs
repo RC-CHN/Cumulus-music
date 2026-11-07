@@ -52,6 +52,8 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "player_vinyl_voice_detail_target",
             "change_fresh_vinyl_podcast_subscription",
             "reconcile_fresh_vinyl_podcast_subscription",
+            "player_voice_songs_collect_liked_destination",
+            "player_voice_songs_collect_liked",
             "solve_login_captcha",
             "catalog_page",
             "collection_page",
@@ -183,6 +185,23 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         ] {
             assert_ipc_response(&window, request(command, body), Err(stale.clone()));
         }
+        let target = json!({"epoch":epoch,"playId":"old-play","cardReceipt":"old-card","selectionReceipt":"old-selection"});
+        assert_ipc_response(
+            &window,
+            request(
+                "player_voice_songs_collect_liked_destination",
+                json!({"target":target}),
+            ),
+            Err(stale.clone()),
+        );
+        assert_ipc_response(
+            &window,
+            request(
+                "player_voice_songs_collect_liked",
+                json!({"target":target,"destinationReceipt":"old-row"}),
+            ),
+            Err(stale.clone()),
+        );
     }
     for (command, body) in [
         ("relay_view", json!({"epoch":"0","refresh":true})),

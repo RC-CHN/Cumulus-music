@@ -1,4 +1,4 @@
-Episode playback · included song group → collect to an existing playlist
+Episode playback · included song group → collect to an existing or system liked playlist
 Official evidence: Windows 3.1.42.205594
 
 - M/556:233–287 offers track Favourite / Ctrl+S for a selection; it does
@@ -43,8 +43,8 @@ Native Cumulus scope
   journal still holds it for the same account. A proved existing membership
   can be Unchanged without a duplicate add; readback proves exact resulting
   membership and prior-item order, not server insertion position.
-- Desktop uses four typed commands: prepare, read destination page, add to
-  observed destination, and read/reconcile the same operation. The renderer
+- The ordinary destination path uses four typed commands: prepare, read a
+  destination page, add to an observed destination, and read/reconcile. The renderer
   sends card and selection receipts plus displayed indices; no raw song ID
   can be selected for the write. The modal has default/recently tabs,
   loading/empty/error and waiting states, an explicit “核对结果” action,
@@ -59,17 +59,63 @@ Native Cumulus scope
   enters the same workflow from a focused selected row; Windows desktop
   gestures and real-account rights were not verified in this proof.
 
-Separate official destinations, not yet exposed here
+Native system-liked destination
 
-- Liked is a real FavouriteModal row. M/3160:1141–1142,1241–1254 compares the
-  chosen ID against native starPlaylistId, uses the same batch-add endpoint,
-  then publishes the liked map/IDs and the corresponding confirmation. It
-  does not issue a sequence of per-song heart requests. A future typed
-  action must bind the positively identified current account's specialType=5
-  destination (and unique cookie scope for /api/song/like/get), use the same
-  group receipt and no-replay journal, then confirm and publish membership by
-  guarded readback. Do not make the generic ordinary playlist editor accept
-  arbitrary system playlists or optimistically patch rights/cache.
+- M/3160:923–930,957–977 uses the first numeric specialType=5 from the host
+  playlist list for starPlaylistId. M/232:229–263 and M/15:1315–1328 show
+  /api/user/playlist with uid, limit 1000 and offset in steps of 1000, plus a
+  separate pinned overlay. M/3160:1141–1142,1227–1231,1241–1254 compares the
+  chosen ID to this star, sends the same ordered batch add, and updates liked
+  IDs and its notice. It does not issue individual heart requests.
+- The native picker reads its optional system-liked row separately from the
+  regular sorted pages. `player_voice_songs_collect_liked_destination` takes
+  the same account/play/card/selection target and returns account-scoped
+  `{playlistId,destinationReceipt}` or null. It checks an unpinned, complete
+  host list (maximum ten pages; foreign, duplicate or ambiguous stars fail
+  closed) and a fresh exact detail with agreeing account ownership, numeric
+  specialType=5 and no local-only entries. It never reads liked IDs or writes.
+  A successful list with no star returns null. Reloading the row revokes the
+  older receipt even when the playlist ID did not change.
+- The picker loads this row once for the current selection alongside the
+  regular list, without rereading it for each page or sort. A read failure
+  only hides the liked row and offers a retry; ordinary rows stay available.
+  Only a non-null verified row enables the action. The UI compares its
+  playlistId with the result and sends only destinationReceipt with the
+  selection target to `player_voice_songs_collect_liked`. A changed star fails
+  before write rather than retargeting. Unlike the official picker, the
+  verified row has a dedicated position above the regular list: the host
+  read proves identity, not the liked row's rank in the v2 sort or its art
+  and count. The regular picker and generic editor still reject system lists.
+- M/3160:990–1028, M/232:310–329 and M/15:1409–1414 independently describe
+  refresh of the star's detail trackIds and a native local-only overlay. For
+  confirmation Cumulus requires both the complete star detail and its existing
+  account-liked membership read (/api/song/like/get {uid}), not the official
+  optimistic update or a copy of the input. Same native PC account, Cookie,
+  device and credential revision must cover list, detail, membership, card
+  and the guarded write. If the two preflight sources disagree for any
+  selected ID, no write occurs. Only verified confirmation publishes the
+  observed liked IDs into the account resource cache.
+- The existing playlist journal records a system-liked marker before the
+  single possible batch write. A 200 reply or matching playlist detail alone
+  cannot settle it. Pending operations require the same current system star
+  and independently observed membership on readback. The shared journal can
+  read back an interrupted operation after a new session opens the same
+  account and database, even when the original episode receipt is gone. It
+  never sends the batch again. Both destination commands are restricted to
+  the main window. Verification uses synthetic account state, not live writes.
+
+- The sealed Linux `voice_song_collect_smoke.py --liked` run uses the
+  configured signed PC EAPI route and trusted X11 gestures in WebKitGTK.
+  Across 15 stages, the existing regular row remains visible, one ordered
+  batch reaches the verified system star, and a dropped response remains
+  uncertain when detail shows the batch but the liked-ID read is incomplete.
+  An explicit readback observes both, updates the heart and the durable
+  journal, and never resends the write. Closing and confirmation return focus
+  to the originating row and preserve the paused decoder, clock and queue.
+  The separate regular case still passes 13 stages without an invented
+  system target. Neither case uses a real account or physical audio.
+
+Separate official destination not yet exposed here
 - New (FavouriteModal/index.jsx:419–441,529–534) closes the picker into the
   create dialog, preserving selectedData, and passes a null destination
   sentinel. M/3085:823–844 and M/31:451–472 wait for create to return the

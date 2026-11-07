@@ -235,10 +235,26 @@ export interface VoiceSongPurchasedDownloadClient {
   ): Promise<VoiceSongPurchasedDownloadResult>;
 }
 
+export interface VoiceSongLikedDestination {
+  playlistId: string;
+  destinationReceipt: string;
+}
+
+export interface VoiceSongLikedCollectClient {
+  playerVoiceSongsCollectLikedDestination(
+    target: VoiceSongCollectTarget,
+  ): Promise<AccountData<VoiceSongLikedDestination | null>>;
+  playerVoiceSongsCollectLiked(
+    target: VoiceSongCollectTarget,
+    destinationReceipt: string,
+  ): Promise<VoiceSongCollectResult>;
+}
+
 export interface VoiceSongsClient
   extends VoiceSongDownloadClient,
     VoiceSongPurchasedDownloadClient,
-    VoiceSongCollectClient {
+    VoiceSongCollectClient,
+    VoiceSongLikedCollectClient {
   playerVoiceSongs(epoch: string, playId: string): Promise<VoiceSongsView>;
   playerVoiceSongPlay(
     epoch: string,

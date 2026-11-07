@@ -79,7 +79,11 @@ pub struct PlaylistSnapshot {
 impl PlaylistSnapshot {
     pub(super) async fn read(api: &PlaylistApi, id: &str) -> Result<Self> {
         let value = api.detail(&json!(id)).await?;
-        let summary = PlaylistSummary::parse(&value)?;
+        Self::from_detail(&value, id)
+    }
+
+    pub(super) fn from_detail(value: &Value, id: &str) -> Result<Self> {
+        let summary = PlaylistSummary::parse(value)?;
         if summary.id != id {
             return Err(Error::Response("playlist identity mismatch"));
         }

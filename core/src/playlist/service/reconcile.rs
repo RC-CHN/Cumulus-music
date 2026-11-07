@@ -1,5 +1,26 @@
 use super::*;
 use std::collections::HashSet;
+pub(super) fn tracks_added(
+    before: &PlaylistSnapshot,
+    after: &PlaylistSnapshot,
+    ids: &[String],
+) -> bool {
+    let old = before.tracks.iter().collect::<HashSet<_>>();
+    let expected = before
+        .tracks
+        .iter()
+        .chain(ids.iter())
+        .collect::<HashSet<_>>();
+    // The service determines insertion positions; prove exact membership,
+    // count and unchanged old order.
+    after.tracks.len() == expected.len()
+        && after.tracks.iter().collect::<HashSet<_>>() == expected
+        && after
+            .tracks
+            .iter()
+            .filter(|id| old.contains(id))
+            .eq(before.tracks.iter())
+}
 pub(super) fn matches(record: &mut PlaylistMutation, observed: &Value, uid: &str) -> Result<bool> {
     match &record.command {
         PlaylistCommand::Create { name, private } => {
@@ -82,23 +103,7 @@ pub(super) fn matches(record: &mut PlaylistMutation, observed: &Value, uid: &str
                             Ok(after.tracks == *ids)
                         }
                         TrackChange::Clear => Ok(after.tracks.is_empty()),
-                        TrackChange::Add => {
-                            let old = before.tracks.iter().collect::<HashSet<_>>();
-                            let expected = before
-                                .tracks
-                                .iter()
-                                .chain(ids.iter())
-                                .collect::<HashSet<_>>();
-                            // The service determines insertion positions; prove
-                            // exact membership, count and unchanged old order.
-                            Ok(after.tracks.len() == expected.len()
-                                && after.tracks.iter().collect::<HashSet<_>>() == expected
-                                && after
-                                    .tracks
-                                    .iter()
-                                    .filter(|id| old.contains(id))
-                                    .eq(before.tracks.iter()))
-                        }
+                        TrackChange::Add => Ok(tracks_added(&before, &after, ids)),
                     }
                 }
                 _ => unreachable!("list actions handled above"),
