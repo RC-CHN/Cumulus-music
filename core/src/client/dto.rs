@@ -44,12 +44,12 @@ pub use super::player::{
     QualityTrialView, QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand,
     QueueClickPreferencesView, QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack,
     QueueView, SearchResultPlayback, SongRowSelection, StartupPreferencesCommand,
-    StartupPreferencesView, VoiceSongAction, VoiceSongCollectPlan, VoiceSongCollectResult,
-    VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
-    VoiceSongDownloadPlan, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint,
-    VoiceSongGroupDownloadPlan, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
-    VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability, VoiceSongSelectionAction,
-    VoiceSongSelectionKind,
+    StartupPreferencesView, VoiceSongAction, VoiceSongCollectCreation, VoiceSongCollectPlan,
+    VoiceSongCollectResult, VoiceSongDownloadCreation, VoiceSongDownloadDecision,
+    VoiceSongDownloadPicker, VoiceSongDownloadPlan, VoiceSongGroupDownloadDecision,
+    VoiceSongGroupDownloadHint, VoiceSongGroupDownloadPlan, VoiceSongLikedDestination,
+    VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability,
+    VoiceSongSelectionAction, VoiceSongSelectionKind,
 };
 pub use super::player::{
     VinylVoiceDetailTarget, VinylVoiceDetailView, VinylVoiceRecommendationCard,

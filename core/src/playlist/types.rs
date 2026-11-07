@@ -187,3 +187,22 @@ pub struct PlaylistMutation {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub system_liked_group: bool,
 }
+
+impl PlaylistMutation {
+    /// A real create acknowledgement supplies an ID; a later list delta can
+    /// settle the journal, but cannot give another action permission to write.
+    pub(crate) fn confirmed_created_target(&self) -> Option<(&str, &str, bool)> {
+        if self.phase != PlaylistPhase::Confirmed
+            || self.codes.get("main") != Some(&200)
+            || self.error_class.is_some()
+        {
+            return None;
+        }
+        match &self.command {
+            PlaylistCommand::Create { name, private } => {
+                Some((self.playlist_id.as_deref()?, name, *private))
+            }
+            _ => None,
+        }
+    }
+}
