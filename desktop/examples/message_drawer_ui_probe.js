@@ -451,6 +451,8 @@
     const categoryBadge = (key) => badge(`[data-message-tab="${key}"]`);
     async function navigate(action, category, expected) {
       const before = await countCalls();
+      const otherCategories = ['private', 'comments', 'forwards', 'notices']
+        .filter((key) => key !== category).map((key) => [key, categoryBadge(key)]);
       await fixture('count-hold');
       action();
       await wait(async () => {
@@ -458,7 +460,8 @@
         return sample.countHeld && sample.requests.filter(([path]) => path === '/api/pl/count').length === before + 1;
       }, 'navigation immediately rearms the existing count reader');
       if (category) {
-        await wait(() => !categoryBadge(category) && badge(privateTab) === '3' && dot(),
+        await wait(() => !categoryBadge(category) && dot() &&
+          otherCategories.every(([key, value]) => categoryBadge(key) === value),
           'only the new category clears locally while the count response is held');
       } else {
         assert(dot() && (!one(privateTab) || badge(privateTab) === '3'),
@@ -531,13 +534,15 @@
     await Promise.resolve();
     assert(!drawer() && document.activeElement === trigger(), 'Escape purges private DOM immediately and restores focus');
     await wait(async () => await countCalls() === 11, 'closing returns the same poller to normal cadence');
+    await fixture('inbox-reset');
     click(trigger());
-    await wait(() => ready() && contains('私信预览 1'), 'new private list session');
+    await wait(async () => ready() && contains('私信预览 1') && categoryBadge('notices') === '4'
+      && await countCalls() === 12, 'new private list session and visibility count settled');
     assert(badge(peerRow(505)) === '2' && badge(peerRow(501)) === '1' && badge(privateTab) === '3',
       'a fresh authoritative inbox can show a positive peer count again');
     await fixture('release');
     await wait(async () => !(await fixture()).noticeHeld, 'stale notice reply released');
-    await navigate(() => pick('notices'), 'notices', '7');
+    await navigate(() => pick('notices'), 'notices', '4');
     await wait(() => ready() && contains('合成歌单'), 'fresh notification tab after reopen');
     assert(!contains('旧面板数据不能显示'), 'old drawer response is ignored');
     await capture('reopened');
