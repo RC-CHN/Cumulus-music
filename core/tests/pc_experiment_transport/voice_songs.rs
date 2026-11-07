@@ -815,10 +815,10 @@ async fn voice_songs_next_play_rejects_unavailable_and_stale_rows_before_queue_c
     assert_eq!(
         serde_json::to_value(&card.availability).unwrap(),
         json!([
-            {"onlineEligible":false,"copyrightBlocked":false},
-            {"onlineEligible":true,"copyrightBlocked":true},
-            {"onlineEligible":true,"copyrightBlocked":true},
-            {"onlineEligible":true,"copyrightBlocked":false}
+            {"onlineEligible":false,"copyrightBlocked":false,"groupDownload":"omitted"},
+            {"onlineEligible":true,"copyrightBlocked":true,"groupDownload":"omitted"},
+            {"onlineEligible":true,"copyrightBlocked":true,"groupDownload":"omitted"},
+            {"onlineEligible":true,"copyrightBlocked":false,"groupDownload":"omitted"}
         ])
     );
     for index in 0..3 {

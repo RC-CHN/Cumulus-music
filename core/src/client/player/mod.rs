@@ -56,9 +56,10 @@ pub use voice_detail::{
 pub use voice_songs::{
     PlayerVoiceSongsView, VoiceSongAction, VoiceSongCollectPlan, VoiceSongCollectResult,
     VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
-    VoiceSongDownloadPlan, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadPlan,
-    VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult,
-    VoiceSongRowAvailability, VoiceSongSelectionAction, VoiceSongSelectionKind,
+    VoiceSongDownloadPlan, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint,
+    VoiceSongGroupDownloadPlan, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
+    VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability, VoiceSongSelectionAction,
+    VoiceSongSelectionKind,
 };
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};

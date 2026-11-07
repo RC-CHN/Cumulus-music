@@ -45,13 +45,37 @@ async fn configure(f: &Fixture) {
 async fn fixture(replies: impl IntoIterator<Item = HttpResponse>) -> (Fixture, String) {
     let f = Fixture::new(&[COOKIE], [card()].into_iter().chain(replies)).await;
     super::picker::config(&f);
-    let receipt = f
+    let view = f
         .client
         .player_voice_songs(&f.epoch, &f.play_id)
         .await
-        .unwrap()
-        .receipt
         .unwrap();
+    let hints: Vec<_> = view
+        .availability
+        .iter()
+        .map(|row| {
+            serde_json::to_value(row).unwrap()["groupDownload"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        hints,
+        [
+            "ordinary",
+            "ordinary",
+            "omitted",
+            "ordinary",
+            "ordinary",
+            "ordinary",
+            "omitted",
+            "unsupported",
+            "unsupported",
+            "ordinary",
+        ]
+    );
+    let receipt = view.receipt.unwrap();
     (f, receipt)
 }
 

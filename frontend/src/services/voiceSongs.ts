@@ -11,7 +11,14 @@ export interface VoiceSongsView {
   voiceId: string;
   receipt: string | null;
   tracks: TrackView[];
-  availability: { onlineEligible: boolean; copyrightBlocked: boolean }[];
+  availability: VoiceSongRowAvailability[];
+}
+
+export interface VoiceSongRowAvailability {
+  onlineEligible: boolean;
+  copyrightBlocked: boolean;
+  /** A card-local affordance, never an admission receipt. */
+  groupDownload?: 'ordinary' | 'omitted' | 'unsupported';
 }
 
 export type VoiceSongAction =

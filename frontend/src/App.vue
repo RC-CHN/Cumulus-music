@@ -213,6 +213,10 @@ import VoiceSongPurchasedQuality from './components/VoiceSongPurchasedQuality.vu
 import { useVoiceSongDownload } from './composables/useVoiceSongDownload';
 import VoiceSongGroupCollectDialog from './components/VoiceSongGroupCollectDialog.vue';
 import { useVoiceSongGroupCollect } from './composables/useVoiceSongGroupCollect';
+import {
+  offerVoiceSongGroupDownload,
+  useVoiceSongGroupDownload,
+} from './composables/useVoiceSongGroupDownload';
 import CloudPage from './components/CloudPage.vue';
 import CloudBatchPage from './components/cloud/CloudBatchPage.vue';
 import MvCollection from './components/MvCollection.vue';
@@ -1201,6 +1205,16 @@ function showPlaybackVoiceSongMenu(
   const route = page.value;
   const opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
   const live = () => route === page.value && voiceSongs.ownsTarget(target);
+  const groupDownloadAvailable = () =>
+    live() &&
+    !!selection &&
+    offerVoiceSongGroupDownload(
+      voiceSongs.view.value,
+      target.index,
+      selection.indices,
+      music.liked.value,
+      music.busyLikes.value,
+    );
   void trackActions.value?.show({
     track: row.track,
     event,
@@ -1222,6 +1236,26 @@ function showPlaybackVoiceSongMenu(
       selection,
       collectGroup: selection
         ? () => openPlaybackVoiceSongGroupCollect(target, selection.indices, opener)
+        : undefined,
+      downloadGroup: selection
+        ? {
+            available: groupDownloadAvailable,
+            busy: () => voiceSongGroupDownload.busy.value,
+            start() {
+              if (!groupDownloadAvailable()) return;
+              voiceDownloadFeedback.value = undefined;
+              void voiceSongGroupDownload.run({
+                request: {
+                  epoch: target.epoch,
+                  playId: target.playId,
+                  cardReceipt: target.receipt,
+                  anchorIndex: target.index,
+                  indices: selection.indices,
+                },
+                live,
+              });
+            },
+          }
         : undefined,
       download() {
         if (!live() || selection) return;
@@ -1879,6 +1913,18 @@ const voiceSongGroupCollect = useVoiceSongGroupCollect(
   core,
   () => void music.bootstrap(false),
   () => void music.resources(),
+);
+const voiceSongGroupDownload = useVoiceSongGroupDownload(
+  core,
+  () => void music.bootstrap(false),
+  (epoch) => {
+    if (epoch !== music.account.value.epoch) return;
+    openVoiceSongDownloads();
+    downloadDialog.value = { kind: 'settings' };
+  },
+  (epoch) => {
+    if (epoch === music.account.value.epoch) openVoiceSongDownloads();
+  },
 );
 function voiceSongGroupCollectFocus() {
   return voiceGroupCollectOpener.value ?? null;
@@ -6045,6 +6091,7 @@ onUnmounted(() => {
               : '已添加到下载'
             : undefined
         "
+        :voice-group-download-notice="voiceSongGroupDownload.notice.value"
         :liked-songs="liked"
         :busy-likes="busyLikes"
         :comments-available="!!vinylCommentTarget"
@@ -6065,6 +6112,7 @@ onUnmounted(() => {
         @voice-song-like="likePlaybackVoiceSong"
         @voice-song-more="showPlaybackVoiceSongMenu"
         @voice-song-collect="openPlaybackVoiceSongGroupCollect"
+        @voice-group-download-action="voiceSongGroupDownload.action"
         @voice-song-artist="openPlaybackVoiceSongArtist"
         @voice-podcast-login="loginOpen = true"
         @lyric-contributor="openPlaybackLyricContributor"

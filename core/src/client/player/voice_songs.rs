@@ -55,6 +55,17 @@ pub struct PlayerVoiceSongsView {
 pub struct VoiceSongRowAvailability {
     pub online_eligible: bool,
     pub copyright_blocked: bool,
+    pub group_download: VoiceSongGroupDownloadHint,
+}
+
+/// Card-local affordance only; current account, local files and the download
+/// ledger are checked by the explicit native prepare/start commands.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceSongGroupDownloadHint {
+    Ordinary,
+    Omitted,
+    Unsupported,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -356,6 +367,13 @@ impl MusicClient {
                 .map(|row| VoiceSongRowAvailability {
                     online_eligible: row.online_eligible,
                     copyright_blocked: row.copyright_blocked,
+                    group_download: if row.group_download_unsupported {
+                        VoiceSongGroupDownloadHint::Unsupported
+                    } else if row.download == download::Class::Ordinary {
+                        VoiceSongGroupDownloadHint::Ordinary
+                    } else {
+                        VoiceSongGroupDownloadHint::Omitted
+                    },
                 })
                 .collect(),
         })
