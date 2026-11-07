@@ -1,4 +1,5 @@
-//! Owned-playlist and system-liked destinations of the episode SongCard FavouriteModal.
+//! Native destinations of the episode SongCard FavouriteModal.
+mod creation;
 use super::{MAX_TRACKS, MusicClient, actions::Page, id, stale_credentials};
 use crate::{
     Error, Result,
@@ -9,6 +10,7 @@ use crate::{
     playlist::{PlaylistCommand, PlaylistMutation, PlaylistPhase, PlaylistService, TrackChange},
     protocol::wire::serialization::js_truthy,
 };
+pub use creation::VoiceSongCollectCreation;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -86,6 +88,7 @@ pub struct VoiceSongCollectPlan {
     pub eligible_count: usize,
     pub omitted_indices: Vec<usize>,
     pub used_first_fallback: bool,
+    pub can_create: bool,
 }
 
 #[derive(Serialize)]
@@ -114,6 +117,7 @@ struct Selection {
     liked_ticket: Option<u64>,
     liked: Option<VoiceSongLikedDestination>,
     attempt: Option<Attempt>,
+    creation: Option<creation::Intent>,
     busy: bool,
 }
 
@@ -159,13 +163,7 @@ struct Lease<'a> {
 
 impl Drop for Lease<'_> {
     fn drop(&mut self) {
-        if let Ok(mut slot) = self.shelf.0.lock()
-            && let Some(active) = slot
-                .as_mut()
-                .filter(|active| active.receipt == self.receipt)
-        {
-            active.busy = false;
-        }
+        self.shelf.release(self.receipt);
     }
 }
 
@@ -174,6 +172,14 @@ fn uuid() -> String {
 }
 
 impl Shelf {
+    fn release(&self, receipt: &str) {
+        if let Ok(mut slot) = self.0.lock()
+            && let Some(active) = slot.as_mut().filter(|active| active.receipt == receipt)
+        {
+            active.busy = false;
+        }
+    }
+
     fn replace(
         &self,
         service: &PlaylistService,
@@ -185,12 +191,23 @@ impl Shelf {
             if active.busy {
                 return Err(Error::MutationBusy);
             }
-            if let Some(attempt) = &active.attempt
-                && service
-                    .operation_for(&page.token, &attempt.operation)?
-                    .is_some_and(|record| record.phase.pending())
+            for operation in active
+                .attempt
+                .iter()
+                .map(|attempt| attempt.operation.as_str())
+                .chain(
+                    active
+                        .creation
+                        .iter()
+                        .flat_map(creation::Intent::operation_ids),
+                )
             {
-                return Err(Error::MutationUncertain);
+                if service
+                    .operation_for(&page.token, operation)?
+                    .is_some_and(|record| record.phase.pending())
+                {
+                    return Err(Error::MutationUncertain);
+                }
             }
         }
         *slot = (!songs.is_empty()).then(|| Selection {
@@ -201,6 +218,7 @@ impl Shelf {
             liked_ticket: None,
             liked: None,
             attempt: None,
+            creation: None,
             busy: false,
         });
         Ok(slot.as_ref().map(|active| active.receipt.clone()))
@@ -229,6 +247,9 @@ impl Shelf {
         self.with_selection(receipt, |active| {
             if active.busy {
                 return Err(Error::MutationBusy);
+            }
+            if active.creation.is_some() {
+                return Err(Error::StaleResponse);
             }
             let previous = active
                 .attempt
@@ -293,7 +314,16 @@ fn result(
     lease: &Lease<'_>,
     record: PlaylistMutation,
 ) -> Result<VoiceSongCollectResult> {
-    let attempt = &lease.attempt;
+    collect_result(page, lease.receipt, &lease.songs, &lease.attempt, record)
+}
+
+fn collect_result(
+    page: &Page,
+    receipt: &str,
+    songs: &[String],
+    attempt: &Attempt,
+    record: PlaylistMutation,
+) -> Result<VoiceSongCollectResult> {
     let playlist_id = record
         .playlist_id
         .as_ref()
@@ -302,7 +332,7 @@ fn result(
         || record.system_liked_group != matches!(attempt.destination, Destination::SystemLiked(_))
         || attempt.destination.id() != playlist_id
         || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
-            if id == playlist_id && ids.as_slice() == lease.songs.as_ref())
+            if id == playlist_id && ids.as_slice() == songs)
     {
         return Err(Error::State(
             "collection completion belongs to a different playlist action",
@@ -311,7 +341,7 @@ fn result(
     Ok(VoiceSongCollectResult {
         epoch: page.token.generation.to_string(),
         play_id: page.play_id.clone(),
-        selection_receipt: lease.receipt.into(),
+        selection_receipt: receipt.into(),
         playlist_id: playlist_id.clone(),
         operation_id: record.operation_id,
         phase: record.phase,
@@ -374,6 +404,14 @@ impl MusicClient {
         let service = PlaylistService::new(self.session.clone())?;
         check()?;
         let selection_receipt = page.collect.replace(&service, &page, songs)?;
+        let can_create = selection_receipt.is_some()
+            && page.api.upgrade().is_some_and(|api| {
+                api.song_card_collection_create_scope_revision()
+                    .ok()
+                    .flatten()
+                    .as_deref()
+                    == Some(page.revision.as_str())
+            });
         check()?;
         Ok(VoiceSongCollectPlan {
             epoch: epoch.into(),
@@ -383,6 +421,7 @@ impl MusicClient {
             eligible_count,
             omitted_indices,
             used_first_fallback,
+            can_create,
         })
     }
 

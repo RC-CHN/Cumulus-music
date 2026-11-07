@@ -12,6 +12,12 @@
   const menu = () => q('[data-menu-key="collect"]');
   const playlist = () => q('[data-playlist-id="81"]', dialog());
   const likedMode = window.__voiceSongGroupLikedProof === true;
+  const creationMode = window.__voiceSongCollectCreateProof;
+  const createRow = () => label('创建新歌单', dialog());
+  const createButton = () => textButton('创建', dialog());
+  const nameInput = () => q('input[aria-label="歌单名称"]', dialog());
+  const privateInput = () => q('input[type="checkbox"]', dialog());
+  const firstAdd = () => textButton('继续收藏', dialog());
   const liked = () => q('[data-voice-song-collect-liked]', dialog());
   const reconcile = () => textButton('核对结果', dialog());
   const selected = () => all('[data-voice-song-row][aria-selected="true"]', shelf())
@@ -36,6 +42,12 @@
     if (likedMode && target.closest('[data-voice-song-collect-liked]')) return 'picker:liked';
     const button = target.closest('button');
     if (likedMode && button && button === reconcile()) return 'picker:reconcile';
+    if (creationMode && button) {
+      if (button === createRow()) return 'picker:create';
+      if (button === createButton()) return 'create:submit';
+      if (button === reconcile()) return 'create:reconcile';
+      if (button === firstAdd()) return 'create:add';
+    }
     const index = target.closest('[data-voice-song-row]')?.dataset.rowIndex;
     return index === undefined ? null : `row:${index}`;
   };
@@ -63,6 +75,7 @@
   const destinationsName = 'playerVoiceSongsCollectDestinations';
   const likedDestinationName = 'playerVoiceSongsCollectLikedDestination';
   const likedName = 'playerVoiceSongsCollectLiked';
+  const creationName = 'playerVoiceSongsCollectCreateAction';
   const submitName = likedMode ? likedName : existingName;
   const expectedIndices = [1, 2, 3, 0];
 
@@ -101,6 +114,11 @@
         playlistIds: all('[data-playlist-id]', dialog()).map((item) => item.dataset.playlistId),
         reconcile: enabled(textButton('核对结果', dialog())) },
       ...(likedMode ? { likedRow: liked()?.textContent.trim() ?? null } : {}),
+      ...(creationMode ? { creation: {
+        row: enabled(createRow()), submit: enabled(createButton()), name: nameInput()?.value ?? null,
+        nameFocused: !!nameInput() && document.activeElement === nameInput(),
+        private: privateInput()?.checked ?? null, canAdd: enabled(firstAdd()),
+      } } : {}),
       events: clone(events), commands: clone(commands), ...detail,
     });
     await wait(() => window.__podcastProgressStage === stage, 'native stage persisted before next input');
@@ -134,6 +152,7 @@
     const names = ['playerVoiceSongs', planName, destinationsName, existingName, statusName,
       'playlistCollectPage', 'mutatePlaylist', 'playerVoiceSongsSelection', 'playerVoiceSongPlay'];
     if (likedMode) names.push(likedDestinationName, likedName);
+    if (creationMode) names.push(creationName, 'playlists');
     const originals = names.map((name) => core[name]);
     assert(originals.every((method) => typeof method === 'function'), 'actual typed command adapters');
     for (const [index, name] of names.entries()) {
@@ -195,6 +214,8 @@
         !ready.usedFirstFallback && ready.selectionReceipt, 'collection filters subp independent of playback');
       assert(all('[data-playlist-id]', dialog()).length === 1 &&
         q('[data-voice-song-collect-summary]', dialog())?.textContent.trim(), 'owned only and visible group counts');
+      assert(ready.canCreate === !!creationMode && enabled(createRow()) === !!creationMode,
+        'Create exists only for the native verified create scope');
       if (likedMode) {
         const destination = await wait(() => enabled(liked()) && results(likedDestinationName)[attempt - 1],
           'verified native system liked receipt renders independent picker row');
@@ -208,12 +229,61 @@
     }
     const cancelled = await open(1);
     await capture('picker');
+    const formReady = () => dialog()?.dataset.voiceSongCollectStage === 'creating' &&
+      q('h2', dialog())?.textContent.trim() === '创建歌单' && document.activeElement === nameInput() &&
+      nameInput()?.value === '' && privateInput()?.checked === false && createButton()?.disabled;
+    if (creationMode) {
+      await input('create_before_cancel', createRow, 'picker:create', {}, formReady);
+      await capture('form_cancel');
+    }
     await click(() => label('关闭收藏', dialog()), 'cancel actual collector');
-    await wait(() => !dialog() && document.activeElement === row(0), 'cancel returns exact invoking row focus');
+    await wait(() => !dialog() && document.activeElement === row(0) &&
+      (!creationMode || results(creationName)[0]?.kind === 'cancelled'), 'cancel returns exact invoking row focus');
     await capture('cancelled');
 
     const active = await open(2);
     assert(active.selectionReceipt !== cancelled.selectionReceipt, 'new modal has its own selection receipt');
+    if (creationMode) {
+      assert(['recover', 'add_false'].includes(creationMode), 'exact sealed creation mode');
+      await input('create_open', createRow, 'picker:create', {}, formReady);
+      const name = nameInput();
+      name.value = '合成新收藏歌单';
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+      await click(privateInput, 'explicitly choose private playlist');
+      await wait(() => enabled(createButton()) && privateInput()?.checked, 'valid form requires explicit submit');
+      await capture('form_ready');
+      await input('submit_create', createButton, 'create:submit');
+      if (creationMode === 'recover') {
+        await wait(() => results(creationName)[1]?.creation?.createPhase === 'uncertain' &&
+          enabled(reconcile()) && !enabled(firstAdd()), 'uncertain create offers only readback');
+        await capture('creation_pending');
+        await input('read_creation', reconcile, 'create:reconcile');
+        await wait(() => results(creationName)[2]?.creation?.canAdd === true &&
+          enabled(firstAdd()) && !enabled(reconcile()), 'verified create separately enables first add');
+        await capture('created_ready');
+        const playlistReads = results('playlists').length;
+        await input('first_add', firstAdd, 'create:add');
+        await wait(() => results(creationName)[3]?.creation?.add?.phase === 'confirmed' &&
+          !dialog() && document.activeElement === row(0) && results('playlists').slice(playlistReads).some(
+            (value) => value?.value?.some((row) => row.id === '91' && row.name === '合成新收藏歌单')),
+          'confirmed first add returns source focus and refreshes account playlists');
+        await capture('reconciled');
+      } else {
+        await wait(() => results(creationName)[1]?.creation?.addFailed === true &&
+          dialog()?.dataset.voiceSongCollectStage === 'failed' && !enabled(firstAdd()) && !enabled(reconcile()),
+          'known false displays terminal failure even if membership was observed');
+        await capture('creation_failed');
+        await click(() => label('关闭收藏', dialog()), 'close terminal creation result');
+        await wait(() => !dialog() && document.activeElement === row(0), 'failure closes back to source');
+        await capture('closed_after_failure');
+      }
+      assert(commands.every((command) => ![existingName, likedName, statusName, 'playlistCollectPage',
+        'mutatePlaylist', 'playerVoiceSongsSelection', 'playerVoiceSongPlay'].includes(command.name)),
+      'new group create never falls back to another destination, a raw write or playback');
+      await emit('complete', { count, ok: true, creationMode, realMusicRequests: 0, realAccountWrites: 0,
+        physicalAudioVerified: false });
+      return;
+    }
     if (likedMode) {
       await input('choose_liked', liked, 'picker:liked');
     } else {

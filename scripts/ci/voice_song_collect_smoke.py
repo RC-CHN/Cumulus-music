@@ -31,10 +31,114 @@ OBSERVED_LIKES = ['701', '1710', '1601', '1791']
 LIKED_READ = 'playerVoiceSongsCollectLikedDestination'
 LIKED_SUBMIT = 'playerVoiceSongsCollectLiked'
 OWNED_SUBMIT = 'playerVoiceSongsCollectExisting'
+CREATE_ACTION = 'playerVoiceSongsCollectCreateAction'
+CREATE = '/api/playlist/create'
+CREATED_NAME = '合成新收藏歌单'
 
 
 def commands(stage, method):
     return [row for row in stage['commands'] if row['name'] == method]
+
+
+def verify_create(root, mode):
+    output = root / 'run/first'
+    paths = sorted(output.glob('ux_[0-9][0-9]_*.json'))
+    stages = {path.stem.split('_', 2)[2]: read(path) for path in paths}
+    ending = (('creation_pending', 'read_creation', 'created_ready', 'first_add', 'reconciled')
+              if mode == 'recover' else ('creation_failed', 'closed_after_failure'))
+    assert tuple(stages) == (*STAGES[:8], 'create_before_cancel', 'form_cancel', 'cancelled',
+                             'menu_2', 'collect_2', 'create_open', 'form_ready', 'submit_create', *ending)
+    complete = read(output / 'complete.json')
+    assert complete['ok'] and complete['count'] == len(paths) and complete['creationMode'] == mode
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    assert complete['physicalAudioVerified'] is False
+    base, last = stages['baseline'], stages[ending[-1]]
+    player = base['player']
+    assert (player['kind'], player['voiceId'], player['state']) == ('voice', '601', 'paused')
+    assert player['position'] > .2 and not player['seeking'] and not player['error'], player
+    assert all(stage['actual'] and stage['player'] == player and stage['queue'] == base['queue']
+               for stage in stages.values())
+    assert [entry['track']['voiceId'] for entry in base['queue']['tracks']] == ['601', '602']
+    assert base['queue']['current'] == player['entryId']
+    [first, second] = commands(last, 'playerVoiceSongsCollectPrepare')
+    for call in (first, second):
+        assert call['args'][1] == ORDER and call['result']['canCreate'] is True
+        assert (call['result']['selectedCount'], call['result']['eligibleCount'], call['result']['omittedIndices']) == (4, 3, [2])
+    assert first['args'][0] == second['args'][0]
+    assert first['result']['selectionReceipt'] != second['result']['selectionReceipt']
+    original = {**first['args'][0], 'selectionReceipt': first['result']['selectionReceipt']}
+    active = {**second['args'][0], 'selectionReceipt': second['result']['selectionReceipt']}
+    assert active['playId'] == player['playId'] and active['voiceId'] == '601'
+    assert stages['picker']['creation']['row'] and stages['picker']['dom']['playlistIds'] == ['81']
+    assert stages['form_cancel']['dom']['title'] == '创建歌单'
+    assert stages['form_cancel']['creation'] == {
+        'row': False, 'submit': False, 'name': '', 'nameFocused': True, 'private': False, 'canAdd': False,
+    }
+    assert stages['cancelled']['focusRow'] == '0' and last['focusRow'] == '0' and not last['dom']['picker']
+    assert stages['form_ready']['creation']['name'] == CREATED_NAME and stages['form_ready']['creation']['private']
+    assert stages['form_ready']['creation']['submit']
+    actions = commands(last, CREATE_ACTION)
+    assert actions[0]['args'] == [original, {'kind': 'cancel_prepared'}] and actions[0]['result'] == {'kind': 'cancelled'}
+    assert actions[1]['args'] == [active, {'kind': 'create', 'name': CREATED_NAME, 'privatePlaylist': True}]
+    assert commands(stages['form_cancel'], CREATE_ACTION) == []
+    assert commands(stages['form_ready'], CREATE_ACTION) == actions[:1]
+    if mode == 'recover':
+        assert len(actions) == 4
+        assert actions[2]['args'] == [active, {'kind': 'status', 'reconcile': True}]
+        assert actions[3]['args'] == [active, {'kind': 'add_created'}]
+        pending = actions[1]['result']['creation']
+        assert (pending['createPhase'], pending['canAdd'], pending['add']) == ('uncertain', False, None)
+        assert stages['creation_pending']['dom']['reconcile'] and not stages['creation_pending']['creation']['canAdd']
+        verified = actions[2]['result']['creation']
+        assert verified['playlistId'] == '91' and verified['canAdd'] and verified['add'] is None
+        assert stages['created_ready']['creation']['canAdd'] and not stages['created_ready']['dom']['reconcile']
+        assert pending['createOperationId'] == verified['createOperationId']
+    else:
+        assert len(actions) == 2
+        failure = stages['creation_failed']
+        assert failure['dom']['stage'] == 'failed' and failure['dom']['status'] == '歌单已创建，但所选歌曲未能收藏。'
+        assert not failure['dom']['reconcile'] and not failure['creation']['canAdd']
+    final = actions[-1]['result']['creation']
+    assert final['createPhase'] == 'confirmed' and final['playlistId'] == '91' and not final['canAdd']
+    assert final['selectionReceipt'] == active['selectionReceipt']
+    assert final['createOperationId'] == actions[1]['result']['creation']['createOperationId']
+    assert final['addFailed'] is (mode == 'add_false')
+    add = final['add']
+    assert (add['playlistId'], add['phase']) == ('91', 'confirmed') and add['operationId'] != final['createOperationId']
+    assert add['selectionReceipt'] == active['selectionReceipt']
+    assert [event['target'] for event in last['events'] if event['target'].startswith('create:')] == (
+        ['create:submit', 'create:reconcile', 'create:add'] if mode == 'recover' else ['create:submit'])
+    assert all(event['trusted'] for event in last['events'])
+    listed = [LIST, {'uid': '2', 'offset': 0, 'limit': 10, 'sortType': 'default'}]
+    host = lambda observed: [STAR_LIST, {'uid': '2', 'includeVideo': True, 'limit': 200, 'offset': 0}, observed]
+    detail = lambda observed: [DETAIL, {'id': '91', 'n': 100000, 's': 0}, observed]
+    write = [ADD, {'pid': '91', 'trackIds': json.dumps(IDS, separators=(',', ':')), 'op': 'add'}]
+    wire = [host(False), listed, listed, host(False), [CREATE, {'uid': '2', 'name': CREATED_NAME, 'privacy': 10}]]
+    if mode == 'recover':
+        wire.append(host(False))
+        assert stages['creation_pending']['voiceSongCollectTrace']['calls'] == wire
+    wire.append(host(True))
+    if mode == 'recover':
+        assert stages['created_ready']['voiceSongCollectTrace']['calls'] == wire
+    wire.extend([detail(False), write, detail(True)])
+    if mode == 'recover':
+        wire.append(host(True))  # Completed action refreshes the ordinary account playlist list.
+        refresh = commands(last, 'playlists')[-1]['result']
+        assert any(row['id'] == '91' and row['name'] == CREATED_NAME for row in refresh['value'])
+    assert stages['cancelled']['voiceSongCollectTrace']['calls'] == [host(False), listed]
+    assert complete['voiceSongCollectTrace']['calls'] == wire
+    assert all(stage['voiceSongCollectTrace']['calls'] == wire[:len(stage['voiceSongCollectTrace']['calls'])]
+               for stage in stages.values())
+    records = persisted(root)
+    assert set(records) == {('playlist-mutations', final['createOperationId']), ('playlist-mutations', add['operationId'])}
+    saved = records['playlist-mutations', add['operationId']]
+    assert saved['playlist_id'] == '91' and saved['command']['ids'] == IDS and saved['phase'] == 'confirmed'
+    assert saved['codes']['main'] == (403 if mode == 'add_false' else 200)
+    pngs = sorted(output.glob('ux_[0-9][0-9]_*.png'))
+    assert len(pngs) == len(paths), pngs
+    return {'ok': True, 'actualWebView': True, 'actualNullAudio': True, 'physicalAudioVerified': False,
+            'case': mode, 'stages': len(paths), 'screenshots': len(pngs), 'syntheticPlaylistWrites': 2,
+            'realMusicRequests': 0, 'realAccountWrites': 0}
 
 
 def cached_likes(root):
@@ -135,7 +239,7 @@ def verify(root, liked=False):
         assert isinstance(selection, str) and len(selection) == 32
         assert plan == {'epoch': epoch, 'playId': play_id, 'selectionReceipt': selection,
                         'selectedCount': 4, 'eligibleCount': 3, 'omittedIndices': [2],
-                        'usedFirstFallback': False}
+                        'usedFirstFallback': False, 'canCreate': False}, plan
         target = {**source, 'selectionReceipt': selection}
         assert listed['args'] == [target, 'default', 0] and 'error' not in listed
         assert [row['id'] for row in listed['result']['value']['playlists']] == ['81']
@@ -240,7 +344,9 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path, required=True)
-    parser.add_argument('--liked', action='store_true', help='verify the signed system liked destination')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--liked', action='store_true', help='verify the signed system liked destination')
+    mode.add_argument('--create', choices=('recover', 'add_false'), help='verify the sealed new destination')
     args = parser.parse_args()
     require_xvfb()
     if os.environ.get('CUMULUS_TEST_WINDOW_MANAGER') != 'openbox':
@@ -253,6 +359,8 @@ def main():
     env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.liked:
         env['CUMULUS_VOICE_SONG_GROUP_LIKED_PROOF'] = '1'
+    if args.create:
+        env['CUMULUS_VOICE_SONG_COLLECT_CREATE_PROOF'] = args.create
     isolated_profile(env, root / 'application')
     output = root / 'run/first'
     with suite_window_manager(root), (root / 'host.log').open('x', encoding='utf-8') as log:
@@ -271,7 +379,7 @@ def main():
     failed = output / 'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert result == 0, f'desktop native proof exited {result}'
-    report = verify(root, args.liked)
+    report = verify_create(root, args.create) if args.create else verify(root, args.liked)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

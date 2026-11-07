@@ -1,4 +1,4 @@
-Episode playback · included song group → collect to an existing or system liked playlist
+Episode playback · included song group → collect to an existing, system liked or new playlist
 Official evidence: Windows 3.1.42.205594
 
 - M/556:233–287 offers track Favourite / Ctrl+S for a selection; it does
@@ -115,13 +115,74 @@ Native system-liked destination
   The separate regular case still passes 13 stages without an invented
   system target. Neither case uses a real account or physical audio.
 
-Separate official destination not yet exposed here
-- New (FavouriteModal/index.jsx:419–441,529–534) closes the picker into the
-  create dialog, preserving selectedData, and passes a null destination
-  sentinel. M/3085:823–844 and M/31:451–472 wait for create to return the
-  playlist ID; cancel returns false and never adds. Use independent native
-  create/add operation IDs, explicit name/privacy confirmation, returned ID
-  plus same-owner readback, and exact saved selection. If create succeeded
-  but add is uncertain, only read back the known operations; do not recreate
-  the playlist. Current download-picker single creation is a separate
-  producer and must not be used to confer group authority.
+New destination
+
+- FavouriteModal/index.jsx:419–441,529–534 closes the picker into the
+  create form and sends a null destination sentinel, keeping selectedData.
+  M/3085:768–792,823–844 retains the same filtered tracks and calls
+  createPlaylist({noToast:true}). M/31:451–475 resolves creation with the
+  returned playlistId, name and privacy, or nothing on cancel; the favorite
+  action is only dispatched for a returned playlistId. M/3034:54–80,89–129
+  requires a form submission; M/3160 → M/232:720–745 → M/15:3417 sends
+  `/api/playlist/create {uid,name,privacy}` (10 private, 0 public). noToast
+  is local. M/3085:831–843 then sends the same ordered online group add
+  as an existing destination, using only the new playlist ID.
+- Core `player_voice_songs_collect_create` accepts only the current card
+  and group selection receipts, a validated name and explicit privacy.
+  Merely opening the form does not issue a command. The synchronous
+  `player_voice_songs_collect_cancel_prepared` revokes only an unsubmitted
+  selection without reading or writing the service. A submitted receipt
+  is bound to one intent; it cannot change name/privacy, switch to an
+  existing/liked destination, or use the separate download-picker lane.
+- The native create operation locks and snapshots the account playlist list
+  (`/api/user/playlist`), journals its own ID before sending, and requires a
+  200 with the actual ID plus readback of an exact newly present same-owner
+  name/privacy. Before the separate add operation, fresh detail under the
+  existing journal lock checks the same ID, name, privacy and ownership;
+  contradictory creator and owner fields, system playlists and local-only
+  rows cannot be targeted. Add uses a second journal ID and the original
+  frozen eligible IDs in order (`pid`, `op=add`, JSON `trackIds`, no `imme`).
+  Both writes use the current card/play/account and native cookie/credential
+  scopes immediately before dispatch. Group creation extends the group
+  collection scope with signed account host list and create; it needs no
+  download or liked-read cookie scope. A changed remote detail fails before
+  the add is sent; the already created playlist is not deleted or renamed.
+- `player_voice_songs_collect_creation_status` only reads local journal
+  state, or explicitly reconciles pending operations via list/detail reads.
+  `createPhase` reports the journal state. Only `playlistId != null` proves
+  a confirmed ID from a successful create response; an inferred unique list
+  delta after a lost response may settle the general journal but must not
+  authorize the group add. `canAdd` additionally requires that no add
+  journal exists. `player_voice_songs_collect_add_created` can then explicitly
+  submit the first add after recovery of an acknowledged create. Neither
+  another create submission nor reconciliation can send that first add.
+  `addFailed` preserves an explicit service failure even if another client
+  adds the songs in time for readback to confirm membership. It does not
+  treat a not-sent or ambiguous request as an observed false callback.
+  Once either write exists, no action resends it. An old card or process
+  cannot resume a write; the general account journal still allows readback
+  of persisted operations. No automatic publication or real-account tests.
+- The desktop only exposes the Create row on a current verified group plan
+  with the native `canCreate` hint. The main-window typed command accepts
+  the same card and group receipts and one action (`create` with explicit
+  name and privacy, `status`, `add_created`, or `cancel_prepared`). The UI
+  closes the picker into the 创建歌单 form, focuses the name, and defaults
+  the visible privacy checkbox to unchecked, as in M/3034. Closing before
+  submission cancels the original picker and returns to the source row;
+  no server read or mutation is produced by cancelling the form. The
+  regular and verified liked destinations retain their own commands.
+- Creation and collection stay distinct in the dialog: pending shows
+  核对结果, verified creation without an add shows 继续收藏, and a definite
+  add failure remains visible even when readback proves membership. The
+  renderer checks both returned operation IDs against the current opening
+  and cannot change the frozen group's order, adopt a different playlist
+  or automatically repeat a mutation.
+- The Linux WebKitGTK probes `voice_song_collect_smoke.py --create recover`
+  and `--create add_false` cover trusted pointer selection and confirmation,
+  form cancellation without writes, explicit verification then a first add,
+  terminal false despite observed membership, and focus returned to the
+  invoking song row. They preserve the paused libmpv decoder, clock and
+  queue in 21 and 18 stages respectively. The GUI transport uses a sealed
+  native API fixture; the separate Rust transport tests exercise the
+  production EAPI encoding, signed cookie scopes and dispatch guards. No
+  live account or physical audio, and no new Windows UI exercise here.
