@@ -104,6 +104,17 @@ Native system-liked destination
   never sends the batch again. Both destination commands are restricted to
   the main window. Verification uses synthetic account state, not live writes.
 
+- The sealed Linux `voice_song_collect_smoke.py --liked` run uses the
+  configured signed PC EAPI route and trusted X11 gestures in WebKitGTK.
+  Across 15 stages, the existing regular row remains visible, one ordered
+  batch reaches the verified system star, and a dropped response remains
+  uncertain when detail shows the batch but the liked-ID read is incomplete.
+  An explicit readback observes both, updates the heart and the durable
+  journal, and never resends the write. Closing and confirmation return focus
+  to the originating row and preserve the paused decoder, clock and queue.
+  The separate regular case still passes 13 stages without an invented
+  system target. Neither case uses a real account or physical audio.
+
 Separate official destination not yet exposed here
 - New (FavouriteModal/index.jsx:419–441,529–534) closes the picker into the
   create dialog, preserving selectedData, and passes a null destination
