@@ -124,6 +124,10 @@ import ModalTransition from './components/ModalTransition.vue';
 import ArtistOnboarding from './components/onboarding/ArtistOnboarding.vue';
 import { useModalOrigin } from './composables/useModalOrigin';
 import LoginDialog from './components/LoginDialog.vue';
+import {
+  createClassicRemoveGuideScheduler,
+  type ClassicRemoveGuide,
+} from './services/classicRemoveGuide';
 import AccountDialog from './components/AccountDialog.vue';
 import { flushQuickOfferReload } from './composables/quickOfferReload';
 import TopbarAccount from './components/account/TopbarAccount.vue';
@@ -3849,6 +3853,42 @@ function lyricPanelLeave(element: Element) {
   (element as HTMLElement).inert = true;
 }
 const accountsOpen = ref(false);
+const classicRemoveGuide = shallowRef<ClassicRemoveGuide>();
+function discardClassicRemoveGuide(guide: ClassicRemoveGuide) {
+  void core.dismissClassicRemoveGuide(guide.epoch, guide.ticket).catch(() => {});
+}
+function closeLogin() {
+  const guide = classicRemoveGuide.value;
+  loginOpen.value = false;
+  classicRemoveGuide.value = undefined;
+  if (guide) discardClassicRemoveGuide(guide);
+}
+const classicGuideScheduler = createClassicRemoveGuideScheduler(
+  () =>
+    document.visibilityState === 'visible' &&
+    !loginOpen.value &&
+    !accountsOpen.value &&
+    !modalDepth.value &&
+    !document.querySelector('dialog[open],[aria-modal="true"]'),
+  (guide) => {
+    classicRemoveGuide.value = guide;
+    loginOpen.value = true;
+  },
+  discardClassicRemoveGuide,
+);
+watch(
+  account,
+  (next) => {
+    if (classicRemoveGuide.value && classicRemoveGuide.value.epoch !== next.epoch) closeLogin();
+    classicGuideScheduler.observe(next);
+  },
+  { flush: 'sync' },
+);
+onUnmounted(() => {
+  classicGuideScheduler.dispose();
+  if (classicRemoveGuide.value) discardClassicRemoveGuide(classicRemoveGuide.value);
+});
+
 const headerSettingsGuide = useHeaderSettingsGuide(
   core,
   () => account.value.epoch,
@@ -4159,7 +4199,7 @@ const title = computed(() =>
           : (result.value?.playlist?.name ?? '歌单'),
 );
 async function authorized() {
-  loginOpen.value = false;
+  closeLogin();
   accountsOpen.value = false;
   await music.bootstrap(false);
 }
@@ -6267,10 +6307,11 @@ onUnmounted(() => {
       <LoginDialog
         v-if="loginOpen"
         :epoch="account.epoch"
-        @close="loginOpen = false"
+        :classic-guide="classicRemoveGuide"
+        @close="closeLogin"
         @authorized="authorized"
         @accounts="
-          loginOpen = false;
+          closeLogin();
           accountsOpen = true;
         "
       />

@@ -121,6 +121,7 @@ async fn legacy_only_three_null_actions_expire_while_missing_actions_reset_and_k
             .is_service_code(301)
     );
     assert_eq!(w.client.account().unwrap().status, SessionStatus::Expired);
+    assert!(w.client.account().unwrap().classic_remove_guide.is_none());
     assert_eq!(
         store(&w).get("1", "playback", "queue").unwrap(),
         Some(before)
@@ -275,6 +276,7 @@ async fn failed_queue_transaction_keeps_durable_intent_and_restart_finishes_with
             Err(Error::Storage(_))
         ));
         assert_eq!(w.client.account().unwrap().status, SessionStatus::Expired);
+        assert!(w.client.account().unwrap().classic_remove_guide.is_none());
         assert!(w.client.account().unwrap().can_sign_out);
         assert!(w.credentials().login_credentials().unwrap().token.is_none());
         assert!(w.record()["queue_reset"].is_object());
@@ -354,4 +356,176 @@ async fn late_legacy_exit_cannot_clear_queues_or_replace_a_new_account_notice() 
         store(&w).get("1", "playback", "queue").unwrap(),
         Some(before)
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn classic_remove_guide_is_delayed_one_shot_bound_and_retries_only_explicitly() {
+    let w = World::new([
+        rejected(),
+        flags("c", "c"),
+        force_exit(),
+        json!({"code":200,"unikey":"synthetic-classic-guide-one"}).into(),
+        json!({"code":200,"unikey":"synthetic-classic-guide-retry"}).into(),
+    ])
+    .await;
+    let prior = w.epoch();
+    assert!(
+        w.client
+            .daily_songs()
+            .await
+            .err()
+            .unwrap()
+            .is_service_code(301)
+    );
+    let expired = w.client.account().unwrap();
+    assert_ne!(expired.epoch, prior);
+    let guide = expired.classic_remove_guide.unwrap();
+    let begin = |epoch: &str, retry: bool| {
+        let client = w.client.clone();
+        let epoch = epoch.to_owned();
+        let guide = guide.clone();
+        async move {
+            client
+                .begin_classic_remove_guide_qr(&epoch, &guide, retry, || Ok(()))
+                .await
+        }
+    };
+    assert_eq!(
+        w.client.account().unwrap().classic_remove_guide.as_deref(),
+        Some(guide.as_str())
+    );
+    tokio::time::advance(std::time::Duration::from_millis(999)).await;
+    assert!(matches!(
+        begin(&expired.epoch, false).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(w.http.calls().len(), 4);
+    tokio::time::advance(std::time::Duration::from_millis(1)).await;
+    assert!(matches!(
+        begin(&prior, false).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        begin(&expired.epoch, true).await,
+        Err(Error::StaleResponse)
+    ));
+
+    assert!(matches!(
+        w.client
+            .begin_classic_remove_guide_qr(&expired.epoch, &guide, false, || Err(Error::Cancelled))
+            .await,
+        Err(Error::Cancelled)
+    ));
+    assert_eq!(w.http.calls().len(), 4);
+    let first = begin(&expired.epoch, false).await.unwrap();
+    assert_eq!(first.poll_after_ms, 1000);
+    assert!(w.client.account().unwrap().classic_remove_guide.is_none());
+    assert!(begin(&expired.epoch, false).await.is_err());
+    assert!(begin(&expired.epoch, true).await.is_err());
+    assert_eq!(w.http.calls().len(), 5);
+
+    w.client.cancel_qr(&first.operation_id).unwrap();
+    let retry = begin(&expired.epoch, true).await.unwrap();
+    assert_ne!(retry.operation_id, first.operation_id);
+    w.client
+        .dismiss_classic_remove_guide(&expired.epoch, &guide)
+        .unwrap();
+    assert!(matches!(
+        w.client.poll_qr(&retry.operation_id).await,
+        Err(Error::StaleResponse)
+    ));
+    w.client.cancel_qr(&retry.operation_id).unwrap();
+    assert!(matches!(
+        begin(&expired.epoch, true).await,
+        Err(Error::StaleResponse)
+    ));
+    let calls = w.http.calls();
+    assert_eq!(calls.len(), 6);
+    for call in &calls[4..] {
+        assert_eq!(call.path, "/api/login/qrcode/unikey");
+        assert_eq!(call.payload["type"], "3");
+        assert!(call.payload.get("fromPage").is_none());
+        assert!(
+            call.cookie
+                .as_deref()
+                .is_none_or(|value| !value.contains("synthetic-old"))
+        );
+    }
+    assert_eq!(w.client.account().unwrap().epoch, expired.epoch);
+
+    let http = Arc::new(ScriptHttp::new([]));
+    let reopened = World::open(w.root.path(), http.clone());
+    assert_eq!(
+        reopened.restore_account().await.unwrap().status,
+        SessionStatus::Expired
+    );
+    assert!(reopened.account().unwrap().classic_remove_guide.is_none());
+    assert!(http.calls().is_empty());
+}
+
+#[tokio::test]
+async fn action_two_does_not_open_classic_guide_when_the_benefit_cohort_is_new_or_unknown() {
+    for assignment in [
+        flags("c", "t1"),
+        flags("t1", "t1"),
+        json!({"code":200,"data":[]}).into(),
+    ] {
+        let w = World::new([rejected(), assignment, force_exit()]).await;
+        assert!(
+            w.client
+                .daily_songs()
+                .await
+                .err()
+                .unwrap()
+                .is_service_code(301)
+        );
+        let account = w.client.account().unwrap();
+        assert_eq!(account.status, SessionStatus::Expired);
+        assert!(account.login_notice.is_some());
+        assert!(account.classic_remove_guide.is_none());
+        assert_eq!(w.http.calls().len(), 4);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn closing_classic_guide_while_request_is_held_revokes_late_qr_and_prevents_polling() {
+    let (qr, answer) = gate();
+    let w = World::new([rejected(), flags("c", "c"), force_exit(), qr]).await;
+    assert!(
+        w.client
+            .daily_songs()
+            .await
+            .err()
+            .unwrap()
+            .is_service_code(301)
+    );
+    let account = w.client.account().unwrap();
+    let guide = account.classic_remove_guide.unwrap();
+    tokio::time::advance(std::time::Duration::from_secs(1)).await;
+    let start = w
+        .client
+        .begin_classic_remove_guide_qr(&account.epoch, &guide, false, || Ok(()));
+    let dismiss = async {
+        w.http.wait(5).await;
+        w.client
+            .dismiss_classic_remove_guide(&account.epoch, &guide)
+            .unwrap();
+        assert!(
+            answer
+                .send(Ok(reply(
+                    json!({"code":200,"unikey":"closed-synthetic-guide"})
+                )))
+                .is_ok()
+        );
+    };
+    let (result, ()) = tokio::join!(start, dismiss);
+    assert!(matches!(result, Err(Error::StaleResponse)));
+    assert!(w.client.account().unwrap().classic_remove_guide.is_none());
+    assert!(matches!(
+        w.client
+            .begin_classic_remove_guide_qr(&account.epoch, &guide, true, || Ok(()))
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(w.http.calls().len(), 5);
 }

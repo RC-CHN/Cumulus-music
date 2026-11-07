@@ -17,9 +17,10 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
+    time::Instant,
 };
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 #[derive(Default)]
@@ -28,6 +29,9 @@ struct Service {
     inner: fixture::Service,
     validations: AtomicUsize,
     searches: AtomicUsize,
+    invalid_reply_at: Mutex<Option<Instant>>,
+    qr_tickets: Mutex<Vec<u64>>,
+    qr_polls: AtomicUsize,
 }
 impl HttpBackend for Service {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
@@ -57,6 +61,48 @@ impl HttpBackend for Service {
                     None,
                 ));
             }
+            if self.legacy && path == "/api/login/qrcode/unikey" {
+                if payload["type"] != "3"
+                    || payload.get("fromPage").is_some()
+                    || plan
+                        .headers
+                        .get("Cookie")
+                        .is_some_and(|cookie| cookie.contains("MUSIC_U=fixture2"))
+                {
+                    return Err(Error::Response("wrong classic guide QR transport"));
+                }
+                let elapsed = self
+                    .invalid_reply_at
+                    .lock()
+                    .unwrap()
+                    .ok_or(Error::Response("QR before action 2"))?
+                    .elapsed();
+                let mut tickets = self.qr_tickets.lock().unwrap();
+                tickets.push(u64::try_from(elapsed.as_millis()).unwrap());
+                return Ok(fixture::reply(
+                    json!({"code":200,"unikey":format!("synthetic-classic-guide-{}",tickets.len())}),
+                    None,
+                ));
+            }
+            if self.legacy && path == "/api/login/qrcode/client/login" {
+                let count = self.qr_polls.fetch_add(1, Ordering::SeqCst);
+                let ticket = if count == 0 {
+                    "synthetic-classic-guide-1"
+                } else {
+                    "synthetic-classic-guide-2"
+                };
+                if payload["key"] != ticket
+                    || payload["type"] != "3"
+                    || payload["secureCaptcha"] != ""
+                    || payload.get("fromPage").is_some()
+                {
+                    return Err(Error::Response("wrong classic guide QR status request"));
+                }
+                return Ok(fixture::reply(
+                    json!({"code":if count == 0 {800} else {801}}),
+                    None,
+                ));
+            }
             if path == "/api/middle/account/token/refresh" {
                 let valid = if self.legacy {
                     payload.get("fromPage").is_none()
@@ -73,6 +119,9 @@ impl HttpBackend for Service {
                     return Err(Error::Response("fixture middle parameters"));
                 }
                 let count = self.validations.fetch_add(1, Ordering::SeqCst);
+                if self.legacy && count == 1 {
+                    *self.invalid_reply_at.lock().unwrap() = Some(Instant::now());
+                }
                 return Ok(fixture::reply(
                     if count == 0 {
                         json!({"code":200,"data":{"action":1}})
@@ -157,11 +206,22 @@ fn main() {
    if legacy {value["queueCounts"]=json!(["2","3","local-guest"].map(|owner|cumulus_core::playback::PlaybackQueue::new(Some(queue_store.clone()),owner).unwrap().len()));}
    value["validationRequests"]=json!(service.validations.load(Ordering::SeqCst));
    value["searchRequests"]=json!(service.searches.load(Ordering::SeqCst));
+   let qr_tickets=service.qr_tickets.lock().unwrap();
+   value["classicQrTicketDelayMs"]=json!(*qr_tickets);
+   value["classicQrPolls"]=json!(service.qr_polls.load(Ordering::SeqCst));
+   if stage=="interception_before_close" {
+       handle.get_webview_window("main").unwrap().eval(format!("window.__classicPollsBeforeClose={};window.__authAck={};",value["classicQrPolls"],json!(stage))).unwrap();
+       return;
+   }
+   if stage=="complete" && legacy && (qr_tickets.len()!=2 || qr_tickets[0]<1000 || value["classicQrPolls"].as_u64()!=value["pollsBeforeClose"].as_u64()) {
+       value["ok"]=json!(false);
+   }
+   drop(qr_tickets);
    if stage=="complete" && (value["validationRequests"]!=2||value["searchRequests"]!=2) {value["ok"]=json!(false);}
    fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
    if stage=="complete"||stage=="failed" {handle.exit(if stage=="complete"&&value["ok"]==true {0}else{1});}
    else {handle.get_webview_window("main").unwrap().eval(format!("window.__authAck={};",json!(stage))).unwrap();}
   });Ok(())
- }).on_page_load(|webview,payload| {if payload.event()==PageLoadEvent::Finished&&webview.label()=="main" {webview.eval(include_str!("login_interception_ui_probe.js")).unwrap();}})
+ }).on_page_load(move |webview,payload| {if payload.event()==PageLoadEvent::Finished&&webview.label()=="main" {webview.eval(format!("window.__interceptionLegacy={legacy};\n{}",include_str!("login_interception_ui_probe.js"))).unwrap();}})
  .run(tauri::generate_context!()).expect("login interception UI proof");
 }

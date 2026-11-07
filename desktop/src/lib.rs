@@ -327,6 +327,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::account_login_device_removal_command,
                 commands::restore_account,
                 commands::begin_qr,
+                commands::begin_classic_remove_guide_qr,
+                commands::dismiss_classic_remove_guide,
                 commands::poll_qr,
                 commands::qr_identity_pending,
                 commands::reconcile_qr,

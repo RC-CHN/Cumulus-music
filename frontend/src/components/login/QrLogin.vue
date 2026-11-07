@@ -4,6 +4,8 @@ import { useCore } from '../../services/core';
 import { failure, type QrView, type QrStatus } from '../../services/contracts';
 import Icon from '../Icon.vue';
 const emit = defineEmits<{ authorized: [] }>();
+const props = defineProps<{ classicGuide?: { epoch: string; ticket: string } }>();
+let requestedClassicGuide = false;
 const core = useCore();
 const qr = ref<QrView>();
 const status = ref<QrStatus>('creating');
@@ -103,7 +105,12 @@ async function begin() {
   if (old) await cancel(old.operationId);
   if (disposed || current !== generation) return;
   try {
-    const value = await core.beginQr();
+    const guide = props.classicGuide;
+    const retryGuide = requestedClassicGuide;
+    if (guide) requestedClassicGuide = true;
+    const value = guide
+      ? await core.beginClassicRemoveGuideQr(guide.epoch, guide.ticket, retryGuide)
+      : await core.beginQr();
     if (disposed || current !== generation) {
       await cancel(value.operationId);
       return;

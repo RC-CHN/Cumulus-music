@@ -16,6 +16,7 @@ pub struct QrAuthentication {
     session: Arc<AccountSession>,
     candidate: LoginCandidate,
     base: SessionToken,
+    classic_guide: Option<String>,
     qr: QrLogin,
     state: Mutex<State>,
 }
@@ -30,15 +31,36 @@ impl QrAuthentication {
         protocol: LoginProtocol,
     ) -> Result<Self> {
         let base = session.token()?;
+        Self::for_token(session, candidate, protocol, base, None)
+    }
+
+    pub(crate) fn for_token(
+        session: Arc<AccountSession>,
+        candidate: LoginCandidate,
+        protocol: LoginProtocol,
+        base: SessionToken,
+        classic_guide: Option<String>,
+    ) -> Result<Self> {
+        session.check_generation(&base)?;
         let qr = QrLogin::ordinary(protocol.api(candidate.client()), protocol);
         Ok(Self {
             session,
             candidate,
             base,
+            classic_guide,
             qr,
             state: Mutex::new(State::default()),
         })
     }
+    fn require_base(&self) -> Result<()> {
+        match self.classic_guide.as_deref() {
+            Some(ticket) => self
+                .session
+                .require_classic_remove_guide(&self.base, ticket),
+            None => self.session.check_generation(&self.base),
+        }
+    }
+
     pub fn snapshot(&self) -> Result<QrSnapshot> {
         self.qr.snapshot()
     }
@@ -49,8 +71,10 @@ impl QrAuthentication {
         )
     }
     pub async fn begin(&self) -> Result<String> {
+        self.require_base()?;
         let operation = Operation::begin(&self.state, LoginStatus::Submitting, None)?;
         let response = self.qr.begin().await;
+        self.require_base()?;
         operation.lock()?.status = LoginStatus::Ready;
         operation.finish(response)
     }
@@ -76,16 +100,19 @@ impl QrAuthentication {
         let identity = crate::account::artist_onboarding::qr_identity(&*api).await;
         let mut state = operation.lock()?;
         let (identity, offer) = identity?;
+        self.require_base()?;
         self.candidate
             .adopt_with_artist_login(&self.session, &self.base, identity, Some(offer))?;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }
     pub async fn poll(&self, completed_captcha: Option<&str>) -> Result<QrStatus> {
+        self.require_base()?;
         let operation = Operation::begin(&self.state, LoginStatus::CheckingIdentity, None)?;
         let result = async {
             let status = self.qr.poll(completed_captcha).await;
             operation.check()?;
+            self.require_base()?;
             let status = status?;
             if status == QrStatus::Authorized {
                 self.identity(&operation).await?;
@@ -99,7 +126,7 @@ impl QrAuthentication {
     }
     /// An acknowledged 803 is distinct from the account having been adopted.
     pub fn identity_pending(&self) -> Result<bool> {
-        self.session.check_generation(&self.base)?;
+        self.require_base()?;
         let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
         if state.busy {
             return Err(Error::State("login operation is already pending"));
@@ -110,7 +137,7 @@ impl QrAuthentication {
     }
     /// Retry the identity read after an acknowledged 803, never replay QR polling.
     pub async fn reconcile(&self) -> Result<()> {
-        self.session.check_generation(&self.base)?;
+        self.require_base()?;
         let operation =
             Operation::begin_checked(&self.state, LoginStatus::CheckingIdentity, None, |_| {
                 if self.qr.snapshot()?.status != QrStatus::Authorized {

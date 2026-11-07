@@ -4,6 +4,7 @@
 mod invalidation;
 mod legacy_api;
 mod policy;
+mod remove_guide;
 use super::{artist_onboarding::ArtistLogin, identity::VerifiedAccount, login_policy::LoginNotice};
 use crate::{
     Error, Result,
@@ -11,6 +12,7 @@ use crate::{
     protocol::api::{Api, identifier},
     storage::{StateStore, StateTransaction},
 };
+use remove_guide::ClassicRemoveGuide;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
@@ -38,6 +40,7 @@ pub struct SessionSnapshot {
     pub status: SessionStatus,
     pub profile: Option<Value>,
     pub login_notice: Option<LoginNotice>,
+    pub(crate) classic_remove_guide: Option<String>,
 }
 
 /// Only the current account's verified entitlement changes cross this boundary.
@@ -63,6 +66,7 @@ struct SessionState {
     status: SessionStatus,
     guest_ready: bool,
     login_notice: Option<LoginNotice>,
+    classic_remove_guide: Option<ClassicRemoveGuide>,
     initial_restore_generation: Option<u64>,
     quick_exchange_generation: Option<u64>,
     artist_login: Option<ArtistLogin>,
@@ -90,6 +94,7 @@ impl SessionState {
 
     fn invalidate(&mut self, status: SessionStatus) -> Result<()> {
         self.generation = next_generation(self.generation)?;
+        self.classic_remove_guide = None;
         self.uid = None;
         self.profile = None;
         self.artist_login = None;
@@ -138,6 +143,7 @@ impl AccountSession {
                 status: SessionStatus::Unknown,
                 guest_ready: false,
                 login_notice: None,
+                classic_remove_guide: None,
                 initial_restore_generation: None,
                 quick_exchange_generation: None,
                 artist_login: None,
@@ -495,6 +501,7 @@ impl AccountSession {
         state.status = SessionStatus::SignedOut;
         state.guest_ready = false;
         state.login_notice = None;
+        state.classic_remove_guide = None;
         state.changes.send_replace(state.token());
         Ok(())
     }
@@ -521,6 +528,10 @@ impl AccountSession {
             status: state.status,
             profile: state.profile.clone(),
             login_notice: state.login_notice.clone(),
+            classic_remove_guide: state
+                .classic_remove_guide
+                .as_ref()
+                .and_then(|guide| guide.offer(state.generation)),
         })
     }
 
@@ -624,6 +635,7 @@ impl AccountSession {
         state.status = SessionStatus::Authenticated;
         state.guest_ready = false;
         state.login_notice = None;
+        state.classic_remove_guide = None;
         state.changes.send_replace(state.token());
         Ok(profile)
     }
@@ -729,6 +741,7 @@ impl AccountSession {
         state.status = SessionStatus::Authenticated;
         state.guest_ready = false;
         state.login_notice = None;
+        state.classic_remove_guide = None;
         if state.token() != token {
             state.changes.send_replace(state.token());
         }
@@ -766,16 +779,23 @@ impl AccountSession {
             if let policy::Interception::Invalid {
                 notice,
                 clear_queue,
+                classic_remove_guide,
             } = outcome
             {
                 let native: Arc<dyn std::any::Any + Send + Sync> = state.api.clone();
                 let client = native
                     .downcast::<crate::protocol::http::MusicHttpClient>()
                     .map_err(|_| Error::State("native login invalidation unavailable"))?;
+                let show_classic_guide = classic_remove_guide
+                    && state.status == SessionStatus::Authenticated
+                    && notice.kind == super::login_policy::LoginNoticeKind::Reauthenticate;
                 let cleared = self.invalidate_native_login(&client, token, &notice, clear_queue);
                 state.login_notice = Some(notice);
                 state.invalidate(SessionStatus::Expired)?;
                 cleared?;
+                if show_classic_guide {
+                    state.classic_remove_guide = Some(ClassicRemoveGuide::new(state.generation));
+                }
                 // The PC factory normalizes string response codes before its
                 // 301 event. Keep that meaning for downstream auth consumers.
                 return Ok(if error.is_service_code(301) {
