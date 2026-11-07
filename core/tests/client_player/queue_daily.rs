@@ -233,6 +233,17 @@ async fn queue_ids(client: &MusicClient) -> Vec<String> {
 async fn daily_double_click_only_replaces_or_moves_one_daily_row_after_current() {
     let device = Arc::new(support::Device::default());
     let (dir, api, _, client, _) = fixture_with_device(device.clone());
+    // Isolate the selected request from the asynchronous next-song URL read
+    // so the fixture's last wire trial value belongs to the selected row.
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: cumulus_core::playback::PlaybackMode::SingleLoop,
+            },
+        )
+        .await
+        .unwrap();
     let revision = daily_revision(&client).await;
     let baseline = || PlaySelection::Songs {
         ids: ["1", "2", "3", "73"].map(str::to_owned).to_vec(),
@@ -241,10 +252,10 @@ async fn daily_double_click_only_replaces_or_moves_one_daily_row_after_current()
     };
     client.play_selection("1", baseline()).await.unwrap();
     let replaced = client
-        .play_selection("1", daily_row(&revision, 1, "73"))
+        .play_selection("1", daily_row(&revision, 0, "74"))
         .await
         .unwrap();
-    assert_eq!(replaced.track.unwrap().id, "73");
+    assert_eq!(replaced.track.unwrap().id, "74");
     assert_eq!(
         serde_json::to_value(&replaced.recommendation_origin).unwrap(),
         json!({"kind":"daily","revision":revision})

@@ -174,6 +174,95 @@
     assert(value.queueLen === 2, 'two distinct baseline queue entries');
     return waitPlayback('51', 2);
   }
+  async function openDaily() {
+    if (!one('.daily-heading') || !settled()) click(button('每日推荐'));
+    await wait(() => settled() && one('.daily-heading') && row('3') && row('5') &&
+      !row('3').querySelector('.track-play')?.disabled, 'settled Daily recommendation rows');
+  }
+  async function waitPaused(id, length) {
+    let value, previous;
+    await wait(async () => {
+      if (bar()?.dataset.state !== 'paused') return false;
+      const player = await invoke('player_snapshot', { epoch });
+      const current = await queue();
+      if (player.state !== 'paused' || player.track?.id !== id || selected(current) !== id ||
+          player.queueRevision !== current.revision || player.playId !== bar().dataset.playId ||
+          current.tracks.length !== length || !(player.position > .2)) return false;
+      value = { queue: current, playId: player.playId, position: player.position };
+      const observed = JSON.stringify([value.playId, current.revision, current.current, value.position]);
+      if (previous === observed) return true;
+      previous = observed;
+      return false;
+    }, step);
+    return value;
+  }
+  async function dailyCase() {
+    await seed();
+    await openDaily();
+    step = 'Daily row uses default full replacement';
+    doubleClick('3');
+    const replaced = await waitPlayback('3', 40);
+    assert(ids(replaced.queue).join('|') === Array.from({ length: 40 }, (_, i) => i + 1).join('|'),
+      'default replacement uses exact displayed Daily order');
+    await stage('daily_default_replaced', replaced);
+
+    await openSettings();
+    click(choice('add'));
+    await wait(() => choice('add').checked && !choice('add').matches(':disabled'), 'native keep setting accepted');
+    await stage('add_setting');
+    await openDaily();
+    await invoke('play_selection', {
+      epoch, selection: { kind: 'songs', ids: ['51', '53', '52', '5'], index: 1, quality: 'standard' },
+    });
+    await waitPlayback('53', 4);
+    await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    step = 'Daily row text single click keeps existing paused queue';
+    const before = await waitPaused('53', 4);
+    row('3').querySelector('.track-title').click();
+    await twoFrames();
+    const afterClick = await waitPaused('53', 4);
+    assert(afterClick.playId === before.playId && afterClick.queue.revision === before.queue.revision &&
+      afterClick.position === before.position && ids(afterClick.queue).join('|') === '51|53|52|5',
+      'plain row click must not start audio or change native selection');
+    await stage('daily_single_click', afterClick);
+
+    step = 'Daily double click plays only clicked row after current';
+    doubleClick('3');
+    const added = await waitPlayback('3', 5);
+    retained(before.queue, added.queue);
+    assert(ids(added.queue).join('|') === '51|53|3|52|5', 'insertion is after current, not at tail');
+    await stage('daily_added', added);
+
+    step = 'same Daily row pauses the original play';
+    doubleClick('3');
+    const paused = await waitPaused('3', 5);
+    assert(paused.playId === added.playId && paused.queue.revision === added.queue.revision,
+      'same-row pause keeps native play and queue');
+    await stage('daily_same_row_paused', paused);
+    step = 'same Daily row resumes the original play';
+    doubleClick('3');
+    const resumed = await waitPlayback('3', 5);
+    assert(resumed.playId === paused.playId && resumed.queue.revision === paused.queue.revision,
+      'same-row resume keeps native play and queue');
+    await stage('daily_same_row_resumed', resumed);
+
+    step = 'existing Daily row moves to the immediate insertion point';
+    const existing = before.queue.tracks.find((entry) => entry.track.id === '5').entryId;
+    doubleClick('5');
+    const moved = await waitPlayback('5', 5);
+    assert(moved.queue.current === existing && ids(moved.queue).join('|') === '51|53|3|5|52',
+      'moved duplicate keeps its entry and does not grow queue');
+    await stage('daily_moved', moved);
+
+    step = 'Daily header still offers full play for the mixed queue';
+    const header = button('播放全部', one('.daily-track-actions'));
+    click(header);
+    const all = await waitPlayback('1', 40);
+    assert(ids(all.queue).join('|') === Array.from({ length: 40 }, (_, i) => i + 1).join('|') &&
+      (await settings()).value.replaceQueue === false,
+      'header independently starts the entire Daily list; preference stays off');
+    await stage('daily_play_all', all);
+  }
   function retained(before, after) {
     const oldEntries = before.tracks.map((entry) => entry.entryId);
     assert(
@@ -195,6 +284,11 @@
     }
     assert(choice('replace').checked && !choice('add').checked, 'official replace default');
     await stage('default_setting');
+    if (window.__queueClickDaily) {
+      await dailyCase();
+      await emit('complete', { ok: true, count, reopened: false, realMusicRequests: 0 });
+      return;
+    }
 
     await seed();
     await openPlaylist();
