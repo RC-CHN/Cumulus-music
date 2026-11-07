@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 
 from motion_smoke import launch
@@ -19,6 +20,7 @@ def main():
     mode.add_argument('--deletion', action='store_true')
     mode.add_argument('--reply', action='store_true')
     mode.add_argument('--polling', action='store_true')
+    mode.add_argument('--read-all', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -56,6 +58,9 @@ def main():
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
+    if args.read_all:
+        run_read_all(args, root, env)
+        return
     output = root / 'first'
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, output, args.screenshots)
@@ -133,6 +138,103 @@ def main():
     report['actualWebView'] = True
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
+
+
+def run_read_all(args, root, common):
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples/message_read_all_ui_probe.js'
+    cases = {
+        'first': {
+            'initial': (2, 1, 0, None),
+            'confirmation': (2, 1, 0, None),
+            'cancelled': (2, 1, 0, None),
+            'confirmed': (2, 1, 1, 'confirmed'),
+            'delivery': (3, 2, 1, 'confirmed'),
+            'lost': (3, 2, 2, 'uncertain'),
+        },
+        'reopen': {
+            'reopened_pending': (2, 1, 0, 'uncertain'),
+            'checked_positive': (3, 1, 0, 'uncertain'),
+            'checked_zero': (4, 1, 0, 'checked_clear'),
+        },
+    }
+    positive = ['3', '2', '1', '4']
+    delivery = ['6', '1', '2', '3']
+    first_peers = ['1', '2']
+    new_peers = ['4', '2']
+    zero_tabs = [None] * 4
+    result = {}
+    acknowledged = uncertain = None
+    for phase, stages in cases.items():
+        reopened = phase == 'reopen'
+        script = root / (phase + '-read-all.js')
+        script.write_text(f'window.__cumulusMessageReadAllReopened = {json.dumps(reopened)};\n' +
+                          source.read_text(encoding='utf-8'), encoding='utf-8')
+        env = {**common, 'CUMULUS_UX_SCRIPT': str(script), 'CUMULUS_MESSAGE_READ_ALL_PROOF': '1'}
+        if reopened:
+            env['CUMULUS_PROOF_REOPEN'] = '1'
+        output = root / phase
+        with (root / (phase + '-host.log')).open('x', encoding='utf-8') as log:
+            code = launch(args.binary.resolve(), env, log, output, args.screenshots)
+        failed = output / 'failed.json'
+        assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+        assert code == 0
+        complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['reopened'] == reopened and complete['count'] == len(stages)
+        assert complete['realAccountWrites'] == complete['realMusicRequests'] == 0
+        assert len(list(output.glob('ux_*.json'))) == len(stages)
+        assert len(list(output.glob('ux_*.png'))) == (len(stages) if args.screenshots else 0)
+        reports = {}
+        for index, (label, (reads, lists, writes, journal_phase)) in enumerate(stages.items(), 1):
+            stage = output / f'ux_{index:02}_{label}.json'
+            row = json.loads(stage.read_text(encoding='utf-8'))
+            assert row['label'] == label
+            if args.screenshots:
+                paint = json.loads(stage.with_name('paint-' + stage.name).read_text(encoding='utf-8'))
+                assert len(paint['samples']) == 1 and paint['samples'][0]['ok'], label
+            expected = {
+                '/api/pl/count': [{}] * reads,
+                '/api/msg/private/users': [dict(limit=15, offset=0, time=-1)] * lists,
+            }
+            if writes:
+                expected['/api/msg/count/clear'] = [{}] * writes
+            wire = row['messageRequests']
+            assert not wire['blockedWrite'], row
+            paths = {}
+            for path, payload in wire['requests']:
+                paths.setdefault(path, []).append(payload)
+            assert paths == expected, (label, paths)
+            assert row['counts'] == dict(reads=reads, lists=lists, writes=writes), label
+            assert row['dialog'] == (label == 'confirmation')
+            expected_tabs = (zero_tabs if label in ('confirmed', 'checked_zero') else
+                             delivery if label in ('delivery', 'lost') else positive)
+            assert row['tabs'] == expected_tabs and row['dot'] == (expected_tabs != zero_tabs), label
+            expected_peers = ([None, None] if label == 'confirmed' else
+                              new_peers if label in ('delivery', 'lost') else first_peers)
+            assert row['peers'] == expected_peers, label
+            pending = label in ('lost', 'reopened_pending', 'checked_positive')
+            assert row['canCheck'] == pending, label
+            if label != 'confirmation':
+                assert row['readAllDisabled'] == (pending or expected_tabs == zero_tabs), label
+            journal = row['messageReadAllJournal']
+            if journal_phase is None:
+                assert journal is None, label
+            else:
+                assert set(journal) == {'operation', 'phase'} and journal['phase'] == journal_phase, label
+                assert re.fullmatch(r'[a-f0-9]{32}', journal['operation']), label
+                if label == 'confirmed':
+                    acknowledged = journal['operation']
+                elif label == 'lost':
+                    uncertain = journal['operation']
+                    assert acknowledged and uncertain != acknowledged
+                else:
+                    assert journal['operation'] == (uncertain if reopened else acknowledged), label
+            reports[label] = row
+        assert complete['messageReadAllJournal'] == row['messageReadAllJournal']
+        assert complete['messageRequests'] == row['messageRequests']
+        result[phase] = reports
+    result['actualWebView'] = True
+    (root / 'report.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps({'actualWebView': True, 'first': len(cases['first']), 'reopen': len(cases['reopen'])}))
 
 
 def verify_attachments(report, output, screenshots):

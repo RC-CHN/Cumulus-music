@@ -21,6 +21,7 @@ static REPLY_SENDS: AtomicUsize = AtomicUsize::new(0);
 static HOLD_REPLY: AtomicBool = AtomicBool::new(false);
 static REPLY_HELD: AtomicBool = AtomicBool::new(false);
 static COUNT_MODE: AtomicUsize = AtomicUsize::new(0);
+static READ_ALL_CALLS: AtomicUsize = AtomicUsize::new(0);
 static HOLD_COUNT: AtomicBool = AtomicBool::new(false);
 static COUNT_HELD: AtomicBool = AtomicBool::new(false);
 
@@ -45,6 +46,34 @@ pub fn enabled() -> bool {
 }
 pub fn polling() -> bool {
     std::env::var("CUMULUS_MESSAGE_POLL_PROOF").as_deref() == Ok("1")
+}
+
+pub fn read_all() -> bool {
+    enabled() && std::env::var("CUMULUS_MESSAGE_READ_ALL_PROOF").as_deref() == Ok("1")
+}
+
+pub fn clear_all() -> Result<Value> {
+    if !read_all() || std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
+        WRITE_ATTEMPT.store(true, Ordering::SeqCst);
+        return Err(Error::State("unexpected synthetic message clear"));
+    }
+    REQUESTS
+        .lock()
+        .unwrap()
+        .push(("/api/msg/count/clear".into(), json!({})));
+    match READ_ALL_CALLS.fetch_add(1, Ordering::SeqCst) {
+        0 => {
+            COUNT_MODE.store(1, Ordering::SeqCst);
+            Ok(json!({"code":200}))
+        }
+        1 => Err(Error::Transport(
+            "synthetic lost read-all acknowledgement".into(),
+        )),
+        _ => {
+            WRITE_ATTEMPT.store(true, Ordering::SeqCst);
+            Err(Error::State("unexpected synthetic message clear replay"))
+        }
+    }
 }
 
 pub fn count_calls() -> usize {
@@ -88,6 +117,8 @@ pub fn control(mode: &str) -> Value {
         "poll-fail" if polling() => COUNT_MODE.store(2, Ordering::SeqCst),
         "poll-hold" if polling() => HOLD_COUNT.store(true, Ordering::SeqCst),
         "poll-release" if polling() => HOLD_COUNT.store(false, Ordering::SeqCst),
+        "read-all-delivery" if read_all() => COUNT_MODE.store(3, Ordering::SeqCst),
+        "read-all-zero" if read_all() => COUNT_MODE.store(1, Ordering::SeqCst),
         "read" => {}
         _ => panic!("unknown message fixture command"),
     }
@@ -222,12 +253,20 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             match COUNT_MODE.load(Ordering::SeqCst) {
                 1 => json!({"code":200,"msg":0,"comment":0,"forward":0,"notice":0}),
                 2 => json!({"code":503}),
+                3 if read_all() => json!({"code":200,"msg":6,"comment":1,"forward":2,"notice":3}),
                 _ => json!({"code":200,"msg":3,"comment":2,"forward":1,"notice":4}),
             }
         }
         "/api/msg/private/users" if args == &json!({"limit":15,"offset":0,"time":-1}) => {
+            let mode = COUNT_MODE.load(Ordering::SeqCst);
             let rows = (0..15).filter(|idx| !deletion() || *idx != 0 || !REMOVED_CONVERSATION.load(Ordering::SeqCst)).map(|idx| json!({"fromUser":{"userId":501+idx,"nickname":format!("合成联系人 {:02}",idx+1)},
-                "lastMsgTime":T-idx,"newMsgCount":match idx {0=>1,4=>2,_=>0},
+                "lastMsgTime":T-idx,"newMsgCount":match (read_all(), mode, idx) {
+                    (true, 1, _) => 0,
+                    (true, 3, 0) => 4,
+                    (_, _, 0) => 1,
+                    (_, _, 4) => 2,
+                    _ => 0,
+                },
                 "lastMsg":json!({"type":6,"msg":format!("私信预览 {}",idx+1)}).to_string()})).collect::<Vec<_>>();
             json!({"code":200,"more":true,"msgs":rows})
         }

@@ -6,7 +6,11 @@ use cumulus_core::{
     account::SessionStatus,
     client::{
         ClientError, MusicClient,
-        messages::{MessageCounts, PcMessageConnectivity, PcMessageConnectivityView},
+        dto::AccountData,
+        messages::{
+            MessageCounts, MessageReadAllAction, MessageReadAllState, PcMessageConnectivity,
+            PcMessageConnectivityView,
+        },
     },
 };
 use serde::{Deserialize, Serialize};
@@ -272,4 +276,30 @@ pub fn message_count_action<R: tauri::Runtime>(
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn message_read_all<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    host: tauri::State<'_, Host>,
+    epoch: String,
+    action: MessageReadAllAction,
+) -> std::result::Result<AccountData<MessageReadAllState>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main message window required").into());
+    }
+    let request = {
+        let state = host.0.lock().map_err(|_| Error::LockPoisoned)?;
+        if state.closed
+            || (state.stream.is_none() && !matches!(&action, MessageReadAllAction::Status))
+        {
+            return Err(Error::Cancelled.into());
+        }
+        state
+            .poller
+            .as_ref()
+            .ok_or(Error::Cancelled)?
+            .message_read_all(&epoch, action)
+    };
+    request.await.map_err(Into::into)
 }

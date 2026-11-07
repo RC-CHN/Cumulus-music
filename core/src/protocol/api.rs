@@ -11,6 +11,10 @@ pub type VinylPlaybackReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync 
 pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type PlaylistAddPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+
+pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
+pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
 
 /// Fixed native reads needed to identify and confirm the system-liked playlist.
 pub struct SongCardLikedRead(SongCardLikedQuery);
@@ -465,6 +469,23 @@ pub type PodcastBadgePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
+
+    /// The count, clear and account profile endpoints must see the same native
+    /// authenticated cookie scope. Generic adapters have no write authority.
+    fn message_read_all_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// Final authorization and the dispatch flag must run together immediately
+    /// before the fixed backend call; no fallback transport may send it.
+    fn request_message_read_all<'a>(
+        &'a self,
+        _revision: &'a str,
+        _permission: &'a MessageReadAllPermission<'a>,
+        _dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("message read-all authority unavailable")) })
+    }
 
     /// Local proof that account identity, liked membership, and the write use
     /// the same scoped credentials. A signed PC caller also binds its card.

@@ -416,6 +416,26 @@ impl Api for Library {
         })
     }
 
+    fn message_read_all_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(message_fixture::read_all().then(|| "synthetic-message-read-all".into()))
+    }
+
+    fn request_message_read_all<'a>(
+        &'a self,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::MessageReadAllPermission<'a>,
+        dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.message_read_all_scope_revision()?.as_deref() != Some(revision) {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            permission()?;
+            dispatched.store(true, std::sync::atomic::Ordering::Release);
+            message_fixture::clear_all()
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             // Record account/get before it is delegated to the signed search
@@ -1537,6 +1557,9 @@ fn main() {
             }
             if let Some(signed)=signed_search.as_ref() { value["signedSearch"] = signed.report(); }
             if message_fixture::enabled() { value["messageRequests"] = message_fixture::report(); }
+            if message_fixture::read_all() {
+                value["messageReadAllJournal"] = proof_store.get("2","message-read-all-v1","latest").unwrap().unwrap_or(Value::Null);
+            }
             if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }
             if mode_fixture::enabled() { value["syntheticMode"] = mode_fixture::report(); }
             if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }

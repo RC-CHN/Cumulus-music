@@ -9,7 +9,9 @@ use crate::{Error, Result};
 pub(super) use deletion::DeletionHost;
 pub use deletion::{MessageDeleteAction, MessageDeleteOutcome, MessagePendingDeletion};
 pub(super) use pc_poll::PcMessagePollHost;
-pub use pc_poll::{PcMessageConnectivity, PcMessageConnectivityView};
+pub use pc_poll::{
+    MessageReadAllAction, MessageReadAllState, PcMessageConnectivity, PcMessageConnectivityView,
+};
 pub use projection::attachment::MessageTarget;
 use projection::project;
 pub(super) use reply::ReplyHost;
@@ -47,7 +49,14 @@ pub struct MessageCounts {
 async fn read_counts(session: &AccountSession, token: &SessionToken) -> Result<MessageCounts> {
     session
         .run_for(token, |api, _| async move {
-            let response = api.call("/api/pl/count", json!({}), false, &[200]).await?;
+            let response = api
+                .call(
+                    crate::protocol::api::MESSAGE_COUNT_PATH,
+                    json!({}),
+                    false,
+                    &[200],
+                )
+                .await?;
             Ok(MessageCounts {
                 private: projection::number(&response["msg"]),
                 comments: projection::number(&response["comment"]),

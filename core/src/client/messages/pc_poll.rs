@@ -1,7 +1,8 @@
 //! Native M/236 playlist count poller. M/119 can be attached for the lifetime
 //! of a verified desktop document without replacing the one count schedule.
 mod playback;
-use super::{MessageCounts, MusicClient, read_counts};
+mod read_all;
+use super::{AccountData, MessageCounts, MusicClient};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
@@ -11,6 +12,8 @@ use crate::{
     },
 };
 use playback::{PlaybackConnectivity, Sample};
+use read_all::{CountSample, ReadAll};
+pub use read_all::{MessageReadAllAction, MessageReadAllState};
 use std::{
     future::{Future, pending},
     pin::Pin,
@@ -58,6 +61,7 @@ enum Command {
     Request(u64, PcRequestObservation),
     DrawerVisible(u64, bool),
     RefreshCounts(u64),
+    ReadAll(u64, MessageReadAllAction, read_all::Reply),
 }
 
 /// Native callers must provide observations from the documented boundary.
@@ -159,6 +163,7 @@ impl PcMessageConnectivity {
             drawer: false,
             due: None,
             read: None,
+            read_all: ReadAll::default(),
             view: initial,
         };
         state.rearm(Duration::ZERO);
@@ -239,6 +244,26 @@ impl PcMessageConnectivity {
         self.send(Command::RefreshCounts(generation)).await
     }
 
+    /// Native main-window adapters use this existing poller; no second count
+    /// reader or renderer-provided account ID is used for read-all recovery.
+    pub fn message_read_all(
+        &self,
+        epoch: &str,
+        action: MessageReadAllAction,
+    ) -> impl Future<Output = Result<AccountData<MessageReadAllState>>> + Send + use<> {
+        let generation = epoch.parse();
+        let tx = self.tx.clone();
+        async move {
+            let generation =
+                generation.map_err(|_| Error::InvalidInput("invalid message count epoch"))?;
+            let (send, receive) = tokio::sync::oneshot::channel();
+            tx.send(Command::ReadAll(generation, action, send))
+                .await
+                .map_err(|_| Error::Cancelled)?;
+            receive.await.map_err(|_| Error::Cancelled)?
+        }
+    }
+
     /// Synchronous native window lifecycle callback, sharing the same mailbox.
     pub fn try_drawer_visible(&self, generation: u64, visible: bool) -> Result<()> {
         self.try_send(Command::DrawerVisible(generation, visible))
@@ -275,7 +300,7 @@ impl Drop for PcMessageConnectivity {
     }
 }
 
-type ReadResult = (SessionToken, Result<MessageCounts>);
+type ReadResult = (SessionToken, Result<CountSample>);
 type InFlight = Pin<Box<dyn Future<Output = ReadResult> + Send>>;
 
 struct State {
@@ -287,6 +312,7 @@ struct State {
     drawer: bool,
     due: Option<Duration>,
     read: Option<InFlight>,
+    read_all: ReadAll,
     view: PcMessageConnectivityView,
 }
 
@@ -310,6 +336,7 @@ impl State {
                         .and_then(PcConnectivity::next_probe_at),
                 )
                 .min();
+            let mut completion = None;
             tokio::select! {
                 biased;
                 changed = accounts.changed() => {
@@ -325,6 +352,9 @@ impl State {
                     self.connectivity = initial.map(|online| PcConnectivity::new(online, start.elapsed()));
                 }
                 () = wait_for_timer(wake.map(|offset| start + offset)) => self.timer(start.elapsed()),
+                result = read_all::wait_for_work(&mut self.read_all.work) => {
+                    completion = Some(self.finish_read_all(result));
+                }
                 result = wait_for_read(&mut self.read) => self.finish(result, start.elapsed()),
                 command = commands.recv() => match command {
                     Some(Command::Local(signal)) => self.observe(signal, start.elapsed()),
@@ -342,10 +372,16 @@ impl State {
                         if self.is_current_account(generation) && self.drawer != visible =>
                     {
                         self.drawer = visible;
+                        if !visible {
+                            self.read_all.revoke_intent();
+                        }
                         self.rearm(start.elapsed());
                     }
                     Some(Command::RefreshCounts(generation)) if self.is_current_account(generation) => {
                         self.start_read();
+                    }
+                    Some(Command::ReadAll(generation, action, reply)) => {
+                        completion = self.read_all_action(generation, action, reply);
                     }
                     Some(_) => {}
                     None => break,
@@ -380,6 +416,9 @@ impl State {
                     true
                 }
             });
+            if let Some((reply, result)) = completion {
+                let _ = reply.send(result);
+            }
         }
     }
 
@@ -389,15 +428,11 @@ impl State {
         }
         self.token = token;
         self.read = None;
+        self.read_all = ReadAll::default();
         self.drawer = false;
         self.rearm(now);
         self.view.epoch = self.token.generation.to_string();
-        self.view.counts = self.token.uid.is_none().then_some(MessageCounts {
-            private: Some(0),
-            comments: Some(0),
-            forwards: Some(0),
-            notices: Some(0),
-        });
+        self.view.counts = self.token.uid.is_none().then(read_all::zero_counts);
         self.view.last_count_read_failed = false;
         self.view.count_read_in_flight = false;
     }
@@ -443,14 +478,14 @@ impl State {
     }
 
     fn start_read(&mut self) {
-        if self.read.is_some() || self.token.uid.is_none() {
+        if self.read.is_some() || self.read_all.work.is_some() || self.token.uid.is_none() {
             return;
         }
         let token = self.token.clone();
         let session = self.session.clone();
         self.view.count_read_in_flight = true;
         self.read = Some(Box::pin(async move {
-            let result = tokio::time::timeout(REQUEST_TIMEOUT, read_counts(&session, &token))
+            let result = tokio::time::timeout(REQUEST_TIMEOUT, CountSample::read(&session, &token))
                 .await
                 .unwrap_or(Err(Error::State("message count request timed out")));
             (token, result)
@@ -464,8 +499,9 @@ impl State {
         }
         self.view.count_read_in_flight = false;
         match result {
-            Ok(counts) => {
-                self.view.counts = Some(counts);
+            Ok(mut sample) => {
+                self.read_all.observe(Some(&mut sample));
+                self.view.counts = Some(sample.counts);
                 self.view.last_count_read_failed = false;
                 self.observe(
                     Signal::Request(PcRequestObservation::ResolvedBeforeFormatting),
@@ -473,6 +509,7 @@ impl State {
                 );
             }
             Err(_) => {
+                self.read_all.observe(None);
                 // The validated Rust endpoint doesn't expose the M/12 wrapper's
                 // named failure categories. Retain counts and do not infer
                 // offline from HTTP status, expiry, cancellation or timeout.

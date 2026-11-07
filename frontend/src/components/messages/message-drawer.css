@@ -54,9 +54,42 @@
   white-space: nowrap;
   font-size: 15px;
 }
-.message-drawer-tabs {
+.message-drawer-classification {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
   border-bottom: 1px solid var(--line);
+  padding-inline: 14px;
+}
+.message-drawer-tabs {
+  min-width: 0;
+  padding-inline: 0;
   padding-block: 0;
+}
+.message-drawer-read-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding-inline: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.message-drawer-read-all svg {
+  width: 14px;
+  height: 14px;
+}
+.message-drawer-read-all:not(:disabled):hover {
+  color: var(--text);
+}
+.message-drawer-read-all:disabled {
+  opacity: 0.5;
+}
+.message-drawer-read-all-status {
+  padding-block: 7px;
 }
 .message-drawer-tabs button {
   position: relative;

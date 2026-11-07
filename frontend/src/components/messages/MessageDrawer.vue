@@ -11,10 +11,12 @@ import {
   type MessageTarget,
 } from '../../services/messages';
 import { useMessageDrawer } from '../../composables/useMessageDrawer';
+import { useMessageReadAll } from '../../composables/useMessageReadAll';
 import ActionMenu from '../ActionMenu.vue';
 import Icon from '../Icon.vue';
 import ModalTransition from '../ModalTransition.vue';
 import MessageDeleteDialog from './MessageDeleteDialog.vue';
+import MessageReadAllDialog from './MessageReadAllDialog.vue';
 import PrivateReplyComposer from './PrivateReplyComposer.vue';
 
 const props = defineProps<{
@@ -36,6 +38,7 @@ const trigger = ref<HTMLButtonElement>();
 const drawer = ref<HTMLElement>();
 const scroller = ref<HTMLElement>();
 const backButton = ref<HTMLButtonElement>();
+const readAllButton = ref<HTMLButtonElement>();
 const uid = useId();
 const deleteMenuLabel = '私信操作';
 const replyBusy = ref(false);
@@ -233,7 +236,7 @@ async function settleDeletion(receipt: string, action: 'remove' | 'check', row?:
   }
 }
 function drawerEscape() {
-  if (!confirmation.value && !deleteBusy.value) close();
+  if (!confirmation.value && !deleteBusy.value && !readAll.confirmation.value) close();
 }
 const labels: Record<MessageTab, string> = {
   private: '私信',
@@ -256,6 +259,30 @@ const suspended = shallowRef<{
 }>();
 const visible = computed(() => shown.value && !suspended.value);
 const unread = computed(() => messageTabs.some((option) => (counts.value?.[option] ?? 0) > 0));
+const readAll = useMessageReadAll(
+  core,
+  () =>
+    visible.value && props.account.status === 'authenticated' ? props.account.epoch : undefined,
+  model.clearConversationBadges,
+  () => emit('expired'),
+);
+const readAllDisabled = computed(
+  () =>
+    !unread.value ||
+    countsBusy.value ||
+    countsError.value ||
+    readAll.busy.value ||
+    readAll.blocked.value ||
+    deleteBusy.value ||
+    replyBusy.value ||
+    !!confirmation.value,
+);
+function prepareReadAll() {
+  if (!readAllDisabled.value) readAll.prepare();
+}
+function readAllReturn() {
+  return readAllButton.value ?? null;
+}
 function reportCountVisibility() {
   model.setCountVisibility(visible.value && document.visibilityState === 'visible');
 }
@@ -362,6 +389,7 @@ function outside(event: PointerEvent) {
     visible.value &&
     event.target instanceof Element &&
     !confirmation.value &&
+    !readAll.confirmation.value &&
     !deleteBusy.value &&
     !event.target.closest(`[role="menu"][aria-label="${deleteMenuLabel}"]`) &&
     !drawer.value?.contains(event.target) &&
@@ -446,6 +474,7 @@ function scroll() {
     current.value.error ||
     current.value.busy ||
     confirmation.value ||
+    readAll.confirmation.value ||
     deleteBusy.value ||
     replyBusy.value
   )
@@ -511,32 +540,61 @@ function refresh() {
           <Icon name="close" />
         </button>
       </header>
-      <nav v-if="!peer" class="message-drawer-tabs" role="tablist" aria-label="消息分类">
-        <button
-          v-for="option in messageTabs"
-          :id="`${uid}-${option}`"
-          :key="option"
-          role="tab"
-          :data-message-tab="option"
-          :aria-selected="tab === option"
-          :aria-controls="`${uid}-content`"
-          :tabindex="tab === option ? 0 : -1"
-          @click="select(option)"
-          @keydown="moveTab"
-        >
-          {{ labels[option] }}
-          <span
-            v-if="counts?.[option]"
-            class="message-drawer-badge"
-            :title="`${counts[option]} 条未读`"
+      <div v-if="!peer" class="message-drawer-classification">
+        <nav class="message-drawer-tabs" role="tablist" aria-label="消息分类">
+          <button
+            v-for="option in messageTabs"
+            :id="`${uid}-${option}`"
+            :key="option"
+            role="tab"
+            :data-message-tab="option"
+            :aria-selected="tab === option"
+            :aria-controls="`${uid}-content`"
+            :tabindex="tab === option ? 0 : -1"
+            @click="select(option)"
+            @keydown="moveTab"
           >
-            {{ counts[option]! > 99 ? '99+' : counts[option] }}
-          </span>
+            {{ labels[option] }}
+            <span
+              v-if="counts?.[option]"
+              class="message-drawer-badge"
+              :title="`${counts[option]} 条未读`"
+            >
+              {{ counts[option]! > 99 ? '99+' : counts[option] }}
+            </span>
+          </button>
+        </nav>
+        <button
+          ref="readAllButton"
+          class="message-drawer-read-all"
+          type="button"
+          aria-label="一键全读"
+          aria-haspopup="dialog"
+          :disabled="readAllDisabled"
+          @click="prepareReadAll"
+        >
+          <Icon name="check" /> 一键全读
         </button>
-      </nav>
+      </div>
       <p v-if="countsError && !peer" class="message-drawer-count-error">
         未读数暂不可用
         <button @click="model.readCounts">重试</button>
+      </p>
+      <p
+        v-if="!peer && readAll.notice.value"
+        class="message-drawer-status message-drawer-read-all-status"
+        role="status"
+        data-message-read-all-status
+      >
+        {{ readAll.notice.value }}
+        <button
+          v-if="readAll.canRecover.value"
+          type="button"
+          :disabled="readAll.busy.value"
+          @click="readAll.recover"
+        >
+          {{ readAll.readProgress.value ? '查看进度' : '核对未读数' }}
+        </button>
       </p>
       <p v-if="deleteNotice" class="message-drawer-status" role="status" data-message-delete-result>
         {{ deleteNotice }}
@@ -724,6 +782,14 @@ function refresh() {
           :busy="deleteBusy"
           @close="confirmation = undefined"
           @confirm="confirmDeletion"
+        />
+      </ModalTransition>
+      <ModalTransition :return-focus="readAllReturn" :fallback-focus="deletionFallback">
+        <MessageReadAllDialog
+          v-if="readAll.confirmation.value"
+          :busy="readAll.busy.value"
+          @close="readAll.cancel"
+          @confirm="readAll.confirm"
         />
       </ModalTransition>
     </section>

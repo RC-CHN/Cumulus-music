@@ -120,8 +120,8 @@
     await wait(() => ready() && contains('私信预览 1') && contains('私信预览 15')
       && one('[data-message-tab="notices"] .message-drawer-badge')?.textContent.trim() === '4',
     'private inbox and server unread counts');
-    assert(!contains('一键全读') && !drawer().querySelector('textarea'),
-      'read-only drawer has no mark-all or compose controls');
+    assert(one('[aria-label="一键全读"]') && !drawer().querySelector('textarea'),
+      'inbox offers read-all confirmation but no conversation composer');
     await wait(async () => await countCalls() === 2, 'visible drawer rearmed exactly once');
     await capture('private');
     if (window.__cumulusMessagePollProof) {

@@ -8,6 +8,7 @@ use crate::{
     protocol::{
         api::{
             Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
+            MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH, MessageReadAllPermission,
             PlaylistAddPermission, SongCardLikedRead, SongLikePermission, VinylCommentRead,
             VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
             VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
@@ -95,6 +96,10 @@ enum RequestBinding<'a> {
         dispatched: &'a AtomicBool,
     },
     GuestSearch(&'a (dyn Fn() -> Result<()> + Send + Sync)),
+    MessageReadAll {
+        permission: &'a MessageReadAllPermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     SongLike {
         permission: &'a SongLikePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -801,6 +806,21 @@ impl MusicHttpClient {
                 }
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
+            }
+            if let Some(RequestBinding::MessageReadAll {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                if path != MESSAGE_READ_ALL_PATH
+                    || route != WireRoute::Eapi
+                    || self.message_read_all_scope_revision()?.as_deref()
+                        != Some(snapshot.revision.as_str())
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                permission()?;
+                dispatched.store(true, Ordering::Release);
             }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
@@ -1568,6 +1588,42 @@ impl Api for MusicHttpClient {
                 None,
                 Jsk::None,
                 Some(RequestBinding::SongLike {
+                    permission,
+                    dispatched,
+                }),
+            )
+            .await
+        })
+    }
+
+    fn message_read_all_scope_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        if origin != super::ApiOrigin::Pc || self.anonymous_store {
+            return Ok(None);
+        }
+        let target = origin.request_url(WireRoute::Eapi, MESSAGE_READ_ALL_PATH)?;
+        let snapshot = self.credentials.request_credentials(&target)?;
+        self.check_account_cookie_scope(
+            &snapshot,
+            [MESSAGE_COUNT_PATH, "/api/w/nuser/account/get"],
+        )?;
+        Ok(Some(snapshot.revision))
+    }
+
+    fn request_message_read_all<'a>(
+        &'a self,
+        revision: &'a str,
+        permission: &'a MessageReadAllPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            self.execute(
+                MESSAGE_READ_ALL_PATH,
+                json!({}),
+                false,
+                Some(revision),
+                Jsk::None,
+                Some(RequestBinding::MessageReadAll {
                     permission,
                     dispatched,
                 }),
