@@ -46,7 +46,8 @@ pub use super::player::{
     QueueView, SearchResultPlayback, SongRowSelection, StartupPreferencesCommand,
     StartupPreferencesView, VoiceSongAction, VoiceSongCollectPlan, VoiceSongCollectResult,
     VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
-    VoiceSongDownloadPlan, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
+    VoiceSongDownloadPlan, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint,
+    VoiceSongGroupDownloadPlan, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
     VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability, VoiceSongSelectionAction,
     VoiceSongSelectionKind,
 };

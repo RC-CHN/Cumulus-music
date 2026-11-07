@@ -3,6 +3,8 @@ use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http_with_cre
 mod collect;
 #[path = "voice_songs/download.rs"]
 mod download;
+#[path = "voice_songs/group_download.rs"]
+mod group_download;
 #[path = "voice_songs/likes.rs"]
 mod likes;
 #[path = "voice_songs/picker.rs"]
@@ -813,10 +815,10 @@ async fn voice_songs_next_play_rejects_unavailable_and_stale_rows_before_queue_c
     assert_eq!(
         serde_json::to_value(&card.availability).unwrap(),
         json!([
-            {"onlineEligible":false,"copyrightBlocked":false},
-            {"onlineEligible":true,"copyrightBlocked":true},
-            {"onlineEligible":true,"copyrightBlocked":true},
-            {"onlineEligible":true,"copyrightBlocked":false}
+            {"onlineEligible":false,"copyrightBlocked":false,"groupDownload":"omitted"},
+            {"onlineEligible":true,"copyrightBlocked":true,"groupDownload":"omitted"},
+            {"onlineEligible":true,"copyrightBlocked":true,"groupDownload":"omitted"},
+            {"onlineEligible":true,"copyrightBlocked":false,"groupDownload":"omitted"}
         ])
     );
     for index in 0..3 {

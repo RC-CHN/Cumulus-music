@@ -91,10 +91,10 @@ def verify(case, stages, complete):
     assert first_page['playId'] == first['playId'] and first_page['voiceId'] == '601'
     assert [row['id'] for row in first_page['tracks']] == FIRST
     assert first_page['availability'] == [
-        {'onlineEligible': True, 'copyrightBlocked': False},
-        {'onlineEligible': True, 'copyrightBlocked': False},
-        {'onlineEligible': False, 'copyrightBlocked': True},
-        {'onlineEligible': True, 'copyrightBlocked': True},
+        {'onlineEligible': True, 'copyrightBlocked': False, 'groupDownload': 'omitted'},
+        {'onlineEligible': True, 'copyrightBlocked': False, 'groupDownload': 'omitted'},
+        {'onlineEligible': False, 'copyrightBlocked': True, 'groupDownload': 'omitted'},
+        {'onlineEligible': True, 'copyrightBlocked': True, 'groupDownload': 'omitted'},
     ]
     native = complete['voiceSongsTrace']
     assert stages[labels[-1]]['voiceSongsTrace']['songReads'] == native['songReads']

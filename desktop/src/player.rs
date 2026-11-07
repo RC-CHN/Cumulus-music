@@ -6,6 +6,7 @@ pub mod vinyl_similar;
 pub mod voice_related;
 pub mod voice_song_collect;
 pub mod voice_song_download;
+pub(crate) mod voice_song_group_download;
 use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, dto::*},

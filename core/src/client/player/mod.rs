@@ -56,7 +56,8 @@ pub use voice_detail::{
 pub use voice_songs::{
     PlayerVoiceSongsView, VoiceSongAction, VoiceSongCollectPlan, VoiceSongCollectResult,
     VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
-    VoiceSongDownloadPlan, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
+    VoiceSongDownloadPlan, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint,
+    VoiceSongGroupDownloadPlan, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
     VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability, VoiceSongSelectionAction,
     VoiceSongSelectionKind,
 };

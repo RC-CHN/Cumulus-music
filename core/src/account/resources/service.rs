@@ -7,7 +7,7 @@ use crate::{
         validate_settings,
     },
     protocol::api::{GuardedSongLike, SongLikePermission, identifier, validate_response},
-    storage::{OperationLock, StateStore},
+    storage::{OperationLock, StateStore, StateTransaction},
 };
 use serde_json::{Value, json};
 use std::{
@@ -93,20 +93,32 @@ impl AccountResources {
         }
         let id = identifier(&json!(id))?;
         self.session.with_token(token, |uid| {
-            let observed = self
-                .store
-                .get(uid, "resources", kind.as_str())?
-                .map(|value| {
-                    snapshot::value(kind, &id, &value).and_then(|value| {
-                        value
-                            .as_bool()
-                            .ok_or(Error::Response("invalid membership observation"))
-                    })
-                })
-                .transpose()?;
-            let operation = self.load(uid, &record::key(kind, &id))?;
-            Ok((observed, operation))
+            self.store
+                .read_snapshot(|tx| Self::membership_in(tx, uid, kind, &id))
         })
+    }
+
+    pub(crate) fn membership_in(
+        tx: &StateTransaction<'_>,
+        uid: &str,
+        kind: ResourceKind,
+        id: &str,
+    ) -> Result<(Option<bool>, Option<MutationRecord>)> {
+        let observed = tx
+            .get(uid, "resources", kind.as_str())?
+            .map(|value| {
+                snapshot::value(kind, id, &value).and_then(|value| {
+                    value
+                        .as_bool()
+                        .ok_or(Error::Response("invalid membership observation"))
+                })
+            })
+            .transpose()?;
+        let key = record::key(kind, id);
+        Ok((
+            observed,
+            Self::decode_operation(tx.get(uid, JOURNAL, &key)?, &key)?,
+        ))
     }
     pub async fn refresh_for(&self, token: &SessionToken, kind: ResourceKind) -> Result<Value> {
         if kind == ResourceKind::Settings {
@@ -252,11 +264,11 @@ impl AccountResources {
         compatibility_record(op)
     }
     pub(super) fn load(&self, uid: &str, key: &str) -> Result<Option<MutationRecord>> {
-        let record: Option<MutationRecord> = self
-            .store
-            .get(uid, JOURNAL, key)?
-            .map(serde_json::from_value)
-            .transpose()?;
+        Self::decode_operation(self.store.get(uid, JOURNAL, key)?, key)
+    }
+
+    fn decode_operation(value: Option<Value>, key: &str) -> Result<Option<MutationRecord>> {
+        let record: Option<MutationRecord> = value.map(serde_json::from_value).transpose()?;
         if record
             .as_ref()
             .is_some_and(|r| record::key(r.kind, &r.key) != key || !r.created_at.is_finite())

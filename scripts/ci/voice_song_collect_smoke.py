@@ -120,7 +120,7 @@ def verify(root, liked=False):
     card = song['result']
     assert play_id == player['playId'] == card['playId'] and card['voiceId'] == '601' and card['receipt']
     assert [track['id'] for track in card['tracks']] == ['1710', '1601', '1790', '1791']
-    assert card['availability'][3] == {'onlineEligible': False, 'copyrightBlocked': True}
+    assert card['availability'][3] == {'onlineEligible': False, 'copyrightBlocked': True, 'groupDownload': 'omitted'}
     assert complete['voiceSongsTrace']['songReads'] == [[TRACKS, {'id': '601'}]]
     assert not complete['voiceSongsTrace']['likes']
     source = {'epoch': epoch, 'playId': play_id, 'voiceId': '601', 'cardReceipt': card['receipt']}

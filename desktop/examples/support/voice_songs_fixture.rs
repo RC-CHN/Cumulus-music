@@ -9,7 +9,7 @@ const LIKE: &str = "/api/song/like";
 const MEDIA: &str = "/api/song/enhance/player/url/v1";
 const FIXTURE_URL: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
 
-pub struct Fixture(Mutex<State>, bool, bool, bool, bool);
+pub struct Fixture(Mutex<State>, bool, bool, bool, bool, bool);
 
 #[derive(Default)]
 struct State {
@@ -35,6 +35,7 @@ impl Fixture {
             matches!(case, "download" | "purchased_download"),
             case == "collect",
             case == "purchased_download",
+            case == "group_download",
         )
     }
 
@@ -44,6 +45,21 @@ impl Fixture {
             Some("601") if self.1 => (2201..=2300)
                 .map(|id| row(id, &format!("合成包含歌曲 {id}"), false))
                 .collect(),
+            Some("601") if self.5 => {
+                let mut rows = [
+                    row(1710, "合成包含歌曲 1710", false),
+                    row(1712, "合成包含歌曲 1712", false),
+                    row(1790, "合成已喜欢下架歌曲", true),
+                    row(1791, "合成已购歌曲", false),
+                ];
+                for song in &mut rows {
+                    song["privilege"]["fee"] = json!(0);
+                    song["privilege"]["dl"] = json!(320000);
+                }
+                rows[3]["privilege"]["fee"] = json!(4);
+                rows[3]["privilege"]["payed"] = json!(2);
+                rows.into()
+            }
             Some("601") => vec![
                 {
                     let mut song = row(1710, "合成包含歌曲 1710", false);

@@ -29,6 +29,8 @@ pub enum Case {
     PurchasedLiked,
     PurchasedCancel,
     PurchasedExisting,
+    GroupLiked,
+    GroupDirectory,
 }
 
 #[derive(Default)]
@@ -57,6 +59,8 @@ impl Fixture {
                 "purchased_liked" => Case::PurchasedLiked,
                 "purchased_cancel" => Case::PurchasedCancel,
                 "purchased_existing" => Case::PurchasedExisting,
+                "group_liked" => Case::GroupLiked,
+                "group_directory" => Case::GroupDirectory,
                 _ => panic!("unknown isolated SongCard download proof"),
             },
             state: Mutex::default(),
@@ -69,10 +73,10 @@ impl Fixture {
                 assert!(!cache);
                 assert_eq!(*body, json!({"uid":"2"}));
                 self.state.lock().unwrap().liked_reads += 1;
-                let ids = if matches!(self.case, Case::Liked | Case::PurchasedLiked) {
-                    vec![1710]
-                } else {
-                    vec![]
+                let ids = match self.case {
+                    Case::Liked | Case::PurchasedLiked => vec![1710],
+                    Case::GroupLiked | Case::GroupDirectory => vec![1790],
+                    _ => vec![],
                 };
                 Some(Ok(json!({"code":200,"ids":ids})))
             }
@@ -81,7 +85,11 @@ impl Fixture {
                     !cache
                         && !matches!(
                             self.case,
-                            Case::Liked | Case::PurchasedLiked | Case::PurchasedCancel
+                            Case::Liked
+                                | Case::PurchasedLiked
+                                | Case::PurchasedCancel
+                                | Case::GroupLiked
+                                | Case::GroupDirectory
                         )
                 );
                 assert_eq!(
@@ -138,20 +146,27 @@ impl Fixture {
                     "userId":2,"privacy":10,"tags":[],"trackIds":tracks}}),
                 ))
             }
-            META if body["c"].as_str().is_some_and(|ids| ids.contains("1710")) => {
+            META if body["c"].as_str().is_some_and(|ids| {
+                ids.contains("1710") || (self.case == Case::GroupLiked && ids.contains("1712"))
+            }) =>
+            {
                 assert!(!cache && self.transfers());
-                assert_eq!(*body, json!({"c":r#"[{"id":"1710","v":0}]"#}));
+                let packed: Vec<Value> = serde_json::from_str(body["c"].as_str().unwrap()).unwrap();
+                let id = packed[0]["id"].as_str().unwrap();
+                assert!(id == "1710" || self.case == Case::GroupLiked && id == "1712");
+                assert_eq!(*body, json!({"c":format!(r#"[{{"id":"{id}","v":0}}]"#)}));
                 self.record(path, body);
+                let id = id.parse::<u64>().unwrap();
                 let privilege = if matches!(
                     self.case,
                     Case::PurchasedLiked | Case::PurchasedExisting
                 ) {
-                    json!({"id":1710,"fee":4,"payed":2,"st":0,"dl":320000,"maxbr":999000,"flag":69632})
+                    json!({"id":id,"fee":4,"payed":2,"st":0,"dl":320000,"maxbr":999000,"flag":69632})
                 } else {
-                    json!({"id":1710,"fee":0,"st":0,"dl":320000})
+                    json!({"id":id,"fee":0,"st":0,"dl":320000})
                 };
                 Some(Ok(
-                    json!({"code":200,"songs":[{"id":1710,"name":"合成包含歌曲 1710",
+                    json!({"code":200,"songs":[{"id":id,"name":format!("合成包含歌曲 {id}"),
                     "dt":30000,"ar":[{"id":57,"name":"合成歌曲作者"}],"al":{"id":55,"name":"合成包含歌曲专辑"}}],
                     "privileges":[privilege]}),
                 ))
@@ -159,19 +174,18 @@ impl Fixture {
             AUTH => {
                 assert!(!cache && self.transfers());
                 let selected = match self.case {
-                    Case::PurchasedLiked => "exhigh",
+                    Case::PurchasedLiked | Case::GroupLiked => "exhigh",
                     Case::PurchasedExisting => "lossless",
                     _ => "standard",
                 };
-                assert_eq!(
-                    *body,
-                    json!({"id":"1710","level":selected,"immerseType":"c51"})
-                );
+                let id = body["id"].as_str().unwrap();
+                assert!(id == "1710" || self.case == Case::GroupLiked && id == "1712");
+                assert_eq!(*body, json!({"id":id,"level":selected,"immerseType":"c51"}));
                 // All synthetic transfers use one pinned MP3. The actual
                 // service level can differ from the explicitly requested one.
                 self.record(path, body);
                 Some(Ok(
-                    json!({"code":200,"data":{"id":1710,"code":200,"url":MEDIA,"type":"mp3",
+                    json!({"code":200,"data":{"id":id.parse::<u64>().unwrap(),"code":200,"url":MEDIA,"type":"mp3",
                     "md5":"485aa2633a203a9ea13fd7416caeb9f9","size":AUDIO.len(),"level":"standard"}}),
                 ))
             }
@@ -197,7 +211,11 @@ impl Fixture {
     fn transfers(&self) -> bool {
         matches!(
             self.case,
-            Case::Liked | Case::ExistingRejected | Case::PurchasedLiked | Case::PurchasedExisting
+            Case::Liked
+                | Case::ExistingRejected
+                | Case::PurchasedLiked
+                | Case::PurchasedExisting
+                | Case::GroupLiked
         )
     }
 

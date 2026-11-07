@@ -54,6 +54,7 @@ const items = computed<MenuItem[]>(() => {
   const track = input?.track;
   if (!track || (input?.episode && !input.episode.live())) return [];
   const selection = input.episode?.selection;
+  const groupDownload = selection && input.episode?.downloadGroup;
   const available = !track.missing && !track.local;
   const canPlay = selection
     ? !selection.allCopyrightBlocked
@@ -98,7 +99,9 @@ const items = computed<MenuItem[]>(() => {
             disabled: !available || !!input.episode?.copyrightBlocked,
           },
         ]
-      : []),
+      : groupDownload && groupDownload.available()
+        ? [{ key: 'download', label: '下载', icon: 'download', disabled: groupDownload.busy() }]
+        : []),
     ...(available && link
       ? [
           { key: 'share', label: '分享', icon: 'share' },
@@ -256,7 +259,10 @@ async function select(key: string) {
     if (input.episode?.selection) input.episode.collectGroup?.();
     else emit('collect', track);
   } else if (key === 'download') {
-    if (input.episode) input.episode.download?.();
+    if (input.episode?.selection) {
+      const group = input.episode.downloadGroup;
+      if (group?.available() && !group.busy()) group.start();
+    } else if (input.episode) input.episode.download?.();
     else emit('download', track);
   } else if (key === 'comments') {
     if (input.episode) input.episode.comments();

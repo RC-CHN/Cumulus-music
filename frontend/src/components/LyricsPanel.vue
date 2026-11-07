@@ -57,6 +57,7 @@ import { vinylCopyText, vinylSelection } from '../services/vinylTextCopy';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
 import type { VoiceSongRowTarget } from '../services/voiceSongs';
+import type { VoiceSongGroupDownloadNotice } from '../composables/useVoiceSongGroupDownload';
 import VoiceSongsCard from './VoiceSongsCard.vue';
 import {
   playbackMetadata,
@@ -74,6 +75,7 @@ const props = defineProps<{
   voicePage: VoicePageModel;
   voiceRouteError?: string;
   voiceDownloadNotice?: string;
+  voiceGroupDownloadNotice?: VoiceSongGroupDownloadNotice;
   likedSongs: ReadonlySet<string>;
   busyLikes: ReadonlySet<string>;
   commentsAvailable: boolean;
@@ -99,6 +101,7 @@ const emit = defineEmits<{
     indices?: readonly number[],
   ];
   voiceSongLike: [target: VoiceSongRowTarget];
+  voiceGroupDownloadAction: [];
   voiceSongCollect: [target: VoiceSongRowTarget, indices: readonly number[], opener: HTMLElement];
   voiceSongMore: [
     target: VoiceSongRowTarget,
@@ -849,6 +852,23 @@ const displayedAuxiliary = computed(() =>
           data-voice-song-download-notice
         >
           {{ voiceDownloadNotice }}
+        </span>
+        <span
+          v-if="voiceGroupDownloadNotice"
+          class="vinyl-download-notice vinyl-group-download-notice"
+          data-voice-song-group-download-notice
+          :data-kind="voiceGroupDownloadNotice.kind"
+        >
+          <span role="status">{{ voiceGroupDownloadNotice.text }}</span>
+          <button
+            v-if="['directory', 'uncertain'].includes(voiceGroupDownloadNotice.kind)"
+            type="button"
+            class="text-button"
+            data-voice-song-group-download-action
+            @click="emit('voiceGroupDownloadAction')"
+          >
+            {{ voiceGroupDownloadNotice.kind === 'directory' ? '下载设置' : '查看下载' }}
+          </button>
         </span>
       </span>
       <DesktopLyricToggle v-if="view" :epoch="view.epoch" />

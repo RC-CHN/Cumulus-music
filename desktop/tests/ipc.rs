@@ -50,6 +50,9 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "pick_local_directory",
             "player_action",
             "player_vinyl_voice_detail_target",
+            "player_voice_songs_download_prepare",
+            "player_voice_songs_download_cancel",
+            "player_voice_songs_download_start",
             "change_fresh_vinyl_podcast_subscription",
             "reconcile_fresh_vinyl_podcast_subscription",
             "player_voice_songs_collect_liked_destination",
@@ -138,6 +141,80 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         headers: Default::default(),
         invoke_key: INVOKE_KEY.into(),
     };
+    let card_receipt = "0123456789abcdef0123456789abcdef";
+    let selection_receipt = "abcdef0123456789abcdef0123456789";
+    let prepare = json!({"epoch":"0","playId":"stale-play","cardReceipt":card_receipt,
+                        "anchorIndex":2,"indices":[1,3,2]});
+    let prepared = json!({"epoch":"0","playId":"stale-play","cardReceipt":card_receipt,
+                         "selectionReceipt":selection_receipt});
+    for (command, body, overrides) in [
+        (
+            "player_voice_songs_download_prepare",
+            prepare,
+            vec![
+                ("anchor", json!(1)),
+                ("anchorSongId", json!("301")),
+                ("anchorIndex", json!(-1)),
+                ("indices", json!(["1", "3", "2"])),
+                ("selectionReceipt", json!(selection_receipt)),
+            ],
+        ),
+        (
+            "player_voice_songs_download_cancel",
+            prepared.clone(),
+            vec![
+                ("anchorIndex", json!(2)),
+                ("indices", json!([1, 3, 2])),
+                ("selectionReceipt", json!("301")),
+            ],
+        ),
+        (
+            "player_voice_songs_download_start",
+            prepared,
+            vec![
+                ("anchorIndex", json!(2)),
+                ("indices", json!([1, 3, 2])),
+                ("selectionReceipt", json!("301")),
+            ],
+        ),
+    ] {
+        // The well-shaped body reaches the native epoch fence. The same
+        // stale scope with malformed input must fail in the IPC schema first.
+        assert_ipc_response(
+            &window,
+            request(command, body.clone()),
+            Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
+        );
+        let invalid =
+            json!({"code":"invalid_input","message":"输入内容不符合要求","retryable":false});
+        for (field, value) in overrides.into_iter().chain([
+            ("options", json!({"quality":"lossless"})),
+            ("quality", json!("lossless")),
+            ("songIds", json!(["301", "302"])),
+            ("songId", json!("301")),
+            ("voiceId", json!("71")),
+        ]) {
+            let mut payload = body.clone();
+            payload[field] = value;
+            assert_ipc_response(&window, request(command, payload), Err(invalid.clone()));
+        }
+        let mut incomplete = body.clone();
+        incomplete
+            .as_object_mut()
+            .unwrap()
+            .remove(if command.ends_with("_prepare") {
+                "anchorIndex"
+            } else {
+                "selectionReceipt"
+            });
+        for payload in [
+            incomplete,
+            json!({"target":body}),
+            json!(["0", "stale-play", card_receipt]),
+        ] {
+            assert_ipc_response(&window, request(command, payload), Err(invalid.clone()));
+        }
+    }
     assert_ipc_response(
         &window,
         request("account_snapshot", json!({})),

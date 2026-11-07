@@ -31,6 +31,7 @@ export interface TrackMenuRequest {
     copyrightBlocked: boolean;
     selection?: { allCopyrightBlocked: boolean };
     collectGroup?: () => void;
+    downloadGroup?: { available: () => boolean; busy: () => boolean; start: () => void };
     comments: () => void;
     download?: () => void;
   };

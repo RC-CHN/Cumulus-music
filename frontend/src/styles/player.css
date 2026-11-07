@@ -956,6 +956,15 @@ input[type='range'] {
 .vinyl-download-notice {
   margin-inline-start: 12px;
 }
+.vinyl-group-download-notice {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 8px;
+}
+.vinyl-group-download-notice button {
+  white-space: nowrap;
+}
 .vinyl-mode-entry {
   min-height: 34px;
   padding: 0 12px;

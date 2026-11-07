@@ -2,6 +2,7 @@
 mod actions;
 mod collect;
 mod download;
+mod group_download;
 mod likes;
 mod picker;
 mod purchased;
@@ -25,6 +26,7 @@ pub use actions::VoiceSongAction;
 use actions::{Page, Row};
 pub use collect::{VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongLikedDestination};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
+pub use group_download::{VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadPlan};
 pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
 pub use purchased::{VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult};
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
@@ -53,6 +55,17 @@ pub struct PlayerVoiceSongsView {
 pub struct VoiceSongRowAvailability {
     pub online_eligible: bool,
     pub copyright_blocked: bool,
+    pub group_download: VoiceSongGroupDownloadHint,
+}
+
+/// Card-local affordance only; current account, local files and the download
+/// ledger are checked by the explicit native prepare/start commands.
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceSongGroupDownloadHint {
+    Ordinary,
+    Omitted,
+    Unsupported,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -230,8 +243,14 @@ fn track(row: &Value) -> Result<Option<Row>> {
         .as_f64()
         .or_else(|| status.as_str()?.trim().parse().ok())
         .is_some_and(|status| status < 0.0);
+    let download = download::classify(row, &track.id);
     Ok(Some(Row {
-        download: download::classify(row, &track.id),
+        download,
+        download_copyright_blocked: copyright_blocked
+            && !["programId", "audio", "radio", "mainTrackId"]
+                .iter()
+                .any(|key| js_truthy(&row[*key])),
+        group_download_unsupported: group_download::unsupported(row, &track.id, download),
         // M/21 A maps subp to subPriv. M/3085 favorite filters out rows
         // with an explicitly truthy subPriv which is not positive.
         playlist_eligible: !js_truthy(&row["privilege"]["subp"])
@@ -332,6 +351,7 @@ impl MusicClient {
             picker: Default::default(),
             collect: Default::default(),
             purchase: Default::default(),
+            group_download: Default::default(),
             receipt: uuid::Uuid::new_v4().simple().to_string(),
             created: Instant::now(),
         });
@@ -347,6 +367,13 @@ impl MusicClient {
                 .map(|row| VoiceSongRowAvailability {
                     online_eligible: row.online_eligible,
                     copyright_blocked: row.copyright_blocked,
+                    group_download: if row.group_download_unsupported {
+                        VoiceSongGroupDownloadHint::Unsupported
+                    } else if row.download == download::Class::Ordinary {
+                        VoiceSongGroupDownloadHint::Ordinary
+                    } else {
+                        VoiceSongGroupDownloadHint::Omitted
+                    },
                 })
                 .collect(),
         })

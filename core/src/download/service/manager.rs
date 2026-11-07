@@ -29,6 +29,48 @@ pub struct DownloadService {
     pub(super) transfer: Arc<TransferManager>,
     pub(super) offline: Arc<OfflineLibrary>,
 }
+pub(super) struct TaskDestination {
+    pub(super) destination: DownloadDestination,
+    pub(super) root: std::path::PathBuf,
+    pub(super) identity: files::Identity,
+}
+
+/// Owns a newly created, still private work directory until its task is durable.
+pub(super) struct StagedTask {
+    task: Option<DownloadTask>,
+    _lock: OperationLock,
+}
+
+impl StagedTask {
+    pub(super) fn task(&self) -> &DownloadTask {
+        self.task.as_ref().expect("staged download")
+    }
+
+    pub(super) fn commit(mut self) -> DownloadTask {
+        self.task.take().expect("staged download")
+    }
+}
+
+impl Drop for StagedTask {
+    fn drop(&mut self) {
+        if let Some(task) = &self.task
+            && files::work(task).is_ok()
+        {
+            let _ = fs::remove_dir(&task.work);
+        }
+    }
+}
+
+pub(super) fn creation_clock() -> Result<u64> {
+    u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| Error::State("invalid creation clock"))?
+            .as_millis(),
+    )
+    .map_err(|_| Error::State("creation clock overflow"))
+}
+
 impl DownloadService {
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
         Self::with_backend(
@@ -316,7 +358,7 @@ impl DownloadService {
         &self,
         song_id: &Value,
         mut destination: DownloadDestination,
-        mut options: DownloadOptions,
+        options: DownloadOptions,
         origin: DownloadOrigin,
         song: Option<Value>,
         permission: Option<&dyn Fn() -> Result<()>>,
@@ -325,7 +367,6 @@ impl DownloadService {
         self.guard(&token)?;
         directory_gate::require(&self.store, &self.owner, None)?;
         let song_id = identifier(song_id)?;
-        options.cover &= options.tags || options.container != OutputContainer::Audio;
         let root = match &mut destination {
             DownloadDestination::Path { path } => {
                 let full = std::path::absolute(&*path)?;
@@ -357,29 +398,52 @@ impl DownloadService {
         if root.to_str().is_none() {
             return Err(Error::InvalidInput("download directory must be UTF-8"));
         }
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        let _lock = self.lock(&id)?;
-        let work = root.join(format!(".cumulus-{id}"));
-        let root_identity = files::identity(&root)?;
-        let builder = crate::storage::private_directory_builder();
-        builder.create(&work)?;
+        let destination = TaskDestination {
+            identity: files::identity(&root)?,
+            destination,
+            root,
+        };
+        let staged = self.stage_task(
+            uuid::Uuid::new_v4().simple().to_string(),
+            creation_clock()?,
+            song_id,
+            &destination,
+            options,
+            (origin, song),
+        )?;
+        files::sync(&destination.root)?;
+        if let Some(permission) = permission {
+            permission()?;
+        }
+        self.save_current(&token, staged.task())?;
+        Ok(staged.commit())
+    }
+
+    pub(super) fn stage_task(
+        &self,
+        id: String,
+        created_ms: u64,
+        song_id: String,
+        location: &TaskDestination,
+        mut options: DownloadOptions,
+        (origin, song): (DownloadOrigin, Option<Value>),
+    ) -> Result<StagedTask> {
+        options.cover &= options.tags || options.container != OutputContainer::Audio;
+        files::directory(&location.root, &location.identity)?;
+        let lock = self.lock(&id)?;
+        let work = location.root.join(format!(".cumulus-{id}"));
+        crate::storage::private_directory_builder().create(&work)?;
         let task = DownloadTask {
             id,
             song_id,
             origin,
             options,
-            destination,
+            destination: location.destination.clone(),
             target: None,
             work: work.clone(),
             status: DownloadStatus::Queued,
             phase: DownloadPhase::Authorize,
-            created_ms: u64::try_from(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(|_| Error::State("invalid creation clock"))?
-                    .as_millis(),
-            )
-            .map_err(|_| Error::State("creation clock overflow"))?,
+            created_ms,
             completed_ms: None,
             bytes: 0,
             authorization_count: 0,
@@ -395,25 +459,18 @@ impl DownloadService {
             lyrics_status: LyricsStatus::Pending,
             lyrics_error: None,
             file_operation: None,
-            root,
-            root_identity,
+            root: location.root.clone(),
+            root_identity: location.identity.clone(),
             work_identity: files::identity(&work)?,
             target_parent: None,
             prepared: None,
             cover: None,
             lyric: None,
         };
-        files::sync(&task.root)?;
-        let saved = permission
-            .map_or(Ok(()), |permission| permission())
-            .and_then(|()| self.save_current(&token, &task));
-        if let Err(e) = saved {
-            if files::work(&task).is_ok() {
-                let _ = fs::remove_dir(&work);
-            }
-            return Err(e);
-        }
-        Ok(task)
+        Ok(StagedTask {
+            task: Some(task),
+            _lock: lock,
+        })
     }
     pub fn enqueue(&self, id: &str) -> Result<DownloadTask> {
         let _directory = directory_gate::lock(&self.store, &self.owner)?;

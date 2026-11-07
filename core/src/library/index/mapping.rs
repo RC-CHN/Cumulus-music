@@ -4,7 +4,7 @@ use crate::{
     account::{AccountSession, SessionToken},
     library::{ListOptions, LocalRevision},
     protocol::api::identifier,
-    storage::StateTransaction,
+    storage::{OperationLock, StateTransaction},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -41,6 +41,46 @@ impl LocalLibrary {
     ) -> Result<Vec<crate::library::LibraryItem>> {
         identifier(&serde_json::json!(song_id))?;
         let _lock = self.lock()?;
+        self.files_for_online_songs(session, token, &[song_id].into_iter().collect())
+            .map(|matches| matches.into_iter().map(|(_, item)| item).collect())
+    }
+
+    /// One reverse lookup for the complete native group, not one index scan per song.
+    pub(crate) fn matched_online_song_ids(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        song_ids: &BTreeSet<&str>,
+    ) -> Result<BTreeSet<String>> {
+        let _lock = self.lock()?;
+        self.files_for_online_songs(session, token, song_ids)
+            .map(|matches| matches.into_iter().map(|(id, _)| id).collect())
+    }
+
+    /// Hold the native index stable through an immediately following durable
+    /// admission. The caller must not reenter LocalLibrary while holding it.
+    pub(crate) fn hold_unmatched_online_songs(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        song_ids: &BTreeSet<&str>,
+    ) -> Result<OperationLock> {
+        let lock = self.lock()?;
+        if !self
+            .files_for_online_songs(session, token, song_ids)?
+            .is_empty()
+        {
+            return Err(Error::State("download selection gained a local file"));
+        }
+        Ok(lock)
+    }
+
+    fn files_for_online_songs(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        song_ids: &BTreeSet<&str>,
+    ) -> Result<Vec<(String, crate::library::LibraryItem)>> {
         let mappings = session.with_token(token, |uid| self.store.values(uid, MAPS))?;
         if mappings.len() > 50_000 {
             return Err(Error::State("local file associations exceed 50000"));
@@ -55,10 +95,12 @@ impl LocalLibrary {
                 ..Default::default()
             })?
             .into_iter()
-            .filter(|item| {
-                wanted.get(&item.id).is_some_and(|mapping| {
-                    mapping.song_id == song_id && mapping.revision == item.revision
-                }) && Self::check_current(item).is_ok()
+            .filter_map(|item| {
+                let mapping = wanted.get(&item.id)?;
+                (song_ids.contains(mapping.song_id.as_str())
+                    && mapping.revision == item.revision
+                    && Self::check_current(&item).is_ok())
+                .then(|| (mapping.song_id.clone(), item))
             })
             .collect();
         session.with_token(token, |_| Ok(found))

@@ -11,7 +11,14 @@ export interface VoiceSongsView {
   voiceId: string;
   receipt: string | null;
   tracks: TrackView[];
-  availability: { onlineEligible: boolean; copyrightBlocked: boolean }[];
+  availability: VoiceSongRowAvailability[];
+}
+
+export interface VoiceSongRowAvailability {
+  onlineEligible: boolean;
+  copyrightBlocked: boolean;
+  /** A card-local affordance, never an admission receipt. */
+  groupDownload?: 'ordinary' | 'omitted' | 'unsupported';
 }
 
 export type VoiceSongAction =
@@ -250,9 +257,58 @@ export interface VoiceSongLikedCollectClient {
   ): Promise<VoiceSongCollectResult>;
 }
 
+declare const groupDownloadSelection: unique symbol;
+
+/** Native permission for exactly one prepared group, held only in the active view. */
+export type VoiceSongGroupDownloadReceipt = string & { readonly [groupDownloadSelection]: true };
+
+export interface VoiceSongGroupDownloadCard {
+  epoch: string;
+  playId: string;
+  cardReceipt: string;
+}
+
+export interface VoiceSongGroupDownloadRequest extends VoiceSongGroupDownloadCard {
+  anchorIndex: number;
+  indices: readonly number[];
+}
+
+export interface VoiceSongGroupDownloadTarget extends VoiceSongGroupDownloadCard {
+  selectionReceipt: VoiceSongGroupDownloadReceipt;
+}
+
+type VoiceSongGroupDownloadBlocked =
+  | 'playlist_required'
+  | 'membership_unknown'
+  | 'unavailable'
+  | 'unsupported_selection'
+  | 'directory_required';
+
+export type VoiceSongGroupDownloadDecision = 'ready' | VoiceSongGroupDownloadBlocked;
+
+export type VoiceSongGroupDownloadPlan = {
+  epoch: string;
+  playId: string;
+  anchorIndex: number;
+  eligibleIndices: readonly number[];
+  omittedIndices: readonly number[];
+} & (
+  | { decision: 'ready'; selectionReceipt: VoiceSongGroupDownloadReceipt }
+  | { decision: VoiceSongGroupDownloadBlocked; selectionReceipt: null }
+);
+
+export interface VoiceSongGroupDownloadClient {
+  playerVoiceSongsDownloadPrepare(
+    request: VoiceSongGroupDownloadRequest,
+  ): Promise<VoiceSongGroupDownloadPlan>;
+  playerVoiceSongsDownloadCancel(target: VoiceSongGroupDownloadTarget): Promise<void>;
+  playerVoiceSongsDownloadStart(target: VoiceSongGroupDownloadTarget): Promise<DownloadResult>;
+}
+
 export interface VoiceSongsClient
   extends VoiceSongDownloadClient,
     VoiceSongPurchasedDownloadClient,
+    VoiceSongGroupDownloadClient,
     VoiceSongCollectClient,
     VoiceSongLikedCollectClient {
   playerVoiceSongs(epoch: string, playId: string): Promise<VoiceSongsView>;
