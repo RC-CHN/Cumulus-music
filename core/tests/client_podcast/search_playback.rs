@@ -10,7 +10,7 @@ fn seed_search(api: &Backend) {
         "code":200,"data":{"blocks":[
             {"blockCode":"search_block_best_match","resources":[resource(allowed.clone())]},
             {"blockCode":"search_block_voicelist","resources":[resource(allowed.clone()),resource(denied)]},
-            {"blockCode":"unrelated","resources":[resource(json!({"id":22,"name":"Foreign section"}))]}
+            {"blockCode":"search_block_voicelist:unrelated","resources":[resource(json!({"id":22,"name":"Foreign section"}))]}
         ]}
     });
 }

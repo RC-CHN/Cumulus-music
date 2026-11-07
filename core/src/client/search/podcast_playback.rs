@@ -54,11 +54,14 @@ impl SearchPodcastPlaybacks {
         }
         let mut radios = BTreeMap::<String, Option<Radio>>::new();
         let observed = |section: &super::SearchSection| {
-            section.id.starts_with("search_block_best_match:")
-                || section
-                    .id
-                    .starts_with("search_block_hot_result_core_resources:")
-                || section.id.starts_with("search_block_voicelist:")
+            matches!(
+                section.id.rsplit_once(':').map(|(code, _)| code),
+                Some(
+                    "search_block_best_match"
+                        | "search_block_hot_result_core_resources"
+                        | "search_block_voicelist"
+                )
+            )
         };
         for section in view.sections.iter().filter(|section| observed(section)) {
             for item in &section.items {
