@@ -1,5 +1,5 @@
 //! One native poller; the main renderer only reports the message sheet's
-//! visibility and consumes count-only snapshots.
+//! visibility/navigation and consumes count-only snapshots.
 pub(crate) mod browser;
 use cumulus_core::{
     Error, Result,
@@ -8,8 +8,8 @@ use cumulus_core::{
         ClientError, MusicClient,
         dto::AccountData,
         messages::{
-            MessageCounts, MessageReadAllAction, MessageReadAllState, PcMessageConnectivity,
-            PcMessageConnectivityView,
+            MessageCountNavigation, MessageCounts, MessageReadAllAction, MessageReadAllState,
+            PcMessageConnectivity, PcMessageConnectivityView,
         },
     },
 };
@@ -42,6 +42,8 @@ struct Stream {
 pub struct CountView {
     epoch: String,
     counts: Option<MessageCounts>,
+    hide_private_row_badges: bool,
+    drawer_visible: bool,
     refreshing: bool,
     failed: bool,
 }
@@ -50,6 +52,8 @@ fn view(value: &PcMessageConnectivityView) -> CountView {
     CountView {
         epoch: value.epoch.clone(),
         counts: value.counts.clone(),
+        hide_private_row_badges: value.hide_private_row_badges,
+        drawer_visible: value.drawer_visible,
         refreshing: value.count_read_in_flight,
         failed: value.last_count_read_failed,
     }
@@ -216,6 +220,11 @@ pub enum CountAction {
         sequence: u32,
         visible: bool,
     },
+    Navigate {
+        epoch: String,
+        sequence: u32,
+        navigation: MessageCountNavigation,
+    },
     Refresh {
         epoch: String,
     },
@@ -273,6 +282,22 @@ pub fn message_count_action<R: tauri::Runtime>(
             stream.requested = Some((owner, requested));
             state.window_visible = visible;
             apply_visibility(&mut state)?;
+        }
+        CountAction::Navigate {
+            epoch,
+            sequence,
+            navigation,
+        } => {
+            let owner = generation(&client, &epoch)?;
+            if sequence <= stream.sequence || !visible || stream.applied != Some((owner, true)) {
+                return Err(Error::StaleResponse.into());
+            }
+            stream.sequence = sequence;
+            state
+                .poller
+                .as_ref()
+                .ok_or(Error::Cancelled)?
+                .try_drawer_navigated(owner, navigation)?;
         }
     }
     Ok(())

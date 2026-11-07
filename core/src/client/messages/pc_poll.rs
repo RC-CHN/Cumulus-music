@@ -14,6 +14,7 @@ use crate::{
 use playback::{PlaybackConnectivity, Sample};
 use read_all::{CountSample, ReadAll};
 pub use read_all::{MessageReadAllAction, MessageReadAllState};
+use serde::Deserialize;
 use std::{
     future::{Future, pending},
     pin::Pin,
@@ -51,8 +52,22 @@ pub struct PcMessageConnectivityView {
     pub epoch: String,
     pub online: bool,
     pub counts: Option<MessageCounts>,
+    pub hide_private_row_badges: bool,
+    pub drawer_visible: bool,
     pub last_count_read_failed: bool,
     pub count_read_in_flight: bool,
+}
+
+/// Committed navigation inside a visible message drawer. Private's official
+/// tab key is numeric 0, so it never clears the host's string `msg` category.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageCountNavigation {
+    Private,
+    Comments,
+    Forwards,
+    Notices,
+    Conversation,
 }
 
 enum Command {
@@ -60,6 +75,7 @@ enum Command {
     BrowserNotification(u64, bool),
     Request(u64, PcRequestObservation),
     DrawerVisible(u64, bool),
+    DrawerNavigated(u64, MessageCountNavigation),
     RefreshCounts(u64),
     ReadAll(u64, MessageReadAllAction, read_all::Reply),
 }
@@ -138,6 +154,8 @@ impl PcMessageConnectivity {
             epoch: token.generation.to_string(),
             online: initial_navigator_online.unwrap_or(false),
             counts: None,
+            hide_private_row_badges: false,
+            drawer_visible: false,
             last_count_read_failed: false,
             count_read_in_flight: false,
         };
@@ -269,6 +287,15 @@ impl PcMessageConnectivity {
         self.try_send(Command::DrawerVisible(generation, visible))
     }
 
+    /// A tab change or conversation enter/return reuses the visible poller.
+    pub fn try_drawer_navigated(
+        &self,
+        generation: u64,
+        navigation: MessageCountNavigation,
+    ) -> Result<()> {
+        self.try_send(Command::DrawerNavigated(generation, navigation))
+    }
+
     pub fn try_refresh_counts(&self, generation: u64) -> Result<()> {
         self.try_send(Command::RefreshCounts(generation))
     }
@@ -377,6 +404,11 @@ impl State {
                         }
                         self.rearm(start.elapsed());
                     }
+                    Some(Command::DrawerNavigated(generation, navigation))
+                        if self.drawer && self.is_current_account(generation) =>
+                    {
+                        self.navigate_drawer(navigation, start.elapsed());
+                    }
                     Some(Command::RefreshCounts(generation)) if self.is_current_account(generation) => {
                         self.start_read();
                     }
@@ -408,6 +440,7 @@ impl State {
                     true
                 }
             });
+            self.view.drawer_visible = self.drawer;
             publisher.send_if_modified(|current| {
                 if current == &self.view {
                     false
@@ -433,6 +466,7 @@ impl State {
         self.rearm(now);
         self.view.epoch = self.token.generation.to_string();
         self.view.counts = self.token.uid.is_none().then(read_all::zero_counts);
+        self.view.hide_private_row_badges = false;
         self.view.last_count_read_failed = false;
         self.view.count_read_in_flight = false;
     }
@@ -463,6 +497,22 @@ impl State {
 
     fn rearm(&mut self, now: Duration) {
         self.due = self.token.uid.is_some().then_some(now);
+    }
+
+    fn navigate_drawer(&mut self, navigation: MessageCountNavigation, now: Duration) {
+        use MessageCountNavigation::{Comments, Conversation, Forwards, Notices, Private};
+        if let Some(counts) = self.view.counts.as_mut() {
+            match navigation {
+                Comments => counts.comments = Some(0),
+                Forwards => counts.forwards = Some(0),
+                Notices => counts.notices = Some(0),
+                Private | Conversation => {}
+            }
+        }
+        // This is only local display state: no new signed observation, no
+        // write, and no durable settlement of a read-all operation.
+        self.read_all.revoke_intent();
+        self.rearm(now);
     }
 
     fn timer(&mut self, now: Duration) {
@@ -501,6 +551,7 @@ impl State {
         match result {
             Ok(mut sample) => {
                 self.read_all.observe(Some(&mut sample));
+                self.view.hide_private_row_badges = sample.hide_private_row_badges;
                 self.view.counts = Some(sample.counts);
                 self.view.last_count_read_failed = false;
                 self.observe(

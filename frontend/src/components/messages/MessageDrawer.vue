@@ -33,7 +33,7 @@ const model = useMessageDrawer(
   () => props.account,
   () => emit('expired'),
 );
-const { shown, tab, peer, current, counts, countsBusy, countsError } = model;
+const { shown, tab, peer, current, counts, countsBusy, countsError, hidePrivateRowBadges } = model;
 const trigger = ref<HTMLButtonElement>();
 const drawer = ref<HTMLElement>();
 const scroller = ref<HTMLElement>();
@@ -207,6 +207,7 @@ async function settleDeletion(receipt: string, action: 'remove' | 'check', row?:
   const isCurrent = () =>
     sequence === deletionVisit && shown.value && props.account.epoch === epoch;
   deleteBusy.value = true;
+  const endInboxDeletion = action === 'remove' ? model.beginInboxDeletion(list) : undefined;
   deleteNotice.value = '';
   try {
     const result = await core.deleteMessage(epoch, receipt, action);
@@ -226,6 +227,7 @@ async function settleDeletion(receipt: string, action: 'remove' | 'check', row?:
     if (code === 'session_expired') emit('expired');
     deleteNotice.value = '未能完成操作，已保留原消息。';
   } finally {
+    endInboxDeletion?.();
     if (isCurrent()) {
       confirmation.value = undefined;
       deleteBusy.value = false;
@@ -265,6 +267,12 @@ const readAll = useMessageReadAll(
     visible.value && props.account.status === 'authenticated' ? props.account.epoch : undefined,
   model.clearConversationBadges,
   () => emit('expired'),
+);
+watch(
+  () =>
+    !!confirmation.value || deleteBusy.value || !!readAll.confirmation.value || readAll.busy.value,
+  model.blockInboxSync,
+  { flush: 'sync' },
 );
 const readAllDisabled = computed(
   () =>
@@ -670,7 +678,7 @@ function refresh() {
               </span>
               <span class="message-drawer-meta">
                 <time v-if="item.time">{{ timestamp(item.time) }}</time>
-                <span v-if="item.unread" class="message-drawer-badge">{{
+                <span v-if="item.unread && !hidePrivateRowBadges" class="message-drawer-badge">{{
                   item.unread > 99 ? '99+' : item.unread
                 }}</span>
               </span>

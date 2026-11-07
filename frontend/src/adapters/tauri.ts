@@ -74,6 +74,11 @@ export function createTauriClient(): CoreClient {
             streamId,
             action: { kind: 'visibility', epoch, sequence, visible },
           }),
+        navigate: (epoch, sequence, navigation) =>
+          invoke('message_count_action', {
+            streamId,
+            action: { kind: 'navigate', epoch, sequence, navigation },
+          }),
         refresh: (epoch) =>
           invoke('message_count_action', { streamId, action: { kind: 'refresh', epoch } }),
         close: () => {

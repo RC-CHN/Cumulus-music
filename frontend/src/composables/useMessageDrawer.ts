@@ -1,14 +1,16 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
+import { mergePrivateInbox } from './messageInbox.ts';
 import {
   messageTabs,
   type MessageClient,
+  type MessageCountNavigation,
   type MessageCountStream,
   type MessageCountView,
   type MessageQuery,
   type MessageRow,
   type MessageTab,
-} from '../services/messages';
+} from '../services/messages.ts';
 
 const createList = () => ({
   rows: [] as MessageRow[],
@@ -47,6 +49,7 @@ export function useMessageDrawer(
       : undefined;
   });
   const counts = computed(() => currentCounts.value?.counts);
+  const hidePrivateRowBadges = computed(() => currentCounts.value?.hidePrivateRowBadges === true);
   const refreshing = ref<string>();
   const streamFailure = ref<string>();
   const countsBusy = computed(
@@ -59,16 +62,51 @@ export function useMessageDrawer(
   let disposed = false;
   let countVisibility = false;
   let sequence = 0;
+  let countActions = Promise.resolve();
+  let visit = 0;
+  let threadVisit = 0;
+  let inboxPresence = 0;
+  let inboxRevision = 0;
+  let inboxSyncQueued = false;
+  let inboxCountAtRead: readonly [number | null | undefined, boolean] | undefined;
+  const inboxSyncBlocked = ref(false);
+  const deletingInbox = ref(false);
+
+  function queueCountAction(
+    send: (stream: MessageCountStream, epoch: string, sequence: number) => Promise<void>,
+  ) {
+    const owner = account();
+    const stream = countStream;
+    if (!stream || owner.status !== 'authenticated') return;
+    const order = ++sequence;
+    countActions = countActions
+      .then(() => {
+        if (!disposed && countStream === stream && account().epoch === owner.epoch)
+          return send(stream, owner.epoch, order);
+      })
+      .catch(() => {});
+  }
 
   function syncCountVisibility() {
-    const owner = account();
-    if (!countStream || owner.status !== 'authenticated') return;
-    void countStream.visibility(owner.epoch, ++sequence, countVisibility).catch(() => {});
+    const visible = countVisibility;
+    queueCountAction((stream, epoch, order) => stream.visibility(epoch, order, visible));
+  }
+
+  function countNavigated(navigation: MessageCountNavigation) {
+    const generation = visit;
+    // The official tab clears its host count on the next turn, after the
+    // selected view changes. Returning to private or leaving a conversation
+    // rearms the same counter without clearing the private total.
+    setTimeout(() => {
+      if (disposed || generation !== visit || !shown.value || !countVisibility) return;
+      queueCountAction((stream, epoch, order) => stream.navigate(epoch, order, navigation));
+    }, 0);
   }
 
   function setCountVisibility(visible: boolean) {
     if (countVisibility === visible) return;
     countVisibility = visible;
+    if (!visible) leavePrivateInbox();
     syncCountVisibility();
   }
 
@@ -90,12 +128,12 @@ export function useMessageDrawer(
     disposed = true;
     countStream?.close();
   });
-  let visit = 0;
-  let threadVisit = 0;
-
   function close() {
     visit++;
     threadVisit++;
+    leavePrivateInbox();
+    inboxCountAtRead = undefined;
+    deletingInbox.value = false;
     shown.value = false;
     peer.value = undefined;
     thread.value = createList();
@@ -119,7 +157,73 @@ export function useMessageDrawer(
     }
   }
 
-  async function load(mode: 'first' | 'more' = 'first') {
+  function leavePrivateInbox() {
+    inboxPresence++;
+    inboxSyncQueued = false;
+  }
+
+  function privateInboxVisible() {
+    return (
+      shown.value &&
+      countVisibility &&
+      currentCounts.value?.drawerVisible === true &&
+      tab.value === 'private' &&
+      !peer.value
+    );
+  }
+
+  function drainInboxSync() {
+    if (
+      !inboxSyncQueued ||
+      !privateInboxVisible() ||
+      inboxSyncBlocked.value ||
+      deletingInbox.value ||
+      lists.private.busy
+    )
+      return;
+    inboxSyncQueued = false;
+    void load('first', true);
+  }
+
+  function requestInboxSync() {
+    if (!privateInboxVisible()) return;
+    inboxSyncQueued = true;
+    drainInboxSync();
+  }
+
+  // A settled count value change (including zero) rereads the first inbox
+  // page only while it is mounted and visible. One queued read survives an
+  // in-flight page, but a hidden/retired view never starts it.
+  watch(
+    [() => currentCounts.value?.drawerVisible, () => counts.value?.private, hidePrivateRowBadges],
+    ([visible, count, hidden], [wasVisible]) => {
+      if (!visible) {
+        if (wasVisible && countVisibility) leavePrivateInbox();
+        return;
+      }
+      if (inboxCountAtRead?.[0] !== count || inboxCountAtRead?.[1] !== hidden) requestInboxSync();
+    },
+    { flush: 'post' },
+  );
+  watch([() => lists.private.busy, inboxSyncBlocked, deletingInbox], drainInboxSync, {
+    flush: 'post',
+  });
+
+  function blockInboxSync(blocked: boolean) {
+    inboxSyncBlocked.value = blocked;
+  }
+
+  function beginInboxDeletion(scope: object) {
+    if (scope !== lists.private) return () => {};
+    const generation = visit;
+    inboxRevision++;
+    deletingInbox.value = true;
+    return () => {
+      if (generation === visit) deletingInbox.value = false;
+    };
+  }
+
+  async function load(mode: 'first' | 'more' = 'first', automatic = false) {
     const owner = account();
     const target = current.value;
     if (!shown.value || owner.status !== 'authenticated' || target.busy) return false;
@@ -127,34 +231,51 @@ export function useMessageDrawer(
     if (mode === 'more' && (!cursor || target.capped)) return false;
     const generation = visit;
     const talkGeneration = threadVisit;
+    const inboxGeneration = inboxRevision;
+    const presence = inboxPresence;
     const query: MessageQuery = peer.value
       ? { tab: 'thread', peerId: peer.value.id, cursor }
       : { tab: tab.value, cursor };
-    const valid = () =>
+    if (query.tab === 'private' && deletingInbox.value) return false;
+    const countAtStart =
+      query.tab === 'private' && mode === 'first'
+        ? ([counts.value?.private, hidePrivateRowBadges.value] as const)
+        : undefined;
+    if (countAtStart) inboxCountAtRead = countAtStart;
+    const owned = () =>
       generation === visit &&
       owner.epoch === account().epoch &&
       (query.tab !== 'thread' || talkGeneration === threadVisit);
+    const valid = () =>
+      owned() &&
+      (query.tab !== 'private' ||
+        (inboxGeneration === inboxRevision && (!automatic || presence === inboxPresence)));
     target.busy = true;
     target.error = false;
     try {
       const result = await core.messagePage(owner.epoch, query);
       if (!valid() || result.epoch !== owner.epoch) return false;
-      const rows = mode === 'more' ? target.rows.slice() : [];
-      const seen = new Set(rows.map((item) => item.id));
-      for (const row of result.value.rows) {
-        if (seen.has(row.id)) continue;
-        seen.add(row.id);
-        rows.push(row);
-      }
-      // An ambiguous write may have been applied. A fresh bounded read
-      // cannot establish this, so preserve unresolved rows during this visit.
-      if (mode === 'first') {
-        for (const row of target.rows.filter((row) => row.deletionPending)) {
-          if (!seen.has(row.id)) rows.push(row);
+      let rows: MessageRow[];
+      let cursor = result.value.nextCursor;
+      if (query.tab === 'private' && mode === 'first') {
+        ({ rows, cursor } = mergePrivateInbox(target.rows, result.value.rows, cursor));
+      } else {
+        rows = mode === 'more' ? target.rows.slice() : [];
+        const seen = new Set(rows.map((item) => item.id));
+        for (const row of result.value.rows) {
+          if (seen.has(row.id)) continue;
+          seen.add(row.id);
+          rows.push(row);
+        }
+        // A bounded read cannot settle an ambiguous write by omission.
+        if (mode === 'first') {
+          for (const row of target.rows.filter((row) => row.deletionPending)) {
+            if (!seen.has(row.id)) rows.push(row);
+          }
         }
       }
       target.rows = rows.slice(0, MAX_ROWS);
-      target.cursor = result.value.nextCursor;
+      target.cursor = cursor;
       target.capped = rows.length > MAX_ROWS || (rows.length === MAX_ROWS && !!target.cursor);
       if (query.tab === 'thread' && result.value.replyReceipt)
         target.replyReceipt = result.value.replyReceipt;
@@ -169,7 +290,9 @@ export function useMessageDrawer(
       }
       return false;
     } finally {
-      if (valid()) target.busy = false;
+      if (countAtStart && inboxCountAtRead === countAtStart && !valid())
+        inboxCountAtRead = undefined;
+      if (owned()) target.busy = false;
     }
   }
 
@@ -179,8 +302,12 @@ export function useMessageDrawer(
     void load();
   }
   function select(next: MessageTab) {
+    if (!shown.value || peer.value || next === tab.value) return;
+    if (tab.value === 'private') leavePrivateInbox();
     tab.value = next;
-    if (!lists[next].loaded && !lists[next].error) void load();
+    countNavigated(next);
+    if (next === 'private') requestInboxSync();
+    else if (!lists[next].loaded && !lists[next].error) void load();
   }
   function enter(item: MessageRow) {
     if (!shown.value || tab.value !== 'private' || peer.value || !item.peerId) return;
@@ -189,15 +316,20 @@ export function useMessageDrawer(
     const row = rows[index];
     if (!row) return;
     if (row.unread) rows[index] = { ...row, unread: 0 };
+    leavePrivateInbox();
     threadVisit++;
     thread.value = createList();
     peer.value = { id: item.peerId, name: row.author };
+    countNavigated('conversation');
     return load();
   }
   function back() {
+    if (!shown.value || !peer.value) return;
     threadVisit++;
     peer.value = undefined;
     thread.value = createList();
+    countNavigated('conversation');
+    requestInboxSync();
   }
   function clearConversationBadges() {
     const rows = lists.private.rows;
@@ -209,9 +341,12 @@ export function useMessageDrawer(
     peer,
     current,
     counts,
+    hidePrivateRowBadges,
     countsBusy,
     countsError,
     setCountVisibility,
+    blockInboxSync,
+    beginInboxDeletion,
     open,
     close,
     readCounts,
