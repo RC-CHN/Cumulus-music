@@ -14,10 +14,12 @@ from window_manager import launch
 
 PREFS = {'quality': 'standard', 'tags': False, 'cover': False, 'lyrics': False, 'container': 'audio'}
 OFFER = ['jymaster', 'hires', 'lossless', 'exhigh', 'standard']
+NO_DIRECTORY = 'purchased_no_directory'
 LABELS = {
     'purchased_liked': ('song_card', 'quality', 'chosen', 'transferred'),
     'purchased_cancel': ('song_card', 'quality', 'chosen', 'cancelled'),
     'purchased_existing': ('song_card', 'quality', 'chosen', 'picker', 'transferred'),
+    NO_DIRECTORY: ('song_card', 'quality', 'chosen', 'directory', 'directory_cancelled'),
 }
 
 
@@ -85,8 +87,8 @@ def verify(case, root, stages, complete):
         assert stage['dom']['title'] == '选择下载音质' and stage['dom']['qualityModal']
         assert stage['dom']['qualityRows'] == OFFER and stage['dom']['quality'] == quality
         assert purchased(stage) == proof[:1] and not stage['voiceSongDownloadTrace']['calls'], stage
-    assert not last['dom']['qualityModal'] and not last['dom']['picker']
-    assert last['dom']['notice'] == (None if case == 'purchased_cancel' else '已添加到下载'), last['dom']
+    assert not last['dom']['qualityModal'] and not last['dom']['picker'] and not last['dom']['directory']
+    assert last['dom']['notice'] == ('已添加到下载' if labels[-1] == 'transferred' else None), last['dom']
     wire = complete['voiceSongDownloadTrace']
     assert wire['likedReads'] > 0
     records = persisted(root)
@@ -94,6 +96,26 @@ def verify(case, root, stages, complete):
         assert last['dom']['focusedRow'] == '0' and proof == proof[:1] and not wire['calls']
         assert not records and not list((root / 'run/download-output').iterdir())
         return {'syntheticCalls': 0, 'playlistWrites': 0, 'mediaBytes': 0}
+    if case == NO_DIRECTORY:
+        prompt = stages['directory']
+        assert prompt['dom']['directory'] and prompt['dom']['directoryTitle'] == '更改下载目录', prompt['dom']
+        assert prompt['dom']['directoryButtons'] == ['取消下载', '更改目录'] and prompt['dom']['notice'] is None
+        assert [call['args'][1]['kind'] for call in proof] == ['prepare', 'select', 'start', 'cancel'], proof
+        assert purchased(prompt) == proof[:3]
+        assert proof[1]['args'] == [target, {'kind': 'select', 'quality': expected_quality}]
+        selected = proof[1]['result']
+        assert selected['kind'] == 'selection' and selected['decision'] == 'ready' and selected['quality'] == expected_quality
+        selection = selected['selection']
+        assert selection and proof[2]['args'] == [target, {'kind': 'start', 'selection': selection,
+                                                           'continuation': None,
+                                                           'options': {**PREFS, 'quality': expected_quality}}]
+        assert proof[2]['result'] == {'kind': 'directory_required'}
+        assert proof[3]['args'] == [target, {'kind': 'cancel', 'selection': selection}]
+        assert proof[3]['result'] == {'kind': 'cancelled'} and last['dom']['focusedRow'] == '0'
+        assert not any(call['name'] == 'playlistCollectPage' for call in last['commands'])
+        assert not wire['calls'] and not records and not list((root / 'run/download-output').iterdir())
+        assert all(not stage['voiceSongDownloadTrace']['calls'] for stage in stages.values())
+        return {'syntheticCalls': 0, 'playlistWrites': 0, 'mediaBytes': 0, 'directoryPromptVerified': True}
     choose = case == 'purchased_existing'
     assert [call['args'][1]['kind'] for call in proof] == (
         ['prepare', 'select', 'choose_playlist', 'start'] if choose else ['prepare', 'select', 'start']
@@ -164,7 +186,8 @@ def verify(case, root, stages, complete):
 def run(args, root, case):
     root.mkdir()
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_VOICE_SONG_DOWNLOAD_PROOF=case,
+    fixture = 'purchased_liked' if case == NO_DIRECTORY else case
+    env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_VOICE_SONG_DOWNLOAD_PROOF=fixture,
                CUMULUS_PODCAST_SCENE_HOME_PROOF='automatic')
     if sys.platform == 'linux':
         env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
@@ -174,6 +197,12 @@ def run(args, root, case):
         env['PATH'] = str(args.runtime) + os.pathsep + env.get('PATH', '')
     script = args.script or (Path(__file__).resolve().parents[2] /
                             'desktop/examples/voice_song_purchased_download_ui_probe.js')
+    if case == NO_DIRECTORY:
+        # Reuse the exact signed already-liked fixture without configuring a directory.
+        driver = root / 'no-directory-driver.js'
+        driver.write_text('window.__voiceSongPurchasedNoDirectory = true;\n' + script.read_text(encoding='utf-8'),
+                          encoding='utf-8')
+        script = driver
     env['CUMULUS_UX_SCRIPT'] = str(script.resolve(strict=True))
     isolated_profile(env, root)
     output = root / 'run/first'

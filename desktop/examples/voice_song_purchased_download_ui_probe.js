@@ -1,6 +1,8 @@
 // Real WebView interaction for the purchased SongCard path, with sealed native transfer.
 (async () => {
-  const mode = window.__voiceSongDownloadCase;
+  const fixtureMode = window.__voiceSongDownloadCase;
+  const noDirectory = window.__voiceSongPurchasedNoDirectory === true;
+  const mode = noDirectory ? 'purchased_no_directory' : fixtureMode;
   const expected = mode === 'purchased_existing' ? 'lossless' : 'exhigh';
   const qualityOrder = ['jymaster', 'hires', 'lossless', 'exhigh', 'standard'];
   const q = (selector, root = document) => root?.querySelector(selector) ?? null;
@@ -10,6 +12,7 @@
   const modal = () => q('dialog[open][data-voice-purchased-download]:not(.modal-leave-active)');
   const notice = () => q('[data-voice-song-download-notice]', panel());
   const picker = () => q('dialog[open][data-voice-download-stage="pick"]:not(.modal-leave-active)');
+  const directory = () => q('dialog[open][data-voice-download-stage="directory"]:not(.modal-leave-active)');
   const options = 'dialog.download-dialog:not([data-voice-purchased-download])';
   const radios = () => all('[data-voice-purchased-quality]', modal());
   const currentQuality = () => radios().find((node) => node.checked)?.dataset.voicePurchasedQuality;
@@ -75,6 +78,8 @@
       qualityModal: visible(modal()), qualityRows: radios().map((node) => node.dataset.voicePurchasedQuality),
       quality: currentQuality() ?? null, picker: visible(picker()),
       pickerRows: all('.collect-row', picker()).map((node) => node.getAttribute('aria-label')),
+      directory: visible(directory()), directoryTitle: q('h2', directory())?.textContent.trim() ?? null,
+      directoryButtons: all('footer button', directory()).map((node) => node.textContent.trim()),
       optionsEver: unexpectedOptions || !!q(options), downloads: visible(q('.downloads-page')),
       vinyl: visible(panel()), notice: notice()?.textContent.trim() ?? null, focusedRow: document.activeElement?.getAttribute('data-row-index') ?? null,
     };
@@ -107,7 +112,8 @@
       clientX: box.left + Math.min(40, box.width / 2), clientY: box.top + box.height / 2 }));
   }
   try {
-    assert(['purchased_liked', 'purchased_cancel', 'purchased_existing'].includes(mode), 'exact purchased case');
+    assert(['purchased_liked', 'purchased_cancel', 'purchased_existing'].includes(fixtureMode) &&
+      (!noDirectory || fixtureMode === 'purchased_liked'), 'exact purchased case');
     const root = window.__voiceSongDownloadRoot;
     assert(typeof root === 'string', 'private synthetic download directory');
     await wait(async () => {
@@ -119,10 +125,12 @@
 
     // Establish saved settings with normal local IPC before exercising the
     // actual SongCard UI. They are not part of the tested action trace.
-    const configured = await invoke('download_command', { epoch, command: {
-      kind: 'configure', root, path_type: 0, file_type: 1,
-    } });
-    assert(!configured.failed.length, 'private download directory is configured');
+    if (!noDirectory) {
+      const configured = await invoke('download_command', { epoch, command: {
+        kind: 'configure', root, path_type: 0, file_type: 1,
+      } });
+      assert(!configured.failed.length, 'private download directory is configured');
+    }
     const saved = await invoke('download_quality_preferences', { epoch, refresh: false });
     const settings = await invoke('download_command', { epoch, command: {
       kind: 'preferences', revision: saved.revision, options: preferences,
@@ -185,7 +193,7 @@
       return page?.receipt && page.playId === playing.playId && page.voiceId === '601' &&
         page.tracks[0]?.id === '1710' && visible(row()) && page;
     }, 'purchased row from verified current SongCard');
-    const liked = mode === 'purchased_liked';
+    const liked = fixtureMode === 'purchased_liked';
     await wait(async () => (await nativeTrace()).likedReads > 0 && q('[data-voice-song-heart]', row())
       ?.getAttribute('aria-pressed') === String(liked), 'current account liked state ready');
     await capture('song_card');
@@ -231,18 +239,31 @@
         assert(chosen.kind === 'picker' && chosen.picker.phase === 'confirmed' && chosen.picker.continuation,
           'native destination returns matching continuation after readback');
       }
-      const accepted = await wait(() => action('start')?.result, 'native purchased download accepts task');
-      assert(accepted.kind === 'started' && accepted.result.accepted.length === 1 &&
-        !accepted.result.failed.length, 'exact task admitted');
-      await wait(() => visible(panel()) && !modal() && !picker() && !q('.downloads-page') &&
-        visible(notice()) && notice().textContent.trim() === '已添加到下载',
-        'purchased task queues in place with visible episode feedback');
-      await wait(async () => {
-        const tasks = await downloadViews();
-        return !tasks.active.length && tasks.done.length === 1 &&
-          tasks.done[0].id === accepted.result.accepted[0] && tasks.done[0].status === 'complete' && tasks.done[0];
-      }, 'real downloaded file reaches complete');
-      await capture('transferred');
+      const accepted = await wait(() => action('start')?.result, 'native purchased download start reply');
+      if (noDirectory) {
+        assert(accepted.kind === 'directory_required', 'native rejects missing configured directory');
+        await wait(() => visible(panel()) && !modal() && !picker() && !q('.downloads-page') && !notice() &&
+          visible(directory()) && q('h2', directory())?.textContent.trim() === '更改下载目录' &&
+          enabled(textButton('取消下载', directory())) && enabled(textButton('更改目录', directory())),
+          'missing directory asks for an explicit decision without navigating');
+        await capture('directory');
+        await click(() => textButton('取消下载', directory()), 'explicitly cancel missing-directory download');
+        await wait(() => action('cancel')?.result?.kind === 'cancelled' && !directory() &&
+          document.activeElement === row(), 'native selection is cancelled and source focus restored');
+        await capture('directory_cancelled');
+      } else {
+        assert(accepted.kind === 'started' && accepted.result.accepted.length === 1 &&
+          !accepted.result.failed.length, 'exact task admitted');
+        await wait(() => visible(panel()) && !modal() && !picker() && !q('.downloads-page') &&
+          visible(notice()) && notice().textContent.trim() === '已添加到下载',
+          'purchased task queues in place with visible episode feedback');
+        await wait(async () => {
+          const tasks = await downloadViews();
+          return !tasks.active.length && tasks.done.length === 1 &&
+            tasks.done[0].id === accepted.result.accepted[0] && tasks.done[0].status === 'complete' && tasks.done[0];
+        }, 'real downloaded file reaches complete');
+        await capture('transferred');
+      }
     }
     restore();
     watcher.disconnect();
