@@ -8,9 +8,9 @@ use cumulus_core::{
         context::{RequestContext, TokenProvider},
         http::{
             ApiOrigin, BodyStatus, ClientProfile, HttpBackend, HttpReply, MusicHttpClient,
-            OFFICIAL_WINDOWS_USER_AGENT, RequestOptions, RequestPlan, WireRoute,
+            OFFICIAL_WINDOWS_USER_AGENT, RequestOptions, RequestPlan, RoutingPolicy, WireRoute,
         },
-        mconfig::{ConfigBackend, ConfigUrl, PcConfig},
+        mconfig::{ConfigBackend, ConfigUrl, PcConfig, Snapshot},
         wire::eapi,
     },
     storage::StateStore,
@@ -31,6 +31,8 @@ const EXPECTED: [&str; 16] = [
 const VERSION: &str = "3.1.42.205594";
 const TOKEN: &str = "synthetic-episode-system-liked-session";
 const SIGN: &str = "synthetic-episode-system-liked-client-sign";
+const BUSINESS: &str = "synthetic-group-like";
+const CHECK_TOKEN: &str = "synthetic-group-like-check-token";
 
 struct ClosedConfig;
 impl ConfigBackend for ClosedConfig {
@@ -43,11 +45,10 @@ impl ConfigBackend for ClosedConfig {
     }
 }
 impl TokenProvider for ClosedConfig {
-    fn token<'a>(&'a self, _: &'a str) -> ApiFuture<'a, String> {
-        Box::pin(async {
-            Err(Error::State(
-                "sealed group liked config cannot use SDK tokens",
-            ))
+    fn token<'a>(&'a self, business: &'a str) -> ApiFuture<'a, String> {
+        Box::pin(async move {
+            assert_eq!(business, BUSINESS);
+            Ok(CHECK_TOKEN.to_owned())
         })
     }
 }
@@ -81,6 +82,23 @@ impl Fixture {
             None,
             &initial.revision,
         )?;
+        // A normal signed playlist write requires loaded PC policy. Seed one
+        // synthetic protected path, without contacting the config CDN or SDK.
+        store.put(
+            "transport",
+            "pc-mconfig-v1",
+            "pc",
+            &serde_json::to_value(Snapshot {
+                origin,
+                version: 1,
+                generation: 1,
+                source_url: Some("https://p1.music.126.net/obj/synthetic-group-like.data".into()),
+                data: Some(
+                    json!({"yidun#paths":{"whiteList":[{"businessId":BUSINESS,"list":[ADD]}]}}),
+                ),
+                ..Default::default()
+            })?,
+        )?;
         let config = PcConfig::new(store, Arc::new(ClosedConfig))?;
         let context = Arc::new(RequestContext::from_pc(
             config.clone(),
@@ -100,7 +118,10 @@ impl Fixture {
                 os_version: "Microsoft Windows 10".into(),
                 client_sign: Some(SIGN.into()),
             },
-            RequestOptions::default(),
+            RequestOptions {
+                routing: RoutingPolicy::OfficialPcPlaylists,
+                ..Default::default()
+            },
             Some(context),
             backend.clone(),
         )?;
@@ -158,6 +179,13 @@ impl Wire {
         assert!(header["os"] == "pc" && header["appver"] == VERSION);
         assert!(header.get("MConfig-Info").is_none());
         assert!(plan.headers["MConfig-Info"] == self.config.snapshot()?.request_header(VERSION)?);
+        let token = body.as_object_mut().unwrap().remove("checkToken");
+        if path == ADD {
+            assert!(plan.headers["X-antiCheatToken"] == CHECK_TOKEN);
+            assert!(token.as_ref().and_then(Value::as_str) == Some(CHECK_TOKEN));
+        } else {
+            assert!(token.is_none() && !plan.headers.contains_key("X-antiCheatToken"));
+        }
         Ok((path, body))
     }
 
