@@ -246,18 +246,22 @@ impl PcMessageConnectivity {
 
     /// Native main-window adapters use this existing poller; no second count
     /// reader or renderer-provided account ID is used for read-all recovery.
-    pub async fn message_read_all(
+    pub fn message_read_all(
         &self,
         epoch: &str,
         action: MessageReadAllAction,
-    ) -> Result<AccountData<MessageReadAllState>> {
-        let generation = epoch
-            .parse()
-            .map_err(|_| Error::InvalidInput("invalid message count epoch"))?;
-        let (send, receive) = tokio::sync::oneshot::channel();
-        self.send(Command::ReadAll(generation, action, send))
-            .await?;
-        receive.await.map_err(|_| Error::Cancelled)?
+    ) -> impl Future<Output = Result<AccountData<MessageReadAllState>>> + Send + use<> {
+        let generation = epoch.parse();
+        let tx = self.tx.clone();
+        async move {
+            let generation =
+                generation.map_err(|_| Error::InvalidInput("invalid message count epoch"))?;
+            let (send, receive) = tokio::sync::oneshot::channel();
+            tx.send(Command::ReadAll(generation, action, send))
+                .await
+                .map_err(|_| Error::Cancelled)?;
+            receive.await.map_err(|_| Error::Cancelled)?
+        }
     }
 
     /// Synchronous native window lifecycle callback, sharing the same mailbox.

@@ -62,7 +62,29 @@ export type MessageReplyView = { receipt: string } & (
   | { status: 'denied'; operation: string; intercepted: boolean }
   | { status: 'delivered'; operation: string; messageId: string; row?: MessageRow }
 );
+export type MessageReadAllAction =
+  | { kind: 'status' | 'prepare' }
+  | { kind: 'confirm' | 'cancel'; intent: string }
+  | { kind: 'check'; operation: string };
+export type MessageReadAllView =
+  | { status: 'idle' | 'unavailable' }
+  | { status: 'ready'; intent: string }
+  | {
+      status:
+        | 'pending'
+        | 'uncertain'
+        | 'confirmed'
+        | 'not_sent'
+        | 'checked_clear'
+        | 'check_inconclusive'
+        | 'check_unavailable';
+      operation: string;
+    };
 export interface MessageClient {
+  messageReadAll(
+    epoch: string,
+    action: MessageReadAllAction,
+  ): Promise<AccountData<MessageReadAllView>>;
   messageReply(epoch: string, action: MessageReplyAction): Promise<AccountData<MessageReplyView>>;
   watchMessageCounts(update: (view: MessageCountView) => void): Promise<MessageCountStream>;
   messagePage(epoch: string, query: MessageQuery): Promise<AccountData<MessagePage>>;

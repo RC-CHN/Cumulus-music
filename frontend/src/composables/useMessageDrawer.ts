@@ -199,6 +199,10 @@ export function useMessageDrawer(
     peer.value = undefined;
     thread.value = createList();
   }
+  function clearConversationBadges() {
+    const rows = lists.private.rows;
+    for (const [index, row] of rows.entries()) if (row.unread) rows[index] = { ...row, unread: 0 };
+  }
   return {
     shown,
     tab,
@@ -215,5 +219,6 @@ export function useMessageDrawer(
     select,
     enter,
     back,
+    clearConversationBadges,
   };
 }
