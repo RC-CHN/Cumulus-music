@@ -53,6 +53,7 @@ pub struct PcMessageConnectivityView {
     pub online: bool,
     pub counts: Option<MessageCounts>,
     pub hide_private_row_badges: bool,
+    pub drawer_visible: bool,
     pub last_count_read_failed: bool,
     pub count_read_in_flight: bool,
 }
@@ -154,6 +155,7 @@ impl PcMessageConnectivity {
             online: initial_navigator_online.unwrap_or(false),
             counts: None,
             hide_private_row_badges: false,
+            drawer_visible: false,
             last_count_read_failed: false,
             count_read_in_flight: false,
         };
@@ -438,6 +440,7 @@ impl State {
                     true
                 }
             });
+            self.view.drawer_visible = self.drawer;
             publisher.send_if_modified(|current| {
                 if current == &self.view {
                     false

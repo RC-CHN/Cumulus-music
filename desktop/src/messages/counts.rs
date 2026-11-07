@@ -43,6 +43,7 @@ pub struct CountView {
     epoch: String,
     counts: Option<MessageCounts>,
     hide_private_row_badges: bool,
+    drawer_visible: bool,
     refreshing: bool,
     failed: bool,
 }
@@ -52,6 +53,7 @@ fn view(value: &PcMessageConnectivityView) -> CountView {
         epoch: value.epoch.clone(),
         counts: value.counts.clone(),
         hide_private_row_badges: value.hide_private_row_badges,
+        drawer_visible: value.drawer_visible,
         refreshing: value.count_read_in_flight,
         failed: value.last_count_read_failed,
     }

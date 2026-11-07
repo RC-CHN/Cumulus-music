@@ -13,6 +13,7 @@ export interface MessageCountView {
   epoch: string;
   counts: MessageCounts | null;
   hidePrivateRowBadges: boolean;
+  drawerVisible: boolean;
   refreshing: boolean;
   failed: boolean;
 }
