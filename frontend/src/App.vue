@@ -4642,8 +4642,22 @@ function play(index = 0, gesture?: TrackPlayGesture) {
   if (page.value.kind === 'daily' || page.value.kind === 'style_recommendations') {
     const revision = result.value?.revision;
     if (revision) {
-      const kind = page.value.kind === 'daily' ? 'daily_recommendations' : 'style_recommendations';
-      void player.select({ kind, revision, index, quality });
+      if (page.value.kind === 'daily' && gesture === 'double_click') {
+        void player.select({
+          kind: 'song_row_double_click',
+          selection: {
+            kind: 'daily_recommendation',
+            revision,
+            index,
+            track_id: tracks[index].id,
+            quality,
+          },
+        });
+      } else {
+        const kind =
+          page.value.kind === 'daily' ? 'daily_recommendations' : 'style_recommendations';
+        void player.select({ kind, revision, index, quality });
+      }
     }
   } else if (page.value.kind === 'playlist') {
     if (page.value.zonePlaylistReceipt) {

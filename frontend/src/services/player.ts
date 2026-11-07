@@ -354,6 +354,13 @@ type AlbumDetailSelection = {
   quality: Quality;
 };
 export type SongRowDoubleClickSelection =
+  | {
+      kind: 'daily_recommendation';
+      revision: string;
+      index: number;
+      track_id: string;
+      quality: Quality;
+    }
   | (AlbumDetailSelection & { row: import('./albumDurationSort').AlbumPlaybackRow })
   | ({
       kind: 'latest_release';

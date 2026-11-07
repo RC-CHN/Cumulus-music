@@ -114,6 +114,11 @@ pub(super) fn search(entry: &crate::playback::QueueEntry) -> bool {
 }
 
 pub(super) fn recommendation(source: &Value) -> Option<RecommendationOrigin> {
+    // A Daily double-click in keep-queue mode has Daily provenance and trial
+    // mode, but it did not select the recommendation collection.
+    if source["single_row"] == true {
+        return None;
+    }
     let revision = source["revision"].as_str()?;
     let (prefix, id) = revision.rsplit_once('-')?;
     uuid::Uuid::parse_str(id).ok()?;

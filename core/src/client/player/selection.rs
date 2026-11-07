@@ -144,10 +144,24 @@ impl MusicClient {
         };
         let mut single_album_row = false;
         let mut album_double_click = false;
+        let mut daily_row = None;
         let (input, retained) = match input {
             PlaySelection::SongRowDoubleClick { selection } => {
                 let keep_queue = !self.replace_queue_on_double_click(&token)?;
                 let input = match selection {
+                    SongRowSelection::DailyRecommendation {
+                        revision,
+                        index,
+                        track_id,
+                        quality,
+                    } => {
+                        daily_row = Some(track_id);
+                        PlaySelection::DailyRecommendations {
+                            revision,
+                            index,
+                            quality,
+                        }
+                    }
                     SongRowSelection::LatestRelease {
                         area,
                         revision,
@@ -198,7 +212,12 @@ impl MusicClient {
                         quality,
                     },
                 };
-                (input, keep_queue.then_some(RetainedRow::Catalog))
+                let policy = if daily_row.is_some() {
+                    RetainedRow::DailyRecommendation
+                } else {
+                    RetainedRow::Catalog
+                };
+                (input, keep_queue.then_some(policy))
             }
             input @ PlaySelection::AlbumDetail { row: Some(_), .. } => {
                 (input, Some(RetainedRow::Catalog))
@@ -246,6 +265,11 @@ impl MusicClient {
                     revision,
                     *index,
                 )?;
+                if let Some(track_id) = daily_row.as_deref()
+                    && ids[*index].as_str() != Some(track_id)
+                {
+                    return Err(Error::QueueChanged);
+                }
                 (Some(ids), Some(guard))
             }
             PlaySelection::DailyRecommendationsBatch {
@@ -949,16 +973,16 @@ impl MusicClient {
         } else {
             (ids, index)
         };
-        if album_double_click {
+        if album_double_click || daily_row.is_some() {
             let id = ids
                 .get(index)
                 .and_then(Value::as_str)
                 .ok_or(Error::QueueChanged)?;
             let guard = source_guard.as_ref().ok_or(Error::StaleResponse)?;
-            // The album anchor was verified against the cached source above.
+            // The album or Daily row was verified against its source snapshot.
             // Toggling the already-active entry does not resolve another song.
             if let Some(state) = self
-                .toggle_active_album_row(
+                .toggle_active_song_row(
                     &token,
                     id,
                     attempt,

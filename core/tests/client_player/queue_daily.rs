@@ -206,3 +206,165 @@ async fn prepared_daily_batch_plays_the_first_selected_row_in_native_order() {
         ["73", "72"]
     );
 }
+
+fn daily_row(revision: &str, index: usize, track_id: &str) -> PlaySelection {
+    PlaySelection::SongRowDoubleClick {
+        selection: SongRowSelection::DailyRecommendation {
+            revision: revision.into(),
+            index,
+            track_id: track_id.into(),
+            quality: Quality::Standard,
+        },
+    }
+}
+
+async fn queue_ids(client: &MusicClient) -> Vec<String> {
+    client
+        .player_queue("1")
+        .await
+        .unwrap()
+        .tracks
+        .into_iter()
+        .map(|row| row.track.id)
+        .collect()
+}
+
+#[tokio::test]
+async fn daily_double_click_only_replaces_or_moves_one_daily_row_after_current() {
+    let device = Arc::new(support::Device::default());
+    let (dir, api, _, client, _) = fixture_with_device(device.clone());
+    let revision = daily_revision(&client).await;
+    let baseline = || PlaySelection::Songs {
+        ids: ["1", "2", "3", "73"].map(str::to_owned).to_vec(),
+        index: 1,
+        quality: Quality::Standard,
+    };
+    client.play_selection("1", baseline()).await.unwrap();
+    let replaced = client
+        .play_selection("1", daily_row(&revision, 1, "73"))
+        .await
+        .unwrap();
+    assert_eq!(replaced.track.unwrap().id, "73");
+    assert_eq!(
+        serde_json::to_value(&replaced.recommendation_origin).unwrap(),
+        json!({"kind":"daily","revision":revision})
+    );
+    assert_eq!(queue_ids(&client).await, ["74", "73"]);
+
+    client
+        .queue_click_preferences_command(
+            "1",
+            QueueClickPreferencesCommand::Change {
+                expected_revision: "0".into(),
+                replace_queue: false,
+            },
+        )
+        .unwrap();
+    client.play_selection("1", baseline()).await.unwrap();
+    let before = client.player_queue("1").await.unwrap();
+    let old = before.tracks[3].entry_id.clone();
+    let moved = client
+        .play_selection("1", daily_row(&revision, 1, "73"))
+        .await
+        .unwrap();
+    assert_eq!(moved.track.as_ref().unwrap().id, "73");
+    assert_eq!(moved.entry_id.as_deref(), Some(old.as_str()));
+    assert_eq!(moved.state, PlaybackStatus::Playing);
+    assert!(moved.recommendation_origin.is_none());
+    assert_eq!(queue_ids(&client).await, ["1", "2", "73", "3"]);
+    let stored = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .get("9", "playback", "queue")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored["items"][2]["source"]["revision"], revision);
+    assert_eq!(stored["items"][2]["source"]["scene"], "dailyRecommend");
+    assert_eq!(stored["items"][2]["resource"]["trial_mode"], 35);
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(35)));
+
+    let loads = device.state.lock().unwrap().loads;
+    let paused = client
+        .play_selection("1", daily_row(&revision, 1, "73"))
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    let resumed = client
+        .play_selection("1", daily_row(&revision, 1, "73"))
+        .await
+        .unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    for view in [paused, resumed] {
+        assert_eq!(view.play_id, moved.play_id);
+        assert_eq!(view.entry_id, moved.entry_id);
+        assert_eq!(view.queue_revision, moved.queue_revision);
+    }
+    assert_eq!(device.state.lock().unwrap().loads, loads);
+    let full = client
+        .play_selection(
+            "1",
+            PlaySelection::DailyRecommendations {
+                revision,
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(full.track.unwrap().id, "74");
+    assert!(full.recommendation_origin.is_some());
+    assert_eq!(queue_ids(&client).await, ["74", "73"]);
+}
+
+#[tokio::test]
+async fn daily_double_click_rejects_wrong_row_and_late_superseded_snapshot() {
+    let (_dir, api, _, client, _) = fixture();
+    client
+        .queue_click_preferences_command(
+            "1",
+            QueueClickPreferencesCommand::Change {
+                expected_revision: "0".into(),
+                replace_queue: false,
+            },
+        )
+        .unwrap();
+    let initial = client.play_selection("1", songs("99")).await.unwrap();
+    let revision = daily_revision(&client).await;
+    let count = api.calls.lock().unwrap().len();
+    assert!(matches!(
+        client
+            .play_selection("1", daily_row(&revision, 0, "73"))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        client
+            .play_selection("0", daily_row(&revision, 0, "74"))
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(api.calls.lock().unwrap().len(), count);
+
+    api.hold_id.store(74, Ordering::SeqCst);
+    let pending = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .play_selection("1", daily_row(&revision, 0, "74"))
+                .await
+        })
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(10), api.started.notified())
+        .await
+        .unwrap();
+    daily_revision(&client).await;
+    api.release.notify_one();
+    assert!(matches!(
+        pending.await.unwrap(),
+        Err(Error::QueueChanged | Error::StaleResponse)
+    ));
+    let after = client.player_snapshot("1").await.unwrap();
+    assert_eq!(after.play_id, initial.play_id);
+    assert_eq!(after.queue_revision, initial.queue_revision);
+    assert_eq!(queue_ids(&client).await, ["99"]);
+}
