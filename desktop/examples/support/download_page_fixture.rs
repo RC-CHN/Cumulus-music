@@ -32,6 +32,9 @@ pub fn quality_enabled() -> bool {
 pub fn menu_comments_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_MENU_COMMENT_PROOF").is_some()
 }
+pub fn collection_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_DOWNLOAD_COLLECTION_PROOF").is_some()
+}
 static HOLD_MENU_COMMENT: AtomicBool = AtomicBool::new(false);
 static MENU_COMMENT_HELD: AtomicBool = AtomicBool::new(false);
 static MENU_COMMENT_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -346,7 +349,7 @@ impl Fixture {
                     .ok_or(Error::State("no retired synthetic menu task"))?;
                 self.store.put("2", "download_tasks_v1", &task, &record)?;
             }
-            "cloud_comment_targets" if menu_comments_enabled() => {
+            "cloud_comment_targets" if menu_comments_enabled() || collection_enabled() => {
                 let mut saved = CLOUD_MENU_TASKS.lock().unwrap();
                 assert!(saved.is_empty());
                 let tasks = self.records.lock().unwrap();
@@ -374,7 +377,7 @@ impl Fixture {
                 }
                 CLOUD_MENU_ACTIVE.store(true, Ordering::SeqCst);
             }
-            "cloud_comment_restore" if menu_comments_enabled() => {
+            "cloud_comment_restore" if menu_comments_enabled() || collection_enabled() => {
                 let mut saved = CLOUD_MENU_TASKS.lock().unwrap();
                 assert_eq!(saved.len(), 3);
                 for (task, record) in saved.drain(..) {

@@ -220,6 +220,35 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn download_collection_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(
+            download_page_fixture::collection_enabled()
+                .then(|| "sealed-download-collection".into()),
+        )
+    }
+
+    fn request_guarded_playlist_add<'a>(
+        &'a self,
+        write: cumulus_core::protocol::api::GuardedPlaylistAdd,
+        permission: &'a cumulus_core::protocol::api::PlaylistAddPermission<'a>,
+        dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if !download_page_fixture::collection_enabled() || !playlist_collect_fixture::enabled()
+            {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            let (path, payload) = write.into_request()?;
+            assert_eq!(path, "/api/v1/playlist/manipulate/tracks");
+            assert_eq!(payload.as_object().unwrap().len(), 3);
+            permission()?;
+            dispatched.store(true, std::sync::atomic::Ordering::Release);
+            playlist_collect_fixture::response(path, &payload)
+                .await
+                .expect("sealed playlist collection fixture")
+        })
+    }
+
     fn pc_presentation_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         self.signed_search.as_ref().map_or_else(
             || self.verified_pc_experiment_revision(),
@@ -1678,6 +1707,9 @@ fn main() {
                         let _=fs::write(output.join("failed.json"),serde_json::to_vec_pretty(&failure).unwrap());
                         handle.exit(1);
                         return;
+                    }
+                    if download_page_fixture::collection_enabled() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__downloadCollectionRecorded={};",json!(stage))).unwrap();
                     }
                     if queue_click_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueClickRecorded={};",serde_json::json!(stage))).unwrap();

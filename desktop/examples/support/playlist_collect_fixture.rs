@@ -34,13 +34,14 @@ pub fn control(value: &Value) {
 pub fn report() -> Value {
     let s = state().lock().unwrap();
     let mut value = json!({"writes":s.writes,"creates":s.creates,"created":s.created.keys().collect::<Vec<_>>(),"sortedPages":s.sorted_pages});
-    if inline_probe() {
+    if report_adds() {
         value["inlineAddPayloads"] = json!(s.inline_add_payloads);
     }
     value
 }
-fn inline_probe() -> bool {
+fn report_adds() -> bool {
     std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some()
+        || super::download_page_fixture::collection_enabled()
 }
 fn list(s: &State, id: u64) -> Value {
     let mut value = s
@@ -158,7 +159,7 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             assert!(id == 2 || s.created.contains_key(&id));
             assert_eq!(args["op"], "add");
             s.writes += 1;
-            if inline_probe() {
+            if report_adds() {
                 s.inline_add_payloads.push(args.clone());
             }
             if s.mode == "reject_add" {
