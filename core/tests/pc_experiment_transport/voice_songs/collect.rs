@@ -1,6 +1,8 @@
 use super::{
     CARD, COOKIE, Error, Fixture, HttpResponse, PlayerAction, STARTUP, gate, json, picker, reply,
 };
+#[path = "collect/system_liked.rs"]
+mod system_liked;
 use cumulus_core::{
     client::dto::{PlaylistCollectSort, VoiceSongCollectPlan},
     playlist::PlaylistPhase,

@@ -12,6 +12,49 @@ pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type PlaylistAddPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
+/// Fixed native reads needed to identify and confirm the system-liked playlist.
+pub struct SongCardLikedRead(SongCardLikedQuery);
+
+enum SongCardLikedQuery {
+    StarList { owner: String, page: usize },
+    Detail(String),
+    Membership(String),
+}
+
+impl SongCardLikedRead {
+    pub(crate) const LIST: &str = "/api/user/playlist";
+    pub(crate) const DETAIL: &str = "/api/v6/playlist/detail";
+    pub(crate) const MEMBERSHIP: &str = "/api/song/like/get";
+    pub(crate) const LIST_LIMIT: usize = 1000;
+    pub(crate) const MAX_PAGES: usize = 10;
+
+    pub(crate) fn list(owner: &str, page: usize) -> Self {
+        Self(SongCardLikedQuery::StarList {
+            owner: owner.into(),
+            page,
+        })
+    }
+
+    pub(crate) fn detail(id: &str) -> Self {
+        Self(SongCardLikedQuery::Detail(id.into()))
+    }
+
+    pub(crate) fn membership(owner: &str) -> Self {
+        Self(SongCardLikedQuery::Membership(owner.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        match self.0 {
+            SongCardLikedQuery::StarList { owner, page } => (
+                Self::LIST,
+                json!({"uid":owner,"offset":page * Self::LIST_LIMIT,"limit":Self::LIST_LIMIT}),
+            ),
+            SongCardLikedQuery::Detail(id) => (Self::DETAIL, json!({"id":id,"n":100000,"s":0})),
+            SongCardLikedQuery::Membership(owner) => (Self::MEMBERSHIP, json!({"uid":owner})),
+        }
+    }
+}
+
 /// A native bounded song selection for an explicitly chosen playlist, never IPC data.
 pub struct GuardedPlaylistAdd {
     playlist: String,
@@ -442,6 +485,19 @@ pub trait Api: Send + Sync + std::any::Any {
     /// Verified PC authority for the current SongCard and existing owned destination picker.
     fn song_card_collection_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_song_card_system_liked<'a>(
+        &'a self,
+        _read: SongCardLikedRead,
+        _revision: &'a str,
+        _permission: &'a PlaylistAddPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("signed system-liked read is unavailable")) })
     }
 
     fn song_card_playlist_create_scope_revision(&self) -> Result<Option<String>> {
