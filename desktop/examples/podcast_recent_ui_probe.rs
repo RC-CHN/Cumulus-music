@@ -354,6 +354,14 @@ impl Api for Library {
             .map(|_| voice_songs_fixture::REVISION.to_owned()))
     }
 
+    fn song_card_collection_create_scope_revision(&self) -> Result<Option<String>> {
+        Ok(self
+            .voice_song_collect
+            .as_ref()
+            .filter(|fixture| fixture.create_enabled())
+            .map(|_| voice_songs_fixture::REVISION.to_owned()))
+    }
+
     fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
         self.voice_song_group_liked
             .as_ref()
@@ -412,6 +420,16 @@ impl Api for Library {
         dispatched: &'a AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(proof) = self
+                .voice_song_collect
+                .as_ref()
+                .filter(|proof| proof.create_enabled())
+            {
+                let (path, body) = write.into_request();
+                permission()?;
+                dispatched.store(true, Ordering::Release);
+                return Ok(proof.create(path, body));
+            }
             let proof = self
                 .voice_song_download
                 .as_ref()
@@ -632,6 +650,11 @@ fn main() {
         std::env::var("CUMULUS_VOICE_SONG_COLLECT_PROOF").as_deref() == Ok("1");
     let voice_song_group_liked_enabled =
         std::env::var("CUMULUS_VOICE_SONG_GROUP_LIKED_PROOF").as_deref() == Ok("1");
+    let voice_song_collect_creation = std::env::var("CUMULUS_VOICE_SONG_COLLECT_CREATE_PROOF").ok();
+    assert!(
+        voice_song_collect_creation.is_none()
+            || voice_song_collect_enabled && !voice_song_group_liked_enabled
+    );
     assert!(
         !voice_song_group_liked_enabled
             || (voice_song_collect_enabled && !voice_fresh_actions_enabled)
@@ -743,8 +766,9 @@ fn main() {
         voice_songs,
         voice_song_group_liked,
         voice_song_download: voice_song_download.clone(),
-        voice_song_collect: voice_song_collect_enabled
-            .then(voice_song_collect_fixture::Fixture::default),
+        voice_song_collect: voice_song_collect_enabled.then(|| {
+            voice_song_collect_fixture::Fixture::new(voice_song_collect_creation.as_deref())
+        }),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -824,6 +848,11 @@ fn main() {
     };
     let source = if voice_fresh_actions_enabled {
         format!("window.__voiceFreshActionsProof = true;\n{source}")
+    } else if let Some(mode) = &voice_song_collect_creation {
+        format!(
+            "window.__voiceSongCollectCreateProof = {};\n{source}",
+            json!(mode)
+        )
     } else if voice_song_group_liked_enabled {
         format!("window.__voiceSongGroupLikedProof = true;\n{source}")
     } else {
