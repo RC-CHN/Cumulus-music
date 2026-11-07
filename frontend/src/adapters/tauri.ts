@@ -542,6 +542,15 @@ export function createTauriClient(): CoreClient {
         target: voiceSongCollectTarget(target),
         playlistId,
       }),
+    playerVoiceSongsCollectLikedDestination: (target) =>
+      invoke('player_voice_songs_collect_liked_destination', {
+        target: voiceSongCollectTarget(target),
+      }),
+    playerVoiceSongsCollectLiked: (target, destinationReceipt) =>
+      invoke('player_voice_songs_collect_liked', {
+        target: voiceSongCollectTarget(target),
+        destinationReceipt,
+      }),
     playerVoiceSongsCollectStatus: (target, reconcile) =>
       invoke('player_voice_songs_collect_status', {
         target: voiceSongCollectTarget(target),

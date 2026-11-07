@@ -67,12 +67,22 @@ Native system-liked destination
   separate pinned overlay. M/3160:1141–1142,1227–1231,1241–1254 compares the
   chosen ID to this star, sends the same ordered batch add, and updates liked
   IDs and its notice. It does not issue individual heart requests.
-- The explicit native liked action accepts the current group selection
-  receipt and no PID. It checks an unpinned, complete host list (maximum ten
-  pages; missing, foreign, duplicate or ambiguous stars fail closed) and a
-  fresh exact detail with agreeing account ownership, numeric specialType=5
-  and no local-only entries. The independent ordinary destination path and
-  generic playlist editor still do not permit system playlists.
+- The native picker reads its optional system-liked row separately from the
+  regular sorted pages. `player_voice_songs_collect_liked_destination` takes
+  the same account/play/card/selection target and returns account-scoped
+  `{playlistId,destinationReceipt}` or null. It checks an unpinned, complete
+  host list (maximum ten pages; foreign, duplicate or ambiguous stars fail
+  closed) and a fresh exact detail with agreeing account ownership, numeric
+  specialType=5 and no local-only entries. It never reads liked IDs or writes.
+  A successful list with no star returns null. Reloading the row revokes the
+  older receipt even when the playlist ID did not change.
+- A future picker can load this row once for the current selection alongside
+  the regular list, without rereading it for each page or sort. Only a non-null
+  verified row enables its system-liked action. Use its playlistId for display
+  identity and to check the result; send only destinationReceipt with the
+  selection target to `player_voice_songs_collect_liked`. A changed star fails
+  before write rather than retargeting the selection. The independent regular
+  picker and generic editor still do not permit system playlists.
 - M/3160:990–1028, M/232:310–329 and M/15:1409–1414 independently describe
   refresh of the star's detail trackIds and a native local-only overlay. For
   confirmation Cumulus requires both the complete star detail and its existing
@@ -88,8 +98,8 @@ Native system-liked destination
   and independently observed membership on readback. The shared journal can
   read back an interrupted operation after a new session opens the same
   account and database, even when the original episode receipt is gone. It
-  never sends the batch again. Native core only; no desktop or UI exposure,
-  and no live account writes.
+  never sends the batch again. Main-window typed desktop bridge only in this
+  slice; no UI wiring or live account writes.
 
 Separate official destination not yet exposed here
 - New (FavouriteModal/index.jsx:419–441,529–534) closes the picker into the
