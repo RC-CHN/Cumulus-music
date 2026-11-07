@@ -24,6 +24,7 @@ const props = defineProps<{
   player: PlayerModel;
   account: AccountView;
   initialEffectManagement?: boolean;
+  embedded?: boolean;
 }>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const { view, ready, equalizerDraft } = props.player;
@@ -38,12 +39,18 @@ const parametricStatus = {
   detach_required: '独立参数均衡需要清理。',
   processor_failed: '独立参数均衡处理失败，已在本机停用。',
 };
-const dialog = ref<HTMLDialogElement>();
+const dialog = ref<HTMLElement>();
 const closeButton = ref<HTMLButtonElement>();
 const presetControl = ref<HTMLSelectElement>();
 const actionFocus = useControlFocus(
   () => view.value?.epoch,
-  () => (presetControl.value?.disabled === false ? presetControl.value : closeButton.value),
+  () =>
+    presetControl.value?.disabled === false
+      ? presetControl.value
+      : (closeButton.value ??
+        dialog.value
+          ?.closest('dialog')
+          ?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')),
 );
 const directoryOpen = ref(false);
 const directoryOpener = ref<HTMLButtonElement>();
@@ -116,8 +123,9 @@ watch(
   },
 );
 onMounted(() => {
+  if (props.embedded) return;
   focused = document.activeElement as HTMLElement;
-  dialog.value?.showModal();
+  if (dialog.value instanceof HTMLDialogElement) dialog.value.showModal();
   if (props.initialEffectManagement) {
     directoryOpener.value?.focus({ preventScroll: true });
     openDirectory(true);
@@ -274,15 +282,17 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
 }
 </script>
 <template>
-  <dialog
+  <component
+    :is="embedded ? 'section' : 'dialog'"
     ref="dialog"
     class="equalizer-dialog"
-    aria-label="均衡器"
+    :class="{ 'equalizer-embedded': embedded }"
+    :aria-label="embedded ? undefined : '均衡器'"
     :data-revision="current?.revision"
     :data-draft-state="blocked ? 'blocked' : draft ? 'queued' : 'settled'"
     @cancel.prevent="emit('close')"
   >
-    <header>
+    <header v-if="!embedded">
       <h2>均衡器</h2>
       <button ref="closeButton" class="icon-button" aria-label="关闭均衡器" @click="emit('close')">
         <Icon name="close" />
@@ -303,8 +313,10 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           >{{ settings?.master_bypassed ? '均衡器与增强音效已暂停' : '均衡器与增强音效' }}
         </button>
         <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
-        <button ref="directoryOpener" type="button" @click="openDirectory()">音效目录</button>
-        <button type="button" @click="openDirectory(false, true)">耳机音效</button>
+        <template v-if="!embedded">
+          <button ref="directoryOpener" type="button" @click="openDirectory()">音效目录</button>
+          <button type="button" @click="openDirectory(false, true)">耳机音效</button>
+        </template>
       </div>
       <div v-if="parametric" class="equalizer-independent" :data-parametric-state="parametric">
         <p role="status">
@@ -483,7 +495,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         恢复平直
       </button>
     </footer>
-  </dialog>
+  </component>
   <EffectDirectory
     v-if="directoryOpen"
     :account="account"
@@ -511,6 +523,19 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   box-shadow: 0 18px 70px #0003;
 }
 /* Keep close and reset available while the controls scroll on short windows. */
+.equalizer-dialog.equalizer-embedded {
+  display: flex;
+  flex-direction: column;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  min-height: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 .equalizer-dialog[open] {
   display: flex;
   flex-direction: column;

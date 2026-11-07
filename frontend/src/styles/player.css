@@ -359,6 +359,15 @@ input[type='range'] {
   width: 27px;
   height: 30px;
 }
+.player-tools .audio-effects-trigger {
+  inline-size: 36px;
+  min-inline-size: 36px;
+  block-size: 24px;
+  padding-inline: 3px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .player-tools .equalizer-toggle {
   position: relative;
 }

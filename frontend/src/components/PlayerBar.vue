@@ -13,6 +13,7 @@ import type { CatalogResource } from '../services/catalog';
 import Icon from './Icon.vue';
 import { useCoverImage } from '../composables/useCoverImage';
 import EqualizerPanel from './EqualizerPanel.vue';
+import AudioEffectsPanel from './AudioEffectsPanel.vue';
 import EffectDirectory from './EffectDirectory.vue';
 import ModalTransition from './ModalTransition.vue';
 import PlaybackSpeed from './PlaybackSpeed.vue';
@@ -31,7 +32,7 @@ import PlayerTrackActions from './PlayerTrackActions.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import type { AudiobookSkipContext } from '../services/audiobookSkip';
 const equalizerOpen = ref(false);
-const effectDirectoryOpen = ref(false);
+const audioEffectsOpen = ref(false);
 const headphoneManagementOpen = ref(false);
 const effectLauncherButton = ref<HTMLButtonElement>();
 const effectManagementOnOpen = ref(false);
@@ -128,7 +129,7 @@ function openEffectLauncher() {
 }
 function loginFromEffects() {
   equalizerOpen.value = false;
-  effectDirectoryOpen.value = false;
+  audioEffectsOpen.value = false;
   headphoneManagementOpen.value = false;
   emit('login');
 }
@@ -696,6 +697,20 @@ async function seek(event: Event) {
         词
       </button>
       <button
+        v-if="
+          view?.resourceKind !== 'voice' &&
+          !(view?.resourceKind === 'downloaded' && view?.track?.voiceId)
+        "
+        type="button"
+        class="icon-button audio-effects-trigger"
+        aria-label="音效"
+        aria-haspopup="dialog"
+        :disabled="!ready"
+        @click="audioEffectsOpen = true"
+      >
+        音效
+      </button>
+      <button
         ref="effectLauncherButton"
         class="icon-button equalizer-toggle"
         :aria-label="
@@ -764,7 +779,7 @@ async function seek(event: Event) {
         :account-epoch="account.epoch"
         :effects-available="ready"
         @catalog="(resource) => emit('catalog', resource)"
-        @effects="effectDirectoryOpen = true"
+        @effects="audioEffectsOpen = true"
       />
       <AudiobookSkipMenu :epoch="account.epoch" :context="audiobookSkipContext" />
     </div>
@@ -887,13 +902,11 @@ async function seek(event: Event) {
     />
   </ModalTransition>
   <ModalTransition>
-    <EffectDirectory
-      v-if="effectDirectoryOpen"
+    <AudioEffectsPanel
+      v-if="audioEffectsOpen"
       :account="account"
-      :binding-status="view?.boundParametric"
-      :parametric-processing="view?.parametricProcessing"
-      :device-parametric="view?.deviceParametric"
-      @close="effectDirectoryOpen = false"
+      :player="player"
+      @close="audioEffectsOpen = false"
       @login="loginFromEffects"
     />
   </ModalTransition>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { useAppearance } from '../composables/useAppearance';
@@ -18,6 +18,7 @@ import EffectParametricControls from './EffectParametricControls.vue';
 const props = defineProps<{
   account: AccountView;
   initialManagementOnly?: boolean;
+  embedded?: boolean;
   headphoneManagement?: boolean;
   bindingStatus?: BoundParametricStatus;
   deviceParametric?: DeviceParametricView;
@@ -27,13 +28,16 @@ const emit = defineEmits<{ close: []; login: []; equalizer: [] }>();
 const core = useCore();
 const { effective: appearance } = useAppearance();
 const failedArtwork = ref(new Set<string>());
-const dialog = ref<HTMLDialogElement>();
+const dialog = ref<HTMLElement>();
 const categories = [
   ['highly_recommended', '强推荐'],
   ['recommended', '官方精选音效'],
   ['more', '更多音效'],
   ['devices', '耳机音效'],
 ] as const;
+const visibleCategories = computed(() =>
+  props.embedded ? categories.filter(([key]) => key !== 'devices') : categories,
+);
 const accessLabels: Record<EffectAccess, string> = {
   allowed: '当前账号拥有使用权益',
   trial: '当前账号拥有试用权益',
@@ -209,7 +213,7 @@ function retryRights() {
 async function browseHeadphoneCatalogue() {
   browsingHeadphones.value = true;
   await nextTick();
-  if (dialog.value?.open)
+  if (dialog.value instanceof HTMLDialogElement && dialog.value.open)
     dialog.value.querySelector<HTMLButtonElement>('header button')?.focus({ preventScroll: true });
 }
 
@@ -224,8 +228,10 @@ useEffectRegistrationChanges(
   },
 );
 onMounted(() => {
-  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  dialog.value?.showModal();
+  if (!props.embedded && dialog.value instanceof HTMLDialogElement) {
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog.value.showModal();
+  }
   if (props.headphoneManagement) return;
   if (browsing.value) void load(kind.value);
   void refreshPending();
@@ -240,13 +246,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <dialog
+  <component
+    :is="embedded ? 'section' : 'dialog'"
     ref="dialog"
     class="effect-directory"
-    :aria-label="headphoneManagement ? '耳机音效' : '音效目录'"
+    :class="{ 'effect-directory-embedded': embedded }"
+    :aria-label="embedded ? undefined : headphoneManagement ? '耳机音效' : '音效目录'"
     @cancel.prevent="emit('close')"
   >
-    <header>
+    <header v-if="!embedded">
       <h2>{{ headphoneManagement ? '耳机音效' : '音效目录' }}</h2>
       <button
         class="icon-button"
@@ -323,7 +331,7 @@ onUnmounted(() => {
         <template v-else>
           <nav aria-label="音效分类">
             <button
-              v-for="[key, label] in categories"
+              v-for="[key, label] in visibleCategories"
               :key="key"
               type="button"
               :aria-pressed="kind === key"
@@ -409,7 +417,7 @@ onUnmounted(() => {
         :parametric-processing="parametricProcessing"
       />
     </section>
-  </dialog>
+  </component>
 </template>
 
 <style scoped>
@@ -423,9 +431,23 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   border-radius: 14px;
 }
-.effect-directory[open] {
+.effect-directory[open],
+.effect-directory-embedded {
   display: flex;
   flex-direction: column;
+}
+.effect-directory-embedded {
+  flex: 1 1 auto;
+  width: auto;
+  max-height: none;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+.effect-directory-embedded > .effect-directory-detail {
+  max-height: 55%;
+  overflow-y: auto;
 }
 .effect-directory::backdrop {
   background: #0004;

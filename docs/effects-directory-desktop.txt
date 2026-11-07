@@ -18,7 +18,8 @@ effects_directory Rust 测试使用合成 Api，核对单分组请求、PC 类�
 安全投影、明确拒绝与未知的区分以及迟到账号结果。桌面 ux_ui_probe 的独立
 CUMULUS_EFFECT_DIRECTORY_PROOF 开关向生产 IPC 提供三个固定读取响应，不接真实账号。
 
-从播放器「均衡器 → 音效目录」打开。目录分组、卡片高度和间距参考恢复的
+播放器「音效」入口直接打开目录页签；也保留「均衡器 → 音效目录」本机快捷路径。
+目录分组、卡片高度和间距参考恢复的
 pages/audio-effect/components/{OfficialSelectionSoundEffectSection,MoreSoundEffectSection,AudioEffectCard}。
 浅色和深色分别使用官方 lightImg/darkImg；只允许已有公开图片 CDN，强制 HTTPS，
 剥离查询和片段，保留原图比例。无图或加载失败显示社区图标，不请求 GIF 或材料。
@@ -328,3 +329,26 @@ Linux 实际 WebView `effect_peq_native_smoke.py --pause-local` 验证暂停前�
 在宿主轮询入口注入一次类型化错误；节点实际卸载，播放 ID 和原曲时钟保持，登记未写。
 之后显式恢复，重新处理 59392 个采样。故障提示截图和回执在 `.build/peq-runtime-fault-proof/first/`。
 本地暂停及显式清理另行复跑通过。测试未制造真实 DSP 非有限输入，未访问真实账号或声卡。
+
+普通播放的音效入口和页签（PC 3.1.42.205594）
+- PlayBar/AudioEffectTag.tsx:25–29、67–79 / M395:998–1072 从音效标签打开
+  `audioEffect`，未指定子路由。M395:1094–1105 的该标签不在声音和 MV 模式展示。
+  pages/audio-effect/index.js:158–179、196–229 / M3091:4446–4481、4495–4553
+  两种页面都默认 `/audioEffect`，并按「音效」「设备适配」「均衡器」排列，后两项
+  对应 `/audioEffect/equalizer` 和 `/audioEffect/soundEffect`。仅「音效」外层使用
+  NoNet；NoNet/index.tsx:29–61 按运行时联网状态挂载/卸载内容。
+- Cumulus 普通播放栏「音效」和当前歌曲菜单「音效」打开同一 574×560 自适应对话框，
+  每次重开从「音效」开始。三个页签都在第一层，不串联独立的对话框。左右方向键、
+  Home/End、鼠标切换仅挂载所选页签；关闭恢复到实际发起入口。账号代次或登录状态变化
+  关闭旧对话框，子页读取的迟到结果不会回填。目录离线时不挂载、不发读取；设备仍由
+  已有类型化 API 和错误处理负责，均衡器始终是本地设置。目录和品牌/型号按当前
+  Rust 能力保留登录边界；未授权时不会发送读取，已有登录入口继续可用。
+- 保留明确命名的独立 EQ/当前本机耳机/PEQ 管理快捷入口；这是社区补充，不是伪造
+  官方底栏实验分组。EffectSwitch.tsx:254–271、359–375 与 M342:1724–1756 的
+  全局开关会按当前/推荐材料和权益走不同分支；此处继续显示各已支持组件的真实开关，
+  不拿本机十段旁路代替它，不增加 AI、情绪、偏好推荐、购买或自动音效申请。
+- `scripts/ci/audio_effect_tabs_smoke.py` 用真实 Linux GTK/WebKit、同一原生暂停
+  playId/entryId/队列和时钟验证入口、离线目录、离线本机均衡器、设备品牌/型号、
+  键鼠切换和两个入口的焦点。合成联网状态和业务回包，无真实账号/服务、声卡或
+  本轮 Windows 结果。构建 custom-protocol 的 ux_ui_probe 和 frontend/dist 后，
+  在无出站路由的 Linux X11/DBus 会话传 `--binary --frontend-dist --root` 执行。
