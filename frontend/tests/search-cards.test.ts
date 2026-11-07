@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   searchCardSelection,
+  searchPodcastCardSelection,
   searchAlbumCredits,
   searchCardIsCurrent,
   searchCardCanPlay,
@@ -81,6 +82,23 @@ test('missing catalog data and stale radio snapshots cannot become playback sele
   } as unknown as CoreClient;
   await assert.rejects(searchCardSelection(core, '1', album, 'standard'), { code: 'unavailable' });
   await assert.rejects(searchCardSelection(core, '1', podcast, 'standard'), { code: 'stale' });
+});
+
+test('comprehensive podcast cards require their exact native playback receipt', () => {
+  assert.equal(searchPodcastCardSelection(podcast), undefined);
+  const available = { ...podcast, playbackReceipt: 'native-page' };
+  assert.deepEqual(searchPodcastCardSelection(available), {
+    kind: 'search_podcast_card',
+    id: '7',
+    receipt: 'native-page',
+  });
+  assert.equal(
+    searchPodcastCardSelection({
+      ...available,
+      podcast: { ...podcast.podcast, unavailable: true },
+    }),
+    undefined,
+  );
 });
 
 test('search episodes select only their own ID with or without a parent podcast', () => {

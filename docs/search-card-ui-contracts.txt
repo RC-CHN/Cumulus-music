@@ -34,7 +34,8 @@ VoiceCard/index.jsx：84px行高、64px封面、整行双击播放、独立所�
 仅为支撑界面的调用映射
 SearchResultCard → SearchResultsPage → App → usePlayer.prepareSelection：
   歌单使用已有playlist选择；专辑/歌手重读catalogPage取得revision和首个可用曲目；
-  播客/声音重读podcastPage取得radio scope与revision，再调用现有playSelection。
+  综合播客卡片使用下述原生搜索播单收据；分类播客旧路径仍使用 podcastPage，
+  单个声音则由专用声音 ID 入口读取。
   读取失败显示可重试反馈；新操作或账号代次变化后的迟到读取不能启动播放。
 Rust PlayerView.origin仅投影已知playlist/album/artist/podcast的公开资源ID；不向前端
   暴露队列来源的其他字段、Cookie或完整授权URL。当前项精确匹配来源或voiceId。
@@ -43,8 +44,8 @@ Rust PlayerView.origin仅投影已知playlist/album/artist/podcast的公开资�
 明确未完成项
 - 官方完整菜单（如下一首、收藏、分享等）的逐项恢复；当前只列出已接通的动作。
   菜单出现和焦点检查不代表所有菜单项的目标页面都在本轮验收过。
-- 播客首播当前检查前100条的可用项。单个声音可直接解析，但不能视为完整的官方
-  续播或超出首屏后续队列同态。
+- 分类播单列表仍使用独立的目录首屏选择：尚未复刻 M2169/M2088/M539
+  的行内 Action.play 及单击/双击分支。此边界不适用于综合页的两个播放入口。
 - search试听/来源参数、算法分支和全部可用性标记；当前复用已有资源播放用例。
 - 用户完整主页、综合连续加载、歌词命中等仍见搜索结果清单。默认旧版单行预览
   及单曲卡片见search-preview-ui-contracts.txt。后续已补
@@ -286,3 +287,27 @@ Linux WebView 八个检查点和截图：.build/search-album-metadata-webview/fi
   六图及报告在本机 `.build/ui-proof/search-voice-next-4aec549c/final/`。
   Linux 与 Windows CI 配置复跑该探针；本轮没有 Windows 实机、真实账号或
   真实声卡验证。
+
+综合结果播单播放（PC 3.1.42.205594）
+- M3095:1012–1082、1787–1794 的最佳匹配与 :2330–2356、M2063:269–282 的普通
+  AudioCard 都调用 M537.d。V3 热点主结果 M3095:1868–1892 也调用同一个最佳匹配
+  Q 渲染器。详情跳转仍独立；播放遮罩不先导航到播单。
+- M537:224–257、276–290 用播单作 sourceData，匹配当前同源时暂停/继续，
+  否则直接发 Action.playAll，没有显式 orderBy 或 assignedPlayId，scene 默认 unknown。
+  M3085:422–453 先取得播单再按续播设置与最新节目定位；:483–488 在清单全替换时，
+  动画/电子/翻唱之外切到顺序。M404:202–259、M71:157–162 按保存的播单排序取
+  /api/v6/dj/program/byradio，每页 250，未保存时省略 asc；没有 assignedPlayId 不读
+  around 接口。已观察到精确 t1 时使用 /api/dj/user/setting/resumeplay/get；
+  其余分组沿用原默认，保存的节目和位置只在当前账号内读取。
+- Rust 重用播客推荐已有 M404/M3085 准备，不重读 /api/djradio/v3/get 或订阅列表。
+  V1 与 V3 的综合最佳匹配/普通播单为各自展示的卡片生成不透明收据，绑定当前账号、
+  Api 实例和凭据代次；最多 16 页、每页 128 个有界播单身份、30 分钟。
+  未观察 ID、已下架项、不可信分区、旧账号或凭据不得发起播放。浏览器只交付公开播单 ID、
+  不透明收据及既有播放准备票据。类型化 origin 仍为 podcast；不暴露私有音源 URL。
+- 新播单先通过节目 detail、play/url/check 和单首 URL 准备所选节目，
+  不挤掉旧队列的共享预读；成功后再提交整个有序队列；每次提交还核对当前播放、
+  队列/播放意图、账号和独立音频焦点。数据读取、身份错误、初次音源授权失败均保留
+  旧队列和时钟。和已有严格 Rust 播客准备一致，后续页失败也不采用部分播单；
+  授权后实际解码失败沿用普通播放恢复，不承诺回滚已有队列提交。
+- 合成 native 测试覆盖降序 251 集、第二页第 1 集 19 秒续播、最佳匹配和普通卡复用
+  decoder、恶意/无效 ID、初次音源授权拒绝以及授权等待中凭据变化。不使用真实账号。

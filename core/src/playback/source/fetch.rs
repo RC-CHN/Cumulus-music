@@ -6,7 +6,7 @@ use crate::{
     Error, Result,
     catalog::{CatalogApi, PlayOptions},
     download::transfer::MediaUrl,
-    playback::engine::MediaInput,
+    playback::engine::{Cancellation, MediaInput},
     protocol::api::Api,
 };
 use serde_json::{Value, json};
@@ -24,6 +24,7 @@ impl SourceResolver {
         resource: &Value,
         key: &Key,
         expected: Option<&Arc<dyn Api>>,
+        guard: Option<&Cancellation>,
     ) -> Result<Fetched> {
         let (info, authorization_api, authorization) = self
             .session
@@ -31,6 +32,8 @@ impl SourceResolver {
                 if expected.is_some_and(|expected| !Arc::ptr_eq(expected, &api)) {
                     return Err(Error::StaleResponse);
                 }
+                let check = || guard.map_or(Ok(()), Cancellation::check);
+                check()?;
                 let stock_scope = (self.streaming_cache.is_some()
                     && key.voice_id.is_none()
                     && key.token.uid.is_some())
@@ -47,7 +50,7 @@ impl SourceResolver {
                     if episode.media_id()? != key.id {
                         return Err(Error::Response("queued program main song changed"));
                     }
-                    Some(podcast.play_url(&episode, options).await?)
+                    Some(podcast.play_url_guarded(&episode, options, check).await?)
                 } else {
                     CatalogApi::new(api.clone())
                         .play_url(&json!(key.id), options)

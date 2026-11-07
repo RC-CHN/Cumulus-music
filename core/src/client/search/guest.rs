@@ -208,7 +208,7 @@ impl MusicClient {
                     }
                     SearchItem::Playlist { playlist, .. } if playlist.private => return false,
                     SearchItem::Album { album } => album.subscribed = None,
-                    SearchItem::Podcast { podcast, table } => {
+                    SearchItem::Podcast { podcast, table, .. } => {
                         podcast.subscribed = None;
                         podcast.new_episode_count = None;
                         if let Some(table) = table {

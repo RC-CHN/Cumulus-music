@@ -40,6 +40,7 @@ import type { SearchHotPlaybackTarget, SearchHotTarget, SearchItem } from './ser
 import {
   searchCardIsCurrent,
   searchCardSelection,
+  searchPodcastCardSelection,
   searchMvPlaybackTarget,
   searchVoiceSelection,
   type SearchPendingVoiceToggle,
@@ -1458,6 +1459,18 @@ function playSearchChart(keywords: string[]) {
   });
 }
 function playSearchCard(item: SearchItem) {
+  const route = page.value;
+  if (route.kind !== 'search') return;
+  if (item.kind === 'podcast' && (route.category ?? 'all') === 'all') {
+    const selection = searchPodcastCardSelection(item);
+    if (!selection || !signedIn.value || player.busy.value) return;
+    void player.prepareSelection(async () => {
+      if (page.value !== route)
+        throw { code: 'stale', message: '搜索结果已更新', retryable: false };
+      return selection;
+    });
+    return;
+  }
   const view = player.view.value;
   if (searchCardIsCurrent(item, view?.origin, searchCurrentVoiceId(view)) && player.loaded.value) {
     void player.toggleSource();

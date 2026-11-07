@@ -389,6 +389,10 @@ pub enum PlaySelection {
         id: String,
         quality: Quality,
     },
+    SearchPodcastCard {
+        id: String,
+        receipt: String,
+    },
     SearchResultVoice {
         id: String,
     },

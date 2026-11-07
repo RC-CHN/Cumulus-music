@@ -72,7 +72,7 @@ pub(super) fn project(source: &Value) -> Option<PlayerOrigin> {
         "playlist" => PlayerOrigin::Playlist { id: id()? },
         "album" => PlayerOrigin::Album { id: id()? },
         "artist" => PlayerOrigin::Artist { id: id()? },
-        "listened_book" | "podcast_subscription_recommendation" => {
+        "listened_book" | "podcast_subscription_recommendation" | "search_podcast_card" => {
             PlayerOrigin::Podcast { id: id()? }
         }
         "podcast" if source["scope"]["kind"] == "radio" => PlayerOrigin::Podcast {

@@ -247,12 +247,13 @@ pub enum PlaybackCommand {
         source: Value,
     },
     /// M404's explicit recommended-radio play-all, with first-load position.
-    ReplacePodcastRecommendation {
+    ReplacePodcastCollection {
         resources: Vec<Value>,
         index: usize,
         source: Value,
         position: f64,
         sequential: bool,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
     },
     /// Replace from a fenced book row using its supplied checkpoint once.
     ReplaceListenedBook {

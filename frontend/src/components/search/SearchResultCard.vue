@@ -26,6 +26,7 @@ import {
   searchCardKey,
   searchMvPlaybackTarget,
   searchPlaylistCreator,
+  searchPodcastCardSelection,
   searchVideoCredits,
   searchVideoCoverStats,
   type SearchPendingVoiceToggle,
@@ -116,8 +117,10 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
   );
 }
 const failedCover = ref(false);
-const canPlay = computed(
-  () => searchCardCanPlay(props.item) || (props.item.kind === 'playlist' && props.current),
+const canPlay = computed(() =>
+  props.item.kind === 'podcast' && props.category === 'all'
+    ? !!searchPodcastCardSelection(props.item)
+    : searchCardCanPlay(props.item) || (props.item.kind === 'playlist' && props.current),
 );
 const canQueue = computed(
   () => props.queueable && (props.item.kind !== 'playlist' || !props.item.knownEmpty),

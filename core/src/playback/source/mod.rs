@@ -8,7 +8,10 @@ mod fresh_tests;
 mod indexed_flac;
 mod loudness;
 mod streaming;
-use super::{Timeline, engine::MediaInput};
+use super::{
+    Timeline,
+    engine::{Cancellation, MediaInput},
+};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
@@ -456,6 +459,36 @@ impl SourceResolver {
         }
         self.resolve_online(resource, token, true).await
     }
+    /// Prepare the first voice of an independently guarded replacement. The
+    /// incumbent queue and its shared source cache remain untouched.
+    pub(crate) async fn prepare_scoped_voice(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        expected: &Arc<dyn Api>,
+        guard: &Cancellation,
+    ) -> Result<Arc<ResolvedSource>> {
+        guard.check()?;
+        let key = self.key(resource, token)?;
+        if key.voice_id.is_none()
+            || resource.get("local_id").is_some()
+            || resource.get("path").is_some()
+        {
+            return Err(Error::InvalidInput(
+                "scoped voice preparation requires an online episode",
+            ));
+        }
+        let source = self
+            .fetch(resource, &key, Some(expected), Some(guard))
+            .await?
+            .source;
+        guard.check()?;
+        self.session.require_api(token, expected)?;
+        // Check response timing/rights data before committing a replacement.
+        source.timeline(None)?;
+        Ok(Arc::new(source))
+    }
+
     async fn resolve_online(
         &self,
         resource: &Value,
@@ -511,7 +544,7 @@ impl SourceResolver {
             let mut provenance = Provenance::Shared;
             let mut authorization = None;
             let result = self
-                .fetch(resource, &key, expected)
+                .fetch(resource, &key, expected, None)
                 .await
                 .and_then(|fetched| {
                     self.session.with_token(token, |_| Ok(()))?;

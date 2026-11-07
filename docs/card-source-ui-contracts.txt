@@ -52,10 +52,11 @@ playId/队列版本、缓冲中允许暂停、异步焦点修复均为本客户�
 - 搜索专辑/歌手：catalog_page 取得账号绑定快照和 revision，play_selection 的 catalog
   输入核对顺序。现有读取包括 /api/album/v3/detail、/api/artist/v3/detail；专辑播放
   继续沿用已有重读/版本验证，不能把搜索卡片内容直接当作权威歌曲列表。
-- 搜索播客/声音：podcast_page 的 radio scope/ascending=true/offset=0/limit=100，
+- 分类搜索播单的旧路径：podcast_page 的 radio scope/ascending=true/offset=0/limit=100；
   随后 play_selection 的 podcast 输入携带 scope/revision/start_id。现有读取包括
   /api/djradio/v3/get、/api/v6/dj/program/byradio、/api/dj/program/detail 和既有音源解析。
-  当前声音优先精确 voiceId；播客选择首个可用项，缺 radioId 和超首屏边界未在此扩展。
+  分类播单选择首个可用项；综合页最佳匹配和普通播单已改为原生收据与 M404 播单准备
+  （见 search-card-ui-contracts.txt）。搜索单集优先用精确 voiceId。
 - 查询/账号迟到回执保护、会员/版权判断和选曲取消沿用原用例；没有新增前端业务HTTP。
 
 实际证明与复现

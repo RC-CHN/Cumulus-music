@@ -35,7 +35,7 @@ impl Actor {
             request.command,
             PlaybackCommand::UseMissingDownloadOnline { .. }
                 | PlaybackCommand::ReplaceListenedBook { .. }
-                | PlaybackCommand::ReplacePodcastRecommendation { .. }
+                | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
@@ -193,7 +193,7 @@ impl Actor {
             request.command,
             PlaybackCommand::Replace { .. }
                 | PlaybackCommand::ReplaceListenedBook { .. }
-                | PlaybackCommand::ReplacePodcastRecommendation { .. }
+                | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::Select(_)
@@ -285,19 +285,24 @@ impl Actor {
                 .apply_remote(value, Some(&request.reply))
                 .await
                 .map(|value| options = value),
-            PlaybackCommand::ReplacePodcastRecommendation {
+            PlaybackCommand::ReplacePodcastCollection {
                 mut resources,
                 index,
                 source,
                 position,
                 sequential,
+                first_source,
             } => {
                 self.stamp_quality(&mut resources);
                 let still_current = request
                     .guard
                     .as_ref()
                     .is_some_and(|(_, guard)| !guard.is_cancelled());
-                if !still_current {
+                if !still_current
+                    || first_source
+                        .as_ref()
+                        .is_some_and(|source| source.needs_renewal_for_reopen(self.resolver.now()))
+                {
                     Err(Error::StaleResponse)
                 } else {
                     self.session
@@ -313,6 +318,8 @@ impl Actor {
                             options = Some(LoadOptions {
                                 position: Some(position),
                                 recover: true,
+                                source: first_source
+                                    .map_or_else(LoadSource::default, LoadSource::Retained),
                                 ..LoadOptions::default()
                             })
                         })

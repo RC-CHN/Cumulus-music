@@ -419,6 +419,7 @@ fn radio(v: &Value) -> Fields {
             "subscribed",
             "creatorName",
             "radioFeeType",
+            "categoryId",
             "grayDisplay",
             "underShelf",
         ],

@@ -115,7 +115,17 @@ impl PodcastApi {
         })
     }
     pub async fn play_url(&self, episode: &Episode, options: PlayOptions<'_>) -> Result<Value> {
+        self.play_url_guarded(episode, options, || Ok(())).await
+    }
+    pub(crate) async fn play_url_guarded(
+        &self,
+        episode: &Episode,
+        options: PlayOptions<'_>,
+        check: impl Fn() -> Result<()>,
+    ) -> Result<Value> {
+        check()?;
         let permission = self.play_permission(&json!(episode.id)).await?;
+        check()?;
         if !permission.can_play {
             return Err(Error::State("program playback entitlement unavailable"));
         }

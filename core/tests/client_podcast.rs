@@ -7,6 +7,8 @@ mod badges;
 mod engine;
 #[path = "client_podcast/recommendations.rs"]
 mod recommendations;
+#[path = "client_podcast/search_playback.rs"]
+mod search_playback;
 #[path = "client_podcast/vinyl_subscription.rs"]
 mod vinyl_subscription;
 use cumulus_core::{
@@ -34,6 +36,12 @@ struct Backend {
     offline: AtomicBool,
     personalization_disabled: AtomicBool,
     search_creator: AtomicUsize,
+    search_playback_response: Mutex<Value>,
+    search_playback_revision: AtomicUsize,
+    search_playback_deny: AtomicUsize,
+    search_playback_hold: AtomicBool,
+    search_playback_started: tokio::sync::Notify,
+    search_playback_release: tokio::sync::Notify,
     progress_revision: AtomicUsize,
     progress: Mutex<Vec<Value>>,
     progress_hold: AtomicBool,
@@ -61,6 +69,11 @@ fn radio() -> Value {
     json!({"id":7,"name":"Radio","programCount":205,"subed":true,"picUrl":"https://p1.music.126.net/art.jpg?token=SECRET","cookie":"SECRET"})
 }
 impl Api for Backend {
+    fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        let revision = self.search_playback_revision.load(Ordering::SeqCst);
+        Ok((revision > 0).then(|| revision.to_string()))
+    }
+
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(self
             .recommendation_resume_treatment
@@ -115,6 +128,10 @@ impl Api for Backend {
                 return Err(Error::State("fixture offline"));
             }
             Ok(match path {
+                "/api/search/pc/complex/page" => {
+                    assert_eq!(p["keyword"], "synthetic search podcast");
+                    self.search_playback_response.lock().unwrap().clone()
+                }
                 "/api/djradio/my/radio/recommend" => {
                     assert!(!cache);
                     assert_eq!(p, json!({}));
@@ -209,7 +226,12 @@ impl Api for Backend {
                 }
                 "/api/dj/play/url/check" => {
                     let id = p["voiceId"].as_str().unwrap().parse::<u64>().unwrap();
-                    json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":true}})
+                    if self.search_playback_hold.swap(false, Ordering::SeqCst) {
+                        self.search_playback_started.notify_one();
+                        self.search_playback_release.notified().await;
+                    }
+                    let allowed = self.search_playback_deny.load(Ordering::SeqCst) != id as usize;
+                    json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":allowed}})
                 }
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> = serde_json::from_str(p["ids"].as_str().unwrap()).unwrap();

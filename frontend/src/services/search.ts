@@ -74,7 +74,7 @@ export type SearchItem =
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
   | { kind: 'voice'; voice: EpisodeView; listenerCount?: number; creatorId?: string }
-  | { kind: 'podcast'; podcast: PodcastCard; table?: PodcastSearchTable }
+  | { kind: 'podcast'; podcast: PodcastCard; table?: PodcastSearchTable; playbackReceipt?: string }
   | { kind: 'mv'; mv: CatalogVideoCard }
   | { kind: 'user'; user: FollowUser }
   | { kind: 'related'; keyword: string };

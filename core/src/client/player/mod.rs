@@ -28,6 +28,7 @@ mod queue_more_playlist;
 mod queue_playlist;
 mod reports;
 mod search_artist;
+mod search_podcast;
 mod selection;
 mod source_control;
 mod startup;

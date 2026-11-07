@@ -8,10 +8,12 @@ use crate::{
     account::SessionToken,
     client::podcast::radio_playback::by_radio,
     playback::{controller::QueueUpdate, engine::Cancellation},
-    podcast::{Episode, PodcastApi, PodcastLibrary, PodcastScope, progress::latest},
+    podcast::{Episode, PodcastApi, PodcastLibrary, PodcastScope, Radio, progress::latest},
+    protocol::api::Api,
     protocol::api::identifier,
 };
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 const RESUME_EXPERIMENT: &str = "Podcast_ResumePlaySwitch";
 
@@ -23,6 +25,31 @@ fn episode_progress(episode: &Episode) -> f64 {
     } else {
         location / 1000.0
     }
+}
+
+pub(super) struct RadioPlaybackPlan {
+    pub(super) resources: Vec<Value>,
+    pub(super) index: usize,
+    pub(super) position: f64,
+}
+
+pub(super) fn same_radio_transport(
+    current: &crate::playback::controller::PlaybackSnapshot,
+    token: &SessionToken,
+    id: &str,
+) -> Option<PlaybackCommand> {
+    (current.account == *token
+        && !current.fm
+        && current.play_id.is_some()
+        && matches!(
+            current.state,
+            PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+        )
+        && current.selected.as_ref().is_some_and(|entry| {
+            identity_voice(&entry.resource)
+                && matches!(origin::project(&entry.source), Some(PlayerOrigin::Podcast { id: current }) if current == id)
+        }))
+    .then(|| PlaybackCommand::Pause(!current.paused))
 }
 
 impl MusicClient {
@@ -88,43 +115,83 @@ impl MusicClient {
         } else {
             None
         };
-        let current = controller.snapshot();
         if action == PodcastRecommendationAction::Overlay
-            && current.account == *token && !current.fm && current.play_id.is_some()
-            && matches!(current.state, PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering)
-            && current.selected.as_ref().is_some_and(|entry| {
-                identity_voice(&entry.resource)
-                    && matches!(origin::project(&entry.source), Some(PlayerOrigin::Podcast { id: current }) if current == id)
-            })
+            && let Some(command) = same_radio_transport(&controller.snapshot(), token, &id)
         {
-            return Ok((PlaybackCommand::Pause(!current.paused), guard));
+            return Ok((command, guard));
         }
-        let ascending = library.radio_order_for(token, &id)?;
+        let RadioPlaybackPlan {
+            resources,
+            index,
+            position,
+        } = self
+            .prepare_radio_playback(token, &api, &radio, &guard, next_queue.is_none())
+            .await?;
+        let source =
+            json!({"kind":"podcast_subscription_recommendation","id":id,"scene":"unknown"});
+        check_list()?;
+        if let Some((before, queue)) = next_queue {
+            // An existing queue is edited without claiming audio focus or
+            // loading a decoder. Preserve even a paused selected entry.
+            let queue = insert_collection_bound(queue, resources, source, false, true, false);
+            return Ok((
+                PlaybackCommand::UpdateQueue(QueueUpdate {
+                    expected: before.fence(),
+                    queue,
+                    transport: None,
+                }),
+                guard,
+            ));
+        }
+        // M7 category IDs for anime, electric and cover retain prior mode.
+        // M3085 only switches mode when the original action clears the queue.
+        let sequential = action != PodcastRecommendationAction::Next
+            && !matches!(radio.raw["categoryId"].as_i64(), Some(3001 | 10002 | 2001));
+        Ok((
+            PlaybackCommand::ReplacePodcastCollection {
+                resources,
+                index,
+                position,
+                sequential,
+                first_source: None,
+                source,
+            },
+            guard,
+        ))
+    }
+
+    /// Shared M404/M3085 radio playback plan. The caller owns its own UI/result
+    /// authority and chooses whether this action can select a stored checkpoint.
+    pub(super) async fn prepare_radio_playback(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        radio: &Radio,
+        guard: &Cancellation,
+        select_checkpoint: bool,
+    ) -> Result<RadioPlaybackPlan> {
+        let id = radio.id.as_str();
+        let library = PodcastLibrary::new(self.session.clone())?;
+        let ascending = library.radio_order_for(token, id)?;
         let mut episodes = self
             .session
-            .run_for(token, |api, _| {
-                let (id, guard) = (&id, &guard);
-                async move {
-                    // The M404 around-program branch requires an assigned
-                    // ID equal to the latest voice; this overlay has none.
-                    by_radio(api.as_ref(), id, ascending, guard).await
-                }
+            .run_for(token, |api, _| async move {
+                // The M404 around-program branch requires an assigned
+                // ID equal to the latest voice; these overlays have none.
+                by_radio(api.as_ref(), id, ascending, guard).await
             })
             .await?;
         guard.check()?;
         if episodes.is_empty() {
-            return Err(Error::State("recommended podcast is empty"));
+            return Err(Error::State("podcast playback list is empty"));
         }
-
-        let source =
-            json!({"kind":"podcast_subscription_recommendation","id":id,"scene":"unknown"});
 
         let cohort = api
             .verified_pc_experiment_revision()?
             .as_deref()
             .map(|revision| {
                 self.pc_experiments
-                    .observed_group(token, &api, revision, RESUME_EXPERIMENT)
+                    .observed_group(token, api, revision, RESUME_EXPERIMENT)
             })
             .transpose()?
             .flatten();
@@ -155,14 +222,14 @@ impl MusicClient {
         };
         let treatment = cohort.as_deref() == Some("t1");
         let allow_resume = if treatment {
-            read_resume(id.clone()).await?
+            read_resume(id.to_owned()).await?
         } else {
             true
         };
-        let latest = if allow_resume && next_queue.is_none() {
+        let latest = if allow_resume && select_checkpoint {
             let store = self.session.persistent_store()?;
             self.session.with_token(token, |owner| {
-                store.read_snapshot(|tx| latest::read(tx, owner, &id))
+                store.read_snapshot(|tx| latest::read(tx, owner, id))
             })?
         } else {
             None
@@ -231,34 +298,11 @@ impl MusicClient {
         }
         let (index, position) = start.ok_or(Error::QueueChanged)?;
         guard.check()?;
-        check_list()?;
-        if let Some((before, queue)) = next_queue {
-            // An existing queue is edited without claiming audio focus or
-            // loading a decoder. Preserve even a paused selected entry.
-            let queue = insert_collection_bound(queue, resources, source, false, true, false);
-            return Ok((
-                PlaybackCommand::UpdateQueue(QueueUpdate {
-                    expected: before.fence(),
-                    queue,
-                    transport: None,
-                }),
-                guard,
-            ));
-        }
-        // M7 category IDs for anime, electric and cover retain prior mode.
-        // M3085 only switches mode when the original action clears the queue.
-        let sequential = action != PodcastRecommendationAction::Next
-            && !matches!(radio.raw["categoryId"].as_i64(), Some(3001 | 10002 | 2001));
-        Ok((
-            PlaybackCommand::ReplacePodcastRecommendation {
-                resources,
-                index,
-                position,
-                sequential,
-                source,
-            },
-            guard,
-        ))
+        Ok(RadioPlaybackPlan {
+            resources,
+            index,
+            position,
+        })
     }
 }
 

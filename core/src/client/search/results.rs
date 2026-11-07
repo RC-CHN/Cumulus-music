@@ -68,6 +68,10 @@ pub enum SearchItem {
         podcast: PodcastCard,
         #[serde(skip_serializing_if = "Option::is_none")]
         table: Option<PodcastSearchTable>,
+        #[serde(rename = "playbackReceipt", skip_serializing_if = "Option::is_none")]
+        playback_receipt: Option<String>,
+        #[serde(skip)]
+        playback_category: Option<i64>,
     },
     Mv {
         mv: CatalogVideoCard,
@@ -270,6 +274,7 @@ impl MusicClient {
                 };
                 let mut footer_revision = None;
                 let mut presentation_credentials = None;
+                let mut podcast_credentials = None;
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
@@ -324,6 +329,7 @@ impl MusicClient {
                         let context = default_context()?;
                         presentation_credentials =
                             api.pc_presentation_credential_revision().ok().flatten();
+                        podcast_credentials = api.search_privilege_credential_revision().ok();
                         let raw = api::v3::fetch(api.as_ref(), &query, context).await;
                         let projected = match raw {
                             Ok(raw)
@@ -362,6 +368,7 @@ impl MusicClient {
                         let context = default_context()?;
                         presentation_credentials =
                             api.pc_presentation_credential_revision().ok().flatten();
+                        podcast_credentials = api.search_privilege_credential_revision().ok();
                         (
                             api::COMPREHENSIVE_PATH,
                             None,
@@ -453,6 +460,14 @@ impl MusicClient {
                             }
                         }
                     }
+                }
+                if let Some(credentials) = podcast_credentials
+                    && !self.login_pending()?
+                {
+                    self.session.require_api(token, &api)?;
+                    self.search
+                        .podcast_playbacks
+                        .capture(token, &api, credentials, &mut view)?;
                 }
                 if view.query.category == SearchCategory::Songs {
                     self.session.with_token(token, |_| {
@@ -586,6 +601,8 @@ fn podcast_table_item(resource: &Value, uid: &str) -> Result<Option<SearchItem>>
         .filter(|value| !value.is_empty());
     Ok(Some(SearchItem::Podcast {
         podcast,
+        playback_receipt: None,
+        playback_category: None,
         table: Some(PodcastSearchTable {
             creator_id,
             program_count,
@@ -737,6 +754,8 @@ fn item(
         "voicelist" => SearchItem::Podcast {
             podcast: view::card(&Radio::from_official(v)?),
             table: None,
+            playback_receipt: None,
+            playback_category: v["categoryId"].as_i64(),
         },
         "mv" => {
             let mut v = v.clone();

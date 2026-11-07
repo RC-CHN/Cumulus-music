@@ -141,6 +141,13 @@ export function searchVoiceSelection(item: Extract<SearchItem, { kind: 'voice' }
     ? undefined
     : { kind: 'search_result_voice' as const, id: item.voice.id };
 }
+/** Comprehensive podcast overlays can only use an admitted native result. */
+export function searchPodcastCardSelection(item: Extract<SearchItem, { kind: 'podcast' }>) {
+  return !item.podcast.unavailable && item.playbackReceipt
+    ? { kind: 'search_podcast_card' as const, id: item.podcast.id, receipt: item.playbackReceipt }
+    : undefined;
+}
+
 /** Artist covers resolve the signed cohort and track list entirely in Rust. */
 export async function searchCardSelection(
   core: Pick<CoreClient, 'catalogPage' | 'podcastPage'>,
