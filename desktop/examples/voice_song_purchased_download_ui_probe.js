@@ -1,8 +1,10 @@
 // Real WebView interaction for the purchased SongCard path, with sealed native transfer.
 (async () => {
   const fixtureMode = window.__voiceSongDownloadCase;
-  const noDirectory = window.__voiceSongPurchasedNoDirectory === true;
-  const mode = noDirectory ? 'purchased_no_directory' : fixtureMode;
+  const directoryAction = window.__voiceSongPurchasedDirectoryAction;
+  const noDirectory = directoryAction === 'cancel' || directoryAction === 'settings';
+  const mode = directoryAction === 'settings' ? 'purchased_directory_settings' :
+    noDirectory ? 'purchased_no_directory' : fixtureMode;
   const expected = mode === 'purchased_existing' ? 'lossless' : 'exhigh';
   const qualityOrder = ['jymaster', 'hires', 'lossless', 'exhigh', 'standard'];
   const q = (selector, root = document) => root?.querySelector(selector) ?? null;
@@ -14,6 +16,9 @@
   const picker = () => q('dialog[open][data-voice-download-stage="pick"]:not(.modal-leave-active)');
   const directory = () => q('dialog[open][data-voice-download-stage="directory"]:not(.modal-leave-active)');
   const options = 'dialog.download-dialog:not([data-voice-purchased-download])';
+  const settings = () => all(`${options}[open]:not(.modal-leave-active)`).find((node) =>
+    q('h2', node)?.textContent.trim() === '音质与下载');
+  const directoryInput = () => q('input[aria-label="下载目录"]', settings() ?? null);
   const radios = () => all('[data-voice-purchased-quality]', modal());
   const currentQuality = () => radios().find((node) => node.checked)?.dataset.voicePurchasedQuality;
   const button = (name, root = document) => q(`button[aria-label="${name}"]`, root);
@@ -28,7 +33,8 @@
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const preferences = { quality: 'standard', tags: false, cover: false, lyrics: false, container: 'audio' };
   const calls = [];
-  let epoch, count = 0, nonce = 0, last, restore, watcher, baseline, unexpectedOptions = false;
+  let epoch, count = 0, nonce = 0, last, restore, watcher, baseline, unexpectedOptions = false,
+    settingsRequested = false;
 
   const state = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
@@ -45,7 +51,9 @@
     const task = (row) => ({ id: row.id, trackId: row.track.id, source: row.source, status: row.status,
       quality: row.actualQuality, requestedQuality: row.requestedQuality, bytes: row.bytes,
       path: row.path, encrypted: row.encrypted });
-    return { active: active.tasks.map(task), done: done.tasks.map(task), preferences: done.options };
+    assert(same(active.directory, done.directory), 'both task views agree on configured directory');
+    return { active: active.tasks.map(task), done: done.tasks.map(task), preferences: done.options,
+      directory: done.directory };
   }
   async function wait(predicate, message) {
     last = message;
@@ -72,6 +80,10 @@
   function action(kind) {
     return calls.find((call) => call.name === 'playerVoiceSongPurchasedDownload' && call.args[1]?.kind === kind);
   }
+  function unexpectedDownloadDialog(node) {
+    return node instanceof Element && [node.matches(options) ? node : null, ...all(options, node)]
+      .some((dialog) => dialog && !(settingsRequested && q('h2', dialog)?.textContent.trim() === '音质与下载'));
+  }
   function dom() {
     return {
       title: q('h2', modal())?.textContent.trim() ?? null,
@@ -80,7 +92,11 @@
       pickerRows: all('.collect-row', picker()).map((node) => node.getAttribute('aria-label')),
       directory: visible(directory()), directoryTitle: q('h2', directory())?.textContent.trim() ?? null,
       directoryButtons: all('footer button', directory()).map((node) => node.textContent.trim()),
-      optionsEver: unexpectedOptions || !!q(options), downloads: visible(q('.downloads-page')),
+      optionsEver: unexpectedOptions || unexpectedDownloadDialog(document.body), downloads: visible(q('.downloads-page')),
+      settings: visible(settings()), directoryInput: directoryInput()?.value ?? null,
+      chooserButton: enabled(textButton('选择目录', settings() ?? null)),
+      saveDisabled: textButton('保存设置', settings() ?? null)?.disabled ?? null,
+      settingsFocus: !!settings()?.contains(document.activeElement),
       vinyl: visible(panel()), notice: notice()?.textContent.trim() ?? null, focusedRow: document.activeElement?.getAttribute('data-row-index') ?? null,
     };
   }
@@ -94,6 +110,7 @@
     if (!baseline) baseline = { player, queue: nativeQueue };
     assert(same({ player, queue: nativeQueue }, baseline), 'original paused episode and queue unchanged');
     assert(same(records.preferences, preferences), 'saved default options remain unchanged');
+    if (noDirectory) assert(records.directory === null, 'no download directory was configured');
     if (name !== 'transferred') assert(!records.active.length && !records.done.length, 'no download task before accepted start');
     assert(!dom().optionsEver, 'purchased flow never opened a second options dialog');
     const id = `ux_${String(++count).padStart(2, '0')}_${name}`;
@@ -132,16 +149,16 @@
       assert(!configured.failed.length, 'private download directory is configured');
     }
     const saved = await invoke('download_quality_preferences', { epoch, refresh: false });
-    const settings = await invoke('download_command', { epoch, command: {
+    const savedPreferences = await invoke('download_command', { epoch, command: {
       kind: 'preferences', revision: saved.revision, options: preferences,
     } });
-    assert(!settings.failed.length, 'save exact synthetic default options');
+    assert(!savedPreferences.failed.length, 'save exact synthetic default options');
 
     const provides = q('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     const methods = ['playerVoiceSongs', 'playerVoiceSongDownloadPrepare', 'playerVoiceSongPurchasedDownload',
       'playlistCollectPage', 'downloadCommand', 'playerVoiceSongDownloadStart', 'playerVoiceSongDownloadStartFromPlaylist',
-      'playerVoiceSongDownloadChoosePlaylist', 'playerVoiceSongDownloadCreatePlaylist'];
+      'playerVoiceSongDownloadChoosePlaylist', 'playerVoiceSongDownloadCreatePlaylist', 'pickDownloadDirectory'];
     const originals = methods.map((name) => core[name]);
     assert(originals.every((method) => typeof method === 'function'), 'actual typed adapters are installed');
     methods.forEach((name, index) => {
@@ -162,8 +179,8 @@
     });
     restore = () => methods.forEach((name, index) => { core[name] = originals[index]; });
     watcher = new MutationObserver((changes) => {
-      if (q(options) || changes.some((change) => [...change.addedNodes].some((node) =>
-        node instanceof Element && (node.matches(options) || q(options, node))))) unexpectedOptions = true;
+      if (unexpectedDownloadDialog(document.body) || changes.some((change) =>
+        [...change.addedNodes].some(unexpectedDownloadDialog))) unexpectedOptions = true;
     });
     watcher.observe(document.body, { childList: true, subtree: true });
 
@@ -247,10 +264,27 @@
           enabled(textButton('取消下载', directory())) && enabled(textButton('更改目录', directory())),
           'missing directory asks for an explicit decision without navigating');
         await capture('directory');
-        await click(() => textButton('取消下载', directory()), 'explicitly cancel missing-directory download');
-        await wait(() => action('cancel')?.result?.kind === 'cancelled' && !directory() &&
-          document.activeElement === row(), 'native selection is cancelled and source focus restored');
-        await capture('directory_cancelled');
+        if (directoryAction === 'settings') {
+          settingsRequested = true;
+          await click(() => textButton('更改目录', directory()), 'explicitly request download settings');
+          await wait(() => {
+            assert(!calls.some((call) => call.name === 'pickDownloadDirectory'), 'no native chooser opened automatically');
+            return action('cancel')?.result?.kind === 'cancelled' && !directory() && !visible(panel()) &&
+              visible(q('.downloads-page')) && visible(settings()) && directoryInput()?.value === '' &&
+              enabled(textButton('选择目录', settings())) && textButton('保存设置', settings())?.disabled &&
+              settings()?.contains(document.activeElement);
+          }, 'explicit change opens focused download settings with no configured directory');
+          await capture('settings');
+          await click(() => button('关闭下载对话框', settings() ?? null), 'close settings without selecting or saving');
+          await wait(() => !settings() && visible(q('.downloads-page')) && !visible(panel()),
+            'closing settings leaves download management without re-opening the episode');
+          await capture('settings_closed');
+        } else {
+          await click(() => textButton('取消下载', directory()), 'explicitly cancel missing-directory download');
+          await wait(() => action('cancel')?.result?.kind === 'cancelled' && !directory() &&
+            document.activeElement === row(), 'native selection is cancelled and source focus restored');
+          await capture('directory_cancelled');
+        }
       } else {
         assert(accepted.kind === 'started' && accepted.result.accepted.length === 1 &&
           !accepted.result.failed.length, 'exact task admitted');

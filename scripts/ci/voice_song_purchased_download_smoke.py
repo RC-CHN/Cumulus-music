@@ -4,6 +4,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import sqlite3
 import sys
 
 from podcast_scene_home_smoke import read
@@ -15,11 +16,13 @@ from window_manager import launch
 PREFS = {'quality': 'standard', 'tags': False, 'cover': False, 'lyrics': False, 'container': 'audio'}
 OFFER = ['jymaster', 'hires', 'lossless', 'exhigh', 'standard']
 NO_DIRECTORY = 'purchased_no_directory'
+DIRECTORY_SETTINGS = 'purchased_directory_settings'
 LABELS = {
     'purchased_liked': ('song_card', 'quality', 'chosen', 'transferred'),
     'purchased_cancel': ('song_card', 'quality', 'chosen', 'cancelled'),
     'purchased_existing': ('song_card', 'quality', 'chosen', 'picker', 'transferred'),
     NO_DIRECTORY: ('song_card', 'quality', 'chosen', 'directory', 'directory_cancelled'),
+    DIRECTORY_SETTINGS: ('song_card', 'quality', 'chosen', 'directory', 'settings', 'settings_closed'),
 }
 
 
@@ -35,6 +38,18 @@ def purchased(stage):
     return calls
 
 
+def assert_saved_directory_settings(root):
+    rows = []
+    for path in (root / 'run/state').rglob('core.sqlite3'):
+        # Only local download settings from the synthetic profile.
+        with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as db:
+            rows.extend(db.execute("SELECT owner,kind,key,value FROM state WHERE kind IN "
+                                   "('download_directory_v1','download_preferences_v1')"))
+    [(owner, kind, key, value)] = rows
+    assert (owner, kind, key) == ('2', 'download_preferences_v1', 'options'), rows
+    assert json.loads(value) == PREFS, rows
+
+
 def verify(case, root, stages, complete):
     labels = LABELS[case]
     assert tuple(stages) == labels and complete['mode'] == case and complete['ok'], complete
@@ -47,10 +62,12 @@ def verify(case, root, stages, complete):
     assert player['position'] > .2 and not player['seeking'] and not player['error'], player
     assert [entry['track']['voiceId'] for entry in first['queue']['tracks']] == ['601', '602']
     assert first['queue']['current'] == player['entryId']
-    assert all(stage['actual'] and stage['mode'] == case and stage['player'] == player and
-               stage['queue'] == first['queue'] and stage['dom']['vinyl'] and not stage['dom']['downloads'] and
-               not stage['dom']['optionsEver'] and stage['records']['preferences'] == PREFS
-               for stage in stages.values()), stages
+    for label, stage in stages.items():
+        downloads = case == DIRECTORY_SETTINGS and label in ('settings', 'settings_closed')
+        assert (stage['actual'] and stage['mode'] == case and stage['player'] == player and
+                stage['queue'] == first['queue'] and stage['dom']['vinyl'] is not downloads and
+                stage['dom']['downloads'] is downloads and stage['dom']['settings'] is (label == 'settings') and
+                not stage['dom']['optionsEver'] and stage['records']['preferences'] == PREFS), stage
     assert all(not stage['records']['active'] and not stage['records']['done']
                for label, stage in stages.items() if label != 'transferred')
     card = action(first, 'playerVoiceSongs')
@@ -71,7 +88,7 @@ def verify(case, root, stages, complete):
     assert ordinary['result'] == {'epoch': epoch, 'playId': play_id, 'trackId': '1710',
                                   'decision': 'extended_rights_unsupported'}
     assert not any(call['name'] in (
-        'downloadCommand', 'playerVoiceSongDownloadStart', 'playerVoiceSongDownloadStartFromPlaylist',
+        'downloadCommand', 'pickDownloadDirectory', 'playerVoiceSongDownloadStart', 'playerVoiceSongDownloadStartFromPlaylist',
         'playerVoiceSongDownloadChoosePlaylist', 'playerVoiceSongDownloadCreatePlaylist',
     ) for call in last['commands']), last
     proof = purchased(last)
@@ -96,7 +113,7 @@ def verify(case, root, stages, complete):
         assert last['dom']['focusedRow'] == '0' and proof == proof[:1] and not wire['calls']
         assert not records and not list((root / 'run/download-output').iterdir())
         return {'syntheticCalls': 0, 'playlistWrites': 0, 'mediaBytes': 0}
-    if case == NO_DIRECTORY:
+    if case in (NO_DIRECTORY, DIRECTORY_SETTINGS):
         prompt = stages['directory']
         assert prompt['dom']['directory'] and prompt['dom']['directoryTitle'] == '更改下载目录', prompt['dom']
         assert prompt['dom']['directoryButtons'] == ['取消下载', '更改目录'] and prompt['dom']['notice'] is None
@@ -111,11 +128,21 @@ def verify(case, root, stages, complete):
                                                            'options': {**PREFS, 'quality': expected_quality}}]
         assert proof[2]['result'] == {'kind': 'directory_required'}
         assert proof[3]['args'] == [target, {'kind': 'cancel', 'selection': selection}]
-        assert proof[3]['result'] == {'kind': 'cancelled'} and last['dom']['focusedRow'] == '0'
+        assert proof[3]['result'] == {'kind': 'cancelled'}
+        if case == NO_DIRECTORY:
+            assert last['dom']['focusedRow'] == '0'
+        else:
+            settings = stages['settings']['dom']
+            assert settings['settingsFocus'] and settings['directoryInput'] == '', settings
+            assert settings['chooserButton'] is True and settings['saveDisabled'] is True, settings
+            assert last['dom']['settings'] is False and last['dom']['downloads'] is True, last['dom']
+            assert_saved_directory_settings(root)
         assert not any(call['name'] == 'playlistCollectPage' for call in last['commands'])
         assert not wire['calls'] and not records and not list((root / 'run/download-output').iterdir())
-        assert all(not stage['voiceSongDownloadTrace']['calls'] for stage in stages.values())
-        return {'syntheticCalls': 0, 'playlistWrites': 0, 'mediaBytes': 0, 'directoryPromptVerified': True}
+        assert all(not stage['voiceSongDownloadTrace']['calls'] and stage['records']['directory'] is None
+                   for stage in stages.values())
+        return {'syntheticCalls': 0, 'playlistWrites': 0, 'mediaBytes': 0, 'directoryPromptVerified': True,
+                **({'directorySettingsVerified': True} if case == DIRECTORY_SETTINGS else {})}
     choose = case == 'purchased_existing'
     assert [call['args'][1]['kind'] for call in proof] == (
         ['prepare', 'select', 'choose_playlist', 'start'] if choose else ['prepare', 'select', 'start']
@@ -186,7 +213,7 @@ def verify(case, root, stages, complete):
 def run(args, root, case):
     root.mkdir()
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    fixture = 'purchased_liked' if case == NO_DIRECTORY else case
+    fixture = 'purchased_liked' if case in (NO_DIRECTORY, DIRECTORY_SETTINGS) else case
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_VOICE_SONG_DOWNLOAD_PROOF=fixture,
                CUMULUS_PODCAST_SCENE_HOME_PROOF='automatic')
     if sys.platform == 'linux':
@@ -197,10 +224,12 @@ def run(args, root, case):
         env['PATH'] = str(args.runtime) + os.pathsep + env.get('PATH', '')
     script = args.script or (Path(__file__).resolve().parents[2] /
                             'desktop/examples/voice_song_purchased_download_ui_probe.js')
-    if case == NO_DIRECTORY:
+    if case in (NO_DIRECTORY, DIRECTORY_SETTINGS):
         # Reuse the exact signed already-liked fixture without configuring a directory.
+        action = 'settings' if case == DIRECTORY_SETTINGS else 'cancel'
         driver = root / 'no-directory-driver.js'
-        driver.write_text('window.__voiceSongPurchasedNoDirectory = true;\n' + script.read_text(encoding='utf-8'),
+        driver.write_text(f'window.__voiceSongPurchasedDirectoryAction = {json.dumps(action)};\n' +
+                          script.read_text(encoding='utf-8'),
                           encoding='utf-8')
         script = driver
     env['CUMULUS_UX_SCRIPT'] = str(script.resolve(strict=True))
@@ -227,7 +256,8 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path, help='Windows runtime containing libmpv-2.dll')
     parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--case', choices=('all', *LABELS), default='all')
+    parser.add_argument('--case', choices=('all', *LABELS), default='all',
+                        help='run the normal set or explicitly select the directory settings case')
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--script', type=Path, help='override only the synthetic driver')
     args = parser.parse_args()
@@ -243,7 +273,7 @@ def main():
         parser.error('Windows requires --runtime with the packaged libmpv-2.dll')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    cases = LABELS if args.case == 'all' else (args.case,)
+    cases = (case for case in LABELS if case != DIRECTORY_SETTINGS) if args.case == 'all' else (args.case,)
     results = [run(args, root / case, case) for case in cases]
     report = {'actualWebView': True, 'actualNullAudio': True,
               'webViewRuntime': 'WebKitGTK' if sys.platform == 'linux' else 'WebView2',
