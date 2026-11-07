@@ -178,6 +178,31 @@ impl From<PurchasedCommand> for NativeCommand {
 }
 
 #[tauri::command]
+pub(crate) async fn open_voice_song_purchased_quality_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    target: VoiceSongDownloadTarget,
+) -> Result<(), ClientError> {
+    use cumulus_core::Error;
+    use tauri::Manager;
+    require_main(&window)?;
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = app
+            .state::<MusicClient>()
+            .voice_song_purchased_quality_guide(
+                &target.epoch,
+                &target.play_id,
+                &target.receipt,
+                target.index,
+            )?;
+        crate::browser::launch(url)
+    })
+    .await
+    .map_err(|_| ClientError::from(Error::State("browser worker stopped")))?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
 pub(crate) async fn player_voice_song_purchased_download<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

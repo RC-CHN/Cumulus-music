@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { VoiceSongPurchasedQuality } from '../services/voiceSongs';
 import Icon from './Icon.vue';
 
 const props = defineProps<{
   choices: readonly VoiceSongPurchasedQuality[];
   busy: boolean;
+  openGuide: () => Promise<void>;
 }>();
 const emit = defineEmits<{ close: []; confirm: [quality: VoiceSongPurchasedQuality] }>();
 const dialog = ref<HTMLDialogElement>();
 const selected = ref(props.choices[0]);
+const guideBusy = ref(false);
+const guideError = ref(false);
+let alive = true;
+onBeforeUnmount(() => {
+  alive = false;
+});
 const names: Record<VoiceSongPurchasedQuality, string> = {
   vivid: '臻音全景声 (Audio Vivid)',
   sky: '沉浸环绕声 (Surround Audio)',
@@ -21,6 +28,18 @@ const names: Record<VoiceSongPurchasedQuality, string> = {
   standard: '标准',
 };
 onMounted(() => dialog.value?.showModal());
+async function openGuide() {
+  if (props.busy || guideBusy.value) return;
+  guideBusy.value = true;
+  guideError.value = false;
+  try {
+    await props.openGuide();
+  } catch {
+    if (alive) guideError.value = true;
+  } finally {
+    if (alive) guideBusy.value = false;
+  }
+}
 function confirm() {
   const quality = selected.value;
   if (quality && !props.busy && props.choices.includes(quality)) emit('confirm', quality);
@@ -37,7 +56,19 @@ function confirm() {
     @cancel.prevent="!busy && emit('close')"
   >
     <header>
-      <h2 id="voice-purchased-quality-title">选择下载音质</h2>
+      <div class="purchased-quality-heading">
+        <h2 id="voice-purchased-quality-title">选择下载音质</h2>
+        <button
+          type="button"
+          class="icon-button purchased-quality-help"
+          aria-label="了解音质"
+          title="了解音质"
+          :disabled="busy || guideBusy"
+          @click="openGuide"
+        >
+          <Icon name="help" aria-hidden="true" />
+        </button>
+      </div>
       <button
         type="button"
         class="icon-button"
@@ -48,6 +79,7 @@ function confirm() {
         <Icon name="close" />
       </button>
     </header>
+    <p v-if="guideError" class="muted" role="status">暂时无法打开音质说明，请重试。</p>
     <form @submit.prevent="confirm">
       <fieldset class="purchased-quality-list" :disabled="busy" aria-label="下载音质">
         <label v-for="choice in choices" :key="choice" class="purchased-quality-row">
@@ -57,6 +89,7 @@ function confirm() {
             type="radio"
             :value="choice"
             :data-voice-purchased-quality="choice"
+            :autofocus="choice === choices[0]"
           />
           <span>{{ names[choice] }}</span>
           <Icon v-if="choice === selected" name="check" aria-hidden="true" />
@@ -72,6 +105,15 @@ function confirm() {
 <style scoped>
 .purchased-quality-dialog {
   width: min(416px, calc(100vw - 48px));
+}
+.purchased-quality-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.purchased-quality-help svg {
+  width: 16px;
+  height: 16px;
 }
 .purchased-quality-list {
   max-height: min(216px, 50dvh);

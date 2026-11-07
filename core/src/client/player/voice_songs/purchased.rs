@@ -206,6 +206,35 @@ pub(super) fn vivid_enabled(experiments: &PcExperimentHost, page: &Page) -> Resu
 }
 
 impl MusicClient {
+    /// M/31 opens a fixed public M/40 help page in the system browser.
+    /// The URL is selected natively from the current verified PC assignment.
+    pub fn voice_song_purchased_quality_guide(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        index: usize,
+    ) -> Result<&'static str> {
+        let (page, check) = self.voice_song_download_scope(epoch, play_id, receipt)?;
+        let row = page
+            .rows
+            .get(index)
+            .ok_or(Error::InvalidInput("invalid vinyl episode song row"))?;
+        let Class::Purchased(offer) = row.download else {
+            return Err(Error::State("song has no purchased quality guide"));
+        };
+        let vivid = vivid_enabled(&self.pc_experiments, &page)?;
+        if offer.qualities(vivid).is_empty() {
+            return Err(Error::State("song has no available purchased quality"));
+        }
+        check()?;
+        Ok(if vivid {
+            "https://music.163.com/g/st-vip-audio-quality"
+        } else {
+            "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81"
+        })
+    }
+
     pub async fn player_voice_song_purchased_download(
         &self,
         epoch: &str,

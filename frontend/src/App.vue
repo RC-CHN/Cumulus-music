@@ -1984,6 +1984,16 @@ const voiceSongDownloadOptions = computed<DownloadDialogTarget | undefined>(() =
 function voiceSongDownloadFocus() {
   return voiceDownloadOpener.value ?? null;
 }
+async function openVoiceSongPurchasedQualityGuide() {
+  const stage = voiceSongDownload.stage.value;
+  if (
+    stage.kind === 'quality' &&
+    !voiceSongDownload.busy.value &&
+    player.lyricsOpen.value &&
+    voiceSongs.ownsTarget(stage.opening.target)
+  )
+    await core.openVoiceSongPurchasedQualityGuide(stage.opening.target);
+}
 function openVoiceSongDownloads(tab: DownloadTab = 'active') {
   player.lyricsOpen.value = false;
   music.navigate({ kind: 'downloads', initialTab: tab });
@@ -6369,6 +6379,7 @@ onUnmounted(() => {
         v-else-if="voiceSongDownload.stage.value.kind === 'quality'"
         :choices="voiceSongDownload.stage.value.choices"
         :busy="voiceSongDownload.busy.value"
+        :open-guide="openVoiceSongPurchasedQualityGuide"
         @close="voiceSongDownload.close"
         @confirm="voiceSongDownload.selectQuality"
       />

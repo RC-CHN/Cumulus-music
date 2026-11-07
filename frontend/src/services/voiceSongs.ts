@@ -311,6 +311,7 @@ export interface VoiceSongsClient
     VoiceSongGroupDownloadClient,
     VoiceSongCollectClient,
     VoiceSongLikedCollectClient {
+  openVoiceSongPurchasedQualityGuide(target: VoiceSongRowTarget): Promise<void>;
   playerVoiceSongs(epoch: string, playId: string): Promise<VoiceSongsView>;
   playerVoiceSongPlay(
     epoch: string,

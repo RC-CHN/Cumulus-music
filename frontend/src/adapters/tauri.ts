@@ -596,6 +596,10 @@ export function createTauriClient(): CoreClient {
         options,
       }),
     ...createVoiceSongGroupDownloadBridge(invoke),
+    openVoiceSongPurchasedQualityGuide: (target) =>
+      invoke('open_voice_song_purchased_quality_guide', {
+        target: voiceSongDownloadTarget(target),
+      }),
     playerVoiceSongPurchasedDownload: (target, command) =>
       invoke('player_voice_song_purchased_download', {
         target: voiceSongDownloadTarget(target),
