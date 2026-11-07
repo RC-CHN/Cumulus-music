@@ -707,7 +707,9 @@ fn main() {
         .as_deref()
         .or_else(|| {
             voice_song_download_case.as_deref().map(|case| {
-                if case.starts_with("group_") {
+                if case == "group_purchased" {
+                    "group_purchased_download"
+                } else if case.starts_with("group_") {
                     "group_download"
                 } else if case.starts_with("purchased_") {
                     "purchased_download"

@@ -1,6 +1,8 @@
 // Sealed WebView SongCard group download; the host sends trusted XTest inputs.
 (async () => {
   const mode = window.__voiceSongDownloadCase;
+  const purchased = mode === 'group_purchased';
+  const tiers = ['sky', 'hires', 'exhigh', 'standard'];
   const q = (selector, root = document) => root?.querySelector(selector) ?? null;
   const all = (selector, root = document) => [...(root?.querySelectorAll(selector) ?? [])];
   const panel = () => q('.lyrics-panel:not(.lyrics-panel-leave-active)');
@@ -12,6 +14,12 @@
   const notice = () => q('[data-voice-song-group-download-notice]', panel());
   const settings = () => q('dialog[open].download-dialog:not(.modal-leave-active)');
   const action = () => q('[data-voice-song-group-download-action]', notice());
+  const quality = () => q('dialog[open][data-voice-purchased-scope="group"]:not(.modal-leave-active)');
+  const choice = (tier) => q(`input[data-voice-purchased-quality="${tier}"]`, quality());
+  const picked = () => q('input[data-voice-purchased-quality]:checked', quality())?.value ?? null;
+  const help = () => label('了解音质', quality());
+  const close = () => label('关闭音质选择', quality());
+  const confirm = () => q('button[type="submit"]', quality());
   const selected = () => all('[data-voice-song-row][aria-selected="true"]', panel())
     .map((node) => Number(node.dataset.rowIndex));
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
@@ -32,6 +40,13 @@
     if (!(target instanceof Element)) return null;
     if (target.closest('[data-menu-key="download"]')) return 'menu:download';
     if (target.closest('[data-voice-song-group-download-action]')) return 'directory:settings';
+    if (quality()) {
+      if (target.closest('button[aria-label="了解音质"]') === help() && help()) return 'quality:guide';
+      if (target.closest('button[aria-label="关闭音质选择"]') === close() && close()) return 'quality:close';
+      if (target.closest('button[type="submit"]') === confirm() && confirm()) return 'quality:confirm';
+      const tier = target.closest('[data-voice-purchased-quality]')?.dataset.voicePurchasedQuality;
+      if (tier) return `quality:${tier}`;
+    }
     const index = target.closest('[data-voice-song-row]')?.dataset.rowIndex;
     return index === undefined ? null : `row:${index}`;
   };
@@ -54,6 +69,10 @@
   const result = (name) => commands.find((command) => command.name === name)?.result;
   const prepareName = 'playerVoiceSongsDownloadPrepare';
   const startName = 'playerVoiceSongsDownloadStart';
+  const guideName = 'openVoiceSongGroupPurchasedQualityGuide';
+  const confirmName = 'playerVoiceSongsDownloadConfirmQuality';
+  const cancelName = 'playerVoiceSongsDownloadCancel';
+  const completed = (name) => commands.find((command) => command.name === name && 'result' in command);
 
   async function tasks() {
     const query = { category: 'all', keyword: '', sort: 'completed', descending: true, offset: 0, limit: 10 };
@@ -102,6 +121,9 @@
         settings: q('h2', settings())?.textContent.trim() ?? null,
         settingsDirectory: visible(q('input[aria-label="下载目录"]', settings())),
         singlePicker: !!q('dialog[open][data-voice-download-picker]'),
+        quality: quality() && { heading: q('h2', quality())?.textContent.trim(), selected: picked(),
+          tiers: all('input[data-voice-purchased-quality]', quality()).map((node) => node.value),
+          confirm: enabled(confirm()) },
         downloads: visible(q('.downloads-page')) },
       commands: clone(commands), events: clone(events), ...details });
     await wait(() => window.__podcastProgressStage === stage, 'native capture acknowledgement');
@@ -124,14 +146,14 @@
   }
 
   try {
-    assert(mode === 'group_liked' || mode === 'group_directory', 'known isolated group mode');
+    assert(purchased || mode === 'group_liked' || mode === 'group_directory', 'known isolated group mode');
     await wait(async () => {
       const account = await invoke('account_snapshot');
       if (account.status !== 'authenticated' || !enabled(label('打开设置'))) return false;
       epoch = account.epoch;
       return enabled(q('input[aria-label="搜索音乐"]'));
     }, 'synthetic account ready');
-    if (mode === 'group_liked') {
+    if (mode !== 'group_directory') {
       await invoke('download_command', { epoch, command: {
         kind: 'configure', root: window.__voiceSongDownloadRoot, path_type: 0, file_type: 1,
       } });
@@ -143,7 +165,7 @@
     }
     const provides = q('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
-    const names = ['playerVoiceSongs', prepareName, startName, 'playerVoiceSongsDownloadCancel',
+    const names = ['playerVoiceSongs', prepareName, startName, cancelName, guideName, confirmName,
       'playerVoiceSongDownloadPrepare', 'playerVoiceSongPurchasedDownload', 'playerVoiceSongsCollectPrepare',
       'pickDownloadDirectory', 'downloadCommand', 'mutatePlaylist', 'playerVoiceSongsSelection'];
     const originals = names.map((name) => core[name]);
@@ -188,7 +210,9 @@
       return value?.receipt && value.playId === playing.playId && value.voiceId === '601' && row(3) && value;
     }, 'native SongCard projected');
     assert(same(card.tracks.map((item) => item.id), ['1710', '1712', '1790', '1791']) &&
-      same(card.availability.map((item) => item.groupDownload), ['ordinary', 'ordinary', 'omitted', 'unsupported']),
+      same(card.availability.map((item) => item.groupDownload),
+        purchased ? ['ordinary', 'purchased', 'omitted', 'purchased'] :
+          ['ordinary', 'ordinary', 'omitted', 'unsupported']),
       'native safe group hints');
 
     await capture('baseline');
@@ -198,6 +222,9 @@
     await wait(() => same(selected(), [0,1]), 'first row joins in second place');
     await input('select_anchor', () => title(2), 'row:2', { ctrl: true });
     await wait(() => same(selected(), [0,1,2]), 'copyright-denied liked trigger is in the group');
+    if (purchased) await input('select_purchased', () => title(3), 'row:3', { ctrl: true });
+    const display = purchased ? [0,1,2,3] : [0,1,2];
+    await wait(() => same(selected(), display), 'complete selected group');
     await input('open_unliked', () => title(0), 'row:0', { button: 3 });
     await wait(() => enabled(collect()) && !download(), 'unliked trigger keeps Collect and hides group Download');
     await capture('unliked_hidden');
@@ -206,15 +233,62 @@
 
     await input('open_liked', () => title(2), 'row:2', { button: 3 });
     await wait(() => enabled(download()) && enabled(collect()), 'liked filtered trigger offers actual group download');
-    assert(same(selected(), [0,1,2]) && !result(prepareName), 'opening menu does not prepare or mutate');
+    assert(same(selected(), display) && !result(prepareName), 'opening menu does not prepare or mutate');
     await input('click_download', download, 'menu:download');
 
     const plan = await wait(() => result(prepareName), 'actual native group prepare result');
-    const prepared = { epoch, playId: playing.playId, cardReceipt: card.receipt, anchorIndex: 2, indices: [1,0,2] };
+    const prepared = { epoch, playId: playing.playId, cardReceipt: card.receipt, anchorIndex: 2,
+      indices: purchased ? [1,0,2,3] : [1,0,2] };
     assert(same(commands.find((item) => item.name === prepareName)?.args, [prepared]) &&
-      same(plan.eligibleIndices, [1,0]) && same(plan.omittedIndices, [2]), 'exact ordered preparation and filtered trigger');
-    assert(!settings() && !q('dialog[open][data-voice-download-picker]'), 'no automatic settings/quality/picker');
-    if (mode === 'group_liked') {
+      same(plan.eligibleIndices, purchased ? [1,0,3] : [1,0]) &&
+      same(plan.omittedIndices, [2]), 'exact ordered preparation and filtered trigger');
+    assert(!settings() && !q('dialog[open][data-voice-download-picker]') && (purchased || !quality()),
+      'no automatic settings or picker');
+    if (purchased) {
+      const exactChooser = () => quality() && q('h2', quality())?.textContent.trim() === '选择下载音质' &&
+        same(all('input[data-voice-purchased-quality]', quality()).map((node) => node.value), tiers) &&
+        picked() === 'sky' && enabled(confirm());
+      const target = ({ selectionReceipt }) => ({ epoch, playId: playing.playId, cardReceipt: card.receipt, selectionReceipt });
+      assert(plan.decision === 'purchased_quality_required' && plan.selectionReceipt &&
+        same(plan.purchasedQualities, tiers), 'verified descending union of the two purchases');
+      await wait(exactChooser, 'actual shared modal initially selects highest without confirming');
+      assert(!result(startName) && !completed(confirmName), 'no implicit confirmation');
+      await input('open_guide', help, 'quality:guide');
+      await wait(() => completed(guideName) && picked() === 'sky' && enabled(help()),
+        'fixed browser handoff keeps quality selection');
+      await input('close_chooser', close, 'quality:close');
+      await wait(() => completed(cancelName) && !quality() && document.activeElement === row(2),
+        'actual cancel restores exact invoking row');
+      await capture('cancelled');
+      assert(same(completed(guideName).args, [target(plan)]) &&
+        same(completed(cancelName).args, [target(plan)]), 'guide and cancel use only first group receipt');
+      await input('reopen_menu', () => title(2), 'row:2', { button: 3 });
+      await input('reopen_chooser', download, 'menu:download');
+      const again = await wait(() => {
+        const next = commands.filter((item) => item.name === prepareName)[1];
+        return next?.result && exactChooser() && next;
+      }, 'new chooser opens with highest preselected again');
+      assert(again.result.selectionReceipt !== plan.selectionReceipt && same(again.args, [prepared]) &&
+        same(again.result.purchasedQualities, tiers), 'different native receipt, same frozen selection');
+      await input('choose_hires', () => choice('hires'), 'quality:hires');
+      await wait(() => picked() === 'hires' && !completed(confirmName), 'radio choice remains local');
+      await input('confirm_hires', confirm, 'quality:confirm');
+      const started = await wait(() => !quality() && notice()?.dataset.kind === 'queued' && completed(confirmName),
+        'one native confirmation closes the chooser and reports in place');
+      assert(started.result.kind === 'started' && same(started.args, [target(again.result), 'hires']) &&
+        started.result.result.accepted.length === 3 &&
+        started.result.result.operationId === again.result.selectionReceipt,
+        'one explicit selected-tier confirmation accepts the frozen mixed batch');
+      await capture('queued');
+      await wait(async () => {
+        const view = await tasks();
+        return view.active.length === 0 && view.complete.length === 3 &&
+          view.complete.every((task) => task.status === 'complete' && task.source === 'song' && task.quality === 'standard');
+      }, 'all three sealed MP3 tasks publish');
+      const saved = await invoke('download_quality_preferences', { epoch, refresh: false });
+      assert(saved.options.quality === 'exhigh', 'single group tier does not change saved preference');
+      await capture('transferred', { savedQuality: saved.options.quality });
+    } else if (mode === 'group_liked') {
       const started = await wait(() => notice()?.dataset.kind === 'queued' && result(startName),
         'accepted batch reports in place');
       assert(plan.decision === 'ready' && started.accepted.length === 2 &&
@@ -241,7 +315,9 @@
         visible(q('input[aria-label="下载目录"]', settings())), 'explicit action opens existing Cumulus settings');
       await capture('settings');
     }
-    assert(commands.every((item) => ['playerVoiceSongs', prepareName, startName].includes(item.name)),
+    const allowed = purchased ? ['playerVoiceSongs', prepareName, guideName, cancelName, confirmName] :
+      ['playerVoiceSongs', prepareName, startName];
+    assert(commands.every((item) => allowed.includes(item.name)),
       'no single/collect/generic write or native picker');
     await emit('complete', { ok: true, mode, count, realMusicRequests: 0,
       realAccountWrites: 0, physicalAudioVerified: false });
