@@ -53,6 +53,8 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "player_voice_songs_download_prepare",
             "player_voice_songs_download_cancel",
             "player_voice_songs_download_start",
+            "player_voice_songs_download_confirm_quality",
+            "open_voice_song_group_purchased_quality_guide",
             "change_fresh_vinyl_podcast_subscription",
             "reconcile_fresh_vinyl_podcast_subscription",
             "player_voice_songs_collect_liked_destination",
@@ -170,7 +172,7 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         ),
         (
             "player_voice_songs_download_start",
-            prepared,
+            prepared.clone(),
             vec![
                 ("anchorIndex", json!(2)),
                 ("indices", json!([1, 3, 2])),
@@ -215,6 +217,69 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             assert_ipc_response(&window, request(command, payload), Err(invalid.clone()));
         }
     }
+    let command = "player_voice_songs_download_confirm_quality";
+    let stale = json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false});
+    let invalid = json!({"code":"invalid_input","message":"输入内容不符合要求","retryable":false});
+    for quality in [
+        "vivid", "sky", "jymaster", "jyeffect", "hires", "lossless", "exhigh", "standard",
+    ] {
+        let mut payload = prepared.clone();
+        payload["quality"] = json!(quality);
+        // A valid tier reaches the native epoch fence; it is not authority
+        // to download unless the current native receipt actually offered it.
+        assert_ipc_response(&window, request(command, payload), Err(stale.clone()));
+    }
+    for value in [
+        json!("dolby"),
+        json!("higher"),
+        json!("64aac"),
+        json!("HIRES"),
+        json!(320000),
+        json!(null),
+    ] {
+        let mut payload = prepared.clone();
+        payload["quality"] = value;
+        assert_ipc_response(&window, request(command, payload), Err(invalid.clone()));
+    }
+    assert_ipc_response(
+        &window,
+        request(command, prepared.clone()),
+        Err(invalid.clone()),
+    );
+    let guide = "open_voice_song_group_purchased_quality_guide";
+    assert_ipc_response(&window, request(guide, prepared.clone()), Err(stale));
+    for (key, value) in [
+        ("url", json!("https://untrusted.invalid/help")),
+        ("index", json!(2)),
+        ("quality", json!("hires")),
+        ("selectionReceipt", json!("301")),
+    ] {
+        let mut injected = prepared.clone();
+        injected[key] = value;
+        assert_ipc_response(&window, request(guide, injected), Err(invalid.clone()));
+    }
+    let mut confirmed = prepared;
+    confirmed["quality"] = json!("hires");
+    for (key, value) in [
+        ("selectionReceipt", json!("301")),
+        ("options", json!({"quality":"hires"})),
+        ("songIds", json!(["301", "302"])),
+        ("voiceId", json!("71")),
+        ("indices", json!([1, 2])),
+        ("playlistId", json!("81")),
+        ("destinationReceipt", json!(selection_receipt)),
+        ("directory", json!("/tmp/untrusted")),
+        ("url", json!("https://untrusted.invalid/audio")),
+    ] {
+        let mut payload = confirmed.clone();
+        payload[key] = value;
+        assert_ipc_response(&window, request(command, payload), Err(invalid.clone()));
+    }
+    assert_ipc_response(
+        &window,
+        request(command, json!({"target":confirmed})),
+        Err(invalid),
+    );
     assert_ipc_response(
         &window,
         request("account_snapshot", json!({})),

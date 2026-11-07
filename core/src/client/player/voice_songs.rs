@@ -26,7 +26,9 @@ pub use actions::VoiceSongAction;
 use actions::{Page, Row};
 pub use collect::{VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongLikedDestination};
 pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
-pub use group_download::{VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadPlan};
+pub use group_download::{
+    VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadPlan,
+};
 pub use picker::{VoiceSongDownloadCreation, VoiceSongDownloadPicker};
 pub use purchased::{VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult};
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
@@ -64,6 +66,7 @@ pub struct VoiceSongRowAvailability {
 #[serde(rename_all = "snake_case")]
 pub enum VoiceSongGroupDownloadHint {
     Ordinary,
+    Purchased,
     Omitted,
     Unsupported,
 }
@@ -369,10 +372,12 @@ impl MusicClient {
                     copyright_blocked: row.copyright_blocked,
                     group_download: if row.group_download_unsupported {
                         VoiceSongGroupDownloadHint::Unsupported
-                    } else if row.download == download::Class::Ordinary {
-                        VoiceSongGroupDownloadHint::Ordinary
                     } else {
-                        VoiceSongGroupDownloadHint::Omitted
+                        match row.download {
+                            download::Class::Ordinary => VoiceSongGroupDownloadHint::Ordinary,
+                            download::Class::Purchased(_) => VoiceSongGroupDownloadHint::Purchased,
+                            _ => VoiceSongGroupDownloadHint::Omitted,
+                        }
                     },
                 })
                 .collect(),

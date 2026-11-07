@@ -31,6 +31,7 @@ pub enum Case {
     PurchasedExisting,
     GroupLiked,
     GroupDirectory,
+    GroupPurchased,
 }
 
 #[derive(Default)]
@@ -61,6 +62,7 @@ impl Fixture {
                 "purchased_existing" => Case::PurchasedExisting,
                 "group_liked" => Case::GroupLiked,
                 "group_directory" => Case::GroupDirectory,
+                "group_purchased" => Case::GroupPurchased,
                 _ => panic!("unknown isolated SongCard download proof"),
             },
             state: Mutex::default(),
@@ -75,7 +77,7 @@ impl Fixture {
                 self.state.lock().unwrap().liked_reads += 1;
                 let ids = match self.case {
                     Case::Liked | Case::PurchasedLiked => vec![1710],
-                    Case::GroupLiked | Case::GroupDirectory => vec![1790],
+                    Case::GroupLiked | Case::GroupDirectory | Case::GroupPurchased => vec![1790],
                     _ => vec![],
                 };
                 Some(Ok(json!({"code":200,"ids":ids})))
@@ -90,6 +92,7 @@ impl Fixture {
                                 | Case::PurchasedCancel
                                 | Case::GroupLiked
                                 | Case::GroupDirectory
+                                | Case::GroupPurchased
                         )
                 );
                 assert_eq!(
@@ -147,13 +150,15 @@ impl Fixture {
                 ))
             }
             META if body["c"].as_str().is_some_and(|ids| {
-                ids.contains("1710") || (self.case == Case::GroupLiked && ids.contains("1712"))
+                ["1710", "1712", "1791"]
+                    .into_iter()
+                    .any(|id| self.song(id) && ids.contains(id))
             }) =>
             {
                 assert!(!cache && self.transfers());
                 let packed: Vec<Value> = serde_json::from_str(body["c"].as_str().unwrap()).unwrap();
                 let id = packed[0]["id"].as_str().unwrap();
-                assert!(id == "1710" || self.case == Case::GroupLiked && id == "1712");
+                assert!(self.song(id));
                 assert_eq!(*body, json!({"c":format!(r#"[{{"id":"{id}","v":0}}]"#)}));
                 self.record(path, body);
                 let id = id.parse::<u64>().unwrap();
@@ -176,10 +181,11 @@ impl Fixture {
                 let selected = match self.case {
                     Case::PurchasedLiked | Case::GroupLiked => "exhigh",
                     Case::PurchasedExisting => "lossless",
+                    Case::GroupPurchased => "hires",
                     _ => "standard",
                 };
                 let id = body["id"].as_str().unwrap();
-                assert!(id == "1710" || self.case == Case::GroupLiked && id == "1712");
+                assert!(self.song(id));
                 assert_eq!(*body, json!({"id":id,"level":selected,"immerseType":"c51"}));
                 // All synthetic transfers use one pinned MP3. The actual
                 // service level can differ from the explicitly requested one.
@@ -208,6 +214,12 @@ impl Fixture {
         }
     }
 
+    fn song(&self, id: &str) -> bool {
+        id == "1710"
+            || matches!(self.case, Case::GroupLiked | Case::GroupPurchased) && id == "1712"
+            || self.case == Case::GroupPurchased && id == "1791"
+    }
+
     fn transfers(&self) -> bool {
         matches!(
             self.case,
@@ -216,6 +228,7 @@ impl Fixture {
                 | Case::PurchasedLiked
                 | Case::PurchasedExisting
                 | Case::GroupLiked
+                | Case::GroupPurchased
         )
     }
 

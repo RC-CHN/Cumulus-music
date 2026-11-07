@@ -205,6 +205,15 @@ pub(super) fn vivid_enabled(experiments: &PcExperimentHost, page: &Page) -> Resu
         }))
 }
 
+/// M/31 opens this fixed M/40 public help page in the system browser.
+pub(super) fn purchased_quality_guide_url(vivid: bool) -> &'static str {
+    if vivid {
+        "https://music.163.com/g/st-vip-audio-quality"
+    } else {
+        "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81"
+    }
+}
+
 impl MusicClient {
     /// M/31 opens a fixed public M/40 help page in the system browser.
     /// The URL is selected natively from the current verified PC assignment.
@@ -228,11 +237,7 @@ impl MusicClient {
             return Err(Error::State("song has no available purchased quality"));
         }
         check()?;
-        Ok(if vivid {
-            "https://music.163.com/g/st-vip-audio-quality"
-        } else {
-            "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81"
-        })
+        Ok(purchased_quality_guide_url(vivid))
     }
 
     pub async fn player_voice_song_purchased_download(
