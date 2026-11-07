@@ -76,6 +76,12 @@
         }
         if(w===1120&&t==='light'){
           click(card.querySelector('.search-card-play'));await wait(()=>card.classList.contains('search-card-current')&&card.querySelector('.search-card-play').getAttribute('aria-label').startsWith('暂停'),'card playback '+category);assert(all('.search-card-current').length===1,'only matching card is active');await capture(`${category}_playing`);
+          if(category==='artists'){
+            const {epoch}=await invoke('account_snapshot');
+            const snapshot=await invoke('player_snapshot',{epoch});
+            assert(snapshot.state==='playing'&&snapshot.origin?.kind==='artist'&&snapshot.origin.id==='101'
+              &&snapshot.track?.id==='1'&&snapshot.queueLen===50,'native artist queue matches the official control branch');
+          }
           click(card.querySelector('.search-card-play'));await wait(()=>card.querySelector('.search-card-play').getAttribute('aria-label').startsWith('播放')&&button('播放'),'card paused');await capture(`${category}_paused`);
           const epoch=(await invoke('account_snapshot')).epoch;
           await invoke('player_action',{epoch,action:{kind:'stop'}});

@@ -181,6 +181,8 @@ fn playlist_creator_proof() -> bool {
 }
 static PLAYLIST_CREATOR_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 static SEARCH_PROFILE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+static SEARCH_CARD_ARTIST_SONG_CALLS: std::sync::Mutex<Vec<Value>> =
+    std::sync::Mutex::new(Vec::new());
 
 fn playlist(id: u64) -> Value {
     intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
@@ -538,6 +540,20 @@ impl Api for Library {
             }
             if let Some(result) = search_artist_top50_fixture::response(path, &args, cached) {
                 return result;
+            }
+            if std::env::var_os("CUMULUS_SEARCH_CARDS_PROOF").is_some()
+                && path == "/api/v2/artist/songs"
+            {
+                if cached || args != json!({"id":"101","limit":50,"offset":0}) {
+                    return Err(cumulus_core::Error::InvalidInput(
+                        "unexpected synthetic search artist queue request",
+                    ));
+                }
+                SEARCH_CARD_ARTIST_SONG_CALLS
+                    .lock()
+                    .unwrap()
+                    .push(args.clone());
+                return fixture::Library::default().request(path, args, false).await;
             }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
@@ -1179,6 +1195,10 @@ fn main() {
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
+                if std::env::var_os("CUMULUS_SEARCH_CARDS_PROOF").is_some() {
+                    value["searchCardArtistSongCalls"] =
+                        json!(*SEARCH_CARD_ARTIST_SONG_CALLS.lock().unwrap());
+                }
                 if let Some(calls) = search_fixture::suggestion_match_calls() { value["suggestionMatchCalls"] = json!(calls); }
                 if search_artist_top50_fixture::enabled() { value["artistTop50Calls"] = json!(search_artist_top50_fixture::report()); }
                 if let Some(calls) = search_fixture::audio_toplist_calls() { value["audioToplistCalls"] = json!(calls); }
