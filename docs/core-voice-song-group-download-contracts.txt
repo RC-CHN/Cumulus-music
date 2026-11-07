@@ -122,19 +122,25 @@ VoicePage「包含歌曲」多选下载：直达及原生歌单目的地
   UI 在本地保持原卡片、节目、账号代次与页面归属；异步返回后检查相同
   epoch/playId/anchorIndex 和当前卡片，再按 eligibleIndices、omittedIndices
   显示实际接纳范围。不把 onlineEligible 或当前行红心自行当作下载权限。
-  多选菜单只在本账号观察到触发行已喜欢、该行不在喜欢操作中且整组至少有一个
-  原生 ordinary 或 purchased 提示时显示「下载」；unknown 或 unsupported
-  隐藏。只提示当前卡片已解析的权益，不能替代本地索引、任务、Cookie 或喜欢
-  日志核验。保守隐藏包含已知不支持行的选择，即使该行随后可能被本地筛掉。
-  原客户端会在选音质后为未喜欢触发行打开歌单选择；该目的地未接入，桌面
-  只显示已确认喜欢的直达入口，确认时状态已变化则给出当前原生阻塞结果。
+  已登录且触发行无在途喜欢操作，整组至少有一个原生 ordinary 或 purchased
+  提示并且其余行均明确分类时才提供「下载」。该可见性不能替代本地索引、任务、
+  Cookie 或喜欢日志核验。保守隐藏包含已知不支持行的选择，即使该行随后可能被
+  本地筛掉。未喜欢与未核实是不同分支：前者可进入目的地，后者不打开弹窗或写入。
+- renderer 改用显式 player_voice_songs_download_prepare_with_destination，输入形状
+  与旧 prepare 相同；只有新入口的原生 playlist_required 才投影回执。另一个
+  主窗口命令 player_voice_songs_download_destination 接收严格
+  {target:{epoch,playId,cardReceipt,selectionReceipt},command:{kind,...}}；
+  page、liked_destination、status/creation_status 为读取，choose 只接当页观察过
+  的普通 playlistId，choose_liked 只接独立的系统喜欢回执，create 只接名称/隐私，
+  add_created 明确续加从未派发的创建操作，start 只接核对过的一次 continuation。
+  不接受歌曲、可选档、下载路径或已购权益。单曲和独立多选收藏 IPC 不变。
 - decision=ready 和 purchased_quality_required 有原生批次回执。关闭未
   开始的确认时可显式 cancel；普通提交 start，已购只在明确确认后提交
   confirm_quality。后者结果为 kind=started（带入队结果）、playlist_required、
   membership_unknown 或 directory_required。directory_required 只指向
   既有下载目录设置，返回后
-  显式重新 prepare。playlist_required、unsupported_selection 不跳过现有
-  安全门，也不循环单曲接口；membership_unknown、unavailable 保持未启动。
+  显式重新 prepare。unsupported_selection 不跳过现有安全门，也不循环单曲接口；
+  membership_unknown、unavailable 保持未启动。
   start 的 accepted 是入队任务而非已下载文件。只有返回 epoch 仍属当前账号、
   operationId 等于当前批次回执且卡片仍有效时才显示结果；结果不明不自动重放。
   普通 ready 在菜单点击后直接排队；已购与单曲共用「选择下载音质」弹窗，
@@ -144,6 +150,15 @@ VoicePage「包含歌曲」多选下载：直达及原生歌单目的地
   手动查看下载。缺目录时明确点击「下载设置」才进入既有「音质与下载」，
   不自动打开系统目录选择器，也不从设置保存自动回放批次。既有单曲下载及
   多选收藏保持各自入口和原流程。
+- M/3085:3965–3982、3475–3488 和恢复的 FavouriteModal/index.jsx:225–257、
+  379–440、468–490、524–541：未喜欢入口先完成任何已购选档，再打开
+  「下载到歌单」。复用 64px 虚拟行和本机记录的默认/常用排序，系统喜欢单独
+  只在原生核对后出现。初次渲染、排序、切换创建页和关闭尚未提交均不写；
+  创建页默认非私密，确认后允许原生已确认创建续加。已有目标明确否在 native
+  出具续下回执时仍继续，并提示收藏失败；新建目标的加歌失败不续下。
+  未知保留本次操作；可关闭后从原处核对，但核对只读，无法重复发送旧 add。
+  当前节目、卡片、账号或页面改变后停止采纳延迟结果，写入日志仍由原生保存。
+  UI 没有接入官方要求先复制的外部特例或基于购买素材的升级提示。
 
 验证：core/tests/pc_experiment_transport/voice_songs/group_download.rs 使用封闭
 合成签名 EAPI，覆盖下架但已喜欢的原始触发行、局部不可用/本地/完成/已有任务、
@@ -153,14 +168,14 @@ VoicePage「包含歌曲」多选下载：直达及原生歌单目的地
 前端测试验证保留顺序、只投影声明字段、取消和明确提交。没有访问真实账户或服务。
 原生目的地回归另覆盖 `group_download/playlist.rs` 及 `playlist/liked.rs`：独立收藏筛选
 和反向入队、已购先确认、明确否与未知回执、创建回执缺失、陈旧节目/目标、当前系统
-歌单的双来源矛盾和一致读回。签名夹具只观察合成传输；没有新增桌面入口或实服验证。
+歌单的双来源矛盾和一致读回。签名夹具只观察合成传输，没有实服验证。
 
 Linux 实测：scripts/ci/voice_song_group_download_smoke.py 使用真实 WebKitGTK、
 Tauri IPC、XTest 与 libmpv null 输出，单独 Xvfb/Openbox、非 C 系统 locale、
 私有无外连网络及合成账号/媒体。两种场景合计 21 状态、21 张 PNG：已确认
 喜欢的下架触发行保持 anchor=2、选择 [1,0,2]；任务 [1712,1710] 使用保存
 的极高请求，封闭响应返回标准 MP3，两个落盘文件均与合成样本逐字节一致。
-未喜欢触发行仍可见收藏但无批量下载；缺目录无新任务/媒体请求，只有点击
+历史的直达专用版本未给未喜欢触发行开放下载；缺目录无新任务/媒体请求，只有点击
 「下载设置」才打开现有设置。两个场景保持相同暂停播放项、时钟和队列。
 查看了菜单、接纳提示、缺目录提示和设置窗口四张关键图；未验证物理声卡、
 Windows 或真实服务。旧普通单曲下载同一二进制回归亦通过。

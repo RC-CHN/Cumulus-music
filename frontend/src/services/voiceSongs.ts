@@ -305,7 +305,6 @@ export interface VoiceSongGroupDownloadTarget extends VoiceSongGroupDownloadCard
 }
 
 type VoiceSongGroupDownloadBlocked =
-  | 'playlist_required'
   | 'membership_unknown'
   | 'unavailable'
   | 'unsupported_selection'
@@ -314,6 +313,7 @@ type VoiceSongGroupDownloadBlocked =
 export type VoiceSongGroupDownloadDecision =
   | 'ready'
   | 'purchased_quality_required'
+  | 'playlist_required'
   | VoiceSongGroupDownloadBlocked;
 
 export type VoiceSongGroupDownloadPlan = {
@@ -324,7 +324,7 @@ export type VoiceSongGroupDownloadPlan = {
   omittedIndices: readonly number[];
 } & (
   | {
-      decision: 'ready';
+      decision: 'ready' | 'playlist_required';
       selectionReceipt: VoiceSongGroupDownloadReceipt;
       purchasedQualities?: never;
     }
@@ -342,10 +342,54 @@ export type VoiceSongGroupDownloadConfirmation =
   | { kind: 'membership_unknown' }
   | { kind: 'directory_required' };
 
+export type VoiceSongGroupDestinationCommand =
+  | { kind: 'page'; sort: 'default' | 'recently'; page: number }
+  | { kind: 'liked_destination' }
+  | { kind: 'choose'; playlistId: string }
+  | { kind: 'choose_liked'; destinationReceipt: string }
+  | { kind: 'status' | 'creation_status'; reconcile: boolean }
+  | { kind: 'create'; name: string; privatePlaylist: boolean }
+  | { kind: 'add_created' }
+  | { kind: 'start'; continuation: string };
+
+export interface VoiceSongGroupPlaylistResult extends VoiceSongGroupDownloadTargetIdentity {
+  playlistId: string;
+  operationId: string;
+  phase: PlaylistPhase;
+  addFailed: boolean;
+  continuation: string | null;
+}
+
+interface VoiceSongGroupDownloadTargetIdentity {
+  epoch: string;
+  playId: string;
+  selectionReceipt: VoiceSongGroupDownloadReceipt;
+}
+
+export interface VoiceSongGroupPlaylistCreation extends VoiceSongGroupDownloadTargetIdentity {
+  createOperationId: string;
+  createPhase: PlaylistPhase;
+  playlistId: string | null;
+  canAdd: boolean;
+  add: VoiceSongGroupPlaylistResult | null;
+}
+
+export type VoiceSongGroupDestinationReply =
+  | { kind: 'page'; page: AccountData<{ playlists: PlaylistView[]; nextPage: number | null }> }
+  | { kind: 'liked_destination'; destination: AccountData<VoiceSongLikedDestination | null> }
+  | { kind: 'playlist'; playlist: VoiceSongGroupPlaylistResult }
+  | { kind: 'creation'; creation: VoiceSongGroupPlaylistCreation }
+  | { kind: 'started'; result: DownloadResult }
+  | { kind: 'directory_required' };
+
 export interface VoiceSongGroupDownloadClient {
   playerVoiceSongsDownloadPrepare(
     request: VoiceSongGroupDownloadRequest,
   ): Promise<VoiceSongGroupDownloadPlan>;
+  playerVoiceSongsDownloadDestination(
+    target: VoiceSongGroupDownloadTarget,
+    command: VoiceSongGroupDestinationCommand,
+  ): Promise<VoiceSongGroupDestinationReply>;
   playerVoiceSongsDownloadCancel(target: VoiceSongGroupDownloadTarget): Promise<void>;
   playerVoiceSongsDownloadStart(target: VoiceSongGroupDownloadTarget): Promise<DownloadResult>;
   playerVoiceSongsDownloadConfirmQuality(

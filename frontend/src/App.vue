@@ -214,6 +214,7 @@ import type { BatchCategory } from './services/downloadBatch';
 import type { DownloadQuery } from './services/downloads';
 import DownloadDialog from './components/DownloadDialog.vue';
 import VoiceSongDownloadPicker from './components/VoiceSongDownloadPicker.vue';
+import VoiceSongGroupDownloadPicker from './components/VoiceSongGroupDownloadPicker.vue';
 import VoiceSongPurchasedQuality from './components/VoiceSongPurchasedQuality.vue';
 import { useVoiceSongDownload } from './composables/useVoiceSongDownload';
 import VoiceSongGroupCollectDialog from './components/VoiceSongGroupCollectDialog.vue';
@@ -1219,7 +1220,7 @@ function showPlaybackVoiceSongMenu(
       voiceSongs.view.value,
       target.index,
       selection.indices,
-      music.liked.value,
+      music.signedIn.value,
       music.busyLikes.value,
     );
   void trackActions.value?.show({
@@ -1247,7 +1248,7 @@ function showPlaybackVoiceSongMenu(
       downloadGroup: selection
         ? {
             available: groupDownloadAvailable,
-            busy: () => voiceSongGroupDownload.busy.value || !!voiceSongGroupDownload.quality.value,
+            busy: () => voiceSongGroupDownload.active.value,
             start() {
               if (!groupDownloadAvailable()) return;
               voiceDownloadFeedback.value = undefined;
@@ -1266,13 +1267,7 @@ function showPlaybackVoiceSongMenu(
           }
         : undefined,
       download() {
-        if (
-          !live() ||
-          selection ||
-          voiceSongGroupDownload.busy.value ||
-          voiceSongGroupDownload.quality.value
-        )
-          return;
+        if (!live() || selection || voiceSongGroupDownload.active.value) return;
         voiceDownloadFeedback.value = undefined;
         voiceDownloadRoute.value = route;
         voiceDownloadOpener.value = opener;
@@ -2036,8 +2031,11 @@ const voiceSongQualityDialog = computed(() => {
     };
 });
 function voiceSongDownloadFocus() {
-  const group = voiceSongGroupDownload.quality.value;
-  return (group ? group.opening.opener : voiceDownloadOpener.value) ?? null;
+  return (
+    (voiceSongGroupDownload.active.value
+      ? voiceSongGroupDownload.opener.value
+      : voiceDownloadOpener.value) ?? null
+  );
 }
 async function openVoiceSongPurchasedQualityGuide() {
   const stage = voiceSongDownload.stage.value;
@@ -6535,6 +6533,11 @@ onUnmounted(() => {
         :open-guide="voiceSongQualityDialog.openGuide"
         @close="voiceSongQualityDialog.close"
         @confirm="voiceSongQualityDialog.confirm"
+      />
+      <VoiceSongGroupDownloadPicker
+        v-else-if="voiceSongGroupDownload.destination.visible.value"
+        :model="voiceSongGroupDownload.destination"
+        @expired="music.bootstrap(false)"
       />
       <VoiceSongDownloadPicker
         v-else-if="voiceSongDownload.stage.value.kind !== 'idle'"

@@ -861,13 +861,21 @@ const displayedAuxiliary = computed(() =>
         >
           <span role="status">{{ voiceGroupDownloadNotice.text }}</span>
           <button
-            v-if="['directory', 'uncertain'].includes(voiceGroupDownloadNotice.kind)"
+            v-if="
+              ['directory', 'uncertain', 'playlist_pending'].includes(voiceGroupDownloadNotice.kind)
+            "
             type="button"
             class="text-button"
             data-voice-song-group-download-action
             @click="emit('voiceGroupDownloadAction')"
           >
-            {{ voiceGroupDownloadNotice.kind === 'directory' ? '下载设置' : '查看下载' }}
+            {{
+              voiceGroupDownloadNotice.kind === 'directory'
+                ? '下载设置'
+                : voiceGroupDownloadNotice.kind === 'playlist_pending'
+                  ? '核对歌单'
+                  : '查看下载'
+            }}
           </button>
         </span>
       </span>

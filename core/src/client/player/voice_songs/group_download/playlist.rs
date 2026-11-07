@@ -420,6 +420,11 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         check()?;
+        if !self.configured_download_directory_available(epoch).await? {
+            check()?;
+            return Err(Error::State("download directory is not configured"));
+        }
+        check()?;
         let songs = lease.0.songs.iter().rev().cloned().collect::<Arc<[_]>>();
         let proof = attempt.proof(&lease, playlist);
         self.enqueue_voice_song_group(

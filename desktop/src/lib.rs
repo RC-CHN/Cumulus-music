@@ -505,6 +505,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::voice_song_download::player_voice_song_download_add_created_playlist,
                 player::voice_song_download::player_voice_song_download_start_from_playlist,
                 player::voice_song_group_download::player_voice_songs_download_prepare,
+                player::voice_song_group_download::destination::player_voice_songs_download_prepare_with_destination,
+                player::voice_song_group_download::destination::player_voice_songs_download_destination,
                 player::voice_song_group_download::player_voice_songs_download_cancel,
                 player::voice_song_group_download::player_voice_songs_download_start,
                 player::voice_song_group_download::player_voice_songs_download_confirm_quality,

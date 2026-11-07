@@ -59,7 +59,10 @@ test('the group download bridge sends the frozen order and keeps start/cancel re
   assert.equal(await bridge.playerVoiceSongsDownloadStart(target), accepted);
   const wireTarget = { ...card, selectionReceipt };
   assert.deepEqual(calls, [
-    ['player_voice_songs_download_prepare', { ...card, anchorIndex: 2, indices: [1, 3, 2] }],
+    [
+      'player_voice_songs_download_prepare_with_destination',
+      { ...card, anchorIndex: 2, indices: [1, 3, 2] },
+    ],
     ['player_voice_songs_download_cancel', wireTarget],
     ['player_voice_songs_download_start', wireTarget],
   ]);
@@ -96,7 +99,7 @@ test('purchased group choice is explicit and sends one quality with only the nat
   const prepared = await bridge.playerVoiceSongsDownloadPrepare(request);
   assert.equal(prepared.decision, 'purchased_quality_required');
   assert.deepEqual(prepared.purchasedQualities, ['sky', 'hires', 'standard']);
-  assert.deepEqual(calls, [['player_voice_songs_download_prepare', request]]);
+  assert.deepEqual(calls, [['player_voice_songs_download_prepare_with_destination', request]]);
   const wide = {
     ...request,
     selectionReceipt: prepared.selectionReceipt,
@@ -115,5 +118,42 @@ test('purchased group choice is explicit and sends one quality with only the nat
   assert.deepEqual(calls[2], [
     'open_voice_song_group_purchased_quality_guide',
     { ...card, selectionReceipt },
+  ]);
+});
+
+test('only an observed group receipt and the chosen destination cross the bridge', async () => {
+  const calls: unknown[] = [];
+  const api = createVoiceSongGroupDownloadBridge(
+    async <T>(command: string, args: Record<string, unknown>) => {
+      calls.push([command, args]);
+      return undefined as T;
+    },
+  );
+  const target = {
+    epoch: '1',
+    playId: 'p',
+    cardReceipt: 'card',
+    selectionReceipt: 'group' as VoiceSongGroupDownloadReceipt,
+    songIds: ['301'],
+  };
+  const command = { kind: 'choose_liked', destinationReceipt: 'star', playlistId: '81' } as const;
+  await api.playerVoiceSongsDownloadDestination(target, command);
+  const start = {
+    kind: 'start',
+    continuation: 'journal',
+    quality: 'lossless',
+    path: '/test',
+  } as const;
+  await api.playerVoiceSongsDownloadDestination(target, start);
+  const { songIds: _songIds, ...scope } = target;
+  assert.deepEqual(calls, [
+    [
+      'player_voice_songs_download_destination',
+      { target: scope, command: { kind: 'choose_liked', destinationReceipt: 'star' } },
+    ],
+    [
+      'player_voice_songs_download_destination',
+      { target: scope, command: { kind: 'start', continuation: 'journal' } },
+    ],
   ]);
 });

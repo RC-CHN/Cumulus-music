@@ -33,6 +33,7 @@ function client(override: Partial<VoiceSongGroupDownloadClient>): VoiceSongGroup
   return {
     playerVoiceSongsDownloadPrepare: async () => assert.fail('unexpected prepare'),
     playerVoiceSongsDownloadCancel: async () => assert.fail('unexpected cancel'),
+    playerVoiceSongsDownloadDestination: async () => assert.fail('unexpected destination'),
     playerVoiceSongsDownloadStart: async () => assert.fail('unexpected start'),
     playerVoiceSongsDownloadConfirmQuality: async () => assert.fail('unexpected confirmation'),
     openVoiceSongGroupPurchasedQualityGuide: async () => assert.fail('unexpected guide'),
@@ -53,7 +54,7 @@ function setup(api: VoiceSongGroupDownloadClient, callbacks: string[] = []) {
   return { scope, model };
 }
 
-test('the group menu requires the observed liked trigger and verified ordinary candidate rows', () => {
+test('the group menu allows either signed anchor but not anonymous or in-flight likes', () => {
   const card: VoiceSongsView = {
     playId: owner.playId,
     voiceId: '71',
@@ -75,19 +76,19 @@ test('the group menu requires the observed liked trigger and verified ordinary c
       { groupDownload: 'unsupported', onlineEligible: true, copyrightBlocked: false },
     ],
   };
-  const liked = new Set(['1790', '1791']);
-  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set()), true);
-  assert.equal(offerVoiceSongGroupDownload(card, 0, frozen, liked, new Set()), false);
-  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set(['1790'])), false);
-  assert.equal(offerVoiceSongGroupDownload(card, 2, [1, 2, 3], liked, new Set()), false);
-  assert.equal(offerVoiceSongGroupDownload(card, 2, [0, 1], liked, new Set()), false);
-  assert.equal(offerVoiceSongGroupDownload(card, 2, [2, 3], liked, new Set()), false);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, true, new Set()), true);
+  assert.equal(offerVoiceSongGroupDownload(card, 0, frozen, true, new Set()), true);
+  assert.equal(offerVoiceSongGroupDownload(card, 0, frozen, false, new Set()), false);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, true, new Set(['1790'])), false);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, [1, 2, 3], true, new Set()), false);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, [0, 1], true, new Set()), false);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, [2, 3], true, new Set()), false);
   card.availability[0]!.groupDownload = 'purchased';
-  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set()), true);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, true, new Set()), true);
   card.availability[1]!.groupDownload = 'purchased';
-  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set()), true);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, true, new Set()), true);
   card.availability[0] = { onlineEligible: true, copyrightBlocked: false };
-  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, liked, new Set()), false);
+  assert.equal(offerVoiceSongGroupDownload(card, 2, frozen, true, new Set()), false);
 });
 
 test('clicking the group action uses frozen ordinals then starts exactly once with only the receipt', async () => {
@@ -131,11 +132,8 @@ test('clicking the group action uses frozen ordinals then starts exactly once wi
 });
 
 test('directory and unavailable branches never start; only the explicit settings action navigates', async () => {
-  let decision:
-    | 'directory_required'
-    | 'playlist_required'
-    | 'membership_unknown'
-    | 'unsupported_selection' = 'directory_required';
+  let decision: 'directory_required' | 'membership_unknown' | 'unsupported_selection' =
+    'directory_required';
   const api = client({
     playerVoiceSongsDownloadPrepare: async () => ({ ...plan, decision, selectionReceipt: null }),
   });
@@ -152,11 +150,7 @@ test('directory and unavailable branches never start; only the explicit settings
     model.action();
     assert.equal(model.notice.value, undefined);
     assert.deepEqual(calls, ['settings:4']);
-    for (const blocked of [
-      'playlist_required',
-      'membership_unknown',
-      'unsupported_selection',
-    ] as const) {
+    for (const blocked of ['membership_unknown', 'unsupported_selection'] as const) {
       decision = blocked;
       await model.run(opening);
       assert.equal(model.notice.value?.kind, 'blocked');
@@ -322,7 +316,7 @@ test('known blocked confirmations retire only the chooser and never retry after 
       ['cancel', target],
     ]);
 
-    for (const kind of ['playlist_required', 'membership_unknown'] as const) {
+    for (const kind of ['membership_unknown'] as const) {
       reply = { kind };
       await model.run(opening);
       await model.confirmQuality('standard');
@@ -330,8 +324,6 @@ test('known blocked confirmations retire only the chooser and never retry after 
       model.action();
     }
     assert.deepEqual(calls.slice(2), [
-      ['confirm', target, 'standard'],
-      ['cancel', target],
       ['confirm', target, 'standard'],
       ['cancel', target],
     ]);
@@ -394,6 +386,143 @@ test('retiring a purchased visit cancels only prepared work and never retries a 
     model.action();
     assert.deepEqual(navigation, ['downloads:4']);
     assert.deepEqual(calls.slice(2), [['confirm', target, 'hires']]);
+  } finally {
+    scope.stop();
+  }
+});
+
+test('ordinary picker is read-only before an explicit target; unknown add is never repeated', async () => {
+  const calls: string[] = [];
+  const playlist = {
+    epoch: owner.epoch,
+    playId: owner.playId,
+    selectionReceipt,
+    playlistId: '81',
+    operationId: 'add',
+    phase: 'uncertain',
+    addFailed: false,
+    continuation: null,
+  } as const;
+  const { scope, model } = setup(
+    client({
+      playerVoiceSongsDownloadPrepare: async () => ({ ...plan, decision: 'playlist_required' }),
+      playerVoiceSongsDownloadDestination: async (got, command) => {
+        assert.deepEqual(got, target);
+        calls.push(command.kind);
+        if (command.kind === 'liked_destination')
+          return {
+            kind: 'liked_destination',
+            destination: {
+              epoch: owner.epoch,
+              value: { playlistId: '81', destinationReceipt: 'star' },
+            },
+          };
+        if (command.kind === 'choose_liked') {
+          assert.equal(command.destinationReceipt, 'star');
+          return { kind: 'playlist', playlist };
+        }
+        if (command.kind === 'status') {
+          assert.equal(command.reconcile, true);
+          return {
+            kind: 'playlist',
+            playlist: { ...playlist, phase: 'confirmed', continuation: 'journal' },
+          };
+        }
+        if (command.kind === 'start') {
+          assert.equal(command.continuation, 'journal');
+          return {
+            kind: 'started',
+            result: {
+              epoch: owner.epoch,
+              accepted: ['t1', 't2'],
+              failed: [],
+              operationId: selectionReceipt,
+            },
+          };
+        }
+        return assert.fail('unexpected command');
+      },
+    }),
+  );
+  try {
+    await model.run(opening);
+    assert.equal(model.destination.visible.value, true);
+    assert.deepEqual(calls, ['liked_destination']);
+    await new Promise<void>((done) => setImmediate(done));
+    assert.equal(model.destination.liked.value?.playlistId, '81');
+    await model.destination.chooseLiked();
+    assert.equal(model.destination.phase.value, 'pending');
+    model.destination.close();
+    assert.equal(model.destination.visible.value, false);
+    assert.equal(model.notice.value?.kind, 'playlist_pending');
+    model.action();
+    assert.equal(model.destination.visible.value, true);
+    await model.destination.reconcile();
+    assert.deepEqual(calls, ['liked_destination', 'choose_liked', 'status', 'start']);
+    assert.equal(model.notice.value?.kind, 'queued');
+    assert.equal(model.destination.visible.value, false);
+  } finally {
+    scope.stop();
+  }
+});
+
+test('purchased tier precedes any destination reads and a stale account cannot continue a sent write', async () => {
+  const live = ref(true);
+  const calls: string[] = [];
+  let answer!: (
+    reply: import('../src/services/voiceSongs.ts').VoiceSongGroupDestinationReply,
+  ) => void;
+  const { scope, model } = setup(
+    client({
+      playerVoiceSongsDownloadPrepare: async () => purchased,
+      playerVoiceSongsDownloadConfirmQuality: async (_, tier) => {
+        calls.push(tier);
+        return { kind: 'playlist_required' };
+      },
+      playerVoiceSongsDownloadCancel: async () => {
+        calls.push('cancel');
+      },
+      playerVoiceSongsDownloadDestination: async (_, command) => {
+        calls.push(command.kind);
+        if (command.kind === 'liked_destination')
+          return { kind: 'liked_destination', destination: { epoch: owner.epoch, value: null } };
+        if (command.kind === 'choose')
+          return new Promise((resolve) => {
+            answer = resolve;
+          });
+        return assert.fail('unexpected command');
+      },
+    }),
+  );
+  try {
+    await model.run({ ...opening, live: () => live.value });
+    assert.deepEqual(calls, []);
+    assert.equal(model.destination.visible.value, false);
+    await model.confirmQuality('hires');
+    assert.deepEqual(calls, ['hires', 'liked_destination']);
+    assert.equal(model.quality.value, undefined);
+    const write = model.destination.choose('82');
+    await new Promise<void>((done) => setImmediate(done));
+    assert.deepEqual(calls, ['hires', 'liked_destination', 'choose']);
+    live.value = false;
+    answer({
+      kind: 'playlist',
+      playlist: {
+        epoch: owner.epoch,
+        playId: owner.playId,
+        selectionReceipt,
+        playlistId: '82',
+        operationId: 'op',
+        phase: 'confirmed',
+        addFailed: false,
+        continuation: 'journal',
+      },
+    });
+    await write;
+    await model.destination.drained();
+    assert.deepEqual(calls, ['hires', 'liked_destination', 'choose', 'cancel']);
+    assert.equal(model.destination.visible.value, false);
+    assert.equal(model.notice.value, undefined);
   } finally {
     scope.stop();
   }

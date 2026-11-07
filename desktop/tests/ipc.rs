@@ -51,6 +51,8 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "player_action",
             "player_vinyl_voice_detail_target",
             "player_voice_songs_download_prepare",
+            "player_voice_songs_download_prepare_with_destination",
+            "player_voice_songs_download_destination",
             "player_voice_songs_download_cancel",
             "player_voice_songs_download_start",
             "player_voice_songs_download_confirm_quality",
@@ -247,7 +249,45 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         Err(invalid.clone()),
     );
     let guide = "open_voice_song_group_purchased_quality_guide";
-    assert_ipc_response(&window, request(guide, prepared.clone()), Err(stale));
+    assert_ipc_response(
+        &window,
+        request(guide, prepared.clone()),
+        Err(stale.clone()),
+    );
+    let opt_in = "player_voice_songs_download_prepare_with_destination";
+    assert_ipc_response(
+        &window,
+        request(
+            opt_in,
+            json!({
+                "epoch":"0","playId":"stale-play","cardReceipt":card_receipt,"anchorIndex":2,"indices":[1,3,2],
+            }),
+        ),
+        Err(stale.clone()),
+    );
+    let destination = "player_voice_songs_download_destination";
+    for operation in [
+        json!({"kind":"page","sort":"default","page":0}),
+        json!({"kind":"choose_liked","destinationReceipt":selection_receipt}),
+        json!({"kind":"status","reconcile":true}),
+        json!({"kind":"start","continuation":selection_receipt}),
+    ] {
+        assert_ipc_response(
+            &window,
+            request(destination, json!({"target":prepared,"command":operation})),
+            Err(stale.clone()),
+        );
+    }
+    for operation in [
+        json!({"kind":"choose_liked","playlistId":"81"}),
+        json!({"kind":"start","continuation":selection_receipt,"path":"/unexpected"}),
+    ] {
+        assert_ipc_response(
+            &window,
+            request(destination, json!({"target":prepared,"command":operation})),
+            Err(invalid.clone()),
+        );
+    }
     for (key, value) in [
         ("url", json!("https://untrusted.invalid/help")),
         ("index", json!(2)),

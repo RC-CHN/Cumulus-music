@@ -1,4 +1,5 @@
 //! Main-window transport for a prepared SongCard download group.
+pub(crate) mod destination;
 use super::{voice_related::require_main, voice_song_download::purchased::PurchasedQuality};
 use cumulus_core::{
     Error,
@@ -79,10 +80,18 @@ impl TryFrom<VoiceSongGroupDownloadPlan> for Plan {
     type Error = Error;
 
     fn try_from(plan: VoiceSongGroupDownloadPlan) -> Result<Self, Self::Error> {
+        Self::project(plan, false)
+    }
+}
+
+impl Plan {
+    fn project(plan: VoiceSongGroupDownloadPlan, allow_destination: bool) -> Result<Self, Error> {
         use VoiceSongGroupDownloadDecision as D;
         let invalid = || Error::State("invalid native SongCard group download plan");
         let purchased = plan.decision == D::PurchasedQualityRequired;
-        let prepared = purchased || plan.decision == D::Ready;
+        let prepared = purchased
+            || plan.decision == D::Ready
+            || (allow_destination && plan.decision == D::PlaylistRequired);
         let has_qualities = !plan.purchased_qualities.is_empty();
         if purchased != has_qualities
             || prepared != plan.selection_receipt.is_some()
