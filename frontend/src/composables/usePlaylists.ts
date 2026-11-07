@@ -186,6 +186,11 @@ export function usePlaylists(
   }
   const mutate = (command: PlaylistCommand) => run((e) => core.mutatePlaylist(e, command));
   const reconcile = (operationId: string) => run((e) => core.reconcilePlaylist(e, operationId));
+  const addDownloadedTrack = (scope: { epoch: string; receipt: string }, id: string) =>
+    run((e) => {
+      if (scope.epoch !== e) throw { code: 'stale', message: '账号已切换' };
+      return core.downloadCollectExisting(e, scope.receipt, id);
+    });
   async function addTracks(id: string, ids: string[]) {
     return run(async (e) => {
       const current = await core.playlistEditor(e, id);
@@ -282,6 +287,7 @@ export function usePlaylists(
     reconcile,
     tracks,
     addTracks,
+    addDownloadedTrack,
     move,
     reorderSidebar,
     saved: playlistSaved,

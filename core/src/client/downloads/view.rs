@@ -139,6 +139,7 @@ impl Host {
             let voice_podcast = super::voice_podcast(&task);
             let comment_track_id = super::resource::catalogue_track_id(&task);
             let link_track_id = super::resource::link_track_id(&task);
+            let collection_available = super::collect::eligible(&task);
             values.push(DownloadTaskView {
                 id: task.id,
                 source: if task.origin.is_cloud() {
@@ -153,6 +154,7 @@ impl Host {
                 track,
                 comment_track_id,
                 link_track_id,
+                collection_available,
                 voice_podcast,
                 status: task.status,
                 phase: task.phase,

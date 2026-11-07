@@ -1,5 +1,6 @@
-import type { AccountData, AccountView, TrackView } from './contracts';
+import type { AccountData, AccountView, PlaylistView, TrackView } from './contracts';
 import type { PlayerView, Quality } from './player';
+import type { PlaylistMutationView } from './playlists';
 export interface DownloadOptions {
   quality: Quality;
   tags: boolean;
@@ -39,6 +40,7 @@ export interface DownloadTask {
   track: TrackView;
   commentTrackId?: string;
   linkTrackId?: string;
+  collectionAvailable: boolean;
   voicePodcast?: { name: string; id?: string };
   status:
     | 'queued'
@@ -161,6 +163,19 @@ export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
   downloadSongCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
   downloadSongShareAccess(epoch: string, taskId: string): Promise<AccountData<DownloadShareAccess>>;
+  downloadCollectPrepare(epoch: string, taskId: string): Promise<AccountData<{ receipt: string }>>;
+  downloadCollectDestinations(
+    epoch: string,
+    receipt: string,
+    sort: 'default' | 'recently',
+    page: number,
+  ): Promise<AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>>;
+  downloadCollectExisting(
+    epoch: string,
+    receipt: string,
+    playlistId: string,
+  ): Promise<AccountData<PlaylistMutationView>>;
+  downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;

@@ -446,6 +446,14 @@ export function createTauriClient(): CoreClient {
       invoke('download_song_comment_count', { epoch, taskId }),
     downloadSongShareAccess: (epoch, taskId) =>
       invoke('download_song_share_access', { epoch, taskId }),
+    downloadCollectPrepare: (epoch, taskId) =>
+      invoke('download_collect_prepare', { epoch, taskId }),
+    downloadCollectDestinations: (epoch, receipt, sort, page) =>
+      invoke('download_collect_destinations', { epoch, receipt, sort, page }),
+    downloadCollectExisting: (epoch, receipt, playlistId) =>
+      invoke('download_collect_existing', { epoch, receipt, playlistId }),
+    downloadCollectCancel: (epoch, receipt) =>
+      invoke('download_collect_cancel', { epoch, receipt }),
     downloadQualityPreferences: (epoch, refresh) =>
       invoke('download_quality_preferences', { epoch, refresh }),
     downloadCommand: (epoch, command) => invoke('download_command', { epoch, command }),

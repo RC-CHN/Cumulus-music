@@ -1497,6 +1497,24 @@ impl Api for MusicHttpClient {
         Ok(Some(revision))
     }
 
+    fn download_collection_scope_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        let path = GuardedPlaylistAdd::PATH;
+        let route = select_route_with_policy(origin, path, &json!({}), self.options.routing)?;
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, path)?)?;
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/w/nuser/account/get",
+                "/api/user/playlist/v2",
+                "/api/v6/playlist/detail",
+            ],
+        )?;
+        Ok(Some(current.revision))
+    }
+
     fn request_song_card_system_liked<'a>(
         &'a self,
         read: SongCardLikedRead,

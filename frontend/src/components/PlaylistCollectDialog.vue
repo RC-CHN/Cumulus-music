@@ -15,6 +15,7 @@ const props = defineProps<{
   tracks: TrackView[];
   playlists: PlaylistView[];
   selectionSummary?: { total: number; unsupported: number; duplicates: number };
+  downloadCollection?: { epoch: string; receipt: string };
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
 const client = useCore();
@@ -41,7 +42,11 @@ function initial(rows: PlaylistView[]) {
   return { rows, next: 0 as number | null, loading: false, error: '', top: 0 };
 }
 const bySort = reactive({
-  default: initial(props.playlists.filter((playlist) => playlist.owned && !playlist.favorite)),
+  default: initial(
+    props.downloadCollection
+      ? []
+      : props.playlists.filter((playlist) => playlist.owned && !playlist.favorite),
+  ),
   recently: initial([]),
 });
 const current = computed(() => bySort[sort.value]);
@@ -51,6 +56,7 @@ const creating = ref(false),
 const selected = ref(''),
   created = ref('');
 const pending = computed(() => !!receipt.value && playlistPending(receipt.value.phase));
+const fixedDestination = computed(() => !!props.downloadCollection && !!receipt.value);
 const invalid = computed(
   () => !name.value.trim() || /[@#]/.test(name.value) || playlistLength(name.value.trim()) > 40,
 );
@@ -67,12 +73,22 @@ async function reload(automatic = false) {
   const order = sort.value;
   const state = bySort[order];
   const page = state.next;
-  if (busy.value || pending.value || state.loading || page === null || (automatic && state.error))
+  if (
+    busy.value ||
+    pending.value ||
+    fixedDestination.value ||
+    state.loading ||
+    page === null ||
+    (automatic && state.error)
+  )
     return;
   const focused = dialog.value?.querySelector('.collect-load button:focus, .collect-more:focus');
   state.loading = true;
   try {
-    const response = await client.playlistCollectPage(props.epoch, order, page);
+    const source = props.downloadCollection;
+    const response = source
+      ? await client.downloadCollectDestinations(source.epoch, source.receipt, order, page)
+      : await client.playlistCollectPage(props.epoch, order, page);
     if (!alive || response.epoch !== props.epoch) return;
     const rows = page === 0 ? [] : state.rows;
     const known = new Set(rows.map((playlist) => playlist.id));
@@ -99,7 +115,7 @@ async function reload(automatic = false) {
   }
 }
 function selectSort(order: Sort) {
-  if (order === sort.value || busy.value || pending.value) return;
+  if (order === sort.value || busy.value || pending.value || fixedDestination.value) return;
   sort.value = order;
   try {
     localStorage.setItem(preference, order);
@@ -110,7 +126,7 @@ function selectSort(order: Sort) {
 }
 function sortKey(event: KeyboardEvent) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  if (busy.value || pending.value) return;
+  if (busy.value || pending.value || fixedDestination.value) return;
   event.preventDefault();
   const next =
     event.key === 'Home'
@@ -129,7 +145,7 @@ function close() {
   if (!busy.value) emit('close');
 }
 function startCreate() {
-  if (busy.value || pending.value) return;
+  if (props.downloadCollection || busy.value || pending.value) return;
   props.manager.reset();
   created.value = '';
   creating.value = true;
@@ -152,7 +168,7 @@ async function perform(
   interrupted.value = undefined;
   const value = await operation();
   if (!alive) return;
-  if (!value) {
+  if (!value && !props.downloadCollection) {
     // The core can persist an operation and then fail its authoritative readback.
     // Recover only this attempt's new journal entry, never a previous creation.
     interrupted.value = props.manager.operations.value.find(
@@ -175,15 +191,18 @@ async function collected(value: PlaylistMutationView | undefined) {
   } else emit('close');
 }
 async function collect(id: string) {
-  if (!alive || busy.value || pending.value) return;
+  if (!alive || busy.value || pending.value || fixedDestination.value) return;
+  const scope = props.downloadCollection;
   selected.value = id;
   await collected(
     await perform(
       () =>
-        props.manager.addTracks(
-          id,
-          props.tracks.map((track) => track.id),
-        ),
+        scope
+          ? props.manager.addDownloadedTrack(scope, id)
+          : props.manager.addTracks(
+              id,
+              props.tracks.map((track) => track.id),
+            ),
       'tracks',
       id,
     ),
@@ -216,6 +235,7 @@ async function reconcile() {
     class="playlist-dialog playlist-collect-dialog"
     aria-labelledby="collect-title"
     :aria-busy="busy"
+    :data-download-collect="downloadCollection ? '' : undefined"
     @cancel.prevent="close"
   >
     <header>
@@ -259,6 +279,7 @@ async function reconcile() {
       role="status"
     >
       {{ receipt.message }}
+      <template v-if="downloadCollection && !pending">请关闭后重新选择目标歌单。</template>
       <button v-if="pending" class="text-button" :aria-disabled="busy" @click="reconcile">
         核对结果
       </button>
@@ -317,7 +338,7 @@ async function reconcile() {
             :data-collect-sort="option.value"
             :aria-selected="sort === option.value"
             :tabindex="sort === option.value ? 0 : -1"
-            :aria-disabled="busy || pending"
+            :aria-disabled="busy || pending || fixedDestination"
             @click="selectSort(option.value)"
           >
             {{ option.label }}
@@ -337,7 +358,8 @@ async function reconcile() {
         <PlaylistCollectList
           :key="sort"
           :playlists="current.rows"
-          :disabled="busy || pending"
+          :disabled="busy || pending || fixedDestination"
+          :include-create="!downloadCollection"
           :selected-id="selected"
           :scroll-top="current.top"
           :loading="current.loading || !!current.error || current.next !== null"

@@ -5,6 +5,7 @@ export type PlaylistDialogTarget =
       kind: 'tracks';
       tracks: TrackView[];
       selectionSummary?: { total: number; unsupported: number; duplicates: number };
+      downloadCollection?: { epoch: string; receipt: string };
     }
   | { kind: 'create' | 'history' | 'open' }
   | { kind: 'track'; track: TrackView; playlist?: PlaylistView };

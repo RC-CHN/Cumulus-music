@@ -287,6 +287,25 @@ impl PlaylistService {
         .await
     }
 
+    pub(crate) async fn guarded_collect_download(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        song: &str,
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(
+            token,
+            AddDestination::Owned(playlist),
+            &[song.into()],
+            operation_id,
+            permission,
+            |api| api.download_collection_scope_revision(),
+        )
+        .await
+    }
+
     /// Resolve the verified create journal under the same lock as the fresh
     /// detail and ordered add. A list-inferred ID is not write authority.
     pub(crate) async fn guarded_collect_created_songs(

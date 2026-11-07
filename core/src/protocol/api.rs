@@ -508,6 +508,11 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Current native account across the downloaded-song picker and its write.
+    fn download_collection_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
     }

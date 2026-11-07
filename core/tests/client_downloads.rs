@@ -1,3 +1,5 @@
+#[path = "support/download_collection.rs"]
+mod download_collection;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback_support;

@@ -71,7 +71,7 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
       ? [{ key: 'comments', label: comments, icon: 'comment', disabled: state.locked }]
       : []),
     { key: 'resource-divider', label: '', separator: true },
-    ...(!voice
+    ...(task.collectionAvailable && (task.source === 'song' || task.source === 'cloud')
       ? [{ key: 'collect', label: '收藏', icon: 'star', disabled: blocked || task.track.missing }]
       : []),
     ...(link

@@ -14,6 +14,7 @@ const task = {
   track: { id: '9', name: 'Synthetic', artists: [], missing: false },
   commentTrackId: '9',
   linkTrackId: '9',
+  collectionAvailable: true,
 } as DownloadTask;
 const state = { locked: false, playable: true, queueable: true };
 test('downloaded song menu keeps recovered resource order and separates file additions', () => {
@@ -30,6 +31,14 @@ test('downloaded song menu keeps recovered resource order and separates file add
     items.slice(8).map((i) => i.key),
     ['rename', 'move', 'forget', 'manage'],
   );
+});
+test('collection is available only for a native authorized song or matched cloud task', () => {
+  const collect = (row: DownloadTask) =>
+    downloadMenuItems(row, state).some((item) => item.key === 'collect');
+  assert.equal(collect({ ...task, source: 'cloud', collectionAvailable: true }), true);
+  assert.equal(collect({ ...task, source: 'cloud', collectionAvailable: false }), false);
+  assert.equal(collect({ ...task, source: 'song', collectionAvailable: false }), false);
+  assert.equal(collect({ ...task, source: 'voice', collectionAvailable: true }), false);
 });
 test('a completed cloud file needs its native catalogue identity for the comments action', () => {
   const cloud = { ...task, source: 'cloud', commentTrackId: undefined } as DownloadTask;

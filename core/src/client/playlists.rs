@@ -57,7 +57,7 @@ pub(super) fn editor(p: PlaylistSnapshot, uid: &str) -> PlaylistEditor {
         has_local: p.has_local,
     }
 }
-fn view(r: PlaylistMutation, uid: &str) -> Result<PlaylistMutationView> {
+pub(super) fn view(r: PlaylistMutation, uid: &str) -> Result<PlaylistMutationView> {
     let observed = r
         .observed
         .as_ref()

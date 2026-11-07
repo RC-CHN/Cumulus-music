@@ -2259,6 +2259,50 @@ watch(
 const trackActions = ref<InstanceType<typeof TrackActions>>();
 watch(music.page, () => trackActions.value?.close());
 const playlistDialog = ref<PlaylistDialogTarget>();
+let downloadCollectionIntent = 0;
+async function openDownloadCollection(task: DownloadTask) {
+  if (!signedIn.value || !task.collectionAvailable || music.page.value.kind !== 'downloads') return;
+  const epoch = account.value.epoch;
+  const page = music.page.value;
+  const opener = document.activeElement;
+  const intent = ++downloadCollectionIntent;
+  const current = () =>
+    intent === downloadCollectionIntent &&
+    signedIn.value &&
+    account.value.epoch === epoch &&
+    music.page.value === page &&
+    document.activeElement === opener &&
+    !playlistDialog.value &&
+    !document.querySelector('dialog[open]');
+  try {
+    const result = await core.downloadCollectPrepare(epoch, task.id);
+    if (result.epoch !== epoch || !current()) {
+      await core.downloadCollectCancel(result.epoch, result.value.receipt).catch(() => {});
+      return;
+    }
+    playlistDialog.value = {
+      kind: 'tracks',
+      tracks: [task.track],
+      downloadCollection: { epoch, receipt: result.value.receipt },
+    };
+  } catch (error) {
+    if (!current()) return;
+    const issue = failure(error);
+    if (['session_expired', 'profile_changed'].includes(issue.code)) void music.bootstrap(false);
+    else if (issue.code !== 'stale') downloads.error.value = issue.message;
+  }
+}
+watch(music.page, () => {
+  downloadCollectionIntent++;
+  if (playlistDialog.value?.kind === 'tracks' && playlistDialog.value.downloadCollection)
+    playlistDialog.value = undefined;
+});
+watch(playlistDialog, (next, previous) => {
+  const retired = previous?.kind === 'tracks' ? previous.downloadCollection : undefined;
+  const active = next?.kind === 'tracks' ? next.downloadCollection : undefined;
+  if (retired && retired !== active)
+    void core.downloadCollectCancel(retired.epoch, retired.receipt).catch(() => {});
+});
 const importDialog = ref<InstanceType<typeof PlaylistImportPreview>>();
 function openExternalPlaylistImport(anchor: HTMLElement, origin: 'sidebar' | 'library') {
   if (signedIn.value) void importDialog.value?.show(anchor, origin);
@@ -5713,7 +5757,7 @@ onUnmounted(() => {
                 @batch="openDownloadBatch"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
                 @podcast="openDownloadPodcast"
-                @collect="(task) => (playlistDialog = { kind: 'tracks', tracks: [task.track] })"
+                @collect="openDownloadCollection"
                 @comments="downloadComments"
                 @next="queueDownload"
                 :preparing="player.busy.value"
@@ -6420,11 +6464,12 @@ onUnmounted(() => {
     >
       <PlaylistCollectDialog
         v-if="playlistDialog?.kind === 'tracks'"
-        :key="account.epoch + ':collect'"
+        :key="account.epoch + ':collect:' + (playlistDialog.downloadCollection?.receipt ?? '')"
         :manager="playlistManager"
         :epoch="account.epoch"
         :tracks="playlistDialog.tracks"
         :selection-summary="playlistDialog.selectionSummary"
+        :download-collection="playlistDialog.downloadCollection"
         :playlists="playlists"
         @close="playlistDialog = undefined"
         @expired="music.bootstrap(false)"

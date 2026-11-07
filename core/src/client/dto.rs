@@ -2,7 +2,7 @@ pub use super::account_binding_qr::AccountBindingQrView;
 pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::community::topic::{CommunityTopic, CommunityTopicAction, CommunityTopicSlice};
 pub use super::downloads::{
-    DownloadCategory, DownloadCommand, DownloadFailure, DownloadJobView,
+    DownloadCategory, DownloadCollectPlan, DownloadCommand, DownloadFailure, DownloadJobView,
     DownloadQualityPreferences, DownloadQuery, DownloadResult, DownloadShareAccess, DownloadSort,
     DownloadTab, DownloadTaskView, DownloadsView, SongDownloadState, TaskControl,
 };

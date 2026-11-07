@@ -1,3 +1,4 @@
+mod collect;
 mod commands;
 mod comments;
 mod dto;
@@ -18,6 +19,7 @@ use crate::{
     },
     storage::StateStore,
 };
+pub use collect::DownloadCollectPlan;
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;
 pub use song_status::SongDownloadState;
@@ -101,6 +103,7 @@ struct Host {
     backend: Mutex<Option<Arc<dyn MediaBackend>>>,
     worker: Mutex<Option<Worker>>,
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
+    collect: Mutex<Option<collect::Visit>>,
 }
 struct Worker {
     token: SessionToken,
@@ -156,6 +159,7 @@ impl DownloadHost {
                 backend: Mutex::new(None),
                 worker: Mutex::new(None),
                 jobs: Mutex::new(HashMap::new()),
+                collect: Mutex::new(None),
             }),
         }
     }

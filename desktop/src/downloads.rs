@@ -3,6 +3,73 @@ use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
 };
 use tauri_plugin_dialog::DialogExt;
+
+fn require_collect_window<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), ClientError> {
+    if window.label() == "main" {
+        Ok(())
+    } else {
+        Err(Error::InvalidInput("download collection requires main window").into())
+    }
+}
+
+#[tauri::command]
+pub fn download_collect_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    task_id: String,
+) -> Result<AccountData<DownloadCollectPlan>, ClientError> {
+    require_collect_window(&window)?;
+    client
+        .download_collect_prepare(&epoch, &task_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn download_collect_destinations<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    sort: PlaylistCollectSort,
+    page: u32,
+) -> Result<AccountData<PlaylistCollectPage>, ClientError> {
+    require_collect_window(&window)?;
+    client
+        .download_collect_destinations(&epoch, &receipt, sort, page)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn download_collect_existing<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    playlist_id: String,
+) -> Result<AccountData<PlaylistMutationView>, ClientError> {
+    require_collect_window(&window)?;
+    client
+        .download_collect_existing(&epoch, &receipt, &playlist_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn download_collect_cancel<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    require_collect_window(&window)?;
+    client
+        .download_collect_cancel(&epoch, &receipt)
+        .map_err(Into::into)
+}
 #[tauri::command]
 pub async fn downloads(
     client: tauri::State<'_, MusicClient>,
