@@ -32,6 +32,8 @@ mod voice_recommendation_fixture;
 mod voice_song_collect_fixture;
 #[path = "support/voice_song_download_fixture.rs"]
 mod voice_song_download_fixture;
+#[path = "support/voice_song_group_liked_fixture.rs"]
+mod voice_song_group_liked_fixture;
 #[path = "support/voice_songs_fixture.rs"]
 mod voice_songs_fixture;
 
@@ -43,9 +45,10 @@ use cumulus_core::{
         api::{
             Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
             PlaylistAddPermission, PodcastBadgeClear, PodcastBadgePermission,
-            PodcastProgressPermission, SongLikePermission, VinylPlaybackReadPermission,
-            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylVoiceDetailRead,
-            VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
+            PodcastProgressPermission, SongCardLikedRead, SongLikePermission,
+            VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
+            VinylPodcastSubscriptionWrite, VinylVoiceDetailRead, VinylVoiceRecommendationsRead,
+            VinylVoiceSongsRead,
         },
         http::ApiOrigin,
     },
@@ -84,9 +87,10 @@ struct Library {
     voice_fresh_actions: Option<voice_fresh_actions_fixture::Fixture>,
     voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
     voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
-    voice_songs: Option<voice_songs_fixture::Fixture>,
+    voice_songs: Option<Arc<voice_songs_fixture::Fixture>>,
     voice_song_download: Option<Arc<voice_song_download_fixture::Fixture>>,
     voice_song_collect: Option<voice_song_collect_fixture::Fixture>,
+    voice_song_group_liked: Option<voice_song_group_liked_fixture::Fixture>,
 }
 
 fn radio() -> Value {
@@ -130,6 +134,9 @@ impl Library {
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        if let Some(liked) = &self.voice_song_group_liked {
+            return liked.client.verified_pc_experiment_revision();
+        }
         if let Some(actions) = &self.voice_fresh_actions {
             return actions.client.verified_pc_experiment_revision();
         }
@@ -281,6 +288,11 @@ impl Api for Library {
         revision: &'a str,
         permission: &'a VinylPlaybackReadPermission<'a>,
     ) -> ApiFuture<'a, Value> {
+        if let Some(liked) = &self.voice_song_group_liked {
+            return liked
+                .client
+                .request_vinyl_voice_songs(read, revision, permission);
+        }
         Box::pin(async move {
             let voice_page = self.voice_page_authority(revision, permission)?;
             let (path, body) = read.into_request();
@@ -333,10 +345,35 @@ impl Api for Library {
     }
 
     fn song_card_collection_scope_revision(&self) -> Result<Option<String>> {
+        if let Some(liked) = &self.voice_song_group_liked {
+            return liked.client.song_card_collection_scope_revision();
+        }
         Ok(self
             .voice_song_collect
             .as_ref()
             .map(|_| voice_songs_fixture::REVISION.to_owned()))
+    }
+
+    fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
+        self.voice_song_group_liked
+            .as_ref()
+            .map_or(Ok(None), |liked| {
+                liked.client.song_card_system_liked_scope_revision()
+            })
+    }
+
+    fn request_song_card_system_liked<'a>(
+        &'a self,
+        read: SongCardLikedRead,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        let Some(liked) = &self.voice_song_group_liked else {
+            return Box::pin(async { panic!("unsigned proof attempted signed system-liked read") });
+        };
+        liked
+            .client
+            .request_song_card_system_liked(read, revision, permission)
     }
 
     fn request_guarded_playlist_add<'a>(
@@ -345,6 +382,11 @@ impl Api for Library {
         permission: &'a PlaylistAddPermission<'a>,
         dispatched: &'a AtomicBool,
     ) -> ApiFuture<'a, Value> {
+        if let Some(liked) = &self.voice_song_group_liked {
+            return liked
+                .client
+                .request_guarded_playlist_add(write, permission, dispatched);
+        }
         Box::pin(async move {
             if let Some(proof) = &self.voice_song_collect {
                 let (path, body) = write.into_request()?;
@@ -383,6 +425,15 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(liked) = &self.voice_song_group_liked {
+                match path {
+                    voice_song_group_liked_fixture::ACCOUNT => {
+                        return liked.client.request(path, body, cache).await;
+                    }
+                    "/api/song/like/get" => return Ok(liked.resource_membership(&body)),
+                    _ => {}
+                }
+            }
             if let Some(actions) = &self.voice_fresh_actions {
                 if path == voice_fresh_actions_fixture::ACCOUNT {
                     return actions.client.request(path, body, cache).await;
@@ -579,6 +630,12 @@ fn main() {
     let voice_song_download_case = std::env::var("CUMULUS_VOICE_SONG_DOWNLOAD_PROOF").ok();
     let voice_song_collect_enabled =
         std::env::var("CUMULUS_VOICE_SONG_COLLECT_PROOF").as_deref() == Ok("1");
+    let voice_song_group_liked_enabled =
+        std::env::var("CUMULUS_VOICE_SONG_GROUP_LIKED_PROOF").as_deref() == Ok("1");
+    assert!(
+        !voice_song_group_liked_enabled
+            || (voice_song_collect_enabled && !voice_fresh_actions_enabled)
+    );
     assert!(!(voice_songs_case.is_some() && voice_song_download_case.is_some()));
     assert!(
         !voice_song_collect_enabled
@@ -646,6 +703,29 @@ fn main() {
         )
         .unwrap()
     });
+    let voice_songs = voice_songs_case
+        .as_deref()
+        .or_else(|| {
+            voice_song_download_case.as_deref().map(|case| {
+                if case.starts_with("purchased_") {
+                    "purchased_download"
+                } else {
+                    "download"
+                }
+            })
+        })
+        .or(voice_song_collect_enabled.then_some("collect"))
+        .map(|case| Arc::new(voice_songs_fixture::Fixture::new(case)));
+    let voice_song_group_liked = voice_song_group_liked_enabled.then(|| {
+        voice_song_group_liked_fixture::Fixture::open(
+            registry.store(),
+            voice_songs
+                .as_ref()
+                .expect("isolated group liked mode")
+                .clone(),
+        )
+        .unwrap()
+    });
     let api = Arc::new(Library {
         progress_enabled,
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
@@ -658,19 +738,8 @@ fn main() {
             .then(voice_podcast_collect_fixture::Fixture::default),
         voice_recommendations: voice_recommendations_enabled
             .then(voice_recommendation_fixture::Fixture::default),
-        voice_songs: voice_songs_case
-            .as_deref()
-            .or_else(|| {
-                voice_song_download_case.as_deref().map(|case| {
-                    if case.starts_with("purchased_") {
-                        "purchased_download"
-                    } else {
-                        "download"
-                    }
-                })
-            })
-            .or(voice_song_collect_enabled.then_some("collect"))
-            .map(voice_songs_fixture::Fixture::new),
+        voice_songs,
+        voice_song_group_liked,
         voice_song_download: voice_song_download.clone(),
         voice_song_collect: voice_song_collect_enabled
             .then(voice_song_collect_fixture::Fixture::default),
@@ -748,6 +817,8 @@ fn main() {
     };
     let source = if voice_fresh_actions_enabled {
         format!("window.__voiceFreshActionsProof = true;\n{source}")
+    } else if voice_song_group_liked_enabled {
+        format!("window.__voiceSongGroupLikedProof = true;\n{source}")
     } else {
         source
     };
@@ -875,6 +946,9 @@ fn main() {
                 }
                 if let Some(collect) = &api.voice_song_collect {
                     value["voiceSongCollectTrace"] = collect.snapshot();
+                }
+                if let Some(liked) = &api.voice_song_group_liked {
+                    value["voiceSongGroupLikedTrace"] = liked.report();
                 }
                 if let Some(download) = &api.voice_song_download {
                     value["voiceSongDownloadTrace"] = download.snapshot();
