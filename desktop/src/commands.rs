@@ -144,6 +144,44 @@ pub async fn begin_qr(client: tauri::State<'_, MusicClient>) -> Result<QrView, C
     client.begin_qr().await.map_err(Into::into)
 }
 #[tauri::command]
+pub async fn begin_classic_remove_guide_qr<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    ticket: String,
+    retry: bool,
+) -> Result<QrView, ClientError> {
+    let allowed = || {
+        if window.label() != "main"
+            || !window.is_visible().unwrap_or(false)
+            || window.is_minimized().unwrap_or(true)
+        {
+            return Err(cumulus_core::Error::StaleResponse);
+        }
+        Ok(())
+    };
+    client
+        .begin_classic_remove_guide_qr(&epoch, &ticket, retry, allowed)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn dismiss_classic_remove_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    ticket: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::StaleResponse.into());
+    }
+    client
+        .dismiss_classic_remove_guide(&epoch, &ticket)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn poll_qr<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

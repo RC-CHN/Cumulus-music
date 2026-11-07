@@ -209,6 +209,8 @@ export interface CoreClient
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;
   beginQr(): Promise<QrView>;
+  beginClassicRemoveGuideQr(epoch: string, ticket: string, retry: boolean): Promise<QrView>;
+  dismissClassicRemoveGuide(epoch: string, ticket: string): Promise<void>;
   pollQr(operationId: string): Promise<QrStatus>;
   qrIdentityPending(operationId: string): Promise<boolean>;
   reconcileQr(operationId: string): Promise<void>;
@@ -285,6 +287,7 @@ export interface AccountView {
   };
   /** Additive native capability; absent on older core versions. */
   canSignOut?: boolean;
+  classicRemoveGuide?: string;
   loginNotice?: {
     kind: 'expired' | 'reauthenticate';
     title: string | null;

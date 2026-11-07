@@ -13,6 +13,7 @@ pub(super) enum Interception {
     Invalid {
         notice: LoginNotice,
         clear_queue: bool,
+        classic_remove_guide: bool,
     },
 }
 
@@ -273,6 +274,12 @@ impl AccountSession {
                 .any(|(key, value)| key == "MUSIC_A" && !value.is_empty()),
         };
         if !jsk {
+            let classic_remove_guide = {
+                let cache = scope.cache.lock().map_err(|_| Error::LockPoisoned)?;
+                // M1384 modal shell checks the benefit group alone. A
+                // default/malformed/cached unknown is not proof of classic.
+                cache.verified && !cache.flags.benefit
+            };
             // Our host has no official anonymous-account state machine yet.
             // Do not infer isAnonymous from a missing Cookie or invent its UID.
             if token.uid.is_none() && !tokens.music_u {
@@ -290,6 +297,7 @@ impl AccountSession {
                 }) => Interception::Invalid {
                     notice,
                     clear_queue,
+                    classic_remove_guide,
                 },
                 Ok(_) => Interception::Deferred,
                 Err(error) => match error.root() {
@@ -312,6 +320,7 @@ impl AccountSession {
             InvalidLoginOutcome::Notice(notice) => Interception::Invalid {
                 notice,
                 clear_queue: false,
+                classic_remove_guide: false,
             },
             _ => Interception::Deferred,
         }))

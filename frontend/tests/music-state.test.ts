@@ -84,6 +84,10 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     playlistPage: async () => data(page),
     searchSongs: async () => data(page),
     setLiked: async (_epoch, id, liked) => data({ id, phase: 'confirmed', observed: liked }),
+    beginClassicRemoveGuideQr: async () => {
+      throw new Error('unexpected classic remove guide');
+    },
+    dismissClassicRemoveGuide: async () => {},
     beginQr: async () => ({
       operationId: 'x',
       status: 'waiting_scan',

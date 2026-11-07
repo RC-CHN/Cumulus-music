@@ -85,6 +85,17 @@ impl AuthHost {
         }
     }
 
+    fn insert_if_idle(&self, pending: PendingLogin) -> Result<()> {
+        let mut slot = self.pending.lock().map_err(|_| Error::LockPoisoned)?;
+        if let Some(current) = slot.as_ref()
+            && !current.authenticated()?
+        {
+            return Err(Error::MutationBusy);
+        }
+        *slot = Some(pending);
+        Ok(())
+    }
+
     fn replace(&self, pending: PendingLogin) -> Result<()> {
         let mut slot = self.pending.lock().map_err(|_| Error::LockPoisoned)?;
         if let Some(previous) = slot.as_ref() {

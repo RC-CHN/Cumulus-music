@@ -145,6 +145,8 @@ pub struct AccountView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_shortcut: Option<AccountProfileShortcut>,
     pub login_notice: Option<crate::account::login_policy::LoginNotice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classic_remove_guide: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

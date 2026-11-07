@@ -629,6 +629,10 @@ export function createTauriClient(): CoreClient {
     accountSnapshot: () => invoke('account_snapshot'),
     restoreAccount: () => invoke('restore_account'),
     beginQr: () => invoke('begin_qr'),
+    beginClassicRemoveGuideQr: (epoch, ticket, retry) =>
+      invoke('begin_classic_remove_guide_qr', { epoch, ticket, retry }),
+    dismissClassicRemoveGuide: (epoch, ticket) =>
+      invoke('dismiss_classic_remove_guide', { epoch, ticket }),
     pollQr: (operationId) => invoke('poll_qr', { operationId }),
     qrIdentityPending: (operationId) => invoke('qr_identity_pending', { operationId }),
     reconcileQr: (operationId) => invoke('reconcile_qr', { operationId }),

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch
 import LoginStepTransition from './login/LoginStepTransition.vue';
 import type { LoginMode, PhoneEntryStep } from '../services/auth';
 import type { LoginIdentity } from '../services/loginIdentity';
+import type { ClassicRemoveGuide } from '../services/classicRemoveGuide';
 import { useCore } from '../services/core';
 import {
   loadLoginPresentation,
@@ -12,9 +13,10 @@ import {
 import Icon from './Icon.vue';
 import QrLogin from './login/QrLogin.vue';
 import CredentialLogin from './login/CredentialLogin.vue';
-const props = defineProps<{ epoch: string }>();
+const props = defineProps<{ epoch: string; classicGuide?: ClassicRemoveGuide }>();
 const emit = defineEmits<{ close: []; authorized: []; accounts: [] }>();
 const dialog = ref<HTMLDialogElement>();
+const classicQrReady = ref(false);
 const core = useCore();
 const mode = ref<'qr' | 'phone_help' | Exclude<LoginMode, 'saved_account'>>('qr');
 const safety = ref<string | null>(null);
@@ -124,77 +126,115 @@ watch(
 onMounted(() => {
   focused = document.activeElement as HTMLElement;
   dialog.value?.showModal();
-  void loadCountries();
+  if (props.classicGuide) classicQrReady.value = dialog.value?.open === true;
+  else void loadCountries();
 });
 onUnmounted(() => focused?.focus());
 onBeforeUnmount(deactivate);
 </script>
 <template>
-  <dialog ref="dialog" class="login-dialog" aria-labelledby="login-title" @cancel.prevent="close()">
+  <dialog
+    ref="dialog"
+    class="login-dialog"
+    :data-classic-remove-guide="classicGuide ? '' : undefined"
+    aria-labelledby="login-title"
+    @cancel.prevent="close()"
+  >
     <button class="icon-button dialog-close" aria-label="关闭登录" @click="close()">
       <Icon name="close" />
     </button>
-    <button
-      v-if="mode === 'phone_help'"
-      class="login-help-back"
-      aria-label="其他登录方式"
-      @click="select('phone_password')"
-    >
-      ‹ 其他登录方式
-    </button>
-    <div
-      v-if="!safety && phoneStage !== 'nickname' && phoneStage !== 'recovery'"
-      class="brand-mark"
-    >
-      C
-    </div>
-    <h2 id="login-title">{{ title }}</h2>
-    <nav
-      v-if="
-        !safety && mode !== 'phone_help' && phoneStage !== 'nickname' && phoneStage !== 'recovery'
-      "
-      class="login-methods"
-      aria-label="登录方式"
-    >
-      <button :aria-pressed="mode === 'qr'" @click="select('qr')">扫码</button>
-      <button :aria-pressed="mode.startsWith('phone')" @click="phone">手机</button>
-      <button :aria-pressed="mode === 'email'" @click="select('email')">邮箱</button>
-    </nav>
-    <LoginStepTransition name="tab" @after-enter="entered">
-      <div :key="mode" ref="panel" class="login-panel" tabindex="-1">
-        <QrLogin v-if="mode === 'qr'" ref="flow" @authorized="emit('authorized')" />
-        <div v-else-if="mode === 'phone_help'" class="phone-password-help" tabindex="-1">
-          <p>请前往手机端最新版【网易云音乐 App】进行操作</p>
-        </div>
-        <CredentialLogin
-          v-else
-          ref="flow"
-          :epoch="epoch"
-          :mode="mode"
-          :identity="identity"
-          :countries="countries"
-          :country-loading="countryLoading"
-          :country-error="countryError"
-          @country="selectCountry"
-          @retry-countries="loadCountries"
-          @forgot="select('phone_help')"
-          @mode="select"
-          @authorized="emit('authorized')"
-          @qr="select('qr')"
-          @safety="safety = $event"
-          @phone-stage="phoneStage = $event"
-        />
+    <template v-if="classicGuide">
+      <h2 id="login-title">{{ classicGuide.title || '扫码登录' }}</h2>
+      <p v-if="classicGuide.message" class="classic-remove-guide-reason">
+        {{ classicGuide.message }}
+      </p>
+      <QrLogin
+        v-if="classicQrReady"
+        ref="flow"
+        :classic-guide="classicGuide"
+        @authorized="emit('authorized')"
+      />
+    </template>
+    <template v-else>
+      <button
+        v-if="mode === 'phone_help'"
+        class="login-help-back"
+        aria-label="其他登录方式"
+        @click="select('phone_password')"
+      >
+        ‹ 其他登录方式
+      </button>
+      <div
+        v-if="!safety && phoneStage !== 'nickname' && phoneStage !== 'recovery'"
+        class="brand-mark"
+      >
+        C
       </div>
-    </LoginStepTransition>
-    <button
-      v-if="
-        !safety && mode !== 'phone_help' && phoneStage !== 'nickname' && phoneStage !== 'recovery'
-      "
-      class="login-accounts"
-      @click="close('accounts')"
-    >
-      切换已保存账号
-    </button>
-    <p v-if="!safety" class="login-note">Cumulus · 社区客户端</p>
+      <h2 id="login-title">{{ title }}</h2>
+      <nav
+        v-if="
+          !safety && mode !== 'phone_help' && phoneStage !== 'nickname' && phoneStage !== 'recovery'
+        "
+        class="login-methods"
+        aria-label="登录方式"
+      >
+        <button :aria-pressed="mode === 'qr'" @click="select('qr')">扫码</button>
+        <button :aria-pressed="mode.startsWith('phone')" @click="phone">手机</button>
+        <button :aria-pressed="mode === 'email'" @click="select('email')">邮箱</button>
+      </nav>
+      <LoginStepTransition name="tab" @after-enter="entered">
+        <div :key="mode" ref="panel" class="login-panel" tabindex="-1">
+          <QrLogin v-if="mode === 'qr'" ref="flow" @authorized="emit('authorized')" />
+          <div v-else-if="mode === 'phone_help'" class="phone-password-help" tabindex="-1">
+            <p>请前往手机端最新版【网易云音乐 App】进行操作</p>
+          </div>
+          <CredentialLogin
+            v-else
+            ref="flow"
+            :epoch="epoch"
+            :mode="mode"
+            :identity="identity"
+            :countries="countries"
+            :country-loading="countryLoading"
+            :country-error="countryError"
+            @country="selectCountry"
+            @retry-countries="loadCountries"
+            @forgot="select('phone_help')"
+            @mode="select"
+            @authorized="emit('authorized')"
+            @qr="select('qr')"
+            @safety="safety = $event"
+            @phone-stage="phoneStage = $event"
+          />
+        </div>
+      </LoginStepTransition>
+      <button
+        v-if="
+          !safety && mode !== 'phone_help' && phoneStage !== 'nickname' && phoneStage !== 'recovery'
+        "
+        class="login-accounts"
+        @click="close('accounts')"
+      >
+        切换已保存账号
+      </button>
+      <p v-if="!safety" class="login-note">Cumulus · 社区客户端</p>
+    </template>
   </dialog>
 </template>
+
+<style scoped>
+.login-dialog[data-classic-remove-guide] {
+  width: min(376px, calc(100vw - 24px));
+}
+.login-dialog[data-classic-remove-guide] :deep(.qr-frame > svg) {
+  width: 194px;
+  height: 194px;
+}
+.classic-remove-guide-reason {
+  margin: 1rem 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+</style>

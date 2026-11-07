@@ -2,9 +2,12 @@ use super::super::dto::{AccountProfileShortcut, AccountView, QrView};
 use super::{LoginChallengeView, MusicClient, PendingFlow, PendingLogin, mapping};
 use crate::{
     Error, Result,
-    account::{QrStatus, login::QrAuthentication},
+    account::{
+        QrStatus, SessionToken,
+        login::{LoginProtocol, QrAuthentication},
+    },
 };
-use qrcodegen::{QrCode, QrCodeEcc};
+use qrcodegen::{QrCode, QrCodeEcc, QrSegment, Version};
 use std::sync::Arc;
 
 /// The renderer cannot cancel a QR attempt until it has received its ID.
@@ -18,6 +21,21 @@ impl Drop for UnpublishedQr<'_> {
         if !self.published {
             let _ = self.client.cancel_qr(self.id);
         }
+    }
+}
+
+struct ClassicGuideAdmission<'a> {
+    base: &'a SessionToken,
+    ticket: &'a str,
+    window: &'a (dyn Fn() -> Result<()> + Sync),
+}
+
+impl ClassicGuideAdmission<'_> {
+    fn require(&self, client: &MusicClient) -> Result<()> {
+        (self.window)()?;
+        client
+            .session
+            .require_classic_remove_guide(self.base, self.ticket)
     }
 }
 
@@ -66,6 +84,7 @@ impl MusicClient {
             can_sign_out,
             profile_shortcut,
             login_notice: snapshot.login_notice,
+            classic_remove_guide: snapshot.classic_remove_guide,
         })
     }
 
@@ -96,24 +115,90 @@ impl MusicClient {
             self.qr_login_candidate()?,
             protocol,
         )?);
+        self.present_qr(flow, None).await
+    }
+
+    pub async fn begin_classic_remove_guide_qr(
+        &self,
+        epoch: &str,
+        ticket: &str,
+        retry: bool,
+        window: impl Fn() -> Result<()> + Send + Sync,
+    ) -> Result<QrView> {
+        let _gate = self.together.gate.lock().await;
+        window()?;
+        self.check_account_transition()?;
+        (self.auth.pending_guard())()?;
+        let base = self
+            .session
+            .begin_classic_remove_guide(epoch, ticket, retry)?;
+        let flow = Arc::new(QrAuthentication::for_token(
+            self.session.clone(),
+            self.qr_login_candidate()?,
+            LoginProtocol::Legacy,
+            base.clone(),
+            Some(ticket.to_owned()),
+        )?);
+        self.present_qr(
+            flow,
+            Some(ClassicGuideAdmission {
+                base: &base,
+                ticket,
+                window: &window,
+            }),
+        )
+        .await
+    }
+
+    pub fn dismiss_classic_remove_guide(&self, epoch: &str, ticket: &str) -> Result<()> {
+        self.session.dismiss_classic_remove_guide(epoch, ticket)
+    }
+
+    async fn present_qr(
+        &self,
+        flow: Arc<QrAuthentication>,
+        guide: Option<ClassicGuideAdmission<'_>>,
+    ) -> Result<QrView> {
         let id = uuid::Uuid::new_v4().simple().to_string();
-        self.auth.replace(PendingLogin {
+        let pending = PendingLogin {
             id: id.clone(),
             flow: PendingFlow::Qr(flow.clone()),
             view: LoginChallengeView::default(),
             captcha: Default::default(),
-        })?;
+        };
+        if guide.is_some() {
+            self.auth.insert_if_idle(pending)?;
+        } else {
+            self.auth.replace(pending)?;
+        }
         let mut unpublished = UnpublishedQr {
             client: self,
             id: &id,
             published: false,
         };
+        if let Some(guide) = &guide {
+            guide.require(self)?;
+        }
         let key = flow.begin().await?;
+        if let Some(guide) = &guide {
+            guide.require(self)?;
+        }
         let mut link = url::Url::parse("https://music.163.com/login")
             .map_err(|_| Error::Protocol("QR URL"))?;
         link.query_pairs_mut().append_pair("codekey", &key);
-        let qr = QrCode::encode_text(link.as_str(), QrCodeEcc::Medium)
-            .map_err(|_| Error::Response("QR payload exceeds limit"))?;
+        let qr = if guide.is_some() {
+            QrCode::encode_segments_advanced(
+                &QrSegment::make_segments(link.as_str()),
+                QrCodeEcc::Low,
+                Version::MIN,
+                Version::MAX,
+                None,
+                false,
+            )
+        } else {
+            QrCode::encode_text(link.as_str(), QrCodeEcc::Medium)
+        }
+        .map_err(|_| Error::Response("QR payload exceeds limit"))?;
         let modules = (0..qr.size())
             .map(|y| (0..qr.size()).map(|x| qr.get_module(x, y)).collect())
             .collect();
