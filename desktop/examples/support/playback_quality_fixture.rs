@@ -26,12 +26,11 @@ pub fn enabled() -> bool {
 pub fn cards_case() -> Option<String> {
     std::env::var("CUMULUS_QUALITY_CARDS_PROOF")
         .ok()
-        .map(|case| {
+        .inspect(|case| {
             assert!(matches!(
                 case.as_str(),
                 "layout_vivid" | "layout_only" | "control"
             ));
-            case
         })
 }
 pub async fn before(path: &str) {
