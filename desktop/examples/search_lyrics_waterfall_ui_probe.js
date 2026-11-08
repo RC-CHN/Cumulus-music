@@ -56,6 +56,7 @@
     await sleep(400);
   }
   const offsets = [];
+  const terminalBottomMeasurements = [];
   try {
     await wait(() => one('.track-row'), 'daily ready');
     await fixture('lyrics_waterfall_boundary');
@@ -109,11 +110,25 @@
     assert(lastContinuation && offsets.at(-1) === 50,
       'a full ten-row batch can continue despite hasMore=false');
     lastContinuation.focus({ preventScroll: true });
-    bottom();
+    const attemptedHeights = new Set();
     await wait(() => {
       const footer = one('.search-load-more');
-      return loaded() === 63 && footer?.textContent.includes('没有更多可显示的结果') &&
-        footer.getAttribute('aria-busy') === 'false' && document.activeElement === footer;
+      if (loaded() === 63)
+        return footer?.textContent.includes('没有更多可显示的结果') &&
+          footer.getAttribute('aria-busy') === 'false' && document.activeElement === footer;
+      const viewport = pane();
+      // The virtual list replaces estimated heights as its tail rows mount.
+      // A jump to the old bottom can leave the viewport above the newly
+      // measured end. Advance only for a new height and only before offset
+      // 60 starts; the continuation must still come from the scroll handler.
+      if (loaded() === 60 && offsets.at(-1) === 50 && viewport &&
+        !attemptedHeights.has(viewport.scrollHeight)) {
+        assert(document.activeElement === lastContinuation, 'continuation is focused before scrolling');
+        attemptedHeights.add(viewport.scrollHeight);
+        terminalBottomMeasurements.push([viewport.scrollTop, viewport.scrollHeight, viewport.clientHeight]);
+        bottom();
+      }
+      return false;
     }, 'short batch ends despite hasMore=true and retains continuation focus');
     assert(offsets.join(',') === '0,10,10,20,30,40,50,60', 'terminal lyric cursor');
     await capture('short_batch_terminal');
@@ -179,9 +194,11 @@
     assert(windowSize() < 28, 'deep repeat-ID result DOM stays bounded');
     await capture('bounded_repeat_hits');
     await emit('complete', { ok: true, lyricWaterfall: true, stageCount: stages, offsets,
-      nativePlaybackId: '58', duplicateHitsPreserved: true, terminalShortBatch: 63 });
+      nativePlaybackId: '58', duplicateHitsPreserved: true, terminalShortBatch: 63,
+      terminalBottomMeasurements });
   } catch (error) {
     await emit('failed', { message: String(error), offsets, loaded: loaded(), mounted: windowSize(),
-      scroll: pane() ? [pane().scrollTop, pane().scrollHeight, pane().clientHeight] : null });
+      scroll: pane() ? [pane().scrollTop, pane().scrollHeight, pane().clientHeight] : null,
+      terminalBottomMeasurements });
   }
 })();
