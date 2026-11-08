@@ -71,12 +71,25 @@
   async function withBlockedFrames(action) {
     if (!window.__playlistStallFrames) return action();
     assert(document.documentElement.dataset.motion === "full", "frame-stall proof requires full motion");
-    const request = window.requestAnimationFrame;
-    window.requestAnimationFrame = () => -(++blockedFrames);
+    const request = window.requestAnimationFrame, cancel = window.cancelAnimationFrame;
+    const pending = new Map();
+    window.requestAnimationFrame = (callback) => {
+      const id = -(++blockedFrames);
+      pending.set(id, callback);
+      return id;
+    };
+    window.cancelAnimationFrame = (id) => {
+      if (id < 0) pending.delete(id);
+      else cancel.call(window, id);
+    };
     try {
       return await action();
     } finally {
       window.requestAnimationFrame = request;
+      window.cancelAnimationFrame = cancel;
+      // The collector must have settled before frames resume. Other work,
+      // such as the invoking song menu's Vue leave, must still get its frame.
+      for (const callback of pending.values()) request.call(window, callback);
     }
   }
   const originalFetch = window.fetch;
@@ -134,6 +147,7 @@
       rows: all(".collect-row").length,
       dialog: !!d,
       geometry: geometry(d),
+      ...(count === 1 && { openingFrameStall }),
     });
     await sleep(420);
   }

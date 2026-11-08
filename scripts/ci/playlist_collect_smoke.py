@@ -51,6 +51,7 @@ def verify(root, capture, stall_frames=False):
         assert early['layoutWidth'] == 442 and round(early['width']) != 442
         assert 'modal-enter-from' in early['classes']
     initial = json.loads((root / 'first/ux_01_list_1120_light.json').read_text(encoding='utf-8'))
+    assert initial['openingFrameStall'] == early
     stable = initial['geometry']
     assert round(stable['width']) == stable['layoutWidth'] == 442
     assert stable['opacity'] == '1' and stable['transform'] == 'none'
