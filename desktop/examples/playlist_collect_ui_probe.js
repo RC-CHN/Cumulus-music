@@ -46,6 +46,28 @@
     maxRows = 0,
     listCalls = 0;
   let blockedFrames = 0;
+  let openingFrameStall = null;
+  const motionClasses =
+    ".playlist-collect-dialog.modal-enter-active,.playlist-collect-dialog.modal-leave-active,.collect-step-enter-active,.collect-step-leave-active";
+  const geometry = (d) => {
+    if (!d) return null;
+    const rect = d.getBoundingClientRect(), style = getComputedStyle(d);
+    return {
+      width: rect.width,
+      layoutWidth: d.offsetWidth,
+      opacity: style.opacity,
+      transform: style.transform,
+      classes: d.className,
+      viewport: [innerWidth, innerHeight],
+      ratio: devicePixelRatio,
+    };
+  };
+  const settled = () => {
+    const d = dialog();
+    return !one(motionClasses) && (!d ||
+      (!d.inert && getComputedStyle(d).opacity === "1" &&
+        getComputedStyle(d).transform === "none"));
+  };
   async function withBlockedFrames(action) {
     if (!window.__playlistStallFrames) return action();
     assert(document.documentElement.dataset.motion === "full", "frame-stall proof requires full motion");
@@ -69,7 +91,7 @@
   }
   async function capture(label) {
     step = label;
-    await sleep(200);
+    await wait(settled, "collection transition settled");
     const d = dialog(),
       r = d?.getBoundingClientRect();
     assert(
@@ -111,6 +133,7 @@
       theme: document.documentElement.dataset.theme,
       rows: all(".collect-row").length,
       dialog: !!d,
+      geometry: geometry(d),
     });
     await sleep(420);
   }
@@ -123,9 +146,23 @@
       () => one(".song-action-menu")?.style.visibility === "visible",
       "menu",
     );
-    click(button("收藏", one(".song-action-menu")));
-    await wait(() => dialog() && list(), "collector");
-    await sleep(220);
+    const activate = async (stall) => {
+      click(button("收藏", one(".song-action-menu")));
+      await wait(() => dialog() && list(), "collector");
+      if (stall) {
+        openingFrameStall = geometry(dialog());
+        assert(
+          dialog().classList.contains("modal-enter-from") &&
+            Math.round(openingFrameStall.layoutWidth) === 442 &&
+            Math.round(openingFrameStall.width) !== 442,
+          "stalled opening frame has the intended layout but is still scaled",
+        );
+      }
+      await wait(settled, "collector opened and settled");
+    };
+    if (window.__playlistStallFrames && !openingFrameStall)
+      await withBlockedFrames(() => activate(true));
+    else await activate(false);
     return trigger;
   }
   async function close(trigger) {
@@ -341,6 +378,7 @@
       stageCount: count,
       maxRows,
       blockedFrames,
+      openingFrameStall,
       realMusicRequests: 0,
       realAccountWrites: 0,
       creationRetryVerified: true,
@@ -354,6 +392,7 @@
       count,
       active: document.activeElement?.outerHTML?.slice(0, 250),
       dialog: dialog()?.textContent?.slice(0, 800),
+      geometry: geometry(dialog()),
     });
   }
 })();
