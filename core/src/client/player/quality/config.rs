@@ -1,5 +1,9 @@
 //! Recovered M/247 configuration center policy for the playback quality menu.
-use crate::{playback::quality::QualityExperiments, protocol::context::RequestContext};
+use super::view::QualityMenuPresentation;
+use crate::{
+    playback::quality::QualityExperiments,
+    protocol::{context::RequestContext, pc_experiments::PcExperimentGroups},
+};
 use serde_json::Value;
 
 const MUSIC_PACKAGE_HIRES: &str = "preload#musicPackageCanUseHiresAndLoseless";
@@ -7,6 +11,7 @@ const AUDIO_POPOVER_TRACK_SIZE: &str = "preload#isShowAudioPopoverTrackSize";
 
 pub(super) struct QualityConfiguration {
     pub(super) experiments: QualityExperiments,
+    pub(super) presentation: Option<QualityMenuPresentation>,
     hide_track_size: bool,
 }
 
@@ -36,6 +41,14 @@ pub(in crate::client) fn music_package_hires(data: Option<&Value>) -> Option<boo
     }
 }
 
+// TrackSoundQuality.tsx and M/34.m: the new layout and Vivid entry
+// are independent; Vivid requires both of the official PC groups.
+pub(super) fn menu_presentation(groups: &PcExperimentGroups) -> Option<QualityMenuPresentation> {
+    (groups.group("PH-PC-hyyinzhi") == Some("t1")).then(|| QualityMenuPresentation::Cards {
+        vivid: groups.group("PH-PC-zhenyingn") == Some("t1"),
+    })
+}
+
 pub(super) fn read(context: Option<&RequestContext>) -> QualityConfiguration {
     let snapshot = context.and_then(|context| context.pc_snapshot().ok().flatten());
     let data = snapshot
@@ -47,6 +60,7 @@ pub(super) fn read(context: Option<&RequestContext>) -> QualityConfiguration {
             // An independent native assignment supplies this after the snapshot read.
             standard_trial_requires_purchase: None,
         },
+        presentation: None,
         hide_track_size: hide_track_size(data),
     }
 }
@@ -186,5 +200,35 @@ mod tests {
             Some("18446744073709551615")
         );
         assert_eq!(presentation.display_size(None), None);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn pc_menu_cards_require_the_new_layout_and_a_separate_exact_vivid_group() {
+        let assignment = |layout, vivid| {
+            PcExperimentGroups::refreshed(&json!({"code":200,"data":[
+                {"expName":"PH-PC-hyyinzhi","expGroupName":layout},
+                {"expName":"PH-PC-zhenyingn","expGroupName":vivid},
+                {"expName":"PH-MAC-zhenyin","expGroupName":"t1"}
+            ]}))
+            .unwrap()
+        };
+        assert_eq!(menu_presentation(&assignment("c", "t1")), None);
+        assert_eq!(menu_presentation(&assignment("future", "t1")), None);
+        assert_eq!(
+            menu_presentation(&assignment("t1", "t1")),
+            Some(QualityMenuPresentation::Cards { vivid: true })
+        );
+        for vivid in ["c", "future", "T1"] {
+            assert_eq!(
+                menu_presentation(&assignment("t1", vivid)),
+                Some(QualityMenuPresentation::Cards { vivid: false })
+            );
+        }
     }
 }

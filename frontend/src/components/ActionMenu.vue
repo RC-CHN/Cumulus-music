@@ -16,12 +16,16 @@ const props = withDefaults(
     focusChecked?: boolean;
     contextOnly?: boolean;
     variant?: 'song' | 'speed' | 'quality' | 'mini' | 'year' | 'account';
+    qualityPair?: readonly [string, string];
   }>(),
   {
     icon: 'more',
   },
 );
 const emit = defineEmits<{ select: [key: string]; opened: []; closed: [] }>();
+const pair = computed(() =>
+  props.variant === 'quality' && props.qualityPair ? props.qualityPair : undefined,
+);
 const open = ref(false);
 const trigger = ref<HTMLButtonElement>();
 const panel = ref<HTMLElement>();
@@ -247,6 +251,29 @@ function select(key: string, target: EventTarget | null = null) {
   emit('select', key);
 }
 function keydown(event: KeyboardEvent) {
+  const pairKeys = pair.value;
+  if (
+    pairKeys &&
+    (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  ) {
+    const current = (event.target as HTMLElement)?.closest<HTMLButtonElement>(
+      '[data-quality-card]',
+    );
+    const at = pairKeys.findIndex((key) => key === current?.dataset.menuKey);
+    if (at !== -1) {
+      event.preventDefault();
+      event.stopPropagation();
+      const next = pairKeys[at + (event.key === 'ArrowRight' ? 1 : -1)];
+      const peer = choices().find((item) => item.dataset.menuKey === next);
+      peer?.focus({ preventScroll: true });
+      peer?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+  }
   if (event.key === 'ArrowRight') {
     const target = (event.target as HTMLElement)?.closest<HTMLButtonElement>('[data-menu-key]');
     if (
@@ -400,13 +427,14 @@ defineExpose({
           "
         >
           <slot name="header" />
-          <div class="menu-items">
+          <div class="menu-items" :class="{ 'quality-card-grid': pair }">
             <template v-for="item in items" :key="item.key">
               <div v-if="item.separator" role="separator" class="menu-separator" />
               <button
                 v-else
                 type="button"
                 :data-menu-key="item.key"
+                :data-quality-card="pair?.includes(item.key) ? 'true' : undefined"
                 :aria-haspopup="item.children?.length ? 'menu' : undefined"
                 :aria-expanded="item.children?.length ? child?.key === item.key : undefined"
                 :aria-controls="child?.key === item.key ? `${id}-child` : undefined"

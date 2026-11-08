@@ -747,6 +747,7 @@ export interface QualityDetailsView {
   songId: string;
   revision: string;
   choices: QualityChoiceView[];
+  presentation?: { kind: 'cards'; vivid: boolean };
   status: {
     privilege: QualityReadState;
     subscriber: QualityReadState;

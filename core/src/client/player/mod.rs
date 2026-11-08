@@ -88,8 +88,8 @@ pub use power::PlaybackPowerView;
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
 pub(super) use quality::config::music_package_hires;
 pub use quality::{
-    QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
-    QualityTrialView,
+    QualityChoiceView, QualityDetailsView, QualityMenuPresentation, QualityTrialCommand,
+    QualityTrialOutcome, QualityTrialView,
 };
 pub use queue_click::{QueueClickPreferencesCommand, QueueClickPreferencesView};
 pub use reports::LyricReportView;

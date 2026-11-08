@@ -2,6 +2,7 @@ import {
   qualities,
   type Quality,
   type QualityChoiceView,
+  type QualityDetailsView,
   type QualityTrialView,
 } from './player.ts';
 export const qualityOrder: Quality[] = [
@@ -72,4 +73,47 @@ export function qualityBadge(choice?: QualityChoiceView, trial?: QualityTrialVie
 }
 export function qualityUnavailable(choice?: QualityChoiceView) {
   return choice?.availability === 'unavailable' || choice?.access === 'trial_unsupported';
+}
+
+const premiumCards = ['sky', 'jymaster'] as const;
+const modernRows: Quality[] = ['vivid', 'jyeffect', 'hires', 'lossless', 'exhigh', 'standard'];
+const compatibilityRows: Quality[] = ['higher', 'dolby', '64aac'];
+
+export function qualityMenuPlan(details?: QualityDetailsView, actual?: Quality | null) {
+  const choices = new Map(details?.choices.map((choice) => [choice.quality, choice]));
+  const trials = new Map(details?.trials.map((trial) => [trial.right as Quality, trial]));
+  const unsettled = (quality: Quality) =>
+    ['sending', 'uncertain', 'acknowledged'].includes(trials.get(quality)?.phase ?? '');
+  if (details?.presentation?.kind !== 'cards') {
+    const visible = (quality: Quality) =>
+      choices.get(quality)?.availability !== 'unavailable' ||
+      quality === actual ||
+      unsettled(quality);
+    return {
+      main: qualityOrder.slice(0, 8).filter(visible),
+      compatibility: compatibilityRows.filter(visible),
+      pair: undefined,
+    };
+  }
+
+  const offered = (quality: Quality) => choices.get(quality)?.availability === 'available';
+  const retained = (quality: Quality) =>
+    quality === actual ||
+    unsettled(quality) ||
+    trials.get(quality)?.phase === 'active' ||
+    choices.get(quality)?.trialPhase === 'active';
+  const featured = premiumCards.filter(offered);
+  return {
+    main: [
+      ...featured,
+      ...premiumCards.filter((quality) => !offered(quality) && retained(quality)),
+      ...modernRows.filter(
+        (quality) =>
+          retained(quality) ||
+          (offered(quality) && (quality !== 'vivid' || details.presentation?.vivid)),
+      ),
+    ],
+    compatibility: compatibilityRows.filter(retained),
+    pair: featured.length === 2 ? premiumCards : undefined,
+  };
 }

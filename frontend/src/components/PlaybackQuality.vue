@@ -7,6 +7,7 @@ import type { Quality } from '../services/player';
 import type { MenuItem } from '../services/menu';
 import {
   qualityOrder,
+  qualityMenuPlan,
   qualityDescriptions,
   qualityLabel,
   qualityBadge,
@@ -53,17 +54,13 @@ function remaining(key: string) {
 }
 const pending = (key: string) =>
   !!trial(key) && ['sending', 'uncertain', 'acknowledged'].includes(trial(key)!.phase);
+const layout = computed(() => qualityMenuPlan(model.details.value, view.value?.actualQuality));
 const items = computed<MenuItem[]>(() => {
   if (damaged.value)
     return [{ key: 'repair', label: '重置音质偏好', disabled: props.player.busy.value }];
-  const main: MenuItem[] = [],
-    compatibility: MenuItem[] = [];
-  qualityOrder.forEach((value, index) => {
-    const detail = choice(value),
-      recover = pending(value);
-    if (detail?.availability === 'unavailable' && view.value?.actualQuality !== value && !recover)
-      return;
-    const item = {
+  function item(value: Quality): MenuItem {
+    const detail = choice(value);
+    return {
       key: value,
       label: qualityLabel(value),
       checked: view.value?.actualQuality === value,
@@ -71,15 +68,23 @@ const items = computed<MenuItem[]>(() => {
         !view.value?.canChangeQuality ||
         !props.player.loaded.value ||
         props.player.busy.value ||
-        (!recover && qualityUnavailable(detail)),
+        (!pending(value) && qualityUnavailable(detail)),
       hint: detail?.access === 'trial_unsupported' ? '当前试听歌曲不支持此音质' : undefined,
     };
-    (index >= 8 ? compatibility : main).push(item);
-  });
+  }
+  // The first song read supplies both the layout and the offer set. Avoid
+  // briefly presenting speculative premium choices while it is in flight.
+  if (
+    view.value?.qualityPreferences.appliesToCurrent &&
+    model.loading.value &&
+    !model.details.value
+  )
+    return view.value.actualQuality ? [item(view.value.actualQuality)] : [];
+  const { main, compatibility } = layout.value;
   return [
-    ...main,
+    ...main.map(item),
     ...(compatibility.length
-      ? [{ key: 'compatibility', label: '', separator: true }, ...compatibility]
+      ? [{ key: 'compatibility', label: '', separator: true }, ...compatibility.map(item)]
       : []),
   ];
 });
@@ -154,6 +159,7 @@ watch(
       :disabled="!player.ready.value || (!view?.canChangeQuality && !damaged)"
       :items="items"
       variant="quality"
+      :quality-pair="damaged ? undefined : layout.pair"
       focus-checked
       @opened="model.show"
       @closed="model.hide"

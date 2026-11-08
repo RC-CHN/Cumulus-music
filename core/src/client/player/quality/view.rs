@@ -24,6 +24,11 @@ pub struct QualityChoiceView {
     pub trial_phase: Option<TrialPhase>,
     pub remaining_ms: Option<u64>,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum QualityMenuPresentation {
+    Cards { vivid: bool },
+}
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QualityDetailsView {
@@ -32,6 +37,8 @@ pub struct QualityDetailsView {
     pub song_id: String,
     pub revision: String,
     pub choices: Vec<QualityChoiceView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<QualityMenuPresentation>,
     pub status: QualityReadStatus,
     pub refresh_after_ms: Option<u64>,
     pub trials: Vec<super::QualityTrialView>,
@@ -130,6 +137,7 @@ pub(super) fn project(
         song_id: song.into(),
         revision,
         choices,
+        presentation: config.presentation,
         status: information.status.clone(),
         refresh_after_ms,
         trials: trials.into_iter().map(Into::into).collect(),

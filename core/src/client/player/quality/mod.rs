@@ -11,7 +11,7 @@ use crate::{
     },
 };
 pub use trial::{QualityTrialCommand, QualityTrialOutcome, QualityTrialView};
-pub use view::{QualityChoiceView, QualityDetailsView};
+pub use view::{QualityChoiceView, QualityDetailsView, QualityMenuPresentation};
 
 impl MusicClient {
     pub(super) async fn quality_context(
@@ -102,6 +102,25 @@ impl MusicClient {
         };
         let mut configuration = config::read(self.auth.context.as_deref());
         configuration.experiments.standard_trial_requires_purchase = standard_trial;
+        let api = self.session.native_api(&token)?;
+        if let Ok(Some(credential)) = api.verified_pc_experiment_revision() {
+            // The platform assignment is already read by PC startup. Opening
+            // an audio menu does not trigger or prolong an experiment fetch.
+            let observed = self
+                .pc_experiments
+                .observed_groups(&token, &api, &credential)?;
+            self.session.require_api(&token, &api)?;
+            if api
+                .verified_pc_experiment_revision()
+                .ok()
+                .flatten()
+                .as_deref()
+                == Some(credential.as_str())
+            {
+                configuration.presentation = observed.as_ref().and_then(config::menu_presentation);
+            }
+        }
+        self.session.check_generation(&token)?;
         view::project(
             epoch,
             play_id,
