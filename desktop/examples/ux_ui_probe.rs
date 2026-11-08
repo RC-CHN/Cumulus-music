@@ -944,6 +944,8 @@ fn main() {
     assert!(!vertical_zone_fixture::enabled() || motion_proof);
     let audio_effect_tabs_proof = std::env::var_os("CUMULUS_AUDIO_EFFECT_TABS_PROOF").is_some();
     assert!(!audio_effect_tabs_proof || (motion_proof && effect_directory_fixture::enabled()));
+    let quality_cards_proof = playback_quality_fixture::cards_case().is_some();
+    assert!(!quality_cards_proof || (motion_proof && playback_quality_fixture::enabled()));
     let search_podcast_playback_proof = search_podcast_playback_fixture::enabled();
     assert!(!search_podcast_playback_proof || (motion_proof && search_fixture::enabled()));
     let search_download_row_proof = search_download_ui_fixture::enabled();
@@ -1047,7 +1049,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if audio_effect_tabs_proof || search_podcast_playback_proof || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() {
+        if audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1063,7 +1065,7 @@ fn main() {
         search_podcast_playback_fixture::initialize(&proof_store)?;
         let older_verified=vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || search_artist_top50_fixture::enabled() || vertical_zone_fixture::enabled();
         let guest_search=guest_search_fixture::enabled().then(||guest_search_fixture::Wire::open(proof_store.clone())).transpose()?;
-        let signed_search=(search_fixture::enabled() && !older_verified && guest_search.is_none()).then(||search_signed_fixture::SignedSearch::open(proof_store.clone())).transpose()?;
+        let signed_search=((search_fixture::enabled() || quality_cards_proof) && !older_verified && guest_search.is_none()).then(||search_signed_fixture::SignedSearch::open(proof_store.clone())).transpose()?;
         let library=Arc::new(Library { signed_search:signed_search.clone() });
         let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(library.clone())));
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||library.clone());
@@ -1518,6 +1520,17 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__shortcutFixtureAck={};",serde_json::to_string(&value["kind"]).unwrap())).unwrap();
                 return;
             }
+            if quality_cards_proof && stage=="quality-cards-assignment" {
+                let handle=handle.clone();
+                let signed=signed_search.as_ref().expect("signed quality fixture").clone();
+                assert_eq!(signed.full_reads(),0,"the menu must not fetch the experiment");
+                tauri::async_runtime::spawn(async move {
+                    handle.state::<MusicClient>().refresh_pc_presentation().await.unwrap();
+                    assert_eq!(signed.full_reads(),1);
+                    handle.get_webview_window("main").unwrap().eval("window.__qualityCardsAssigned=true;").unwrap();
+                });
+                return;
+            }
             if playback_quality_fixture::enabled() && stage=="quality-fixture" {
                 playback_quality_fixture::control(&proof_store,&value);
                 let report=playback_quality_fixture::report();
@@ -1649,7 +1662,7 @@ fn main() {
                     // Queue proof stages await this actor barrier before the
                     // script releases an intentionally held clear/edit. A watch
                     // snapshot may still describe the previous queue revision.
-                    let player = if audio_effect_tabs_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() {
+                    let player = if audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
@@ -1728,6 +1741,9 @@ fn main() {
                     }
                     if audio_effect_tabs_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__audioEffectTabRecorded={};",json!(stage))).unwrap();
+                    }
+                    if quality_cards_proof && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__qualityCardStageRecorded={};",json!(stage))).unwrap();
                     }
                     if search_podcast_playback_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__searchPodcastPlaybackRecorded={};",json!(stage))).unwrap();

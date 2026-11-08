@@ -204,7 +204,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod tests {
+mod presentation_tests {
     use super::*;
     use serde_json::json;
 

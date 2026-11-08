@@ -13,6 +13,7 @@ static DENIED: AtomicBool = AtomicBool::new(false);
 static MASTER_DENIED: AtomicBool = AtomicBool::new(false);
 static VIVID_GRANTED: AtomicBool = AtomicBool::new(false);
 static PARTIAL: AtomicBool = AtomicBool::new(false);
+static MASTER_WITHOUT_SKY: AtomicBool = AtomicBool::new(false);
 static STANDARD_ONLY: AtomicBool = AtomicBool::new(false);
 static METADATA_DELAY: AtomicUsize = AtomicUsize::new(0);
 static TRIAL_DELAY: AtomicUsize = AtomicUsize::new(0);
@@ -21,6 +22,17 @@ static TRIAL_RELEASE: tokio::sync::Notify = tokio::sync::Notify::const_new();
 static REQUESTS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_QUALITY_UI_PROOF").is_some()
+}
+pub fn cards_case() -> Option<String> {
+    std::env::var("CUMULUS_QUALITY_CARDS_PROOF")
+        .ok()
+        .map(|case| {
+            assert!(matches!(
+                case.as_str(),
+                "layout_vivid" | "layout_only" | "control"
+            ));
+            case
+        })
 }
 pub async fn before(path: &str) {
     if !enabled() {
@@ -87,7 +99,14 @@ pub fn metadata(path: &str, args: &Value) -> Option<Result<Value>> {
             let ids: Vec<Value> =
                 serde_json::from_str(args["ids"].as_str().expect("fixture ids")).unwrap();
             let standard = STANDARD_ONLY.load(Ordering::SeqCst);
-            json!({"code":200,"data":ids.iter().map(|id|json!({"id":id,"flag":if standard {0}else{(1<<12)|(1<<14)|(1<<16)|(1<<17)|(1<<18)|(1<<21)},"maxbr":if standard {128000}else{999000},"fl":128000,"payed":0,"fee":0})).collect::<Vec<_>>()})
+            let mut flag = (1 << 12) | (1 << 14) | (1 << 16) | (1 << 17) | (1 << 18) | (1 << 21);
+            if standard {
+                flag = 0;
+            }
+            if MASTER_WITHOUT_SKY.load(Ordering::SeqCst) {
+                flag &= !(1 << 18);
+            }
+            json!({"code":200,"data":ids.iter().map(|id|json!({"id":id,"flag":flag,"maxbr":if standard {128000}else{999000},"fl":128000,"payed":0,"fee":0})).collect::<Vec<_>>()})
         }
         "/api/song/music/detail/get" => {
             json!({"code":200,"data":{"id":args["songId"],"sq":{"size":123456},"hr":{"size":12340000},"url":"https://private/?SECRET"}})
@@ -141,6 +160,9 @@ pub fn control(store: &StateStore, value: &Value) {
         "rights-full" => PARTIAL.store(false, Ordering::SeqCst),
         "assets-standard" => STANDARD_ONLY.store(true, Ordering::SeqCst),
         "assets-all" => STANDARD_ONLY.store(false, Ordering::SeqCst),
+        "cards-master-without-sky" if cards_case().is_some() => {
+            MASTER_WITHOUT_SKY.store(true, Ordering::SeqCst)
+        }
         "metadata-delay" => METADATA_DELAY.store(5000, Ordering::SeqCst),
         "metadata-fast" => {
             METADATA_DELAY.store(0, Ordering::SeqCst);

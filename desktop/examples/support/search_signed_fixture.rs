@@ -301,6 +301,14 @@ impl HttpBackend for Backend {
                 }
                 groups.push(json!({"expName":"PH-PC-search-result",
                     "expGroupName":if mode == "unknown" {"future"} else {mode.as_str()}}));
+                if let Some(case) = super::playback_quality_fixture::cards_case() {
+                    groups.extend([
+                        json!({"expName":"PH-PC-hyyinzhi",
+                            "expGroupName": if case == "control" { "c" } else { "t1" }}),
+                        json!({"expName":"PH-PC-zhenyingn",
+                            "expGroupName": if case == "layout_only" { "c" } else { "t1" }}),
+                    ]);
+                }
                 if song_speed_enabled() {
                     groups.extend([
                         json!({"expName":"PH-PC-minibarNew","expGroupName":"c"}),
