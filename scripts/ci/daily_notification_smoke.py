@@ -4,8 +4,8 @@ import json
 import os
 from pathlib import Path
 
-from motion_smoke import launch
 from search_signed_trace import ACCOUNT, ASSIGNMENT, assignment_arguments, signed_assignment
+from window_manager import launch
 
 CASES = ("play", "settings", "snooze", "disable", "close", "details", "privacy", "fullscreen", "control")
 SUPPRESSED = {"privacy", "fullscreen", "control"}
