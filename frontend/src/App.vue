@@ -5680,6 +5680,7 @@ onUnmounted(() => {
                 @toggle-current="toggleVisibleTrack"
                 @play-tracks="playOnlineSongs"
                 :queue-artist-songs="player.queueArtistSongs"
+                :prepare-artist-songs-batch="player.prepareArtistSongsBatch"
                 @collect-tracks="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"

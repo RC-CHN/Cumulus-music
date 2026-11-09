@@ -155,7 +155,7 @@ fn main() {
         || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if ordinary_essential || album_queue_drop || album_duration_sort {
+        if ordinary_essential || album_queue_drop || album_duration_sort || artists {
             let numeric=current_locale(libc::LC_NUMERIC);
             let messages=current_locale(libc::LC_MESSAGES);
             let characters=current_locale(libc::LC_CTYPE);

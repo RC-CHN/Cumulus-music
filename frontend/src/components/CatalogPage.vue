@@ -40,6 +40,10 @@ const props = defineProps<{
   queueable: boolean;
   albumQueueDropEnabled?: boolean;
   queueArtistSongs: (pages: CatalogSelectionPage[]) => Promise<PlayerView | undefined>;
+  prepareArtistSongsBatch: () => (
+    pages: CatalogSelectionPage[],
+    ids: string[],
+  ) => Promise<PlayerView | undefined>;
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
@@ -103,11 +107,17 @@ const {
 const batchTracks = ref<TrackView[]>();
 let batchOrigin: HTMLElement | null = null;
 let batchAlbumRevision: string | undefined;
+let batchArtistPages: CatalogSelectionPage[] | undefined;
 const batchAllowed = () =>
   props.model.valid() && (resource.kind === 'album' || tab.value === 'all');
 const artistBatchAnchor = ref<HTMLElement>();
 let batchHandoff:
-  | { epoch: string; kind: 'play' | 'collect' | 'download' | 'queue'; tracks: TrackView[] }
+  | {
+      epoch: string;
+      kind: 'play' | 'collect' | 'download' | 'queue';
+      tracks: TrackView[];
+      artistQueue?: () => Promise<PlayerView | undefined>;
+    }
   | undefined;
 function openTrackBatch(origin: HTMLElement | null) {
   if (!batchAllowed()) return;
@@ -119,6 +129,8 @@ function openTrackBatch(origin: HTMLElement | null) {
   if (usable.size) {
     batchOrigin = origin;
     batchAlbumRevision = resource.kind === 'album' ? detail.view.value?.revision : undefined;
+    batchArtistPages =
+      resource.kind === 'artist' && selections.value.length ? [...selections.value] : undefined;
     batchTracks.value = [...usable.values()];
   }
 }
@@ -150,12 +162,21 @@ async function artistSongsAction(key: string) {
     openTrackBatch(artistBatchAnchor.value?.querySelector('button') ?? null);
     return;
   }
-  if (key !== 'queue' || !props.queueable || tab.value !== 'all' || !props.model.valid()) return;
+  if (key === 'queue') await submitArtistQueue(() => props.queueArtistSongs(selections.value));
+}
+async function submitArtistQueue(submit: () => Promise<PlayerView | undefined>) {
   const epoch = props.account.epoch;
-  const current = () => props.account.epoch === epoch && tab.value === 'all' && props.model.valid();
+  const page = section.value;
+  const current = () =>
+    props.account.epoch === epoch &&
+    tab.value === 'all' &&
+    props.model.valid() &&
+    page?.isConnected &&
+    !page.closest('[inert],.page-leave-active');
+  if (!props.queueable || !current()) return;
   artistQueueNotice.value = '';
   try {
-    const result = await props.queueArtistSongs(selections.value);
+    const result = await submit();
     if (result && current()) artistQueueNotice.value = '已添加到播放列表';
   } catch {
     if (current()) artistQueueNotice.value = '暂时无法添加，请确认当前歌曲列表和播放状态后重试。';
@@ -164,6 +185,12 @@ async function artistSongsAction(key: string) {
 function chooseTrackBatch(kind: 'play' | 'collect' | 'download' | 'queue', selected: TrackView[]) {
   if (!batchTracks.value || !batchAllowed()) return;
   batchHandoff = { epoch: props.account.epoch, kind, tracks: selected };
+  if (kind === 'queue' && batchArtistPages) {
+    const pages = batchArtistPages;
+    const ids = selected.map((track) => track.id);
+    const submit = props.prepareArtistSongsBatch();
+    batchHandoff.artistQueue = () => submit(pages, ids);
+  }
   batchTracks.value = undefined;
 }
 function finishTrackBatch() {
@@ -173,6 +200,7 @@ function finishTrackBatch() {
   const revision = batchAlbumRevision;
   batchOrigin = null;
   batchAlbumRevision = undefined;
+  batchArtistPages = undefined;
   if (!handoff || handoff.epoch !== props.account.epoch || !batchAllowed()) return;
   if (handoff.kind === 'queue') {
     if (resource.kind === 'album' && props.queueable && album.value && revision)
@@ -182,6 +210,7 @@ function finishTrackBatch() {
         anchor: origin,
         selection: { ids: handoff.tracks.map((track) => track.id), revision },
       });
+    else if (handoff.artistQueue) void submitArtistQueue(handoff.artistQueue);
   } else if (handoff.kind === 'collect') emit('collectTracks', handoff.tracks);
   else if (handoff.kind === 'download') emit('download', handoff.tracks);
   else if (props.playable && !props.playBusy) emit('playTracks', handoff.tracks, 0);
@@ -668,7 +697,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         :liked="liked"
         :current-id="currentId"
         :playable="playable && !playBusy"
-        :queueable="queueable && !!batchAlbumRevision"
+        :queueable="queueable && (!!batchAlbumRevision || !!batchArtistPages)"
         @close="batchTracks = undefined"
         @choose="chooseTrackBatch"
       />

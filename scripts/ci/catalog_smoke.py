@@ -453,12 +453,32 @@ def main():
         return
     if args.artist_batch:
         assert complete['ok'] and complete['artistBatchVerified'] and complete['selectedPlayback'] and not complete['writesSubmitted']
-        assert complete['loadedQueueInsertion']
+        assert complete['loadedQueueInsertion'] and complete['selectedQueueInsertion']
+        assert complete['selectedEmptyQueueStarted']
         assert json.loads((output / 'ux_artist_queue_menu.json').read_text(encoding='utf-8'))['available']
-        for name in ('ux_artist_batch_selected', 'ux_artist_batch_download'):
+        for name in ('ux_artist_batch_selected', 'ux_artist_batch_download', 'ux_artist_batch_queue_selection'):
             assert json.loads((output / f'{name}.json').read_text(encoding='utf-8'))['count'] == 2
-        assert not args.screenshots or captures == 3
-        print(json.dumps(dict(ok=True, actualWebView=True, artistBatchVerified=True, loadedQueueInsertion=True)))
+        selected = json.loads((output / 'ux_artist_batch_queue_selection.json').read_text(encoding='utf-8'))
+        queued = json.loads((output / 'ux_artist_batch_queued.json').read_text(encoding='utf-8'))
+        assert queued['queue'] == ['91', '3', '2', '4', '1', '92']
+        assert queued['retainedPlayId'] and queued['restoredFocus'] and queued['position'] > .3
+        empty = json.loads((output / 'ux_artist_batch_queue_empty.json').read_text(encoding='utf-8'))
+        assert empty['nativePlayer']['track']['id'] == '2' and empty['nativePlayer']['position'] > .2
+        assert [row['track']['id'] for row in empty['nativeQueue']['tracks']] == ['2', '4']
+        assert selected['artistSongReads'] == queued['artistSongReads'] == empty['artistSongReads'] > 0
+        assert not args.screenshots or captures == 6
+        report = dict(ok=True, actualWebView=True, artistBatchVerified=True, loadedQueueInsertion=True,
+                      selectedQueueInsertion=True, selectedEmptyQueueStarted=True, screenshots=captures,
+                      artistSongReads=empty['artistSongReads'])
+        if sys.platform.startswith('linux'):
+            import locale
+            observed = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
+            assert observed['numeric'] == 'C'
+            if locale.normalize(os.environ.get('LC_ALL', '')) == 'en_US.UTF-8':
+                assert observed['messages'] == observed['characters'] == 'en_US.UTF-8'
+            report['locale'] = observed
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
         return
     if args.playback_credit:
         assert complete['ok'] and complete['samePlayback'] and complete['sourceNavigation'] and complete['syntheticCatalog']
