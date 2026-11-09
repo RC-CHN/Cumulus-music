@@ -11,6 +11,9 @@ mod windows_identity_board_rules;
 mod windows;
 
 #[cfg(all(windows, target_arch = "x86_64"))]
+mod wmi;
+
+#[cfg(all(windows, target_arch = "x86_64"))]
 fn main() -> std::process::ExitCode {
     use std::{process::ExitCode, sync::mpsc, thread, time::Duration};
 
@@ -34,7 +37,7 @@ fn main() -> std::process::ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Err(error)) => {
-            eprintln!("{error}");
+            eprintln!("board_probe=startup_failed {error}");
             ExitCode::FAILURE
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
