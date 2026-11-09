@@ -4,6 +4,8 @@
 mod mixed_playlist_fixture;
 #[path = "../../core/tests/support/native_lyric_wave.rs"]
 mod native_lyric_wave;
+#[path = "support/offline_playlist_fixture.rs"]
+mod offline_playlist_fixture;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -205,12 +207,18 @@ fn main() {
         "directory selection needs a fresh dedicated profile"
     );
     let mixed = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
-    assert!(!mixed || !(reopen || queue || cold || directory_selection));
+    let cached_playlist = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_PROOF").is_some();
+    assert!(!(mixed || cached_playlist) || !(reopen || queue || cold || directory_selection));
+    assert!(!(mixed && cached_playlist));
+    let cached_fixture = cached_playlist.then(|| {
+        fs::create_dir(&root).expect("new synthetic offline playlist root");
+        Arc::new(offline_playlist_fixture::Fixture::new(&root).expect("offline playlist audio"))
+    });
     let mixed_fixture = mixed.then(|| {
         fs::create_dir(&root).expect("new synthetic mixed playlist root");
         Arc::new(mixed_playlist_fixture::Fixture::new(&root).expect("mixed playlist audio"))
     });
-    if !reopen && !mixed {
+    if !reopen && !mixed && !cached_playlist {
         fs::create_dir(&root).expect("new proof root");
         fixtures(&root, cold || directory_selection, queue).expect("generated local fixtures");
         if queue {
@@ -269,20 +277,25 @@ fn main() {
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
         let offline=Arc::new(Offline { hold:cold, started:AtomicBool::new(false), release:tokio::sync::Notify::new() });
         let store=registry.store();
-        let api: Arc<dyn Api>=match &mixed_fixture {
-            Some(fixture)=>fixture.clone(),
-            None=>offline.clone(),
+        let api: Arc<dyn Api>=match (&mixed_fixture,&cached_fixture) {
+            (Some(fixture),_)=>fixture.clone(),
+            (_,Some(fixture))=>fixture.clone(),
+            _=>offline.clone(),
         };
         let session=Arc::new(AccountSession::new(api,Some(store.clone())));
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
         tauri::async_runtime::block_on(client.start_local_library())?;
-        if mixed {
+        if mixed || cached_playlist {
             let path=setup.join("media").to_string_lossy().into_owned();
             tauri::async_runtime::block_on(client.local_command(cumulus_core::client::dto::LocalCommand::Watch{path}))?;
         }
         app.manage(client);
         if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
+        if let Some(fixture)=cached_fixture.clone() {
+            offline_playlist_fixture::listen(app,fixture,store,&setup);
+            return Ok(());
+        }
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let mut value:Value=serde_json::from_str(event.payload()).expect("proof JSON");
             let stage=value["stage"].as_str().unwrap_or("").to_owned();
@@ -420,7 +433,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
-            webview.eval(if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
+            webview.eval(if cached_playlist {include_str!("offline_playlist_ui_probe.js")} else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
             } else if queue_reveal {
                 include_str!("local_queue_file_reveal_ui_probe.js")
