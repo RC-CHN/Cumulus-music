@@ -15,6 +15,7 @@
   const reasons = (row) => one('[data-community-report-reasons]', menu(row));
   const action = (row) => one('[role="menuitem"][aria-haspopup="menu"]', menu(row));
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const paint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const assert = (value, label) => { if (!value) throw Error(label); };
   const emit = (stage, payload = {}) => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
     event: 'ux-proof', payload: { stage, ...payload },
@@ -27,9 +28,9 @@
     }
     throw Error(label);
   }
-  function click(node) {
+  function click(node, reveal = true) {
     assert(node && !node.disabled, 'missing or disabled action');
-    node.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    if (reveal) node.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     node.focus({ preventScroll: true });
     node.click();
   }
@@ -37,26 +38,39 @@
     assert(node && document.activeElement === node, `wrong keyboard focus for ${value}`);
     node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
   }
-  function context(node) {
-    node.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  function context(node, reveal = true) {
+    if (reveal) node.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   }
   let stageCount = 0;
   async function capture(label, element, detail = {}) {
-    await Promise.race([
-      new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))), sleep(220),
-    ]);
+    await Promise.race([paint(), sleep(220)]);
     await sleep(190);
     assert(document.documentElement.scrollWidth <= innerWidth, 'horizontal overflow');
     const rect = element.getBoundingClientRect();
     assert(rect.top >= 0 && rect.bottom <= innerHeight && rect.right <= innerWidth, `offscreen ${label}`);
-    assert(element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)),
-      `covered ${label}`);
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    assert(element.contains(hit), `covered ${label}: ${JSON.stringify({
+      connected: element.isConnected, rect: rect.toJSON(), hit: hit?.tagName,
+      hitClass: hit?.getAttribute('class'), focus: document.activeElement?.getAttribute('aria-label'),
+      activeTransitions: all('.page-enter-active,.page-leave-active').length,
+    })}`);
     await emit(`ux_${String(++stageCount).padStart(2, '0')}_${label}`, { width: innerWidth, ...detail });
   }
+  async function openMenu(row, rightClick = false) {
+    await wait(() => !one('.page-enter-active,.page-leave-active'), 'community page settled');
+    const anchor = rightClick ? row : opener(row);
+    assert(anchor?.isConnected, 'event menu anchor is present');
+    // Wait for the initial reveal scroll before opening a menu whose anchor
+    // intentionally becomes invalid when that scroll moves it.
+    anchor.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    const painted = await Promise.race([paint().then(() => true), sleep(2000).then(() => false)]);
+    assert(painted && anchor.isConnected, 'event menu reveal painted');
+    if (rightClick) context(anchor, false);
+    else click(anchor, false);
+  }
   async function openReasons(row, rightClick = false) {
-    if (rightClick) context(row);
-    else click(opener(row));
+    await openMenu(row, rightClick);
     const report = await wait(() => action(row), 'report submenu');
     await wait(() => document.activeElement === report, 'report menu focus');
     key(report, 'ArrowRight');
@@ -88,7 +102,7 @@
     assert(nested && !opener(nested), 'nested forward target exposed');
     context(nested);
     assert(!menu(card('合成可举报转发')), 'nested context activated outer event');
-    click(opener(own));
+    await openMenu(own);
     await wait(() => button('删除', menu(own)), 'own deletion retained');
     assert(!action(own), 'own report exposed');
     await capture('eligible', button('删除', menu(own)));
