@@ -48,7 +48,13 @@ impl Api for Fixture {
             Ok(match path {
                 "/api/user/setting" => json!({"code":200,"setting":{"personalServiceSetting":0}}),
                 "/api/voice/homepage/block/page" => {
-                    json!({"code":200,"data":{ "hasMore":true,"cursor":"{\"fixture\":\"next\"}",
+                    let first = args["cursor"] == "";
+                    let cursor = if first {
+                        json!("{\"fixture\":\"next\"}")
+                    } else {
+                        Value::Null
+                    };
+                    json!({"code":200,"data":{"hasMore":first,"cursor":cursor,
                     "blocks":[{"showType":"VOICE_HOMEPAGE_WEEKNEW_VOICE",
                     "uiElement":{"mainTitle":{"title":"Week"}},"creatives":[{"resources":[
                         {"resourceId":82,"resourceType":"voice","resourceExtInfo":{"djProgram":episode(82)}}]}]}]}})
