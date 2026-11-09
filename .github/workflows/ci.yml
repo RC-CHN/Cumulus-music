@@ -383,6 +383,9 @@ jobs:
       - name: Build and verify Windows media runtime
         if: runner.os == 'Windows'
         uses: ./.github/actions/windows-media
+        env:
+          # A cold FFmpeg build can use all four hosted Windows cores.
+          CUMULUS_MEDIA_BUILD_JOBS: '4'
         with:
           msys-root: ${{ steps.msys2.outputs.msys2-location }}
       - run: npm --prefix frontend ci
@@ -462,6 +465,9 @@ jobs:
       - name: Build and verify Windows media runtime
         if: runner.os == 'Windows'
         uses: ./.github/actions/windows-media
+        env:
+          # A cold FFmpeg build can use all four hosted Windows cores.
+          CUMULUS_MEDIA_BUILD_JOBS: '4'
         with:
           msys-root: ${{ steps.msys2.outputs.msys2-location }}
           save-cache: 'false'
