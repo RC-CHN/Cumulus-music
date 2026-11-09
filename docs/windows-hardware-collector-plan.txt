@@ -1,5 +1,6 @@
 Windows 真实本机硬件 collector：下一批实施方案与证据边界
-2026-11-04；更新 2026-11-10：已加隔离的主板/BIOS 探针；尚无 Windows WMI 实采回执。
+2026-11-04；更新 2026-11-10：已加隔离的主板/BIOS、MAC 和磁盘描述符探针；
+生产尚未接入，Windows 实采回执另验。
 
 本文件不改变当前默认配置。当前 Windows 默认/windows-local 只声明官方兼容 UA/osver，
 不调用 Linux collector、不补造 clientSign。后续工作要增加的是 Windows 本机事实来源，
@@ -236,7 +237,8 @@ Windows 离线对照顺序：
    首次空种子拒绝、事务失败不轮换、账号凭据 deviceId 不变。分支没实测就保留缺口，
    不通过真实账号请求来弥补采集证据，也不把 CI 编译成功记为官方等价。
 
-当前没有生产 Windows 硬件采集。合成编码探针与独立本地 WMI 探针见下两节。
+当前没有生产 Windows 硬件采集接线。合成编码、主板/BIOS 和显式 MAC 探针见下文；
+磁盘描述符见 windows-storage-identity-probe.txt。
 
 7. Windows 代码页与主板过滤离线探针
 
@@ -334,3 +336,73 @@ https://learn.microsoft.com/en-us/windows/win32/api/wbemcli/nf-wbemcli-ienumwbem
 CoInitializeSecurity / CancelIoEx：
 https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity
 https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex
+
+9. Windows x64 注册表永久 MAC 离线探针
+
+`desktop/examples/windows_mac_probe.rs` 显式调用 `desktop/src/identity/windows/mac/`
+的原生适配器与旁边的 `mac.rs` 选择逻辑。探针未被主程序引用，没有 Tauri 命令、默认开关、
+账号读取、网络解析或持久化。只接受不带路径、设备名和账号参数的 `--collect`。
+
+- CF0130 原生调用的是 RegOpenKeyW（不是 RegOpenKeyExW）。固定打开 HKLM 的 NetworkCards，
+  以 RegEnumKeyExW 返回的原始索引顺序逐项打开完整子键，不重排、不扫其他注册表路径。
+  先读 Description；不存在时保留原先清零缓冲区的空描述分支。调用 UCRT _wcslwr_s，
+  使用探针当前 CRT locale；不修改进程或系统 locale。同一官方进程是否使用相同 CRT locale
+  仍需对照。含 virtual 或 1394 直接跳过，且不会读该项的 ServiceName。
+- CEFA40 使用固定的 `\\.\` 前缀和原始 UTF-16 ServiceName，访问权 GENERIC_READ、
+  FILE_SHARE_READ、OPEN_EXISTING、flags=0；唯一允许的控制码 0x170002，传四字节
+  OID_802_3_PERMANENT_ADDRESS=0x01010101，使用 260 字节清零缓冲区。注册表键和设备
+  句柄分别交给 RegCloseKey 与 CloseHandle。普通打开或查询失败继续下一项。
+- CF0130 的第一个非空响应就退出枚举。CEF5E0 随后按六个大写两位十六进制字节和冒号
+  格式检查全 FF 或字面子串 00:00:00:00:00:。命中只报告需要备用分支，绝不改选
+  后续注册表项。保留真实数据在探针内存，输出没有 MAC、ServiceName、设备路径或主机名。
+- 与原反汇编的安全差异：只接收 REG_SZ 及缓冲区内的偶数字节；ServiceName 须在返回
+  长度内终止，拒绝路径语法、控制符、尾部空格/点等可能产生不同设备名的值；枚举上限
+  4096。成功 IOCTL 必须报告至少 6 且不超过 260 个字节；原程序会格式化短回复
+  的缓冲区，探针只报告不确定，不把填零数据当真实值，也不换下一块设备。
+
+在独立 Windows x64 普通用户环境执行（不要为拒绝的驱动提权）：
+
+    cargo test --manifest-path desktop/probes/windows-mac/Cargo.toml --target-dir .build/windows-mac --locked
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    cargo build --release --manifest-path desktop/probes/windows-mac/Cargo.toml --target-dir .build/windows-mac --locked
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $probe = Join-Path $PWD '.build\windows-mac\release\windows-mac-probe.exe'
+    $process = Start-Process -FilePath $probe -ArgumentList '--collect' -NoNewWindow -PassThru
+    if (-not $process.WaitForExit(15000)) {
+        $process.Kill()
+        $process.WaitForExit()
+        throw 'Windows registry/NDIS probe timed out'
+    }
+    $process.ExitCode
+
+返回 0/registry_ndis_available 表示拿到通过过滤的六字节（17 字节格式，不显示内容）；
+3/fallback_required 表示找不到可用主路径或被外层过滤；4/inconclusive 表示检查发现
+异常或触及限制；2 是平台/参数不适用。探针本身是同步的，命令的独立进程用于给可能
+卡住的驱动设置调用端期限，不能把编译、合成输入或 Wine 当真实 Windows NDIS 证明。
+独立 Cargo 清单只依赖锁定的 windows-sys，复用同一桌面示例源码，不编译 Tauri 或 WebView。
+本地 Rust 1.96.0 通过 7 项纯合成测试；Windows GNU 的发行 PE 和测试程序已交叉链接，
+发行导入表核对了上述注册表、设备控制和 CRT 入口，无 Winsock/IpHelper 入口。
+独立清单的 Windows 目标全目标 Clippy 和桌面示例的 Windows 目标 Clippy 均通过。
+Windows 上的额外 CRT 合成测试及真实普通用户网卡探针尚未运行。
+
+CEFD10 尚未实现。已定位的完整顺序为 WSAStartup(2) → gethostname → gethostbyname
+首 IPv4 → GetAdaptersInfo（初始 0x2c0 字节，ERROR_BUFFER_OVERFLOW 时重分配，
+随后仍调用一次）→ 链表原顺序匹配 Type=6 与首 IpAddressList → 以 AdapterName 经
+CEE4D0 后尝试 CEFA40，空才采用记录首六个 Address 字节 → CEF5E0 再过滤。
+CEE4D0 两次都用 CP_THREAD_ACP；第二次仍传 -1 输入，但目标容量少一个终止单元，
+返回值被忽略。Microsoft 的长度契约不能推断失败是否已改写目的缓冲区，不能直接
+用正常转换成功的 AdapterName 或当前地址替代。还需实测传统及 UTF-8 ACP 的短缓冲区、
+无 DNS 与多个 IPv4、驱动拒绝/永久与当前地址、输出字节数及非六字节回包；随后才可
+确定备用路径。磁盘 SMART/SCSI 顺序、主板/BIOS WMI、主机 ACP 字节及持久 ID
+接纳规则仍按前述阶段核对；即使 Windows 实际探针返回 0，也不开放默认设备签名。
+
+Microsoft API 语义（网易选择顺序来自上述反汇编）：
+https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopenkeyw
+https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regenumkeyexw
+https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regqueryvalueexw
+https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-deviceiocontrol
+https://learn.microsoft.com/en-us/windows-hardware/drivers/network/oid-802-3-permanent-address
+https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/strlwr-s-strlwr-s-l-mbslwr-s-mbslwr-s-l-wcslwr-s-wcslwr-s-l?view=msvc-170
+https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
+https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostbyname

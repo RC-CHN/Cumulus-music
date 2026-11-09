@@ -1,0 +1,19 @@
+[package]
+name = "cumulus-windows-mac-runtime"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "windows-mac-probe"
+path = "../../examples/windows_mac_probe.rs"
+
+[target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_NetworkManagement_Ndis", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Registry"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
