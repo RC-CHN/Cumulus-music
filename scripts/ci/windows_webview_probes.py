@@ -7,7 +7,9 @@ from pathlib import Path
 import shutil
 import stat
 import subprocess
+import sys
 
+from windows_cold_flac import test_executable
 from windows_webview_inputs import UX, ci_identity, file_receipt, frontend_receipts, plain_stat
 
 
@@ -15,6 +17,7 @@ ARTIFACT = Path('.build/windows-webview-probes')
 EXAMPLES = Path('.build/target/debug/examples')
 FRONTEND = Path('frontend/dist')
 MANIFEST = 'manifest.json'
+COLD_FLAC_TEST = 'cumulus_core_cold_flac_tests.exe'
 PROBES = {
     'playback': (
         'equalizer_ui_probe', 'login_interception_ui_probe', 'loudness_ui_probe',
@@ -44,7 +47,8 @@ PROBES = {
 
 
 def binary_names(shard):
-    return tuple(f'{example}.exe' for example in PROBES[shard])
+    examples = tuple(f'{example}.exe' for example in PROBES[shard])
+    return (*examples, COLD_FLAC_TEST) if shard == 'package-runtime' else examples
 
 
 def receipt(directory, identity, shard, frontend):
@@ -100,6 +104,11 @@ def build(repo, identity):
     for example in examples:
         command.extend(['--example', example])
     subprocess.run(command, cwd=repo, check=True)
+    # The cold FLAC verifier uses the standalone core libtest feature set.
+    # Keep its compilation independent of desktop features, and bind the
+    # resulting executable to the same attempt as the other shard inputs.
+    print('Building the Windows cold FLAC core test harness', flush=True)
+    shutil.copyfile(test_executable(sys.stderr, repo=repo), repo / EXAMPLES / COLD_FLAC_TEST)
     assert frontend == frontend_receipts(repo / FRONTEND), 'frontend assets changed during build'
     stage(repo, identity, frontend)
 

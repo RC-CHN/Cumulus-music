@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -10,6 +11,31 @@ import windows_cold_flac as proof
 
 
 class WindowsColdFlacTests(unittest.TestCase):
+    def test_cargo_builds_the_standalone_core_library_test_harness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / 'core.exe').write_bytes(b'core libtest')
+            artifacts = [
+                {'reason': 'compiler-artifact', 'target': {'name': 'cumulus_core'},
+                 'executable': 'not-a-test.exe', 'profile': {'test': False}},
+                {'reason': 'compiler-artifact', 'target': {'name': 'other'},
+                 'executable': 'dependency-test.exe', 'profile': {'test': True}},
+                {'reason': 'compiler-artifact', 'target': {'name': 'cumulus_core'},
+                 'executable': 'core.exe', 'profile': {'test': True}},
+            ]
+            output = '\n'.join(json.dumps(item) for item in artifacts)
+            with patch.object(proof.subprocess, 'run', return_value=CompletedProcess(
+                [], 0, output, 'cargo diagnostic\n',
+            )) as run:
+                log = io.StringIO()
+                self.assertEqual(proof.test_executable(log, repo=repo), (repo / 'core.exe').resolve())
+            self.assertEqual(log.getvalue(), 'cargo diagnostic\n')
+            self.assertEqual(run.call_args.args[0], [
+                'cargo', 'test', '--locked', '-p', 'cumulus-core', '--lib', '--no-run',
+                '--message-format=json',
+            ])
+            self.assertEqual(run.call_args.kwargs['cwd'], repo)
+
     def test_ci_requires_the_packaged_dll_before_any_proof_fallback(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(proof, 'ensure_flac') as fallback:
             root = Path(directory)
@@ -114,7 +140,35 @@ class WindowsColdFlacTests(unittest.TestCase):
             self.assertFalse(gui_runs[0].exists())
             report = json.loads((outer / 'proof/report.json').read_text())
             self.assertTrue(report['ok'] and report['stereoPcmGui']['ok'])
+            self.assertEqual(report['coreTestBinary'], 'local-cargo')
             self.assertIn(f'{proof.COLD}::stereo::cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocation', report['passed'])
+
+    def test_prebuilt_harness_runs_every_exact_case_without_a_cargo_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outer = Path(directory)
+            harness = outer / 'prebuilt.exe'
+            harness.write_bytes(b'synthetic verified test harness')
+
+            def staged(package, msys, working, *, require_package_flac):
+                self.assertTrue(require_package_flac)
+                return working, 'package-stage', {}, []
+
+            with patch.object(proof, 'stage_runtime', side_effect=staged), \
+                    patch.object(proof, 'test_executable') as cargo, \
+                    patch.object(proof, 'case_result', return_value=None), \
+                    patch.object(proof.subprocess, 'run', return_value=CompletedProcess([], 0, '')) as run, \
+                    patch.dict(proof.os.environ, {'SystemRoot': str(outer / 'Windows')}):
+                proof.verify(outer / 'proof', outer, outer, core_test_binary=harness,
+                             require_package_flac=True)
+            cargo.assert_not_called()
+            self.assertEqual([call.args[0] for call in run.call_args_list], [
+                [harness, '--exact', case, '--include-ignored', '--nocapture', '--color', 'never']
+                for case in proof.CASES
+            ])
+            report = json.loads((outer / 'proof/report.json').read_text())
+            self.assertEqual(report['coreTestBinary'], 'prebuilt')
+            self.assertTrue(report['libflacPackaged'])
+            self.assertEqual(report['passed'], list(proof.CASES))
 
     def test_report_rejects_a_loaded_dll_from_outside_the_runtime(self):
         with tempfile.TemporaryDirectory() as directory:

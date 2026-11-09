@@ -7,7 +7,7 @@ import unittest
 
 from windows_webview_inputs import UX, ci_identity, frontend_receipts
 from windows_webview_probes import (
-    ARTIFACT, EXAMPLES, FRONTEND, MANIFEST, PROBES,
+    ARTIFACT, COLD_FLAC_TEST, EXAMPLES, FRONTEND, MANIFEST, PROBES,
     binary_names, restore, stage,
 )
 
@@ -103,6 +103,19 @@ class WindowsWebViewProbes(unittest.TestCase):
             original_dir = self.staged if original == self.shard else shared / original
             self.assertEqual((self.consumer / EXAMPLES / name).read_bytes(),
                              (original_dir / name).read_bytes())
+        self.assertEqual((self.consumer / EXAMPLES / COLD_FLAC_TEST).read_bytes(),
+                         COLD_FLAC_TEST.encode())
+        self.assertFalse(any(COLD_FLAC_TEST in binary_names(name) for name in PROBES if name != shard))
+
+    def test_tampered_cold_flac_harness_prevents_promotion_of_the_entire_shard(self):
+        shard = 'package-runtime'
+        target = self.consumer / ARTIFACT / shard
+        (self.producer / ARTIFACT / shard).rename(target)
+        harness = target / COLD_FLAC_TEST
+        harness.write_bytes(b'!' + harness.read_bytes()[1:])
+        with self.assertRaisesRegex(AssertionError, 'provenance or checksum'):
+            restore(self.consumer, self.identity, shard)
+        self.assertFalse((self.consumer / EXAMPLES).exists())
 
     def test_workflow_uses_the_closed_shard_inventory(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/ci.yml').read_text()
