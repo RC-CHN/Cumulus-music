@@ -139,6 +139,7 @@ fn snapshot(token: HANDLE) -> String {
             "value_not_reported",
         ),
     ));
+    fields.push(("TokenHasRestrictionsWrite", restriction_write_shape(token)));
     fields
         .into_iter()
         .map(|(name, status)| format!("{name}={status}"))
@@ -148,6 +149,83 @@ fn snapshot(token: HANDLE) -> String {
 
 fn fixed_status(success: bool, error: Option<u32>, exact: bool, shape: &str) -> String {
     format!("fixed(success={success},win32={error:?},exact_header={exact},shape={shape})")
+}
+
+fn restriction_write_shape(token: HANDLE) -> String {
+    const FIRST: u32 = 0xa5c3_6996;
+    const LENGTH: u32 = 0x7e19_c4d3;
+
+    // Give the length out-parameter its own complementary markers: leaving
+    // it untouched is distinguishable from explicitly reporting length zero.
+    let sample = |before: u32, length_marker: u32| {
+        let mut word = before;
+        let mut returned = length_marker;
+        // SAFETY: live token and two initialized, writable DWORDs. The
+        // documented output size is exactly the size passed to Win32.
+        let success = unsafe {
+            GetTokenInformation(
+                token,
+                TokenHasRestrictions,
+                ptr::from_mut(&mut word).cast(),
+                size_of::<u32>() as u32,
+                &mut returned,
+            )
+        } != 0;
+        let error = status_error(success);
+        let length = (returned != length_marker).then_some(returned);
+        (word, success, error, length)
+    };
+    let (left, first_ok, first_error, first_length) = sample(FIRST, LENGTH);
+    let (right, second_ok, second_error, second_length) = sample(!FIRST, !LENGTH);
+    let (changed, each_full) = complementary_changed_bytes(FIRST, left, right);
+    let same_output = (first_ok && second_ok).then_some(left == right);
+
+    // A combined position mask avoids exposing either sample, or which
+    // particular byte coincided with one sentinel's original value.
+    format!(
+        "first(success={first_ok},win32={first_error:?},returned_bytes={first_length:?}); second(success={second_ok},win32={second_error:?},returned_bytes={second_length:?}); changed_byte_mask=0x{changed:x},each_full={each_full},same_output={same_output:?}"
+    )
+}
+
+fn complementary_changed_bytes(first: u32, left: u32, right: u32) -> (u8, bool) {
+    let left_changed = (first ^ left).to_ne_bytes();
+    let right_changed = (!first ^ right).to_ne_bytes();
+    let union = left_changed
+        .into_iter()
+        .zip(right_changed)
+        .enumerate()
+        .fold(0, |mask, (offset, (a, b))| {
+            if a | b != 0 {
+                mask | (1 << offset)
+            } else {
+                mask
+            }
+        });
+    let each_full = left_changed
+        .into_iter()
+        .chain(right_changed)
+        .all(|byte| byte != 0);
+    (union, each_full)
+}
+
+#[test]
+fn complementary_markers_distinguish_full_partial_and_unchanged_words() {
+    let first = u32::from_ne_bytes([0x12, 0x34, 0x56, 0x78]);
+    assert_eq!(
+        complementary_changed_bytes(first, first, first),
+        (0b1111, false)
+    );
+    assert_eq!(complementary_changed_bytes(first, 0, 0), (0b1111, true));
+    let mut partial = (!first).to_ne_bytes();
+    partial[2] = first.to_ne_bytes()[2];
+    assert_eq!(
+        complementary_changed_bytes(first, first, u32::from_ne_bytes(partial)),
+        (0b0100, false)
+    );
+    assert_eq!(
+        complementary_changed_bytes(first, first, !first),
+        (0, false)
+    );
 }
 
 fn sid_shape(buffer: &TokenBuffer, sid: io::Result<PSID>) -> &'static str {
