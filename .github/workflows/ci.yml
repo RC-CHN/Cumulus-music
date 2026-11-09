@@ -1373,35 +1373,7 @@ jobs:
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --indexed-flac-only --binary .build/target/debug/examples/native_local_equalizer_probe \
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --frontend-dist frontend/dist --root .build/ci-indexed-flac-linux
-      - name: Verify isolated playback preferences and message actions on Linux
-        if: matrix.shard == 'media-decoder'
-        run: |
-          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --features custom-protocol --locked
-          outer_network=$(readlink /proc/self/ns/net)
-          isolated_proof() {
-            sudo unshare --net --fork --kill-child sh -ec '
-              test "$(readlink /proc/self/ns/net)" != "$1"
-              target_user=$2
-              shift 2
-              ip link set lo up
-              # A private dummy route lets WebKit produce a real online sample.
-              # No link in this namespace has a peer on the host or a gateway.
-              ip link add proof0 type dummy
-              ip addr add 192.0.2.1/24 dev proof0
-              ip link set proof0 up
-              ip route add default via 192.0.2.254 dev proof0
-              exec runuser -u "$target_user" -- "$@"
-            ' sh "$outer_network" "$(id -un)" xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
-              env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-              env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
-              /usr/bin/python3 "$@"
-          }
-          isolated_proof scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe --root .build/ci-natural-eof-linux --screenshots
-          isolated_proof scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-history-settings-cohort-linux --screenshots
-          isolated_proof scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-quality-linux --screenshots
-          isolated_proof scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-read-all-linux --screenshots
-          isolated_proof scripts/ci/queue_click_smoke.py --daily-row --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-daily-linux --screenshots
-      - name: Verify native media and playback startup
+      - name: Verify native media and effects with the Linux package runtime
         if: matrix.shard == 'media-startup'
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:
@@ -1414,16 +1386,6 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-stereo-pcm-linux.json --stereo-pcm-flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-stereo-linux.json --stereo-native-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
-          cargo build -p cumulus-desktop --example playback_power_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_smoke.py --binary .build/target/debug/examples/playback_power_ui_probe --root .build/ci-playback-power-linux --screenshots
-          cargo build -p cumulus-desktop --example search_playback_read --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment control --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-control-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment v3 --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-v3-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --download --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-download-linux
-          cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
-          python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
-          python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
-          python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
           # A bare namespace leaves loopback down and /proc/net/route empty.
           # Bring up only loopback so proofs see an initialized, route-free table.
           loopback_only() {
@@ -1434,13 +1396,6 @@ jobs:
               exec runuser -u "$target_user" -- "$@"
             ' sh "$(id -un)" "$@"
           }
-          # The transport cut alone leaves the host default route visible to the download menu.
-          offline_download_proof() {
-            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/main_flow_smoke.py --missing-download "$@"
-          }
-          offline_download_proof --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode recall --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-recall-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode new-uncertain --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-new-uncertain-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           CUMULUS_PROOF_EFFECT_FILTER="$PWD/.build/package-stage/linux-x64/native/libcumulus_audio_filter.so" cargo test -p cumulus-core --lib --locked effect_order_tests -- --ignored --test-threads=1
           cargo build -p cumulus-desktop --example equalizer_ui_probe --features custom-protocol --locked
@@ -1501,7 +1456,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, library-search, local-desktop, account-shell, catalog-community]
+        shard: [playback, playback-podcasts, playback-startup, library-search, local-desktop, account-shell, catalog-community]
     defaults:
       run:
         shell: bash
@@ -1519,7 +1474,7 @@ jobs:
           df -h .
       - *linux_webview_probe_download
       - *linux_webview_probe_restore
-      - name: Verify player, queue and podcast playback
+      - name: Verify player and queue workflows
         if: matrix.shard == 'playback'
         env:
           GDK_BACKEND: x11
@@ -1553,6 +1508,14 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/intelligence_cycle_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-intelligence-cycle-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-collection-linux
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/queue_row_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-row-collection-linux --screenshots --trusted-input
+      - name: Verify podcast playback and related controls
+        if: matrix.shard == 'playback-podcasts'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
@@ -1600,6 +1563,70 @@ jobs:
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/voice_song_download_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-voice-song-download-linux --screenshots --play-completed
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/voice_song_purchased_download_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-voice-song-purchased-download-linux --screenshots
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/voice_song_purchased_download_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-voice-song-purchased-guide-linux --case purchased_quality_guide --screenshots
+      - name: Verify playback startup without the Linux package runtime
+        if: matrix.shard == 'playback-startup'
+        # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
+          cargo build -p cumulus-desktop --example playback_power_ui_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_smoke.py --binary .build/target/debug/examples/playback_power_ui_probe --root .build/ci-playback-power-linux --screenshots
+          cargo build -p cumulus-desktop --example search_playback_read --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment control --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-control-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment v3 --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-v3-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --download --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-download-linux
+          cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
+          python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
+          python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
+          python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
+          # A bare namespace leaves loopback down and /proc/net/route empty.
+          # Bring up only loopback so proofs see an initialized, route-free table.
+          loopback_only() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              target_user=$1
+              shift
+              ip link set lo up
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$(id -un)" "$@"
+          }
+          # The transport cut alone leaves the host default route visible to the download menu.
+          offline_download_proof() {
+            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/main_flow_smoke.py --missing-download "$@"
+          }
+          offline_download_proof --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode recall --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-recall-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode new-uncertain --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-new-uncertain-linux
+      - name: Verify isolated playback preferences and message actions on Linux
+        if: matrix.shard == 'playback-startup'
+        run: |
+          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --features custom-protocol --locked
+          outer_network=$(readlink /proc/self/ns/net)
+          isolated_proof() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              test "$(readlink /proc/self/ns/net)" != "$1"
+              target_user=$2
+              shift 2
+              ip link set lo up
+              # A private dummy route lets WebKit produce a real online sample.
+              # No link in this namespace has a peer on the host or a gateway.
+              ip link add proof0 type dummy
+              ip addr add 192.0.2.1/24 dev proof0
+              ip link set proof0 up
+              ip route add default via 192.0.2.254 dev proof0
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$outer_network" "$(id -un)" xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
+              env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+              env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+              /usr/bin/python3 "$@"
+          }
+          isolated_proof scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe --root .build/ci-natural-eof-linux --screenshots
+          isolated_proof scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-history-settings-cohort-linux --screenshots
+          isolated_proof scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-quality-linux --screenshots
+          isolated_proof scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-read-all-linux --screenshots
+          isolated_proof scripts/ci/queue_click_smoke.py --daily-row --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-daily-linux --screenshots
       - name: Verify library, downloads and search
         if: matrix.shard == 'library-search'
         env:
