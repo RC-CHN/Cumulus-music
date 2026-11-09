@@ -165,6 +165,11 @@ export interface DownloadCollectScope {
   epoch: string;
   receipt: string;
   canCreate: boolean;
+  ownedOnly?: boolean;
+}
+export interface DownloadBatchCollectPlan {
+  receipt: string;
+  acceptedTaskIds: string[];
 }
 export type DownloadCollectCreationCommand =
   | { kind: 'create'; name: string; privatePlaylist: boolean }
@@ -189,6 +194,10 @@ export interface DownloadClient {
     epoch: string,
     taskId: string,
   ): Promise<AccountData<Pick<DownloadCollectScope, 'receipt' | 'canCreate'>>>;
+  downloadBatchCollectPrepare(
+    epoch: string,
+    taskIds: string[],
+  ): Promise<AccountData<DownloadBatchCollectPlan>>;
   downloadCollectDestinations(
     epoch: string,
     receipt: string,

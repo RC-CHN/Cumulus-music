@@ -376,14 +376,14 @@ impl PlaylistService {
         &self,
         token: &SessionToken,
         playlist: &str,
-        song: &str,
+        songs: &[String],
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
             AddDestination::DownloadPicker(playlist),
-            &[song.into()],
+            songs,
             operation_id,
             permission,
             |api| api.download_collection_scope_revision(),

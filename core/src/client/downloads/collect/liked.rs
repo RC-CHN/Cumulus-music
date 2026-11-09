@@ -32,6 +32,12 @@ impl MusicClient {
         receipt: &str,
     ) -> Result<AccountData<Option<DownloadLikedDestination>>> {
         let source = self.download_collection(epoch, receipt)?;
+        if source.single_song().is_err() {
+            return Ok(AccountData {
+                epoch: epoch.into(),
+                value: None,
+            });
+        }
         let ctx = &source.context;
         let slot = &self.downloads.inner.collect;
         let target_receipt = uuid::Uuid::new_v4().simple().to_string();
@@ -102,6 +108,7 @@ impl MusicClient {
         reconcile: bool,
     ) -> Result<AccountData<PlaylistMutationView>> {
         let source = self.download_collection(epoch, receipt)?;
+        let song = source.single_song()?;
         let ctx = &source.context;
         let slot = &self.downloads.inner.collect;
         let (attempt, revision) = with_visit(slot, &source, |visit| {
@@ -153,7 +160,7 @@ impl MusicClient {
                         &ctx.token,
                         &attempt.operation,
                         &attempt.playlist,
-                        std::slice::from_ref(&source.song),
+                        std::slice::from_ref(song),
                         true,
                         &check,
                     )
@@ -165,7 +172,7 @@ impl MusicClient {
                 .guarded_collect_download_liked(
                     &ctx.token,
                     &attempt.playlist,
-                    &source.song,
+                    song,
                     &attempt.operation,
                     &check,
                 )
@@ -189,7 +196,7 @@ impl MusicClient {
         if record.operation_id != attempt.operation
             || !record.system_liked_group
             || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
-                if id == &attempt.playlist && ids.as_slice() == std::slice::from_ref(&source.song))
+                if id == &attempt.playlist && ids.as_slice() == std::slice::from_ref(song))
         {
             return Err(Error::StaleResponse);
         }

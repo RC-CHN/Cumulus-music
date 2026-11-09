@@ -160,6 +160,32 @@ impl StateStore {
         .get(owner, kind, key)
     }
 
+    /// Observe only the requested keys, in request order, in one read snapshot.
+    pub(crate) fn get_ordered(
+        &self,
+        owner: &str,
+        kind: &str,
+        keys: &[String],
+    ) -> Result<Vec<Option<Value>>> {
+        let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut statement = connection.prepare_cached(
+            "SELECT state.value FROM json_each(?3) AS requested
+             LEFT JOIN state ON state.owner=?1 AND state.kind=?2 AND state.key=requested.value
+             ORDER BY requested.key",
+        )?;
+        let keys = serde_json::to_string(keys)?;
+        let values = statement.query_map(params![owner, kind, keys], |row| {
+            row.get::<_, Option<String>>(0)
+        })?;
+        values
+            .map(|value| {
+                value?
+                    .map(|value| serde_json::from_str(&value).map_err(Error::from))
+                    .transpose()
+            })
+            .collect()
+    }
+
     pub(crate) fn playback_download_rows(
         &self,
         owner: &str,

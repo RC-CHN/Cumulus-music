@@ -486,6 +486,8 @@ export function createTauriClient(): CoreClient {
       invoke('download_song_share_access', { epoch, taskId }),
     downloadCollectPrepare: (epoch, taskId) =>
       invoke('download_collect_prepare', { epoch, taskId }),
+    downloadBatchCollectPrepare: (epoch, taskIds) =>
+      invoke('download_batch_collect_prepare', { epoch, taskIds }),
     downloadCollectDestinations: (epoch, receipt, sort, page) =>
       invoke('download_collect_destinations', { epoch, receipt, sort, page }),
     downloadCollectExisting: (epoch, receipt, playlistId) =>

@@ -21,8 +21,8 @@ use crate::{
     storage::StateStore,
 };
 pub use collect::{
-    DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan,
-    DownloadLikedDestination,
+    DownloadBatchCollectPlan, DownloadCollectCreation, DownloadCollectCreationCommand,
+    DownloadCollectPlan, DownloadLikedDestination,
 };
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;
@@ -109,6 +109,7 @@ struct Host {
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
     collect: Mutex<Option<collect::Visit>>,
     clear: Mutex<Option<clear::ClearVisit>>,
+    collect_prepare: std::sync::atomic::AtomicU64,
 }
 struct Worker {
     token: SessionToken,
@@ -166,6 +167,7 @@ impl DownloadHost {
                 jobs: Mutex::new(HashMap::new()),
                 collect: Mutex::new(None),
                 clear: Mutex::new(None),
+                collect_prepare: std::sync::atomic::AtomicU64::new(0),
             }),
         }
     }

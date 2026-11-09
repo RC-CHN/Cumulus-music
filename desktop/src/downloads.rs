@@ -29,6 +29,33 @@ pub fn download_collect_prepare<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DownloadBatchCollectInput {
+    epoch: String,
+    task_ids: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn download_batch_collect_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    request: Request<'_>,
+) -> Result<AccountData<DownloadBatchCollectPlan>, ClientError> {
+    require_collect_window(&window)?;
+    let invalid = || Error::InvalidInput("invalid download collection selection");
+    let input = match request.body() {
+        InvokeBody::Json(body) if body.is_object() => {
+            DownloadBatchCollectInput::deserialize(body).map_err(|_| invalid())?
+        }
+        _ => return Err(invalid().into()),
+    };
+    client
+        .download_batch_collect_prepare(&input.epoch, input.task_ids)
+        .await
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn download_collect_destinations<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
