@@ -38,3 +38,19 @@ Rust 对应
   事务删除快照并写账号/歌单删除标记。等待确认或请求失败不能提前作删除结论；
   已确认删除后迟到的详情不能重建离线快照。其他在线修改后，断网展示仍以最后
   一份完成读取的快照为准，本机成员代次变化则拒绝使用旧快照。
+
+桌面状态与验证
+- 歌单详情显示本机缓存提示和「重试联网读取」。缓存状态只保留查看、筛选、
+  分页和原生验证可用的本地播放；编辑、下载、喜欢、评论、收藏者和拖放
+  不使用这个来源。保持在同一份缓存内时才允许追加页；在请求间切换来源，
+  要重新从第一页读取。恢复联网采用实时页；明确拒绝清除已显示的缓存。
+- 「播放可用曲目」与行播放走 offline_playlist，并以组合版次、歌单 ID 和
+  本机条目绑定；官方双击保留队列偏好仍由 Rust 处理。缓存页只读，不续期
+  账号，不把在线元数据或本机路径交给服务。
+- Linux 的真实 WebView 验收命令（不连接真实账号，音频走 libmpv null）：
+  cargo build --locked -p cumulus-desktop --example local_ui_probe --features custom-protocol
+  sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 \
+    xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_smoke.py \
+    --screenshots --binary .build/target/debug/examples/local_ui_probe --root .build/offline-playlist-webview
+  合成夹具验证在线读取、断网回读、CUE 实际时钟、离线重试、恢复联网、明确
+  拒绝以及拒绝后的再次断网。独立脚本核对 SQLite 条目、请求计数、原文件和截图。
