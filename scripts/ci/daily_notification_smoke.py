@@ -37,6 +37,16 @@ def verify(directory, mode, expected, screenshots):
     assert locale["numeric"] == "C"
     assert all(locale[key].casefold().replace("-", "") == "en_us.utf8"
                for key in ("messages", "characters")), locale
+    native_preflight = read(output / "daily-preflight.json")
+    assert native_preflight[0]["elapsedMs"] < 1000, native_preflight
+    before_due = next(frame for frame in native_preflight if frame["elapsedMs"] >= 4000)
+    assert before_due["planError"] is None, native_preflight
+    assert before_due["armed"] is (mode != "control"), native_preflight
+    if mode == "fullscreen":
+        assert before_due["fullscreen"] or before_due["fullscreenGeometry"], native_preflight
+    else:
+        assert before_due["focused"] and before_due["visible"] and not before_due["minimized"], native_preflight
+        assert before_due["fullscreen"] is False and before_due["fullscreenGeometry"] is False, native_preflight
     fixture = complete["dailyNotificationFixture"]
     calls, history = fixture["calls"], fixture["history"]
     assert all(call["path"] in (SETTINGS, DAILY, MEDIA) for call in calls)
@@ -81,7 +91,8 @@ def verify(directory, mode, expected, screenshots):
     assert images == (len(labels) if screenshots else 0)
     return dict(mode=mode, states=labels, screenshots=images, calls=[call["path"] for call in calls],
                 signedAccountAssignment=True, actualWebView=True, nativeNullPlayback=mode == "play",
-                foregroundWindowOnly=True, locale=locale, realMusicRequests=0, realAccountWrites=0)
+                foregroundWindowOnly=True, nativePreflight=before_due, locale=locale,
+                realMusicRequests=0, realAccountWrites=0)
 
 
 def main():
