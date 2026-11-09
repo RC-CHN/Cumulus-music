@@ -47,6 +47,7 @@
     listCalls = 0;
   let blockedFrames = 0;
   let openingFrameStall = null;
+  let firstCreateEntrance = null;
   const motionClasses =
     ".playlist-collect-dialog.modal-enter-active,.playlist-collect-dialog.modal-leave-active,.collect-step-enter-active,.collect-step-leave-active";
   const geometry = (d) => {
@@ -55,6 +56,9 @@
     return {
       width: rect.width,
       layoutWidth: d.offsetWidth,
+      clientWidth: d.clientWidth,
+      scrollWidth: d.scrollWidth,
+      scrollLeft: d.scrollLeft,
       opacity: style.opacity,
       transform: style.transform,
       classes: d.className,
@@ -143,6 +147,10 @@
     await emit(`ux_${String(++count).padStart(2, "0")}_${label}`, {
       width: innerWidth,
       height: innerHeight,
+      firstCreateEntrance: label === "create_1120_light" ? firstCreateEntrance : null,
+      invalidNameConfirmed: label.startsWith("create_")
+        ? one('[aria-label="歌单名称"]')?.getAttribute("aria-invalid") === "true"
+        : null,
       theme: document.documentElement.dataset.theme,
       rows: all(".collect-row").length,
       dialog: !!d,
@@ -190,15 +198,38 @@
   async function create() {
     list().scrollTop = 0;
     await sleep(90);
-    await withBlockedFrames(async () => {
-      click(button("创建新歌单", dialog()));
-      await wait(
-        () =>
-          one(".collect-create") &&
-          !one(".collect-step-enter-active,.collect-step-leave-active"),
-        "create form",
-      );
-    });
+    const d = dialog();
+    const observer = count === 3 ? new MutationObserver(() => {
+      const form = d.querySelector(".collect-create.collect-step-enter-from");
+      if (!form || firstCreateEntrance) return;
+      const position = form.getBoundingClientRect();
+      const bounds = d.getBoundingClientRect();
+      firstCreateEntrance = {
+        dialog: geometry(d),
+        shift: Math.round(position.left - bounds.left),
+        form: geometry(form),
+      };
+    }) : null;
+    observer?.observe(d, {subtree:true, childList:true, attributes:true, attributeFilter:["class"]});
+    try {
+      await withBlockedFrames(async () => {
+        click(button("创建新歌单", d));
+        await wait(
+          () =>
+            one(".collect-create") &&
+            !one(".collect-step-enter-active,.collect-step-leave-active"),
+          "create form",
+        );
+      });
+    } finally {
+      observer?.disconnect();
+    }
+    if (count === 3) {
+      assert(firstCreateEntrance?.shift === 8, "create transition starts at the official pane offset");
+      const box = firstCreateEntrance.dialog;
+      assert(box.scrollWidth === box.clientWidth && box.scrollLeft === 0,
+        "sliding creation pane stays inside the dialog");
+    }
     assert(
       document.activeElement === one('[aria-label="歌单名称"]'),
       "create focuses input",
@@ -260,6 +291,11 @@
       await create();
       assert(button("创建并收藏", dialog()).disabled, "empty name disabled");
       input("用来检查名称长度的合成歌单名称不能超出当前上限");
+      await wait(() =>
+        one('[aria-label="歌单名称"]')?.getAttribute("aria-invalid") === "true" &&
+          one("#collect-name-count")?.textContent.includes("46 / 40"),
+      "long-name validation has rendered");
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       assert(button("创建并收藏", dialog()).disabled, "long name disabled");
       await capture(`create_${w}_${theme}`);
       input("保留的草稿");
@@ -407,6 +443,7 @@
       active: document.activeElement?.outerHTML?.slice(0, 250),
       dialog: dialog()?.textContent?.slice(0, 800),
       geometry: geometry(dialog()),
+      firstCreateEntrance,
     });
   }
 })();

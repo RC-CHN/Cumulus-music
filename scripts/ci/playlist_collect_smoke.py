@@ -55,6 +55,12 @@ def verify(root, capture, stall_frames=False):
     stable = initial['geometry']
     assert round(stable['width']) == stable['layoutWidth'] == 442
     assert stable['opacity'] == '1' and stable['transform'] == 'none'
+    creation = json.loads((root / 'first/ux_04_create_1120_light.json').read_text(encoding='utf-8'))
+    assert creation['invalidNameConfirmed'] is True
+    entrance = creation['firstCreateEntrance']
+    assert entrance['shift'] == 8 and entrance['form']['transform'] != 'none'
+    assert entrance['dialog']['scrollWidth'] == entrance['dialog']['clientWidth'] == 442
+    assert entrance['dialog']['scrollLeft'] == 0
     assert complete['ok'] and complete['collectionUi'] and complete['creationRetryVerified'] and complete['uncertainReadbackVerified']
     assert complete['sortedPaginationVerified']
     pages = complete['syntheticCollection']['sortedPages']

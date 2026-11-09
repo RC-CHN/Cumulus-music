@@ -375,138 +375,151 @@ async function reconcile() {
         核对结果
       </button>
     </div>
-    <BoundedPanelTransition name="collect-step" @after-enter="entered">
-      <form
-        v-if="creating"
-        key="create"
-        class="collect-create"
-        :data-download-create-phase="downloadCollection ? creationPhase : undefined"
-        @submit.prevent="submit"
-      >
-        <fieldset
-          :disabled="busy || pending || !!created || (downloadCollection && creationLocked)"
+    <div class="collect-step-viewport">
+      <BoundedPanelTransition name="collect-step" @after-enter="entered">
+        <form
+          v-if="creating"
+          key="create"
+          class="collect-create"
+          :data-download-create-phase="downloadCollection ? creationPhase : undefined"
+          @submit.prevent="submit"
         >
-          <label
-            >歌单名称<input
-              ref="nameInput"
-              v-model="name"
-              aria-label="歌单名称"
-              aria-describedby="collect-name-count"
-              :aria-invalid="!!name && invalid"
-              placeholder="输入歌单标题"
-              maxlength="80"
-            />
-            <small
-              id="collect-name-count"
-              :class="{ 'form-warning': playlistLength(name.trim()) > 40 }"
+          <fieldset
+            :disabled="busy || pending || !!created || (downloadCollection && creationLocked)"
+          >
+            <label
+              >歌单名称<input
+                ref="nameInput"
+                v-model="name"
+                aria-label="歌单名称"
+                aria-describedby="collect-name-count"
+                :aria-invalid="!!name && invalid"
+                placeholder="输入歌单标题"
+                maxlength="80"
+              />
+              <small
+                id="collect-name-count"
+                :class="{ 'form-warning': playlistLength(name.trim()) > 40 }"
+              >
+                {{ playlistLength(name.trim()) }} / 40 · 中文计 2 个字符
+              </small></label
             >
-              {{ playlistLength(name.trim()) }} / 40 · 中文计 2 个字符
-            </small></label
-          >
-          <label class="private-checkbox"
-            ><input
-              v-model="privateList"
-              type="checkbox"
-              :aria-label="downloadCollection ? '设为隐私歌单' : '设为私密歌单'"
-            />{{ downloadCollection ? '设为隐私歌单' : '设为私密歌单' }}</label
-          >
-          <p v-if="!privateList" class="muted">公开歌单可被其他用户查看和收藏。</p>
-          <p v-if="name && invalid" class="form-warning">
-            名称不能包含 @ 或 #，并请保持在字数上限内。
+            <label class="private-checkbox"
+              ><input
+                v-model="privateList"
+                type="checkbox"
+                :aria-label="downloadCollection ? '设为隐私歌单' : '设为私密歌单'"
+              />{{ downloadCollection ? '设为隐私歌单' : '设为私密歌单' }}</label
+            >
+            <p v-if="!privateList" class="muted">公开歌单可被其他用户查看和收藏。</p>
+            <p v-if="name && invalid" class="form-warning">
+              名称不能包含 @ 或 #，并请保持在字数上限内。
+            </p>
+          </fieldset>
+          <p v-if="created" class="muted" role="status">歌单已创建，继续将歌曲收藏到这个歌单。</p>
+          <p v-if="downloadCollection && creationNotice" role="status" data-download-create-notice>
+            {{ creationNotice }}
           </p>
-        </fieldset>
-        <p v-if="created" class="muted" role="status">歌单已创建，继续将歌曲收藏到这个歌单。</p>
-        <p v-if="downloadCollection && creationNotice" role="status" data-download-create-notice>
-          {{ creationNotice }}
-        </p>
-        <footer>
+          <footer>
+            <button
+              v-if="downloadCollection && creationPhase === 'pending'"
+              ref="creationDecision"
+              type="button"
+              class="secondary"
+              :disabled="busy"
+              @click="resolveDownloadCreation(false)"
+            >
+              核对结果
+            </button>
+            <button
+              v-else-if="downloadCollection && creationPhase === 'created_ready'"
+              ref="creationDecision"
+              type="button"
+              class="primary"
+              :disabled="busy"
+              @click="resolveDownloadCreation(true)"
+            >
+              继续收藏
+            </button>
+            <button
+              v-else-if="!downloadCollection || creationPhase === 'prepared'"
+              type="submit"
+              class="primary"
+              :disabled="!created && invalid"
+              :aria-disabled="busy || pending"
+            >
+              {{
+                busy
+                  ? '正在收藏…'
+                  : created
+                    ? '继续收藏'
+                    : downloadCollection
+                      ? '创建'
+                      : '创建并收藏'
+              }}
+            </button>
+          </footer>
+        </form>
+        <div v-else key="list" class="collect-body">
+          <div
+            class="collect-sort-tabs"
+            role="tablist"
+            aria-label="收藏歌单排序"
+            @keydown="sortKey"
+          >
+            <button
+              v-for="option in sortOptions"
+              :key="option.value"
+              role="tab"
+              type="button"
+              :data-collect-sort="option.value"
+              :aria-selected="sort === option.value"
+              :tabindex="sort === option.value ? 0 : -1"
+              :aria-disabled="busy || pending || fixedDestination"
+              @click="selectSort(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+          <div v-if="current.error || current.loading" class="collect-load" role="status">
+            <span>{{ current.error || '正在刷新歌单…' }}</span>
+            <button
+              v-if="current.error"
+              class="text-button"
+              :aria-disabled="current.loading || fixedDestination"
+              @click="reload()"
+            >
+              {{ current.loading ? '正在重试…' : '重试' }}
+            </button>
+          </div>
+          <PlaylistCollectList
+            :key="sort"
+            :playlists="current.rows"
+            :disabled="busy || pending || fixedDestination"
+            :include-create="!downloadCollection || downloadCollection.canCreate"
+            :system-liked="!!likedDestination"
+            :show-working="!downloadCollection || busy"
+            :selected-id="selected"
+            :scroll-top="current.top"
+            :loading="current.loading || !!current.error || current.next !== null"
+            @scroll="current.top = $event"
+            @near-end="reload(true)"
+            @select="collect"
+            @liked="collectLiked"
+            @create="startCreate"
+          />
           <button
-            v-if="downloadCollection && creationPhase === 'pending'"
-            ref="creationDecision"
+            v-if="current.next !== null && current.next !== 0 && !current.error"
             type="button"
-            class="secondary"
-            :disabled="busy"
-            @click="resolveDownloadCreation(false)"
-          >
-            核对结果
-          </button>
-          <button
-            v-else-if="downloadCollection && creationPhase === 'created_ready'"
-            ref="creationDecision"
-            type="button"
-            class="primary"
-            :disabled="busy"
-            @click="resolveDownloadCreation(true)"
-          >
-            继续收藏
-          </button>
-          <button
-            v-else-if="!downloadCollection || creationPhase === 'prepared'"
-            type="submit"
-            class="primary"
-            :disabled="!created && invalid"
-            :aria-disabled="busy || pending"
-          >
-            {{
-              busy ? '正在收藏…' : created ? '继续收藏' : downloadCollection ? '创建' : '创建并收藏'
-            }}
-          </button>
-        </footer>
-      </form>
-      <div v-else key="list" class="collect-body">
-        <div class="collect-sort-tabs" role="tablist" aria-label="收藏歌单排序" @keydown="sortKey">
-          <button
-            v-for="option in sortOptions"
-            :key="option.value"
-            role="tab"
-            type="button"
-            :data-collect-sort="option.value"
-            :aria-selected="sort === option.value"
-            :tabindex="sort === option.value ? 0 : -1"
-            :aria-disabled="busy || pending || fixedDestination"
-            @click="selectSort(option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-        <div v-if="current.error || current.loading" class="collect-load" role="status">
-          <span>{{ current.error || '正在刷新歌单…' }}</span>
-          <button
-            v-if="current.error"
-            class="text-button"
-            :aria-disabled="current.loading || fixedDestination"
+            class="text-button collect-more"
+            :aria-disabled="current.loading || busy || pending || fixedDestination"
             @click="reload()"
           >
-            {{ current.loading ? '正在重试…' : '重试' }}
+            {{ current.loading ? '正在加载…' : '加载更多歌单' }}
           </button>
         </div>
-        <PlaylistCollectList
-          :key="sort"
-          :playlists="current.rows"
-          :disabled="busy || pending || fixedDestination"
-          :include-create="!downloadCollection || downloadCollection.canCreate"
-          :system-liked="!!likedDestination"
-          :show-working="!downloadCollection || busy"
-          :selected-id="selected"
-          :scroll-top="current.top"
-          :loading="current.loading || !!current.error || current.next !== null"
-          @scroll="current.top = $event"
-          @near-end="reload(true)"
-          @select="collect"
-          @liked="collectLiked"
-          @create="startCreate"
-        />
-        <button
-          v-if="current.next !== null && current.next !== 0 && !current.error"
-          type="button"
-          class="text-button collect-more"
-          :aria-disabled="current.loading || busy || pending || fixedDestination"
-          @click="reload()"
-        >
-          {{ current.loading ? '正在加载…' : '加载更多歌单' }}
-        </button>
-      </div>
-    </BoundedPanelTransition>
+      </BoundedPanelTransition>
+    </div>
     <p v-if="busy && !(creating && downloadCollection)" class="collect-status" role="status">
       正在收藏，请稍候…
     </p>

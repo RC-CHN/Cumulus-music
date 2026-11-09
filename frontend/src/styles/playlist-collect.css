@@ -30,6 +30,15 @@
   position: absolute;
   left: -10px;
 }
+.collect-step-viewport {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  /* The 8px step animation must not widen or scroll the outer dialog. */
+  overflow: hidden;
+  overflow: clip;
+}
 .collect-body {
   min-height: 0;
   display: flex;
