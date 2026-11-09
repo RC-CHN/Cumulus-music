@@ -59,6 +59,10 @@
     input.dispatchEvent(new Event('input', { bubbles: true }));
     one('.searchbox').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await wait(() => one('.search-heading-copy h1')?.textContent === word, 'fixed search heading missing');
+    await wait(() => {
+      const comprehensive = one('#search-result-panel[aria-labelledby="search-tab-all"][aria-busy="false"]');
+      return comprehensive && !comprehensive.querySelector('[role="alert"]');
+    }, 'comprehensive search did not settle');
     await click('[data-category="songs"]', 'songs tab missing');
     const row = `[aria-labelledby="search-tab-songs"] [data-track-id="${song}"]`;
     await wait(() => live ? one(row) : one(row)?.textContent.includes('合成窗口音频') &&
@@ -70,6 +74,7 @@
     const player = () => invoke('player_snapshot', { epoch: account.epoch });
     const playing = await wait(async () => {
       const result = await player();
+      if (live && result.error) throw new Error('native source stopped before playback');
       return result.track?.id === song && result.state === 'playing' && result.position > 0.25 &&
         result.queueLen === 1 && result.playId && bar()?.dataset.state === 'playing' && result;
     }, 'verified AAC did not advance on native clock');

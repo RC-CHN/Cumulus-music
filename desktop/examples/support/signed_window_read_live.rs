@@ -114,27 +114,77 @@ impl HttpBackend for ApiScope {
 }
 
 struct MediaScope {
-    backend: ReqwestMediaBackend,
+    backend: Option<ReqwestMediaBackend>,
     host: String,
     reads: AtomicUsize,
+    discovered: Mutex<Option<String>>,
+}
+impl MediaScope {
+    fn discovered_authority(&self) -> Option<String> {
+        self.discovered.lock().ok()?.clone()
+    }
 }
 impl MediaBackend for MediaScope {
     fn get(&self, request: MediaRequest) -> ApiFuture<'_, MediaReply> {
         Box::pin(async move {
             let url = url::Url::parse(request.url.as_str())
                 .map_err(|_| Error::State("proof media URL is invalid"))?;
-            if url.scheme() != "https"
-                || url.host_str() != Some(self.host.as_str())
-                || request.offset != 0
-                || request.if_range.is_some()
-                || self.reads.fetch_add(1, Ordering::AcqRel) != 0
-            {
+            let host = url
+                .host_str()
+                .ok_or(Error::State("proof media host is missing"))?;
+            if url.scheme() != "https" || request.offset != 0 || request.if_range.is_some() {
+                return Err(Error::State("proof media request is not an ordinary read"));
+            }
+            let Some(backend) = &self.backend else {
+                // The caller has already consumed the Gate's exact one-use
+                // nontrial receipt. Discovery never constructs a media client.
+                let mut found = self.discovered.lock().map_err(|_| Error::LockPoisoned)?;
+                if found.is_none() {
+                    *found = Some(host.to_owned());
+                }
+                return Err(Error::State("proof CDN discovery stops before media"));
+            };
+            if host != self.host || self.reads.fetch_add(1, Ordering::AcqRel) != 0 {
                 return Err(Error::State(
                     "proof media escaped the one approved authority",
                 ));
             }
-            self.backend.get(request).await
+            backend.get(request).await
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cumulus_core::download::transfer::MediaUrl;
+
+    #[test]
+    fn discovery_records_only_one_host_without_a_media_transport() {
+        let media = MediaScope {
+            backend: None,
+            host: "m1.music.126.net".into(),
+            reads: AtomicUsize::new(0),
+            discovered: Mutex::default(),
+        };
+        let request = |url, offset| MediaRequest {
+            url: MediaUrl::parse(url).unwrap(),
+            offset,
+            if_range: None,
+        };
+        let one = "https://m2.music.126.net/example.m4a?synthetic=secret";
+        let two = "https://m3.music.126.net/other.m4a";
+        tauri::async_runtime::block_on(async {
+            assert!(media.get(request(one, 5)).await.is_err());
+            assert!(media.discovered_authority().is_none());
+            assert!(media.get(request(one, 0)).await.is_err());
+            assert!(media.get(request(two, 0)).await.is_err());
+        });
+        assert_eq!(
+            media.discovered_authority().as_deref(),
+            Some("m2.music.126.net")
+        );
+        assert_eq!(media.reads.load(Ordering::Acquire), 0);
     }
 }
 
@@ -287,12 +337,15 @@ fn report(
 
 pub fn run() -> i32 {
     std::panic::set_hook(Box::new(|_| {}));
-    if std::env::args_os().count() != 2 {
-        return 2;
-    }
+    let args = std::env::args_os().skip(1).take(3).collect::<Vec<_>>();
+    let discover = match args.as_slice() {
+        [live] if live == "--live" => false,
+        [live, discover] if live == "--live" && discover == "--discover-cdn" => true,
+        _ => return 2,
+    };
     match sandbox::admit() {
         Ok(prepared) => {
-            if start(prepared).is_ok() {
+            if start(prepared, discover).is_ok() {
                 0
             } else {
                 let _ = sandbox::write_report(
@@ -305,7 +358,10 @@ pub fn run() -> i32 {
     }
 }
 
-fn start(prepared: sandbox::Prepared) -> std::result::Result<(), Box<dyn std::error::Error>> {
+fn start(
+    prepared: sandbox::Prepared,
+    discover: bool,
+) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let ProofContext {
         context,
         assets,
@@ -322,12 +378,14 @@ fn start(prepared: sandbox::Prepared) -> std::result::Result<(), Box<dyn std::er
         reads: Mutex::default(),
     });
     let media = Arc::new(MediaScope {
-        backend: ReqwestMediaBackend::for_signed_read_proof(
-            Duration::from_secs(12),
-            prepared.broker,
-        )?,
+        backend: (!discover)
+            .then(|| {
+                ReqwestMediaBackend::for_signed_read_proof(Duration::from_secs(12), prepared.broker)
+            })
+            .transpose()?,
         host: params.media_host.clone(),
         reads: AtomicUsize::new(0),
+        discovered: Mutex::default(),
     });
     let services = Arc::new(ClosedServices::default());
     let credentials = Arc::new(Credentials::open(
@@ -381,6 +439,27 @@ fn start(prepared: sandbox::Prepared) -> std::result::Result<(), Box<dyn std::er
                     let resources_first = api.account_resources_first();
                     let observed = gate.facts().await;
                     let expected = STAGES.get(progress.count).copied().unwrap_or("complete");
+                    if discover && stage == "failed" && progress.count == 2
+                        && resources_first && observed.expected_account_verified
+                        && observed.comprehensive_read && observed.selected_song_found
+                        && observed.song_detail_read && observed.media_authorized
+                        && observed.media_consumed && !observed.closed_after_failure
+                        && media.reads.load(Ordering::Acquire) == 0
+                        && native.pinned_loads.load(Ordering::Acquire) == 0
+                        && services.auxiliary.load(Ordering::Acquire) == 0
+                        && services.other_media.load(Ordering::Acquire) == 0
+                        && progress.accept_account(&client, &params.expected_uid).is_some()
+                        && let Some(authority) = media.discovered_authority()
+                    {
+                        let closed = config.close().is_ok();
+                        let mut proof = report(closed, &assets, &progress, observed,
+                            Counters { media: &media, native: &native, services: &services }, true);
+                        proof["discoveryOnly"] = json!(true);
+                        proof["mediaAuthority"] = json!(authority);
+                        let written = sandbox::write_report(&proof).is_ok();
+                        app.exit(if closed && written { 0 } else { 1 });
+                        return;
+                    }
                     let mut ok = stage == expected && observed.expected_account_verified
                         && observed.playlist_count.is_some() && observed.liked_count.is_some() && resources_first
                         && !observed.closed_after_failure && services.auxiliary.load(Ordering::Acquire) == 0

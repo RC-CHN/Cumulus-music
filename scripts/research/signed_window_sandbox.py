@@ -172,7 +172,7 @@ def _display(root, deadline):
             os.close(write_fd)
 
 
-def _command(binary, prepared, work, output, broker, config, display, netns):
+def _command(binary, prepared, work, output, broker, config, display, netns, discover_cdn=False):
     name, display_socket, authority = display
     return [
         "/usr/bin/bwrap", "--unshare-user", "--unshare-net", "--unshare-ipc", "--unshare-pid",
@@ -194,6 +194,7 @@ def _command(binary, prepared, work, output, broker, config, display, netns):
         "--setenv", "CUMULUS_SANDBOX_OUTER_NETNS", netns, "--chdir", "/work",
         "--", "/usr/bin/dbus-run-session", "--dbus-daemon=/usr/bin/dbus-daemon", "--config-file=/session.conf",
         "--", "/usr/bin/python3", "-I", "/sandbox.py", "--worker",
+        *(["--discover-cdn"] if discover_cdn else []),
     ]
 
 
@@ -250,7 +251,7 @@ class _Forward(socketserver.BaseRequestHandler):
             pass
 
 
-def _worker():
+def _worker(discover_cdn=False):
     outer = os.environ.pop("CUMULUS_SANDBOX_OUTER_NETNS", "")
     _require(re.fullmatch(r"net:\[[0-9]+\]", outer) and os.readlink("/proc/self/ns/net") != outer,
              "proof does not have a fresh network namespace")
@@ -273,7 +274,8 @@ def _worker():
         server.start()
         try:
             env = dict(os.environ, CUMULUS_SIGNED_WINDOW_PROXY=PROXY)
-            status = subprocess.run(["/probe", "--live"], env=env, stdin=subprocess.DEVNULL,
+            command = ["/probe", "--live"] + (["--discover-cdn"] if discover_cdn else [])
+            status = subprocess.run(command, env=env, stdin=subprocess.DEVNULL,
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         finally:
             bridge.stopped.set()
@@ -306,8 +308,8 @@ def _receipt(output):
     return result
 
 
-def run(binary, prepared, work, output, broker, *, timeout=55):
-    """Run only `/probe --live`; all paths must be exact, absolute scratch paths.
+def run(binary, prepared, work, output, broker, *, timeout=55, discover_cdn=False):
+    """Run the exact live or discovery probe in an isolated scratch namespace.
 
     `prepared` contains the closed input tree and `parameters.json`; it is
     mounted read-only. `work` and `output` start empty, owner-only, and writable.
@@ -316,7 +318,8 @@ def run(binary, prepared, work, output, broker, *, timeout=55):
     """
     try:
         _require(sys.platform == "linux" and type(timeout) in (int, float)
-                 and math.isfinite(timeout) and 5 <= timeout <= 60, "unsupported sandbox timeout or platform")
+                 and math.isfinite(timeout) and 5 <= timeout <= 60
+                 and type(discover_cdn) is bool, "unsupported sandbox timeout, mode or platform")
         binary, prepared, work, output, broker = _paths(binary, prepared, work, output, broker)
         deadline = time.monotonic() + timeout
         with tempfile.TemporaryDirectory(prefix="cumulus-signed-window-", dir="/tmp") as raw_config:
@@ -327,7 +330,7 @@ def run(binary, prepared, work, output, broker, *, timeout=55):
             _private_write(config / "session.conf", SESSION_BUS)
             with _display(config, deadline) as display:
                 command = _command(binary, prepared, work, output, broker, config, display,
-                                   os.readlink("/proc/self/ns/net"))
+                                   os.readlink("/proc/self/ns/net"), discover_cdn)
                 with subprocess.Popen(command, env={"PATH": PATH}, start_new_session=True,
                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                       stderr=subprocess.DEVNULL) as child:
@@ -344,9 +347,9 @@ def run(binary, prepared, work, output, broker, *, timeout=55):
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] != ["--worker"]:
+    if sys.argv[1:] not in (["--worker"], ["--worker", "--discover-cdn"]):
         raise SystemExit(2)
     try:
-        _worker()
+        _worker(discover_cdn=len(sys.argv) == 3)
     except (SandboxError, OSError, ValueError, subprocess.SubprocessError):
         raise SystemExit(1) from None
