@@ -245,14 +245,41 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "requires real Windows fixed local NTFS and trusted package libmpv; null output"]
     async fn windows_rooted_actor_loads_held_wav_after_filename_replacement() {
+        actor_loads_held_after_filename_replacement(
+            "wav",
+            &wave(88_200, 256),
+            &wave(132_300, 1024),
+            2.0,
+        )
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "requires real Windows fixed local NTFS, trusted package ffprobe and libmpv; null output"]
+    async fn windows_rooted_actor_loads_held_flac_after_filename_replacement() {
+        actor_loads_held_after_filename_replacement(
+            "flac",
+            include_bytes!("../../../tests/fixtures/tag_audio/seed.flac"),
+            include_bytes!("../../../tests/fixtures/stereo-pcm-source.flac"),
+            1.0,
+        )
+        .await;
+    }
+
+    async fn actor_loads_held_after_filename_replacement(
+        format: &str,
+        original: &[u8],
+        replacement: &[u8],
+        duration: f64,
+    ) {
         let dir = tempfile::tempdir().unwrap();
-        let source = dir.path().join("first.wav");
-        fs::write(&source, wave(88_200, 256)).unwrap();
+        let source = dir.path().join("first").with_extension(format);
+        fs::write(&source, original).unwrap();
         let mut batch = WindowsNativeOpenBatch::new();
         batch.push(source.clone(), &Ffprobe::default()).unwrap();
         let resources = batch.resources();
-        fs::rename(&source, dir.path().join("retained.wav")).unwrap();
-        fs::write(&source, wave(132_300, 1024)).unwrap();
+        fs::rename(&source, dir.path().join("retained").with_extension(format)).unwrap();
+        fs::write(&source, replacement).unwrap();
 
         let store = Arc::new(StateStore::open(dir.path().join("state")).unwrap());
         let session = Arc::new(AccountSession::new(Arc::new(Offline), Some(store.clone())));
@@ -300,7 +327,7 @@ mod tests {
         })
         .await
         .expect("actual MPV clock");
-        assert_eq!(playing.timeline.unwrap().total, Some(2.0));
+        assert_eq!(playing.timeline.unwrap().total, Some(duration));
         assert_eq!(playing.selected.unwrap().resource, resources[0]);
     }
 }

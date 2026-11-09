@@ -343,8 +343,10 @@ string), NtCreateFile (root-relative and NT device names), OBJECT_ATTRIBUTES
 - https://learn.microsoft.com/openspecs/windows_protocols/ms-fscc/616b66d5-b335-4e1c-8f87-b4a55e8d3e4a
 
 On Windows with a fixed NTFS temp root, run the ignored
-`windows_rooted_wav_metadata_and_readers_keep_the_exact_open_object` and
-`windows_rooted_actor_loads_held_wav_after_filename_replacement` core lib
-tests; the latter uses actual libmpv with null output and the trusted runtime
-discovery rules. Run the separate held FFprobe test against the packaged
-executable. These native cases are not reported as passed by cross-compilation.
+`windows_rooted_wav_metadata_and_readers_keep_the_exact_open_object`,
+`windows_rooted_actor_loads_held_wav_after_filename_replacement`, and
+`windows_rooted_actor_loads_held_flac_after_filename_replacement` core lib
+tests. The actor tests use actual libmpv with null output and the trusted
+runtime discovery rules. Run them and the separate held FLAC metadata test
+against the packaged ffprobe executable. These native cases are not reported
+as passed by cross-compilation.
