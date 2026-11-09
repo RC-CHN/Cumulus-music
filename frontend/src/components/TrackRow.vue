@@ -27,6 +27,7 @@ const props = defineProps<{
   pendingToggle?: TrackPendingToggle;
   toggleBusy?: boolean;
   navigable?: boolean;
+  readOnly?: boolean;
   selection?: boolean;
 }>();
 const emit = defineEmits<{
@@ -70,7 +71,8 @@ function primary(event: MouseEvent) {
   }, anchor);
 }
 function more(event: MouseEvent | KeyboardEvent) {
-  emit('more', { track: props.track, event, play: () => emit('play', props.index) });
+  if (!props.readOnly)
+    emit('more', { track: props.track, event, play: () => emit('play', props.index) });
 }
 function duration(ms: number) {
   const seconds = Math.floor(ms / 1000);
@@ -120,7 +122,7 @@ function duration(ms: number) {
     ></span>
     <div class="track-title" :role="cellRole">
       <img
-        v-if="track.coverUrl"
+        v-if="!readOnly && track.coverUrl"
         :src="artworkAt(track.coverUrl, 120)"
         alt=""
         loading="lazy"
@@ -195,7 +197,7 @@ function duration(ms: number) {
         :class="{ liked: liked }"
         :aria-label="`${liked ? '取消喜欢' : '喜欢'} ${track.name}`"
         :aria-pressed="liked"
-        :disabled="track.missing || track.local || busy"
+        :disabled="readOnly || track.missing || track.local || busy"
         @click.stop="emit('like', track)"
         @dblclick.stop
       >
@@ -204,6 +206,7 @@ function duration(ms: number) {
     <span class="track-time-actions" :role="cellRole"
       ><span class="track-duration">{{ track.missing ? '—' : duration(track.durationMs) }}</span
       ><button
+        v-if="!readOnly"
         class="icon-button track-more"
         data-result-action="more"
         :aria-label="`更多操作 ${track.name}`"

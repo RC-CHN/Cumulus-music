@@ -48,6 +48,8 @@ async function submit() {
     if (target.kind === 'add') {
       const current = await core.playlistPage(id, { offset: 0, limit: 1 });
       if (!props.live() || current.epoch !== epoch) return;
+      if (current.value.playlistOffline)
+        throw { code: 'playlist_offline', message: '请联网后再编辑歌单成员' };
       if (current.value.playlist?.id !== id || !current.value.playlistLocal)
         throw new Error('歌单不可编辑');
       revision = current.value.playlistLocal.revision;

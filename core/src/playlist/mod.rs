@@ -24,3 +24,6 @@ pub use service::PlaylistService;
 pub(crate) use snapshot::playlist_entry_id;
 pub use snapshot::{PlaylistList, PlaylistSnapshot, PlaylistSummary};
 pub use types::*;
+
+pub(crate) const OFFLINE_SNAPSHOT_KIND: &str = "playlist-offline-snapshot-v1";
+pub(crate) const OFFLINE_DELETED_KIND: &str = "playlist-offline-deleted-v1";

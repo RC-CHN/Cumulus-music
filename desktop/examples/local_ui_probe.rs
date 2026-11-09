@@ -6,6 +6,8 @@ mod mixed_playlist_fixture;
 mod mixed_reorder_fixture;
 #[path = "../../core/tests/support/native_lyric_wave.rs"]
 mod native_lyric_wave;
+#[path = "support/offline_playlist_fixture.rs"]
+mod offline_playlist_fixture;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -209,8 +211,9 @@ fn main() {
     let mixed_membership = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
     let mixed_queue = std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF").is_some();
     let reorder = std::env::var_os("CUMULUS_MIXED_REORDER_PROOF").is_some();
+    let cached_playlist = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_PROOF").is_some();
     assert!(
-        [mixed_membership, mixed_queue, reorder]
+        [mixed_membership, mixed_queue, reorder, cached_playlist]
             .into_iter()
             .filter(|enabled| *enabled)
             .count()
@@ -218,7 +221,8 @@ fn main() {
         "select only one mixed playlist proof mode"
     );
     let mixed = mixed_membership || mixed_queue;
-    assert!(!(mixed || reorder) || !(reopen || queue || cold || directory_selection));
+    let sealed_playlist = mixed || reorder || cached_playlist;
+    assert!(!sealed_playlist || !(reopen || queue || cold || directory_selection));
     let mixed_queue_script = mixed_queue.then(|| {
         let path = PathBuf::from(
             std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_SCRIPT")
@@ -239,6 +243,10 @@ fn main() {
         fs::create_dir(&root).expect("new synthetic mixed reorder root");
         Arc::new(mixed_reorder_fixture::Fixture::new(&root).expect("mixed reorder audio"))
     });
+    let cached_fixture = cached_playlist.then(|| {
+        fs::create_dir(&root).expect("new synthetic offline playlist root");
+        Arc::new(offline_playlist_fixture::Fixture::new(&root).expect("offline playlist audio"))
+    });
     let mixed_fixture = mixed.then(|| {
         fs::create_dir(&root).expect("new synthetic mixed playlist root");
         let fixture = mixed_playlist_fixture::Fixture::new(&root).expect("mixed playlist audio");
@@ -249,7 +257,7 @@ fn main() {
         }
         Arc::new(fixture)
     });
-    if !reopen && !mixed && !reorder {
+    if !reopen && !sealed_playlist {
         fs::create_dir(&root).expect("new proof root");
         fixtures(&root, cold || directory_selection, queue).expect("generated local fixtures");
         if queue {
@@ -308,16 +316,17 @@ fn main() {
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
         let offline=Arc::new(Offline { hold:cold, started:AtomicBool::new(false), release:tokio::sync::Notify::new() });
         let store=registry.store();
-        let api: Arc<dyn Api>=match (&mixed_fixture,&reorder_fixture) {
-            (Some(fixture),None)=>fixture.clone(),
-            (None,Some(fixture))=>fixture.clone(),
-            (None,None)=>offline.clone(),
-            (Some(_),Some(_))=>unreachable!(),
+        let api: Arc<dyn Api>=match (&mixed_fixture,&reorder_fixture,&cached_fixture) {
+            (Some(fixture),None,None)=>fixture.clone(),
+            (None,Some(fixture),None)=>fixture.clone(),
+            (None,None,Some(fixture))=>fixture.clone(),
+            (None,None,None)=>offline.clone(),
+            _=>unreachable!(),
         };
         let session=Arc::new(AccountSession::new(api,Some(store.clone())));
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
         tauri::async_runtime::block_on(client.start_local_library())?;
-        if mixed || reorder {
+        if sealed_playlist {
             let path=setup.join("media").to_string_lossy().into_owned();
             tauri::async_runtime::block_on(client.local_command(cumulus_core::client::dto::LocalCommand::Watch{path}))?;
         }
@@ -325,6 +334,10 @@ fn main() {
         if reorder {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(1120.0,900.0))?;}
         else if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
+        if let Some(fixture)=cached_fixture.clone() {
+            offline_playlist_fixture::listen(app,fixture,store,&setup);
+            return Ok(());
+        }
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let mut value:Value=serde_json::from_str(event.payload()).expect("proof JSON");
             let stage=value["stage"].as_str().unwrap_or("").to_owned();
@@ -487,6 +500,7 @@ fn main() {
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
             webview.eval(if let Some(source)=&reorder_source {source.as_str()}
             else if let Some(script)=&mixed_queue_script {script.as_str()}
+            else if cached_playlist {include_str!("offline_playlist_ui_probe.js")}
             else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
             } else if queue_reveal {

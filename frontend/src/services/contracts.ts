@@ -444,6 +444,7 @@ export interface TrackPage {
     hasUnboundLegacy?: boolean;
     rows: Record<string, string>;
   };
+  playlistOffline?: { cachedAtMs: number };
   daily?: { cached: boolean; showFreeTag: boolean; birthdayToday?: boolean };
   styleTags?: StyleCategory;
 }

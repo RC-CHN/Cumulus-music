@@ -300,6 +300,7 @@ import type {
 import { usePlaylists } from './composables/usePlaylists';
 import { useMixedPlaylistReorder } from './composables/useMixedPlaylistReorder';
 import { mixedDraggedRows } from './services/playlistMixedOrder';
+import { offlinePlaylistSelection } from './services/offlinePlaylist';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { createPlayerResume } from './services/playerResume';
@@ -3838,6 +3839,23 @@ watch(
   },
   { immediate: true, flush: 'sync' },
 );
+const cachedPlaylist = computed(() => {
+  const route = page.value;
+  const shown = result.value;
+  return route.kind === 'playlist' && shown?.playlist?.id === route.id
+    ? shown.playlistOffline
+    : undefined;
+});
+const cachedPlayableIds = computed(() => {
+  const shown = result.value;
+  if (!cachedPlaylist.value || !shown) return;
+  const rows = shown.playlistLocal?.rows;
+  return new Set(
+    shown.tracks
+      .filter((track) => track.local && !track.missing && rows && Object.hasOwn(rows, track.id))
+      .map((track) => track.id),
+  );
+});
 const playlistPanelId = () =>
   page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
     ? page.value.id
@@ -3917,7 +3935,9 @@ const playlistComments = usePlaylistCommentTab(
 );
 const playlistCommentContext = useCommentContext(playlistComments.model, core);
 const playlistSection = computed(() =>
-  page.value.kind === 'playlist' ? (page.value.section ?? 'songs') : 'songs',
+  page.value.kind === 'playlist' && !cachedPlaylist.value
+    ? (page.value.section ?? 'songs')
+    : 'songs',
 );
 const playlistSongsActive = computed(() => playlistSection.value === 'songs');
 const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
@@ -4008,7 +4028,7 @@ watch(
   { flush: 'post' },
 );
 function showPlaylistSection(section: PlaylistSection) {
-  if (playlistPanelId()) music.replacePlaylistSection(section);
+  if (playlistPanelId() && !cachedPlaylist.value) music.replacePlaylistSection(section);
 }
 const playlistKeyword = ref('');
 const playlistTrackSearch = computed(() =>
@@ -4021,6 +4041,7 @@ const playlistTrackSearch = computed(() =>
 );
 const playlistSelectionScope = computed(() =>
   signedIn.value &&
+  !cachedPlaylist.value &&
   page.value.kind === 'playlist' &&
   playlistSongsActive.value &&
   result.value?.playlist?.id === page.value.id &&
@@ -4037,6 +4058,7 @@ const mixedReorderVisit = computed<
     !signedIn.value ||
     route.kind !== 'playlist' ||
     route.zonePlaylistReceipt ||
+    !!cachedPlaylist.value ||
     !playlistSongsActive.value
   )
     return;
@@ -4194,6 +4216,7 @@ const displayedMixedPlaylist = computed(() => {
   const shown = result.value;
   if (
     route.kind === 'playlist' &&
+    !cachedPlaylist.value &&
     !route.zonePlaylistReceipt &&
     shown?.playlist?.id === route.id &&
     shown.playlist.owned &&
@@ -4455,6 +4478,7 @@ const searchKnownPlaylistIds = computed(() =>
     : undefined,
 );
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
+  if (cachedPlaylist.value && playlistPanelId() === list.id) return [];
   return playlistMenuItems(list, scene, {
     lists: playlists.value,
     busy: playlistManager.busy.value || downloads.busy.value || !!playlistActions.value?.busy,
@@ -5101,6 +5125,7 @@ watch(
     ),
 );
 function showVisibleTrackActions(request: TrackMenuRequest) {
+  if (cachedPlaylist.value) return;
   const playlist = result.value?.playlist;
   if (!playlist) {
     const snapshot = result.value;
@@ -5266,6 +5291,15 @@ function playZonePlaylistDetail(startId: string | null, doubleClick = false) {
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
+function playCachedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
+  const route = page.value;
+  const shown = result.value;
+  if (!cachedPlaylist.value || route.kind !== 'playlist' || !shown) return false;
+  const selection = offlinePlaylistSelection(route.id, shown, track, gesture === 'double_click');
+  if (!selection || (track && !cachedPlayableIds.value?.has(track.id))) return true;
+  if (track || cachedPlayableIds.value?.size) void player.select(selection);
+  return true;
+}
 function playMixedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
   const current = page.value;
   const shown = result.value;
@@ -5288,6 +5322,7 @@ function playMixedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
   return true;
 }
 function playPlaylistHeader() {
+  if (playCachedPlaylist()) return;
   const current = page.value;
   if (current.kind === 'playlist' && current.zonePlaylistReceipt) playZonePlaylistDetail(null);
   else if (!playMixedPlaylist())
@@ -5322,7 +5357,8 @@ function play(index = 0, gesture?: TrackPlayGesture) {
       playZonePlaylistDetail(tracks[index].id, gesture === 'double_click');
       return;
     }
-    if (playMixedPlaylist(tracks[index], gesture)) return;
+    if (playCachedPlaylist(tracks[index], gesture) || playMixedPlaylist(tracks[index], gesture))
+      return;
     const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',
       id: page.value.id,
@@ -6416,7 +6452,13 @@ onUnmounted(() => {
                   "
                   :playlist="result.playlist"
                   :total="result.total"
-                  :playable="player.ready.value && result.tracks.some((track) => !track.missing)"
+                  :offline="!!cachedPlaylist"
+                  :playable="
+                    player.ready.value &&
+                    (cachedPlaylist
+                      ? !!cachedPlayableIds?.size
+                      : result.tracks.some((track) => !track.missing))
+                  "
                   :preparing="player.busy.value"
                   :intelligence-disabled="!intelligence.canStart.value"
                   :intelligence-active="intelligence.active.value"
@@ -6539,13 +6581,31 @@ onUnmounted(() => {
                     {{ loading ? '正在重试…' : '重试' }}
                   </button>
                 </div>
+                <div
+                  v-if="cachedPlaylist"
+                  class="notice playlist-offline-status"
+                  role="status"
+                  :aria-busy="loading"
+                >
+                  <span>正在显示本机缓存的歌单。可播放此设备上仍可用的本地曲目。</span>
+                  <button
+                    type="button"
+                    class="text-button"
+                    :aria-disabled="loading"
+                    @click="music.retryOfflinePlaylist()"
+                  >
+                    {{ loading ? '正在读取…' : '重试联网读取' }}
+                  </button>
+                </div>
                 <div v-if="notice || music.likeNotice.value" class="notice" role="status">
                   {{ music.likeNotice.value || notice
                   }}<button class="text-button" @click="music.resources">刷新</button>
                 </div>
                 <div v-if="error" class="error-state" role="alert">
                   <span>{{ error }}</span
-                  ><button class="text-button" @click="music.load()">重试</button>
+                  ><button v-if="!cachedPlaylist" class="text-button" @click="music.load()">
+                    重试
+                  </button>
                 </div>
                 <div
                   class="playlist-toolbar"
@@ -6561,7 +6621,7 @@ onUnmounted(() => {
                   >
                     歌曲 <small>{{ result.total }}</small>
                   </button>
-                  <template v-if="result?.playlist">
+                  <template v-if="result?.playlist && !cachedPlaylist">
                     <button
                       type="button"
                       class="text-button playlist-section"
@@ -6605,8 +6665,9 @@ onUnmounted(() => {
                   </button>
                   <button
                     v-if="
+                      !cachedPlaylist &&
                       playlistManager.operations.value.length +
-                      playlistManager.coverOperations.value.length
+                        playlistManager.coverOperations.value.length
                     "
                     class="text-button"
                     @click="playlistDialog = { kind: 'history' }"
@@ -6828,6 +6889,8 @@ onUnmounted(() => {
                     :mixed-queue-drop="!!displayedMixedPlaylist"
                     @queue-drag="startPlaylistQueueDrop"
                     :tracks="playlistTrackSearch.tracks"
+                    :read-only="!!cachedPlaylist"
+                    :playable-ids="cachedPlayableIds"
                     :match-keyword="
                       playlistTrackSearch.positions !== null ? playlistKeyword : undefined
                     "

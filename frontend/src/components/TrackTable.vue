@@ -34,6 +34,7 @@ const props = defineProps<{
   pendingToggle?: TrackPendingToggle;
   toggleBusy?: boolean;
   navigable?: boolean;
+  readOnly?: boolean;
   preserveScrollOnRefresh?: boolean;
   queueDropEnabled?: boolean;
   mixedQueueDrop?: boolean;
@@ -362,6 +363,7 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
           playable,
           playableIds?.has(track.id),
           navigable,
+          readOnly,
           matchKeyword,
           searchTitleHints?.[start + index],
           originalRecordings?.has(track.id),
@@ -400,7 +402,8 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
         :liked="!track.local && liked.has(track.id)"
         :busy="busy.has(track.id)"
         :playable="playable && (playableIds?.has(track.id) ?? true)"
-        :navigable="navigable"
+        :navigable="navigable && !readOnly"
+        :read-only="readOnly"
         @play="(index, gesture) => emit('play', index, gesture)"
         @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @toggle-pending="(target, anchor) => emit('togglePending', target, anchor)"

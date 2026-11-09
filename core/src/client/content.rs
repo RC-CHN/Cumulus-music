@@ -62,6 +62,7 @@ pub(super) async fn playlist_track_page(
         offset: page.offset,
         playlist: Some(playlist),
         playlist_local: None,
+        playlist_offline: None,
     })
 }
 
@@ -120,7 +121,7 @@ async fn playlist_rows(
     Ok(tracks)
 }
 
-fn missing_playlist_row(id: String, local: bool) -> TrackView {
+pub(super) fn missing_playlist_row(id: String, local: bool) -> TrackView {
     TrackView {
         id,
         voice_id: None,
@@ -393,6 +394,7 @@ impl MusicClient {
                     offset: page.offset,
                     playlist: None,
                     playlist_local: None,
+                    playlist_offline: None,
                 })
             })
             .await?;

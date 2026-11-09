@@ -521,6 +521,13 @@ pub enum PlaySelection {
         double_click: bool,
         quality: Quality,
     },
+    OfflinePlaylist {
+        id: String,
+        revision: String,
+        start_id: Option<String>,
+        #[serde(default)]
+        double_click: bool,
+    },
 }
 
 #[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]

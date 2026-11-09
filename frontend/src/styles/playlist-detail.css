@@ -225,6 +225,11 @@
 .playlist-actions > .primary {
   width: 94px;
 }
+.playlist-actions > .offline-playlist-play {
+  width: auto;
+  min-width: 94px;
+  padding-inline: 12px;
+}
 .playlist-actions > .download-button {
   width: 80px;
 }
