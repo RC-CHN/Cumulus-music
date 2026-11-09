@@ -125,6 +125,21 @@ pub fn presentation_enabled() -> bool {
     std::env::var("CUMULUS_PC_PRESENTATION_PROOF").as_deref() == Ok("1")
 }
 
+pub fn preview_density_enabled() -> bool {
+    presentation_enabled()
+        && std::env::var("CUMULUS_SEARCH_PREVIEW_DENSITY_PROOF").as_deref() == Ok("1")
+}
+
+fn preview_density_groups(mode: &str) -> Option<(&'static str, &'static str)> {
+    Some(match mode {
+        "c" => ("c", "c"),
+        "density" => ("c", "t1"),
+        "expanded" => ("t1", "c"),
+        "both" => ("t1", "t1"),
+        _ => return None,
+    })
+}
+
 struct ServerState {
     mode: String,
     generation: u64,
@@ -134,6 +149,11 @@ impl SignedSearch {
         let mode = std::env::var("CUMULUS_SEARCH_FOOTER_PROOF").unwrap_or_else(|_| "t1".into());
         if !matches!(mode.as_str(), "t1" | "c" | "unknown" | "error") {
             return Err(Error::InvalidInput("invalid sealed search footer cohort"));
+        }
+        if preview_density_enabled() && mode != "c" {
+            return Err(Error::InvalidInput(
+                "preview density proof must start at control",
+            ));
         }
         let credentials = seed_or_restore_credentials(
             store.clone(),
@@ -190,7 +210,12 @@ impl SignedSearch {
     }
 
     pub fn set_server_mode(&self, mode: &str) -> Result<()> {
-        if !presentation_enabled() || !matches!(mode, "t1" | "c" | "error") {
+        let allowed = if preview_density_enabled() {
+            preview_density_groups(mode).is_some()
+        } else {
+            matches!(mode, "t1" | "c" | "error")
+        };
+        if !presentation_enabled() || !allowed {
             return Err(Error::InvalidInput(
                 "invalid sealed presentation server mode",
             ));
@@ -329,15 +354,34 @@ impl HttpBackend for Backend {
                     return Err(Error::Transport("sealed assignment unavailable".into()));
                 }
                 let mut groups = layout_rows();
-                if presentation_enabled() {
+                let footer = if preview_density_enabled() {
+                    let (expanded, dense) = preview_density_groups(&mode)
+                        .ok_or(Error::State("invalid preview density fixture state"))?;
                     for row in &mut groups {
-                        if row["expName"] != "PH-PC-searchHot" {
-                            row["expGroupName"] = json!(mode);
+                        match row["expName"].as_str() {
+                            Some("PH-PC-searchMore2") => row["expGroupName"] = json!(expanded),
+                            Some("PH-PC-searchPageEfficiency") => {
+                                row["expGroupName"] = json!(dense)
+                            }
+                            _ => {}
                         }
                     }
-                }
-                groups.push(json!({"expName":"PH-PC-search-result",
-                    "expGroupName":if mode == "unknown" {"future"} else {mode.as_str()}}));
+                    "c"
+                } else {
+                    if presentation_enabled() {
+                        for row in &mut groups {
+                            if row["expName"] != "PH-PC-searchHot" {
+                                row["expGroupName"] = json!(mode);
+                            }
+                        }
+                    }
+                    if mode == "unknown" {
+                        "future"
+                    } else {
+                        mode.as_str()
+                    }
+                };
+                groups.push(json!({"expName":"PH-PC-search-result","expGroupName":footer}));
                 if let Some(case) = super::playback_quality_fixture::cards_case() {
                     groups.extend([
                         json!({"expName":"PH-PC-hyyinzhi",

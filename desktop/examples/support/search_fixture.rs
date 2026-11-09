@@ -1193,6 +1193,16 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                             "artistDTO":{"id":id,"name":format!("合成普通歌手 {id}")}}})).collect::<Vec<_>>()
                     }));
                 }
+                if super::search_signed_fixture::preview_density_enabled() {
+                    response["data"]["blocks"].as_array_mut().unwrap().push(json!({
+                        "blockCode":"search_block_video", "uiElement":{"mainTitle":{"title":"合成 MV"}},
+                        "resources":(300..310).map(|id|json!({"type":"mv","baseInfo":{
+                            "squareFeedDto":{"id":id,"resource":{"mlogBaseData":{
+                                "text":format!("合成 MV {id}"),"duration":6000
+                            }}}
+                        }})).collect::<Vec<_>>()
+                    }));
+                }
                 Some(response)
             }
             _ => None,

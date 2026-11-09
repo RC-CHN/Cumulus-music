@@ -24,6 +24,12 @@ HISTORY_LABELS = (
     "pending_during_experiment_off", "cancelled_without_choice",
     "confirmed_while_effectively_off", "manual_choice_retained",
 )
+PREVIEW_COHORTS = (
+    ("c", False, False, None),
+    ("density", False, True, "compact_grid"),
+    ("expanded", True, False, "carousel"),
+    ("both", True, True, "compact_carousel"),
+)
 
 
 def read(path):
@@ -222,6 +228,100 @@ def verify_history_settings(root, repository, screenshots, windows):
                 realMusicRequests=0, realAccountWrites=0)
 
 
+def verify_preview_density(root, repository, screenshots):
+    output = root / "first"
+    failed = output / "failed.json"
+    assert not failed.exists(), failed.read_text(encoding="utf-8") if failed.exists() else ""
+    done = read(output / "complete.json")
+    modes = [mode for mode, _, _, _ in PREVIEW_COHORTS]
+    names = [f"ux_{index:02}_{mode}" for index, mode in enumerate(modes, 1)]
+    assert done["ok"] and done["previewDensityVerified"] and done["stageCount"] == len(names)
+    assert done["realMusicRequests"] == done["realAccountWrites"] == 0
+    paths = sorted(output.glob("ux_*.json"))
+    assert [path.stem for path in paths] == names
+    stages = list(map(read, paths))
+    trace = done["signedSearch"]
+    assert trace["transport"] == "MusicHttpClient" and trace["syntheticOnly"] and trace["sameProfileAccountRestore"]
+    assert trace["footerCase"] == "c" and trace["serverMode"] == "both" and trace["serverGeneration"] == 3
+    calls = trace["calls"]
+    assert [call["path"] for call in calls] == ["/api/w/nuser/account/get"] + [ASSIGNMENT] * 4, calls
+    assert calls[0]["args"] == {}
+    assert all(call["signedPcContextVerified"] and call["sameAccountCredential"]
+               and call["responseCode"] == 200 for call in calls)
+    for generation, (call, mode) in enumerate(zip(calls[1:], modes)):
+        assert call["args"] == assignment_arguments(repository)
+        assert call["serverMode"] == mode and call["serverGeneration"] == generation
+    queries = [
+        {"path": "/api/search/pc/result/tab", "args": {"keyword": "合成 V3"}},
+        {"path": "/api/search/pc/complex/page/v3", "args": {
+            "keyword": "合成 V3", "scene": "normal", "needCorrect": True,
+            "channel": "typing", "bizQueryInfo": ""}},
+    ]
+    commands, events, projections = (done[key] for key in
+                                     ("refreshCommands", "presentationEvents", "receiptProjections"))
+    assert [item["mode"] for item in commands] == modes[1:]
+    assert len(projections) == len(commands) == 3, projections
+    paused, queue = stages[0]["nativePlayer"], stages[0]["nativeQueue"]
+    assert paused["state"] == "paused" and paused["position"] > 2
+    assert [row["track"]["id"] for row in queue["tracks"]] == ["1"]
+    assert done["nativeQueue"] == queue and done["presentationQueryCalls"] == queries
+    for index, (stage, (mode, expanded, dense, layout)) in enumerate(zip(stages, PREVIEW_COHORTS)):
+        assert stage["mode"] == mode and stage["focusPreserved"] and stage["noOverflow"]
+        assert abs(stage["scrollTop"] - 70) < 1
+        assert stage["presentationQueryCalls"] == queries, "layout update must not replay search"
+        assert stage["syntheticSearchCalls"] == done["syntheticSearchCalls"], "unexpected additional fixture search call"
+        assert stage["audioFactoryCount"] == 1 and stage["nativeQueue"] == queue
+        state, view = stage["nativePlayer"], stage["publicPresentation"]
+        assert state["state"] == "paused" and state["track"]["id"] == "1"
+        assert all(state[key] == paused[key] for key in ("playId", "entryId", "queueRevision"))
+        assert abs(state["position"] - paused["position"]) < .04
+        assert (view["searchExpanded"], view["searchDense"], view["searchFooter"]) == (expanded, dense, False)
+        assert stage["bestKeys"] == [f"artist:{item}" for item in range(100, 103 if expanded else 102)]
+        if index:
+            command, projection = commands[index - 1], projections[index - 1]
+            assert (command["beforeFull"], command["afterFull"]) == (index, index + 1)
+            assert command["before"] == stages[index - 1]["publicPresentation"]
+            assert command["after"] == view and view in events
+            assert int(view["revision"]) > int(command["before"]["revision"])
+            assert projection == {"epoch": view["epoch"], "receiptPresent": True,
+                                  "revision": view["revision"], "replyRevision": view["revision"], "layout": layout}
+        for kind, first in (("artist", 200), ("mv", 300)):
+            row = stage[kind]
+            gap = 16 if dense else 20
+            span = (3 if expanded or dense else 4) if kind == "mv" else (2 if dense else 3)
+            unit = 66 if expanded or kind == "mv" or not dense else 64
+            columns = max(1, min(18 // span, (row["width"] + (20 if expanded else gap)) // (span * unit)))
+            candidates = 10 if expanded else 6
+            visible = min(candidates, columns)
+            assert row["carousel"] == expanded and row["compact"] == dense
+            assert row["rowPreview"] == (not expanded) and row["singleRow"]
+            assert row["candidateCount"] == candidates and row["columns"] == columns
+            assert row["columnGap"] == f"{gap}px"
+            assert abs(row["firstTrackPx"] - ((row["width"] + gap) / columns - gap)) < 1.1
+            assert row["visibleKeys"] == [f"{kind}:{item}" for item in range(first, first + visible)]
+            assert row["allKeys"] == [
+                f"{kind}:{item}" for item in range(first, first + (candidates if expanded else visible))
+            ]
+    assert all(stages[1][kind]["columns"] > stages[0][kind]["columns"] for kind in ("artist", "mv")), (
+        "fixture width must visibly distinguish the two official single-row spans"
+    )
+    state = done["nativePlayer"]
+    assert state["state"] == "paused" and all(state[key] == paused[key] for key in ("playId", "entryId", "queueRevision"))
+    assert abs(state["position"] - paused["position"]) < .04
+    locale = read(output / "locale.json")
+    assert locale["numeric"] == "C"
+    assert all(locale[key].casefold().replace("-", "") == "en_us.utf8" for key in ("messages", "characters"))
+    pictures = sorted(path.stem for path in output.glob("ux_*.png"))
+    assert pictures == (names if screenshots else [])
+    return dict(ok=True, actualWebView=True, genuineSignedPcTransport=True, sameCredentialRestore=True,
+                stageCount=len(names), screenshots=len(pictures), fullAssignmentReads=4, comprehensiveSearchReads=2,
+                nativeReceiptProjections=3, nativeNullPlaybackVerified=True, locale=locale,
+                layouts=[{"cohort": mode, "more2": expanded, "efficiency": dense,
+                          "artistColumns": stage["artist"]["columns"], "mvColumns": stage["mv"]["columns"]}
+                         for stage, (mode, expanded, dense, _) in zip(stages, PREVIEW_COHORTS)],
+                realMusicRequests=0, realAccountWrites=0)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -229,10 +329,15 @@ def main():
     parser.add_argument("--frontend-dist", type=Path)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--screenshots", action="store_true")
-    parser.add_argument("--history-settings", action="store_true",
-                        help="observe the open history sync setting and explicit confirmation")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--history-settings", action="store_true",
+                      help="observe the open history sync setting and explicit confirmation")
+    mode.add_argument("--preview-density", action="store_true",
+                      help="verify four signed layout cohorts on one cached search")
     args = parser.parse_args()
     windows = os.name == "nt"
+    if windows and args.preview_density:
+        parser.error("--preview-density is the sealed Linux WebView proof")
     if windows and (not args.runtime or args.screenshots):
         parser.error("Windows requires --runtime and supports no GTK screenshot capture")
     if not windows and args.runtime:
@@ -261,6 +366,10 @@ def main():
     if args.history_settings:
         env["CUMULUS_HISTORY_SETTINGS_COHORT_PROOF"] = "1"
         env["CUMULUS_UX_SCRIPT"] = str(repository / "desktop/examples/history_sync_cohort_ui_probe.js")
+    if args.preview_density:
+        env["CUMULUS_SEARCH_FOOTER_PROOF"] = "c"
+        env["CUMULUS_SEARCH_PREVIEW_DENSITY_PROOF"] = "1"
+        env["CUMULUS_UX_SCRIPT"] = str(repository / "desktop/examples/search_preview_density_ui_probe.js")
     for key, name in profiles:
         directory = root / "os-profile" / name
         directory.mkdir(parents=True, mode=0o700)
@@ -271,8 +380,11 @@ def main():
         env["CUMULUS_PROOF_FRONTEND_DIST"] = str(args.frontend_dist.resolve(strict=True))
     with (root / "host.log").open("x", encoding="utf-8") as log:
         code = launch(binary, env, log, root / "first", args.screenshots)
-    validator = verify_history_settings if args.history_settings else verify
-    report = validator(root, repository, args.screenshots, windows)
+    if args.preview_density:
+        report = verify_preview_density(root, repository, args.screenshots)
+    else:
+        validator = verify_history_settings if args.history_settings else verify
+        report = validator(root, repository, args.screenshots, windows)
     assert code == 0, (code, str(root / "host.log"))
     report["windowsMedia"] = windows_media
     (root / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
