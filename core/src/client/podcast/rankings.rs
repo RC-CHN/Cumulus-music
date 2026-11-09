@@ -459,6 +459,7 @@ impl MusicClient {
                     preview,
                 } if valid_part(id) && valid_part(chart_type) => {
                     Some(self.podcast_browse_playback.begin(
+                        &self.session,
                         &token,
                         &api,
                         Lane::Rank {

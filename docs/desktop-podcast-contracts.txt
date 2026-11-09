@@ -213,8 +213,9 @@ t1 setting per fresh selection rather than assuming an old setting is still
 valid. The load never seeks outside its actually authorized timeline.
 
 Weekly and rank reads issue distinct opaque, bounded, account/API/credential
-receipts. A refreshed lane invalidates the old observation; weekly cursor
-continuations retain the current observation until refresh or opt-out.
+receipts. A refreshed lane invalidates the old observation. Weekly cursor
+handles are additionally tied to that exact native feed visit: a previous
+page cannot mint current playback receipts after refresh or opt-out.
 Renderer sends only a receipt under the ordinary prepared playback ticket.
 Native verifies the clicked episode detail and exact rights/URL before a
 guarded queue commit, with the original account, native actor fence and
@@ -224,7 +225,9 @@ queue rather than installing unplayable rows. Neighbours lacking a usable
 main-song identity are omitted. Service/authentication boundaries do not
 fall back to another radio. These checked boundaries deliberately tighten
 the recovered engine’s possible queue-only update when a selected ID was
-absent. Search episode playback and radio-card/Play All are unchanged.
+absent. Active Personal FM, Intelligence and attached Together queues retain
+their existing coordinators; this ordinary action does not replace them.
+Search episode playback and radio-card/Play All are unchanged.
 
 Synthetic verification: cargo test -p cumulus-core --locked --test
 client_podcast_browse --test client_podcast --test client_player. The

@@ -118,16 +118,18 @@ impl MusicClient {
         continuation: Option<&str>,
     ) -> Result<AccountData<PodcastHomePage>> {
         let token = self.podcast_token(epoch)?;
-        let cursor =
-            self.podcast_discovery
-                .resolve(epoch, &DiscoveryScope::PodcastHome, continuation)?;
         let api = self.session.native_api(&token)?;
         let observation = self.podcast_browse_playback.begin(
+            &self.session,
             &token,
             &api,
             Lane::Weekly,
             continuation.is_some(),
         )?;
+        let scope = DiscoveryScope::PodcastHome(observation.visit);
+        let cursor = self
+            .podcast_discovery
+            .resolve(epoch, &scope, continuation)?;
         let result = self
             .session
             .run_for(&token, |api, _| async {
@@ -147,10 +149,8 @@ impl MusicClient {
         let value = match result {
             None => {
                 self.podcast_browse_playback.retire(&observation)?;
-                self.session.with_token(&token, |_| {
-                    self.podcast_discovery
-                        .forget(epoch, &DiscoveryScope::PodcastHome)
-                })?;
+                self.session
+                    .with_token(&token, |_| self.podcast_discovery.forget(epoch, &scope))?;
                 PodcastHomePage {
                     recommendation_enabled: false,
                     blocks: Vec::new(),
@@ -167,8 +167,7 @@ impl MusicClient {
                     .collect(),
                 continuation: if page.more {
                     Some(self.session.with_token(&token, |_| {
-                        self.podcast_discovery
-                            .save(epoch, DiscoveryScope::PodcastHome, page.cursor)
+                        self.podcast_discovery.save(epoch, scope, page.cursor)
                     })?)
                 } else {
                     None

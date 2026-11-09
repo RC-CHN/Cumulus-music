@@ -868,7 +868,9 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
                         {"showType":"VOICE_HOMEPAGE_BLOCK_BANNER","uiElement":{"mainTitle":{"title":"不显示推广"}},"creatives":[{}]}]}})
                 }
                 Some("{\"homePrivate\":\"next\"}") => {
-                    if PODCAST_HOME_MORE_READS.fetch_add(1, Ordering::SeqCst) == 0 {
+                    if PODCAST_HOME_MORE_READS.fetch_add(1, Ordering::SeqCst) == 0
+                        && std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_none()
+                    {
                         return Some(Err(Error::Transport(
                             "synthetic podcast page unavailable".into(),
                         )));

@@ -1040,9 +1040,6 @@
     click(button("返回上一页"));
     await wait(() => homeRadio(305) && homeRadio(306), "detail Back restores already loaded homepage blocks");
     await capture("podcast_more_back");
-    click(button("刷新播客发现", podcastHome()));
-    await wait(() => homeRadio(305) && !homeRadio(306) && button("加载更多播客", podcastHome()),
-      "refresh starts a new recommendation feed");
     const firstHome = await invoke("podcast_home", { epoch });
     const homeHandle = firstHome.value.continuation;
     assert(/^[\da-f]{32}$/.test(homeHandle) && !JSON.stringify(firstHome).includes("homePrivate") &&
@@ -1052,6 +1049,9 @@
       ["podcast_home", { epoch: "0", continuation: homeHandle }],
       ["podcast_catalogue", { epoch, query: { kind: "radios", parentId: "10001", subId: "000", continuation: homeHandle } }],
     ]) assert(!await invoke(command, args).then(() => true, () => false), "native handles cannot cross account or discovery route");
+    click(button("刷新播客发现", podcastHome()));
+    await wait(() => homeRadio(305) && !homeRadio(306) && button("加载更多播客", podcastHome()),
+      "refresh starts a new recommendation feed");
     await fixture("podcast_home_disabled");
     click(button("加载更多播客", podcastHome()));
     await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭") && button("前往设置", podcastHome()),

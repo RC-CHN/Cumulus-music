@@ -72,7 +72,7 @@ pub(in crate::client) struct PodcastDiscoveryHost(Mutex<VecDeque<Cursor>>);
 #[derive(PartialEq, Eq)]
 pub(super) enum DiscoveryScope {
     Category { parent_id: String, sub_id: String },
-    PodcastHome,
+    PodcastHome(uuid::Uuid),
 }
 
 impl PodcastDiscoveryHost {

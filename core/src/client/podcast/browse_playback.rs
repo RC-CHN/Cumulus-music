@@ -1,6 +1,11 @@
 //! Native receipts for the exact episode offered by a podcast browse read.
 use super::EpisodeView;
-use crate::{Error, Result, account::SessionToken, podcast::Episode, protocol::api::Api};
+use crate::{
+    Error, Result,
+    account::{AccountSession, SessionToken},
+    podcast::Episode,
+    protocol::api::Api,
+};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
@@ -42,6 +47,7 @@ pub(in crate::client) struct Target {
 #[derive(Clone)]
 pub(in crate::client) struct Observation {
     pub(in crate::client) lane: Lane,
+    pub(super) visit: uuid::Uuid,
     token: SessionToken,
     api: Weak<dyn Api>,
     credential: Option<String>,
@@ -85,37 +91,43 @@ pub(in crate::client) struct Host(Mutex<VecDeque<Visit>>);
 impl Host {
     pub(super) fn begin(
         &self,
+        session: &AccountSession,
         token: &SessionToken,
         api: &Arc<dyn Api>,
         lane: Lane,
         continue_existing: bool,
     ) -> Result<Observation> {
-        let credential = api.playback_source_credential_revision()?;
-        let mut visits = self.0.lock().map_err(|_| Error::LockPoisoned)?;
-        visits.retain(|visit| visit.observation.matches(token, api, &credential));
-        if continue_existing {
-            return visits
-                .iter()
-                .find(|visit| visit.observation.lane == lane)
-                .map(|visit| visit.observation.clone())
-                .ok_or(Error::StaleResponse);
-        }
-        visits.retain(|visit| visit.observation.lane != lane);
-        if visits.len() == LANES {
-            visits.pop_front();
-        }
-        let observation = Observation {
-            lane,
-            token: token.clone(),
-            api: Arc::downgrade(api),
-            credential,
-            live: Arc::new(AtomicBool::new(true)),
-        };
-        visits.push_back(Visit {
-            observation: observation.clone(),
-            rows: HashMap::new(),
-        });
-        Ok(observation)
+        // Serialize issuance with the native account/profile. A delayed
+        // older epoch may never evict the newer account's live browse shelf.
+        session.with_verified_profile(token, api, |_, _| {
+            let credential = api.playback_source_credential_revision()?;
+            let mut visits = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+            visits.retain(|visit| visit.observation.matches(token, api, &credential));
+            if continue_existing {
+                return visits
+                    .iter()
+                    .find(|visit| visit.observation.lane == lane)
+                    .map(|visit| visit.observation.clone())
+                    .ok_or(Error::StaleResponse);
+            }
+            visits.retain(|visit| visit.observation.lane != lane);
+            if visits.len() == LANES {
+                visits.pop_front();
+            }
+            let observation = Observation {
+                lane,
+                visit: uuid::Uuid::new_v4(),
+                token: token.clone(),
+                api: Arc::downgrade(api),
+                credential,
+                live: Arc::new(AtomicBool::new(true)),
+            };
+            visits.push_back(Visit {
+                observation: observation.clone(),
+                rows: HashMap::new(),
+            });
+            Ok(observation)
+        })
     }
 
     pub(super) fn retire(&self, observation: &Observation) -> Result<()> {

@@ -47,10 +47,12 @@ impl Api for Fixture {
             self.calls.lock().unwrap().push((path.into(), args.clone()));
             Ok(match path {
                 "/api/user/setting" => json!({"code":200,"setting":{"personalServiceSetting":0}}),
-                "/api/voice/homepage/block/page" => json!({"code":200,"data":{"hasMore":false,
+                "/api/voice/homepage/block/page" => {
+                    json!({"code":200,"data":{ "hasMore":true,"cursor":"{\"fixture\":\"next\"}",
                     "blocks":[{"showType":"VOICE_HOMEPAGE_WEEKNEW_VOICE",
                     "uiElement":{"mainTitle":{"title":"Week"}},"creatives":[{"resources":[
-                        {"resourceId":82,"resourceType":"voice","resourceExtInfo":{"djProgram":episode(82)}}]}]}]}}),
+                        {"resourceId":82,"resourceType":"voice","resourceExtInfo":{"djProgram":episode(82)}}]}]}]}})
+                }
                 "/api/charts/voice" => json!({"code":200,"data":[{"voiceMetaVO":episode(82)}]}),
                 "/api/dj/around/program/v1" => {
                     assert_eq!(args, json!({"programId":"82","roundNum":250}));
@@ -405,4 +407,27 @@ async fn current_episode_is_reordered_when_it_is_also_in_the_new_window() {
     let next = select(&client, receipt).await.unwrap();
     assert_eq!(next.track.unwrap().voice_id.as_deref(), Some("82"));
     assert_eq!(queue(&client).await, ["83", "82", "81"]);
+}
+
+#[tokio::test]
+async fn refresh_retires_the_old_weekly_cursor_before_the_next_feed_read() {
+    let (_root, api, _session, client) = fixture();
+    async fn open(client: &MusicClient) -> String {
+        serde_json::to_value(client.podcast_home("1", None).await.unwrap().value)
+            .unwrap()["continuation"].as_str().unwrap().into()
+    }
+    let old = open(&client).await;
+    let fresh = open(&client).await;
+    assert_ne!(old, fresh);
+    api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        client.podcast_home("1", Some(&old)).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(api.calls.lock().unwrap().is_empty());
+    client.podcast_home("1", Some(&fresh)).await.unwrap();
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1].0, "/api/voice/homepage/block/page");
+    assert_eq!(calls[1].1["cursor"], "{\"fixture\":\"next\"}");
 }
