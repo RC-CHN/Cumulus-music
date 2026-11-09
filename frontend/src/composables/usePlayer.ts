@@ -518,14 +518,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
           : { kind: 'queue_album', id, quality },
     );
   }
-  // A toolbar may first read multiple catalog pages. Capture the user's player
-  // intent before that read, so its late result cannot target a newer queue.
-  function prepareCloudQueue() {
+  // A toolbar may first load pages or dismiss a modal. Capture intent now
+  // so the delayed handoff cannot target a newer queue or selection.
+  function captureQueueHandoff() {
     const captured = epoch,
       session = connection,
       intent = request,
       before = view.value;
-    return (ids: string[], revision: string, query: CloudQuery) => {
+    return () => {
       const current = view.value;
       if (
         !ready.value ||
@@ -541,7 +541,25 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         before.fm !== current.fm
       )
         throw { code: 'playback_changed', message: '播放状态已变化，请重新执行添加。' };
+    };
+  }
+  function prepareCloudQueue() {
+    const ensureCurrent = captureQueueHandoff();
+    return (ids: string[], revision: string, query: CloudQuery) => {
+      ensureCurrent();
       return queueCloud(ids, revision, query);
+    };
+  }
+  function prepareArtistSongsBatch() {
+    const ensureCurrent = captureQueueHandoff();
+    return (pages: CatalogSelectionPage[], ids: string[]) => {
+      ensureCurrent();
+      return queueAction({
+        kind: 'queue_artist_songs_batch',
+        pages,
+        ids,
+        quality: view.value?.qualityPreferences.quality ?? 'standard',
+      });
     };
   }
   function queueDownloads(task_ids: string[]) {
@@ -571,7 +589,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_album_batch'
             | 'queue_album'
             | 'queue_album_detail'
-            | 'queue_artist_songs';
+            | 'queue_artist_songs'
+            | 'queue_artist_songs_batch';
         }
       >
     >,
@@ -1367,6 +1386,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueDaily,
     queueStyleRecommendations,
     queueArtistSongs,
+    prepareArtistSongsBatch,
     queueDownloads,
     queueCloud,
     prepareCloudQueue,

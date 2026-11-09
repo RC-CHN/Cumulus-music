@@ -660,6 +660,13 @@ export type PlayerAction =
       expected_queue_revision: string;
     }
   | {
+      kind: 'queue_artist_songs_batch';
+      pages: import('./catalog').CatalogSelectionPage[];
+      ids: string[];
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
       kind: 'queue_album_batch';
       id: string;
       ids: string[];

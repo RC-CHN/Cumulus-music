@@ -12,6 +12,8 @@ use std::sync::Arc;
 const CACHE: &str = "catalog-detail-pages-v1";
 const ALBUM_CACHE: &str = "catalog-album-pages-v2";
 const ALBUM_PLAYBACK_MARKER: &str = "catalog-album-playback-marker-v1";
+const ARTIST_SONGS_CACHE: &str = "catalog-artist-songs-v2";
+const ARTIST_SONGS_MARKER: &str = "catalog-artist-songs-marker-v1";
 
 pub(crate) fn album_duration(song: &Value) -> u64 {
     song["dt"]
@@ -136,6 +138,30 @@ impl AlbumPlaybackFence {
     }
 }
 
+pub(crate) struct ArtistSongsFence {
+    session: Arc<AccountSession>,
+    token: SessionToken,
+    store: Arc<StateStore>,
+    keys: Vec<String>,
+    expected: Vec<String>,
+}
+
+impl ArtistSongsFence {
+    pub(crate) fn is_current(&self) -> bool {
+        self.session
+            .with_token(&self.token, |owner| {
+                let current = self
+                    .store
+                    .get_ordered(owner, ARTIST_SONGS_MARKER, &self.keys)?;
+                Ok(current
+                    .iter()
+                    .map(|value| value.as_ref().and_then(Value::as_str))
+                    .eq(self.expected.iter().map(|revision| Some(revision.as_str()))))
+            })
+            .unwrap_or(false)
+    }
+}
+
 fn decode_cached(query: &CatalogQuery, value: Value) -> Result<SavedCatalogPage> {
     let saved: SavedCatalogPage = serde_json::from_value(value)?;
     if saved.query != *query {
@@ -170,14 +196,20 @@ impl CatalogDetails {
     ) -> Result<Option<SavedCatalogPage>> {
         let key = Self::key(query)?;
         self.session.with_token(token, |uid| {
-            let raw = if matches!(query, CatalogQuery::Album { .. }) {
-                self.store
-                    .read_snapshot(|tx| match tx.get(uid, ALBUM_CACHE, &key)? {
-                        Some(current) => Ok(Some(current)),
-                        None => tx.get(uid, CACHE, &key),
-                    })?
-            } else {
-                self.store.get(uid, CACHE, &key)?
+            let scope = match query {
+                CatalogQuery::Album { .. } => Some(ALBUM_CACHE),
+                CatalogQuery::ArtistSongs { .. } => Some(ARTIST_SONGS_CACHE),
+                _ => None,
+            };
+            let raw = match scope {
+                Some(scope) => {
+                    self.store
+                        .read_snapshot(|tx| match tx.get(uid, scope, &key)? {
+                            Some(current) => Ok(Some(current)),
+                            None => tx.get(uid, CACHE, &key),
+                        })?
+                }
+                None => self.store.get(uid, CACHE, &key)?,
             };
             raw.map(|value| decode_cached(query, value)).transpose()
         })
@@ -247,6 +279,71 @@ impl CatalogDetails {
         })?;
         Ok(fence)
     }
+    /// Guard the displayed artist pages through the actor install without
+    /// decoding the raw song payloads again on the playback thread.
+    pub(crate) fn artist_songs_fence(
+        &self,
+        token: &SessionToken,
+        pages: &[(&CatalogQuery, &str)],
+    ) -> Result<ArtistSongsFence> {
+        if pages.is_empty() || pages.len() > 500 {
+            return Err(Error::InvalidInput("invalid artist song page count"));
+        }
+        let mut keys = Vec::with_capacity(pages.len());
+        let mut expected = Vec::with_capacity(pages.len());
+        let mut next = 0;
+        let artist = pages[0].0.id();
+        for &(query, revision) in pages {
+            let CatalogQuery::ArtistSongs { id, offset, limit } = query else {
+                return Err(Error::InvalidInput("expected artist song pages"));
+            };
+            if id.as_str() != artist || *offset != next {
+                return Err(Error::InvalidInput("noncontiguous artist song pages"));
+            }
+            keys.push(Self::key(query)?);
+            if revision.len() != 64 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err(Error::QueueChanged);
+            }
+            expected.push(revision.to_owned());
+            next = offset + limit;
+        }
+        let fence = ArtistSongsFence {
+            session: self.session.clone(),
+            token: token.clone(),
+            store: self.store.clone(),
+            keys,
+            expected,
+        };
+        if fence.is_current() {
+            return Ok(fence);
+        }
+        // An older saved list has no marker. Upgrade only a fully validated
+        // matching page. A stale known marker is never replaced by the caller.
+        self.session.with_token(token, |owner| {
+            self.store.transaction(|tx| {
+                for (&(query, expected), key) in pages.iter().zip(&fence.keys) {
+                    if let Some(current) = tx.get(owner, ARTIST_SONGS_MARKER, key)? {
+                        if current.as_str() != Some(expected) {
+                            return Err(Error::QueueChanged);
+                        }
+                        continue;
+                    }
+                    if tx.get(owner, ARTIST_SONGS_CACHE, key)?.is_some() {
+                        return Err(Error::QueueChanged);
+                    }
+                    let raw = tx.get(owner, CACHE, key)?.ok_or(Error::QueueChanged)?;
+                    if decode_cached(query, raw.clone())?.revision != expected {
+                        return Err(Error::QueueChanged);
+                    }
+                    tx.put(owner, ARTIST_SONGS_CACHE, key, &raw)?;
+                    tx.put(owner, ARTIST_SONGS_MARKER, key, &json!(expected))?;
+                }
+                Ok(())
+            })
+        })?;
+        Ok(fence)
+    }
+
     /// M/15's g has enable:false. A recovery snapshot must not suppress this
     /// request on the next page visit or authorize playback from old rights.
     pub async fn page_for(
@@ -274,15 +371,23 @@ impl CatalogDetails {
             album_read,
         };
         let raw = serde_json::to_value(&saved)?;
-        let marker = if matches!(query, CatalogQuery::Album { .. }) {
-            Some(json!(saved.album_playback_revision()?))
-        } else {
-            None
+        let marker = match query {
+            CatalogQuery::Album { .. } => Some((
+                ALBUM_CACHE,
+                ALBUM_PLAYBACK_MARKER,
+                json!(saved.album_playback_revision()?),
+            )),
+            CatalogQuery::ArtistSongs { .. } => Some((
+                ARTIST_SONGS_CACHE,
+                ARTIST_SONGS_MARKER,
+                json!(saved.revision),
+            )),
+            _ => None,
         };
         self.session.with_token(token, |uid| match marker {
-            Some(marker) => self.store.transaction(|tx| {
-                tx.put(uid, ALBUM_CACHE, &key, &raw)?;
-                tx.put(uid, ALBUM_PLAYBACK_MARKER, &key, &marker)
+            Some((scope, kind, marker)) => self.store.transaction(|tx| {
+                tx.put(uid, scope, &key, &raw)?;
+                tx.put(uid, kind, &key, &marker)
             }),
             None => self.store.put(uid, CACHE, &key, &raw),
         })?;

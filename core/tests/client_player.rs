@@ -35,6 +35,8 @@ struct Backend {
     playlist_trial: playlist_trial::Fixture,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
+    artist_first_replacement: AtomicU64,
+    artist_batch_blocked_song: AtomicU64,
     album_privileges: Mutex<Vec<Value>>,
     daily_tracks: Mutex<Option<Vec<Value>>>,
     style_tag_state: AtomicU64,
@@ -239,7 +241,13 @@ impl Api for Backend {
                 "/api/v2/artist/songs" => {
                     let offset = payload["offset"].as_u64().unwrap();
                     let limit = payload["limit"].as_u64().unwrap();
-                    json!({"code":200,"total":55,"more":offset+limit<55,"songs":((offset+1)..=(offset+limit).min(55)).map(|id|json!({"id":id,"name":"曲目"})).collect::<Vec<_>>()})
+                    let replacement = self.artist_first_replacement.load(Ordering::SeqCst);
+                    let songs = ((offset + 1)..=(offset + limit).min(55))
+                        .map(|id| {
+                            let id = if id == 1 && replacement != 0 { replacement } else { id };
+                            json!({"id":id,"name":"曲目"})
+                        }).collect::<Vec<_>>();
+                    json!({"code":200,"total":55,"more":offset+limit<55,"songs":songs})
                 }
                 "/api/artist/v3/detail" => {
                     json!({"code":200,"artist":{"id":payload["id"],"name":"已核对的歌手页"},"hotSongs":[{"id":1,"name":"曲目"}]})
@@ -324,6 +332,10 @@ impl Api for Backend {
                     let mut response = json!({"code":200,"songs":ids.iter().map(|v|json!({"id":v["id"],"name":"曲目","ar":[{"id":12,"name":"歌手"}],"al":{"id":7,"name":"专辑","picUrl":"http://p1.music.126.net/image.jpg?token=SECRET"},"dt":120000,"url":"https://private/?secret=SECRET","cookie":"SECRET"})).collect::<Vec<_>>()});
                     if id == self.playlist_cloud_song_id.load(Ordering::SeqCst) {
                         response["privileges"] = json!([{"id":id,"cs":1}]);
+                    }
+                    let denied = self.artist_batch_blocked_song.load(Ordering::SeqCst);
+                    if ids.iter().any(|song| song["id"].as_str().and_then(|id| id.parse().ok()) == Some(denied)) {
+                        response["privileges"] = json!([{"id":denied,"pl":0,"flag":0}]);
                     }
                     response
                 }
@@ -424,6 +436,9 @@ fn songs(id: &str) -> PlaySelection {
         quality: Quality::Lossless,
     }
 }
+
+#[path = "client_player/artist_batch_queue.rs"]
+mod artist_batch_queue;
 
 #[path = "client_player/artist_search_cover.rs"]
 mod artist_search_cover;

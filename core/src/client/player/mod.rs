@@ -1073,7 +1073,35 @@ impl MusicClient {
             return self
                 .queue_collection(
                     epoch,
-                    queue_playlist::QueueCollection::ArtistSongs { pages, quality },
+                    queue_playlist::QueueCollection::ArtistSongs {
+                        pages,
+                        quality,
+                        selected: None,
+                    },
+                    expected_queue_revision,
+                )
+                .await;
+        }
+        if let PlayerAction::QueueArtistSongsBatch {
+            pages,
+            ids,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "artist batch queue used as native media command",
+                ));
+            }
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::ArtistSongs {
+                        pages,
+                        quality,
+                        selected: Some(ids),
+                    },
                     expected_queue_revision,
                 )
                 .await;
@@ -1763,6 +1791,7 @@ impl MusicClient {
             | PlayerAction::QueueDailyRecommendations { .. }
             | PlayerAction::QueueStyleRecommendations { .. }
             | PlayerAction::QueueArtistSongs { .. }
+            | PlayerAction::QueueArtistSongsBatch { .. }
             | PlayerAction::QueueDownloads { .. }
             | PlayerAction::QueueLocal { .. }
             | PlayerAction::DropLocalIntoQueue { .. }
