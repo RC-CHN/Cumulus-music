@@ -73,6 +73,10 @@ name = "local_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "local_batch_favorite_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "shell_ui_probe"
 required-features = ["custom-protocol"]
 
