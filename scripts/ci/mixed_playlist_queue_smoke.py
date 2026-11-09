@@ -112,6 +112,9 @@ def main():
     assert len(set(revisions)) == 5
     assert revisions[0] == revisions[1] and revisions[4] == revisions[5] == revisions[6]
     assert len(set(revisions[7:])) == 1
+    details = [row['nativeReceipt']['detailReads'] for row in states]
+    assert [count - details[0] for count in details[:8]] == [0, 0, 1, 2, 3, 3, 3, 4], (
+        'one fresh V6 detail for each queue action and no hidden retries')
     counts = [row['nativeReceipt']['catalogReads'] for row in states]
     assert counts[2] == counts[1], 'local next unnecessarily requested catalog metadata'
     assert counts[3][len(counts[2]):] == [['702']], 'catalog next fetched the wrong resource'
