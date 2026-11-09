@@ -60,6 +60,7 @@
   let count = 0, current = 'startup';
   const capture = async (label, data = {}) => {
     current = label;
+    await wait(() => !one('.page-enter-active,.page-leave-active'), 'settled route');
     await wait(() => {
       const picker = one('dialog[data-download-collect]');
       return !picker || (

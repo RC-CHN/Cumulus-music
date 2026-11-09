@@ -360,3 +360,6 @@ async fn downloaded_collection_rechecks_owner_and_rejects_retired_or_changed_tas
 
 #[path = "download_collection/liked.rs"]
 mod liked;
+
+#[path = "download_collection/http.rs"]
+mod http;
