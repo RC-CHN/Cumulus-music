@@ -8,7 +8,7 @@ import sys
 from motion_smoke import launch
 
 
-STAGES = ('ux_01_local_favorite_picker', 'ux_02_local_favorite_pending',
+STAGES = ('ux_00_local_favorite_add', 'ux_01_local_favorite_picker', 'ux_02_local_favorite_pending',
           'ux_03_local_favorite_confirmed', 'ux_04_local_favorite_duplicate')
 
 
@@ -31,21 +31,24 @@ def run(binary, root, screenshots, script=None):
 
     assert not (target / 'failed.json').exists(), receipt('failed') if (target / 'failed.json').exists() else ''
     assert code == 0
-    first, pending, confirmed, duplicate = map(receipt, STAGES)
+    added, first, pending, confirmed, duplicate = map(receipt, STAGES)
     wire = {'pid': '81', 'trackIds': '["802","801"]', 'op': 'add'}
+    assert added['writes'] == [] and added['collectionReads'] == []
+    assert added['nativeNames'] == ['Unmatched', 'Batch B', 'Batch A']
     assert first['writes'] == []
     assert pending['writes'] == confirmed['writes'] == [wire]
     assert duplicate['writes'] == [wire, wire]
     assert [len(row['collectionReads']) for row in (first, pending, confirmed, duplicate)] == [1, 4, 5, 7]
     complete = receipt('complete')
     assert complete['ok'] and complete['paused'] == 'paused' and complete['position'] > 0
-    assert complete['writes'] == duplicate['writes']
+    assert complete['writes'] == duplicate['writes'] and complete['playId'] == added['playId']
     locale = receipt('locale')
     assert locale == {'numericLocale': 'C', 'messageLocale': env['LC_ALL']}
     images = {path.stem for path in target.glob('ux_*.png')}
     assert images == (set(STAGES) if screenshots else set())
     summary = {'ok': True, 'stageCount': len(STAGES), 'screenshots': len(images),
-               'nativeOrder': [802, 801], 'writes': len(complete['writes']), 'locale': locale}
+               'nativeOrder': [802, 801], 'writes': len(complete['writes']), 'locale': locale,
+               'signedInAddWroteNothing': True, 'nativeQueue': added['nativeNames']}
     (root / 'report.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(summary))
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { ref } from 'vue';
 import { useLocalBatch } from '../src/composables/useLocalBatch.ts';
 import {
   defaultLocalQuery,
@@ -264,4 +265,43 @@ test('Add uses the selected local refs with its own action and only acknowledges
   assert.match(model.notice.value, /已添加到播放列表/);
   assert.equal(model.selectionCount.value, 1);
   assert.deepEqual(actions, ['add', 'add']);
+});
+
+test('a Favorite picker owns the captured selection without invoking Add or local removal', async () => {
+  const pickerOpen = ref(false);
+  const reads: number[] = [];
+  const player: Array<[string, string[]]> = [];
+  const model = useLocalBatch(
+    defaultLocalQuery(),
+    {
+      localPage: async (query) => {
+        reads.push(query.offset);
+        return page(query.offset, 'fixed');
+      },
+      localCommand: async () => assert.fail('a pending picker must not remove local rows'),
+    },
+    undefined,
+    async (selection, action) => {
+      player.push([action, selection.tracks.map((track) => track.id)]);
+      return true;
+    },
+    () => pickerOpen.value,
+  );
+  await model.load();
+  model.toggle('local-8');
+  const captured = model.captureSelection();
+  assert.deepEqual(captured?.tracks, [{ id: 'local-8', revision: 'row-8' }]);
+  pickerOpen.value = true;
+  model.toggle('local-4');
+  await model.move(1);
+  await model.add();
+  await model.play();
+  await model.remove();
+  assert.equal(model.captureSelection(), undefined);
+  assert.deepEqual(reads, [0]);
+  assert.deepEqual(player, []);
+  assert.equal(model.selectionCount.value, 1);
+  pickerOpen.value = false;
+  await model.add();
+  assert.deepEqual(player, [['add', ['local-8']]]);
 });

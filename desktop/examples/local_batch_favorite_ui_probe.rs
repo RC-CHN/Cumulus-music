@@ -214,6 +214,7 @@ fn main() {
                     return;
                 }
                 if !matches!(stage.as_str(),
+                    "ux_00_local_favorite_add" |
                     "ux_01_local_favorite_picker" | "ux_02_local_favorite_pending" |
                     "ux_03_local_favorite_confirmed" | "ux_04_local_favorite_duplicate" |
                     "complete" | "failed") { return; }
