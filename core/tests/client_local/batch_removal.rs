@@ -12,7 +12,14 @@ async fn local_batch_is_atomic_across_pages_and_keeps_the_loaded_queue() {
     let root = tempfile::tempdir().unwrap();
     let media = root.path().join("media");
     std::fs::create_dir(&media).unwrap();
-    let names = ["Fixture Zulu", "Fixture Middle", "Fixture Alpha", "Outside"];
+    let selected_term = fixture_query_term(&media, "selected");
+    let outside_term = fixture_query_term(&media, "outside");
+    let names = [
+        format!("{selected_term} Zulu"),
+        format!("{selected_term} Middle"),
+        format!("{selected_term} Alpha"),
+        outside_term.clone(),
+    ];
     for (index, name) in names.iter().enumerate() {
         std::fs::write(media.join(format!("{name}.wav")), [index as u8]).unwrap();
     }
@@ -20,7 +27,7 @@ async fn local_batch_is_atomic_across_pages_and_keeps_the_loaded_queue() {
     let (_, music, library) = client(&state, Arc::new(Probe::default()));
     library.scan(&media).unwrap();
     let query = LocalQuery {
-        keyword: "fixture".into(),
+        keyword: selected_term,
         limit: 1,
         ..Default::default()
     };
@@ -34,16 +41,18 @@ async fn local_batch_is_atomic_across_pages_and_keeps_the_loaded_queue() {
         .await
         .unwrap();
     assert_eq!((first.total, last.offset), (3, 2));
-    assert_eq!(first.tracks[0].track.name, "Fixture Zulu");
-    assert_eq!(last.tracks[0].track.name, "Fixture Alpha");
+    assert_eq!(first.tracks[0].track.name, names[0]);
+    assert_eq!(last.tracks[0].track.name, names[2]);
     assert_eq!(first.revision, last.revision);
     let outside = music
         .local_page(LocalQuery {
-            keyword: "outside".into(),
+            keyword: outside_term,
             ..query.clone()
         })
         .await
         .unwrap();
+    assert_eq!(outside.total, 1);
+    assert_eq!(outside.tracks[0].track.name, names[3]);
     let first_row = &first.tracks[0];
     let last_row = &last.tracks[0];
     let command = |tracks| LocalCommand::HideTracks {
@@ -98,7 +107,7 @@ async fn local_batch_is_atomic_across_pages_and_keeps_the_loaded_queue() {
     let remaining = music.local_page(query.clone()).await.unwrap();
     assert_eq!(
         (remaining.total, remaining.tracks[0].track.name.as_str()),
-        (1, "Fixture Middle")
+        (1, names[1].as_str())
     );
     assert_ne!(remaining.revision, first.revision);
     assert!(matches!(
