@@ -93,6 +93,12 @@ struct Admitted {
     playlist_offset: Option<u64>,
 }
 
+fn exact_decimal(value: &Value) -> Option<u64> {
+    let raw = value.as_str()?;
+    let parsed: u64 = raw.parse().ok()?;
+    (parsed.to_string() == raw).then_some(parsed)
+}
+
 fn permitted(plan: &RequestPlan, resource_uid: Option<&str>) -> Result<Admitted> {
     if plan.route != WireRoute::Eapi {
         return Err(Error::State("read proof requires EAPI"));
@@ -107,15 +113,16 @@ fn permitted(plan: &RequestPlan, resource_uid: Option<&str>) -> Result<Admitted>
     if ApiOrigin::Pc.request_url(WireRoute::Eapi, &path)? != plan.url {
         return Err(Error::State("read proof route mismatch"));
     }
+    let offset = exact_decimal(&args["offset"]).filter(|_| path == PLAYLISTS);
     let allowed = match path.as_str() {
         ACCOUNT => true,
         ASSIGNMENT_PATH => args["expNames"] == assignment_arguments()["expNames"],
         LEGACY | V3 | TABS => args["keyword"] == QUERY,
         PLAYLISTS => {
             resource_uid.is_some_and(|uid| args["uid"].as_str() == Some(uid))
-                && args["includeVideo"] == true
-                && args["limit"].as_u64() == Some(PAGE_SIZE)
-                && args["offset"].as_u64().is_some()
+                && args["includeVideo"] == "true"
+                && exact_decimal(&args["limit"]) == Some(PAGE_SIZE)
+                && offset.is_some()
         }
         LIKED => resource_uid.is_some_and(|uid| args["uid"].as_str() == Some(uid)),
         _ => false,
@@ -124,7 +131,7 @@ fn permitted(plan: &RequestPlan, resource_uid: Option<&str>) -> Result<Admitted>
         return Err(Error::State("outside signed search read proof"));
     }
     Ok(Admitted {
-        playlist_offset: args["offset"].as_u64().filter(|_| path == PLAYLISTS),
+        playlist_offset: offset,
         path,
         encrypted: plan.decrypt_response,
     })
@@ -591,6 +598,7 @@ mod tests {
     use super::*;
 
     fn plan(path: &str, args: Value) -> RequestPlan {
+        let args = cumulus_core::protocol::wire::serialization::official_data(&args).unwrap();
         let params = eapi::encrypt(path, &args).unwrap();
         RequestPlan {
             url: ApiOrigin::Pc.request_url(WireRoute::Eapi, path).unwrap(),
@@ -645,6 +653,11 @@ mod tests {
         };
         assert!(permitted(&playlist(0), None).is_err());
         assert!(permitted(&playlist(0), Some("43")).is_err());
+        let noncanonical = plan(
+            PLAYLISTS,
+            json!({"uid":"42","includeVideo":true,"limit":200,"offset":"00"}),
+        );
+        assert!(permitted(&noncanonical, Some("42")).is_err());
         let first = permitted(&playlist(0), Some("42")).unwrap();
         let account = permitted(&plan(ACCOUNT, json!({})), Some("42")).unwrap();
         let liked_plan = plan(LIKED, json!({"uid":"42"}));
