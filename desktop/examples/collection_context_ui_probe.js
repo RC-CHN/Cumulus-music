@@ -113,8 +113,10 @@
     await wait(() => document.documentElement.dataset.theme === value, "theme");
     await settle();
   }
-  async function refresh(completed = ready) {
+  async function refresh(completed) {
     click(button("刷新收藏列表"));
+    // The click can see the old idle DOM before Vue renders loading. Each
+    // caller must identify the new result rather than wait for idle alone.
     await wait(completed, "refresh completion");
     await settle();
   }
@@ -481,7 +483,7 @@
     );
     await capture("saved_more_recovered_light");
     await mode("fail_saved");
-    await refresh();
+    await refresh(() => ready() && loaded() === 123 && one(".catalog-error"));
     await theme("dark");
     assert(
       loaded() === 123 && one(".catalog-error"),
@@ -609,7 +611,7 @@
     );
     await capture("followed_same_account_dark");
     await mode("fail_follow");
-    await refresh();
+    await refresh(() => ready() && loaded() === 40 && one(".catalog-error"));
     await theme("light");
     assert(
       loaded() === 40 && one(".catalog-error"),
@@ -626,7 +628,7 @@
     click(button("清空筛选"));
     await settle();
     await mode("empty_follow");
-    await refresh();
+    await refresh(() => ready() && loaded() === 0 && one(".collections-page .empty-state"));
     await theme("dark");
     assert(
       loaded() === 0 &&
@@ -637,7 +639,8 @@
     );
     await capture("followed_empty_dark");
     await mode("none");
-    await refresh();
+    await refresh(() => ready() && loaded() === 20 && !one(".collections-page .empty-state"));
+    await wait(() => document.activeElement === button("刷新收藏列表"), "refresh focus returned");
     await emit("resize", { width: 760, height: 540, scale: devicePixelRatio });
     await wait(
       () => innerWidth === 760 && innerHeight === 540,
@@ -650,7 +653,7 @@
       await settle();
     }
     await mode("empty_purchase");
-    await refresh();
+    await refresh(() => ready() && loaded() === 0 && one(".collections-page .empty-state"));
     await theme("light");
     assert(
       loaded() === 0 &&
@@ -661,8 +664,6 @@
     );
     await capture("purchased_empty_light");
     await mode("fail_purchase");
-    // The old empty response is still visible before Vue publishes this
-    // refresh's loading state. Wait for the new error, not the old idle DOM.
     await refresh(() => ready() && one(".catalog-error"));
     assert(
       one(".catalog-error") && !one(".collections-page .empty-state"),
@@ -675,11 +676,7 @@
     assert(loaded() === 2, "purchase recovered");
     await capture("purchased_recovered_dark");
     await mode("expire");
-    await refresh();
-    await wait(
-      () => one(".welcome") && !one(".collections-page"),
-      "expired collection removed",
-    );
+    await refresh(() => one(".welcome") && !one(".collections-page"));
     await theme("light");
     await capture("expired_light");
     await theme("dark");
