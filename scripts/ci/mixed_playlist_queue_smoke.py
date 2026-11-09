@@ -15,6 +15,7 @@ STAGES = (
     'ux_01_paused_baseline', 'ux_02_local_next_menu', 'ux_03_local_next',
     'ux_04_online_next', 'ux_05_entire_playlist', 'ux_06_drag_target',
     'ux_07_drag_boundary', 'ux_08_drag_inserted',
+    'ux_09_local_queue_source', 'ux_10_followed_playlist_source',
 )
 LEGACY = 'a10c0000000000000000000000000001'
 
@@ -78,16 +79,18 @@ def main():
     local, anchor = done['localId'], done['anchorId']
     assert local != anchor and local not in {'701', '702', LEGACY} and anchor not in {'701', '702', LEGACY}
     assert states[5]['selected'] == [local, '702']
+    assert states[8]['sourceLabel'].startswith('来自：') and states[8]['playlist'] == []
     before = states[0]['player']
     assert before['state'] == 'paused' and before['id'] == anchor and before['position'] > .10
     assert before['resourceKind'] == 'local'
     expected = ([anchor], [anchor], [anchor, local], [anchor, '702', local],
                 [anchor, local, '701', '702'], [anchor, local, '701', '702'],
-                [anchor, local, '701', '702'], [anchor, '701', '702', local])
+                [anchor, local, '701', '702'], [anchor, '701', '702', local],
+                [anchor, '701', '702', local], [anchor, '701', '702', local])
     revisions = []
-    for row, order in zip((*states, done), (*expected, expected[-1]), strict=True):
+    for index, (row, order) in enumerate(zip((*states, done), (*expected, expected[-1]), strict=True)):
         assert row['player'] == before, 'native paused playback was not preserved'
-        if 'playlist' in row:
+        if 'playlist' in row and index != 8:
             assert row['playlist'] == [local, '701', LEGACY, '702'], 'queue action reordered source playlist'
         queue = row['queue']
         assert queue['current'] == before['entryId'] == queue['rows'][0]['entryId']
@@ -108,7 +111,7 @@ def main():
 
     assert len(set(revisions)) == 5
     assert revisions[0] == revisions[1] and revisions[4] == revisions[5] == revisions[6]
-    assert revisions[7] == revisions[8]
+    assert len(set(revisions[7:])) == 1
     counts = [row['nativeReceipt']['catalogReads'] for row in states]
     assert counts[2] == counts[1], 'local next unnecessarily requested catalog metadata'
     assert counts[3][len(counts[2]):] == [['702']], 'catalog next fetched the wrong resource'
@@ -120,6 +123,7 @@ def main():
                   trustedPointer=True, states=len(STAGES), screenshots=len(STAGES),
                   frontendApp=done.get('frontendApp'),
                   pausedPlaybackPreserved=True, originalFilesPreserved=True,
+                  localQueueSourceNavigated=True, sourceLabel=states[8]['sourceLabel'],
                   menuQueueOrders=[['anchor', 'local'], ['anchor', '702', 'local'],
                                    ['anchor', 'local', '701', '702']],
                   dropBeforeIndex=3, dropOrder=['anchor', '701', '702', 'local'],

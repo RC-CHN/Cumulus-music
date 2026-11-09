@@ -237,16 +237,32 @@
     await checkpoint('ux_08_drag_inserted', dropped, { trustedUp: await wait(() => trustedUp, 'trusted pointer up') });
     require(!one('.queue-drop-marker'), 'drop marker cleaned up');
 
-    step = 'verify original files remain indexed';
+    require(!originMismatches.length, 'mixed source missing from queue checkpoints: ' + originMismatches.join(', '));
+    step = 'follow mixed local source through the queue menu';
     click(one('[aria-label="关闭播放队列"]'));
     await wait(() => !one('.queue-panel'), 'queue drawer closed');
     click(library);
-    await wait(() => libraryRow(anchorName)?.dataset.localId === anchorId, 'same anchor file remains indexed');
-    require(!originMismatches.length, 'mixed source missing from queue checkpoints: ' + originMismatches.join(', '));
+    await wait(() => libraryRow(anchorName)?.dataset.localId === anchorId &&
+      !one('.page-enter-active,.page-leave-active'), 'same anchor file remains indexed on a different page');
+    click(one('.playerbar [aria-label="播放队列"]'));
+    await wait(() => queueViewport()?.querySelectorAll('.queue-row').length === 4 &&
+      !one('.queue-panel-enter-active'), 'settled queue drawer from local library');
+    const localEntry = (await queue()).tracks.find(({ track }) => track.id === localId);
+    const queueRow = one('.queue-row[data-entry-id="' + CSS.escape(localEntry.entryId) + '"]');
+    click(queueRow?.querySelector('.queue-row-more'));
+    const sourceItem = await wait(() => item('source'), 'mixed local queue row has an enabled playlist source');
+    const sourceLabel = sourceItem.textContent.trim();
+    require(sourceLabel.startsWith('来自：'), 'the native file menu labels the playlist source');
+    await checkpoint('ux_09_local_queue_source', dropped, { sourceLabel });
+    click(sourceItem);
+    await wait(() => same(visibleRows(), [localId, '701', legacy, '702']) &&
+      !one('.page-enter-active,.page-leave-active'), 'source menu returns to the originating mixed playlist');
+    await checkpoint('ux_10_followed_playlist_source', dropped);
+    require(!originMismatches.length, 'mixed queue provenance changed while following its source');
     const frontendApp = performance.getEntriesByType('resource')
       .map(({ name }) => new URL(name).pathname.split('/').pop())
       .find((name) => /^App-[a-zA-Z0-9_-]+\.js$/.test(name));
-    await emit('complete', { ok: true, localId, anchorId, trustedDown, trustedUp, states: 8,
+    await emit('complete', { ok: true, localId, anchorId, trustedDown, trustedUp, states: 10,
       frontendApp, ...compact(await state(), await queue()) });
   } catch (error) {
     await emit('failed', { step, error: String(error), setupIssue, originMismatches, playlist: visibleRows(),

@@ -307,7 +307,8 @@ fn main() {
             if let Some(fixture)=&mixed_fixture {
                 let stages = if mixed_queue {
                     &["ux_01_paused_baseline","ux_02_local_next_menu","ux_03_local_next","ux_04_online_next",
-                      "ux_05_entire_playlist","ux_06_drag_target","ux_07_drag_boundary","ux_08_drag_inserted"][..]
+                      "ux_05_entire_playlist","ux_06_drag_target","ux_07_drag_boundary","ux_08_drag_inserted",
+                      "ux_09_local_queue_source","ux_10_followed_playlist_source"][..]
                 } else {
                     &["ux_01_add_dialog","ux_02_add_cancelled","ux_03_mixed_read","ux_04_local_playing",
                       "ux_05_remove_dialog","ux_06_remove_cancelled","ux_07_removed"][..]
