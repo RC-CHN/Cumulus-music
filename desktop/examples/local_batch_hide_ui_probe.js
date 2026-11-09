@@ -42,6 +42,8 @@
     one('[data-local-batch-selection]')?.textContent ?? '',
   );
   const remove = () => one('[data-local-batch-remove]');
+  const play = () => one('[data-local-batch-play]');
+  const batchPlay = window.__localProof.batchPlay;
   const localSearch = () => one('[aria-label="搜索本地音乐"]');
   const localReady = () => one('.local-page')?.dataset.localLoading === 'false';
   function visible(target) {
@@ -95,16 +97,80 @@
     click(batchAction());
     await wait(() => batch() && rows().length === 100 && firstCheck(), 'first 100 batch rows');
     const first = rows()[0].dataset.localBatchId;
-    click(firstCheck());
-    await wait(() => selected(1), 'first checked row');
+    assert(play()?.disabled && remove()?.disabled, 'an empty batch cannot play or remove');
+    if (!batchPlay) {
+      click(firstCheck());
+      await wait(() => selected(1), 'first checked row');
+    }
     click(one('[data-local-batch-next]'));
-    await wait(() => rows().length === 5 && firstCheck() && selected(1), 'page 2 retains first selection');
+    await wait(() => rows().length === 5 && firstCheck() && selected(batchPlay ? 0 : 1), 'second batch page');
     const second = rows()[0].dataset.localBatchId;
     click(firstCheck());
-    await wait(() => selected(2) && remove() && !remove().disabled, 'two checked across pages');
+    if (batchPlay) {
+      await wait(() => selected(1), 'selected second-page row first');
+      click(one('[data-local-batch-previous]'));
+      await wait(() => rows().length === 100 && firstCheck() && selected(1), 'return to first page with selection');
+      click(firstCheck());
+    }
+    await wait(() => selected(2) && remove() && !remove().disabled &&
+      play() && !play().disabled, 'two checked across pages');
     assert(first && second && first !== second, 'distinct native selection IDs');
     assert(!button('从本地磁盘删除', batch()), 'no physical deletion action');
-    await capture('ux_02_batch_cross_page', remove, { ids: [first, second] });
+    await capture('ux_02_batch_cross_page', batchPlay ? play : remove, { ids: [first, second] });
+
+    if (batchPlay) {
+      const queue = () => invoke('player_queue', { epoch });
+      const snapshot = () => invoke('player_snapshot', { epoch });
+      const previous = await queue();
+      const anchor = previous.tracks.findIndex((row) => row.entryId === paused.entryId) + 1;
+      const expectedOrder = previous.tracks.map((row) => row.track.id);
+      const selectedIds = [first, second];
+      assert(anchor > 0 && selectedIds.every((id) => expectedOrder.includes(id)),
+        'prior native queue contains both duplicates and exact current entry');
+      const keep = (id) => !selectedIds.includes(id);
+      const expected = [...expectedOrder.slice(0, anchor).filter(keep), ...selectedIds,
+        ...expectedOrder.slice(anchor).filter(keep)];
+      click(play());
+      const playing = await wait(async () => {
+        const state = await snapshot();
+        return state.state === 'playing' && state.track?.id === first && state.position > .2 && state;
+      }, 'first selected row reaches real local decoder');
+      const installed = await queue();
+      assert(playing.playId !== paused.playId && selected(2) &&
+        installed.current === playing.entryId &&
+        installed.tracks.map((row) => row.track.id).join() === expected.join(),
+        'native queue keeps unselected prefix/suffix, moves duplicates and starts in canonical order');
+      await capture('ux_03_batch_playing', play, { playId: playing.playId, selectedIds });
+      await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+      await invoke('player_action', { epoch, action: { kind: 'seek', seconds: 3 } });
+      const held = await wait(async () => {
+        const state = await snapshot();
+        return state.state === 'paused' && Math.abs(state.position - 3) < .08 && state;
+      }, 'exact current local file paused at a nonzero time');
+      click(await wait(() => play() && !play().disabled && play(), 'play can resume'));
+      const resumed = await wait(async () => {
+        const state = await snapshot();
+        return state.state === 'playing' && state.playId === held.playId &&
+          state.position >= held.position && state;
+      }, 'toolbar resumes the existing local decoder');
+      assert(resumed.entryId === held.entryId && resumed.queueRevision === held.queueRevision &&
+        resumed.position - held.position < 1.0 && selected(2), 'resume preserves exact queue and clock');
+      await capture('ux_04_batch_resumed', play, { playId: resumed.playId, resumedPosition: resumed.position });
+      const back = () => button('返回上一页');
+      click(back());
+      await wait(() => localReady() && localSearch()?.value === filter &&
+        all('.local-tracks tbody tr').length === 105 && document.activeElement === toolbar(),
+      'Back restores filter, rows and the local menu focus');
+      const current = await snapshot();
+      assert(current.playId === resumed.playId && current.track?.id === first, 'Back leaves exact local decoder');
+      await capture('ux_05_batch_play_back', localSearch);
+      await emit('complete', {
+        ok: true, selected: selectedIds, selectedInReverse: true, insertionOrderVerified: true,
+        decoderAndClockRetained: true, retainedFilterOnBack: true, restoredMenuFocus: true,
+        count: (await nativePage(filter)).total, realMusicRequests: 0,
+      });
+      return;
+    }
 
     click(remove());
     const hidden = await wait(async () => {

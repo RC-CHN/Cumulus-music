@@ -161,10 +161,15 @@ fn main() {
     let group_hide = std::env::var("CUMULUS_LOCAL_GROUP_HIDE_PROOF").as_deref() == Ok("1");
     assert!(!group_hide || !folder_reveal);
     let batch_hide = std::env::var("CUMULUS_LOCAL_BATCH_HIDE_PROOF").as_deref() == Ok("1");
-    assert!(!batch_hide || (!group_hide && !folder_reveal));
+    let batch_play = std::env::var("CUMULUS_LOCAL_BATCH_PLAY_PROOF").as_deref() == Ok("1");
+    assert!(
+        !(batch_hide || batch_play)
+            || (!group_hide && !folder_reveal && !(batch_hide && batch_play))
+    );
     let queue = folder_reveal
         || group_hide
         || batch_hide
+        || batch_play
         || std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
     assert!(
         !queue || (!cold && !reopen),
@@ -197,16 +202,30 @@ fn main() {
                         .expect("synthetic group media");
                 }
             }
-            if batch_hide {
+            if batch_hide || batch_play {
                 let mut wav = fs::read(media.join("雨声.wav")).expect("synthetic audio bytes");
                 let size = 16_000u32;
                 wav.truncate(44 + size as usize);
                 wav[4..8].copy_from_slice(&(size + 36).to_le_bytes());
                 wav[40..44].copy_from_slice(&size.to_le_bytes());
                 for index in 0..105 {
+                    // The two chosen rows need enough decoded clock for a real
+                    // pause/resume proof, while the old hide fixture stays 1s.
+                    let mut longer = Vec::new();
+                    let bytes = if batch_play && matches!(index, 104 | 4) {
+                        let samples = fs::read(media.join("雨声.wav"))
+                            .expect("synthetic batch playback samples");
+                        let length = 16_000u32 * 12;
+                        longer.extend_from_slice(&samples[..44 + length as usize]);
+                        longer[4..8].copy_from_slice(&(length + 36).to_le_bytes());
+                        longer[40..44].copy_from_slice(&length.to_le_bytes());
+                        &longer
+                    } else {
+                        &wav
+                    };
                     fs::write(
                         media.join(format!("qx-local-selection {index:03}.wav")),
-                        &wav,
+                        bytes,
                     )
                     .expect("synthetic batch audio");
                 }
@@ -230,7 +249,8 @@ fn main() {
             let folder_capture = folder_reveal && ["ux_01_folder_menu", "ux_02_folder_focus", "ux_03_folder_failure"].contains(&stage);
             let hide_capture = group_hide && ["ux_01_group_hide_menu", "ux_02_group_hidden", "ux_03_group_restored"].contains(&stage);
             let batch_capture = batch_hide && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_hidden", "ux_04_batch_restored"].contains(&stage);
-            if folder_capture || hide_capture || batch_capture {
+            let batch_play_capture = batch_play && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_playing", "ux_04_batch_resumed", "ux_05_batch_play_back"].contains(&stage);
+            if folder_capture || hide_capture || batch_capture || batch_play_capture {
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -301,12 +321,12 @@ fn main() {
     }).on_page_load(move|webview,payload|{
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
-            webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture}))).unwrap();
+            webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play}))).unwrap();
             webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if folder_reveal {
                 include_str!("local_folder_reveal_ui_probe.js")
             } else if group_hide {
                 include_str!("local_group_hide_ui_probe.js")
-            } else if batch_hide {
+            } else if batch_hide || batch_play {
                 include_str!("local_batch_hide_ui_probe.js")
             } else if queue {
                 include_str!("local_queue_ui_probe.js")
