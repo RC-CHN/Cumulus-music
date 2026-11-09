@@ -164,3 +164,29 @@ all six window states with one pinned synthetic AAC load. A separate real play
 attempt also verified the account, card, details and nontrial receipt, but
 stopped locally before a CDN dial. This does not establish real playback;
 source authorization does not guarantee the same authority between requests.
+
+2026-11-10 real Linux playback from the same signed source response
+--------------------------------------------------------------------
+The exact sealed probe built from `ada26e73` (SHA-256
+`d48125ac2cc3272c5e51c4b9bffc927643d9192d5438fdb5bde8ff1187eac1ca`)
+passed all six checkpoints in one production Linux WebView: account resources,
+selected comprehensive song, playing, paused, resumed, stopped. It reused the
+independently approved account and passed the original stopped database recheck.
+The account and its resources were not modified.
+
+The same-response CDN arm admitted one exact authority after one bounded DNS
+resolution and one certificate check without HTTP. Nine signed PC API reads
+used one broker connection. There was one media connection, one credential-free
+full-body read, one verified private anonymous file and one pinned libmpv AAC
+load. No SDK, ordinary download, alternate media or other egress was attempted.
+The playback clock reached 2.955 s, held on the same entry at 3.165 s while
+paused, advanced to 3.415 s on resume, and returned to idle on stop. The
+supervisor independently checked the native timeline, exact account and entry,
+removed the temporary profile and retained only the bounded evidence. The
+production frontend seal is the same as in the companion six-screenshot
+synthetic regression. No real-account screenshots were recorded.
+
+Evidence: `.build/ui-proof/phase195-signed-window-broker/verified-real-window-summary.json`.
+The live proof uses libmpv's null sink and a pinned file; it does not establish
+physical sound, direct upstream URL handling by the normal package, account
+writes, ordinary real download, or Windows package behavior.
