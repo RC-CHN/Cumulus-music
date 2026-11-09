@@ -14,10 +14,11 @@ on:
         description: Also verify Windows SMTC through an independent OS session consumer
         type: boolean
         default: false
-      windows_native_file_diagnostic:
-        description: Run the candidate Windows native file handoff against this run's portable package
-        type: boolean
-        default: false
+      windows_native_file_output:
+        description: Verify portable native file handoff with a real default endpoint or a diagnostic null output
+        type: choice
+        options: ['off', 'default', 'null']
+        default: 'off'
 
 permissions:
   contents: read
@@ -497,6 +498,8 @@ jobs:
           # Scope the concurrency trial to Release; debug and GUI keep the default.
           CARGO_BUILD_JOBS: '3'
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+          # Workflow-dispatch artifacts cannot enter the main push release gate.
+          CUMULUS_BUILD_WINDOWS_NATIVE_OPEN_NULL_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output == 'null' && '1' || '' }}
         run: python scripts/ci/package.py --platform 'windows-x64'
       # The portable runtime, FLAC and local-queue proofs consume this exact
       # package in parallel with the other Windows regression shards.
@@ -1036,7 +1039,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Verify Windows native open tokens, profile and retained decoder inputs
-        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && inputs.windows_native_file_diagnostic
+        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && (inputs.windows_native_file_output == 'default' || inputs.windows_native_file_output == 'null')
         timeout-minutes: 20
         shell: pwsh
         run: |
@@ -1056,17 +1059,24 @@ jobs:
           cargo test --locked -p cumulus-core --lib windows_rooted_actor_loads_held -- --ignored
           if ($LASTEXITCODE -ne 0) { throw 'Packaged held libmpv proof failed' }
       - name: Launch exact Windows package and exercise cold and warm native file open
-        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && inputs.windows_native_file_diagnostic
+        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && (inputs.windows_native_file_output == 'default' || inputs.windows_native_file_output == 'null')
         timeout-minutes: 10
         shell: pwsh
+        env:
+          CUMULUS_NATIVE_OPEN_PROOF_OUTPUT: ${{ inputs.windows_native_file_output }}
         run: |
-          python scripts/ci/windows_native_open_smoke.py --packages .build/packages/windows-x64 --fixture-encoder "$env:CUMULUS_LOCAL_FIXTURE_FFMPEG" --root .build/ci-native-open-windows
+          $mode = $env:CUMULUS_NATIVE_OPEN_PROOF_OUTPUT
+          $target = Join-Path $env:RUNNER_TEMP 'cumulus-native-open-default-endpoint'
+          cargo build --locked --manifest-path desktop/probes/windows-system-master-volume/Cargo.toml --target-dir $target
+          if ($LASTEXITCODE -ne 0) { throw 'Default render endpoint probe build failed' }
+          $probe = (Resolve-Path -LiteralPath (Join-Path $target 'debug/cumulus-windows-system-master-volume.exe')).Path
+          python scripts/ci/windows_native_open_smoke.py --packages .build/packages/windows-x64 --fixture-encoder "$env:CUMULUS_LOCAL_FIXTURE_FFMPEG" --root .build/ci-native-open-windows --audio-output "$mode" --endpoint-probe "$probe"
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaged file activation proof failed' }
       - name: Preserve Windows packaged native open evidence
-        if: always() && !cancelled() && matrix.shard == 'package-runtime' && hashFiles('.build/ci-native-open-windows/owner.log') != ''
+        if: always() && !cancelled() && matrix.shard == 'package-runtime' && hashFiles('.build/ci-native-open-windows/report.json', '.build/ci-native-open-windows/owner.log') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: windows-packaged-native-open-attempt-${{ github.run_attempt }}
+          name: windows-packaged-native-open-${{ inputs.windows_native_file_output }}-attempt-${{ github.run_attempt }}
           path: |
             .build/ci-native-open-windows/report.json
             .build/ci-native-open-windows/owner.log
