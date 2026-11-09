@@ -1,6 +1,7 @@
-"""Exercise the search voice More menu and its native directory handoff in Linux."""
+"""Exercise the voice More menus and native directory handoff in Linux."""
 import argparse
 from contextlib import closing
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -15,11 +16,82 @@ def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+QUEUE_STAGES = ('playing_menu', 'paused', 'fallback_menu', 'escaped', 'remove_menu', 'removed',
+                'resume_menu', 'resumed', 'directory_menu', 'directory_closed')
+
+
+def queue_input(driver, stage, payload):
+    if stage == 'ux_02_paused':
+        driver.move(payload['pointer'])
+        for pressed in (1, 0):
+            assert driver.xtest.XTestFakeButtonEvent(driver.display, 3, pressed, 0)
+            driver.x11.XSync(driver.display, 0)
+            time.sleep(.04)
+    elif stage == 'ux_03_fallback_menu':
+        driver.x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        driver.x11.XKeysymToKeycode.restype = ctypes.c_ubyte
+        driver.xtest.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        escape = driver.x11.XKeysymToKeycode(driver.display, 0xff1b)
+        assert escape, 'X11 Escape keycode'
+        for pressed in (1, 0):
+            assert driver.xtest.XTestFakeKeyEvent(driver.display, escape, pressed, 0)
+            driver.x11.XSync(driver.display, 0)
+    elif stage in ('ux_01_playing_menu', 'ux_05_remove_menu', 'ux_07_resume_menu', 'ux_09_directory_menu'):
+        driver.move(payload['pointer'])
+        driver.button(True)
+        time.sleep(.04)
+        driver.button(False)
+
+
+def queue_result(root, output, rows, complete, locale):
+    before = rows['playing_menu']['playback']
+    paused = rows['paused']['playback']
+    assert complete['trusted'] == dict(pause=1, play=1, right=1, escape=1, remove=1, directory=1)
+    assert complete['audioFactoryCount'] == 1
+    assert dict(rows['playing_menu']['items'])['play'] == '暂停'
+    assert dict(rows['playing_menu']['items'])['comments'] == '查看评论(54)'
+    assert dict(rows['fallback_menu']['items'])['comments'] == '查看评论'
+    assert dict(rows['resume_menu']['items'])['play'] == '播放'
+    initial = rows['playing_menu']['queue']
+    removed = rows['removed']['queue']
+    assert initial['revision'] != removed['revision']
+    for index, (label, record) in enumerate(rows.items()):
+        view, queue = record['playback'], record['queue']
+        assert view['playId'] == before['playId'] and view['entryId'] == before['entryId']
+        assert view['state'] == ('playing' if index == 0 or index >= 7 else 'paused')
+        if view['state'] == 'paused':
+            assert view['position'] == paused['position'], label
+        assert queue == (initial if index < 5 else removed), label
+        assert [row['track']['voiceId'] for row in queue['tracks']] == (['401', '402'] if index < 5 else ['401'])
+    assert rows['escaped']['focused'] == initial['tracks'][1]['entryId']
+    assert rows['removed']['focused'] == rows['directory_closed']['focused'] == before['entryId']
+    assert rows['resumed']['playback']['position'] > paused['position']
+    for stage in ('01_playing_menu', '03_fallback_menu', '05_remove_menu', '07_resume_menu', '09_directory_menu'):
+        samples = read(output / f'paint-ux_{stage}.json')['samples']
+        assert len(samples) == 1 and samples[0]['ok'], stage
+    assert (root / 'folder-argv.txt').read_text(encoding='utf-8').splitlines() == [str(root / 'episode files')]
+    assert complete['voiceMenuCalls'] == [
+        {'resourceType': 1, 'resourceIds': f'["{id_}"]'} for id_ in (401, 401, 402, 402, 401, 401)]
+    # Only the initial voice load and second-row queue insertion resolve sources.
+    assert complete['voiceNextCalls'] == [
+        ['/api/dj/program/detail', {'id': '401'}],
+        ['/api/dj/program/detail', {'id': '401'}],
+        ['/api/dj/play/url/check', {'voiceId': '401'}],
+        ['/api/dj/program/detail', {'id': '402'}],
+    ]
+    return dict(ok=True, actualWebView=True, states=QUEUE_STAGES, screenshots=len(QUEUE_STAGES),
+                locale=locale, sameDecoder=True, directoryArgvVerified=True, trusted=complete['trusted'],
+                realMusicRequests=0, realAccountWrites=0, wire=complete['voiceMenuCalls'],
+                sourcePreparation=complete['voiceNextCalls'])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('binary', 'root', 'frontend-dist'):
         parser.add_argument('--' + name, type=Path, required=True)
-    parser.add_argument('--play', action='store_true', help='check explicit Menu Play versus row Pause')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--play', action='store_true', help='check explicit Search Menu Play versus row Pause')
+    mode.add_argument('--queue', action='store_true', help='check the ordinary queue voice More menu')
     args = parser.parse_args()
     if sys.platform != 'linux' or not os.environ.get('DISPLAY'):
         parser.error('requires Linux Xvfb')
@@ -27,7 +99,8 @@ def main():
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     env = {key: value for key, value in os.environ.items() if not key.upper().startswith('CUMULUS_')}
-    script = 'search_voice_menu_play_ui_probe.js' if args.play else 'search_voice_menu_ui_probe.js'
+    script = ('queue_voice_menu_ui_probe.js' if args.queue else 'search_voice_menu_play_ui_probe.js'
+              if args.play else 'search_voice_menu_ui_probe.js')
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_SEARCH_UI_PROOF='1',
                CUMULUS_SEARCH_VOICE_MENU_PROOF='1', LC_ALL='en_US.UTF-8', GDK_BACKEND='x11',
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] /
@@ -46,6 +119,8 @@ def main():
     output = root / 'first'
     with closing(TrustedDrag()) as pointer, (root / 'host.log').open('x', encoding='utf-8') as log:
         def input_at_capture(path, payload, _pid):
+            if args.queue:
+                return queue_input(pointer, path.stem, payload)
             targets = (('ux_01_playing_menu', 'ux_03_row_pause', 'ux_04_paused_menu') if args.play else
                        ('ux_01_completed_menu',))
             if path.stem in targets:
@@ -57,13 +132,17 @@ def main():
     failed = output / 'failed.json'
     assert not failed.exists(), read(failed) if failed.exists() else None
     complete = read(output / 'complete.json')
-    stages = (('playing_menu', 'playing_kept', 'row_pause', 'paused_menu', 'resumed') if args.play else
+    stages = (QUEUE_STAGES if args.queue else
+              ('playing_menu', 'playing_kept', 'row_pause', 'paused_menu', 'resumed') if args.play else
               ('completed_menu', 'folder_closed', 'classified_fallback', 'late_ignored'))
     rows = {path.stem.split('_', 2)[2]: read(path) for path in sorted(output.glob('ux_*.json'))}
     assert code == 0 and complete['ok'] and complete['stageCount'] == len(stages)
     assert tuple(rows) == stages and len(list(output.glob('ux_*.png'))) == len(stages)
     locale = read(output / 'locale.json')
     assert locale == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}
+    if args.queue:
+        write_report(root, queue_result(root, output, rows, complete, locale))
+        return
     if args.play:
         assert rows['playing_menu']['label'] == rows['paused_menu']['label'] == '播放'
         assert rows['playing_kept']['trustedMenu'] == rows['resumed']['trustedIndex'] == 1

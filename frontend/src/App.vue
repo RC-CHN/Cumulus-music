@@ -165,7 +165,7 @@ import QueuePanel from './components/QueuePanel.vue';
 import type {
   TrackCurrentToggle,
   QueueMenuAction,
-  QueueTrackMenuRequest,
+  QueueMenuRequest,
   TrackMenuRequest,
   TrackPendingToggle,
   TrackPlayGesture,
@@ -2487,9 +2487,35 @@ function collectQueue(
         : undefined,
   };
 }
-function applyQueueMenu(key: QueueMenuAction, input: QueueTrackMenuRequest) {
+function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
   if (!input.live() || input.info.epoch !== account.value.epoch) return;
   const { track } = input.info;
+  if (input.kind === 'voice') {
+    const { voiceId, radioId, creator, epoch, revision, entryId } = input.info;
+    if (key === 'comments') openComments({ kind: 'voice', id: voiceId }, track.name);
+    else if (key === 'download' && signedIn.value && !downloadDialog.value) {
+      const route = page.value;
+      downloadDialog.value = {
+        kind: 'voice',
+        tracks: [{ id: voiceId, name: track.name }],
+        live: () => page.value === route && input.live() && account.value.epoch === epoch,
+      };
+    } else if (key === 'creator' && creator?.id) {
+      if (page.value.kind !== 'playlist_creator' || page.value.id !== creator.id)
+        music.navigate({ kind: 'playlist_creator', id: creator.id });
+    } else if (key === 'source' && radioId) {
+      const scope = podcasts.query.value.scope;
+      if (page.value.kind !== 'podcasts') {
+        podcasts.navigate({ kind: 'radio', id: radioId, ascending: true }, false);
+        music.navigate({ kind: 'podcasts' });
+      } else if (scope.kind !== 'radio' || scope.id !== radioId) openSceneRadio(radioId);
+    } else if (key === 'directory') {
+      void core.playerQueueOpenVoiceDirectory(epoch, revision, entryId).catch((error) => {
+        if (input.live()) input.report(failure(error).message);
+      });
+    }
+    return;
+  }
   if (key === 'comments') trackComments(track);
   else if (key === 'download') {
     if (!signedIn.value) loginOpen.value = true;

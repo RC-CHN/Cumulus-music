@@ -234,7 +234,11 @@ export interface DownloadClient {
   openDownloadDirectory(epoch: string, taskId: string | null): Promise<void>;
 }
 export type DownloadDialogTarget =
-  | { kind: 'voice'; tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[] }
+  | {
+      kind: 'voice';
+      tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[];
+      live?: () => boolean;
+    }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }
   | { kind: 'start'; tracks: TrackView[] }
   | {
