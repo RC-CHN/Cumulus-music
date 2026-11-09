@@ -2,6 +2,8 @@
 //! No credentials or remote requests. Mixed playlist mode uses a sealed account.
 #[path = "support/mixed_playlist_fixture.rs"]
 mod mixed_playlist_fixture;
+#[path = "support/mixed_reorder_fixture.rs"]
+mod mixed_reorder_fixture;
 #[path = "../../core/tests/support/native_lyric_wave.rs"]
 mod native_lyric_wave;
 use cumulus_core::{
@@ -205,12 +207,24 @@ fn main() {
         "directory selection needs a fresh dedicated profile"
     );
     let mixed = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
-    assert!(!mixed || !(reopen || queue || cold || directory_selection));
+    let reorder = std::env::var_os("CUMULUS_MIXED_REORDER_PROOF").is_some();
+    assert!(!(mixed && reorder));
+    assert!(!(mixed || reorder) || !(reopen || queue || cold || directory_selection));
+    let reorder_source = reorder.then(|| {
+        fs::read_to_string(
+            std::env::var_os("CUMULUS_MIXED_REORDER_SCRIPT").expect("isolated reorder script"),
+        )
+        .expect("read isolated reorder script")
+    });
+    let reorder_fixture = reorder.then(|| {
+        fs::create_dir(&root).expect("new synthetic mixed reorder root");
+        Arc::new(mixed_reorder_fixture::Fixture::new(&root).expect("mixed reorder audio"))
+    });
     let mixed_fixture = mixed.then(|| {
         fs::create_dir(&root).expect("new synthetic mixed playlist root");
         Arc::new(mixed_playlist_fixture::Fixture::new(&root).expect("mixed playlist audio"))
     });
-    if !reopen && !mixed {
+    if !reopen && !mixed && !reorder {
         fs::create_dir(&root).expect("new proof root");
         fixtures(&root, cold || directory_selection, queue).expect("generated local fixtures");
         if queue {
@@ -269,28 +283,47 @@ fn main() {
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
         let offline=Arc::new(Offline { hold:cold, started:AtomicBool::new(false), release:tokio::sync::Notify::new() });
         let store=registry.store();
-        let api: Arc<dyn Api>=match &mixed_fixture {
-            Some(fixture)=>fixture.clone(),
-            None=>offline.clone(),
+        let api: Arc<dyn Api>=match (&mixed_fixture,&reorder_fixture) {
+            (Some(fixture),None)=>fixture.clone(),
+            (None,Some(fixture))=>fixture.clone(),
+            (None,None)=>offline.clone(),
+            (Some(_),Some(_))=>unreachable!(),
         };
         let session=Arc::new(AccountSession::new(api,Some(store.clone())));
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
         tauri::async_runtime::block_on(client.start_local_library())?;
-        if mixed {
+        if mixed || reorder {
             let path=setup.join("media").to_string_lossy().into_owned();
             tauri::async_runtime::block_on(client.local_command(cumulus_core::client::dto::LocalCommand::Watch{path}))?;
         }
         app.manage(client);
-        if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
+        if reorder {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(1120.0,900.0))?;}
+        else if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let mut value:Value=serde_json::from_str(event.payload()).expect("proof JSON");
             let stage=value["stage"].as_str().unwrap_or("").to_owned();
             let stage=stage.as_str();
-            if let Some(fixture)=&mixed_fixture {
-                if !["ux_01_add_dialog","ux_02_add_cancelled","ux_03_mixed_read","ux_04_local_playing",
-                     "ux_05_remove_dialog","ux_06_remove_cancelled","ux_07_removed","complete","failed"].contains(&stage) {return;}
-                value["nativeReceipt"]=fixture.receipt(&store).expect("mixed playlist receipt");
+            if mixed || reorder {
+                let terminal=matches!(stage,"complete"|"failed");
+                if let Some(fixture)=&reorder_fixture {
+                    if stage=="release_reorder_ack" {fixture.release();return;}
+                    if stage=="await_reorder_write" {
+                        let fixture=fixture.clone();let handle=handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if fixture.first_send().await {
+                                handle.get_webview_window("main").unwrap().eval("window.__mixedReorderWriteSeen=true;").unwrap();
+                            }
+                        });
+                        return;
+                    }
+                    if !terminal && !mixed_reorder_fixture::STAGES.contains(&stage) {return;}
+                    value["nativeReceipt"]=fixture.receipt(&store).expect("mixed reorder receipt");
+                } else if let Some(fixture)=&mixed_fixture {
+                    if !terminal && !["ux_01_add_dialog","ux_02_add_cancelled","ux_03_mixed_read","ux_04_local_playing",
+                        "ux_05_remove_dialog","ux_06_remove_cancelled","ux_07_removed"].contains(&stage) {return;}
+                    value["nativeReceipt"]=fixture.receipt(&store).expect("mixed playlist receipt");
+                }
                 let pending=output.join(format!("{stage}.pending"));
                 fs::write(&pending,serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 fs::rename(pending,output.join(format!("{stage}.json"))).unwrap();
@@ -420,7 +453,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
-            webview.eval(if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
+            webview.eval(if let Some(source)=&reorder_source {source.as_str()} else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
             } else if queue_reveal {
                 include_str!("local_queue_file_reveal_ui_probe.js")
