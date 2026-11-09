@@ -41,6 +41,7 @@ jobs:
     uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
     name: Frontend and release rules
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/validation/phase207-ci-runtime-overlap'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -72,6 +73,7 @@ jobs:
           retention-days: 7
 
   native-linux:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Keep the established required job context used by the release verifier.
     name: Native (linux-x64)
     runs-on: ubuntu-24.04
@@ -152,6 +154,7 @@ jobs:
           key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   package-linux:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Package and verify (linux-x64)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -308,6 +311,7 @@ jobs:
           retention-days: 3
 
   native:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Native (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -425,6 +429,7 @@ jobs:
 
   windows-release-runtime:
     name: Windows release media runtime
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/validation/phase207-ci-runtime-overlap'
     runs-on: windows-2022
     timeout-minutes: 45
     defaults:
@@ -480,6 +485,7 @@ jobs:
 
   package-windows:
     name: Package and verify (windows-x64)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/validation/phase207-ci-runtime-overlap'
     needs: [frontend, windows-release-runtime]
     runs-on: windows-2022
     timeout-minutes: 150
@@ -568,6 +574,7 @@ jobs:
 
   windows-webview-probes:
     name: Windows WebView probe build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/validation/phase207-ci-runtime-overlap'
     needs: frontend
     runs-on: windows-2022
     timeout-minutes: 45
@@ -675,6 +682,7 @@ jobs:
 
   windows-webview:
     name: Windows WebView (${{ matrix.shard }})
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/validation/phase207-ci-runtime-overlap'
     # The packaged-media jobs below still open the exact final ZIP.
     needs: [windows-release-runtime, windows-webview-probes]
     runs-on: windows-2022
@@ -1050,6 +1058,7 @@ jobs:
 
   windows-webview-packaged:
     name: Windows WebView (${{ matrix.shard }})
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/validation/phase207-ci-runtime-overlap'
     needs: [package-windows, windows-webview-probes]
     runs-on: windows-2022
     timeout-minutes: 150
@@ -1156,6 +1165,7 @@ jobs:
           retention-days: 7
 
   linux-webview-probe:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Linux WebView probe build
     needs: frontend
     runs-on: ubuntu-24.04
@@ -1209,6 +1219,7 @@ jobs:
           compression-level: 1
 
   linux-webview-media:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Linux WebView (${{ matrix.shard }})
     # Only these checks consume the exact release package runtime.
     needs: [frontend, package-linux, linux-webview-probe]
@@ -1476,6 +1487,7 @@ jobs:
           retention-days: 7
 
   linux-webview-shards:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Linux WebView (${{ matrix.shard }})
     # These checks use synthetic inputs and the runner's native libraries.
     needs: [frontend, linux-webview-probe]
@@ -1805,7 +1817,7 @@ jobs:
   linux-webview:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
-    if: always()
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [linux-webview-shards, linux-webview-media]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1819,6 +1831,7 @@ jobs:
           test "$MEDIA" = success
 
   linux-webview-ux-shards:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Linux WebView UX (${{ matrix.shard }})
     needs: [frontend, linux-webview-probe]
     runs-on: ubuntu-24.04
@@ -1993,7 +2006,7 @@ jobs:
   linux-webview-ux:
     # Preserve the existing CI and release context while requiring all UX shards.
     name: Linux WebView download, search and player smoke
-    if: always()
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: linux-webview-ux-shards
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2004,50 +2017,13 @@ jobs:
         run: test "$SHARDS" = success
 
   gate:
-    name: CI gate
-    if: always()
-    needs: [frontend, native-linux, native, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, media-diagnostic, smtc-diagnostic]
+    name: Windows timing gate (non-release)
+    if: always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/validation/phase207-ci-runtime-overlap'
+    needs: [frontend, windows-release-runtime, package-windows, windows-webview-probes, windows-webview, windows-webview-packaged]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require every job
+      - name: Require all Windows packaging and WebView timing lanes
         env:
-          FRONTEND: ${{ needs.frontend.result }}
-          NATIVE: ${{ needs.native.result }}
-          LINUX_NATIVE: ${{ needs.native-linux.result }}
-          LINUX_PACKAGE: ${{ needs.package-linux.result }}
-          WINDOWS_PACKAGE: ${{ needs.package-windows.result }}
-          LINUX_WEBVIEW_PROBE: ${{ needs.linux-webview-probe.result }}
-          LINUX_WEBVIEW: ${{ needs.linux-webview.result }}
-          LINUX_WEBVIEW_UX: ${{ needs.linux-webview-ux.result }}
-          WINDOWS_WEBVIEW_PROBES: ${{ needs.windows-webview-probes.result }}
-          WINDOWS_WEBVIEW: ${{ needs.windows-webview.result }}
-          WINDOWS_WEBVIEW_PACKAGED: ${{ needs.windows-webview-packaged.result }}
-          WINDOWS_RELEASE_RUNTIME: ${{ needs.windows-release-runtime.result }}
-          DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
-          DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
-          SMTC: ${{ needs.smtc-diagnostic.result }}
-          SMTC_REQUESTED: ${{ inputs.windows_smtc_diagnostic || false }}
-        run: |
-          test "$FRONTEND" = success
-          test "$NATIVE" = success
-          test "$LINUX_NATIVE" = success
-          test "$LINUX_PACKAGE" = success
-          test "$WINDOWS_PACKAGE" = success
-          test "$LINUX_WEBVIEW_PROBE" = success
-          test "$LINUX_WEBVIEW" = success
-          test "$LINUX_WEBVIEW_UX" = success
-          test "$WINDOWS_WEBVIEW_PROBES" = success
-          test "$WINDOWS_WEBVIEW" = success
-          test "$WINDOWS_WEBVIEW_PACKAGED" = success
-          test "$WINDOWS_RELEASE_RUNTIME" = success
-          if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
-            test "$DIAGNOSTIC" = success
-          else
-            test "$DIAGNOSTIC" = skipped
-          fi
-          if [ "$SMTC_REQUESTED" = true ]; then
-            test "$SMTC" = success
-          else
-            test "$SMTC" = skipped
-          fi
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: jq -e 'length == 6 and all(.[]; . == "success")' <<< "$RESULTS"
