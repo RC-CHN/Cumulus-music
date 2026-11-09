@@ -1629,10 +1629,130 @@ async fn paused_download_is_persistent_then_explicitly_resumes_and_complete_reje
 }
 
 #[tokio::test]
+async fn completed_file_reveal_checks_the_published_bytes_and_exact_leaf() {
+    let f = Fixture::new();
+    let (id, view) = f.completed().await;
+    let path = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let calls = f.backend.audio.calls().len();
+    let cue = path.with_extension("cue");
+    fs::write(&cue, b"FILE \"synthetic.flac\" WAVE\n").unwrap();
+    let reveal = f
+        .client
+        .download_file_reveal("1", id.clone())
+        .await
+        .unwrap();
+    assert_eq!(reveal.path(), path);
+    assert_ne!(reveal.path(), cue);
+    reveal.check_current().unwrap();
+
+    let mut changed = FLAC.to_vec();
+    changed[0] ^= 1;
+    fs::write(&path, changed).unwrap();
+    assert!(matches!(
+        f.client.download_file_reveal("1", id.clone()).await,
+        Err(Error::Media(_))
+    ));
+    fs::write(&path, FLAC).unwrap();
+    let reveal = f
+        .client
+        .download_file_reveal("1", id.clone())
+        .await
+        .unwrap();
+    let original = path.with_extension("original");
+    fs::rename(&path, &original).unwrap();
+    fs::write(&path, FLAC).unwrap();
+    assert!(reveal.check_current().is_err());
+    assert!(f.client.download_file_reveal("1", id).await.is_err());
+    assert_eq!(f.backend.audio.calls().len(), calls);
+}
+
+#[tokio::test]
+async fn completed_file_reveal_refuses_a_stale_account_and_a_missing_ledger() {
+    use cumulus_core::download::offline::OfflineLibrary;
+
+    let f = Fixture::new();
+    let (id, _) = f.completed().await;
+    let reveal = f
+        .client
+        .download_file_reveal("1", id.clone())
+        .await
+        .unwrap();
+    let token = f.session.token().unwrap();
+    let offline = OfflineLibrary::new(f.session.clone()).unwrap();
+    let record = offline.record(&token, reveal.path()).unwrap().unwrap();
+    offline.forget(&token, &record).unwrap();
+    assert!(reveal.check_current().is_err());
+    assert!(
+        f.client
+            .download_file_reveal("1", id.clone())
+            .await
+            .is_err()
+    );
+    assert!(reveal.path().is_file());
+
+    f.session
+        .adopt(f.api.clone(), json!({"userId":2}), &token)
+        .unwrap();
+    assert!(matches!(reveal.check_current(), Err(Error::StaleResponse)));
+    assert!(matches!(
+        f.client.download_file_reveal("1", id.clone()).await,
+        Err(Error::StaleResponse)
+    ));
+    let current = f.client.account().unwrap().epoch;
+    assert!(f.client.download_file_reveal(&current, id).await.is_err());
+}
+
+#[tokio::test]
+async fn completed_file_reveal_selects_the_original_ncm_without_renewing_rights() {
+    use cumulus_core::download::service::OutputContainer;
+
+    let f = Fixture::new();
+    f.configure().await;
+    let started = f
+        .client
+        .download_command(
+            "1",
+            DownloadCommand::Start {
+                song_ids: vec!["123".into()],
+                options: DownloadOptions {
+                    container: OutputContainer::Ncm,
+                    ..options()
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let view = wait(&f.client, "1", DownloadTab::Completed, |v| {
+        v.completed_count == 1 && !v.tasks[0].cleanup_pending
+    })
+    .await;
+    let path = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let requests = f.api.count(MEMBERSHIP_INFO);
+    let calls = f.backend.audio.calls().len();
+    let reveal = f
+        .client
+        .download_file_reveal("1", started.accepted[0].clone())
+        .await
+        .unwrap();
+    reveal.check_current().unwrap();
+    assert_eq!(reveal.path(), path);
+    assert_eq!(path.extension().unwrap(), "ncm");
+    assert!(fs::read(path).unwrap().starts_with(b"CTENFDAM"));
+    assert_eq!(f.api.count(MEMBERSHIP_INFO), requests);
+    assert_eq!(f.backend.audio.calls().len(), calls);
+}
+
+#[tokio::test]
 async fn rename_move_directory_and_delete_run_from_native_commands_without_reauthorization() {
     let f = Fixture::new();
     let (id, before) = f.completed().await;
     let old = PathBuf::from(before.tasks[0].path.as_ref().unwrap());
+    let old_reveal = f
+        .client
+        .download_file_reveal("1", id.clone())
+        .await
+        .unwrap();
+    assert_eq!(old_reveal.path(), old);
     let calls = f.backend.audio.calls().len();
     let result = f
         .client
@@ -1671,6 +1791,14 @@ async fn rename_move_directory_and_delete_run_from_native_commands_without_reaut
     let path = PathBuf::from(migrated.tasks[0].path.as_ref().unwrap());
     assert!(path.starts_with(target));
     assert_eq!(fs::read(&path).unwrap(), FLAC);
+    assert!(old_reveal.check_current().is_err());
+    let moved_reveal = f
+        .client
+        .download_file_reveal("1", id.clone())
+        .await
+        .unwrap();
+    assert_eq!(moved_reveal.path(), path);
+    moved_reveal.check_current().unwrap();
     f.client
         .download_command(
             "1",
@@ -1688,6 +1816,7 @@ async fn rename_move_directory_and_delete_run_from_native_commands_without_reaut
     .await;
     assert!(!path.exists());
     assert!(!path.with_extension("lrc").exists());
+    assert!(moved_reveal.check_current().is_err());
     assert_eq!(f.backend.audio.calls().len(), calls);
 }
 

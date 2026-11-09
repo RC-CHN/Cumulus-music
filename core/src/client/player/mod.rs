@@ -1,6 +1,6 @@
 mod copyright_notification;
 mod volume_diagnosis;
-pub use volume_diagnosis::VolumeDiagnosisDismissal;
+pub use volume_diagnosis::{OutputDiagnosticRead, VolumeDiagnosisDismissal};
 mod chorus;
 mod comment_count;
 mod dto;

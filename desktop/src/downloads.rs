@@ -321,7 +321,7 @@ pub async fn pick_download_directory<R: tauri::Runtime>(
         .set_parent(&window)
         .set_title("选择下载目录")
         .set_can_create_directories(true);
-    if let Ok(path) = client.download_directory_path(&epoch, None).await {
+    if let Ok(path) = client.download_directory_path(&epoch).await {
         picker = picker.set_directory(path);
     }
     let (send, receive) = tokio::sync::oneshot::channel();
@@ -344,13 +344,25 @@ pub async fn pick_download_directory<R: tauri::Runtime>(
     .transpose()
 }
 #[tauri::command]
-pub async fn open_download_directory(
+pub async fn open_download_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     task_id: Option<String>,
 ) -> Result<(), ClientError> {
+    if let Some(task_id) = task_id {
+        if window.label() != "main" {
+            return Err(Error::InvalidInput("download file reveal requires main window").into());
+        }
+        let reveal = client.download_file_reveal(&epoch, task_id).await?;
+        return crate::file_manager::reveal_file_checked(reveal.path().to_path_buf(), move || {
+            reveal.check_current()
+        })
+        .await
+        .map_err(Into::into);
+    }
     let path = client
-        .download_directory_path(&epoch, task_id)
+        .download_directory_path(&epoch)
         .await
         .map_err(ClientError::from)?;
     client

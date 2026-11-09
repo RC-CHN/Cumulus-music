@@ -3,7 +3,7 @@ use cumulus_core::Error;
 use std::path::PathBuf;
 
 mod reveal;
-pub(crate) use reveal::{reveal_directory, reveal_file};
+pub(crate) use reveal::{reveal_directory, reveal_file, reveal_file_checked};
 
 pub async fn open_directory(path: PathBuf) -> cumulus_core::Result<()> {
     tauri::async_runtime::spawn_blocking(move || {

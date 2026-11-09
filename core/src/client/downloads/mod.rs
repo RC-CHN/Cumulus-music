@@ -13,7 +13,7 @@ use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
     download::{
-        completed::CompletedDownloads,
+        completed::{CompletedDownloads, DownloadFileReveal},
         directory::DownloadDirectory,
         service::{DownloadScheduler, DownloadService},
         transfer::{MediaBackend, ReqwestMediaBackend},
@@ -475,29 +475,30 @@ impl MusicClient {
         .await
         .map_err(|_| Error::State("directory view worker stopped"))?
     }
-    pub async fn download_directory_path(
+    pub async fn download_file_reveal(
         &self,
         epoch: &str,
-        task_id: Option<String>,
-    ) -> Result<std::path::PathBuf> {
+        task_id: String,
+    ) -> Result<DownloadFileReveal> {
         let context = self.downloads.inner.context(epoch)?;
         tokio::task::spawn_blocking(move || {
             context.guard()?;
-            let path = if let Some(id) = task_id {
-                let task = context.service.get(&id)?;
-                task.target
-                    .ok_or(Error::State("download target not resolved"))?
-                    .parent()
-                    .ok_or(Error::State("download lacks parent"))?
-                    .to_path_buf()
-            } else {
-                context
-                    .directory
-                    .settings()?
-                    .ok_or(Error::State("download directory not configured"))?
-                    .root
-            };
-            let path = path.canonicalize()?;
+            context.files.verify_reveal(&task_id)
+        })
+        .await
+        .map_err(|_| Error::State("download reveal worker stopped"))?
+    }
+
+    pub async fn download_directory_path(&self, epoch: &str) -> Result<std::path::PathBuf> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            let path = context
+                .directory
+                .settings()?
+                .ok_or(Error::State("download directory not configured"))?
+                .root
+                .canonicalize()?;
             if !path.is_dir() {
                 return Err(Error::State("download directory missing"));
             }

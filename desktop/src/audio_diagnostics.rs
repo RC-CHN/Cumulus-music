@@ -1,5 +1,7 @@
 //! Read-only system output diagnostics. This does not use the player volume.
-use cumulus_core::client::{ClientError, MusicClient, VolumeDiagnosisDismissal};
+use cumulus_core::client::{
+    ClientError, MusicClient, OutputDiagnosticRead, VolumeDiagnosisDismissal,
+};
 use serde::Serialize;
 use std::{sync::Arc, time::Duration};
 use tauri::Manager;
@@ -107,11 +109,20 @@ fn native_reader() -> Option<&'static SystemMasterVolumeProbe> {
     }
 }
 
-async fn read_effective<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Option<f32> {
-    if let Some(probe) = window.try_state::<SystemMasterVolumeProbe>() {
-        return probe.sample_effective().await;
-    }
-    native_reader()?.sample_effective().await
+async fn read_effective<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> OutputDiagnosticRead<f32> {
+    let sample = if let Some(probe) = window.try_state::<SystemMasterVolumeProbe>() {
+        probe.sample_effective().await
+    } else if let Some(probe) = native_reader() {
+        probe.sample_effective().await
+    } else {
+        return OutputDiagnosticRead::Unsupported;
+    };
+    sample.map_or(
+        OutputDiagnosticRead::Unavailable,
+        OutputDiagnosticRead::Ready,
+    )
 }
 
 fn require_main<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Result<(), ClientError> {
@@ -128,14 +139,12 @@ pub async fn system_master_volume<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
 ) -> Result<SystemMasterVolume, ClientError> {
     require_main(&window)?;
-    if !cfg!(windows) && window.try_state::<SystemMasterVolumeProbe>().is_none() {
-        return Ok(SystemMasterVolume::Unsupported);
-    }
     Ok(match read_effective(&window).await {
-        Some(scalar) => SystemMasterVolume::Ready {
+        OutputDiagnosticRead::Ready(scalar) => SystemMasterVolume::Ready {
             percent: percent(scalar),
         },
-        None => SystemMasterVolume::Unavailable,
+        OutputDiagnosticRead::Unsupported => SystemMasterVolume::Unsupported,
+        OutputDiagnosticRead::Unavailable => SystemMasterVolume::Unavailable,
     })
 }
 
@@ -151,21 +160,31 @@ fn native_spatial_reader() -> Option<&'static SystemSpatialSoundProbe> {
     }
 }
 
-#[tauri::command]
-pub async fn system_spatial_sound<R: tauri::Runtime>(
-    window: tauri::WebviewWindow<R>,
-) -> Result<SystemSpatialSound, ClientError> {
-    require_main(&window)?;
+async fn read_spatial<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> OutputDiagnosticRead<bool> {
     let sample = if let Some(probe) = window.try_state::<SystemSpatialSoundProbe>() {
         probe.0.sample().await
     } else if let Some(probe) = native_spatial_reader() {
         probe.0.sample().await
     } else {
-        return Ok(SystemSpatialSound::Unsupported);
+        return OutputDiagnosticRead::Unsupported;
     };
-    Ok(match sample {
-        Some(active) => SystemSpatialSound::Ready { active },
-        None => SystemSpatialSound::Unavailable,
+    sample.map_or(
+        OutputDiagnosticRead::Unavailable,
+        OutputDiagnosticRead::Ready,
+    )
+}
+
+#[tauri::command]
+pub async fn system_spatial_sound<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+) -> Result<SystemSpatialSound, ClientError> {
+    require_main(&window)?;
+    Ok(match read_spatial(&window).await {
+        OutputDiagnosticRead::Ready(active) => SystemSpatialSound::Ready { active },
+        OutputDiagnosticRead::Unsupported => SystemSpatialSound::Unsupported,
+        OutputDiagnosticRead::Unavailable => SystemSpatialSound::Unavailable,
     })
 }
 
@@ -179,7 +198,13 @@ pub async fn check_volume_diagnosis<R: tauri::Runtime>(
 ) -> Result<Option<String>, ClientError> {
     require_main(&window)?;
     Ok(client
-        .check_volume_diagnosis(&epoch, before, after, read_effective(&window))
+        .check_volume_diagnosis(
+            &epoch,
+            before,
+            after,
+            read_effective(&window),
+            read_spatial(&window),
+        )
         .await?)
 }
 

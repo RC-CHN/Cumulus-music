@@ -40,6 +40,8 @@ fn read() -> Option<(f32, bool)> {
         3 => Some((0.84, false)),
         4 => Some((0.2999, false)),
         5 => Some((0.3, false)),
+        6 => Some((0.81, true)),
+        7 => Some((0.84, false)),
         _ => unreachable!("fixture selects a named input"),
     }
 }
@@ -48,9 +50,9 @@ fn read_spatial() -> Option<bool> {
     VOLUME_BEFORE_SPATIAL.store(READS.load(Ordering::Relaxed), Ordering::Relaxed);
     SPATIAL_READS.fetch_add(1, Ordering::Relaxed);
     match MODE.load(Ordering::Relaxed) {
-        0 | 4 | 5 => Some(false),
+        0 | 4 | 5 | 6 => Some(false),
         1 | 3 => Some(true),
-        2 => None,
+        2 | 7 => None,
         _ => unreachable!("fixture selects a named input"),
     }
 }
@@ -63,6 +65,8 @@ pub fn set(mode: &str) {
             "recovered" => 3,
             "almost_thirty" => 4,
             "thirty" => 5,
+            "muted_spatial_off" => 6,
+            "spatial_unavailable" => 7,
             _ => panic!("unknown sealed volume input"),
         },
         Ordering::Relaxed,

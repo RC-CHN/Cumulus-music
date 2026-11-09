@@ -2,7 +2,9 @@
 use cumulus_core::{Error, Result};
 #[cfg(any(target_os = "linux", windows))]
 use std::path::Path;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
+
+type DispatchCheck = dyn Fn() -> Result<()> + Send + Sync;
 
 #[derive(Clone, Copy)]
 enum ItemKind {
@@ -11,11 +13,25 @@ enum ItemKind {
 }
 
 pub(crate) async fn reveal_directory(path: PathBuf) -> Result<()> {
-    reveal_item(path, ItemKind::Directory).await
+    reveal_item(path, ItemKind::Directory, None).await
 }
 
 pub(crate) async fn reveal_file(path: PathBuf) -> Result<()> {
-    reveal_item(path, ItemKind::File).await
+    reveal_item(path, ItemKind::File, None).await
+}
+
+/// Recheck a caller's native receipt immediately before passing its pathname
+/// to the shell. Existing local selection keeps its own authorization.
+pub(crate) async fn reveal_file_checked(
+    path: PathBuf,
+    check: impl Fn() -> Result<()> + Send + Sync + 'static,
+) -> Result<()> {
+    reveal_item(path, ItemKind::File, Some(Arc::new(check))).await
+}
+
+#[cfg(any(target_os = "linux", windows))]
+fn check_dispatch(check: Option<&DispatchCheck>) -> Result<()> {
+    check.map_or(Ok(()), |check| check())
 }
 
 #[cfg(any(target_os = "linux", windows))]
@@ -35,7 +51,11 @@ fn checked_parent(path: &Path, kind: ItemKind) -> Result<&Path> {
 }
 
 #[cfg(target_os = "linux")]
-async fn reveal_item(path: PathBuf, kind: ItemKind) -> Result<()> {
+async fn reveal_item(
+    path: PathBuf,
+    kind: ItemKind,
+    check: Option<Arc<DispatchCheck>>,
+) -> Result<()> {
     use gio::prelude::CancellableExt;
     use std::time::Duration;
 
@@ -43,12 +63,23 @@ async fn reveal_item(path: PathBuf, kind: ItemKind) -> Result<()> {
     let guard = cancel.clone();
     let worker = tauri::async_runtime::spawn_blocking(move || -> Result<Option<PathBuf>> {
         checked_parent(&path, kind)?;
-        if linux_show_item(&path, &guard)? {
+        if linux_show_item(&path, &guard, check.as_deref())? {
+            return Ok(None);
+        }
+        // The session bus or method was definitively unavailable. Keep the
+        // meaning of “所在目录” even without item selection support.
+        let parent = checked_parent(&path, kind)?.to_path_buf();
+        if let Some(check) = &check {
+            // The guarded caller must not fall back for a changed file. Check
+            // in this same worker, immediately before the directory launch.
+            check()?;
+            if guard.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            super::launch(parent)?;
             Ok(None)
         } else {
-            // The session bus or method was definitively unavailable. Keep
-            // the meaning of “所在目录” even without item selection support.
-            Ok(Some(checked_parent(&path, kind)?.to_path_buf()))
+            Ok(Some(parent))
         }
     });
     let parent = match tokio::time::timeout(Duration::from_secs(4), worker).await {
@@ -67,7 +98,11 @@ async fn reveal_item(path: PathBuf, kind: ItemKind) -> Result<()> {
 /// False means the requested method never ran (no bus or explicit absence).
 /// Timeouts and other ambiguous failures cannot trigger another shell request.
 #[cfg(target_os = "linux")]
-fn linux_show_item(path: &Path, cancel: &gio::Cancellable) -> Result<bool> {
+fn linux_show_item(
+    path: &Path,
+    cancel: &gio::Cancellable,
+    check: Option<&DispatchCheck>,
+) -> Result<bool> {
     use gio::{
         glib::{VariantTy, variant::ToVariant},
         prelude::{CancellableExt, FileExt},
@@ -86,6 +121,7 @@ fn linux_show_item(path: &Path, cancel: &gio::Cancellable) -> Result<bool> {
     const SERVICE: &str = "org.freedesktop.FileManager1";
     // Canonicalization or opening the session bus can finish after the caller's
     // outer deadline. In that case do not start a late shell request.
+    check_dispatch(check)?;
     if cancel.is_cancelled() {
         return Err(Error::Cancelled);
     }
@@ -130,14 +166,18 @@ fn dbus_reveal_unavailable(error: &gio::glib::Error) -> bool {
 }
 
 #[cfg(windows)]
-async fn reveal_item(path: PathBuf, kind: ItemKind) -> Result<()> {
+async fn reveal_item(
+    path: PathBuf,
+    kind: ItemKind,
+    check: Option<Arc<DispatchCheck>>,
+) -> Result<()> {
     tauri::async_runtime::spawn_blocking(move || {
         // The shell uses an owned STA; leave Tauri's/runtime's COM mode alone.
         std::thread::Builder::new()
             .name("file-manager-reveal".into())
             .spawn(move || {
                 let parent = checked_parent(&path, kind)?.to_path_buf();
-                windows_show_item(path, parent)
+                windows_show_item(path, parent, check.as_deref())
             })?
             .join()
             .map_err(|_| Error::State("file manager shell stopped"))?
@@ -147,7 +187,7 @@ async fn reveal_item(path: PathBuf, kind: ItemKind) -> Result<()> {
 }
 
 #[cfg(windows)]
-fn windows_show_item(path: PathBuf, parent: PathBuf) -> Result<()> {
+fn windows_show_item(path: PathBuf, parent: PathBuf, check: Option<&DispatchCheck>) -> Result<()> {
     use std::{os::windows::ffi::OsStrExt, ptr};
     use windows_sys::Win32::{
         System::Com::{
@@ -221,6 +261,7 @@ fn windows_show_item(path: PathBuf, parent: PathBuf) -> Result<()> {
         return Err(Error::State("file manager could not locate item"));
     }
     let children = [child.cast_const()];
+    check_dispatch(check)?;
     // SAFETY: one relative child PIDL and its containing absolute PIDL remain
     // valid for this synchronous Shell call; no command line is built.
     let hr = unsafe { SHOpenFolderAndSelectItems(parent.0, 1, children.as_ptr(), 0) };
@@ -232,7 +273,7 @@ fn windows_show_item(path: PathBuf, parent: PathBuf) -> Result<()> {
 }
 
 #[cfg(not(any(target_os = "linux", windows)))]
-async fn reveal_item(_: PathBuf, _: ItemKind) -> Result<()> {
+async fn reveal_item(_: PathBuf, _: ItemKind, _: Option<Arc<DispatchCheck>>) -> Result<()> {
     Err(Error::State(
         "file manager reveal not supported on this platform",
     ))
