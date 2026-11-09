@@ -2927,6 +2927,12 @@ function backFromPage() {
     } else music.back();
   } else music.back();
 }
+function backFromPodcastDetail() {
+  const route = page.value;
+  const visit = route.kind === 'podcasts' ? route.messageRadioVisit : undefined;
+  if (visit !== undefined && podcasts.isContextualRadioBack(visit)) backFromPage();
+  else podcasts.back();
+}
 const downloadDialog = ref<DownloadDialogTarget>();
 let settingsFocus: { epoch: string; route: Page; section: string } | undefined;
 function focusSettingsSection() {
@@ -5650,6 +5656,7 @@ onUnmounted(() => {
                 :queueable="ordinaryVoiceQueueable"
                 :queue-program="queuePodcastProgram"
                 :queue-recent-program="queueRecentProgram"
+                @back="backFromPodcastDetail"
                 @recent-program-play="playRecentProgram"
                 @play="playPodcast"
                 :current-radio-id="currentPodcastRadioId"

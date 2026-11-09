@@ -29,6 +29,7 @@ const props = defineProps<{
   playing: boolean;
 }>();
 const emit = defineEmits<{
+  back: [];
   play: [scope: PodcastScope, revision: string, id: string | null];
   recentPlay: [revision: string, id: string, doubleClick: boolean];
   recentProgramPlay: [epoch: string, program: PodcastRecentProgramTarget];
@@ -201,7 +202,7 @@ const pending = props.model.pending;
       />
       <button class="text-button" :disabled="busy || !reference.trim()">打开播客</button>
     </form>
-    <button v-if="detail && model.canBack.value" class="text-button" @click="model.back">
+    <button v-if="detail && model.canBack.value" class="text-button" @click="emit('back')">
       <Icon name="back" />返回播客列表
     </button>
     <nav v-if="!detail" class="podcast-tabs" aria-label="播客分类">

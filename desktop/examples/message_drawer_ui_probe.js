@@ -463,8 +463,11 @@
         'the already visible same radio does not start another route or detail read');
       click(target(65));
       await destination('attachment_notice_other_radio', () => radioHeading(82));
-      await returnToDrawer(65);
-      await wait(() => radioHeading(81), 'Back returns to the prior radio as well as the inbox');
+      const localBack = all('.podcast-page button').find((node) =>
+        node.textContent.includes('返回播客列表') && node.getClientRects().length > 0);
+      click(localBack);
+      await wait(() => drawer() && focused(65) && radioHeading(81),
+        'detail Back returns to the prior radio and restores the exact notification focus');
       const afterRadio = await invoke('player_snapshot', { epoch });
       const afterQueue = await invoke('player_queue', { epoch });
       assert(afterRadio.state === 'paused' && afterRadio.track?.id === '3' &&
@@ -475,6 +478,7 @@
       assert((await radioReads()).join(',') === '81,81,82,81',
         'Back restores the exact previous radio, never a substituted id');
       await capture('attachment_notice_other_radio_return');
+      assert(focused(65), 'radio settles without stealing the restored notification focus');
       assert(one('[data-message-tab="notices"] .message-drawer-badge')?.textContent.trim() === '4',
         'viewing typed targets never clears unread');
       assert(!(await fixture()).blockedWrite,'no explicit message mutation');
