@@ -344,7 +344,8 @@ Linux 实际 WebView `effect_peq_native_smoke.py --pause-local` 验证暂停前�
   已有类型化 API 和错误处理负责，均衡器始终是本地设置。目录和品牌/型号按当前
   Rust 能力保留登录边界；未授权时不会发送读取，已有登录入口继续可用。
   Audio.tsx:65–85 的旧目录依次取推荐和全部，AudioNew.tsx:61–103 的新版并行读取
-  5/6/7 并在匿名转登录时重取；本次只对齐入口和一级页签，保留社区的按分组读取。
+  5/6/7 并在匿名转登录时重取；首批仅对齐入口和一级页签，内嵌新版的后续
+  目录分组见下节。
 - 保留明确命名的独立 EQ/当前本机耳机/PEQ 管理快捷入口。与 index.js:167、212
   一样，共用页签栏可以显示开关；在 Cumulus 此开关只控制明确选中的「本机均衡器」。
   当前账号和播放器代次须一致，EQ 原生回读须为已配置或正在处理，且明确开启了十段
@@ -363,3 +364,22 @@ Linux 实际 WebView `effect_peq_native_smoke.py --pause-local` 验证暂停前�
   请求。合成联网状态和业务回包，无真实账号/服务、声卡或本轮 Windows 结果。
   构建 custom-protocol 的 ux_ui_probe、frontend/dist 与原生 EQ 滤镜后，在无出站
   路由的 Linux X11/DBus 会话传 `--binary --frontend-dist --filter --root` 执行。
+
+内嵌音效页的新版目录分组（PC 3.1.42.205594）
+- views/AudioNew.tsx:43–101 / M3091 的同一页在挂载时并行请求三个位置：
+  /api/usertool/sound/queryAllSound {exposeType: 5|6|7}，分别为强推荐、推荐、
+  更多；单次失败不抛掉其他成功结果。精选只在至少有 1 项强推荐和 2 项普通推荐
+  时出现，按强推荐在前、各组服务顺序不变拼接，最多七项。更多独立展示。
+- OfficialSelectionSoundEffectSection.tsx、AudioEffectCard.tsx:37–38、
+  MoreSoundEffectSection.tsx 说明精选首卡双宽、其余 124×110 的基准，更多为
+  双列 78px 行。Cumulus 用相对列宽适配弹窗和窄窗口。已接新版接口的播放栏
+  内嵌目录走此布局；独立登记管理仍沿用现有显式分类与账号隔离。
+- 三个读取经既有类型化 IPC 和 Rust 账号代次校验，离线目录不挂载，过期回包不
+  回填；仍有登录边界。部分失败保留成功区并给出显式重试；全部失败沿用目录错误态。
+  此批不改变点击后的权益/材料/原生处理流程。官方 SVIP 专区、AI、情绪、
+  匿名目录读和旧版实验分流没有凭此新增能力。
+- 隔离 Linux 实际 WebView 用例 audio_effect_tabs_smoke.py 覆盖 10 态。
+  正常目录验证选中位和 7 项上限、首卡宽度、更多卡顺序；推荐位失败的下一次打开
+  保留两张更多卡。两次按 5/6/7 三组读取，品牌/型号独立读取；零材料请求、
+  零真实账号写入。均衡器切换仍是同一暂停条目、一次原生解码。
+  本机证据 .build/ui-proof/phase211-effect-overview/，无 Windows 或实体声卡证据。

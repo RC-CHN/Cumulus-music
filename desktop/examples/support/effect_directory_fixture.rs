@@ -59,11 +59,17 @@ pub fn source_calls() -> Vec<Value> {
     SOURCE_CALLS.lock().unwrap().clone()
 }
 
+fn overview_enabled() -> bool {
+    std::env::var_os("CUMULUS_AUDIO_EFFECT_TABS_PROOF").is_some()
+}
+
 fn sound(id: u64) -> Value {
     let (name, subtitle, tier) = match id {
         200 => ("合成空间音效", "合成强推荐", 15),
         300 => ("合成均衡音效", "合成推荐", 6),
         301 => ("合成未标识音效", "未知会员等级", 99),
+        302 | 303 => ("合成更多音效", "合成列表位", 99),
+        310..=315 => ("合成推荐备选", "合成普通推荐", 99),
         _ => unreachable!("validated effect fixture ID"),
     };
     let now = std::time::SystemTime::now()
@@ -112,7 +118,29 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         "/api/usertool/sound/queryAllSound" => match args["exposeType"].as_u64() {
             Some(5) if args == &json!({"exposeType":5}) => json!([sound(200)]),
+            Some(6) if args == &json!({"exposeType":6}) && overview_enabled() => {
+                let mut calls = CALLS.lock().unwrap();
+                if calls
+                    .iter()
+                    .any(|call| call["path"] == path && call["args"] == *args)
+                {
+                    calls.push(json!({"path":path,"args":args}));
+                    return Some(Err(Error::Response(
+                        "synthetic unavailable recommendation group",
+                    )));
+                }
+                json!(
+                    vec![300, 301]
+                        .into_iter()
+                        .chain(310..=315)
+                        .map(sound)
+                        .collect::<Vec<_>>()
+                )
+            }
             Some(6) if args == &json!({"exposeType":6}) => json!([sound(300), sound(301)]),
+            Some(7) if args == &json!({"exposeType":7}) && overview_enabled() => {
+                json!([sound(302), sound(303)])
+            }
             Some(7) if args == &json!({"exposeType":7}) => json!([]),
             _ => {
                 return Some(Err(Error::Response(

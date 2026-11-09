@@ -41,6 +41,12 @@
     online = next;
     window.dispatchEvent(new Event(online ? 'online' : 'offline'));
   }
+  const overviewGroups = () => [...(pane('catalogue')?.querySelectorAll('[data-effect-group]') ?? [])]
+    .map((group) => [group.querySelector('h3')?.textContent.trim(),
+      [...group.querySelectorAll('[data-effect-id]')].map((card) => Number(card.dataset.effectId))]);
+  const hasPartial = () => !!pane('catalogue')?.textContent.includes('部分音效暂时无法读取');
+  const completeOverview = [['官方精选音效', [200, 300, 301, 310, 311, 312, 313]], ['更多音效', [302, 303]]];
+  const partialOverview = [completeOverview[1]];
   function selected(key, focus = tab(key)) {
     const active = tab(key);
     const content = pane(key);
@@ -86,7 +92,8 @@
     await sleep(120);
     const stage = `ux_${String(++stageCount).padStart(2, '0')}_${label}`;
     await emit(stage, { active, online, stageCount, headerMaster: master, observedPosition: state.position,
-      connectedTabs: [...shell().querySelectorAll('[role="tab"]')].map((node) => node.textContent.trim()) });
+      connectedTabs: [...shell().querySelectorAll('[role="tab"]')].map((node) => node.textContent.trim()),
+      overview: overviewGroups(), partialOverview: hasPartial() });
     await wait(() => window.__audioEffectTabRecorded === stage, `native receipt for ${label}`);
   }
   async function close(owner) {
@@ -171,8 +178,14 @@
     await capture('offline_catalogue_master_off', 'catalogue', false, masterControl);
     click(tab('catalogue'));
     connectivity(true);
-    await wait(() => selected('catalogue') && pane('catalogue').textContent.includes('合成空间音效'),
-      'online catalogue mounts and reads its first group');
+    await wait(() => selected('catalogue') &&
+      JSON.stringify(overviewGroups()) === JSON.stringify(completeOverview),
+      'the official selection and more groups are ordered, and selection is capped at seven');
+    const featured = pane('catalogue').querySelector('.effect-directory-grid-selection');
+    const [wide, regular] = [...featured.querySelectorAll('button')].map((button) => button.getBoundingClientRect().width);
+    assert(wide > regular * 2 && wide < regular * 2 + 12 &&
+      !pane('catalogue').querySelector('[aria-label="音效分类"]') && !hasPartial(),
+      'the featured card is double width and placement groups are not tabs');
     await capture('online_catalogue', 'catalogue', false);
     key('ArrowRight');
     await wait(() => selected('devices') && pane('devices').textContent.includes('合成耳机品牌'),
@@ -197,8 +210,9 @@
     click(await wait(() => ready(trigger()), 'current track menu trigger'));
     const menu = await wait(() => ready(one('[data-menu-key="effects"]')), 'current track effects action');
     click(menu);
-    await wait(() => selected('catalogue') && pane('catalogue').textContent.includes('合成空间音效'),
-      'menu opens same default route, not the previous Equalizer tab');
+    await wait(() => selected('catalogue') && hasPartial() &&
+      JSON.stringify(overviewGroups()) === JSON.stringify(partialOverview),
+      'menu opens the default route and keeps More when the ordinary recommendation request fails');
     masterControl = headerMaster();
     await capture('menu_default', 'catalogue', true);
     await close(trigger);

@@ -1,5 +1,6 @@
 """Exercise the actual audio effects modal, offline routing, and paused decoder."""
 import argparse
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -13,20 +14,34 @@ STAGES = {
     'offline_equalizer': ('equalizer', False, 0, None, 0),
     'offline_equalizer_selected': ('equalizer', False, 0, True, 1),
     'offline_catalogue_master_off': ('catalogue', False, 0, False, 2),
-    'online_catalogue': ('catalogue', True, 1, False, 2),
-    'device_brands': ('devices', True, 2, False, 2),
-    'device_models': ('devices', True, 3, False, 2),
-    'device_master_on': ('devices', True, 3, True, 3),
-    'online_equalizer': ('equalizer', True, 3, True, 3),
-    'menu_default': ('catalogue', True, 4, True, 3),
+    'online_catalogue': ('catalogue', True, 3, False, 2),
+    'device_brands': ('devices', True, 4, False, 2),
+    'device_models': ('devices', True, 5, False, 2),
+    'device_master_on': ('devices', True, 5, True, 3),
+    'online_equalizer': ('equalizer', True, 5, True, 3),
+    'menu_default': ('catalogue', True, 8, True, 3),
 }
-CATALOGUE = {'path': '/api/usertool/sound/queryAllSound', 'args': {'exposeType': 5}}
+CATALOGUE = [{'path': '/api/usertool/sound/queryAllSound', 'args': {'exposeType': code}} for code in (5, 6, 7)]
 WIRE = [
-    CATALOGUE,
+    *CATALOGUE,
     {'path': '/api/usertool/home/soundeffect/devicebrand/list', 'args': {}},
     {'path': '/api/usertool/home/soundeffect/devicesound/list', 'args': {'deviceManagerId': 4100}},
-    CATALOGUE,
+    *CATALOGUE,
 ]
+SELECTION = ['官方精选音效', [200, 300, 301, 310, 311, 312, 313]]
+MORE = ['更多音效', [302, 303]]
+
+
+def verify_wire(actual, count):
+    assert len(actual) == count
+    for start, end in ((0, 3), (3, 5), (5, 8)):
+        left, right = actual[start:end], WIRE[:count][start:end]
+        if start in (0, 5):
+            # Promise.allSettled only fixes order at the caller, not IPC arrival.
+            assert Counter(map(lambda row: json.dumps(row, sort_keys=True), left)) == Counter(
+                map(lambda row: json.dumps(row, sort_keys=True), right))
+        else:
+            assert left == right
 
 
 def read(path):
@@ -76,7 +91,10 @@ def main():
         tab, online, calls, master, revisions = STAGES[name]
         assert row['active'] == tab and row['online'] is online and row['headerMaster'] is master
         assert row['connectedTabs'] == ['音效', '设备适配', '均衡器']
-        assert row['effectDirectoryCalls'] == WIRE[:calls] and row['effectDirectoryMaterialGets'] == 0
+        verify_wire(row['effectDirectoryCalls'], calls)
+        assert row['effectDirectoryMaterialGets'] == 0
+        assert row['overview'] == ([SELECTION, MORE] if name == 'online_catalogue' else [MORE] if name == 'menu_default' else [])
+        assert row['partialOverview'] is (name == 'menu_default')
         assert row['audioFactoryCount'] == 1
         native = row['nativePeq']
         assert native['decoderLoads'] == 1 and native['starts'] == native['stops'] == native['attaches'] == 0
@@ -99,7 +117,8 @@ def main():
             assert eq['preset'] == {'kind': 'built_in', 'index': 1}
             assert eq['settings'] == (selected_settings if master else {**selected_settings, 'master_bypassed': True})
     assert len(identities) == len(positions) == len(queue_revisions) == 1
-    assert done['effectDirectoryCalls'] == WIRE and done['effectDirectoryMaterialGets'] == 0
+    verify_wire(done['effectDirectoryCalls'], len(WIRE))
+    assert done['effectDirectoryMaterialGets'] == 0
     assert done['nativePlayer']['position'] == done['observedPosition'] == next(iter(positions))
     assert done['nativePlayer']['state'] == 'paused'
     assert read(out / 'locale.json') == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}
@@ -109,7 +128,8 @@ def main():
               'nativeNullAudio': True, 'sealedSyntheticAccount': True, 'stages': list(STAGES),
               'screenshots': screenshots, 'pausedPosition': next(iter(positions)), 'sameNativeIdentity': True,
               'localEqualizerHeaderAcrossTabs': True, 'localMasterWrites': 2, 'decoderLoads': 1,
-              'browserOfflineStateSimulated': True, 'wire': WIRE, 'materialGets': 0, 'realAccountWrites': 0}
+              'browserOfflineStateSimulated': True, 'officialSelectionCap': 7, 'partialMoreRetained': True,
+              'wire': done['effectDirectoryCalls'], 'materialGets': 0, 'realAccountWrites': 0}
     (root / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 

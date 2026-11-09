@@ -35,9 +35,6 @@ const categories = [
   ['more', '更多音效'],
   ['devices', '耳机音效'],
 ] as const;
-const visibleCategories = computed(() =>
-  props.embedded ? categories.filter(([key]) => key !== 'devices') : categories,
-);
 const accessLabels: Record<EffectAccess, string> = {
   allowed: '当前账号拥有使用权益',
   trial: '当前账号拥有试用权益',
@@ -46,7 +43,17 @@ const accessLabels: Record<EffectAccess, string> = {
 };
 type Category = EffectCatalogueKind | 'devices';
 const kind = ref<Category>('highly_recommended');
+type OverviewGroup = {
+  key: 'selection' | 'more';
+  title: string;
+  items: EffectCatalogueItem[];
+};
 const items = ref<EffectCatalogueItem[]>([]);
+const overview = ref<OverviewGroup[]>([]);
+const groups = computed(() =>
+  props.embedded ? overview.value : [{ key: 'category' as const, title: '', items: items.value }],
+);
+const partial = ref(false);
 const trialEffects = ref(new Set<number>());
 let trialTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -111,6 +118,8 @@ async function load(category: Category) {
   detailRequest++;
   kind.value = category;
   items.value = [];
+  overview.value = [];
+  partial.value = false;
   clearTrials();
   selected.value = undefined;
   recoveryOnly.value = false;
@@ -124,11 +133,35 @@ async function load(category: Category) {
   }
   loading.value = true;
   try {
-    const rows = await core.effectCatalogue(epoch, category);
-    if (current()) {
+    if (props.embedded) {
+      const result = await Promise.allSettled([
+        core.effectCatalogue(epoch, 'highly_recommended'),
+        core.effectCatalogue(epoch, 'recommended'),
+        core.effectCatalogue(epoch, 'more'),
+      ]);
+      if (!current()) return;
+      const rows = (group: PromiseSettledResult<EffectCatalogueItem[]>) =>
+        group.status === 'fulfilled' ? group.value : [];
+      const [high, recommended, more] = [rows(result[0]), rows(result[1]), rows(result[2])];
+      const failed = result.filter((group) => group.status === 'rejected');
+      if (failed.length === result.length) throw failed[0]!.reason;
+      // PC AudioNew only shows the merged selection with at least one
+      // priority item and two ordinary recommendations.
+      if (high.length > 0 && recommended.length > 1)
+        overview.value.push({
+          key: 'selection',
+          title: '官方精选音效',
+          items: [...high, ...recommended].slice(0, 7),
+        });
+      if (more.length) overview.value.push({ key: 'more', title: '更多音效', items: more });
+      items.value = overview.value.flatMap((group) => group.items);
+      partial.value = failed.length > 0;
+    } else {
+      const rows = await core.effectCatalogue(epoch, category);
+      if (!current()) return;
       items.value = rows;
-      scheduleTrials(rows);
     }
+    scheduleTrials(items.value);
   } catch (issue) {
     if (current()) listError.value = failure(issue).message;
   } finally {
@@ -329,9 +362,9 @@ onUnmounted(() => {
         </section>
         <button v-if="!browsing" type="button" @click="browseCatalogue">浏览音效目录</button>
         <template v-else>
-          <nav aria-label="音效分类">
+          <nav v-if="!embedded" aria-label="音效分类">
             <button
-              v-for="[key, label] in visibleCategories"
+              v-for="[key, label] in categories"
               :key="key"
               type="button"
               :aria-pressed="kind === key"
@@ -354,41 +387,57 @@ onUnmounted(() => {
             <p role="alert">{{ listError }}</p>
             <button type="button" @click="load(kind)">重试目录</button>
           </div>
-          <p v-else-if="!items.length" class="effect-directory-message">此分类暂无音效。</p>
-          <ul v-else class="effect-directory-grid">
-            <li v-for="item in items" :key="item.id">
-              <button
-                class="effect-directory-card"
-                :class="{ 'with-artwork': artworkFor(item) }"
-                :aria-pressed="selected?.id === item.id"
-                type="button"
-                @click="inspect(item)"
+          <template v-else>
+            <div v-if="partial" class="effect-directory-message">
+              <p role="status">部分音效暂时无法读取。</p>
+              <button type="button" @click="load(kind)">重试目录</button>
+            </div>
+            <p v-if="!items.length && !partial" class="effect-directory-message">
+              {{ embedded ? '暂无音效。' : '此分类暂无音效。' }}
+            </p>
+            <div v-for="group in groups" :key="group.key" :data-effect-group="group.key">
+              <h3 v-if="group.title" class="effect-directory-section-title">{{ group.title }}</h3>
+              <ul
+                v-if="group.items.length"
+                class="effect-directory-grid"
+                :class="`effect-directory-grid-${group.key}`"
               >
-                <img
-                  v-if="artworkFor(item)"
-                  :key="artworkFor(item)"
-                  :src="artworkFor(item)"
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                  alt=""
-                  @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
-                />
-                <Icon v-else name="music" />
-                <strong>
-                  {{ item.name || '未命名音效' }}
-                  <span
-                    v-if="item.membership"
-                    class="effect-card-membership"
-                    :data-effect-membership="item.membership"
-                    :data-effect-limited-free="trialEffects.has(item.id) || undefined"
-                    >{{ item.membership === 'svip' ? 'SVIP' : 'VIP'
-                    }}{{ trialEffects.has(item.id) ? ' 限免' : '' }}</span
+                <li v-for="(item, index) in group.items" :key="`${item.id}:${index}`">
+                  <button
+                    class="effect-directory-card"
+                    :class="{ 'with-artwork': group.key !== 'more' && artworkFor(item) }"
+                    :aria-pressed="selected?.id === item.id"
+                    :data-effect-id="item.id"
+                    type="button"
+                    @click="inspect(item)"
                   >
-                </strong>
-                <span v-if="item.subtitle">{{ item.subtitle }}</span>
-              </button>
-            </li>
-          </ul>
+                    <img
+                      v-if="group.key !== 'more' && artworkFor(item)"
+                      :key="artworkFor(item)"
+                      :src="artworkFor(item)"
+                      loading="lazy"
+                      referrerpolicy="no-referrer"
+                      alt=""
+                      @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
+                    />
+                    <Icon v-else name="music" />
+                    <strong>
+                      {{ item.name || '未命名音效' }}
+                      <span
+                        v-if="item.membership"
+                        class="effect-card-membership"
+                        :data-effect-membership="item.membership"
+                        :data-effect-limited-free="trialEffects.has(item.id) || undefined"
+                        >{{ item.membership === 'svip' ? 'SVIP' : 'VIP'
+                        }}{{ trialEffects.has(item.id) ? ' 限免' : '' }}</span
+                      >
+                    </strong>
+                    <span v-if="item.subtitle">{{ item.subtitle }}</span>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </template>
         </template>
       </template>
     </div>
@@ -526,6 +575,35 @@ onUnmounted(() => {
   background: var(--surface-alt);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+.effect-directory-section-title {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 400;
+}
+.effect-directory-grid-selection,
+.effect-directory-grid-more {
+  max-width: 526px;
+  margin: 0 0 20px;
+}
+.effect-directory-grid-selection {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.effect-directory-grid-selection > li:first-child {
+  grid-column: span 2;
+}
+.effect-directory-grid-more {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.effect-directory-grid-more .effect-directory-card {
+  min-height: 78px;
+  justify-content: center;
+}
+@media (max-width: 520px) {
+  .effect-directory-grid-selection {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .effect-directory-card img,
 .effect-directory-card.with-artwork::before {
