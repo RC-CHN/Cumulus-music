@@ -1599,7 +1599,33 @@
       await wait(()=>one('.track-row'),'daily ready');
       await emit('resize',{width:760,height:540});
       await wait(()=>innerWidth===760&&innerHeight===540,'compact window');
-      await fixture('song_waterfall_error');await fresh('合成连续单曲');await choose('songs');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const before=await invoke('player_snapshot',{epoch});
+      await fixture('song_waterfall_error');await fresh('合成连续单曲');
+      assert(!one('[data-search-title-hint]'),'dedicated hints stay out of comprehensive results');
+      await choose('songs');
+      const titleHint=id=>one(`.track-row[data-track-id="${id}"] [data-search-title-hint]`);
+      function exactHints(id){
+        const hint=titleHint(id), alias=hint?.querySelector('[data-search-title-alias]'),
+          lyric=hint?.querySelector('[data-search-title-lyric]');
+        const receipt={alias:alias?.textContent.trim(),lyric:lyric?.textContent.trim(),
+          aliasMark:alias?.querySelector('mark')?.textContent,lyricMark:lyric?.querySelector('mark')?.textContent};
+        assert(receipt.alias==='前缀合成连续单曲别名'&&receipt.lyric===`🎵合成连续单曲歌词 ${id}`&&
+          receipt.aliasMark==='合成连续单曲'&&receipt.lyricMark==='合成连续单曲',
+          'both native title matches render in the same exact row: '+JSON.stringify(receipt));
+        const row=hint.closest('.track-row').getBoundingClientRect(),
+          aliasRect=alias.getBoundingClientRect(),lyricRect=lyric.getBoundingClientRect();
+        assert(aliasRect.height>0&&lyricRect.height>0&&aliasRect.bottom<=lyricRect.top&&
+          aliasRect.top>=row.top&&lyricRect.bottom<=row.bottom,
+          'title extensions fit in distinct lines inside the virtual row');
+        return receipt;
+      }
+      const firstHints=exactHints(101);
+      assert(!titleHint(102),'false alias marker and invalid UTF-16 excerpt do not become hints');
+      const after=await invoke('player_snapshot',{epoch});
+      assert(before.playId===after.playId&&before.queueRevision===after.queueRevision,
+        'search title hints do not affect playback or queue');
       const table=()=>one('.search-song-panel .track-table');
       const scroll=()=>table().querySelector('.track-scroll');
       const loaded=()=>Number(table()?.getAttribute('aria-rowcount'))-1;
@@ -1612,7 +1638,7 @@
       const anchor=scroll().scrollTop;
       click(button('使用分页查看'));
       await wait(()=>loaded()===30&&one('#search-song-batch-scope')?.textContent.trim()==='仅限当前页的单曲','explicit numbered fallback');
-      await capture('song_numbered_fallback');
+      await capture('song_numbered_fallback',{songTitleHints:exactHints(101)});
       click(button('返回上一页'));
       await wait(()=>loaded()===10&&button('重试加载更多')&&Math.abs(scroll().scrollTop-anchor)<=1,'Back restores the continuous view');
       await fixture('song_waterfall');
@@ -1628,8 +1654,6 @@
       assert(table()===loadedPanel&&loaded()===30&&songReads.length===completedReads&&
         Math.abs(scroll().scrollTop-loadedTop)<=1,'current songs tab retains loaded rows and scroll without another read');
       await capture('song_append_retains_thirty');
-      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
-      const {epoch}=await invoke('account_snapshot');
       async function playing(id){
         for(let index=0;index<160;index++){
           const state=await invoke('player_snapshot',{epoch});
@@ -1646,16 +1670,18 @@
       await capture('song_all_loaded_prefix_playing');
       scrollEnd();
       await wait(()=>one('.track-row[data-track-id="130"] .track-play'),'deep virtual row available');
+      const deepHints=exactHints(130);
       click(one('.track-row[data-track-id="130"] .track-play'));
       const selected=await playing('130');
       const deep=await invoke('player_queue',{epoch});
       assert(selected.entryId===queue.tracks[29].entryId&&
         deep.tracks.map(row=>row.entryId).sort().join(',')===queue.tracks.map(row=>row.entryId).sort().join(','),'deep row keeps all active queue entries');
-      await capture('song_deep_result_keeps_queue');
+      await capture('song_deep_result_keeps_queue',{songTitleHints:deepHints});
       click(button('返回上一页'));
       await wait(()=>one('[data-category="all"]')?.getAttribute('aria-selected')==='true'&&ready(),'reselecting current songs did not add a Back step');
 
-      await emit('complete',{ok:true,songWaterfallVerified:true,stageCount:count,songReads,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,songWaterfallVerified:true,stageCount:count,songReads,
+        songTitleHints:[firstHints,deepHints],realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchNextProof){

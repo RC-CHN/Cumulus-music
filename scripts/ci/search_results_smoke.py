@@ -658,10 +658,16 @@ def main():
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['songWaterfallVerified'] and complete['stageCount'] == 5
         assert complete['songReads'] == [[0, 10], [10, 10], [0, 30], [10, 10], [20, 10]]
+        assert complete['songTitleHints'] == [
+            dict(alias='前缀合成连续单曲别名', lyric=f'🎵合成连续单曲歌词 {song_id}',
+                 aliasMark='合成连续单曲', lyricMark='合成连续单曲')
+            for song_id in [101, 130]
+        ]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (5 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, songWaterfallVerified=True,
-                              stageCount=5, songReads=complete['songReads'])))
+                              songTitleHintsVerified=True, stageCount=5,
+                              songReads=complete['songReads'])))
         return
     if args.artist_gallery:
         first = root / 'first'

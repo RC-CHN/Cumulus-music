@@ -1644,6 +1644,23 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     let song = &mut row["baseInfo"]["simpleSongData"];
                     song["id"] = json!(i + 101);
                     song["name"] = json!(format!("合成连续单曲 {}", i + 101));
+                    if i == 0 || i == 29 {
+                        song["alia"] = json!(["默认合成别名", "前缀合成连续单曲别名"]);
+                        song["tns"] = json!(["不显示的翻译合成连续单曲"]);
+                        row["extInfo"] = json!({
+                            "songAlias":true,
+                            "lyrics":{
+                                "txt":format!("🎵合成连续单曲歌词 {}", i + 101),
+                                "range":[{"first":2,"second":8}]
+                            }
+                        });
+                    } else if i == 1 {
+                        song["alia"] = json!(["合成连续单曲未命中"]);
+                        row["extInfo"] = json!({
+                            "songAlias":false,
+                            "lyrics":{"txt":"🎵不可切半","range":[{"first":1,"second":2}]}
+                        });
+                    }
                 } else if category != "songs" && category != "lyrics" {
                     let item = if legacy {
                         &mut row
