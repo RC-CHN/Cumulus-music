@@ -80,7 +80,7 @@
     assert(one('[data-download-clear-count]').textContent.includes('2 项'), 'late row does not change confirmation');
     await capture('late_task', { count: 2, active: 3 });
     click(confirm());
-    await wait(() => !dialog() && one('.download-page [role="status"]')?.textContent.includes('已受理 2 项'),
+    await wait(() => !dialog() && one('.download-page .notice[role="status"]')?.textContent.includes('已受理 2 项'),
       'native cancellation result applied');
     await verify([703]);
     assert([...document.querySelectorAll('[data-download-task]')].some(
