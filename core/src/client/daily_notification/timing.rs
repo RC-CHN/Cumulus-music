@@ -38,7 +38,10 @@ fn jitter(sample: f64) -> Duration {
 
 /// One native scheduler after a completed, positively configured startup
 /// check. There is no renderer timer command or synthetic system-resume hook.
-pub struct DailyNotificationTimer(Interval);
+pub struct DailyNotificationTimer {
+    first: Instant,
+    cadence: Option<Interval>,
+}
 
 impl DailyNotificationTimer {
     pub fn start() -> Option<Self> {
@@ -46,9 +49,10 @@ impl DailyNotificationTimer {
     }
 
     fn aligned(delay: Duration) -> Self {
-        let mut interval = time::interval_at(Instant::now() + delay, PERIOD);
-        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        Self(interval)
+        Self {
+            first: Instant::now() + delay,
+            cadence: None,
+        }
     }
 
     pub async fn tick(&mut self) {
@@ -57,7 +61,21 @@ impl DailyNotificationTimer {
 
     async fn tick_with(&mut self, mut sample: impl FnMut() -> Duration) {
         loop {
-            let anchor = self.0.tick().await;
+            let anchor = if let Some(interval) = &mut self.cadence {
+                interval.tick().await
+            } else {
+                time::sleep_until(self.first).await;
+                let first_callback = Instant::now();
+                let mut interval = time::interval_at(first_callback + PERIOD, PERIOD);
+                interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                self.cadence = Some(interval);
+                // JS sets its interval in the first callback, not at the
+                // planned boundary. A completely missed callback is discarded.
+                if first_callback.duration_since(self.first) >= PERIOD {
+                    continue;
+                }
+                first_callback
+            };
             if anchor.elapsed() >= PERIOD {
                 continue;
             }
@@ -173,6 +191,17 @@ mod tests {
                 .with_timezone(&NewYork2025);
             assert_eq!(until_boundary(now), Some(Duration::from_millis(ms)));
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn fixed_cadence_starts_when_the_first_callback_actually_runs() {
+        let start = Instant::now();
+        let mut timer = DailyNotificationTimer::aligned(Duration::from_secs(1));
+        time::advance(Duration::from_secs(3)).await;
+        timer.tick_with(|| Duration::ZERO).await;
+        assert_eq!(start.elapsed(), Duration::from_secs(3));
+        timer.tick_with(|| Duration::ZERO).await;
+        assert_eq!(start.elapsed(), Duration::from_secs(3) + PERIOD);
     }
 
     #[tokio::test(start_paused = true)]

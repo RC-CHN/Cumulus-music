@@ -55,6 +55,11 @@ impl MusicClient {
 
     pub(super) fn notification_scope(&self, schedule: &DailyNotificationSchedule) -> Result<()> {
         self.session.require_api(&schedule.owner, &schedule.api)?;
+        // QR identity holds its own login-state lock while adopting a session.
+        // Never consult the pending login inside the session commit lease.
+        if self.login_pending()? {
+            return Err(Error::StaleResponse);
+        }
         self.require_notification_policy(schedule)
     }
 
@@ -63,9 +68,8 @@ impl MusicClient {
         &self,
         schedule: &DailyNotificationSchedule,
     ) -> Result<()> {
-        if self.login_pending()?
-            || notification_credential_revision(schedule.api.as_ref())?.as_deref()
-                != Some(&schedule.credentials)
+        if notification_credential_revision(schedule.api.as_ref())?.as_deref()
+            != Some(&schedule.credentials)
             || self
                 .notification_policy(&schedule.owner, &schedule.api, &schedule.credentials)?
                 .as_ref()
@@ -375,6 +379,7 @@ impl MusicClient {
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
         self.retire_notification(&mut slot)?;
+        self.notification_scope(schedule)?;
         if slot.is_some() || !attempt.still_today(self.notification_wall_ms()) {
             return Ok(None);
         }
