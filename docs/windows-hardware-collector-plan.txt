@@ -472,3 +472,32 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/42706664026
 
 仅为一台虚拟机的系统观测，未覆盖实体设备、UTF-8 进程 ACP、驱动拒绝、
 多网卡与旧查询回退。没有发登录请求、组合指纹或变更桌面默认配置。
+
+11. 两种 Windows 进程代码页的合成对照
+------------------------------------
+
+GitHub Actions 42707501987 attempt 1（975d4306，同一台 windows-2022 x64）：
+https://github.com/RC-CHN/Cumulus-music/actions/runs/42707501987
+
+同一 Rust 程序、同一批固定输入分别构建为默认进程与带 UTF-8 manifest 的
+进程。两者 GetACP / CP_ACP / CP_THREAD_ACP 分别为 1252 与 65001；
+切换仅作用于探针进程，不修改系统或 Cumulus 设置。默认代码页往返替换
+合成 CJK 与补充平面字符，UTF-8 进程完整保留，包括 UTF-16 代理对。
+
+对于两种进程中本批固定的 ASCII、混合语言、CJK 和补充平面字符串，
+复现 CEE4D0 的第二次调用（-1 输入长度、目标少终止单元）均返回 0 /
+ERROR_INSUFFICIENT_BUFFER=122，但写入了与完整控制组相同的所有正文
+单元。完整组及短组的缓冲区两侧守卫保持不变。空输入按现有短路分支，
+不做容量为零的写入对照。这个观测允许安全实现继续核对已写前缀；
+它不是 Windows 对任意输入、版本或其他线程代码页的保证。对缺完整
+控制前缀的机器仍应拒绝，不读取未初始化区域。
+
+在 Windows x64 MSVC 同一目录以固定工具链重现：
+  rustc --edition 2024 -D warnings scripts/research/windows_identity_encoding_probe.rs -o default.exe
+  rustc --edition 2024 -D warnings scripts/research/windows_identity_encoding_probe.rs -o utf8.exe -C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT:scripts/research/windows_identity_utf8.manifest
+  运行两个程序且不传参数。Git Bash 若转换链接器的 /MANIFEST 参数，
+  在这条构建命令单独设置 MSYS2_ARG_CONV_EXCL=*。manifest 字段见
+  https://learn.microsoft.com/en-us/windows/desktop/sbscs/application-manifests#activecodepage
+
+两次执行均只读固定合成字符串，没有采集设备；未执行 CEFD10 网络
+地址筛选或实体网卡回退，也未开放默认签名路径。
