@@ -24,7 +24,7 @@ pub fn request(app: AppHandle, directory: PathBuf, outside: bool, id: u64) {
     // block the UI thread. Only this fixture owns the helper window.
     tauri::async_runtime::spawn(async move {
         let main = app.get_webview_window("main").expect("relay main window");
-        let outcome = async {
+        let outcome: Result<(), &'static str> = async {
             if outside {
                 let other = tauri::WebviewWindowBuilder::new(
                     &app,
