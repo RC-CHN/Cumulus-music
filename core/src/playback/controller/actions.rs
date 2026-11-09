@@ -136,6 +136,7 @@ impl Actor {
             return;
         }
         if let PlaybackCommand::UpdateQueue(value)
+        | PlaybackCommand::InsertNext(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
@@ -258,6 +259,10 @@ impl Actor {
             PlaybackCommand::RetryLoudness => self.loudness_retry().await,
             PlaybackCommand::RepairLoudness => self.loudness_repair().await,
             PlaybackCommand::RepairQuality => self.quality_repair(),
+            PlaybackCommand::InsertNext(value) => self
+                .insert_next(value, Some(&request.reply))
+                .await
+                .map(|value| options = value),
             PlaybackCommand::UpdateQueue(value)
             | PlaybackCommand::PlaySearchCatalog(Some(value)) => self
                 .update_queue(value, Some(&request.reply))
@@ -639,6 +644,15 @@ impl Actor {
             self.reply(request.reply, result);
         }
     }
+    pub(super) fn ordinary_chorus_trigger(&self, trigger: super::ChorusTrigger) {
+        if !self.queue.is_fm()
+            && self.queue.intelligence_context().is_none()
+            && let Some(triggers) = &self.chorus_triggers
+        {
+            triggers(&self.token, trigger);
+        }
+    }
+
     async fn retain_current_queue_and_play(
         &mut self,
         queue: crate::playback::QueueSnapshot,

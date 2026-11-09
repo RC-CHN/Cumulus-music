@@ -51,9 +51,15 @@ async fn chorus_requires_exact_cookie_revision_and_last_dispatch_permission() {
         backend.clone(),
     )
     .unwrap();
+    let observed_without_cookie = client.observed_playback_chorus_revision().unwrap();
     assert_eq!(client.playback_chorus_revision().unwrap(), None);
     set_cookie("first-synthetic");
     let revision = client.playback_chorus_revision().unwrap().unwrap();
+    assert_ne!(revision, observed_without_cookie);
+    assert_eq!(
+        client.observed_playback_chorus_revision().as_deref(),
+        Some(revision.as_str())
+    );
     let batch = || PlaybackChorusRead::new(vec![json!(21), json!("22")]).unwrap();
     let denied = client
         .request_playback_chorus(batch(), &revision, &|| Err(Error::StaleResponse))
@@ -69,6 +75,10 @@ async fn chorus_requires_exact_cookie_revision_and_last_dispatch_permission() {
     assert_eq!(backend.0.load(Ordering::SeqCst), 0);
     let fresh = client.playback_chorus_revision().unwrap().unwrap();
     assert_ne!(revision, fresh);
+    assert_eq!(
+        client.observed_playback_chorus_revision().as_deref(),
+        Some(fresh.as_str())
+    );
     assert_eq!(
         client
             .request_playback_chorus(batch(), &fresh, &|| Ok(()))

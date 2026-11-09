@@ -149,7 +149,8 @@ pub(super) struct PlayerHost {
     prepared_generation: Arc<AtomicU64>,
     focus: Arc<super::focus::MediaFocus>,
     lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
-    chorus: chorus::Host,
+    chorus: Arc<chorus::Host>,
+    room_detachment: super::together::RoomDetachment,
     vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
     streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
     vinyl_similar: Arc<vinyl_similar::Host>,
@@ -165,6 +166,7 @@ impl PlayerHost {
         output: Arc<crate::playback::output::OutputRuntime>,
         ordinary_skip: OrdinarySkipHost,
         song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
+        room_detachment: super::together::RoomDetachment,
     ) -> Self {
         Self {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
@@ -187,6 +189,7 @@ impl PlayerHost {
             prepared_generation: Arc::new(AtomicU64::new(0)),
             lyrics: Mutex::new(None),
             chorus: Default::default(),
+            room_detachment,
             vinyl_draft: Mutex::new(None),
             streaming_cache: None,
             vinyl_similar: Default::default(),
@@ -212,7 +215,7 @@ impl PlayerHost {
                 let mut resolver = SourceResolver::new(self.session.clone(), Some(library));
                 resolver.streaming_cache = self.streaming_cache.clone();
                 let resolver = Arc::new(resolver);
-                Ok(Arc::new(PlaybackController::start_inner(
+                let controller = Arc::new(PlaybackController::start_inner(
                     self.session.clone(),
                     self.store.clone(),
                     resolver,
@@ -226,12 +229,18 @@ impl PlayerHost {
                         queue_more_enabled: self.queue_more_enabled,
                         power: self.power.clone(),
                         song_speed: Some(self.song_speed.clone()),
+                        chorus_triggers: Some(
+                            self.chorus
+                                .triggers(self.session.clone(), self.room_detachment.clone()),
+                        ),
                         ordinary_eof: Some(
                             self.ordinary_skip
                                 .eof(self.focus.clone(), self.selection.clone()),
                         ),
                     },
-                )?))
+                )?);
+                self.chorus.bind(&controller)?;
+                Ok(controller)
             })
             .await
     }

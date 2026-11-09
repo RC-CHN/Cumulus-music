@@ -100,12 +100,20 @@ enum Message {
     PowerPreferenceChanged,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ChorusTrigger {
+    Startup,
+    InsertNext(u64),
+}
+pub(crate) type ChorusTriggers = Arc<dyn Fn(&SessionToken, ChorusTrigger) + Send + Sync>;
+
 #[derive(Default)]
 pub(crate) struct PlaybackHostOptions {
     pub relay_enabled: bool,
     pub queue_more_enabled: bool,
     pub power: Option<Arc<super::keep_awake::PowerControl>>,
     pub ordinary_eof: Option<OrdinaryEofAuthority>,
+    pub chorus_triggers: Option<ChorusTriggers>,
     pub song_speed: Option<watch::Receiver<SongSpeedObservation>>,
 }
 
@@ -190,6 +198,7 @@ impl PlaybackController {
         actor.queue_more.supported = options.queue_more_enabled;
         actor.power = options.power.map(super::keep_awake::PowerEffect::new);
         actor.ordinary_eof = options.ordinary_eof;
+        actor.chorus_triggers = options.chorus_triggers;
         actor.song_speed_observations = options.song_speed;
         let relay = if options.relay_enabled {
             let runtime = crate::relay::publisher::player::Runtime::start(session.clone())?;

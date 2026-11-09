@@ -230,6 +230,13 @@ impl Actor {
         let generation = self.generation();
         let cancel = self.guard();
         self.cancel = cancel.clone();
+        let prefer_search_download = options.prefer_search_download
+            && matches!(&options.source, LoadSource::CurrentPreference)
+            && self.ordinary_online_song(&item)
+            && item.source["kind"] == "songs"
+            && item.source["scene"] == "search"
+            && item.resource["trial_mode"] == 42
+            && self.token.uid.is_some();
         self.pending = Some(Pending {
             history,
             podcast_progress,
@@ -237,6 +244,7 @@ impl Actor {
             item: item.clone(),
             reply: reply.take(),
             paused: options.paused,
+            prefer_search_download,
             timeline: None,
             authorized_position: None,
             seek: None,
@@ -249,13 +257,6 @@ impl Actor {
         let token = self.token.clone();
         let engine = self.engine.clone();
         let sender = self.sender.clone();
-        let prefer_search_download = options.prefer_search_download
-            && matches!(&options.source, LoadSource::CurrentPreference)
-            && self.ordinary_online_song(&item)
-            && item.source["kind"] == "songs"
-            && item.source["scene"] == "search"
-            && item.resource["trial_mode"] == 42
-            && token.uid.is_some();
         let streaming_revision = resolver
             .streaming_cache
             .as_ref()

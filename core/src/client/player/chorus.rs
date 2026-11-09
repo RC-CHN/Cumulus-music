@@ -1,12 +1,17 @@
 //! Optional song progress annotation, independent of source authorization.
+mod schedule;
 use super::{MusicClient, PlaybackCommand, PlaybackSnapshot, PlayerResourceKind, identity};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    playback::{QueueEntry, QueueSnapshot, TimelineMode},
+    playback::{
+        QueueEntry, QueueSnapshot, TimelineMode, controller::PlaybackController,
+        engine::Cancellation,
+    },
     protocol::api::{Api, PlaybackChorusRead, identifier},
 };
 use futures_util::future::try_join_all;
+pub(super) use schedule::Host;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -109,26 +114,77 @@ impl Fill {
 }
 
 #[derive(Default)]
-pub(super) struct Host(Mutex<Option<Arc<Fill>>>);
+struct Cache(Mutex<Option<Arc<Fill>>>);
 
-impl Host {
+struct Scope {
+    token: SessionToken,
+    api: Arc<dyn Api>,
+    credentials: String,
+    room: Cancellation,
+}
+
+impl Scope {
+    fn new(token: &SessionToken, api: Arc<dyn Api>, room: Cancellation) -> Option<Self> {
+        if token.uid.is_none() || room.is_cancelled() {
+            return None;
+        }
+        let credentials = api.playback_chorus_revision().ok()??;
+        Some(Self {
+            token: token.clone(),
+            api,
+            credentials,
+            room,
+        })
+    }
+
+    fn capture(token: &SessionToken, api: Arc<dyn Api>, room: Cancellation) -> Option<Self> {
+        if token.uid.is_none() || room.is_cancelled() {
+            return None;
+        }
+        let credentials = api.observed_playback_chorus_revision()?;
+        Some(Self {
+            token: token.clone(),
+            api,
+            credentials,
+            room,
+        })
+    }
+
+    fn check(&self, session: &AccountSession) -> Result<()> {
+        session.require_api(&self.token, &self.api)?;
+        self.room.check()?;
+        if self.api.playback_chorus_revision()?.as_deref() != Some(self.credentials.as_str()) {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
+
+    fn plan(&self, current: &PlaybackSnapshot, queue: &QueueSnapshot) -> Option<Plan> {
+        if current.account != self.token
+            || current.fm
+            || current.intelligence.is_some()
+            || current.catalog_file_source
+            || current.search_download_pending
+        {
+            return None;
+        }
+        Plan::from_queue(queue, current.selected.as_ref()?)
+    }
+}
+
+impl Cache {
     fn observe(
         &self,
         session: &AccountSession,
-        token: &SessionToken,
-        api: &Arc<dyn Api>,
-        credentials: String,
+        scope: &Scope,
         revision: u64,
         plan: Plan,
     ) -> Result<Arc<Fill>> {
         let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
-        session.require_api(token, api)?;
-        if api.playback_chorus_revision()?.as_deref() != Some(credentials.as_str()) {
-            return Err(Error::StaleResponse);
-        }
+        scope.check(session)?;
         if let Some(current) = slot
             .as_ref()
-            .filter(|fill| fill.matches(token, api, &credentials))
+            .filter(|fill| fill.matches(&scope.token, &scope.api, &scope.credentials))
         {
             if revision < current.revision.load(Ordering::Acquire) {
                 return Err(Error::StaleResponse);
@@ -139,9 +195,9 @@ impl Host {
             }
         }
         let fill = Arc::new(Fill {
-            token: token.clone(),
-            api: Arc::downgrade(api),
-            credentials,
+            token: scope.token.clone(),
+            api: Arc::downgrade(&scope.api),
+            credentials: scope.credentials.clone(),
             plan,
             revision: AtomicU64::new(revision),
             points: OnceCell::new(),
@@ -211,110 +267,140 @@ fn start_seconds(response: &Value, song: &str) -> Option<f64> {
     })
 }
 
+impl Cache {
+    async fn read(
+        &self,
+        session: &AccountSession,
+        controller: &PlaybackController,
+        scope: &Scope,
+        current: &PlaybackSnapshot,
+        plan: Plan,
+        marker: Option<(&str, &Value)>,
+    ) -> Result<Option<f64>> {
+        let fill = self.observe(session, scope, current.queue_revision, plan)?;
+        let mut changes = controller.subscribe();
+        // Queue replies can precede the corresponding watch publication.
+        tokio::time::timeout(
+            DEADLINE,
+            changes.wait_for(|snapshot| {
+                snapshot.account == scope.token && snapshot.queue_revision >= current.queue_revision
+            }),
+        )
+        .await
+        .map_err(|_| Error::StaleResponse)?
+        .map_err(|_| Error::Cancelled)?;
+        let permission = || {
+            scope.check(session)?;
+            if !self.is_current(&fill)? {
+                return Err(Error::StaleResponse);
+            }
+            let snapshot = changes.borrow();
+            if snapshot.account != scope.token
+                || snapshot.fm
+                || snapshot.intelligence.is_some()
+                || snapshot.catalog_file_source
+                || snapshot.search_download_pending
+                || snapshot.queue_revision != fill.revision.load(Ordering::Acquire)
+            {
+                return Err(Error::StaleResponse);
+            }
+            Ok(())
+        };
+        let points = fill
+            .points
+            .get_or_try_init(|| async {
+                let result = tokio::time::timeout(DEADLINE, async {
+                    // M86 starts all groups together, then folds the results in
+                    // request order, irrespective of the network arrival order.
+                    let reads = fill.plan.batches.iter().map(|ids| async {
+                        permission()?;
+                        let read = PlaybackChorusRead::new(ids.clone())?;
+                        let response = scope
+                            .api
+                            .request_playback_chorus(read, &fill.credentials, &permission)
+                            .await?;
+                        permission()?;
+                        batch_points(ids, &response)
+                    });
+                    let batches = try_join_all(reads).await?;
+                    let mut points = Points::new();
+                    for (id, seconds) in batches.into_iter().flatten() {
+                        if let Some(seconds) = seconds {
+                            points.insert(id, seconds);
+                        } else {
+                            points.remove(&id);
+                        }
+                    }
+                    Result::Ok(points)
+                })
+                .await;
+                // No partial map. A batch failure stays empty for this queue;
+                // a stale read may not install any result, even an empty one.
+                permission()?;
+                Ok::<_, Error>(result.ok().and_then(Result::ok).unwrap_or_default())
+            })
+            .await?;
+        let Some((play_id, expected_song)) = marker else {
+            return Ok(None);
+        };
+        let latest = controller
+            .command(&scope.token, PlaybackCommand::Snapshot)
+            .await?;
+        permission()?;
+        if selected_song(&latest, play_id)? != Some(expected_song)
+            || latest.catalog_file_source
+            || latest.queue_revision != fill.revision.load(Ordering::Acquire)
+        {
+            return Err(Error::StaleResponse);
+        }
+        Ok(points.get(&identifier(expected_song)?).copied())
+    }
+}
+
 impl MusicClient {
     pub async fn player_chorus(&self, epoch: &str, play_id: &str) -> Result<Option<f64>> {
         let token = self.player_token(epoch)?;
         let controller = self.player.controller().await?;
-        let (current, queue) = controller.queue_with_state(&token).await?;
-        let Some(song) = selected_song(&current, play_id)? else {
+        let (mut current, mut queue) = controller.queue_with_state(&token).await?;
+        let Some(song) = selected_song(&current, play_id)?.cloned() else {
             return Ok(None);
         };
         let api = self.session.native_api(&token)?;
-        let room = self.together_detached_guard(&token);
-        if !current.fm
-            && current.intelligence.is_none()
-            && !current.catalog_file_source
-            && !room.is_cancelled()
-            && token.uid.is_some()
-            && let Some(plan) = current
-                .selected
-                .as_ref()
-                .and_then(|item| Plan::from_queue(&queue, item))
-            && let Ok(Some(credentials)) = api.playback_chorus_revision()
+        if let Some(scope) = Scope::new(&token, api.clone(), self.together_detached_guard(&token))
+            && let Some(mut plan) = scope.plan(&current, &queue)
         {
-            let fill = self.player.chorus.observe(
-                &self.session,
-                &token,
-                &api,
-                credentials,
-                current.queue_revision,
-                plan,
-            )?;
-            let mut changes = controller.subscribe();
-            // Queue replies can precede the corresponding watch publication.
-            tokio::time::timeout(
-                DEADLINE,
-                changes.wait_for(|snapshot| {
-                    snapshot.account == token && snapshot.queue_revision >= current.queue_revision
-                }),
-            )
-            .await
-            .map_err(|_| Error::StaleResponse)?
-            .map_err(|_| Error::Cancelled)?;
-            let permission = || {
-                self.session.require_api(&token, &api)?;
-                room.check()?;
-                if !self.player.chorus.is_current(&fill)?
-                    || api.playback_chorus_revision()?.as_deref() != Some(fill.credentials.as_str())
-                {
-                    return Err(Error::StaleResponse);
-                }
-                let snapshot = changes.borrow();
-                if snapshot.account != token
-                    || snapshot.fm
-                    || snapshot.intelligence.is_some()
-                    || snapshot.queue_revision != fill.revision.load(Ordering::Acquire)
-                {
-                    return Err(Error::StaleResponse);
-                }
-                Ok(())
-            };
-            let points = fill
-                .points
-                .get_or_try_init(|| async {
-                    let result = tokio::time::timeout(DEADLINE, async {
-                        // M86 starts all groups together, then folds the results in
-                        // request order, irrespective of the network arrival order.
-                        let reads = fill.plan.batches.iter().map(|ids| async {
-                            permission()?;
-                            let read = PlaybackChorusRead::new(ids.clone())?;
-                            let response = api
-                                .request_playback_chorus(read, &fill.credentials, &permission)
-                                .await?;
-                            permission()?;
-                            batch_points(ids, &response)
-                        });
-                        let batches = try_join_all(reads).await?;
-                        let mut points = Points::new();
-                        for (id, seconds) in batches.into_iter().flatten() {
-                            if let Some(seconds) = seconds {
-                                points.insert(id, seconds);
-                            } else {
-                                points.remove(&id);
-                            }
-                        }
-                        Result::Ok(points)
-                    })
-                    .await;
-                    // No partial map. A batch failure stays empty for this queue;
-                    // a stale read may not install any result, even an empty one.
-                    permission()?;
-                    Ok::<_, Error>(result.ok().and_then(Result::ok).unwrap_or_default())
-                })
-                .await?;
-            let latest = controller
-                .command(&token, PlaybackCommand::Snapshot)
-                .await?;
-            permission()?;
-            if selected_song(&latest, play_id)? != Some(song)
-                || latest.catalog_file_source
-                || latest.queue_revision != fill.revision.load(Ordering::Acquire)
+            if self
+                .player
+                .chorus
+                .wait_for_startup(&self.session, &scope)
+                .await?
             {
-                return Err(Error::StaleResponse);
+                (current, queue) = controller.queue_with_state(&token).await?;
+                if selected_song(&current, play_id)? != Some(&song) {
+                    return Err(Error::StaleResponse);
+                }
+                // The due read uses the actor's current queue, not the old
+                // renderer observation held while waiting for startup.
+                let Some(latest_plan) = scope.plan(&current, &queue) else {
+                    return Ok(None);
+                };
+                plan = latest_plan;
             }
-            return Ok(points.get(&identifier(song)?).copied());
+            return self
+                .player
+                .chorus
+                .cache
+                .read(
+                    &self.session,
+                    controller,
+                    &scope,
+                    &current,
+                    plan,
+                    Some((play_id, &song)),
+                )
+                .await;
         }
-        let ids = serde_json::to_string(&[song])?;
+        let ids = serde_json::to_string(std::slice::from_ref(&song))?;
         // This optional decoration must not expire an otherwise working
         // playback session on a failed metadata read.
         let response = tokio::time::timeout(
@@ -332,10 +418,10 @@ impl MusicClient {
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
         self.session.require_api(&token, &api)?;
-        if selected_song(&latest, play_id)? != Some(song) {
+        if selected_song(&latest, play_id)? != Some(&song) {
             return Err(Error::StaleResponse);
         }
-        Ok(start_seconds(&response, &identifier(song)?))
+        Ok(start_seconds(&response, &identifier(&song)?))
     }
 }
 

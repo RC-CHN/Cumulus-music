@@ -94,6 +94,7 @@ pub struct PlaybackSnapshot {
     pub can_change_quality: bool,
     /// A catalog search row is currently decoded from its verified publication.
     pub catalog_file_source: bool,
+    pub(crate) search_download_pending: bool,
     pub quality_preferences_apply: bool,
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,
@@ -225,6 +226,8 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    /// Explicit next-play insertion; only this durable edit starts a chorus read.
+    InsertNext(QueueUpdate),
     /// M71 browse list insertion with the exact freshly authorized first episode.
     PlayPodcastBrowse {
         update: QueueUpdate,

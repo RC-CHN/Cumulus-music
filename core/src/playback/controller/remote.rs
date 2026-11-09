@@ -215,11 +215,30 @@ impl Actor {
         self.update_queue_with_source(value, reply, None).await
     }
 
+    pub(super) async fn insert_next(
+        &mut self,
+        value: super::QueueUpdate,
+        reply: Option<&Response>,
+    ) -> Result<Option<LoadOptions>> {
+        self.update_queue_inner(value, reply, None, true).await
+    }
+
     pub(super) async fn update_queue_with_source(
         &mut self,
         value: super::QueueUpdate,
         reply: Option<&Response>,
         first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+    ) -> Result<Option<LoadOptions>> {
+        self.update_queue_inner(value, reply, first_source, false)
+            .await
+    }
+
+    async fn update_queue_inner(
+        &mut self,
+        value: super::QueueUpdate,
+        reply: Option<&Response>,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+        insert_next: bool,
     ) -> Result<Option<LoadOptions>> {
         value.queue.validate()?;
         if value
@@ -238,12 +257,16 @@ impl Actor {
             |t| t.paused,
         );
         let position = value.transport.as_ref().and_then(|t| t.position);
+        let previous_revision = self.queue.revision();
         self.save_position()?;
-        if first_source.is_some() {
+        if insert_next || first_source.is_some() {
             self.session
                 .with_token(&self.token, |_| self.queue.install(value.queue))?;
         } else {
             self.queue.install(value.queue)?;
+        }
+        if insert_next && self.queue.revision() != previous_revision {
+            self.ordinary_chorus_trigger(super::ChorusTrigger::InsertNext(self.queue.revision()));
         }
         let after = self.queue.selected();
         if after.is_none() {

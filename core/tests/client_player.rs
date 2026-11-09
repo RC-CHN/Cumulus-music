@@ -62,6 +62,10 @@ struct Backend {
     vinyl_comment_release: Notify,
 }
 impl Api for Backend {
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        self.chorus.revision()
+    }
+
     fn playback_chorus_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(self.chorus.revision())
     }

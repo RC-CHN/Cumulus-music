@@ -679,6 +679,12 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Cheap native commit observation for actor scheduling. The revision is
+    /// not a permission and must be re-proved off actor before dispatch.
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        None
+    }
+
     /// Admits a queue chorus read only with exact native account credentials.
     fn playback_chorus_revision(&self) -> Result<Option<String>> {
         Ok(None)

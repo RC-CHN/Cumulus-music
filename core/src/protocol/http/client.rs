@@ -1161,6 +1161,13 @@ impl Api for MusicHttpClient {
         Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
     }
 
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        if self.credentials.origin() != super::ApiOrigin::Pc || self.anonymous_store {
+            return None;
+        }
+        Some(self.credentials.subscribe_commits().borrow().clone())
+    }
+
     fn playback_chorus_revision(&self) -> Result<Option<String>> {
         let origin = self.credentials.origin();
         if origin != super::ApiOrigin::Pc || self.anonymous_store {

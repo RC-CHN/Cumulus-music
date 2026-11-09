@@ -14,6 +14,7 @@ impl Actor {
         if let Some(queue) = input.queue {
             self.queue.install(queue)?;
         }
+        self.ordinary_chorus_trigger(super::ChorusTrigger::Startup);
         let Some(selected) = self.queue.selected() else {
             return Ok(None);
         };

@@ -285,6 +285,7 @@ impl MusicClient {
         let pc_experiments = Arc::new(pc_experiments::PcExperimentHost::default());
         let message_poll = Arc::new(messages::PcMessagePollHost::default());
         let together = together::TogetherHost::default();
+        let room_detachment = together.detachment();
         let skip = player::OrdinarySkipHost::new(
             session.clone(),
             message_poll.clone(),
@@ -352,6 +353,7 @@ impl MusicClient {
                 output.clone(),
                 skip,
                 pc_experiments.song_speed(),
+                room_detachment,
             ),
             mv: mv::MvHost::new(session.clone(), focus.clone(), output.clone()),
             output,
