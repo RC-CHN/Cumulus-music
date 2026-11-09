@@ -1,4 +1,5 @@
 //! Optional song progress annotation, independent of source authorization.
+mod fm;
 mod schedule;
 use super::{MusicClient, PlaybackCommand, PlaybackSnapshot, PlayerResourceKind, identity};
 use crate::{
@@ -10,11 +11,10 @@ use crate::{
     },
     protocol::api::{Api, PlaybackChorusRead, identifier},
 };
-use futures_util::future::try_join_all;
 pub(super) use schedule::Host;
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicU64, Ordering},
@@ -216,27 +216,6 @@ impl Cache {
     }
 }
 
-fn batch_points(request: &[Value], response: &Value) -> Result<BTreeMap<String, Option<f64>>> {
-    let mut points = BTreeMap::new();
-    let requested: BTreeSet<_> = request.iter().map(identifier).collect::<Result<_>>()?;
-    let rows = response["data"]
-        .as_array()
-        .ok_or(Error::Response("invalid chorus batch response"))?;
-    for row in rows {
-        let Ok(id) = identifier(&row["id"]) else {
-            continue;
-        };
-        if requested.contains(&id) {
-            let seconds = row["startTime"]
-                .as_f64()
-                .filter(|time| time.is_finite() && *time > 0.0)
-                .map(|time| time / 1000.0);
-            points.insert(id, seconds);
-        }
-    }
-    Ok(points)
-}
-
 fn selected_song<'a>(snapshot: &'a PlaybackSnapshot, play_id: &str) -> Result<Option<&'a Value>> {
     if snapshot.play_id.as_deref() != Some(play_id) {
         return Err(Error::StaleResponse);
@@ -310,27 +289,15 @@ impl Cache {
             .points
             .get_or_try_init(|| async {
                 let result = tokio::time::timeout(DEADLINE, async {
-                    // M86 starts all groups together, then folds the results in
-                    // request order, irrespective of the network arrival order.
-                    let reads = fill.plan.batches.iter().map(|ids| async {
-                        permission()?;
-                        let read = PlaybackChorusRead::new(ids.clone())?;
-                        let response = scope
-                            .api
-                            .request_playback_chorus(read, &fill.credentials, &permission)
-                            .await?;
-                        permission()?;
-                        batch_points(ids, &response)
-                    });
-                    let batches = try_join_all(reads).await?;
+                    let updates = crate::playback::chorus::read(
+                        &scope.api,
+                        &fill.credentials,
+                        &fill.plan.batches,
+                        &permission,
+                    )
+                    .await?;
                     let mut points = Points::new();
-                    for (id, seconds) in batches.into_iter().flatten() {
-                        if let Some(seconds) = seconds {
-                            points.insert(id, seconds);
-                        } else {
-                            points.remove(&id);
-                        }
-                    }
+                    crate::playback::chorus::merge(&mut points, updates);
                     Result::Ok(points)
                 })
                 .await;
@@ -366,6 +333,11 @@ impl MusicClient {
             return Ok(None);
         };
         let api = self.session.native_api(&token)?;
+        if current.fm {
+            return self
+                .fm_chorus(controller, &current, &queue, play_id, &song, &api)
+                .await;
+        }
         if let Some(scope) = Scope::new(&token, api.clone(), self.together_detached_guard(&token))
             && let Some(mut plan) = scope.plan(&current, &queue)
         {

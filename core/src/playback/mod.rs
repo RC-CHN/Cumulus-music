@@ -1,5 +1,6 @@
 //! Native playback domain. Queue selection and timeline mapping do not claim
 //! that an audio engine has successfully loaded the selected resource.
+pub(crate) mod chorus;
 mod constraint;
 pub mod controller;
 pub mod mode;

@@ -2,6 +2,7 @@
 //! at-most-once feedback dispatch. Native playback integration owns the clock.
 mod api;
 mod blacklist;
+mod chorus;
 pub mod discovery;
 mod feedback;
 mod model;
