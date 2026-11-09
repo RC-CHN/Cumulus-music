@@ -100,7 +100,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     source = Path(__file__).resolve().parents[2] / "desktop/examples/zone_fm_preview_ui_probe.js"
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF="1", CUMULUS_VERTICAL_ZONE_PROOF="fm-preview",
-               CUMULUS_UX_SCRIPT=str(source))
+               CUMULUS_ZONE_FM_PREVIEW_GATE="1", CUMULUS_UX_SCRIPT=str(source))
     for key in profiles:
         isolated = root / "profile" / key
         isolated.mkdir(parents=True, mode=0o700)

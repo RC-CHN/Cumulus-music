@@ -45,6 +45,10 @@ pub fn enabled() -> bool {
     std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("fm-preview")
 }
 
+fn cover_gate_enabled() -> bool {
+    std::env::var("CUMULUS_ZONE_FM_PREVIEW_GATE").as_deref() == Ok("1")
+}
+
 /// The DOM still exposes the exact projected source. The probe document
 /// prohibits requesting those synthetic URLs even on a connected runner.
 pub fn restrict_artwork(context: &mut tauri::Context<tauri::Wry>) {
@@ -122,10 +126,14 @@ pub async fn response(path: &str, args: &Value, cached: bool) -> Option<Result<V
                 "firstSongId":"","firstSongAlg":"","tabTagId":""})
             );
             let _current = InFlight::start();
-            PREVIEW_GATE
-                .acquire()
-                .await
-                .expect_err("the preview gate releases by closing");
+            // The vinyl restart proof shares these API responses but never
+            // sends the dedicated cover proof's renderer checkpoint.
+            if cover_gate_enabled() {
+                PREVIEW_GATE
+                    .acquire()
+                    .await
+                    .expect_err("the preview gate releases by closing");
+            }
             let data = match rule {
                 "11" => json!([{"id":81,"v":5},{"id":"84"}]),
                 "12" => json!([{"id":91}]),
