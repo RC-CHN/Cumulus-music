@@ -263,3 +263,18 @@ global_remove 不受 monitor 开关限制，独立输出 [{id}]、[{id,info:null
 官方源码：同上 global_remove:1391–1415，on_core_done:1477–1494；
 Git blob 066685f90201627ff7fc61d6ab01dab132dda053，SHA-256
 53be0fb23add47d15ea969443c6ce21aaa0d17ab8ec732085175ab592f1a0acc。
+
+Windows 保留包诊断（2026-11-10）
+- 独立 run 42685394622 的 MSVC 多进程 transport lab 实际通过：普通同令牌
+  accept/ACK/consumed、未就绪、受限连接者拒绝和无效输入。它不启动 Tauri
+  发行包、也不证明实际热打开。
+- run 42691269400 attempt 1 复用 42682251677 attempt 1 构建的便携包，
+  校验 artifact、ZIP、应用和 FLAC 后，Windows 真实冷启动 WAV 以 null
+  输出推进到 1.240711 秒，并保有原窗口；热交接被拒绝。
+  owner.pipe_connected 后为 owner.sender_process_denied；
+  sender.pipe_opened 后为 sender.owner_process_denied。没有握手、文件挑选
+  或热解码成功证据；日志没有跨进程顺序，不能判定是两次独立令牌差异。
+- 受保护的同配置命名管道只允许已确认对端进入交接。先前单独的默认输出
+  运行 42678733088 在应用启动前报告 default_endpoint_absent（0x80070490）。
+  两次诊断均不证明 Windows 物理声卡输出。保留包收据和两端日志见
+  .build/ui-proof/phase209-windows-retained-trace/。
