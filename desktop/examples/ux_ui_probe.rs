@@ -229,6 +229,31 @@ impl Api for Library {
         )
     }
 
+    fn download_collection_create_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(playlist_collect_fixture::download_create_enabled()
+            .then(|| "sealed-download-collection".into()))
+    }
+
+    fn request_guarded_playlist_create<'a>(
+        &'a self,
+        write: cumulus_core::protocol::api::GuardedPlaylistCreate,
+        permission: &'a cumulus_core::protocol::api::PlaylistAddPermission<'a>,
+        dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if !playlist_collect_fixture::download_create_enabled() {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            let (path, payload) = write.into_request();
+            permission()?;
+            dispatched.store(true, std::sync::atomic::Ordering::Release);
+            playlist_collect_fixture::guarded_download_creation(path, &payload);
+            playlist_collect_fixture::response(path, &payload)
+                .await
+                .expect("sealed download create fixture")
+        })
+    }
+
     fn request_guarded_playlist_add<'a>(
         &'a self,
         write: cumulus_core::protocol::api::GuardedPlaylistAdd,
@@ -245,6 +270,9 @@ impl Api for Library {
             assert_eq!(payload.as_object().unwrap().len(), 3);
             permission()?;
             dispatched.store(true, std::sync::atomic::Ordering::Release);
+            if playlist_collect_fixture::download_create_enabled() {
+                playlist_collect_fixture::guarded_download_creation(path, &payload);
+            }
             playlist_collect_fixture::response(path, &payload)
                 .await
                 .expect("sealed playlist collection fixture")
