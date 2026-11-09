@@ -596,6 +596,10 @@ impl MpvEngine {
                 let format = file.format();
                 let loaded =
                     self.load_pinned(Box::new(file.reader()), format, cancel.clone(), cancel)?;
+                if format == "mp3" && loaded.codec.as_deref() != Some("mp3") {
+                    self.stop()?;
+                    return Err(Error::Response("native rooted source is not MP3"));
+                }
                 cancel.check()?;
                 if request.start > 0.0 {
                     self.seek(request.start)?;

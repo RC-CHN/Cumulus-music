@@ -350,3 +350,37 @@ tests. The actor tests use actual libmpv with null output and the trusted
 runtime discovery rules. Run them and the separate held FLAC metadata test
 against the packaged ffprobe executable. These native cases are not reported
 as passed by cross-compilation.
+
+
+The same explicit Windows media candidate admits bounded raw MPEG Layer III
+MP3. It rejects files over 256 MiB, an ID3v2 tag over 16 MiB, a malformed tag
+or inconsistent/truncated first two frames, other MPEG layers, and free
+format. In ffprobe it uses only the seekable inherited `fd:`, explicit MP3
+demuxer/format, MP3 audio and PNG/JPEG attached-picture decoder allowlist,
+a 16,777,216-pixel image limit, 1 MiB probe size, 1.5 s analysis limit, and
+an eight-packet frame decode. Only one explicit MP3 audio stream, matching
+decoded audio frames and consistent positive bounded metadata are accepted.
+Error-level decoder output fails even if ffprobe exits zero; later packets
+are not predecoded. The child exits before the caller's original cursor is
+restored. Stock libmpv consumes the same held file and must report MP3.
+Missing `fd:` support, reparse, probe/decoder errors, and unknown formats
+never fall back to a pathname.
+
+FFmpeg source and CLI contracts:
+- https://www.ffmpeg.org/ffprobe-all.html
+- https://www.ffmpeg.org/doxygen/trunk/mp3dec_8c_source.html
+- https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/mpegaudiodecheader.c
+- https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/mpegaudiodata.c
+- https://id3.org/id3v2.4.0-structure
+
+The exact packaged Windows `ffprobe.exe` must pass
+`actual_ffprobe_decodes_only_the_held_mp3_and_rejects_corrupt_audio` in
+`--test held_mp3_probe` with `CUMULUS_HELD_FFPROBE` set to its absolute
+path. Run the ignored
+`windows_rooted_actor_loads_held_mp3_after_filename_replacement` core lib
+test on fixed local NTFS with the package libmpv and ffprobe; the latter
+checks that stock libmpv still plays the original after FLAC is placed at
+the old MP3 pathname. Native Windows desktop startup/handoff remains a
+separate proof. The Linux fixture verifies a tagged synthetic MP3 with
+embedded cover art, the same raw audio, an ordinary stereo MPEG-1 sample,
+and corrupted streams; it does not validate Windows descriptor inheritance.

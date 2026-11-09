@@ -38,13 +38,6 @@ impl WindowsNativeOpenBatch {
             return Err(Error::InvalidInput("invalid native local audio path"));
         }
         let format = format_from_path(&path)?;
-        // MP3 metadata still requires an unverified pathname probe. Do not
-        // open it at all in this native ingress lane.
-        if !matches!(format, "wav" | "flac") {
-            return Err(Error::InvalidInput(
-                "unsupported rooted native audio format",
-            ));
-        }
         let (mut file, identity) = WindowsFileIdentity::open_local_fixed_ntfs_nofollow(&path)?
             .ok_or(Error::InvalidInput(
                 "native audio requires a fixed local NTFS file",
@@ -53,11 +46,18 @@ impl WindowsNativeOpenBatch {
         let metadata = if format == "wav" {
             wav_metadata(&path, &mut file, &fingerprint)?
         } else {
-            let metadata = probe.inspect_held_flac(
-                &mut file,
-                path.file_name()
-                    .ok_or(Error::InvalidInput("missing native audio filename"))?,
-            )?;
+            let name = path
+                .file_name()
+                .ok_or(Error::InvalidInput("missing native audio filename"))?;
+            let metadata = match format {
+                "flac" => probe.inspect_held_flac(&mut file, name)?,
+                "mp3" => probe.inspect_held_mp3(&mut file, name)?,
+                _ => {
+                    return Err(Error::InvalidInput(
+                        "unsupported rooted native audio format",
+                    ));
+                }
+            };
             if metadata.duration <= 0.0 || !metadata.duration.is_finite() {
                 return Err(Error::Media("invalid native local audio metadata"));
             }
@@ -183,21 +183,6 @@ mod tests {
     }
 
     #[test]
-    fn windows_rooted_admission_does_not_open_mp3() {
-        let mut batch = WindowsNativeOpenBatch::new();
-        assert!(matches!(
-            batch.push(
-                PathBuf::from(r"C:\nonexistent\unverified.mp3"),
-                &Ffprobe::default()
-            ),
-            Err(Error::InvalidInput(
-                "unsupported rooted native audio format"
-            ))
-        ));
-        assert!(batch.is_empty());
-    }
-
-    #[test]
     #[ignore = "requires real Windows with a fixed local NTFS temp directory"]
     fn windows_rooted_wav_metadata_and_readers_keep_the_exact_open_object() {
         let dir = tempfile::tempdir().unwrap();
@@ -260,6 +245,20 @@ mod tests {
         actor_loads_held_after_filename_replacement(
             "flac",
             include_bytes!("../../../tests/fixtures/tag_audio/seed.flac"),
+            include_bytes!("../../../tests/fixtures/stereo-pcm-source.flac"),
+            1.0,
+        )
+        .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "requires real Windows fixed local NTFS, trusted package ffprobe and libmpv; null output"]
+    async fn windows_rooted_actor_loads_held_mp3_after_filename_replacement() {
+        actor_loads_held_after_filename_replacement(
+            "mp3",
+            include_bytes!("../../../tests/fixtures/tag_audio/seed.mp3"),
+            // If the decoder reopens the pathname, the forced MP3 demuxer
+            // receives FLAC rather than the admitted one-second audio.
             include_bytes!("../../../tests/fixtures/stereo-pcm-source.flac"),
             1.0,
         )

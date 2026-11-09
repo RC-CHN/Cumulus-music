@@ -1,6 +1,7 @@
 //! FFprobe is an explicit cross-platform process adapter. No shell is used;
 //! network protocols are disabled. Hosts supply/bundle the executable.
 mod held_flac;
+mod held_mp3;
 mod process;
 mod response;
 use super::AudioMetadata;

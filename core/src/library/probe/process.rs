@@ -32,6 +32,7 @@ fn drain(
 pub(super) enum Input<'a> {
     Path(&'a Path),
     HeldFlac(File),
+    HeldMp3(File),
 }
 
 pub(super) fn run(executable: &Path, input: Input<'_>, timeout: Duration) -> Result<Value> {
@@ -39,6 +40,12 @@ pub(super) fn run(executable: &Path, input: Input<'_>, timeout: Duration) -> Res
         "format=duration,bit_rate:",
         "format_tags=title,artist,album,track:",
         "stream=codec_name,codec_type,sample_rate,channels"
+    );
+    const MP3_ENTRIES: &str = concat!(
+        "format=format_name,duration,bit_rate:",
+        "format_tags=title,artist,album,track:",
+        "stream=index,codec_name,codec_type,sample_rate,channels:",
+        "frame=media_type,stream_index,nb_samples,channels"
     );
     let mut command = Command::new(executable);
     #[cfg(windows)]
@@ -59,9 +66,10 @@ pub(super) fn run(executable: &Path, input: Input<'_>, timeout: Duration) -> Res
             .env_remove("PATH")
             .creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
+    let strict_mp3 = matches!(&input, Input::HeldMp3(_));
     let protocols = match &input {
         Input::Path(_) => "file,pipe",
-        Input::HeldFlac(_) => "fd",
+        Input::HeldFlac(_) | Input::HeldMp3(_) => "fd",
     };
     command.args([
         "-v",
@@ -69,13 +77,40 @@ pub(super) fn run(executable: &Path, input: Input<'_>, timeout: Duration) -> Res
         "-protocol_whitelist",
         protocols,
         "-show_entries",
-        ENTRIES,
+        if strict_mp3 { MP3_ENTRIES } else { ENTRIES },
         "-of",
         "json",
     ]);
     match input {
         Input::Path(path) => command.arg(path).stdin(Stdio::null()),
         Input::HeldFlac(file) => command.args(["-f", "flac", "-i", "fd:"]).stdin(file),
+        Input::HeldMp3(file) => command
+            .args([
+                "-format_whitelist",
+                "mp3",
+                // APIC images are inspected during stream discovery even though
+                // only the one audio stream and its frames are projected.
+                "-codec_whitelist",
+                "mp3,mp3float,mjpeg,png",
+                "-max_pixels",
+                "16777216",
+                "-probesize",
+                "1048576",
+                "-analyzeduration",
+                "1500000",
+                "-err_detect",
+                "explode",
+                "-f",
+                "mp3",
+                "-select_streams",
+                "a",
+                "-read_intervals",
+                "%+#8",
+                "-show_frames",
+                "-i",
+                "fd:",
+            ])
+            .stdin(file),
     }
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
@@ -105,7 +140,7 @@ pub(super) fn run(executable: &Path, input: Input<'_>, timeout: Duration) -> Res
         return Err(Error::Media("audio probe output exceeds limit"));
     }
     let status = status.ok_or(Error::State("audio probe timed out"))?;
-    if !status.success() {
+    if !status.success() || (strict_mp3 && !errors.is_empty()) {
         return Err(Error::Media("audio metadata could not be decoded"));
     }
     serde_json::from_slice(&bytes).map_err(|_| Error::Media("invalid audio probe response"))
