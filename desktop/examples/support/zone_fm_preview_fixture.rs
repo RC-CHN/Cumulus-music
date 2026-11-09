@@ -2,7 +2,7 @@ use cumulus_core::{Error, Result};
 use serde_json::{Value, json};
 use std::sync::{
     Mutex,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 const RECOMMENDS: &str = "/api/tag/tab/fm/recommends";
@@ -10,12 +10,28 @@ const DETAILS: &str = "/api/v3/song/detail";
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
+static INITIAL_COVER_SEEN: AtomicBool = AtomicBool::new(false);
+static PREVIEW_GATE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(0);
+
+fn maybe_release_previews() {
+    // The cover must paint before the first synthetic response, and the
+    // fixture must observe overlapping requests before letting either finish.
+    if INITIAL_COVER_SEEN.load(Ordering::SeqCst) && ACTIVE.load(Ordering::SeqCst) >= 2 {
+        PREVIEW_GATE.close();
+    }
+}
+
+pub fn initial_cover_seen() {
+    INITIAL_COVER_SEEN.store(true, Ordering::SeqCst);
+    maybe_release_previews();
+}
 
 struct InFlight;
 impl InFlight {
     fn start() -> Self {
-        let current = ACTIVE.fetch_add(1, Ordering::AcqRel) + 1;
+        let current = ACTIVE.fetch_add(1, Ordering::SeqCst) + 1;
         PEAK.fetch_max(current, Ordering::AcqRel);
+        maybe_release_previews();
         Self
     }
 }
@@ -106,7 +122,10 @@ pub async fn response(path: &str, args: &Value, cached: bool) -> Option<Result<V
                 "firstSongId":"","firstSongAlg":"","tabTagId":""})
             );
             let _current = InFlight::start();
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            PREVIEW_GATE
+                .acquire()
+                .await
+                .expect_err("the preview gate releases by closing");
             let data = match rule {
                 "11" => json!([{"id":81,"v":5},{"id":"84"}]),
                 "12" => json!([{"id":91}]),

@@ -66,6 +66,7 @@
     await wait(() => one('[data-choice-zone="ROCK"]'), 'registered Rock zone');
     click(one('[data-choice-zone="ROCK"]'), 'Rock zone');
     await wait(() => picture('合成漫游首曲') === cdn('card-11'), 'existing cover before passive response');
+    await emit('zone-fm-preview-initial-cover');
     await wait(() => picture('合成漫游首曲') === cdn('album-81') &&
       picture('同规则漫游') === cdn('album-81') &&
       picture('另一首曲封面') === cdn('album-92') &&

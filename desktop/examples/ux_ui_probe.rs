@@ -1493,7 +1493,13 @@ fn main() {
             if vinyl_comments_fixture::group().is_some() {value["vinylCommentsCalls"]=json!(vinyl_comments_fixture::report());}
             if vinyl_similar_fixture::enabled() {value["vinylSimilarFixture"]=vinyl_similar_fixture::report();}
             if vertical_zone_fixture::enabled() {value["verticalZoneCalls"]=json!(vertical_zone_fixture::calls());}
-            if zone_fm_preview_fixture::enabled() {value["zoneFmPreview"]=zone_fm_preview_fixture::report();}
+            if zone_fm_preview_fixture::enabled() {
+                if value["stage"] == "zone-fm-preview-initial-cover" {
+                    zone_fm_preview_fixture::initial_cover_seen();
+                    return;
+                }
+                value["zoneFmPreview"]=zone_fm_preview_fixture::report();
+            }
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
