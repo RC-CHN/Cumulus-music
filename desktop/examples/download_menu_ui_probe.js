@@ -41,16 +41,28 @@
     el.value = text;
     el.dispatchEvent(new Event("input", { bubbles: true }));
   };
-  const fixture = async (mode, extra = {}) => {
-    window.__downloadPageAck = null;
-    await emit("download-page-fixture", { mode, ...extra });
-    await wait(
-      () => window.__downloadPageAck,
-      "fixture " + mode,
-      mode === "seed" ? 1200 : undefined,
-    );
-    assert(window.__downloadPageAck.ok, window.__downloadPageAck.message);
-    return window.__downloadPageAck;
+  let pendingFixture;
+  Object.defineProperty(window, "__downloadPageAck", {
+    configurable: true,
+    set: (ack) => pendingFixture?.(ack),
+  });
+  const fixture = async (mode, extra = {}, limit = mode === "seed" ? 60_000 : 13_000) => {
+    assert(!pendingFixture, "fixture controls are serialized");
+    let timer;
+    try {
+      const ack = await new Promise((resolve, reject) => {
+        pendingFixture = resolve;
+        timer = setTimeout(() => reject(Error("fixture acknowledgement timed out: " + mode)), limit);
+        // The native event callback resolves this on eval delivery; waiting on
+        // another timed DOM poll can outlive an already-issued native receipt.
+        emit("download-page-fixture", { mode, ...extra }).catch(reject);
+      });
+      assert(ack?.ok, ack?.message ?? "invalid fixture acknowledgement: " + mode);
+      return ack;
+    } finally {
+      clearTimeout(timer);
+      pendingFixture = undefined;
+    }
   };
   const ready = () =>
     one(".downloads-page") &&
@@ -168,13 +180,32 @@
         read.done = true;
       }
     };
-    const expectHeldCount = () =>
-      wait(async () => (await fixture("menu_comment_observe")).menuCommentHeld,
-        "download comment information is held in the native fixture", 10);
-    await fixture("menu_comment_hold");
-    requestMenu();
-    await expectHeldCount();
-    assert(!menu(), "the menu is still preparing its text");
+    async function startHeldCount(label, readIndex, input = "more") {
+      step = label;
+      await fixture("menu_comment_hold");
+      const start = performance.now();
+      requestMenu(0, input);
+      const read = commentReads[readIndex];
+      assert(read && !read.done && !menu(), "new menu waits for its native count: " + label);
+      let observations = 0;
+      let elapsed = 0;
+      let held = false;
+      // The production deadline is 1500 ms. Bound the observation by elapsed
+      // time too, so a cancelled waiter cannot be mistaken for a live hold.
+      while (!read.done && (elapsed = performance.now() - start) < 1_500) {
+        observations++;
+        const observation = await fixture("menu_comment_observe", {}, 1_500 - elapsed);
+        held = observation.menuCommentHeld;
+        if (held) break;
+        await sleep(10);
+      }
+      assert(held && !read.done && !menu(),
+        "download comment not held with menu closed: " + JSON.stringify({
+          label, observations, elapsedMs: Math.round(performance.now() - start),
+          readDone: read.done, count: read.count, menuShown: !!menu(),
+        }));
+    }
+    await startHeldCount("first_row_read_pending", 0);
     await open(1, "keyboard");
     assert(button("查看评论", menu()) && commentReads[1]?.count === 0, "known zero is not labeled");
     await fixture("menu_comment_release");
@@ -190,16 +221,12 @@
     await capture("comment_wrong_thread");
     key(menu(), "Escape");
     await wait(() => !menu(), "third row menu dismissed");
-    await fixture("menu_comment_hold");
-    requestMenu();
-    await expectHeldCount();
+    await startHeldCount("escape_during_count", 3);
     key(document.activeElement, "Escape");
     await fixture("menu_comment_release");
     await wait(() => commentReads[3]?.done, "cancelled menu count has returned");
     assert(commentReads[3]?.count === 321 && !menu(), "Escape prevents a late menu from opening");
-    await fixture("menu_comment_hold");
-    requestMenu(0, "pointer");
-    await expectHeldCount();
+    await startHeldCount("same_row_click_during_count", 4, "pointer");
     row().dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
     row().click();
     await fixture("menu_comment_release");
@@ -218,10 +245,8 @@
     };
     let taskRetired = false;
     try {
-      await fixture("menu_comment_hold");
       const stillRendered = row().dataset.downloadTask;
-      requestMenu();
-      await expectHeldCount();
+      await startHeldCount("task_retirement_during_count", 5);
       await fixture("menu_comment_retire");
       taskRetired = true;
       await fixture("menu_comment_release");
