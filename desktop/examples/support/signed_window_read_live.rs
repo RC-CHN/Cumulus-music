@@ -166,6 +166,8 @@ struct LiveEvent {
     stage: String,
     #[serde(rename = "playerState")]
     _player_state: Option<String>,
+    #[serde(rename = "captureHandshake")]
+    capture_handshake: Option<bool>,
 }
 
 // These are view checkpoints only. Media authority arrives through the
@@ -174,9 +176,20 @@ fn live_event_stage(payload: &str) -> Option<String> {
     if payload.len() > 256 {
         return None;
     }
-    let LiveEvent { stage, .. } = serde_json::from_str(payload).ok()?;
-    (STAGES.contains(&stage.as_str()) || ["complete", "failed"].contains(&stage.as_str()))
-        .then_some(stage)
+    let LiveEvent {
+        stage,
+        capture_handshake,
+        ..
+    } = serde_json::from_str(payload).ok()?;
+    // The existing WebView adapter adds this boolean to the six view
+    // checkpoints while waiting for the native receipt. It never adds it to
+    // the terminal event, and no additional renderer-supplied fields pass.
+    let valid = if STAGES.contains(&stage.as_str()) {
+        capture_handshake == Some(true)
+    } else {
+        ["complete", "failed"].contains(&stage.as_str()) && capture_handshake.is_none()
+    };
+    valid.then_some(stage)
 }
 
 #[cfg(test)]
@@ -187,7 +200,10 @@ mod tests {
     #[test]
     fn renderer_events_cannot_supply_a_cdn_authority_or_create_an_arm_stage() {
         assert_eq!(
-            live_event_stage(r#"{"stage":"ux_playing","playerState":"playing"}"#).as_deref(),
+            live_event_stage(
+                r#"{"stage":"ux_playing","playerState":"playing","captureHandshake":true}"#
+            )
+            .as_deref(),
             Some("ux_playing")
         );
         assert_eq!(
@@ -195,7 +211,10 @@ mod tests {
             Some("failed")
         );
         for forged in [
-            r#"{"stage":"ux_playing","authority":"m1.music.126.net"}"#,
+            r#"{"stage":"ux_account_resources","playerState":"idle"}"#,
+            r#"{"stage":"ux_account_resources","playerState":"idle","captureHandshake":false}"#,
+            r#"{"stage":"failed","captureHandshake":true}"#,
+            r#"{"stage":"ux_playing","captureHandshake":true,"authority":"m1.music.126.net"}"#,
             r#"{"stage":"complete","url":"https://m1.music.126.net/synthetic.m4a"}"#,
             r#"{"stage":"cdn-authority-armed"}"#,
             r#"{"stage":"ux_playing","stage":"complete"}"#,
