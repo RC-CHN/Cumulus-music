@@ -55,8 +55,18 @@
     }
     await theme('浅色');await settings();await capture('default_light');
     await play();await settings();const header=()=>focus(section().querySelector('h2'));
-    assert(key(header(),'KeyP',{ctrlKey:true}).defaultPrevented,'Ctrl P routing');await wait(()=>state()==='paused','Ctrl P paused');
-    key(header(),'F5');await wait(()=>state()==='playing','F5 playback');key(header(),'Space');await wait(()=>state()==='paused','space playback');await capture('local_native_transport');
+    // Native status can already say active while the renderer is still receiving
+    // the matching lease or leaving a modal. Stop at the first accepted chord:
+    // unhandled keys cannot start the command, and an accepted key is never replayed.
+    let ctrlPAttempts=0;
+    await wait(()=>{
+      const target=header();
+      if(document.activeElement!==target||document.querySelector('dialog[open],[aria-modal="true"]'))return false;
+      ctrlPAttempts++;
+      return key(target,'KeyP',{ctrlKey:true}).defaultPrevented;
+    },'Ctrl P routed by the focused local listener');
+    await wait(()=>state()==='paused','Ctrl P paused');
+    key(header(),'F5');await wait(()=>state()==='playing','F5 playback');key(header(),'Space');await wait(()=>state()==='paused','space playback');await capture('local_native_transport',refresh(),{ctrlPAttempts});
     const search=one('.search-box input')||one('header input');search.focus();assert(!key(search,'KeyP',{ctrlKey:true}).defaultPrevented,'typing consumed');
     click(one('[aria-label="均衡器"]'));await wait(()=>one('.equalizer-dialog[open]'),'modal opened');
     assert(!key(focus(one('.equalizer-dialog h2')),'KeyP',{ctrlKey:true}).defaultPrevented,'modal shortcut consumed');await sleep(250);assert(state()==='paused','protected UI changed playback');
