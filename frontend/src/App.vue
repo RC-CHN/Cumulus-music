@@ -4465,7 +4465,12 @@ function scopedPlaylistQueue(id: string, track?: TrackView) {
   const epoch = account.value.epoch;
   const snapshot = result.value;
   const mixed = displayedMixedPlaylist.value;
-  if (mixed) {
+  // The official whole-list resolver uses the mixed page only after all
+  // its entities are loaded. A bound row can still queue from any page.
+  if (
+    mixed &&
+    (track || (snapshot && !snapshot.more && snapshot.tracks.length === snapshot.total))
+  ) {
     return async () => {
       const shown = result.value;
       if (
@@ -4473,6 +4478,7 @@ function scopedPlaylistQueue(id: string, track?: TrackView) {
         page.value !== route ||
         shown?.playlist?.id !== id ||
         shown.playlistLocal?.revision !== mixed.revision ||
+        (!track && (shown.more || shown.tracks.length !== shown.total)) ||
         (track &&
           (track.missing ||
             !shown.tracks.includes(track) ||
