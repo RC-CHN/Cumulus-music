@@ -93,8 +93,15 @@ fn seed_or_restore_credentials(
 
 struct ClosedConfig;
 impl ConfigBackend for ClosedConfig {
-    fn get<'a>(&'a self, _: &'a ConfigUrl) -> ApiFuture<'a, Value> {
-        Box::pin(async { Err(Error::State("sealed search config cannot use remote HTTP")) })
+    fn get<'a>(&'a self, url: &'a ConfigUrl) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if super::daily_notification_fixture::enabled()
+                && url.as_str() == super::daily_notification_fixture::CONFIG_URL
+            {
+                return Ok(super::daily_notification_fixture::config());
+            }
+            Err(Error::State("sealed search config cannot use remote HTTP"))
+        })
     }
 }
 impl TokenProvider for ClosedConfig {
@@ -162,6 +169,16 @@ impl SignedSearch {
             backend.clone(),
         )?);
         Ok(Arc::new(Self { client, backend }))
+    }
+
+    pub fn daily_notification_config(&self) -> Result<Arc<PcConfig>> {
+        use cumulus_core::protocol::mconfig::APPLICATION_KEY;
+        let config = self.backend.config.clone();
+        tauri::async_runtime::block_on(config.resolve(&BTreeMap::from([(
+            "MConfig-Info".into(),
+            json!({APPLICATION_KEY:{"version":1,"os":"pc","fullUrl":super::daily_notification_fixture::CONFIG_URL}}).to_string(),
+        )])))?;
+        Ok(config)
     }
 
     pub fn report(&self) -> Value {
@@ -308,6 +325,9 @@ impl HttpBackend for Backend {
                         json!({"expName":"PH-PC-zhenyingn",
                             "expGroupName": if case == "layout_only" { "c" } else { "t1" }}),
                     ]);
+                }
+                if super::daily_notification_fixture::enabled() {
+                    groups.extend(super::daily_notification_fixture::groups());
                 }
                 if song_speed_enabled() {
                     groups.extend([
