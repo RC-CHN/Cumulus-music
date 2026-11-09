@@ -15,6 +15,25 @@ CASES = {
 }
 
 
+DIAGNOSIS_CASES = {
+    "synthetic": {
+        "below_threshold": (False, 79, 0, None),
+        "muted": (False, 80, 1, None),
+        "at_system_threshold": (False, 86, 2, None),
+        "decrease": (False, 82, 2, None),
+        "low_system_volume": (True, 85, 3, None),
+        "automatic_close": (False, 85, 3, None),
+        "offered_again": (True, 90, 4, None),
+        "settings": (False, 90, 5, "30%"),
+        "remembered_cooldown": (False, 92, 6, None),
+    },
+    "unsupported": {
+        "below_threshold": (False, 79, 0, None),
+        "unsupported_after_increase": (False, 80, 0, None),
+    },
+}
+
+
 def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -26,6 +45,7 @@ def main():
     parser.add_argument("--frontend-dist", type=Path)
     parser.add_argument("--runtime", type=Path, help="exact staged Windows native media directory")
     parser.add_argument("--screenshots", action="store_true", help="optional Linux GTK capture")
+    parser.add_argument("--diagnosis", action="store_true", help="exercise the player volume diagnosis")
     args = parser.parse_args()
     windows = sys.platform == "win32"
     if not windows and sys.platform != "linux":
@@ -49,10 +69,12 @@ def main():
                         ("XDG_CACHE_HOME", "cache"), ("XDG_RUNTIME_DIR", "runtime")]
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    probe = Path(__file__).resolve().parents[2] / "desktop/examples/system_master_volume_ui_probe.js"
+    probe_name = "volume_diagnosis" if args.diagnosis else "system_master_volume"
+    probe = Path(__file__).resolve().parents[2] / "desktop/examples" / f"{probe_name}_ui_probe.js"
     locales = {}
     # A Windows run is synthetic-only: never fall back to the system reader.
-    cases = {"synthetic": CASES["synthetic"]} if windows else CASES
+    all_cases = DIAGNOSIS_CASES if args.diagnosis else CASES
+    cases = {"synthetic": all_cases["synthetic"]} if windows else all_cases
     for case, expected in cases.items():
         directory = root / case
         directory.mkdir()
@@ -67,7 +89,8 @@ def main():
         if args.frontend_dist:
             env["CUMULUS_PROOF_FRONTEND_DIST"] = str(args.frontend_dist.resolve(strict=True))
         script = directory / "probe.js"
-        script.write_text(f"window.__systemMasterVolumeUnsupported={json.dumps(case == 'unsupported')};\n"
+        flag = "__volumeDiagnosisUnsupported" if args.diagnosis else "__systemMasterVolumeUnsupported"
+        script.write_text(f"window.{flag}={json.dumps(case == 'unsupported')};\n"
                           + probe.read_text(encoding="utf-8"), encoding="utf-8")
         env["CUMULUS_UX_SCRIPT"] = str(script)
         output = directory / "first"
@@ -85,24 +108,39 @@ def main():
         complete = read(output / "complete.json")
         assert complete["ok"] and complete["stageCount"] == len(expected)
         assert complete["realOsWrites"] == complete["realMusicRequests"] == complete["realAccountWrites"] == 0
-        for index, (label, percent) in enumerate(expected.items(), 1):
+        baseline = None
+        for index, (label, observation) in enumerate(expected.items(), 1):
             path = output / f"ux_{index:02}_{label}.json"
             row = read(path)
-            assert row["visible"] == (case == "synthetic") and row["percent"] == percent, (label, row)
             player = row["nativePlayer"]
             assert player["state"] == "paused" and player["playId"] == row["playId"] and not player["error"]
-            assert abs(player["position"] - row["pausedAt"]) < 0.2
-            if case == "synthetic":
-                assert row["systemMasterVolumeReads"] == index, (label, row)
-            if label in {"muted", "unavailable", "recovered"}:
-                assert row["focused"] == "刷新音频输出设备", (label, row)
-            if label == "recovered":
-                assert row["width"] == 760 and row["theme"] == "dark"
+            if args.diagnosis:
+                visible, volume, reads, percent = observation
+                assert (row["visible"], row["volume"], row["outputPercent"]) == (visible, volume, percent), (label, row)
+                assert row.get("systemMasterVolumeReads", 0) == reads, (label, row)
+                assert player["volume"] == volume, (label, row)
+                current = tuple(row[key] for key in ("playId", "entryId", "queueRevision", "position"))
+                assert all(value is not None for value in current)
+                assert tuple(player[key] for key in ("playId", "entryId", "queueRevision", "position")) == current
+                baseline = baseline or current
+                assert current == baseline, (label, row)
+                if label == "settings":
+                    assert row["focused"] == "settings-audio-output", row
+            else:
+                assert row["visible"] == (case == "synthetic") and row["percent"] == observation, (label, row)
+                assert abs(player["position"] - row["pausedAt"]) < 0.2
+                if case == "synthetic":
+                    assert row["systemMasterVolumeReads"] == index, (label, row)
+                if label in {"muted", "unavailable", "recovered"}:
+                    assert row["focused"] == "刷新音频输出设备", (label, row)
+                if label == "recovered":
+                    assert row["width"] == 760 and row["theme"] == "dark"
             if args.screenshots:
                 assert path.with_suffix(".png").is_file()
     count = sum(map(len, cases.values()))
     result = dict(ok=True, actualWebView=True, webViewRuntime="WebView2" if windows else "GTK/WebKit",
                   nativeIpc=True, nativeLibmpvNull=True, windowsMediaRuntime=windows_media,
+                  playerVolumeDiagnosis=args.diagnosis,
                   stateCount=count, screenshots=count if args.screenshots else 0,
                   syntheticWindowsEndpoint=True, nativeLinuxUnsupported=not windows,
                   physicalWindowsReadVerified=False, realOsWrites=0, realMusicRequests=0,

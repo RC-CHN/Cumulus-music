@@ -33,6 +33,8 @@ fn read() -> Option<(f32, bool)> {
         1 => Some((0.81, true)),
         2 => None,
         3 => Some((0.84, false)),
+        4 => Some((0.2999, false)),
+        5 => Some((0.3, false)),
         _ => unreachable!("fixture selects a named input"),
     }
 }
@@ -43,6 +45,8 @@ pub fn set(mode: &str) {
             "muted" => 1,
             "missing" => 2,
             "recovered" => 3,
+            "almost_thirty" => 4,
+            "thirty" => 5,
             _ => panic!("unknown sealed volume input"),
         },
         Ordering::Relaxed,
