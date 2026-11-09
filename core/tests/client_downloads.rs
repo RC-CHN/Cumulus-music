@@ -2026,16 +2026,53 @@ async fn forgetting_a_download_keeps_suspended_ordinary_queues_playable() {
 
 #[tokio::test]
 async fn bulk_cancel_covers_tasks_outside_visible_page_and_removes_owned_temporary_files() {
-    use cumulus_core::download::service::{DownloadAction, DownloadService};
+    use cumulus_core::download::{
+        directory::DownloadDirectory,
+        service::{DownloadAction, DownloadService},
+    };
     let f = Fixture::new();
-    f.configure().await;
+    // Configure directly so the download worker cannot see the fixture's
+    // queued tasks before all of them have been paused.
+    DownloadDirectory::new(f.session.clone())
+        .unwrap()
+        .configure(&f.root.path().join("media"), 2, 1)
+        .unwrap();
     let service =
         DownloadService::with_backend(f.session.clone(), f.backend.clone(), 512 * 1024 * 1024)
             .unwrap();
-    for _ in 0..103 {
-        let task = service.create_default(&json!(123), options()).unwrap();
-        service.request(&task.id, DownloadAction::Pause).unwrap();
-    }
+    let task = service.create_default(&json!(123), options()).unwrap();
+    let paused = service.request(&task.id, DownloadAction::Pause).unwrap();
+    assert_eq!(paused.status, DownloadStatus::Paused);
+    assert!(paused.work.is_dir());
+    let control = f
+        .store
+        .get("1", "download_controls_v1", &paused.id)
+        .unwrap()
+        .unwrap();
+    // Keep each native-created work directory and its recorded identity.
+    // Only batch the fixture's pause state, using the genuine control above.
+    let tasks: Vec<_> = (1..103)
+        .map(|_| {
+            let mut task = service.create_default(&json!(123), options()).unwrap();
+            assert!(task.work.is_dir());
+            task.status = paused.status;
+            task
+        })
+        .collect();
+    f.store
+        .transaction(|tx| {
+            for task in &tasks {
+                tx.put(
+                    "1",
+                    "download_tasks_v1",
+                    &task.id,
+                    &serde_json::to_value(task)?,
+                )?;
+                tx.put("1", "download_controls_v1", &task.id, &control)?;
+            }
+            Ok(())
+        })
+        .unwrap();
     let before = f.client.downloads("1", Default::default()).await.unwrap();
     assert_eq!(before.active_count, 103);
     assert_eq!(before.tasks.len(), 100);
