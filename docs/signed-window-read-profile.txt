@@ -133,3 +133,16 @@ against the actual synthetic fixture, including no-replace publication,
 sidecar refusal, and exact child input names and modes. No test opens real
 credentials, performs live requests, or proves the same-window GUI and CDN
 stage by itself.
+Closed installation preflight (2026-11-10)
+-------------------------------------------
+The actual previously authorized PC installation is closed and both selected
+databases have no SQLite sidecars. The installation root has mode 0775; the
+exporter refused it as a direct source. It then accepted a new 0700 directory
+containing only read-only copies of the two private database files. The source
+files and original installation permissions remained unchanged. The independent
+expected UID matched the earlier authorized account and the exporter reported
+hardware-derived local identity in the absence of a saved installation identity.
+Only the three expected private output files were produced. Both temporary
+directories were removed; this was offline preparation, not a live playback
+attempt. Retained aggregate evidence is under .build/ui-proof/phase195-signed-
+window-broker/real-profile-offline-preflight-private-source.json.
