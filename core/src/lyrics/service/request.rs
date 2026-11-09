@@ -1,4 +1,7 @@
-use super::super::response::{normalize_cloud_response, normalize_fresh_song_response};
+use super::super::{
+    bounty::LyricBountyWrite,
+    response::{normalize_cloud_response, normalize_fresh_song_response},
+};
 use super::types::LyricTarget;
 use crate::{
     Error, Result,
@@ -25,22 +28,30 @@ pub(super) fn key(target: &LyricTarget) -> Result<String> {
     }
 }
 
+fn version(cached: Option<&Value>, key: &str) -> Value {
+    cached
+        .and_then(|c| c[key].get("version"))
+        .filter(|v| js_truthy(v))
+        .cloned()
+        .unwrap_or(json!(-1))
+}
+
+pub(super) fn is_full_song_read(cached: Option<&Value>) -> bool {
+    ["lrc", "tlyric", "romalrc", "yrc"]
+        .iter()
+        .all(|key| version(cached, key) == -1)
+}
+
 pub(super) async fn fetch(
     api: &dyn Api,
     uid: &str,
     target: &LyricTarget,
     cached: Option<&Value>,
 ) -> Result<Value> {
-    let version = |key: &str| {
-        cached
-            .and_then(|c| c[key].get("version"))
-            .filter(|v| js_truthy(v))
-            .cloned()
-            .unwrap_or(json!(-1))
-    };
+    let version = |key| version(cached, key);
     match target {
         LyricTarget::Song(id) => {
-            let raw=api.call("/api/song/lyric/v1",json!({"id":id,"lv":version("lrc"),"tv":version("tlyric"),"rv":version("romalrc"),"yv":version("yrc")}),false,&[200]).await?;
+            let raw=api.call(LyricBountyWrite::SONG_LYRIC_PATH,json!({"id":id,"lv":version("lrc"),"tv":version("tlyric"),"rv":version("romalrc"),"yv":version("yrc")}),false,&[200]).await?;
             normalize_fresh_song_response(&raw)
         }
         LyricTarget::Cloud(id) => {

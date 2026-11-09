@@ -1,3 +1,5 @@
+mod bounty;
+pub use bounty::LyricBountyIntent;
 mod contribution;
 mod contributors;
 mod segment;

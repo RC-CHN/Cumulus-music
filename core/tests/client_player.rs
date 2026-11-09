@@ -5,9 +5,10 @@ use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
     client::{MusicClient, dto::*},
+    lyrics::LyricBountyWrite,
     membership::Quality,
     protocol::{
-        api::{Api, ApiFuture},
+        api::{Api, ApiFuture, LyricBountyPermission},
         http::ApiOrigin,
     },
 };
@@ -33,6 +34,7 @@ struct Backend {
     url_release: Notify,
     trial: Mutex<Option<Value>>,
     lyric_contribution_response: Mutex<Option<Value>>,
+    lyric_bounty_writes: AtomicU64,
     playlist_trial: playlist_trial::Fixture,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
@@ -66,6 +68,24 @@ struct Backend {
     vinyl_comment_release: Notify,
 }
 impl Api for Backend {
+    fn lyric_bounty_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(Some("synthetic-lyric-bounty-revision".into()))
+    }
+
+    fn request_lyric_bounty<'a>(
+        &'a self,
+        _: LyricBountyWrite,
+        revision: &'a str,
+        permission: &'a LyricBountyPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            assert_eq!(revision, "synthetic-lyric-bounty-revision");
+            permission().map_err(|error| Error::RequestNotSent(Box::new(error)))?;
+            self.lyric_bounty_writes.fetch_add(1, Ordering::SeqCst);
+            Ok(json!({"code":200}))
+        })
+    }
+
     fn observed_playback_chorus_revision(&self) -> Option<String> {
         self.chorus.revision()
     }
@@ -1244,6 +1264,71 @@ async fn lyric_toolbar_uses_its_own_current_flags_even_without_parsed_lyric_line
         assert_eq!(api.calls.lock().unwrap().len(), calls);
         previous = Some(play_id);
     }
+}
+
+#[tokio::test]
+async fn lyric_bounty_intent_cannot_outlive_the_current_player_document_or_owner() {
+    use cumulus_core::lyrics::{LyricBountyKind::MissingLyrics, LyricBountyStatus::Accepted};
+    let (_dir, api, session, client, _) = fixture();
+    *api.lyric_contribution_response.lock().unwrap() = Some(json!({"code":200,"sgc":false}));
+    let first = client
+        .play_selection("1", songs("1"))
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    assert!(
+        client
+            .prepare_lyric_bounty("1", &first, MissingLyrics)
+            .await
+            .is_err()
+    );
+    client.player_lyrics("1", &first).await.unwrap();
+    let before = api.calls.lock().unwrap().len();
+    let stale = client
+        .prepare_lyric_bounty("1", &first, MissingLyrics)
+        .await
+        .unwrap();
+    assert_eq!(stale.kind(), MissingLyrics);
+    assert_eq!(stale.existing_status(), None);
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    assert_eq!(api.lyric_bounty_writes.load(Ordering::SeqCst), 0);
+
+    let second = client
+        .play_selection("1", songs("2"))
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    assert!(matches!(
+        client.confirm_lyric_bounty(stale).await,
+        Err(Error::StaleResponse)
+    ));
+    client.player_lyrics("1", &second).await.unwrap();
+    let new = client
+        .prepare_lyric_bounty("1", &second, MissingLyrics)
+        .await
+        .unwrap();
+    let duplicate = client
+        .prepare_lyric_bounty("1", &second, MissingLyrics)
+        .await
+        .unwrap();
+    assert_eq!(client.confirm_lyric_bounty(new).await.unwrap(), Accepted);
+    assert_eq!(
+        client.confirm_lyric_bounty(duplicate).await.unwrap(),
+        Accepted
+    );
+    let retired = client
+        .prepare_lyric_bounty("1", &second, MissingLyrics)
+        .await
+        .unwrap();
+    assert_eq!(retired.existing_status(), Some(Accepted));
+    session.detach().unwrap();
+    assert!(matches!(
+        client.confirm_lyric_bounty(retired).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(api.lyric_bounty_writes.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

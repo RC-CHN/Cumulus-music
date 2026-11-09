@@ -7,6 +7,7 @@ use std::{future::Future, pin::Pin};
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
 pub type VinylCommentWritePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type LyricBountyPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type VinylPlaybackReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
@@ -598,6 +599,25 @@ pub type PodcastBadgePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
+
+    fn lyric_bounty_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// A native PC capability must check authorization at the one dispatch
+    /// boundary. Generic adapters do not gain a fallback write.
+    fn request_lyric_bounty<'a>(
+        &'a self,
+        _write: crate::lyrics::LyricBountyWrite,
+        _revision: &'a str,
+        _permission: &'a LyricBountyPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::RequestNotSent(Box::new(Error::State(
+                "signed lyric bounty transport unavailable",
+            ))))
+        })
+    }
 
     /// The count, clear and account profile endpoints must see the same native
     /// authenticated cookie scope. Generic adapters have no write authority.

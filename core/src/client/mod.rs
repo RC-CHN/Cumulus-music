@@ -11,6 +11,7 @@ pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
 pub use cloud::CloudFileReveal;
+pub use player::LyricBountyIntent;
 pub use player::{
     QueueCatalogFileReveal, QueueDownloadFileReveal, QueueLocalFileReveal, QueueVoiceFileReveal,
 };

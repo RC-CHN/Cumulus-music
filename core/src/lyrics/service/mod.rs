@@ -5,12 +5,14 @@ mod types;
 pub use types::*;
 
 use super::{
+    DisplayType, LyricBountyKind, ParsedLyrics,
     files::{LibraryLyrics, LocalLyricSource, LocalLyrics},
     parse_lyrics, response,
 };
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
+    protocol::wire::serialization::js_truthy,
     storage::{OperationLock, StateStore},
 };
 use serde_json::{Value, json};
@@ -24,6 +26,7 @@ struct State {
     sidecar_key: Option<String>,
     view: LyricSnapshot,
     raw: Option<Value>,
+    bounty: Option<BountyOffer>,
 }
 
 pub struct LyricsService {
@@ -85,6 +88,7 @@ impl LyricsService {
                     ..Default::default()
                 },
                 raw: None,
+                bounty: None,
             }),
         })
     }
@@ -124,6 +128,30 @@ impl LyricsService {
             Ok((observed != Some(&revision)).then(|| (revision, state.view.clone())))
         })
     }
+    pub(crate) fn bounty_revision(
+        &self,
+        target: &LyricTarget,
+        kind: LyricBountyKind,
+    ) -> Result<(Uuid, String)> {
+        let key = request::key(target)?;
+        self.with_state(|state, _| {
+            if !matches!(target, LyricTarget::Song(_))
+                || state.selected.as_deref() != Some(key.as_str())
+                || state.view.is_loading
+            {
+                return Err(Error::StaleResponse);
+            }
+            let offer = state
+                .bounty
+                .as_ref()
+                .filter(|offer| offer.kinds.contains(&kind))
+                .ok_or(Error::State(
+                    "current lyric result does not support this bounty",
+                ))?;
+            Ok((state.revision, offer.credential_revision.clone()))
+        })
+    }
+
     pub fn clear(&self) -> Result<LyricSnapshot> {
         self.with_state(|state, _| {
             state.attempt = Uuid::new_v4();
@@ -136,6 +164,7 @@ impl LyricsService {
             };
             state.view.lyric.display_type = super::DisplayType::Ask;
             state.raw = None;
+            state.bounty = None;
             Ok(state.view.clone())
         })
     }
@@ -289,6 +318,7 @@ impl LyricsService {
         let (attempt, cached) = self.with_state(|state, uid| {
             let cached = cache::read(&self.store, uid, &key)?;
             state.attempt = Uuid::new_v4();
+            state.bounty = None;
             if !refresh_local || state.view.resource_key.as_ref() != Some(&key) {
                 state.revision = Uuid::new_v4();
                 state.selected = Some(key.clone());
@@ -311,6 +341,7 @@ impl LyricsService {
         let mut from_embedded = false;
         let mut from_cache = false;
         let mut cache_value = None;
+        let mut bounty_result = None;
         let mut raw = match &input.target {
             LyricTarget::Local(path) => {
                 let local = self.files.read_local(path).await?;
@@ -336,11 +367,33 @@ impl LyricsService {
                 let incoming = self
                     .session
                     .run_for(&self.token, |api, uid| async move {
-                        request::fetch(api.as_ref(), &uid, target, cached_ref).await
+                        let revision = if matches!(target, LyricTarget::Song(_)) {
+                            api.lyric_bounty_credential_revision().ok().flatten()
+                        } else {
+                            None
+                        };
+                        let fresh = request::fetch(api.as_ref(), &uid, target, cached_ref).await?;
+                        let revision = revision.filter(|revision| {
+                            api.lyric_bounty_credential_revision()
+                                .ok()
+                                .flatten()
+                                .as_ref()
+                                == Some(revision)
+                        });
+                        Ok((fresh, revision))
                     })
                     .await;
                 let incoming = match incoming {
-                    Ok(value) => Some(value),
+                    Ok((value, revision)) => {
+                        if let Some(revision) = revision {
+                            bounty_result = Some((
+                                value.clone(),
+                                revision,
+                                request::is_full_song_read(cached_ref),
+                            ));
+                        }
+                        Some(value)
+                    }
                     Err(Error::StaleResponse) => return Err(Error::StaleResponse),
                     Err(error) if error.is_service_code(301) => return Err(error),
                     Err(_) => {
@@ -380,6 +433,16 @@ impl LyricsService {
         if !present {
             parsed.display_type = super::DisplayType::Ask;
         }
+        let bounty = bounty_result.and_then(|(fresh, credential_revision, full)| {
+            if from_sidecar || from_embedded || network_failed {
+                return None;
+            }
+            let kinds = bounty_kinds(&fresh, &parsed, present, full);
+            (!kinds.is_empty()).then_some(BountyOffer {
+                credential_revision,
+                kinds,
+            })
+        });
         self.with_state(|state, uid| {
             if state.attempt != attempt {
                 return Err(Error::StaleResponse);
@@ -390,6 +453,7 @@ impl LyricsService {
             }
             state.revision = Uuid::new_v4();
             state.sidecar_key = sidecar_key;
+            state.bounty = bounty;
             state.raw = present.then_some(raw);
             state.view = LyricSnapshot {
                 resource_key: present.then_some(key),
@@ -405,6 +469,53 @@ impl LyricsService {
             Ok(state.view.clone())
         })
     }
+}
+
+struct BountyOffer {
+    credential_revision: String,
+    kinds: Vec<LyricBountyKind>,
+}
+
+fn bounty_kinds(
+    fresh: &Value,
+    displayed: &ParsedLyrics,
+    present: bool,
+    full: bool,
+) -> Vec<LyricBountyKind> {
+    use LyricBountyKind::*;
+    if fresh["code"] != 200
+        || fresh["isCloudLyric"] != false
+        || displayed.display_type == DisplayType::Pure
+    {
+        return vec![];
+    }
+    // An empty conditional reply can mean “unchanged”. Only a full,
+    // successful response with no lyrics can authorize the missing case.
+    if full && !present && fresh["noLyric"] == true {
+        return vec![MissingLyrics];
+    }
+    let Ok(from_network) = parse_lyrics(fresh) else {
+        return vec![];
+    };
+    if !present
+        || from_network.display_type != DisplayType::Default
+        || displayed.display_type != DisplayType::Default
+        || from_network.lyric_lines.is_empty()
+        || from_network.current_used_lyric != displayed.current_used_lyric
+        || from_network.current_used_lyric_version != displayed.current_used_lyric_version
+        || from_network.lyric_lines != displayed.lyric_lines
+        || from_network.scrollable != displayed.scrollable
+    {
+        return vec![];
+    }
+    let mut result = vec![];
+    if fresh.get("askForTranslation").is_some_and(js_truthy) {
+        result.push(Translation);
+    }
+    if !displayed.scrollable {
+        result.push(Scrolling);
+    }
+    result
 }
 
 fn require_document(state: &State, expected: &str) -> Result<()> {

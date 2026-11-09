@@ -1,5 +1,6 @@
 //! Official M/370 lyric parsing and presentation, with finite playback clocks.
 //! Network fetching stays in CatalogApi; this domain also accepts local lyrics.
+pub(crate) mod bounty;
 mod credits;
 mod embedded;
 pub mod files;
@@ -12,6 +13,7 @@ mod service;
 mod types;
 mod yrc;
 
+pub use bounty::{LyricBountyKind, LyricBountyStatus, LyricBountyWrite};
 pub use format::{format_timestamp, protect_timestamp_only_lines, render_lrc};
 pub use lrc::parse_lrc;
 pub use presentation::{active_line, parse_lyrics};

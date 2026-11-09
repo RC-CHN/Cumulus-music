@@ -5,17 +5,18 @@ use super::{
 use crate::{
     Error, Result,
     account::credentials::{Credentials, RequestCredentials},
+    lyrics::LyricBountyWrite,
     protocol::{
         api::{
             Api, ApiFuture, CopyrightNotificationRead, DailyNotificationRead, GuardedPlaylistAdd,
-            GuardedPlaylistCreate, GuardedSongLike, MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH,
-            MessageReadAllPermission, PlaybackChorusPermission, PlaybackChorusRead,
-            PlayerPodcastResumeRead, PlayerPodcastResumeWrite, PlaylistAddPermission,
-            SongCardLikedRead, SongLikePermission, SystemLikedRead, VinylCommentRead,
-            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
-            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
-            VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead,
-            VinylWikiReadPermission,
+            GuardedPlaylistCreate, GuardedSongLike, LyricBountyPermission, MESSAGE_COUNT_PATH,
+            MESSAGE_READ_ALL_PATH, MessageReadAllPermission, PlaybackChorusPermission,
+            PlaybackChorusRead, PlayerPodcastResumeRead, PlayerPodcastResumeWrite,
+            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
+            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
+            VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
+            VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -83,6 +84,10 @@ enum RequestBinding<'a> {
     },
     VinylPodcastSubscriptionWrite {
         permission: &'a VinylPlaybackReadPermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
+    LyricBounty {
+        permission: &'a LyricBountyPermission<'a>,
         dispatched: &'a AtomicBool,
     },
     VinylCommentWrite {
@@ -210,6 +215,31 @@ impl MusicHttpClient {
 
     pub(crate) fn pc_experiment_revision(&self) -> Result<String> {
         self.pc_experiment_revision_for(true)
+    }
+
+    fn lyric_bounty_revision(&self) -> Result<String> {
+        // M/402's PC WebView EAPI envelope uses scoped Cookie authentication,
+        // not the separate encrypted auth-header compatibility style.
+        if !matches!(self.options.style, super::EapiStyle::Frontend) {
+            return Err(Error::State(
+                "lyric bounty requires the native PC EAPI envelope",
+            ));
+        }
+        let revision = self.pc_experiment_revision()?;
+        let target = super::ApiOrigin::Pc.request_url(WireRoute::Eapi, LyricBountyWrite::PATH)?;
+        let scoped = self.credentials.request_credentials(&target)?;
+        if scoped.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &scoped,
+            [
+                "/api/w/nuser/account/get",
+                LyricBountyWrite::SONG_LYRIC_PATH,
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        Ok(revision)
     }
 
     fn check_vinyl_voice_action_scope(&self, current: &RequestCredentials) -> Result<()> {
@@ -623,6 +653,18 @@ impl MusicHttpClient {
         jsk: Jsk,
         binding: Option<RequestBinding<'_>>,
     ) -> Result<Value> {
+        let lyric_bounty = matches!(binding, Some(RequestBinding::LyricBounty { .. }));
+        let names_bounty = |path: &str| path.trim_end_matches('/') == LyricBountyWrite::PATH;
+        if (names_bounty(path) != lyric_bounty)
+            || (path.trim_end_matches('/') == "/api/batch"
+                && payload
+                    .as_object()
+                    .is_some_and(|calls| calls.keys().any(|key| names_bounty(key))))
+        {
+            return Err(Error::InvalidInput(
+                "lyric bounty requires native confirmation",
+            ));
+        }
         if jsk != Jsk::None {
             let allowed = match jsk {
                 Jsk::Login => super::login::jsk_login_path(path),
@@ -655,6 +697,11 @@ impl MusicHttpClient {
                 RoutingPolicy::OfficialEapi
             },
         )?;
+        if lyric_bounty && (origin != super::ApiOrigin::Pc || route != WireRoute::Eapi || cache) {
+            return Err(Error::State(
+                "lyric bounty requires uncached native PC EAPI",
+            ));
+        }
         // Async gate serializes cookie rotation for one candidate/profile;
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
@@ -801,6 +848,7 @@ impl MusicHttpClient {
             extra_headers: &extra_headers,
             options: RequestOptions {
                 cache,
+                encrypt_response: lyric_bounty || wire.options.encrypt_response,
                 // Freeze the selected wire before token injection adds fields
                 // to a metadata batch. No later payload/header can reroute it.
                 routing: if route == WireRoute::Eapi {
@@ -1003,6 +1051,17 @@ impl MusicHttpClient {
                 if let Some(dispatched) = dispatched {
                     dispatched.store(true, Ordering::Relaxed);
                 }
+            }
+            if let Some(RequestBinding::LyricBounty {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                if self.lyric_bounty_revision()? != snapshot.revision {
+                    return Err(Error::CredentialChanged);
+                }
+                permission()?;
+                dispatched.store(true, Ordering::Release);
             }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
@@ -1645,6 +1704,53 @@ impl Api for MusicHttpClient {
         Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
     }
 
+    fn lyric_bounty_credential_revision(&self) -> Result<Option<String>> {
+        self.lyric_bounty_revision().map(Some)
+    }
+
+    fn request_lyric_bounty<'a>(
+        &'a self,
+        write: LyricBountyWrite,
+        revision: &'a str,
+        permission: &'a LyricBountyPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let dispatched = AtomicBool::new(false);
+            let result = async {
+                if self.lyric_bounty_revision()? != revision {
+                    return Err(Error::CredentialChanged);
+                }
+                self.execute(
+                    LyricBountyWrite::PATH,
+                    write.into_payload()?,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::LyricBounty {
+                        permission,
+                        dispatched: &dispatched,
+                    }),
+                )
+                .await
+            }
+            .await;
+            match result {
+                Err(error) if !dispatched.load(Ordering::Acquire) => {
+                    if matches!(error.root(), Error::RequestNotSent(_)) {
+                        Err(error)
+                    } else {
+                        Err(Error::RequestNotSent(Box::new(error)))
+                    }
+                }
+                // A backend error cannot reclassify an attempted debit.
+                Err(error) if matches!(error.root(), Error::RequestNotSent(_)) => {
+                    Err(Error::MutationUncertain)
+                }
+                other => other,
+            }
+        })
+    }
+
     fn request_vinyl_comment_write<'a>(
         &'a self,
         write: VinylCommentWrite,
@@ -2097,3 +2203,6 @@ impl Api for MusicHttpClient {
 
 #[cfg(test)]
 mod chorus_tests;
+
+#[cfg(test)]
+mod lyric_bounty_tests;
