@@ -702,9 +702,11 @@ watch(
           >
             <Icon :name="primaryTransportPauses ? 'pause' : 'play'" />
           </button>
-          <span v-if="shownRecall" class="recall-play-guide" data-home-recall-guide role="status">
-            为你专属推荐，一键听听看~
-          </span>
+          <Transition name="recall-play-guide">
+            <span v-if="shownRecall" class="recall-play-guide" data-home-recall-guide role="status">
+              为你专属推荐，一键听听看~
+            </span>
+          </Transition>
         </div>
         <button
           class="icon-button"
