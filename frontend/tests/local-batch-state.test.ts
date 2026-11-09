@@ -198,3 +198,43 @@ test('a failed read is retried at its exact offset and a departed visit cannot a
   await model.remove();
   assert.equal(writes, 0, 'the leaving view cannot submit');
 });
+
+test('play sends the canonical cross-page refs without changing selection; stale play reloads rather than replaying', async () => {
+  const requests: import('../src/services/local.ts').LocalBatchPlayback[] = [];
+  let revision = 'before';
+  let reject = false;
+  const model = useLocalBatch(
+    defaultLocalQuery(),
+    {
+      localPage: async (query) => page(query.offset, revision),
+      localCommand: async () => assert.fail('play must not mutate the library index'),
+    },
+    undefined,
+    async (selection) => {
+      requests.push(selection);
+      if (reject) throw stale;
+    },
+  );
+  await model.load(100);
+  model.toggle('local-100');
+  await model.move(-1);
+  model.toggle('local-4');
+  await model.play();
+  assert.deepEqual(requests[0], {
+    query: model.query,
+    revision: 'before',
+    tracks: [
+      { id: 'local-4', revision: 'row-4' },
+      { id: 'local-100', revision: 'row-100' },
+    ],
+  });
+  assert.equal(model.selectionCount.value, 2);
+  assert.equal(model.page.value?.offset, 0);
+  reject = true;
+  revision = 'after';
+  await model.play();
+  assert.equal(requests.length, 2);
+  assert.equal(model.selectionCount.value, 0);
+  assert.equal(model.page.value?.revision, 'after');
+  assert.match(model.notice.value, /列表已更新/);
+});

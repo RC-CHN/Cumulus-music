@@ -451,6 +451,7 @@ export type PlaySelection =
       start_id: string | null;
       revision: string;
     }
+  | ({ kind: 'local_batch' } & import('./local').LocalBatchPlayback)
   | { kind: 'mv_related'; mv_id: string; song_id: string; quality: Quality }
   | {
       kind: 'cloud';

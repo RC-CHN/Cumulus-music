@@ -157,6 +157,12 @@ pub struct RemotePlayback {
     pub position: f64,
     pub paused: bool,
 }
+/// Exact local index kept stable while the actor commits an ordinary batch.
+pub struct LocalBatchUpdate {
+    pub(crate) expected: PlaybackFence,
+    pub(crate) queue: QueueSnapshot,
+    pub(crate) index: crate::storage::OperationLock,
+}
 pub struct QueueTransport {
     pub position: Option<f64>,
     pub paused: bool,
@@ -223,6 +229,7 @@ pub enum PlaybackCommand {
         update: QueueUpdate,
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
     },
+    PlayLocalBatch(LocalBatchUpdate),
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.
     PlaySearchCatalog(Option<QueueUpdate>),

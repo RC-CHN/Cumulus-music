@@ -153,6 +153,51 @@ impl Actor {
         Ok(None)
     }
 
+    pub(super) async fn play_local_batch(
+        &mut self,
+        update: super::LocalBatchUpdate,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<LoadOptions>> {
+        if self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || self.pending.is_some()
+            || self.quality_task.is_some()
+            || update.queue.fm_source.is_some()
+            || update.queue.intelligence.is_some()
+        {
+            return Err(Error::MutationBusy);
+        }
+        let selected = update
+            .queue
+            .selected()
+            .filter(|item| item.source["kind"] == "local" && item.resource["local_id"].is_string())
+            .ok_or(Error::QueueChanged)?;
+        // M308 does not toggle the current item from the toolbar. Rebind its
+        // queue metadata only when both the native entry and file are exact.
+        let retain = self.loaded.as_ref().is_some_and(|loaded| {
+            self.state.active()
+                && self.queue.selected().as_ref() == Some(&loaded.item)
+                && loaded.item.entry_id == selected.entry_id
+                && loaded.item.resource == selected.resource
+        });
+        self.save_position()?;
+        authority.check()?;
+        self.session
+            .with_local_owner(&self.token, |_| self.queue.install(update.queue))?;
+        // No scan/hide can replace the captured index before install. Release
+        // before decoder start: the ordinary resolver rechecks the actual file.
+        drop(update.index);
+        if retain {
+            self.loaded.as_mut().expect("retained local decoder").item = selected;
+            if self.state == PlaybackStatus::Paused {
+                self.pause(false).await?;
+            }
+            Ok(None)
+        } else {
+            Ok(Some(LoadOptions::default()))
+        }
+    }
+
     pub(super) async fn update_queue(
         &mut self,
         value: super::QueueUpdate,

@@ -6,6 +6,7 @@ mod comment_count;
 mod dto;
 mod identity;
 mod intelligence;
+mod local_batch;
 mod lyrics;
 mod minibar_skip;
 mod ordinary_skip_authority;

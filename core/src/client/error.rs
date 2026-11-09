@@ -69,6 +69,16 @@ impl From<Error> for ClientError {
                 Error::State("podcast browse around list is empty") => {
                     ("podcast_browse_empty", "无法添加播放", false)
                 }
+                Error::State("local batch has no playable plain audio") => (
+                    "local_batch_empty",
+                    "所选曲目中没有可播放的普通本地音频",
+                    false,
+                ),
+                Error::State("local batch requires an ordinary queue") => (
+                    "local_batch_special_queue",
+                    "请先退出当前播放模式，再批量播放本地音乐",
+                    false,
+                ),
                 Error::State("intelligence requires playable liked tracks") => (
                     "intelligence_empty",
                     "我喜欢的音乐中暂无可用于心动模式的歌曲",

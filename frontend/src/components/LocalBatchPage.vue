@@ -3,18 +3,24 @@ import { onMounted, onScopeDispose, ref } from 'vue';
 import { useControlFocus } from '../composables/useControlFocus';
 import { useLocalBatch } from '../composables/useLocalBatch';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
-import { LOCAL_BATCH_PAGE_SIZE, type LocalQuery } from '../services/local';
+import { LOCAL_BATCH_PAGE_SIZE, type LocalBatchPlayback, type LocalQuery } from '../services/local';
 import { time } from '../services/player';
 
-const props = defineProps<{ query: LocalQuery; current: (query: LocalQuery) => boolean }>();
+const props = defineProps<{
+  query: LocalQuery;
+  current: (query: LocalQuery) => boolean;
+  playable: boolean;
+  play: (source: LocalQuery, selection: LocalBatchPlayback) => Promise<void>;
+}>();
 const source = props.query;
 const live = () => props.current(source);
-const model = useLocalBatch(source, undefined, live);
+const model = useLocalBatch(source, undefined, live, (selection) => props.play(source, selection));
 const {
   page,
   selected,
   loading,
   busy,
+  busyAction,
   locked,
   readError,
   commandError,
@@ -79,6 +85,15 @@ async function move(event: Event, direction: -1 | 1) {
       <span role="status" data-local-batch-selection>已选择 {{ selectionCount }} 首</span>
       <button
         type="button"
+        class="primary"
+        data-local-batch-play
+        :disabled="locked || !selectionCount || !playable"
+        @click="focus.run($event, model.play)"
+      >
+        播放
+      </button>
+      <button
+        type="button"
         class="secondary"
         data-local-batch-remove
         :disabled="locked || !selectionCount"
@@ -88,7 +103,9 @@ async function move(event: Event, direction: -1 | 1) {
       </button>
     </div>
     <p class="local-batch-note">只从本地音乐列表移除，保留源文件。</p>
-    <p v-if="busy" class="local-batch-note" role="status">正在从列表中删除…</p>
+    <p v-if="busyAction" class="local-batch-note" role="status">
+      {{ busyAction === 'play' ? '正在准备播放…' : '正在从列表中删除…' }}
+    </p>
     <p v-if="notice" class="notice" role="status" data-local-batch-notice>{{ notice }}</p>
     <p v-if="commandError" class="error-banner" role="alert" data-local-batch-command-error>
       {{ commandError }}

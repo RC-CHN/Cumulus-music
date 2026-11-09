@@ -5,6 +5,7 @@ import {
   LOCAL_BATCH_MAX_SELECTION,
   LOCAL_BATCH_PAGE_SIZE,
   localBatchQuery,
+  type LocalBatchPlayback,
   type LocalClient,
   type LocalPage,
   type LocalQuery,
@@ -20,12 +21,14 @@ export function useLocalBatch(
   source: LocalQuery,
   core: Pick<LocalClient, 'localPage' | 'localCommand'> = useCore(),
   currentVisit = () => true,
+  playSelection?: (selection: LocalBatchPlayback) => Promise<void>,
 ) {
   const query = localBatchQuery(source);
   const page = shallowRef<LocalPage>();
   const selected = shallowRef(new Map<string, Selected>());
-  const loading = ref(false),
-    busy = ref(false);
+  const loading = ref(false);
+  const busyAction = ref<'remove' | 'play'>();
+  const busy = computed(() => !!busyAction.value);
   const readError = ref(''),
     commandError = ref(''),
     notice = ref('');
@@ -115,13 +118,35 @@ export function useLocalBatch(
     commandError.value = notice.value = '';
   }
 
+  const selectedReferences = () =>
+    [...selected.value.values()]
+      .sort((left, right) => left.ordinal - right.ordinal)
+      .map(({ id, revision }) => ({ id, revision }));
+
+  async function play() {
+    const current = page.value;
+    if (!playSelection || !live() || locked.value || !current || !selected.value.size) return;
+    busyAction.value = 'play';
+    commandError.value = notice.value = '';
+    try {
+      await playSelection({ query, revision: current.revision, tracks: selectedReferences() });
+    } catch (cause) {
+      if (!live()) return;
+      const issue = failure(cause);
+      if (issue.code === 'snapshot_changed') {
+        resetStale();
+        await fetch(0, null);
+      } else commandError.value = `播放：${issue.message}`;
+    } finally {
+      if (live()) busyAction.value = undefined;
+    }
+  }
+
   async function remove() {
     const current = page.value;
     if (!live() || locked.value || !current || !selected.value.size) return;
-    const tracks = [...selected.value.values()]
-      .sort((left, right) => left.ordinal - right.ordinal)
-      .map(({ id, revision }) => ({ id, revision }));
-    busy.value = true;
+    const tracks = selectedReferences();
+    busyAction.value = 'remove';
     commandError.value = notice.value = '';
     try {
       await core.localCommand({ kind: 'hide_tracks', query, revision: current.revision, tracks });
@@ -136,7 +161,7 @@ export function useLocalBatch(
         await fetch(0, null);
       } else commandError.value = `从列表中删除：${issue.message}`;
     } finally {
-      if (live()) busy.value = false;
+      if (live()) busyAction.value = undefined;
     }
   }
   return {
@@ -145,6 +170,7 @@ export function useLocalBatch(
     selected,
     loading,
     busy,
+    busyAction,
     locked,
     readError,
     commandError,
@@ -154,6 +180,7 @@ export function useLocalBatch(
     load,
     move,
     toggle,
+    play,
     remove,
     retry: () => load(failedOffset),
     dispose: () => {

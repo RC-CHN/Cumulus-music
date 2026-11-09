@@ -165,6 +165,7 @@ impl MusicClient {
                 | PlaySelection::DailyRecommendationsBatch { .. }
                 | PlaySelection::StyleRecommendations { .. }
                 | PlaySelection::Podcast { .. }
+                | PlaySelection::LocalBatch { .. }
                 | PlaySelection::PodcastSubscriptionRecommendation { .. }
                 | PlaySelection::Voice { .. }
                 | PlaySelection::Playlist { .. }

@@ -109,6 +109,11 @@ export type LocalCommand =
   | { kind: 'hide_track'; id: string; revision: string }
   | { kind: 'hide_group'; query: LocalQuery; revision: string }
   | { kind: 'hide_tracks'; query: LocalQuery; revision: string; tracks: LocalTrackReference[] };
+export interface LocalBatchPlayback {
+  query: LocalQuery;
+  revision: string;
+  tracks: LocalTrackReference[];
+}
 export interface LocalTrackReference {
   id: string;
   revision: string;

@@ -1,7 +1,7 @@
 //! Official M/461 list/group/filter/full-list selection semantics over the
 //! recovered local index. No online calls and no renderer-supplied file facts.
 use super::{LibraryItem, ListOptions, LocalLibrary, LocalResource};
-use crate::{Error, Result};
+use crate::{Error, Result, storage::OperationLock};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -200,6 +200,52 @@ pub(super) fn group_hide_targets(items: &[LibraryItem], query: &LocalQuery) -> R
 }
 
 impl LocalLibrary {
+    /// Hold the exact selected index snapshot until the actor commits or
+    /// rejects the queue. An explicit local action never takes a renderer path.
+    pub(crate) fn prepare_batch_playback(
+        &self,
+        query: &LocalQuery,
+        references: &[(&str, &str)],
+        queue_limit: usize,
+    ) -> Result<(Vec<serde_json::Value>, OperationLock)> {
+        let index = self.lock()?;
+        let snapshot = self.catalog(query)?;
+        let mut requested = references.iter().copied().collect::<BTreeMap<_, _>>();
+        if requested.len() != references.len() {
+            return Err(Error::QueueChanged);
+        }
+        let mut resources = Vec::new();
+        // The native sort, not click order or IPC order, defines the batch.
+        for row in &snapshot.items {
+            let Some(expected) = requested.remove(row.id.as_str()) else {
+                continue;
+            };
+            if row.revision.token() != expected {
+                return Err(Error::QueueChanged);
+            }
+            // M23.c/K requires separate catalog/entitlement evidence for
+            // encrypted local tracks. A native NCM import is not that proof.
+            if row.available()
+                && row.metadata.container != "ncm"
+                && !row
+                    .path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("ncm"))
+                && resources.len() < queue_limit
+            {
+                Self::check_current(row).map_err(|_| Error::QueueChanged)?;
+                resources.push(queue_resource(row)?);
+            }
+        }
+        if !requested.is_empty() {
+            return Err(Error::QueueChanged);
+        }
+        if resources.is_empty() {
+            return Err(Error::State("local batch has no playable plain audio"));
+        }
+        Ok((resources, index))
+    }
+
     /// One index transaction supplies both the revision and the complete list.
     pub fn catalog(&self, query: &LocalQuery) -> Result<LocalSnapshot> {
         query.validate()?;

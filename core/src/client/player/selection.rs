@@ -68,6 +68,9 @@ impl MusicClient {
                 )
                 .await
             }
+            PlaySelection::LocalBatch { .. } => Err(Error::InvalidInput(
+                "local batch playback requires a preparation ticket",
+            )),
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
@@ -276,6 +279,7 @@ impl MusicClient {
         if !matches!(
             input,
             PlaySelection::Local { .. }
+                | PlaySelection::LocalBatch { .. }
                 | PlaySelection::History { .. }
                 | PlaySelection::Downloads { .. }
         ) {
@@ -632,6 +636,28 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
+            PlaySelection::LocalBatch {
+                query,
+                revision,
+                tracks,
+            } => {
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (command, guard) = self
+                    .local_batch_selection(&token, query, revision, tracks)
+                    .await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        command,
+                        attempt,
+                        lease,
+                        Some(prepared),
+                        Some(guard),
+                    )
+                    .await?;
+                self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
             PlaySelection::Local {
                 mut query,
                 start_id,
@@ -880,6 +906,7 @@ impl MusicClient {
                     | PlaySelection::History { .. }
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::Local { .. }
+                    | PlaySelection::LocalBatch { .. }
                     | PlaySelection::Podcast { .. }
                     | PlaySelection::PodcastRecent { .. }
                     | PlaySelection::PodcastSubscriptionRecommendation { .. }

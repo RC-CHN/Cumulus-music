@@ -360,6 +360,11 @@ pub enum PlaySelection {
         start_id: Option<String>,
         revision: String,
     },
+    LocalBatch {
+        query: crate::library::catalog::LocalQuery,
+        revision: String,
+        tracks: Vec<crate::client::dto::LocalTrackReference>,
+    },
     MvRelated {
         mv_id: String,
         song_id: String,

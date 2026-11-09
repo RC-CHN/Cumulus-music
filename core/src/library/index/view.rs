@@ -200,6 +200,7 @@ impl LocalLibrary {
     /// A user-requested rescan may restore list entries. Automatic monitoring
     /// never clears this state.
     pub(crate) fn restore_hidden(&self) -> Result<()> {
+        let _lock = self.lock()?;
         self.store.transaction(|tx| {
             for id in tx.values(OWNER, HIDDEN)?.into_keys() {
                 tx.delete(OWNER, HIDDEN, &id)?;

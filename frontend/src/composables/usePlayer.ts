@@ -953,7 +953,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   // A page with its own snapshot/retry UI owns this failure. Do not retain a
   // footer retry that would resend its captured, potentially expired revision.
-  async function selectForPage(input: PlaySelection) {
+  async function runSelectionForPage(select: (epoch: string) => Promise<PlayerView>) {
     if (!ready.value || busy.value || queueBusy.value) return;
     const captured = epoch,
       session = connection,
@@ -962,7 +962,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     reported.value = undefined;
     failedOperation = undefined;
     try {
-      const next = await core.playSelection(captured, input);
+      const next = await select(captured);
       if (captured === epoch && session === connection) accept(next);
       if (captured === epoch && session === connection && current === request) return next;
     } catch (issue) {
@@ -971,10 +971,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (current === request) busy.value = false;
     }
   }
+  const selectForPage = (input: PlaySelection) =>
+    runSelectionForPage((e) => core.playSelection(e, input));
   // Acquire native ownership before reading the card's list. The renderer check
   // avoids redundant reads; native also sees newer intent before events arrive.
-  const prepareSelection = (prepare: (epoch: string) => Promise<PlaySelection>) =>
-    runSelection(async (e) => {
+  const preparedSelection =
+    (prepare: (epoch: string) => Promise<PlaySelection>) => async (e: string) => {
       const captured = request,
         origin = view.value;
       const requireCurrent = () => {
@@ -987,7 +989,11 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       const input = await prepare(e);
       requireCurrent();
       return core.commitPreparedSelection(e, ticket, input);
-    });
+    };
+  const prepareSelection = (prepare: (epoch: string) => Promise<PlaySelection>) =>
+    runSelection(preparedSelection(prepare));
+  const prepareSelectionForPage = (prepare: (epoch: string) => Promise<PlaySelection>) =>
+    runSelectionForPage(preparedSelection(prepare));
   const downloads = (ids: string[], index: number) =>
     runSelection((e) => core.playDownloads(e, ids, index));
   function retry(displayedKey = retryKey.value) {
@@ -1365,6 +1371,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueCloud,
     prepareCloudQueue,
     prepareSelection,
+    prepareSelectionForPage,
     view,
     queue,
     lyrics,

@@ -41,6 +41,7 @@ impl Actor {
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
+                | PlaybackCommand::PlayLocalBatch(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
@@ -142,6 +143,12 @@ impl Actor {
             self.reply(request.reply, Err(Error::QueueChanged));
             return;
         }
+        if let PlaybackCommand::PlayLocalBatch(value) = &request.command
+            && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
         if let PlaybackCommand::RestoreFm(value) = &request.command
             && value.expected != self.snapshot().fence()
         {
@@ -222,6 +229,7 @@ impl Actor {
                 PlaybackCommand::Play
                 | PlaybackCommand::PlayFromStart
                 | PlaybackCommand::RefreshSource
+                | PlaybackCommand::PlayLocalBatch(_)
                 | PlaybackCommand::Select(_) => true,
                 _ => false,
             };
@@ -271,6 +279,12 @@ impl Actor {
                         .await
                         .map(|value| options = value)
                 }
+            }
+            PlaybackCommand::PlayLocalBatch(update) => {
+                let authority = &request.guard.as_ref().expect("guarded local batch").1;
+                self.play_local_batch(update, authority)
+                    .await
+                    .map(|value| options = value)
             }
             PlaybackCommand::RetainCurrentQueueAndPlay(queue) => self
                 .retain_current_queue_and_play(queue)

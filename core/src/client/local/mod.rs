@@ -232,7 +232,7 @@ impl MusicClient {
     }
 }
 
-fn track_reference(id: &str, revision: &str) -> Result<()> {
+pub(super) fn track_reference(id: &str, revision: &str) -> Result<()> {
     if [id, revision]
         .into_iter()
         .any(|value| value.len() != 64 || !value.bytes().all(|b| b.is_ascii_hexdigit()))

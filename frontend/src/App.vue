@@ -274,7 +274,12 @@ import {
 } from './services/contracts';
 import { useLocal } from './composables/useLocal';
 import { useLocalMatching } from './composables/useLocalMatching';
-import { localBatchQuery, type LocalListCheckpoint, type LocalQuery } from './services/local';
+import {
+  localBatchQuery,
+  type LocalBatchPlayback,
+  type LocalListCheckpoint,
+  type LocalQuery,
+} from './services/local';
 import { useComments, type CommentReadPosition } from './composables/useComments';
 import type { CommentResource } from './services/comments';
 import { useMv } from './composables/useMv';
@@ -1877,6 +1882,14 @@ const localMatching = useLocalMatching(undefined, () => {
   void music.bootstrap(false);
 });
 watch(local.view, (value) => localMatching.setPage(value));
+async function playLocalBatch(source: LocalQuery, selection: LocalBatchPlayback) {
+  if (!currentLocalBatch(source)) return;
+  await player.prepareSelectionForPage(async () => {
+    if (!currentLocalBatch(source))
+      throw { code: 'stale', message: '本地批量选择已离开', retryable: false };
+    return { kind: 'local_batch', ...selection };
+  });
+}
 function playLocal(query: LocalQuery, revision: string, startId: string | null) {
   void player.select({ kind: 'local', query, revision, start_id: startId });
 }
@@ -5247,6 +5260,8 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'local_batch'"
                 :query="page.query"
                 :current="currentLocalBatch"
+                :playable="player.ready.value && !player.busy.value && !player.queueBusy.value"
+                :play="playLocalBatch"
               />
               <SkinCenter v-else-if="page.kind === 'decoration'" :account="account" />
               <div v-else-if="initializing" class="empty-state" role="status">

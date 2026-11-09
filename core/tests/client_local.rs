@@ -1,3 +1,5 @@
+#[path = "client_local/batch_playback.rs"]
+mod batch_playback;
 #[path = "client_local/batch_removal.rs"]
 mod batch_removal;
 #[path = "client_local/lyric_reports.rs"]
