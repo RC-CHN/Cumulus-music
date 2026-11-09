@@ -844,6 +844,32 @@ impl MusicClient {
                     )
                     .await;
             }
+            PlayerAction::DropMixedPlaylistSongsIntoQueue {
+                id,
+                revision,
+                rows,
+                quality,
+                expected_queue_revision,
+                expected_play_id,
+                before_entry_id,
+            } => {
+                return self
+                    .drop_into_queue(
+                        epoch,
+                        DropSource::MixedPlaylist {
+                            id,
+                            revision,
+                            rows,
+                            quality,
+                        },
+                        DropTarget {
+                            expected_queue_revision,
+                            expected_play_id,
+                            before_entry_id,
+                        },
+                    )
+                    .await;
+            }
             PlayerAction::DropSearchSongsIntoQueue {
                 rows,
                 quality,
@@ -990,6 +1016,27 @@ impl MusicClient {
                         id,
                         quality,
                         selection: None,
+                    },
+                    expected_queue_revision,
+                )
+                .await;
+        }
+        if let PlayerAction::QueueMixedPlaylist {
+            id,
+            revision,
+            track,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::MixedPlaylist {
+                        id,
+                        revision,
+                        track,
+                        quality,
                     },
                     expected_queue_revision,
                 )
@@ -1794,6 +1841,7 @@ impl MusicClient {
             PlayerAction::NextPlay { .. }
             | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueueMixedPlaylist { .. }
             | PlayerAction::QueueVoice { .. }
             | PlayerAction::QueueRecentProgram { .. }
             | PlayerAction::QueueAlbum { .. }
@@ -1808,6 +1856,7 @@ impl MusicClient {
             | PlayerAction::DropLocalIntoQueue { .. }
             | PlayerAction::DropPlaylistSongIntoQueue { .. }
             | PlayerAction::DropPlaylistSongsIntoQueue { .. }
+            | PlayerAction::DropMixedPlaylistSongsIntoQueue { .. }
             | PlayerAction::DropSearchSongsIntoQueue { .. }
             | PlayerAction::DropAlbumSongsIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }

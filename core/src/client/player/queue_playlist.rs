@@ -59,6 +59,12 @@ pub(super) enum QueueCollection {
         quality: Quality,
         selection: Option<(Vec<String>, String)>,
     },
+    MixedPlaylist {
+        id: String,
+        revision: String,
+        track: Option<MixedPlaylistStart>,
+        quality: Quality,
+    },
     Voice {
         id: String,
         program: Option<crate::client::dto::PodcastProgramTarget>,
@@ -298,7 +304,9 @@ impl MusicClient {
             collection,
             QueueCollection::Voice { .. } | QueueCollection::RecentVoice(_)
         );
+        let mixed_playlist = matches!(collection, QueueCollection::MixedPlaylist { .. });
         let ordinary = daily
+            || mixed_playlist
             || style
             || local
             || artist
@@ -316,6 +324,8 @@ impl MusicClient {
             "album queue requires ordinary playback"
         } else if voice {
             "voice next requires ordinary playback"
+        } else if mixed_playlist {
+            "mixed playlist queue requires ordinary playback"
         } else {
             "local queue requires ordinary playback"
         };
@@ -323,7 +333,7 @@ impl MusicClient {
             return Err(Error::State(special_queue));
         }
         let mut artist_batch_prepared = None;
-        let (recommendation_ids, source_guard) = match &collection {
+        let (recommendation_ids, mut source_guard) = match &collection {
             QueueCollection::DailyRecommendations {
                 revision, indices, ..
             } => {
@@ -401,6 +411,7 @@ impl MusicClient {
         };
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
+        let mut _mixed_local_lease = None;
         let (resources, source, downloaded) = match collection {
             QueueCollection::ArtistFavor { ids, quality } => {
                 let ids = ids.into_iter().map(Value::from).collect::<Vec<_>>();
@@ -612,6 +623,26 @@ impl MusicClient {
                     return Err(Error::State("playlist has no online tracks"));
                 }
                 (resources, source, false)
+            }
+            QueueCollection::MixedPlaylist {
+                id,
+                revision,
+                track,
+                quality,
+            } => {
+                let mixed = self
+                    .mixed_playlist_insert(
+                        &token,
+                        &id,
+                        &revision,
+                        quality,
+                        attempt,
+                        super::mixed_playlist::MixedInsert::Next(track.as_ref()),
+                    )
+                    .await?;
+                source_guard = Some(mixed.guard);
+                _mixed_local_lease = mixed.local_lease;
+                (mixed.resources, mixed.source, false)
             }
             QueueCollection::Voice { id, .. } => {
                 // M3085: a context-menu next action uses just the selected

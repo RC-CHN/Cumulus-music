@@ -33,6 +33,12 @@ pub(super) enum DropSource {
         revision: String,
         track_id: String,
     },
+    MixedPlaylist {
+        id: String,
+        revision: String,
+        rows: Vec<MixedPlaylistDropRow>,
+        quality: Quality,
+    },
     Playlist {
         id: String,
         revision: String,
@@ -93,7 +99,22 @@ impl MusicClient {
                 ))?,
             None => queue.items.len(),
         };
+        // M/3085 passes offset=gap-1. M/308 treats -1 as the current
+        // display index, or forces -1 (front) when nothing is selected.
+        let boundary = if matches!(&source, DropSource::MixedPlaylist { .. })
+            && (boundary == 0 || queue.current.is_none())
+        {
+            queue
+                .items
+                .iter()
+                .position(|entry| Some(&entry.entry_id) == queue.current.as_ref())
+                .map_or(0, |index| index + 1)
+        } else {
+            boundary
+        };
         let attempt = self.player.selection.load(Ordering::Acquire);
+        let mut mixed_guard = None;
+        let mut _mixed_local_lease = None;
         let (resources, origin) = match source {
             DropSource::Album {
                 id,
@@ -137,6 +158,26 @@ impl MusicClient {
                 .await
                 .map_err(|_| Error::State("local drop worker stopped"))??;
                 (vec![resource], json!({"kind":"local","revision":revision}))
+            }
+            DropSource::MixedPlaylist {
+                id,
+                revision,
+                rows,
+                quality,
+            } => {
+                let mixed = self
+                    .mixed_playlist_insert(
+                        &token,
+                        &id,
+                        &revision,
+                        quality,
+                        attempt,
+                        super::mixed_playlist::MixedInsert::Drop(&rows),
+                    )
+                    .await?;
+                mixed_guard = Some(mixed.guard);
+                _mixed_local_lease = mixed.local_lease;
+                (mixed.resources, mixed.source)
             }
             DropSource::Playlist {
                 id,
@@ -229,6 +270,9 @@ impl MusicClient {
         if selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
         }
+        if mixed_guard.as_ref().is_some_and(Cancellation::is_cancelled) {
+            return Err(Error::PlaylistDropSourceChanged);
+        }
         let _room = self
             .together
             .gate
@@ -250,7 +294,12 @@ impl MusicClient {
                     transport: None,
                 }),
                 expected,
-                Cancellation::new(move || selection.load(Ordering::Acquire) == attempt),
+                Cancellation::new(move || {
+                    selection.load(Ordering::Acquire) == attempt
+                        && mixed_guard
+                            .as_ref()
+                            .is_none_or(|guard| !guard.is_cancelled())
+                }),
             )
             .await?;
         self.session.check_generation(&token)?;

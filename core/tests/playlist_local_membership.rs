@@ -1,3 +1,5 @@
+#[path = "playlist_local_membership/queue.rs"]
+mod queue;
 #[path = "playlist_local_membership/reorder.rs"]
 mod reorder;
 
@@ -50,6 +52,9 @@ struct Server {
     detail: Mutex<Value>,
     reads: Mutex<Vec<Value>>,
     songs: Mutex<Vec<Vec<String>>>,
+    hold_songs: std::sync::atomic::AtomicBool,
+    songs_started: tokio::sync::Notify,
+    release_songs: tokio::sync::Notify,
 }
 
 impl Server {
@@ -60,6 +65,9 @@ impl Server {
                 "description":null, "tags":[]})),
             reads: Mutex::new(Vec::new()),
             songs: Mutex::new(Vec::new()),
+            hold_songs: Default::default(),
+            songs_started: Default::default(),
+            release_songs: Default::default(),
         }
     }
 }
@@ -86,8 +94,26 @@ impl Api for Server {
                         "a local member must never become a catalog ID"
                     );
                     self.songs.lock().unwrap().push(ids.clone());
+                    if self.hold_songs.load(std::sync::atomic::Ordering::Acquire) {
+                        self.songs_started.notify_one();
+                        self.release_songs.notified().await;
+                    }
                     let songs: Vec<_> = ids.iter().map(|id| json!({"id":id,"name":format!("Online {id}"),"dt":61000,"ar":[],"al":{"name":"Album"}})).collect();
                     Ok(json!({"code":200,"songs":songs}))
+                }
+                "/api/song/enhance/player/url/v1" => {
+                    // The real actor can prefetch its next catalog item. Keep
+                    // the URL unusable and reject every non-catalog identity.
+                    let ids: Vec<Value> =
+                        serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
+                    let [id] = ids.as_slice() else {
+                        panic!("expected a single audio ID")
+                    };
+                    assert!(
+                        ["11", "42"].contains(&id.as_str().unwrap_or_default())
+                            || matches!(id.as_u64(), Some(11 | 42))
+                    );
+                    Ok(json!({"code":200,"data":[{"id":id,"code":404,"url":null}]}))
                 }
                 _ => panic!("unexpected remote operation: {path}"),
             }
