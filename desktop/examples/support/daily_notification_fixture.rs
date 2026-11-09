@@ -72,3 +72,48 @@ pub fn report(store: &StateStore) -> Result<Value> {
     });
     Ok(json!({"history":history,"calls":*CALLS.lock().unwrap(),"sources":sources}))
 }
+
+/// Pure native observations around the startup/delay boundaries. This never
+/// refreshes groups, authorizes an offer, activates the window, or plays audio.
+pub fn observe(app: tauri::AppHandle, path: std::path::PathBuf) {
+    use std::{
+        sync::atomic::{AtomicBool, Ordering},
+        time::Duration,
+    };
+    use tauri::Manager;
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let mut frames = Vec::new();
+        let started = tokio::time::Instant::now();
+        for offset in [0, 2750, 4250, 4900] {
+            tokio::time::sleep_until(started + Duration::from_millis(offset)).await;
+            let client = app.state::<cumulus_core::client::MusicClient>();
+            let plan = client.daily_notification_startup_plan();
+            let Some(window) = app.get_webview_window("main") else {
+                return;
+            };
+            let fullscreen_geometry = window
+                .outer_position()
+                .ok()
+                .zip(window.outer_size().ok())
+                .zip(window.current_monitor().ok().flatten())
+                .map(|((position, size), monitor)| {
+                    position == *monitor.position() && size == *monitor.size()
+                });
+            frames.push(json!({
+                "elapsedMs":started.elapsed().as_millis(),
+                "armed":plan.as_ref().ok().and_then(|plan|plan.as_ref()).is_some(),
+                "planError":plan.err().map(|error|error.to_string()),
+                "focused":window.is_focused().ok(),
+                "visible":window.is_visible().ok(),
+                "minimized":window.is_minimized().ok(),
+                "fullscreen":window.is_fullscreen().ok(),
+                "fullscreenGeometry":fullscreen_geometry,
+            }));
+            std::fs::write(&path, serde_json::to_vec_pretty(&frames).unwrap()).unwrap();
+        }
+    });
+}

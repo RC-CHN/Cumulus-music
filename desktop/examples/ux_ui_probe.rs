@@ -1108,6 +1108,7 @@ fn main() {
     );
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
+    let daily_preflight_path = output.join("daily-preflight.json");
     let mut context = assets::context();
     queue_more_fixture::phase_milestone("context_loaded");
     if device_source_bypass_proof || ordinary_source_bypass_proof {
@@ -1898,7 +1899,12 @@ fn main() {
         if shortcut_proof {cumulus_desktop::shortcuts::install(app.handle());}
         Ok(())
     }).on_page_load(move |view, payload| {
-        if daily_notification_proof { cumulus_desktop::daily_notification::page_loaded(view,payload); }
+        if daily_notification_proof {
+            cumulus_desktop::daily_notification::page_loaded(view,payload);
+            if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
+                daily_notification_fixture::observe(view.app_handle().clone(),daily_preflight_path.clone());
+            }
+        }
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             queue_more_fixture::phase_milestone("main_page_loaded");
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
