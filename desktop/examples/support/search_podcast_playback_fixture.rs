@@ -119,7 +119,8 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
             json!({"code":200,"data":{"data":[],"hasMore":false}})
         }
         "/api/dj/user/setting/resumeplay/get" if row_mode() => {
-            assert_eq!(*args, json!({"radioId":"7"}));
+            assert!(matches!(args["radioId"].as_str(), Some("7" | "9")));
+            assert_eq!(*args, json!({"radioId":args["radioId"]}));
             json!({"code":200,"data":{"resumePlayValue":1}})
         }
         "/api/v6/dj/program/byradio" if args["radioId"] == "8" => {

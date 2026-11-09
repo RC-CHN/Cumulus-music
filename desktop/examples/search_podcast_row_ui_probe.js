@@ -76,7 +76,10 @@
     await wait(visible,'Back restored the same classified search');
     step='paused-baseline';
     await action({kind:'mode',mode:'single_loop'});
-    await invoke('play_selection',{epoch,selection:{kind:'search_result_voice',id:'400'}});
+    await Promise.race([
+      invoke('play_selection',{epoch,selection:{kind:'search_result_voice',id:'400'}}),
+      sleep(8000).then(()=>{throw Error('baseline native selection did not return');}),
+    ]);
     await wait(current('400','playing'),'real older voice loads');
     await action({kind:'pause',paused:true});
     const old=await wait(current('400','paused'),'real older voice paused');
