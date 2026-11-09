@@ -38,6 +38,7 @@
   const act = (action) => invoke('player_action', { epoch, action });
   const queueIds = (view) => view.tracks.map((entry) => entry.track.id).join(',');
   const states = [];
+  let transportAttempt;
   async function capture(name, playing = false) {
     await wait(() => !one('.page-enter-active,.page-leave-active,.catalog-tab-enter-active,.menu-leave-active'), 'layout settled');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -380,9 +381,31 @@
       remaining.entryId === after.entryId && remaining.position === after.position &&
       remaining.queueRevision !== after.queueRevision, 'removal retains the loaded paused entry');
     await captureOrigin('queue_menu_removed', { removed: selectedRows.map(({ track }) => track.id) });
+    // The removed group's menu still has a "Play" button during its leave
+    // animation. Bind the control to the current row's newly active menu.
+    const currentTransportItem = (text) => {
+      const anchor = row(unbound)?.querySelector('.queue-row-more');
+      const menuId = anchor?.getAttribute('aria-controls');
+      const menu = menuId && all('[role="menu"]:not(.menu-enter-active):not(.menu-leave-active):not([inert])')
+        .find((candidate) => candidate.id === menuId);
+      const button = menu?.querySelector('[data-menu-key="play"]');
+      const box = button?.getBoundingClientRect();
+      const active = menu &&
+        anchor.getAttribute('aria-expanded') === 'true' && !anchor.closest('[inert]') &&
+        !button?.closest('[inert]') && getComputedStyle(menu).visibility === 'visible';
+      transportAttempt.menu = { id: menuId, active: !!active, label: button?.textContent.trim() ?? null };
+      return active && button && !button.disabled && button.textContent.trim() === text &&
+        box.width > 0 && box.height > 0 &&
+        button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) && button;
+    };
+    transportAttempt = { command: 'play', entryId: unbound.entryId };
+    await wait(() => {
+      const anchor = row(unbound)?.querySelector('.queue-row-more');
+      return selectedRows.every((entry) => !row(entry)) && anchor?.isConnected &&
+        !anchor.disabled && !anchor.closest('[inert]');
+    }, 'removed group is absent and the current queue row is actionable');
     rightClick(unbound);
-    await wait(() => menuItem('play')?.textContent.trim() === '播放', 'paused current row shows Play');
-    click(menuItem('play'));
+    click(await wait(() => currentTransportItem('播放'), 'paused current row shows reachable Play'));
     const resumedFromMenu = await wait(async () => {
       const snapshot = await player();
       return snapshot.state === 'playing' && snapshot.position > remaining.position && snapshot;
@@ -390,9 +413,9 @@
     const retained = (snapshot) => ['playId', 'entryId', 'queueRevision'].every((key) => snapshot[key] === remaining[key]);
     assert(retained(resumedFromMenu), 'menu Play must not reopen the current entry');
     await captureOrigin('queue_menu_resumed', { transport: 'play' });
+    transportAttempt = { command: 'pause', entryId: unbound.entryId };
     rightClick(unbound);
-    await wait(() => menuItem('play')?.textContent.trim() === '暂停', 'playing current row shows Pause');
-    click(menuItem('play'));
+    click(await wait(() => currentTransportItem('暂停'), 'playing current row shows reachable Pause'));
     const pausedFromMenu = await wait(async () => {
       const snapshot = await player();
       return snapshot.state === 'paused' && snapshot;
@@ -401,6 +424,12 @@
     await captureOrigin('queue_menu_paused', { transport: 'pause' });
     await emit('complete', { ok: true, states, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
-    await emit('failed', { ok: false, error: String(error), stack: error?.stack, states });
+    const snapshot = transportAttempt ? await player().catch(() => null) : null;
+    await emit('failed', { ok: false, error: String(error), stack: error?.stack, states,
+      transportAttempt, transportSnapshot: snapshot && {
+        state: snapshot.state, playId: snapshot.playId, entryId: snapshot.entryId,
+        queueRevision: snapshot.queueRevision, position: snapshot.position, errorCode: snapshot.errorCode,
+      },
+    });
   }
 })();
