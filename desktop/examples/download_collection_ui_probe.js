@@ -22,7 +22,7 @@
       event: 'ux-proof', payload: { stage, ...data },
     });
   const click = (item) => {
-    assert(item && !item.disabled && item.getAttribute('aria-disabled') !== 'true', 'enabled control');
+    assert(item && !item.disabled && item.getAttribute('aria-disabled') !== 'true', 'enabled control: ' + (item?.getAttribute('aria-label') || item?.textContent?.trim()));
     item.focus({ preventScroll: true });
     item.click();
   };
@@ -98,7 +98,11 @@
       // Select the known rights vector in a different order. The dispatch must
       // retain original native list order, not click order.
       for (const index of [3, 1, 2, 0]) click(records[index]);
-      const favorite = button('收藏', batch);
+      const favorite = await wait(() => {
+        const action = button('收藏', batch);
+        return action && !action.disabled &&
+          one('.batch-select-label', batch)?.textContent.includes('已选 4 首歌曲') && action;
+      }, 'four selected records and enabled Favorite');
       const openBatchPicker = async () => {
         click(favorite);
         const picker = await wait(dialog, 'native batch picker');
@@ -106,8 +110,8 @@
           'authoritative ordinary destination');
         const summary = one('.collect-selection-summary', picker).textContent.replace(/\s+/g, ' ').trim();
         assert(summary === '已选 4 项下载，将收藏 2 首歌曲。2 项歌曲无法收藏，已略过。', 'filtered native summary: ' + summary);
-        assert(!one('[data-playlist-id="1"]', picker) && !button('创建新歌单', picker),
-          'only ordinary owned destination lane');
+        assert(!one('[data-playlist-id="1"]', picker) && !button('创建新歌单', picker) &&
+          !button('我喜欢的音乐', picker), 'only ordinary owned destination lane');
         return { picker, summary };
       };
       const first = await openBatchPicker();
