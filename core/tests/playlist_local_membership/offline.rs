@@ -68,6 +68,14 @@ impl Api for Network {
                     endpoint: Some(path.to_owned()),
                     body: Some(Box::new(json!({"code":"403"}))),
                 }),
+                _ if path == "/api/music-vip-membership/client/vip/info" => {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64;
+                    Ok(json!({"code":200,"data":{"userId":"9","now":now,
+                        "associator":{"expireTime":now+300_000,"vipLevel":7}}}))
+                }
                 _ => {
                     let mut result = self.upstream.request(path, payload, cache).await?;
                     if path == "/api/v3/song/detail" {
@@ -578,18 +586,28 @@ async fn cached_catalog_row_plays_exact_same_account_publication_without_a_url()
         .pinned_search_supported
         .store(true, Ordering::Release);
     let native = device.clone();
-    let (client, session, _) = open(&profile, network.clone(), Some(9));
+    let (client, session, library) = open(&profile, network.clone(), Some(9));
     let client =
         client.with_audio_factory(move || Ok(playback_support::audio_engine(native.clone())));
     let plain = temp.path().join("download11.flac");
     let task = publish_fixture_song(&profile, &session, &plain, "11", false);
-    publish_fixture_song(
-        &profile,
-        &session,
-        &temp.path().join("locked42.ncm"),
-        "42",
-        true,
-    );
+    let encrypted_path = temp.path().join("locked42.ncm");
+    let encrypted = publish_fixture_song(&profile, &session, &encrypted_path, "42", true);
+    let media = temp.path().join("local");
+    std::fs::create_dir(&media).unwrap();
+    std::fs::write(media.join("fixture.wav"), b"synthetic local member").unwrap();
+    library.scan(&media).unwrap();
+    let local = refs(&client).await.remove(0);
+    let previous = project(&session, &network.upstream);
+    client
+        .mutate_playlist_local(
+            "1",
+            "73",
+            &previous.revision,
+            add(std::slice::from_ref(&local)),
+        )
+        .await
+        .unwrap();
     client
         .playlist_page_at("73", cached_whole(), None)
         .await
@@ -607,6 +625,7 @@ async fn cached_catalog_row_plays_exact_same_account_publication_without_a_url()
             .map(|r| (&*r.id, r.local, r.missing))
             .collect::<Vec<_>>(),
         [
+            (local.id.as_str(), true, false),
             ("11", false, false),
             ("77", true, true),
             ("42", false, true)
@@ -665,11 +684,55 @@ async fn cached_catalog_row_plays_exact_same_account_publication_without_a_url()
         .unwrap()
         .store();
     let queue = store.get("9", "playback", "queue").unwrap().unwrap();
-    let row = &queue["items"][0]["resource"];
+    assert_eq!(queue["items"].as_array().unwrap().len(), 2);
+    assert_eq!(queue["items"][0]["resource"]["local_id"], local.id);
+    let row = &queue["items"][1]["resource"];
     assert_eq!(row["id"], "11");
     assert_eq!(row["download_task_id"], task);
     assert!(row["offline_playlist_download"].is_object() && row["path"].is_null());
     assert!(!read_record(&profile).unwrap().to_string().contains(&task));
+    assert_eq!(network.calls(), before);
+    network.set(0);
+    cumulus_core::download::offline::OfflineLibrary::new(session.clone())
+        .unwrap()
+        .refresh_membership(&session.token().unwrap())
+        .await
+        .unwrap();
+    network.set(1);
+    let licensed = client
+        .playlist_page_at("73", cached_whole(), None)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(
+        licensed.playlist_offline.unwrap().download_ids,
+        ["11", "42"]
+    );
+    let before = network.calls();
+    client
+        .play_selection("1", play("42", false, false))
+        .await
+        .unwrap();
+    let licensed = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            if view.state == PlaybackStatus::Playing && view.play_id != playing.play_id {
+                break view;
+            }
+            assert_ne!(view.state, PlaybackStatus::Error);
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        licensed.download_task_id.as_deref(),
+        Some(encrypted.as_str())
+    );
+    assert_eq!(
+        device.state.lock().unwrap().last_pinned.as_ref(),
+        Some(&(true, std::fs::read(encrypted_path).unwrap()))
+    );
     assert_eq!(network.calls(), before);
 }
 
