@@ -1,3 +1,4 @@
+mod collect;
 mod dto;
 mod matching;
 pub(super) mod view;
@@ -11,6 +12,7 @@ use crate::{
     },
     storage::StateStore,
 };
+pub use collect::{LocalCollectPlan, LocalCollectResult, LocalCollectSelection};
 pub use dto::*;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::OnceCell;
@@ -20,6 +22,8 @@ pub(super) struct LocalHost {
     probe: Arc<dyn AudioProbe>,
     runtime: OnceCell<Arc<LocalRuntime>>,
     matching: tokio::sync::Mutex<Option<matching::Runtime>>,
+    collection: std::sync::Mutex<Option<collect::Visit>>,
+    collection_prepare: std::sync::atomic::AtomicU64,
 }
 pub(super) struct LocalRuntime {
     pub library: LocalLibrary,
@@ -32,6 +36,8 @@ impl LocalHost {
             probe: Arc::new(Ffprobe::default()),
             runtime: OnceCell::new(),
             matching: tokio::sync::Mutex::new(None),
+            collection: std::sync::Mutex::new(None),
+            collection_prepare: std::sync::atomic::AtomicU64::new(0),
         }
     }
     pub async fn context(&self) -> Result<Arc<LocalRuntime>> {

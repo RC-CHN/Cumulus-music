@@ -206,6 +206,52 @@ impl LocalLibrary {
         })
     }
 
+    /// Resolve the frozen flat selection in native display order. Keep the
+    /// index lock across both the current file checks and account mapping read.
+    pub(crate) fn batch_collection_mappings(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        query: &crate::library::catalog::LocalQuery,
+        references: &[(&str, &str)],
+    ) -> Result<Vec<LocalMapping>> {
+        let _index = self.lock()?;
+        let snapshot = self.catalog(query)?;
+        let mut selected = references.iter().copied().collect::<BTreeMap<_, _>>();
+        if selected.len() != references.len() {
+            return Err(Error::InvalidInput("duplicate local selection row"));
+        }
+        let mut rows = Vec::with_capacity(references.len());
+        for row in snapshot.items {
+            if let Some(revision) = selected.remove(row.id.as_str()) {
+                if row.revision.token() != revision {
+                    return Err(Error::QueueChanged);
+                }
+                Self::check_current(&row).map_err(|_| Error::QueueChanged)?;
+                rows.push(row);
+            }
+        }
+        if !selected.is_empty() {
+            return Err(Error::QueueChanged);
+        }
+        session.with_token(token, |uid| {
+            self.store.read_snapshot(|tx| {
+                rows.into_iter()
+                    .map(|row| {
+                        let raw = tx.get(uid, MAPS, &row.id)?.ok_or(Error::InvalidInput(
+                            "every selected local track requires a current catalog match",
+                        ))?;
+                        let mapping: LocalMapping = serde_json::from_value(raw)?;
+                        if mapping.revision != row.revision {
+                            return Err(Error::QueueChanged);
+                        }
+                        Ok(mapping)
+                    })
+                    .collect()
+            })
+        })
+    }
+
     pub fn online_id(&self, session: &AccountSession, id: &str) -> Result<Option<String>> {
         let token = session.token()?;
         Ok(self

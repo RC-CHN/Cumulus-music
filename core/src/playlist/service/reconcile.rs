@@ -103,7 +103,15 @@ pub(super) fn matches(record: &mut PlaylistMutation, observed: &Value, uid: &str
                             Ok(after.tracks == *ids)
                         }
                         TrackChange::Clear => Ok(after.tracks.is_empty()),
-                        TrackChange::Add => Ok(tracks_added(&before, &after, ids)),
+                        TrackChange::Add => {
+                            if record.local_batch_favorite
+                                && record.codes.get("main") != Some(&200)
+                                && ids.iter().all(|id| before.tracks.contains(id))
+                            {
+                                return Ok(false);
+                            }
+                            Ok(tracks_added(&before, &after, ids))
+                        }
                     }
                 }
                 _ => unreachable!("list actions handled above"),

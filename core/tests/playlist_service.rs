@@ -200,6 +200,7 @@ async fn acknowledged_legacy_empty_update_is_recorded_as_unsupported_not_as_a_su
         codes: std::collections::BTreeMap::from([("main".into(), 200)]),
         error_class: None,
         system_liked_group: false,
+        local_batch_favorite: false,
     };
     w.store
         .put(

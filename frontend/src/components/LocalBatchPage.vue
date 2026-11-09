@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { onMounted, onScopeDispose, ref } from 'vue';
+import { nextTick, onMounted, onScopeDispose, ref, watch } from 'vue';
 import { useControlFocus } from '../composables/useControlFocus';
 import { useLocalBatch } from '../composables/useLocalBatch';
+import { useLocalBatchFavorite } from '../composables/useLocalBatchFavorite';
+import { useCore } from '../services/core';
+import LocalBatchFavoriteDialog from './LocalBatchFavoriteDialog.vue';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import {
   LOCAL_BATCH_PAGE_SIZE,
@@ -15,6 +18,8 @@ const props = defineProps<{
   query: LocalQuery;
   current: (query: LocalQuery) => boolean;
   playable: boolean;
+  epoch: string;
+  signedIn: boolean;
   play: (
     source: LocalQuery,
     selection: LocalBatchPlayback,
@@ -23,9 +28,47 @@ const props = defineProps<{
 }>();
 const source = props.query;
 const live = () => props.current(source);
-const model = useLocalBatch(source, undefined, live, (selection, action) =>
-  props.play(source, selection, action),
+const emit = defineEmits<{ login: [] }>();
+const favorite = useLocalBatchFavorite(
+  useCore(),
+  (epoch) => live() && props.signedIn && props.epoch === epoch,
 );
+const {
+  scope: favoriteScope,
+  preparing: favoritePreparing,
+  error: favoriteError,
+  notice: favoriteNotice,
+} = favorite;
+const model = useLocalBatch(
+  source,
+  undefined,
+  live,
+  (selection, action) => props.play(source, selection, action),
+  () => favoritePreparing.value || !!favoriteScope.value,
+);
+const favoriteButton = ref<HTMLButtonElement>();
+function openFavorite() {
+  const selection = model.captureSelection();
+  if (!selection) return;
+  if (!props.signedIn) emit('login');
+  else void favorite.open(props.epoch, selection);
+}
+watch(
+  () => [props.epoch, props.signedIn, live()],
+  () => {
+    favorite.close();
+    favorite.error.value = favorite.notice.value = '';
+  },
+  { flush: 'sync' },
+);
+watch(favoriteScope, (current, previous) => {
+  if (!current && previous && live() && props.signedIn && previous.epoch === props.epoch)
+    void nextTick(() => {
+      if (live() && !favoriteScope.value && !document.querySelector('dialog[open]'))
+        favoriteButton.value?.focus({ preventScroll: true });
+    });
+});
+onScopeDispose(favorite.close);
 const {
   page,
   selected,
@@ -73,7 +116,7 @@ async function move(event: Event, direction: -1 | 1) {
     class="local-batch-page"
     data-local-batch
     aria-labelledby="local-batch-heading"
-    :aria-busy="loading || busy"
+    :aria-busy="loading || busy || favoritePreparing"
   >
     <header class="local-heading">
       <h1 id="local-batch-heading" ref="heading" tabindex="-1">批量操作</h1>
@@ -113,6 +156,16 @@ async function move(event: Event, direction: -1 | 1) {
         添加到播放列表
       </button>
       <button
+        ref="favoriteButton"
+        type="button"
+        class="secondary"
+        data-local-batch-favorite
+        :disabled="locked || !selectionCount"
+        @click="openFavorite"
+      >
+        收藏
+      </button>
+      <button
         type="button"
         class="secondary"
         data-local-batch-remove
@@ -122,6 +175,16 @@ async function move(event: Event, direction: -1 | 1) {
         从列表中删除
       </button>
     </div>
+    <LocalBatchFavoriteDialog
+      v-if="favoriteScope"
+      :model="favorite"
+      :count="favoriteScope.count"
+      @close="favorite.close()"
+    />
+    <p v-if="favoriteError" class="error-banner" role="alert">{{ favoriteError }}</p>
+    <p v-if="favoriteNotice" class="notice" role="status" data-local-batch-favorite-notice>
+      {{ favoriteNotice }}
+    </p>
     <p class="local-batch-note">从列表中删除只隐藏条目，源文件保留。</p>
     <p v-if="busyAction" class="local-batch-note" role="status">
       {{

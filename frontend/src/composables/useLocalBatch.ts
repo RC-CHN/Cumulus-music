@@ -26,6 +26,7 @@ export function useLocalBatch(
     selection: LocalBatchPlayback,
     action: LocalBatchTransport,
   ) => Promise<boolean | void>,
+  externalBusy = () => false,
 ) {
   const query = localBatchQuery(source);
   const page = shallowRef<LocalPage>();
@@ -39,7 +40,9 @@ export function useLocalBatch(
   let failedOffset = 0;
   let disposed = false;
   const live = () => !disposed && currentVisit();
-  const locked = computed(() => loading.value || busy.value || !!readError.value || !page.value);
+  const locked = computed(
+    () => loading.value || busy.value || externalBusy() || !!readError.value || !page.value,
+  );
   const selectionCount = computed(() => selected.value.size);
   const pageSelection = computed(() => {
     const rows = page.value?.tracks ?? [];
@@ -87,7 +90,7 @@ export function useLocalBatch(
   }
 
   async function load(offset = 0) {
-    if (!live() || busy.value || loading.value) return;
+    if (!live() || busy.value || loading.value || externalBusy()) return;
     loading.value = true;
     readError.value = '';
     try {
@@ -127,16 +130,19 @@ export function useLocalBatch(
       .sort((left, right) => left.ordinal - right.ordinal)
       .map(({ id, revision }) => ({ id, revision }));
 
+  function captureSelection(): LocalBatchPlayback | undefined {
+    const revision = page.value?.revision;
+    if (!live() || locked.value || !revision || !selected.value.size) return;
+    return { query, revision, tracks: selectedReferences() };
+  }
+
   async function transport(action: LocalBatchTransport) {
-    const current = page.value;
-    if (!playSelection || !live() || locked.value || !current || !selected.value.size) return;
+    const selection = captureSelection();
+    if (!playSelection || !selection) return;
     busyAction.value = action;
     commandError.value = notice.value = '';
     try {
-      const accepted = await playSelection(
-        { query, revision: current.revision, tracks: selectedReferences() },
-        action,
-      );
+      const accepted = await playSelection(selection, action);
       if (live() && action === 'add' && accepted === true) notice.value = '已添加到播放列表。';
     } catch (cause) {
       if (!live()) return;
@@ -189,6 +195,7 @@ export function useLocalBatch(
     load,
     move,
     toggle,
+    captureSelection,
     play: () => transport('play'),
     add: () => transport('add'),
     remove,

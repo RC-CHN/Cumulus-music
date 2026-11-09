@@ -409,6 +409,13 @@ export function createTauriClient(): CoreClient {
     podcastSearchMembership: (epoch) => invoke('podcast_search_membership', { epoch }),
     podcastCommand: (epoch, command) => invoke('podcast_command', { epoch, command }),
     localPage: (query) => invoke('local_page', { query }),
+    localCollectPrepare: (epoch, selection) =>
+      invoke('local_collect_prepare', { epoch, selection }),
+    localCollectDestinations: (epoch, receipt, sort, page) =>
+      invoke('local_collect_destinations', { epoch, receipt, sort, page }),
+    localCollectExisting: (epoch, receipt, target, reconcile) =>
+      invoke('local_collect_existing', { epoch, receipt, target, reconcile }),
+    localCollectCancel: (epoch, receipt) => invoke('local_collect_cancel', { epoch, receipt }),
     localCommand: (command) => invoke('local_command', { command }),
     pickLocalDirectory: () => invoke('pick_local_directory'),
     openLocalTrackDirectory: (id, revision) =>

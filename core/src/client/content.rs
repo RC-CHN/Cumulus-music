@@ -145,6 +145,17 @@ impl MusicClient {
         sort: PlaylistCollectSort,
         page: u32,
     ) -> Result<AccountData<PlaylistCollectPage>> {
+        self.playlist_collect_page_scope(epoch, sort, page, false)
+            .await
+    }
+
+    pub(super) async fn playlist_collect_page_scope(
+        &self,
+        epoch: &str,
+        sort: PlaylistCollectSort,
+        page: u32,
+        regular_only: bool,
+    ) -> Result<AccountData<PlaylistCollectPage>> {
         const LIMIT: usize = 10;
         if page > PLAYLIST_COLLECT_LAST_PAGE {
             return Err(Error::InvalidInput("invalid playlist collection page"));
@@ -181,7 +192,16 @@ impl MusicClient {
                     if !seen.insert(item.id.clone()) {
                         return Err(Error::Response("duplicate playlist collection row"));
                     }
-                    if item.owned && !item.favorite {
+                    let regular = !regular_only
+                        || (row["specialType"].as_i64() == Some(0)
+                            && [&row["userId"], &row["creator"]["userId"]].into_iter().all(
+                                |owner| {
+                                    owner.is_null()
+                                        || crate::protocol::api::identifier(owner)
+                                            .is_ok_and(|owner| owner == uid)
+                                },
+                            ));
+                    if item.owned && !item.favorite && regular {
                         playlists.push(item);
                     }
                 }

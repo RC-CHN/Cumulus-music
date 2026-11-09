@@ -5266,6 +5266,9 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'local_batch'"
                 :query="page.query"
                 :current="currentLocalBatch"
+                :epoch="account.epoch"
+                :signed-in="signedIn"
+                @login="loginOpen = true"
                 :playable="player.ready.value && !player.busy.value && !player.queueBusy.value"
                 :play="playLocalBatch"
               />

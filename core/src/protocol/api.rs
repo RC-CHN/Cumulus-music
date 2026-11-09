@@ -575,6 +575,11 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Account scope shared by the local-batch picker, detail readback and add.
+    fn local_collection_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Creation must share the current download picker account and cookie scope.
     fn download_collection_create_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)

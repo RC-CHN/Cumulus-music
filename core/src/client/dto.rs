@@ -14,8 +14,9 @@ pub use super::history::{
     HistoryResource, ListenedBooksPage, ListenedBooksQuery,
 };
 pub use super::local::{
-    LocalCommand, LocalGroup, LocalGroupEntry, LocalLinkView, LocalMatchCommand, LocalMatchView,
-    LocalPageView, LocalQuery, LocalRootView, LocalSort, LocalTrackReference, LocalTrackView,
+    LocalCollectPlan, LocalCollectResult, LocalCollectSelection, LocalCommand, LocalGroup,
+    LocalGroupEntry, LocalLinkView, LocalMatchCommand, LocalMatchView, LocalPageView, LocalQuery,
+    LocalRootView, LocalSort, LocalTrackReference, LocalTrackView,
 };
 pub use super::login_device_removal::{
     LoginDeviceRemovalCommand, LoginDeviceRemovalPhase, LoginDeviceRemovalView,

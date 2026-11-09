@@ -186,6 +186,10 @@ pub struct PlaylistMutation {
     /// This batch can only settle against the account's verified star and likes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub system_liked_group: bool,
+    /// LocalMusicBatch sends even an already-present selection. A lost reply
+    /// and an unchanged list cannot distinguish success from duplicate 502.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub local_batch_favorite: bool,
 }
 
 impl PlaylistMutation {

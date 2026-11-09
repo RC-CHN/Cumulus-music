@@ -131,3 +131,71 @@ pub async fn pick_local_directory<R: tauri::Runtime>(
         })
         .transpose()
 }
+
+fn require_collection_window<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("local collection requires main window").into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn local_collect_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    selection: LocalCollectSelection,
+) -> Result<AccountData<LocalCollectPlan>, ClientError> {
+    require_collection_window(&window)?;
+    client
+        .local_collect_prepare(&epoch, selection)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn local_collect_destinations<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    sort: PlaylistCollectSort,
+    page: u32,
+) -> Result<AccountData<PlaylistCollectPage>, ClientError> {
+    require_collection_window(&window)?;
+    client
+        .local_collect_destinations(&epoch, &receipt, sort, page)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn local_collect_existing<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    target: String,
+    reconcile: bool,
+) -> Result<AccountData<LocalCollectResult>, ClientError> {
+    require_collection_window(&window)?;
+    client
+        .local_collect_existing(&epoch, &receipt, &target, reconcile)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn local_collect_cancel<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    require_collection_window(&window)?;
+    client
+        .local_collect_cancel(&epoch, &receipt)
+        .map_err(Into::into)
+}

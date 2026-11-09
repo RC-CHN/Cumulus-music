@@ -250,6 +250,24 @@ impl MusicHttpClient {
         Ok(())
     }
 
+    fn ordinary_playlist_collection_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        let path = GuardedPlaylistAdd::PATH;
+        let route = select_route_with_policy(origin, path, &json!({}), self.options.routing)?;
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, path)?)?;
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/w/nuser/account/get",
+                "/api/user/playlist/v2",
+                "/api/v6/playlist/detail",
+            ],
+        )?;
+        Ok(Some(current.revision))
+    }
+
     fn require_playlist_write_target<'a>(
         &self,
         path: &str,
@@ -1548,21 +1566,11 @@ impl Api for MusicHttpClient {
     }
 
     fn download_collection_scope_revision(&self) -> Result<Option<String>> {
-        let origin = self.credentials.origin();
-        let path = GuardedPlaylistAdd::PATH;
-        let route = select_route_with_policy(origin, path, &json!({}), self.options.routing)?;
-        let current = self
-            .credentials
-            .request_credentials(&origin.request_url(route, path)?)?;
-        self.check_account_cookie_scope(
-            &current,
-            [
-                "/api/w/nuser/account/get",
-                "/api/user/playlist/v2",
-                "/api/v6/playlist/detail",
-            ],
-        )?;
-        Ok(Some(current.revision))
+        self.ordinary_playlist_collection_revision()
+    }
+
+    fn local_collection_scope_revision(&self) -> Result<Option<String>> {
+        self.ordinary_playlist_collection_revision()
     }
 
     fn download_collection_create_scope_revision(&self) -> Result<Option<String>> {

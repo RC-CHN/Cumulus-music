@@ -1,4 +1,5 @@
-import type { TrackView } from './contracts';
+import type { AccountData, PlaylistView, TrackView } from './contracts';
+import type { PlaylistPhase } from './playlists';
 export type LocalGroup = 'list' | 'artist' | 'album' | 'folder';
 export type LocalSort = 'title' | 'artist' | 'album' | 'duration' | 'format' | 'folder';
 export interface LocalQuery {
@@ -125,4 +126,33 @@ export interface LocalClient {
   pickLocalDirectory(): Promise<string | null>;
   openLocalTrackDirectory(id: string, revision: string): Promise<void>;
   revealLocalFolder(query: LocalQuery, revision: string): Promise<void>;
+}
+
+export type LocalCollectSort = 'default' | 'recently';
+export interface LocalCollectPlan {
+  receipt: string;
+  count: number;
+}
+export interface LocalCollectResult {
+  phase: PlaylistPhase;
+  duplicate: boolean;
+}
+export interface LocalCollectClient {
+  localCollectPrepare(
+    epoch: string,
+    selection: LocalBatchPlayback,
+  ): Promise<AccountData<LocalCollectPlan>>;
+  localCollectDestinations(
+    epoch: string,
+    receipt: string,
+    sort: LocalCollectSort,
+    page: number,
+  ): Promise<AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>>;
+  localCollectExisting(
+    epoch: string,
+    receipt: string,
+    target: string,
+    reconcile: boolean,
+  ): Promise<AccountData<LocalCollectResult>>;
+  localCollectCancel(epoch: string, receipt: string): Promise<void>;
 }
