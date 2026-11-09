@@ -32,6 +32,7 @@ pub struct Fixture {
     collections: Mutex<Vec<Value>>,
     collect_fail: AtomicBool,
     download_auths: Mutex<Vec<String>>,
+    lyric_retry_reads: AtomicUsize,
     capacity_member: AtomicUsize,
     capacity_member_reads: Mutex<Vec<usize>>,
     capacity_version_reads: AtomicUsize,
@@ -67,6 +68,7 @@ impl Default for Fixture {
             collections: Mutex::new(vec![]),
             collect_fail: AtomicBool::new(false),
             download_auths: Mutex::new(vec![]),
+            lyric_retry_reads: AtomicUsize::new(0),
             capacity_member: AtomicUsize::new(0),
             capacity_member_reads: Mutex::new(vec![]),
             capacity_version_reads: AtomicUsize::new(0),
@@ -143,6 +145,28 @@ impl Fixture {
     pub async fn response(&self, path: &str, payload: &Value) -> Option<Result<Value>> {
         if !enabled() {
             return None;
+        }
+        if std::env::var_os("CUMULUS_CLOUD_LYRIC_PROVENANCE_PROOF").is_some()
+            && path == "/api/cloud/lyric/get"
+        {
+            assert_eq!(payload["userId"], "2");
+            assert_eq!(payload["kv"], -1);
+            let response = match payload["songId"].as_str() {
+                Some("1001") => Ok(json!({
+                    "code": 200,
+                    "lrc": (1..=14).map(|second| format!("[00:{second:02}]云盘合成歌词 {second}\n")).collect::<String>(),
+                })),
+                Some("1002") => Ok(json!({"code": 200})),
+                Some("1003") => {
+                    if self.lyric_retry_reads.fetch_add(1, Ordering::AcqRel) == 0 {
+                        Err(Error::Transport("synthetic cloud lyric failure".into()))
+                    } else {
+                        Ok(json!({"code": 200}))
+                    }
+                }
+                _ => panic!("unexpected cloud lyric proof target"),
+            };
+            return Some(response);
         }
         if capacity_enabled() {
             if path == "/api/pc/version" {

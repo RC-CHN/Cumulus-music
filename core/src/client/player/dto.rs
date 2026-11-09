@@ -806,6 +806,7 @@ pub struct LyricsView {
     pub display_type: DisplayType,
     pub preferences: LyricPreferences,
     pub network_failed: bool,
+    pub is_cloud_lyric: bool,
     pub from_cache: bool,
     pub from_sidecar: bool,
     pub from_embedded: bool,

@@ -560,6 +560,14 @@ const currentLyric = computed(() => {
     ? document
     : undefined;
 });
+const currentCloudTrack = computed(
+  () => view.value?.epoch === props.account.epoch && view.value?.resourceKind === 'cloud',
+);
+const currentCloudLyric = computed(
+  () =>
+    currentLyric.value?.epoch === props.account.epoch &&
+    (currentCloudTrack.value || currentLyric.value?.isCloudLyric === true),
+);
 const contributors = computed(() => lyricContributorRows(currentLyric.value, view.value));
 const coverPosition = ref<number>();
 watch(
@@ -688,11 +696,20 @@ function selectBrowsedLine() {
   if (!manual.value || lyricFollowTimer === undefined || !scroller) return;
   const rect = scroller.getBoundingClientRect();
   const middle = rect.top + rect.height / 2;
+  // The padding and optional cloud provenance are outside the timed lines.
+  const firstLine = currentCloudTrack.value ? 2 : 1;
+  if (firstLine === 2) {
+    const source = scroller.children[1]?.getBoundingClientRect();
+    if (source && source.top <= middle && middle < source.bottom) {
+      clearBrowsedLine();
+      return;
+    }
+  }
   let lo = 0;
   let hi = lines.value.length;
   while (lo < hi) {
     const index = Math.floor((lo + hi) / 2);
-    const row = scroller.children[index + 1]; // first child is scroll padding
+    const row = scroller.children[index + firstLine];
     if (!row) return;
     if (row.getBoundingClientRect().bottom < middle) lo = index + 1;
     else hi = index;
@@ -1152,28 +1169,45 @@ const displayedAuxiliary = computed(() =>
                 {{ lyricError
                 }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
               </div>
-              <template v-else-if="lyrics">
+              <template v-else-if="currentLyric">
                 <div
-                  v-if="lyrics.fromSidecar || lyrics.fromEmbedded || lyrics.networkFailed"
+                  v-if="
+                    currentLyric.fromSidecar ||
+                    currentLyric.fromEmbedded ||
+                    currentLyric.networkFailed
+                  "
                   class="lyric-cache-note"
                 >
                   {{
-                    lyrics.fromSidecar || lyrics.fromEmbedded
+                    currentLyric.fromSidecar || currentLyric.fromEmbedded
                       ? '正在显示本地歌词'
-                      : lyrics.fromCache
+                      : currentLyric.fromCache && (!currentCloudLyric || lines.length)
                         ? '网络暂不可用，正在显示缓存歌词'
-                        : '暂未获取到歌词'
+                        : currentCloudLyric
+                          ? '歌词加载失败'
+                          : '暂未获取到歌词'
                   }}<button
-                    v-if="lyrics.networkFailed"
+                    v-if="currentLyric.networkFailed"
                     class="text-button"
                     @click="player.loadLyrics"
                   >
                     重试
                   </button>
                 </div>
-                <div v-if="!lines.length" class="empty-state">
-                  {{ lyrics.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
-                </div>
+                <template v-if="!lines.length">
+                  <div
+                    v-if="currentCloudLyric && !currentLyric.networkFailed"
+                    class="empty-state lyric-cloud-empty"
+                  >
+                    <p class="lyric-cloud-source" data-cloud-lyric-source data-non-selectable>
+                      来自我的音乐网盘
+                    </p>
+                    <span>暂无歌词</span>
+                  </div>
+                  <div v-else-if="!currentCloudLyric" class="empty-state">
+                    {{ currentLyric.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
+                  </div>
+                </template>
                 <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
                   <div
                     ref="container"
@@ -1185,6 +1219,14 @@ const displayedAuxiliary = computed(() =>
                     @scroll.passive="selectBrowsedLine"
                   >
                     <div class="lyric-padding" />
+                    <p
+                      v-if="currentCloudTrack"
+                      class="lyric-cloud-source"
+                      data-cloud-lyric-source
+                      data-non-selectable
+                    >
+                      来自我的音乐网盘
+                    </p>
                     <div
                       v-for="(line, index) in lines"
                       :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
@@ -1198,11 +1240,11 @@ const displayedAuxiliary = computed(() =>
                       @keydown="lyricLineKey($event, line)"
                     >
                       <span
-                        v-if="timedWords && lyrics.wordLines[index]?.words.length"
+                        v-if="timedWords && currentLyric.wordLines[index]?.words.length"
                         class="word-line"
                         data-lyric-text
                         ><span
-                          v-for="(word, wi) in lyrics.wordLines[index]?.words"
+                          v-for="(word, wi) in currentLyric.wordLines[index]?.words"
                           :key="wi"
                           class="timed-word"
                           :style="{ '--word-progress': wordProgress(word) }"

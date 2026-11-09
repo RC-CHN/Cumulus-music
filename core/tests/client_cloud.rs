@@ -553,6 +553,7 @@ async fn cloud_play_selection_uses_full_filtered_order_and_cloud_lyrics_and_reje
     let play_id = selected.play_id.unwrap();
     let lyric = client.player_lyrics("1", &play_id).await.unwrap();
     assert_eq!(lyric.lines.len(), 2);
+    assert!(lyric.is_cloud_lyric);
     client.lyric_offset("1", &play_id, 0.2).await.unwrap();
     assert!(
         f.api

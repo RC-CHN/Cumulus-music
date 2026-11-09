@@ -228,6 +228,7 @@ mod tests {
             display_type: DisplayType::Default,
             preferences: LyricPreferences::default(),
             network_failed: false,
+            is_cloud_lyric: false,
             from_cache: false,
             from_sidecar: false,
             from_embedded: false,

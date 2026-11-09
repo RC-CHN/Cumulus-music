@@ -1342,6 +1342,15 @@ input[type='range'] {
   font-weight: 400;
   margin-top: 6px;
 }
+.lyric-cloud-empty {
+  gap: 0;
+  font-size: 23px;
+  line-height: 36px;
+}
+.lyric-cloud-empty .lyric-cloud-source {
+  margin: 0;
+}
+.lyric-scroll .lyric-cloud-source,
 .lyric-contributor {
   margin: 0;
   padding: 15px 8px;
@@ -1363,7 +1372,7 @@ input[type='range'] {
 .lyric-contributor-link:focus-visible {
   color: var(--text);
 }
-.lyrics-panel[data-vinyl-mode='lyric'] .lyric-contributor {
+.lyrics-panel[data-vinyl-mode='lyric'] :is(.lyric-cloud-source, .lyric-contributor) {
   text-align: center;
 }
 .timed-word {

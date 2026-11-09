@@ -384,6 +384,7 @@ function lyrics(playId: string): LyricsView {
     displayType: 'default',
     preferences: { translationEnable: true, romaEnable: true },
     networkFailed: false,
+    isCloudLyric: false,
     fromCache: false,
   };
 }

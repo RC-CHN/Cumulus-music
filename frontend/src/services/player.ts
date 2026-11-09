@@ -727,6 +727,7 @@ export interface LyricsView {
   displayType: 'default' | 'pure' | 'ask';
   preferences: LyricPreferences;
   networkFailed: boolean;
+  isCloudLyric: boolean;
   fromCache: boolean;
   fromSidecar?: boolean;
   fromEmbedded?: boolean;

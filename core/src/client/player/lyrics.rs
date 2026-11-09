@@ -312,6 +312,11 @@ impl MusicClient {
             display_type: lyric.display_type,
             preferences: value.preferences,
             network_failed: value.network_failed,
+            is_cloud_lyric: lyric
+                .metadata
+                .get("isCloudLyric")
+                .and_then(|value| value.as_bool())
+                == Some(true),
             from_cache: value.from_cache,
             from_sidecar: value.from_sidecar,
             from_embedded: value.from_embedded,

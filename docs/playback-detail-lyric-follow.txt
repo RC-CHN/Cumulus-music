@@ -112,6 +112,32 @@ Linux 的 vinyl_lyric_copy_smoke.py 使用实际 WebKitGTK、X11 鼠标和键盘
 播放详情的 30 个既有检查点另行通过。使用合成媒体和空音频输出；未验证
 Windows WebView2 或实体声卡。
 
+云盘歌词来源
+------------
+官方 Windows 3.1.42.205594 的 LyricDisplayInner.tsx:553–569 仅在当前
+资源本身为云盘歌曲时，先于歌词正文显示「来自我的音乐网盘」，该行没有时间戳。
+NoLyric.tsx:182–205 的成功空态使用更宽的条件：当前资源为云盘歌曲，或歌词
+文档标明 isCloudLyric。此时居中两行显示「来自我的音乐网盘」「暂无歌词」，
+没有请求或上传歌词的按钮；读取失败不进入该空态。官方组件的重试按钮还有
+displayType 和资源条件（128–158、193–198）；Cumulus 保留已有读取失败/缓存
+反馈及显式重试，明确区分未读到歌词与服务确认无歌词。
+
+Rust 从现有云盘歌词归一化结果投影一个 isCloudLyric 布尔值，不交付原始元数据。
+已有 /api/cloud/lyric/get 及 songId、userId、lv、kv 的请求契约不变。当前账号和
+播放实例同时匹配才展示来源。标签不参与选择复制或歌词时间定位；手动浏览
+仍按真实歌词行计算中心时间，使用既有 seek_for 和 pause_for。
+未增加接口、账号写入或额外自动请求。
+
+可复现的合成 WebView 验证：
+cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
+scripts/ci/cloud_song_smoke.py --lyric-provenance --binary <mini_ui_probe> --root <隔离目录>
+Linux 可用 Xvfb / 独立 DBus 和 --screenshots；测试宿主拦截所有音乐请求，
+使用合成歌词和 libmpv null。测试覆盖非空、中心时间定位、确认空态、
+请求失败、显式重试、同一数字 ID 的普通歌曲切换。实际 Linux GTK/WebKit
+六个状态及六张截图均通过，原生定位到 00:04 并继续同一播放实例；仅 LC_NUMERIC
+为 C，界面语言保留 en_US.UTF-8。复制验证走真实 WebView 的 copy 处理，使用
+合成剪贴板事件，不读取或改变系统剪贴板。未验证 Windows WebView2 或实体输出。
+
 播放详情文字范围
 --------------
 TrackTitle.tsx:468–569 明确选择歌名和别名；歌手、专辑、来源与徽标不
