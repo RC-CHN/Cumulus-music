@@ -17,6 +17,30 @@
   const action = () => one('.lyrics-panel [data-lyric-contribution]');
   const openError = () => one('.lyrics-panel .lyric-contribution-error');
   const available = label => action()?.textContent.trim() === label && action()?.offsetWidth > 0;
+  const operator = () => one('.lyrics-panel [aria-label="歌词操作"]');
+  const menu = () => {
+    const id = operator()?.getAttribute('aria-controls');
+    return id && [...document.querySelectorAll('.action-menu:not([inert])')].find(node => node.id === id);
+  };
+  const rows = () => [...(menu()?.querySelectorAll('[data-menu-key]') ?? [])];
+  async function showMenu(expected) {
+    await wait(() => {
+      if (!operator()?.offsetWidth) return false;
+      if (operator().getAttribute('aria-expanded') !== 'true') operator().click();
+      const panel = menu();
+      return panel && getComputedStyle(panel).visibility === 'visible' &&
+        panel.getAnimations().every(animation => animation.playState !== 'running' && !animation.pending) &&
+        JSON.stringify(rows().map(row => row.textContent.trim())) === JSON.stringify(expected);
+    }, 'visible toolbar rows ' + expected.join(' / '));
+  }
+  async function selectMenu(key) {
+    const row = await wait(() => rows().find(row => row.dataset.menuKey === key && !row.disabled),
+      'enabled toolbar action ' + key);
+    row.click();
+    await wait(() => !menu() && one('.lyric-tools')?.getAttribute('aria-busy') === 'false',
+      'toolbar selection and browser handoff finish');
+    assert(!openError(), 'toolbar browser handoff succeeds');
+  }
   let epoch, count = 0;
   const playback = () => invoke('player_snapshot', { epoch });
   async function select(song) {
@@ -44,6 +68,11 @@
     try { await invoke('lyric_contribution_open', { epoch, playId }); }
     catch { return; }
     throw Error('unavailable contribution opened');
+  }
+  async function rejectToolbar(playId, action, activeEpoch = epoch) {
+    try { await invoke('lyric_toolbar_contribution_open', { epoch: activeEpoch, playId, action }); }
+    catch { return; }
+    throw Error('unavailable toolbar action opened: ' + action);
   }
   try {
     const account = await wait(async () => {
@@ -85,7 +114,60 @@
       'lyric fetch failure has retry only');
     await rejected(failed);
     await capture('lyric_failed', '5');
-    await emit('complete', { ok: true, stageCount: count, staleRejected: true });
+    await showMenu(['歌词报错']);
+    await rejectToolbar(failed, 'upload');
+    const noContent = await select('1');
+    await wait(() => available('上传歌词'), 'body can show an upload for a missing raw document');
+    await showMenu(['歌词报错']);
+    await rejectToolbar(noContent, 'upload');
+    await capture('body_only_no_raw_document', '1');
+
+    const both = await select('6');
+    assert(!menu(), 'old menu retires on a new play id');
+    await showMenu(['翻译歌词', '上传歌词', '歌词报错']);
+    assert(!one('.lyrics-panel .lyric-line') && !action(), 'toolbar options do not require parsed lines or a body prompt');
+    await capture('toolbar_both_no_lines', '6');
+    await rejectToolbar(both, 'forged');
+    await rejectToolbar(both, 'upload', '0');
+    await selectMenu('translation');
+    await showMenu(['翻译歌词', '上传歌词', '歌词报错']);
+    await selectMenu('upload');
+    assert((await playback()).playId === both, 'both handoffs preserve the playback identity');
+
+    const upload = await select('7');
+    await rejectToolbar(both, 'upload');
+    await showMenu(['上传歌词', '歌词报错']);
+    await capture('toolbar_upload_only', '7');
+    await rejectToolbar(upload, 'translation');
+    await selectMenu('upload');
+    await showMenu(['上传歌词', '歌词报错']);
+    await selectMenu('report');
+    const report = await wait(() => one('.lyric-report-dialog[open]'), 'report keeps its own action');
+    assert(report.querySelector('h2')?.textContent.trim() === '歌词报错', 'native report dialog');
+    await wait(() => !report.classList.contains('modal-enter-active') &&
+      getComputedStyle(report).opacity === '1', 'native report dialog has painted');
+    await capture('toolbar_report_preserved', '7');
+    const close = await wait(() => report.querySelector('[aria-label="关闭歌词报错"]:not(:disabled)'), 'report can close');
+    close.click();
+    await wait(() => !one('.lyric-report-dialog[open]'), 'close report without submission');
+
+    const translation = await select('8');
+    await showMenu(['翻译歌词', '歌词报错']);
+    await capture('toolbar_translation_only', '8');
+    await rejectToolbar(translation, 'upload');
+    await selectMenu('translation');
+    const wikiTab = one('.lyrics-panel button[aria-controls="vinyl-wiki-content"]');
+    const lyricsTab = one('.lyrics-panel button[aria-controls="vinyl-lyrics-content"]');
+    assert(wikiTab && lyricsTab, 'classic playback tabs are available');
+    wikiTab.click();
+    await wait(() => wikiTab.getAttribute('aria-selected') === 'true' && !operator()?.offsetWidth,
+      'wiki hides the lyrics operator');
+    lyricsTab.click();
+    await wait(() => lyricsTab.getAttribute('aria-selected') === 'true' && operator()?.offsetWidth,
+      'operator returns on the lyrics tab');
+    assert((await playback()).playId === translation, 'switching tabs preserves current native playback');
+    await emit('complete', { ok: true, stageCount: count, staleRejected: true, toolbarVerified: true,
+      wikiHidesToolbar: true });
   } catch (error) {
     await emit('failed', { error: String(error), stack: error.stack,
       panel: one('.lyrics-panel')?.innerText.slice(0, 400), stageCount: count });

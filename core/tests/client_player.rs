@@ -1168,6 +1168,85 @@ async fn lyric_contribution_opens_only_the_current_ordinary_song_with_a_resolved
 }
 
 #[tokio::test]
+async fn lyric_toolbar_uses_its_own_current_flags_even_without_parsed_lyric_lines() {
+    use LyricToolbarAction::{Translation, Upload};
+    let (_dir, api, _session, client, _) = fixture();
+    let cases = [
+        (
+            json!({"code":200,"sgc":true,"sfy":true,"tlyric":{"lyric":"[00:01]合成翻译"}}),
+            vec![Translation, Upload],
+            true,
+        ),
+        (
+            json!({"code":200,"sgc":true,"qfy":true,"lrc":{"lyric":"[00:01]合成原词"}}),
+            vec![Upload],
+            false,
+        ),
+        (
+            json!({"code":200,"sfy":true,"lrc":{"lyric":"[00:01]合成原词"}}),
+            vec![Translation],
+            false,
+        ),
+        (json!({"code":200,"sgc":true,"sfy":true}), vec![], true),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"[00:01]合成原词"}}),
+            vec![],
+            false,
+        ),
+    ];
+    let mut previous: Option<String> = None;
+    for (index, (response, expected, empty)) in cases.into_iter().enumerate() {
+        let song = (index + 1).to_string();
+        *api.lyric_contribution_response.lock().unwrap() = Some(response);
+        let play_id = client
+            .play_selection("1", songs(&song))
+            .await
+            .unwrap()
+            .play_id
+            .unwrap();
+        if let Some(previous) = previous {
+            assert!(matches!(
+                client
+                    .lyric_toolbar_contribution_url("1", &previous, Translation)
+                    .await,
+                Err(Error::StaleResponse)
+            ));
+        }
+        assert!(
+            client
+                .lyric_toolbar_contribution_url("1", &play_id, Upload)
+                .await
+                .is_err()
+        );
+        let document = client.player_lyrics("1", &play_id).await.unwrap();
+        assert_eq!(document.lines.is_empty(), empty, "song {song}");
+        assert_eq!(document.toolbar_contributions, expected, "song {song}");
+        let calls = api.calls.lock().unwrap().len();
+        for action in [Translation, Upload] {
+            let result = client
+                .lyric_toolbar_contribution_url("1", &play_id, action)
+                .await;
+            if expected.contains(&action) {
+                assert_eq!(
+                    result.unwrap(),
+                    format!("https://music.163.com/#/wiki/song?type=2&songId={song}")
+                );
+            } else {
+                assert!(result.is_err(), "song {song}: {action:?}");
+            }
+        }
+        assert!(
+            client
+                .lyric_toolbar_contribution_url("0", &play_id, Upload)
+                .await
+                .is_err()
+        );
+        assert_eq!(api.calls.lock().unwrap().len(), calls);
+        previous = Some(play_id);
+    }
+}
+
+#[tokio::test]
 async fn stale_inputs_and_unknown_native_fields_never_initialize_audio_or_access_network() {
     let (_dir, api, session, client, count) = fixture();
     assert!(matches!(

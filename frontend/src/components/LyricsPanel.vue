@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
-import { time, type PlayerView } from '../services/player';
+import { time, type LyricToolbarAction, type PlayerView } from '../services/player';
+import type { MenuItem } from '../services/menu';
 import { lyricContributorRows, type LyricContributorTarget } from '../services/lyricContributors';
 import Icon from './Icon.vue';
 import { useCoverImage } from '../composables/useCoverImage';
@@ -566,34 +567,61 @@ const contributionCopy = {
   translation: ['该歌词暂无翻译，', '上传翻译'],
   scrolling_and_translation: ['该歌词暂无翻译和自动滚动，', '上传滚动歌词或翻译'],
 } as const;
-const contribution = computed(() => {
-  const document = currentLyric.value;
-  return document?.contribution &&
-    document.epoch === props.account.epoch &&
+const contributionVisible = computed(
+  () =>
+    currentLyric.value?.epoch === props.account.epoch &&
     props.player.lyricsOpen.value &&
     props.activeDetailTab === 'lyrics' &&
-    !commentsVisible.value
-    ? contributionCopy[document.contribution]
-    : undefined;
+    !commentsVisible.value,
+);
+const contribution = computed(() => {
+  const option = currentLyric.value?.contribution;
+  return contributionVisible.value && option ? contributionCopy[option] : undefined;
 });
+const toolbarContributions = computed(() =>
+  contributionVisible.value && displayMode.value === 'classic'
+    ? (currentLyric.value?.toolbarContributions ?? [])
+    : [],
+);
 const contributionOpening = ref(false);
-const contributionError = ref(false);
+const contributionError = ref<'body' | 'toolbar'>();
 let contributionAttempt = 0;
-watch([currentEpoch, currentPlayId, contribution], () => {
-  contributionAttempt += 1;
-  contributionOpening.value = false;
-  contributionError.value = false;
-});
-async function openContribution() {
+watch(
+  [currentEpoch, currentPlayId, contribution, () => toolbarContributions.value.join(',')],
+  () => {
+    contributionAttempt += 1;
+    contributionOpening.value = false;
+    contributionError.value = undefined;
+  },
+);
+const toolbarLabels = {
+  translation: { label: '翻译歌词', icon: 'translate' },
+  upload: { label: '上传歌词', icon: 'upload' },
+} as const;
+const lyricMenu = computed<MenuItem[]>(() => [
+  ...toolbarContributions.value.map((action) => ({
+    key: action,
+    ...toolbarLabels[action],
+    disabled: contributionOpening.value,
+  })),
+  { key: 'report', label: '歌词报错', icon: 'edit' },
+]);
+function lyricMenuAction(key: string) {
+  if (key === 'report') emit('report');
+  else if (key === 'translation' || key === 'upload') void openContribution(key);
+}
+async function openContribution(action?: LyricToolbarAction) {
   const document = currentLyric.value;
-  if (!document || !contribution.value || contributionOpening.value) return;
+  const allowed = action ? toolbarContributions.value.includes(action) : !!contribution.value;
+  if (!document || !allowed || contributionOpening.value) return;
   const attempt = ++contributionAttempt;
   contributionOpening.value = true;
-  contributionError.value = false;
+  contributionError.value = undefined;
   try {
-    await core.openLyricContribution(document.epoch, document.playId);
+    if (action) await core.openLyricToolbarContribution(document.epoch, document.playId, action);
+    else await core.openLyricContribution(document.epoch, document.playId);
   } catch {
-    if (attempt === contributionAttempt) contributionError.value = true;
+    if (attempt === contributionAttempt) contributionError.value = action ? 'toolbar' : 'body';
   } finally {
     if (attempt === contributionAttempt) contributionOpening.value = false;
   }
@@ -1215,12 +1243,16 @@ const displayedAuxiliary = computed(() =>
                     class="text-button"
                     data-lyric-contribution
                     :aria-disabled="contributionOpening"
-                    @click="openContribution"
+                    @click="openContribution()"
                   >
                     {{ contribution[1] }}
                   </button>
                 </div>
-                <p v-if="contributionError" class="lyric-contribution-error" role="alert">
+                <p
+                  v-if="contributionError === 'body'"
+                  class="lyric-contribution-error"
+                  role="alert"
+                >
                   无法打开歌词贡献页面，请重试。
                 </p>
                 <div
@@ -1279,7 +1311,7 @@ const displayedAuxiliary = computed(() =>
                       class="secondary lyric-upload"
                       data-lyric-contribution
                       :aria-disabled="contributionOpening"
-                      @click="openContribution"
+                      @click="openContribution()"
                     >
                       {{ contribution[1] }}
                     </button>
@@ -1368,7 +1400,11 @@ const displayedAuxiliary = computed(() =>
                 </div>
               </template>
               <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
-              <div v-if="displayMode === 'classic'" class="lyric-tools">
+              <div
+                v-if="displayMode === 'classic'"
+                class="lyric-tools"
+                :aria-busy="contributionOpening"
+              >
                 <template v-if="lyrics">
                   <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
                   <template v-if="lyrics.scrollable">
@@ -1422,10 +1458,18 @@ const displayedAuxiliary = computed(() =>
                 </template>
                 <ActionMenu
                   v-if="!view?.track?.voiceId"
+                  :key="`${currentEpoch}:${currentPlayId}`"
                   label="歌词操作"
-                  :items="[{ key: 'report', label: '歌词报错', icon: 'edit' }]"
-                  @select="emit('report')"
+                  :items="lyricMenu"
+                  @select="lyricMenuAction"
                 />
+                <p
+                  v-if="contributionError === 'toolbar'"
+                  class="lyric-contribution-error"
+                  role="alert"
+                >
+                  无法打开浏览器，请重试
+                </p>
               </div>
             </div>
             <div

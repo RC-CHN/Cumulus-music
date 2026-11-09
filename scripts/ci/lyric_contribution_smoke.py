@@ -52,15 +52,17 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8')
     assert code == 0, code
     complete = json.loads((out / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['staleRejected'] and complete['stageCount'] == 6, complete
+    assert complete['ok'] and complete['staleRejected'] and complete['toolbarVerified']
+    assert complete['stageCount'] == 11 and complete['wikiHidesToolbar'], complete
     images = sorted(out.glob('ux_*.png'))
-    assert len(images) == 6
+    assert len(images) == 11
     urls = browser.with_suffix('.receipt').read_text(encoding='utf-8').splitlines()
     assert urls == ['https://music.163.com/#/wiki/song?type=2&songId=' + song
-                    for song in ('1', '1', '2')], urls
+                    for song in ('1', '1', '2', '6', '6', '7', '8')], urls
     report = {'ok': True, 'actualLinuxWebView': True, 'screenshots': len(images),
               'browserCalls': urls, 'firstShellFailedAndRetried': True,
-              'staleNativeSelectionRejected': True, 'realBrowserRequests': 0,
+              'staleNativeSelectionRejected': True, 'toolbarVerified': True, 'wikiHidesToolbar': True,
+              'realBrowserRequests': 0,
               'realAccountWrites': 0}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

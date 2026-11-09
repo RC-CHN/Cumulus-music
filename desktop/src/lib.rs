@@ -579,6 +579,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::player_queue_open_download_directory,
                 player::player_lyrics,
                 player::lyric_contribution_open,
+                player::lyric_toolbar_contribution_open,
                 player::reports::lyric_report_open,
                 player::reports::lyric_report_read,
                 player::reports::lyric_report_types,

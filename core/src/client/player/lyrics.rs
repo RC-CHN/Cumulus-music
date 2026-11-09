@@ -12,7 +12,7 @@ use crate::{
     playback::QueueEntry,
     protocol::api::ApiFuture,
 };
-pub use contribution::LyricContribution;
+pub use contribution::{LyricContribution, LyricToolbarAction};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, PartialEq)]
@@ -305,11 +305,9 @@ impl MusicClient {
             require_current_entry(&self.session, token, expected)?;
         }
         let (lyric_contributor, translation_contributor) = contributors::project(&value, &player);
-        let contribution = contribution::option(
-            &value,
-            player.selected.as_ref().map(|entry| &entry.resource),
-            target,
-        );
+        let resource = player.selected.as_ref().map(|entry| &entry.resource);
+        let contribution = contribution::option(&value, resource, target);
+        let toolbar_contributions = contribution::toolbar_actions(&value, resource, target);
         let lyric = value.lyric;
         let mut result = LyricsView {
             word_translation: auxiliary(lyric.yrc_info.yrc_trans.as_deref()),
@@ -325,6 +323,7 @@ impl MusicClient {
             lyric_contributor,
             translation_contributor,
             contribution,
+            toolbar_contributions,
             words: lyric.yrc_info,
             offset: lyric.offset,
             scrollable: lyric.scrollable,

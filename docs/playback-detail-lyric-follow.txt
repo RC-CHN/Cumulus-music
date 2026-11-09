@@ -190,8 +190,7 @@ POST /api/v1/feedback/lyric，参数为 songId、errorType（6/7/8）、
 lyricType="lrc"、lyricVersion=0、xInfo（JSON 文本：lyric_error
 含该选项的 txt/errType/errTitle，detail=""）。官方对 code=200
 提示已发送，失败时提示稍后再试。此批没有发起或提供扣费动作，未证实
-服务端扣费、重复提交或失联回执的对账语义。黑胶工具栏的独立贡献
-入口也未包含；此次只接通歌词正文的浏览器入口。
+服务端扣费、重复提交或失联回执的对账语义。
 
 生产前端和原生探针在 Linux 真 WebView（提交 79b73996）通过六态：
 普通无歌词、打开失败后重试、缺滚动和翻译、仅缺翻译、纯音乐、空歌词
@@ -199,3 +198,32 @@ lyricType="lrc"、lyricVersion=0、xInfo（JSON 文本：lyric_error
 被拒绝，打开前后保留同一暂停播放。没有真正打开网络浏览器、访问
 真实上游或提交。截图与摘要见 .build/ui-proof/phase213-lyric-contribution/；
 Windows Shell 启动还需独立验收。
+
+标准播放页的歌词操作菜单另有两条链接。LyricOperator.tsx:213–237
+以 `playing.curTrack` 打开 ResourceType.lyrics；M/622:2486–2539
+按「翻译歌词」「上传歌词」「歌词报错」排序。前两项各自依赖
+`canUploadTranslation`（sfy）和 `canUploadLyric`（sgc），都排除
+`resourceIsCloudSong`；报错保留自己的处理。M/21:1311–1342 先丢弃空原始槽，
+M/3081:319–405 再发布成功的当前歌词或仍可用的同曲缓存；有原始槽即可，
+无需已解析出可显示行或滚动歌词。下载旁挂和纯本地歌词的两个标志为 false。
+TrackDisplay.tsx:173–185,225–234 只给展开后的标准歌词区提供操作条，
+NoLyric.tsx:210–219 也可提供，专门的歌词模式不启用工具栏。Cumulus 沿用
+现有工具栏的键盘和焦点入口，不复制官方仅悬停／非滚动时显示的条件。
+
+两项都交由同一个固定网址，但使用工具栏捕获的 `curTrack.id`；普通下载取
+原歌曲 ID（M/163:124–208），不是文件或播放实例 ID。M/622 在仅有上传项
+时会把链接数据误附在报错行；M/3085:943–976,1045–1078,4619–4689
+表明无链接数据的 Action.link 仍会调用捕获的回调，绝对 URL 则直接交给
+浏览器后返回。Cumulus 每次只启动一次，报错继续走原对话框。独立 IPC
+`lyric_toolbar_contribution_open` 接受 epoch、playId 和明确的 translation/upload
+枚举，Rust 复核当前公开歌曲和相应旗标，不使用正文 qfy、渲染器歌曲 ID、
+任意 URL 或新请求。云盘、播客、旁挂/内嵌歌词和无法确认公开 ID 的本地资源
+不开放这两个浏览器入口；官方已匹配本地文件的 `onlineResourceId` 与
+`curTrack` 本地对象并非同一字段，未用本地 ID 猜测网址。只传公开 URL，
+浏览器按自己的会话打开页面，应用不交接 Cookie。
+`lyric_contribution_smoke.py` 在隔离 Linux WebView 核对 11 个阶段：正文入口、
+工具栏双项/单项/仅报错、无解析行、百科隐藏工具栏、打开与取消报错对话框。
+七次浏览器交接由本机替身记录准确歌曲 ID；旧播放、旧代次、伪造选项均被拒绝。
+报错类型不属于此夹具，未提交报错；零浏览器联网、远端账号写入或云贝消耗。
+截图和摘要见 .build/ui-proof/phase217-lyric-toolbar/。
+Windows 浏览器由同一宿主适配层交接，未在此轮实机验证。

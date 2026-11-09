@@ -731,6 +731,8 @@ export function createTauriClient(): CoreClient {
     playerLyrics: (epoch, playId, cachedOnly) =>
       invoke('player_lyrics', { epoch, playId, cachedOnly }),
     openLyricContribution: (epoch, playId) => invoke('lyric_contribution_open', { epoch, playId }),
+    openLyricToolbarContribution: (epoch, playId, action) =>
+      invoke('lyric_toolbar_contribution_open', { epoch, playId, action }),
     lyricPreferences: (epoch, playId, preferences) =>
       invoke('lyric_preferences', { epoch, playId, preferences }),
     lyricOffset: (epoch, playId, gain) => invoke('lyric_offset', { epoch, playId, gain }),

@@ -1,4 +1,4 @@
-pub use super::lyrics::LyricContribution;
+pub use super::lyrics::{LyricContribution, LyricToolbarAction};
 use crate::{
     client::dto::TrackView,
     lyrics::{DisplayType, LyricLine, LyricPreferences, YrcInfo},
@@ -845,6 +845,8 @@ pub struct LyricsView {
     pub translation_contributor: Option<LyricContributorView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contribution: Option<LyricContribution>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub toolbar_contributions: Vec<LyricToolbarAction>,
     pub words: YrcInfo,
     pub offset: f64,
     pub scrollable: bool,

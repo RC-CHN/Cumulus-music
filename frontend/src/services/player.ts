@@ -735,6 +735,7 @@ export interface LyricPreferences {
   translationEnable: boolean;
   romaEnable: boolean;
 }
+export type LyricToolbarAction = 'translation' | 'upload';
 export interface LyricsView {
   wordTranslation: LyricLine[];
   wordRomanization: LyricLine[];
@@ -752,6 +753,7 @@ export interface LyricsView {
   lyricContributor?: import('./lyricContributors').LyricContributor | null;
   translationContributor?: import('./lyricContributors').LyricContributor | null;
   contribution?: 'upload' | 'scrolling' | 'translation' | 'scrolling_and_translation';
+  toolbarContributions?: LyricToolbarAction[];
   words: { yrc?: string; yrcRoma?: string; yrcTrans?: string };
   offset: number;
   scrollable: boolean;
@@ -924,6 +926,11 @@ export interface PlayerClient
   ): Promise<AccountData<ProfileReportView>>;
   playerLyrics(epoch: string, playId: string, cachedOnly?: boolean): Promise<LyricsView>;
   openLyricContribution(epoch: string, playId: string): Promise<void>;
+  openLyricToolbarContribution(
+    epoch: string,
+    playId: string,
+    action: LyricToolbarAction,
+  ): Promise<void>;
   lyricPreferences(
     epoch: string,
     playId: string,

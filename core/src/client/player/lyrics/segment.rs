@@ -173,6 +173,7 @@ mod tests {
             lyric_contributor: None,
             translation_contributor: None,
             contribution: None,
+            toolbar_contributions: vec![],
             lines: vec![
                 row(10.0 - offset, "first"),
                 row(29.0 - offset, "crossing"),

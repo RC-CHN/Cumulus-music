@@ -1081,6 +1081,12 @@ impl Api for Library {
                             Some("5") => Err(cumulus_core::Error::State(
                                 "synthetic lyric network failure",
                             )),
+                            Some("6") => Ok(json!({"code":200,"sgc":true,"sfy":true,
+                                "tlyric":{"lyric":"[00:01]合成翻译文档"}})),
+                            Some("7") => Ok(json!({"code":200,"sgc":true,
+                                "lrc":{"lyric":"[00:01]合成原词"}})),
+                            Some("8") => Ok(json!({"code":200,"sfy":true,
+                                "lrc":{"lyric":"[00:01]合成原词"}})),
                             _ => Err(cumulus_core::Error::InvalidInput(
                                 "unexpected lyric proof song",
                             )),

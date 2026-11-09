@@ -803,7 +803,27 @@ pub async fn lyric_contribution_open<R: tauri::Runtime>(
     if window.label() != "main" {
         return Err(Error::InvalidInput("main window required").into());
     }
-    let url = client.lyric_contribution_url(&epoch, &play_id).await?;
+    launch_lyric_contribution(client.lyric_contribution_url(&epoch, &play_id).await?).await
+}
+
+#[tauri::command]
+pub async fn lyric_toolbar_contribution_open<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    action: LyricToolbarAction,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    let url = client
+        .lyric_toolbar_contribution_url(&epoch, &play_id, action)
+        .await?;
+    launch_lyric_contribution(url).await
+}
+
+async fn launch_lyric_contribution(url: String) -> Result<(), ClientError> {
     tauri::async_runtime::spawn_blocking(move || crate::browser::launch(&url))
         .await
         .map_err(|_| Error::State("browser worker stopped"))?
