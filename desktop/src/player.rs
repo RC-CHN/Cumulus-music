@@ -1,5 +1,7 @@
 pub mod intelligence;
 mod native_authority;
+#[cfg(any(windows, test))]
+mod native_quit;
 pub mod power;
 pub mod quality;
 pub mod reports;
@@ -15,6 +17,10 @@ use cumulus_core::{
     playback::controller::OrdinarySkipNotice,
 };
 use native_authority::{Lease, RevokeOnDrop};
+#[cfg(windows)]
+pub(crate) use native_quit::Recovery as NativeQuitRecovery;
+#[cfg(windows)]
+use native_quit::{Gate as NativeQuitGate, Permit as NativeQuitPermit};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Mutex};
 use tauri::{Manager, ipc::Channel};
@@ -40,20 +46,25 @@ impl Drop for Running {
 pub(crate) struct NativeOpenPermit {
     pub(crate) epoch: String,
     lease: Lease,
+    quit: NativeQuitPermit,
 }
 
 #[cfg(windows)]
 impl NativeOpenPermit {
     pub(crate) fn ready(&self) -> bool {
-        self.lease.ready()
+        self.lease.ready() && self.quit.active()
     }
 }
 
 #[derive(Default)]
-pub struct PlayerStreams(Mutex<HashMap<String, Running>>);
+pub struct PlayerStreams {
+    streams: Mutex<HashMap<String, Running>>,
+    #[cfg(windows)]
+    native_quit: NativeQuitGate,
+}
 impl PlayerStreams {
     fn reserve(&self, window: &str, id: &str, epoch: u64) -> cumulus_core::Result<Lease> {
-        let mut values = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut values = self.streams.lock().map_err(|_| Error::LockPoisoned)?;
         if values
             .get(window)
             .is_some_and(|current| current.epoch > epoch)
@@ -75,7 +86,7 @@ impl PlayerStreams {
 
     #[cfg(any(target_os = "linux", windows))]
     fn ready_lease(&self, epoch: &str) -> Option<Lease> {
-        let values = self.0.lock().ok()?;
+        let values = self.streams.lock().ok()?;
         let current = values.get("main")?;
         (current.epoch.to_string() == epoch
             && current.lease.ready()
@@ -95,8 +106,14 @@ impl PlayerStreams {
     pub(crate) fn native_open_permit(&self, epoch: String) -> Option<NativeOpenPermit> {
         Some(NativeOpenPermit {
             lease: self.ready_lease(&epoch)?,
+            quit: self.native_quit.permit()?,
             epoch,
         })
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn close_native_open_for_quit(&self) -> Option<NativeQuitRecovery> {
+        self.native_quit.close()
     }
 
     #[cfg(windows)]
@@ -105,14 +122,18 @@ impl PlayerStreams {
         lease: &Lease,
         epoch: u64,
         pending: &crate::native_open::Pending,
-    ) -> Option<Vec<std::path::PathBuf>> {
-        let values = self.0.lock().ok()?;
+    ) -> Option<(Vec<std::path::PathBuf>, NativeQuitPermit)> {
+        let values = self.streams.lock().ok()?;
         let current = values.get("main")?;
-        (current.lease.same(lease) && lease.active()).then(|| pending.take_for_epoch(epoch))?
+        if !current.lease.same(lease) || !lease.active() {
+            return None;
+        }
+        let quit = self.native_quit.permit()?;
+        Some((pending.take_for_epoch(epoch)?, quit))
     }
 
     pub fn stop(&self, window: &str, id: Option<&str>) {
-        if let Ok(mut values) = self.0.lock()
+        if let Ok(mut values) = self.streams.lock()
             && values
                 .get(window)
                 .is_some_and(|current| id.is_none_or(|id| id == current.id))
@@ -189,10 +210,12 @@ pub async fn watch_player<R: tauri::Runtime>(
     #[cfg(windows)]
     let native_open_error = if window.label() == "main"
         && let Some(pending) = window.try_state::<crate::native_open::Pending>()
-        && let Some(paths) = streams.take_pending_native_open(&lease, generation, &pending)
+        && let Some((paths, quit)) = streams.take_pending_native_open(&lease, generation, &pending)
     {
         let opening = lease.clone();
-        let authority = cumulus_core::playback::engine::Cancellation::new(move || opening.active());
+        let authority = cumulus_core::playback::engine::Cancellation::new(move || {
+            opening.active() && quit.active()
+        });
         client
             .play_windows_native_open_files(&epoch, paths, authority)
             .await
@@ -205,7 +228,7 @@ pub async fn watch_player<R: tauri::Runtime>(
     // is checked again before publishing this first state.
     let initial = source.current().map_err(ClientError::from)?;
     let mut values = streams
-        .0
+        .streams
         .lock()
         .map_err(|_| ClientError::from(Error::LockPoisoned))?;
     let Some(current) = values.get_mut(window.label()) else {
@@ -714,7 +737,13 @@ mod tests {
         let task = tauri::async_runtime::spawn(async move {
             let _ = waiting.await;
         });
-        streams.0.lock().unwrap().get_mut("main").unwrap().task = Some(task);
+        streams
+            .streams
+            .lock()
+            .unwrap()
+            .get_mut("main")
+            .unwrap()
+            .task = Some(task);
         assert!(lease.install());
         assert!(streams.ready_for_native_open("42"));
         assert!(!streams.ready_for_native_open("43"));
@@ -731,7 +760,7 @@ mod tests {
         // The terminated handle is still present until the WebView unbinds.
         assert!(
             streams
-                .0
+                .streams
                 .lock()
                 .unwrap()
                 .get("main")
@@ -762,15 +791,46 @@ mod tests {
         let streams = PlayerStreams::default();
         let pending = crate::native_open::Pending::from_args(["--play".into()].into_iter());
         let old = streams.reserve("main", "first", 42).unwrap();
-        assert_eq!(
-            streams.take_pending_native_open(&old, 42, &pending),
-            Some(Vec::new())
-        );
+        let (paths, quit) = streams
+            .take_pending_native_open(&old, 42, &pending)
+            .unwrap();
+        assert!(paths.is_empty());
+        assert!(quit.active());
         let replacement = streams.reserve("main", "replacement", 42).unwrap();
         assert!(!old.active());
-        assert_eq!(
-            streams.take_pending_native_open(&replacement, 42, &pending),
-            None
+        assert!(
+            streams
+                .take_pending_native_open(&replacement, 42, &pending)
+                .is_none()
+        );
+        assert!(pending.blocks_startup("42"));
+        assert!(!pending.blocks_startup("43"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn confirmed_quit_cancels_a_consumed_cold_selection_without_enabling_old_startup() {
+        let streams = PlayerStreams::default();
+        let pending = crate::native_open::Pending::from_args(["--play".into()].into_iter());
+        let lease = streams.reserve("main", "first", 42).unwrap();
+        let first_quit = streams.close_native_open_for_quit().unwrap();
+        assert!(
+            streams
+                .take_pending_native_open(&lease, 42, &pending)
+                .is_none()
+        );
+        assert!(pending.blocks_startup("42"));
+        assert!(first_quit.reopen());
+        let (_, permit) = streams
+            .take_pending_native_open(&lease, 42, &pending)
+            .unwrap();
+        let second_quit = streams.close_native_open_for_quit().unwrap();
+        assert!(second_quit.reopen());
+        assert!(!permit.active());
+        assert!(
+            streams
+                .take_pending_native_open(&lease, 42, &pending)
+                .is_none()
         );
         assert!(pending.blocks_startup("42"));
         assert!(!pending.blocks_startup("43"));
@@ -786,8 +846,11 @@ mod tests {
             Err(Error::StaleResponse)
         ));
         streams.stop("main", Some("old"));
-        assert_eq!(streams.0.lock().unwrap().get("main").unwrap().id, "new");
+        assert_eq!(
+            streams.streams.lock().unwrap().get("main").unwrap().id,
+            "new"
+        );
         streams.stop("main", Some("new"));
-        assert!(streams.0.lock().unwrap().is_empty());
+        assert!(streams.streams.lock().unwrap().is_empty());
     }
 }

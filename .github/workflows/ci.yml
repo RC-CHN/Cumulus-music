@@ -537,6 +537,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Effective connector proof failed' }
           cargo test --locked -p cumulus-desktop --lib --features custom-protocol native_open::windows::profile::tests
           if ($LASTEXITCODE -ne 0) { throw 'Held profile or database proof failed' }
+          cargo test --locked -p cumulus-desktop --lib --features custom-protocol confirmed_quit_cancels_a_consumed_cold_selection_without_enabling_old_startup
+          if ($LASTEXITCODE -ne 0) { throw 'Native quit recovery proof failed' }
           cargo test --locked -p cumulus-desktop --lib --features custom-protocol a_reparse_ancestor_or_lock_cannot_open_its_target -- --ignored
           if ($LASTEXITCODE -ne 0) { throw 'Windows profile reparse proof failed' }
           cargo test --locked -p cumulus-core --test held_flac_probe --test held_mp3_probe -- --include-ignored

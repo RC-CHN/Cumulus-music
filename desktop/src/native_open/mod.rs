@@ -86,9 +86,11 @@ impl Pending {
 
     #[cfg(windows)]
     pub(crate) fn blocks_startup(&self, epoch: &str) -> bool {
-        self.opening_epoch
-            .get()
-            .is_some_and(|current| epoch.parse::<u64>().ok() == Some(*current))
+        self.requested()
+            || self
+                .opening_epoch
+                .get()
+                .is_some_and(|current| epoch.parse::<u64>().ok() == Some(*current))
     }
 }
 
