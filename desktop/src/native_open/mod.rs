@@ -1,6 +1,8 @@
 //! One cold process argument group. Nothing in the WebView can supply a path.
 #[cfg(target_os = "linux")]
 pub(crate) mod linux;
+#[cfg(cumulus_windows_native_open_null_proof)]
+pub(crate) mod proof_audio;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod warm;
 #[cfg(target_os = "windows")]

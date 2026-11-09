@@ -160,12 +160,21 @@ Windows 原生复验入口
   原 HWND，再由两个短命 sender 热交接 FLAC 与 MP3。读取 SQLite 验证
   现有窗口恢复、队列只保留持有文件键、条目更换与解码时钟继续。它记录
   Windows 是否授予前台焦点，窗口恢复是硬断言，不能用测试脚本抢焦点。
-  必须有可用的 Windows 默认音频输出；若无输出，整应用测试不算通过。
-  诊断只上传 report.json 与两个程序日志，绑定 CI 运行和包内 exe 摘要；
+  默认输出模式必须在同一个 runner 上读到可用的默认渲染端点，并通过全部原生时钟
+  断言；若端点不存在或不可验证，该模式失败并保留分类。仍不等同于听感验证。
+- 单独的合成空输出模式只用于手动构建的诊断包。构建开关
+  CUMULUS_BUILD_WINDOWS_NATIVE_OPEN_NULL_PROOF=1 不用于正常构建或发布；
+  诊断启动也须同时指定临时资料目录和空输出标记。它使用相同的文件激活、窗口和
+  持有解码路径，逐项执行 WAV/FLAC/MP3 原生时钟断言；报告中
+  proofAudioOutput=null，defaultOutputClockVerified=false，不能代替默认输出验收。
+  默认输出模式不会自动降级为空输出。两个模式都读取同机默认渲染端点分类。
+  诊断只上传 report.json 与已有的两个程序日志，绑定 CI 运行和包内 exe 摘要；
   SQLite、WebView 数据和媒体另置临时目录，不进入通用失败诊断归档。
   失败日志只记录最后的合成条目 ID、时钟、解码格式和进程窗口观察。
-- Linux 已验证合成 WAV/FLAC/MP3、快照读回和路径拒绝；Windows 运行脚本
-  仍未执行。原生 proof 所在 job 失败即失败，不作为 RC 已通过的依据。
+- Linux 已验证合成 WAV/FLAC/MP3、快照读回和路径拒绝；Windows 候选运行
+  42656675830 已通过令牌、资料目录与持有解码检查，但便携包冷启动 WAV 的
+  持久时钟未前进，未执行热交接。那次运行未采样默认端点；不能确认失败原因。
+  原生 proof 所在 job 失败即失败，不作为 RC 已通过的依据。
   Windows API 依据：
   https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule
   https://learn.microsoft.com/windows/win32/winmsg/about-windows

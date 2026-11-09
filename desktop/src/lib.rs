@@ -734,7 +734,11 @@ pub fn run() {
             let client = configure_native_im(client, &app.path().resource_dir()?);
             let resources = app.path().resource_dir()?;
             app.manage(effect_activation::Host::new(&resources));
-            let client = configure_streaming_cache(configure_native_audio(client, &resources, false));
+            #[cfg(cumulus_windows_native_open_null_proof)]
+            let null_output = native_open::proof_audio::requested(file_open.requested());
+            #[cfg(not(cumulus_windows_native_open_null_proof))]
+            let null_output = false;
+            let client = configure_streaming_cache(configure_native_audio(client, &resources, null_output));
             #[cfg(windows)]
             let client = match playback_keep_awake::DesktopPlaybackPower::start_windows() {
                 Ok(host) => {

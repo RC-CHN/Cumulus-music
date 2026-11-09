@@ -18,6 +18,7 @@ import uuid
 import wave
 
 from diagnostics import verify_proof_databases
+from windows_system_master_volume_runtime import collect_sample
 from windows_webview_inputs import ci_identity
 from windows_zip_smoke import portable_runtime
 
@@ -30,7 +31,10 @@ def require_hosted_windows(env):
     return ci_identity(env)
 
 
-def scratch_environment(root, system, app_dir):
+NULL_OUTPUT_MARKER = 'Cumulus native-open proof audio: null'
+
+
+def scratch_environment(root, system, app_dir, audio_output):
     env = {name: os.environ[name] for name in (
         'COMSPEC', 'ProgramData', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432',
         'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE',
@@ -49,6 +53,8 @@ def scratch_environment(root, system, app_dir):
     env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = (
         '--disable-background-networking --host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE localhost"'
     )
+    if audio_output == 'null':
+        env['CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_OUTPUT'] = 'null'
     return env
 
 
@@ -211,7 +217,7 @@ def held_entry(queue, *, rate, format_name):
     return entry['entry_id']
 
 
-def verify_app(root, evidence, binary, encoder, env):
+def verify_app(root, evidence, binary, encoder, env, audio_output):
     cold, warm, mp3, invalid = media_fixtures(root, encoder, env)
     windows = NativeWindows()
     database = Path(env['CUMULUS_DATA_DIR']) / 'core.sqlite3'
@@ -250,6 +256,9 @@ def verify_app(root, evidence, binary, encoder, env):
                 assert sender.returncode == expected, f'{label}: unexpected exit {sender.returncode}'
 
             window, = wait_for('no ordinary Cumulus window', lambda: windows.app_windows(app.pid))
+            if audio_output == 'null':
+                wait_for('exact package did not opt into the proof-only audio sink', lambda:
+                         NULL_OUTPUT_MARKER.encode('ascii') in (evidence / 'owner.log').read_bytes())
             cold_queue, cold_position = wait_for(
                 'cold WAV clock did not advance', lambda: playing(playback(), cold.stem, .6),
             )
@@ -303,8 +312,9 @@ def verify_app(root, evidence, binary, encoder, env):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('packages', 'root', 'fixture-encoder'):
+    for name in ('packages', 'root', 'fixture-encoder', 'endpoint-probe'):
         parser.add_argument('--' + name, required=True, type=Path)
+    parser.add_argument('--audio-output', choices=('default', 'null'), default='default')
     args = parser.parse_args()
     identity = require_hosted_windows(os.environ)
     system = Path(os.environ['SystemRoot']).resolve(strict=True)
@@ -324,12 +334,34 @@ def main():
         binary = (portable / 'cumulus.exe').resolve(strict=True)
         with binary.open('rb') as source:
             binary_sha = hashlib.file_digest(source, 'sha256').hexdigest()
-        with block_app_network(binary, system):
-            result = verify_app(scratch, root, binary, encoder, scratch_environment(scratch, system, portable))
-        verify_proof_databases([scratch / 'state'])
-    report = dict(ok=True, **identity, binarySha256=binary_sha, ordinaryWindowsPortableApp=True,
-                  appOutboundBlocked=True, physicalAudioOutputVerified=False, **result)
-    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        report = dict(ok=False, **identity, binarySha256=binary_sha,
+                      proofAudioOutput=args.audio_output,
+                      ordinaryWindowsPortableApp=args.audio_output == 'default',
+                      appOutboundBlocked=False, defaultOutputClockVerified=False,
+                      physicalAudioOutputVerified=False)
+        try:
+            report['failureStage'] = 'default_render_endpoint_probe'
+            endpoint = collect_sample(args.endpoint_probe.resolve(strict=True))
+            report['defaultRenderEndpoint'] = endpoint
+            if args.audio_output == 'default':
+                assert endpoint['kind'] == 'endpoint_readable', (
+                    f"default-render endpoint is not verified: {endpoint['kind']}"
+                )
+            report['failureStage'] = 'application_firewall'
+            with block_app_network(binary, system):
+                report['appOutboundBlocked'] = True
+                report['failureStage'] = 'native_file_activation'
+                result = verify_app(
+                    scratch, root, binary, encoder,
+                    scratch_environment(scratch, system, portable, args.audio_output),
+                    args.audio_output,
+                )
+            report['failureStage'] = 'proof_data_audit'
+            verify_proof_databases([scratch / 'state'])
+            report.update(result, ok=True, failureStage=None,
+                          defaultOutputClockVerified=args.audio_output == 'default')
+        finally:
+            (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
 
