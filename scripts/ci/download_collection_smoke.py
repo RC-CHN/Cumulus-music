@@ -77,11 +77,12 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path, help='Same-run packaged Windows media runtime')
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--batch', action='store_true', help='Verify the native ordered batch collector')
     args = parser.parse_args()
-    if os.name != 'posix':
-        parser.error('this proof runner currently targets Linux GTK/WebKit')
+    if os.name == 'nt' and (args.runtime is None or args.screenshots):
+        parser.error('Windows requires --runtime and currently records JSON checkpoints only')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -99,11 +100,17 @@ def main():
         env['CUMULUS_DOWNLOAD_BATCH_COLLECT_PROOF'] = '1'
     for key, name in (
         ('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
-        ('XDG_RUNTIME_DIR', 'runtime'),
+        ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local'),
     ):
         directory = root / 'os-profile' / name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
+    if args.runtime:
+        runtime = args.runtime.resolve(strict=True)
+        if os.name == 'nt' and not (runtime / 'libmpv-2.dll').is_file():
+            parser.error('Windows runtime does not contain libmpv-2.dll')
+        env['MPV_DLL_DIR_CUMULUS'] = str(runtime)
+        env['PATH'] = str(runtime) + os.pathsep + env.get('PATH', '')
     output = root / 'first'
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(strict=True), env, log, output, args.screenshots)
@@ -111,7 +118,8 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, f'probe exit {status}'
     result = (verify_batch if args.batch else verify)(output, args.screenshots)
-    result.update(actualWebView=True, windowsVisualVerified=False)
+    result.update(actualWebView=True, webViewRuntime='WebView2' if os.name == 'nt' else 'WebKitGTK',
+                  windowsVisualVerified=False)
     (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({key: result[key] for key in ('ok', 'stageCount', 'syntheticCollection')}))
 
