@@ -1,4 +1,16 @@
 //! One profile owner, a private same-login handoff, and no renderer in the sender.
+macro_rules! trace_handoff {
+    ($stage:expr, $code:expr) => {{
+        #[cfg(cumulus_windows_native_open_null_proof)]
+        $crate::native_open::proof_audio::handoff_trace($stage, $code);
+    }};
+    ($stage:expr) => {{
+        #[cfg(cumulus_windows_native_open_null_proof)]
+        $crate::native_open::proof_audio::handoff_trace($stage, None);
+    }};
+}
+pub(crate) use trace_handoff;
+
 mod effective;
 mod host;
 mod identity;
@@ -56,10 +68,19 @@ fn claim(config: &tauri::Config, pending: &Pending) -> io::Result<Option<Claim>>
     // filesystem resolution precedes the warm gate.
     let can_relay = std::env::var_os("CUMULUS_SESSION_DIR").is_none();
     let Ok(identity) = Identity::current() else {
+        trace_handoff!("claim.identity_unavailable");
         return Ok(None);
     };
-    let Ok(Some(profile)) = Profile::open(&root, true) else {
-        return Ok(None);
+    let profile = match Profile::open(&root, true) {
+        Ok(Some(profile)) => profile,
+        Ok(None) => {
+            trace_handoff!("claim.profile_unsupported");
+            return Ok(None);
+        }
+        Err(_error) => {
+            trace_handoff!("claim.profile_open_failed", _error.raw_os_error());
+            return Ok(None);
+        }
     };
     let (id, volume) = profile.identity();
     let address = identity.product_address(id, volume);
@@ -67,10 +88,15 @@ fn claim(config: &tauri::Config, pending: &Pending) -> io::Result<Option<Claim>>
     // instruction to reopen that path through the legacy cold guard.
     match ProcessGuard::from_file(profile.lock_file()?, true) {
         Ok(mut lease) => {
+            trace_handoff!("owner.profile_claimed");
             let listener = if can_relay {
                 match host::Listener::bind(&address, &identity) {
-                    Ok(listener) => Some(listener),
-                    Err(_) => {
+                    Ok(listener) => {
+                        trace_handoff!("owner.pipe_bound");
+                        Some(listener)
+                    }
+                    Err(_error) => {
+                        trace_handoff!("owner.pipe_bind_failed", _error.raw_os_error());
                         eprintln!(
                             "Cumulus native file handoff is unavailable; cold startup continues."
                         );
@@ -90,8 +116,10 @@ fn claim(config: &tauri::Config, pending: &Pending) -> io::Result<Option<Claim>>
         }
         Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
             if !can_relay || !pending.requested() {
+                trace_handoff!("sender.duplicate_not_forwarded");
                 Reply::Unavailable.finish();
             }
+            trace_handoff!("sender.profile_owner_exists");
             host::forward(&address, &identity, &pending.take().unwrap_or_default()).finish();
         }
         Err(error) => Err(error),

@@ -66,7 +66,9 @@ impl Drop for Relay {
 }
 
 pub(crate) fn install<R: Runtime>(app: &AppHandle<R>, listener: Listener) -> io::Result<()> {
-    let access = AccessShape::current()?;
+    let access = AccessShape::current().inspect_err(|_error| {
+        trace_handoff!("owner.current_token_denied", _error.raw_os_error());
+    })?;
     let Listener { mut pipe, stop } = listener;
     let stopped = Arc::new(AtomicBool::new(false));
     app.manage(Relay {
@@ -77,31 +79,44 @@ pub(crate) fn install<R: Runtime>(app: &AppHandle<R>, listener: Listener) -> io:
     thread::Builder::new()
         .name("cumulus-file-open-relay".into())
         .spawn(move || {
+            trace_handoff!("owner.relay_running");
             while !stopped.load(Ordering::Acquire) {
                 match pipe.connect(Instant::now() + Duration::from_secs(60)) {
-                    Ok(()) => {}
+                    Ok(()) => trace_handoff!("owner.pipe_connected"),
                     Err(error)
                         if error.kind() == io::ErrorKind::TimedOut
                             || error.raw_os_error() == Some(ERROR_NO_DATA as i32) =>
                     {
                         continue;
                     }
-                    Err(_) => break,
+                    Err(_error) => {
+                        trace_handoff!("owner.pipe_connect_failed", _error.raw_os_error());
+                        break;
+                    }
                 }
                 let attestation = if stopped.load(Ordering::Acquire) {
                     Connector::Denied
                 } else {
-                    access.authenticate(&mut pipe, Instant::now() + IO_LIMIT)
+                    access.authenticate(&mut pipe, Instant::now() + IO_LIMIT, |_stage, _code| {
+                        trace_handoff!(_stage, _code);
+                    })
                 };
                 if attestation == Connector::RetireWorker {
                     break;
                 }
                 if attestation == Connector::Verified {
+                    trace_handoff!("owner.sender_authenticated");
                     let Some(reply) = handle(&app, &mut pipe, &access, stopped.clone()) else {
                         break;
                     };
                     if pipe
                         .write_all(&receipt(reply as u8), Instant::now() + IO_LIMIT)
+                        .inspect_err(|_error| {
+                            trace_handoff!(
+                                "owner.final_receipt_write_failed",
+                                _error.raw_os_error()
+                            );
+                        })
                         .is_ok()
                     {
                         // DisconnectNamedPipe may discard a receipt still in the
@@ -110,11 +125,13 @@ pub(crate) fn install<R: Runtime>(app: &AppHandle<R>, listener: Listener) -> io:
                         let _ = pipe.read_exact(&mut [0u8; 1], Instant::now() + IO_LIMIT);
                     }
                 }
-                if pipe.disconnect().is_err() {
+                if let Err(_error) = pipe.disconnect() {
+                    trace_handoff!("owner.pipe_disconnect_failed", _error.raw_os_error());
                     break;
                 }
             }
-        })?;
+        })
+        .inspect_err(|_error| trace_handoff!("owner.relay_spawn_failed", _error.raw_os_error()))?;
     Ok(())
 }
 
@@ -127,24 +144,37 @@ fn handle<R: Runtime>(
     let Some(permit) = ready_windows(app) else {
         return Some(Reply::Unavailable);
     };
-    if pipe
-        .write_all(&receipt(READY), Instant::now() + IO_LIMIT)
-        .is_err()
-    {
+    if let Err(_error) = pipe.write_all(&receipt(READY), Instant::now() + IO_LIMIT) {
+        trace_handoff!("owner.ready_write_failed", _error.raw_os_error());
         return Some(Reply::Unavailable);
     }
+    trace_handoff!("owner.ready_sent");
     Some(match receive(pipe) {
         Ok(paths) if !stopped.load(Ordering::Acquire) => match access
             .verify_connector(pipe.as_raw_handle())
         {
             Connector::Verified if access.verify_process(pipe.as_raw_handle(), true).is_ok() => {
+                trace_handoff!("owner.dispatch_entered");
                 dispatch_windows(app, paths, stopped, permit)
             }
             Connector::RetireWorker => return None,
-            _ => Reply::Unavailable,
+            Connector::Verified => {
+                trace_handoff!("owner.sender_process_recheck_denied");
+                Reply::Unavailable
+            }
+            Connector::Denied => {
+                trace_handoff!("owner.sender_effective_token_recheck_denied");
+                Reply::Unavailable
+            }
         },
-        Ok(_) => Reply::Unavailable,
-        Err(_) => Reply::Invalid,
+        Ok(_) => {
+            trace_handoff!("owner.relay_stopped_before_dispatch");
+            Reply::Unavailable
+        }
+        Err(_error) => {
+            trace_handoff!("owner.frame_rejected", _error.raw_os_error());
+            Reply::Invalid
+        }
     })
 }
 
@@ -188,26 +218,59 @@ async fn read_code(pipe: &mut NamedPipeClient, limit: Duration) -> io::Result<u8
 async fn send(address: &str, access: &AccessShape, frame: &[u8]) -> Reply {
     let raw = match open_handle(address) {
         Ok(handle) => handle.into_raw_handle(),
-        Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => return Reply::Busy,
-        Err(_) => return Reply::Unavailable,
+        Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => {
+            trace_handoff!("sender.pipe_busy", error.raw_os_error());
+            return Reply::Busy;
+        }
+        Err(_error) => {
+            trace_handoff!("sender.pipe_open_failed", _error.raw_os_error());
+            return Reply::Unavailable;
+        }
     };
+    trace_handoff!("sender.pipe_opened");
     // SAFETY: unique fresh overlapped handle, transferred to Tokio on all paths.
-    let Ok(mut pipe) = (unsafe { NamedPipeClient::from_raw_handle(raw) }) else {
-        return Reply::Unavailable;
+    let mut pipe = match unsafe { NamedPipeClient::from_raw_handle(raw) } {
+        Ok(pipe) => pipe,
+        Err(_error) => {
+            trace_handoff!("sender.pipe_registration_failed", _error.raw_os_error());
+            return Reply::Unavailable;
+        }
     };
-    if access.verify_process(pipe.as_raw_handle(), false).is_err()
-        || !matches!(
-            timeout(IO_LIMIT, pipe.write_all(&[HELLO])).await,
-            Ok(Ok(()))
-        )
-        || read_code(&mut pipe, IO_LIMIT).await.ok() != Some(READY)
-        || access.verify_process(pipe.as_raw_handle(), false).is_err()
-    {
+    if let Err(_error) = access.verify_process(pipe.as_raw_handle(), false) {
+        trace_handoff!("sender.owner_process_denied", _error.raw_os_error());
+        return Reply::Unavailable;
+    }
+    if !matches!(
+        timeout(IO_LIMIT, pipe.write_all(&[HELLO])).await,
+        Ok(Ok(()))
+    ) {
+        trace_handoff!("sender.hello_write_failed");
+        return Reply::Unavailable;
+    }
+    match read_code(&mut pipe, IO_LIMIT).await {
+        Ok(READY) => trace_handoff!("sender.ready_received"),
+        Ok(2) => {
+            trace_handoff!("sender.owner_not_ready");
+            return Reply::Unavailable;
+        }
+        Ok(_) => {
+            trace_handoff!("sender.unexpected_ready_reply");
+            return Reply::Unavailable;
+        }
+        Err(_error) => {
+            trace_handoff!("sender.ready_read_failed", _error.raw_os_error());
+            return Reply::Unavailable;
+        }
+    }
+    if let Err(_error) = access.verify_process(pipe.as_raw_handle(), false) {
+        trace_handoff!("sender.owner_process_recheck_denied", _error.raw_os_error());
         return Reply::Unavailable;
     }
     if !matches!(timeout(IO_LIMIT, pipe.write_all(frame)).await, Ok(Ok(()))) {
+        trace_handoff!("sender.frame_write_unconfirmed");
         return Reply::Unknown;
     }
+    trace_handoff!("sender.frame_written");
     let reply = match read_code(&mut pipe, ACK_LIMIT).await {
         Ok(0) => Reply::Accepted,
         Ok(2) => Reply::Unavailable,
@@ -215,6 +278,13 @@ async fn send(address: &str, access: &AccessShape, frame: &[u8]) -> Reply {
         Ok(5) => Reply::Busy,
         _ => Reply::Unknown,
     };
+    trace_handoff!(match reply {
+        Reply::Accepted => "sender.accepted",
+        Reply::Unavailable => "sender.dispatched_unavailable",
+        Reply::Invalid => "sender.frame_invalid",
+        Reply::Unknown => "sender.dispatch_unconfirmed",
+        Reply::Busy => "sender.dispatched_busy",
+    });
     // The result is already authenticated; this byte only lets the owner
     // release its single slot sooner. A lost result never causes retransmission.
     let _ = timeout(IO_LIMIT, pipe.write_all(&[CONSUMED])).await;
@@ -233,9 +303,11 @@ pub(super) fn forward(address: &str, identity: &Identity, paths: &[PathBuf]) -> 
         return Reply::Invalid;
     };
     let Ok(access) = AccessShape::current() else {
+        trace_handoff!("sender.current_token_denied");
         return Reply::Unavailable;
     };
     if !access.matches_identity(identity) {
+        trace_handoff!("sender.current_token_changed");
         return Reply::Unavailable;
     }
     let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
@@ -243,6 +315,7 @@ pub(super) fn forward(address: &str, identity: &Identity, paths: &[PathBuf]) -> 
         .enable_time()
         .build()
     else {
+        trace_handoff!("sender.runtime_failed");
         return Reply::Unavailable;
     };
     runtime.block_on(send(address, &access, &frame))
@@ -271,7 +344,7 @@ mod tests {
                 for outcome in [Reply::Accepted, Reply::Invalid] {
                     pipe.connect(Instant::now() + IO_LIMIT).unwrap();
                     assert_eq!(
-                        access.authenticate(&mut pipe, Instant::now() + IO_LIMIT),
+                        access.authenticate(&mut pipe, Instant::now() + IO_LIMIT, |_, _| {}),
                         Connector::Verified
                     );
                     pipe.write_all(&receipt(READY), Instant::now() + IO_LIMIT)
@@ -310,7 +383,7 @@ mod tests {
                 let access = AccessShape::current().unwrap();
                 pipe.connect(Instant::now() + IO_LIMIT).unwrap();
                 assert_eq!(
-                    access.authenticate(&mut pipe, Instant::now() + IO_LIMIT),
+                    access.authenticate(&mut pipe, Instant::now() + IO_LIMIT, |_, _| {}),
                     Connector::Verified
                 );
                 pipe.write_all(

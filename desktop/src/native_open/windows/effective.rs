@@ -114,15 +114,31 @@ impl AccessShape {
         }
     }
 
-    pub(super) fn authenticate(&self, pipe: &mut Server, deadline: Instant) -> Connector {
-        if self.verify_process(pipe.as_raw_handle(), true).is_err() {
+    pub(super) fn authenticate(
+        &self,
+        pipe: &mut Server,
+        deadline: Instant,
+        failure: impl FnOnce(&'static str, Option<i32>),
+    ) -> Connector {
+        if let Err(error) = self.verify_process(pipe.as_raw_handle(), true) {
+            failure("owner.sender_process_denied", error.raw_os_error());
             return Connector::Denied;
         }
         let mut hello = [0];
-        if pipe.read_exact(&mut hello, deadline).is_err() || hello != [HELLO] {
+        if let Err(error) = pipe.read_exact(&mut hello, deadline) {
+            failure("owner.hello_read_failed", error.raw_os_error());
             return Connector::Denied;
         }
-        self.verify_connector(pipe.as_raw_handle())
+        if hello != [HELLO] {
+            failure("owner.hello_invalid", None);
+            return Connector::Denied;
+        }
+        let connector = self.verify_connector(pipe.as_raw_handle());
+        if connector == Connector::Denied {
+            failure("owner.sender_effective_token_denied", None);
+        }
+        // RetireWorker deliberately produces no diagnostic on this thread.
+        connector
     }
 
     /// Must run synchronously on the dedicated relay thread, after a bounded
@@ -486,7 +502,9 @@ mod tests {
             scope.spawn(move || {
                 server.connect(Instant::now() + LIMIT).unwrap();
                 assert_eq!(
-                    owner.authenticate(&mut server, Instant::now() + LIMIT),
+                    owner.authenticate(&mut server, Instant::now() + LIMIT, |_, _| {
+                        panic!("trusted connector emitted a failure stage");
+                    }),
                     Connector::Verified
                 );
                 server.write_all(&[1], Instant::now() + LIMIT).unwrap();
@@ -511,10 +529,14 @@ mod tests {
                 // The pipe ACL and the unrestricted primary process both
                 // pass. Only the actual connecting thread is restricted.
                 owner.verify_process(server.as_raw_handle(), true).unwrap();
+                let mut failure = None;
                 assert_eq!(
-                    owner.authenticate(&mut server, Instant::now() + LIMIT),
+                    owner.authenticate(&mut server, Instant::now() + LIMIT, |stage, code| {
+                        failure = Some((stage, code));
+                    }),
                     Connector::Denied
                 );
+                assert_eq!(failure, Some(("owner.sender_effective_token_denied", None)));
                 server.disconnect().unwrap();
             });
 

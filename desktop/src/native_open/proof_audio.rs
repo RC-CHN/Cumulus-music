@@ -2,12 +2,23 @@
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
+    sync::{
+        OnceLock,
+        atomic::{AtomicU8, Ordering},
+    },
 };
 
 pub(crate) fn requested(explicit_file_open: bool) -> bool {
-    if !explicit_file_open
-        || std::env::var_os("CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_OUTPUT").as_deref()
-            != Some(OsStr::new("null"))
+    let enabled = explicit_file_open && disposable_profile();
+    if enabled {
+        eprintln!("Cumulus native-open proof audio: null");
+    }
+    enabled
+}
+
+fn disposable_profile() -> bool {
+    if std::env::var_os("CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_OUTPUT").as_deref()
+        != Some(OsStr::new("null"))
     {
         return false;
     }
@@ -17,7 +28,7 @@ pub(crate) fn requested(explicit_file_open: bool) -> bool {
     let Some(profile) = state.parent() else {
         return false;
     };
-    let disposable = state.is_absolute()
+    state.is_absolute()
         && state.file_name() == Some(OsStr::new("state"))
         && profile.file_name() == Some(OsStr::new("profile"))
         && profile
@@ -33,9 +44,28 @@ pub(crate) fn requested(explicit_file_open: bool) -> bool {
         .into_iter()
         .all(|(name, leaf)| {
             std::env::var_os(name).is_some_and(|path| Path::new(&path) == profile.join(leaf))
-        });
-    if disposable {
-        eprintln!("Cumulus native-open proof audio: null");
+        })
+}
+
+/// Fixed stage names and optional Win32 errors only. Never print paths,
+/// endpoint names, tokens, process IDs, account data, or any frame bytes.
+pub(crate) fn handoff_trace(stage: &'static str, os_error: Option<i32>) {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    static REMAINING: AtomicU8 = AtomicU8::new(96);
+    if *ENABLED.get_or_init(|| {
+        disposable_profile()
+            && std::env::var_os("CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_TRACE").as_deref()
+                == Some(OsStr::new("1"))
+    }) && REMAINING
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            value.checked_sub(1)
+        })
+        .is_ok()
+    {
+        if let Some(code) = os_error {
+            eprintln!("Cumulus native-open proof stage: {stage} win32={code}");
+        } else {
+            eprintln!("Cumulus native-open proof stage: {stage}");
+        }
     }
-    disposable
 }

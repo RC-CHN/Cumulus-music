@@ -55,6 +55,7 @@ def scratch_environment(root, system, app_dir, audio_output):
     )
     if audio_output == 'null':
         env['CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_OUTPUT'] = 'null'
+        env['CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_TRACE'] = '1'
     return env
 
 

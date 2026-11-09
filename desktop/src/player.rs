@@ -104,11 +104,16 @@ impl PlayerStreams {
 
     #[cfg(windows)]
     pub(crate) fn native_open_permit(&self, epoch: String) -> Option<NativeOpenPermit> {
-        Some(NativeOpenPermit {
-            lease: self.ready_lease(&epoch)?,
-            quit: self.native_quit.permit()?,
-            epoch,
-        })
+        use crate::native_open::windows::trace_handoff;
+        let Some(lease) = self.ready_lease(&epoch) else {
+            trace_handoff!("owner.player_subscription_unready");
+            return None;
+        };
+        let Some(quit) = self.native_quit.permit() else {
+            trace_handoff!("owner.quit_gate_closed");
+            return None;
+        };
+        Some(NativeOpenPermit { lease, quit, epoch })
     }
 
     #[cfg(windows)]

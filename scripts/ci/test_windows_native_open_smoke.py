@@ -50,6 +50,8 @@ class WindowsNativeOpenEvidence(unittest.TestCase):
                     self.assertEqual(audio_output, output)
                     self.assertEqual(env.get('CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_OUTPUT'),
                                      'null' if output == 'null' else None)
+                    self.assertEqual(env.get('CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_TRACE'),
+                                     '1' if output == 'null' else None)
                     state = Path(env['CUMULUS_DATA_DIR'])
                     state.mkdir()
                     observed.append(work)
@@ -70,7 +72,8 @@ class WindowsNativeOpenEvidence(unittest.TestCase):
                         patch.object(proof, 'collect_sample', return_value={'kind': endpoint_kind}), \
                         patch.object(proof, 'verify_app', side_effect=verify), \
                         patch.dict(os.environ, {'SystemRoot': str(root), 'CUMULUS_SESSION_DIR': 'ambient',
-                                               'CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_OUTPUT': 'ambient'}), \
+                                               'CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_OUTPUT': 'ambient',
+                                               'CUMULUS_WINDOWS_NATIVE_OPEN_PROOF_TRACE': 'ambient'}), \
                         patch.object(sys, 'argv', ['proof', '--packages', str(root),
                                                   '--root', str(evidence), '--fixture-encoder', str(encoder),
                                                   '--endpoint-probe', str(endpoint_probe), '--audio-output', output]), \

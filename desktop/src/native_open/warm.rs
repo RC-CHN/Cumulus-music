@@ -96,10 +96,24 @@ pub(super) fn dispatch<R: Runtime>(
 pub(super) fn ready_windows<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Option<crate::player::NativeOpenPermit> {
-    app.get_webview_window("main")?;
-    let account = app.try_state::<MusicClient>()?.account().ok()?;
-    app.try_state::<crate::player::PlayerStreams>()?
-        .native_open_permit(account.epoch)
+    use super::windows::trace_handoff;
+    if app.get_webview_window("main").is_none() {
+        trace_handoff!("owner.main_window_unavailable");
+        return None;
+    }
+    let Some(client) = app.try_state::<MusicClient>() else {
+        trace_handoff!("owner.client_unavailable");
+        return None;
+    };
+    let Ok(account) = client.account() else {
+        trace_handoff!("owner.account_unavailable");
+        return None;
+    };
+    let Some(streams) = app.try_state::<crate::player::PlayerStreams>() else {
+        trace_handoff!("owner.player_streams_unavailable");
+        return None;
+    };
+    streams.native_open_permit(account.epoch)
 }
 
 #[cfg(windows)]
@@ -109,10 +123,13 @@ pub(super) fn dispatch_windows<R: Runtime>(
     stopped: Arc<AtomicBool>,
     permit: crate::player::NativeOpenPermit,
 ) -> Reply {
+    use super::windows::trace_handoff;
     if stopped.load(Ordering::Acquire) || !permit.ready() {
+        trace_handoff!("owner.dispatch_permit_expired");
         return Reply::Unavailable;
     }
     let Some(client) = app.try_state::<MusicClient>() else {
+        trace_handoff!("owner.dispatch_client_unavailable");
         return Reply::Unavailable;
     };
     if !paths.iter().any(|path| {
@@ -122,6 +139,7 @@ pub(super) fn dispatch_windows<R: Runtime>(
                 .any(|format| extension.eq_ignore_ascii_case(format))
         })
     }) {
+        trace_handoff!("owner.dispatch_extension_rejected");
         return Reply::Invalid;
     }
     let active = permit.clone();
@@ -133,6 +151,7 @@ pub(super) fn dispatch_windows<R: Runtime>(
         authority,
     )) {
         Ok(_) => {
+            trace_handoff!("owner.dispatch_accepted");
             let handle = app.clone();
             let _ = app.run_on_main_thread(move || {
                 if permit.ready() && !stopped.load(Ordering::Acquire) {
@@ -143,6 +162,9 @@ pub(super) fn dispatch_windows<R: Runtime>(
         }
         // Without a distinct pre-commit receipt, a decoder/transport error
         // after dispatch cannot rule out a durable queue update.
-        Err(_) => Reply::Unknown,
+        Err(_) => {
+            trace_handoff!("owner.dispatch_unconfirmed");
+            Reply::Unknown
+        }
     }
 }
