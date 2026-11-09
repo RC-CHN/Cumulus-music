@@ -18,6 +18,22 @@
   const openError = () => one('.lyrics-panel .lyric-contribution-error');
   const available = label => action()?.textContent.trim() === label && action()?.offsetWidth > 0;
   const operator = () => one('.lyrics-panel [aria-label="歌词操作"]');
+  const font = () => one('.lyrics-panel [aria-label="调整歌词字号"]');
+  const slider = () => one('.lyrics-panel [aria-label="歌词字号增量"]');
+  const fontKey = 'cumulus.playback.lyric-font-gain.v1';
+  const lyricSize = () => parseFloat(getComputedStyle(one('.lyrics-panel .lyric-line')).fontSize);
+  async function showFont(value) {
+    const trigger = await wait(() => font()?.offsetWidth && font(), 'visible lyric font button');
+    trigger.focus({ preventScroll: true });
+    trigger.click();
+    return wait(() => slider()?.value === String(value) && document.activeElement === slider() &&
+      slider(), 'font slider opens and receives focus');
+  }
+  async function closeFont() {
+    slider().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(() => font()?.getAttribute('aria-expanded') === 'false' &&
+      document.activeElement === font(), 'Escape closes the font popup and restores focus');
+  }
   const menu = () => {
     const id = operator()?.getAttribute('aria-controls');
     return id && [...document.querySelectorAll('.action-menu:not([inert])')].find(node => node.id === id);
@@ -83,6 +99,20 @@
     const first = await select('1');
     await wait(() => available('上传歌词'), 'ordinary empty lyrics upload action');
     await capture('empty_upload', '1');
+    const emptyBeforeFont = await playback();
+    assert(!one('.lyrics-panel .lyric-line'), 'empty lyrics have no parsed lines');
+    await showFont(0);
+    one('.lyrics-panel [aria-label="增大歌词字号"]').click();
+    await wait(() => slider()?.value === '1', 'font control moves by one step');
+    one('.lyrics-panel [aria-label="增大歌词字号"]').click();
+    await wait(() => slider()?.value === '2' && localStorage.getItem(fontKey) === '2',
+      'empty-track adjustment is stored for subsequent tracks');
+    await capture('empty_lyric_font', '1');
+    await closeFont();
+    const emptyAfterFont = await playback();
+    assert(emptyBeforeFont.playId === emptyAfterFont.playId &&
+      emptyBeforeFont.queueRevision === emptyAfterFont.queueRevision &&
+      emptyBeforeFont.position === emptyAfterFont.position, 'font adjustment leaves native playback alone');
     action().click();
     await wait(() => openError() && action()?.getAttribute('aria-disabled') === 'false',
       'first shell failure leaves the original retry action');
@@ -102,16 +132,29 @@
     await rejected(second);
     await wait(() => available('上传翻译'), 'missing translation only');
     await capture('translation_only', '3');
+    await wait(() => one('.lyrics-panel .lyric-line'), 'timed lyrics are visible');
+    await showFont(2);
+    const increased = lyricSize();
+    await capture('timed_lyric_font_carried', '3');
+    one('.lyrics-panel [aria-label="减小歌词字号"]').click();
+    await wait(() => slider()?.value === '1', 'font control moves by one step');
+    one('.lyrics-panel [aria-label="减小歌词字号"]').click();
+    await wait(() => slider()?.value === '0' && localStorage.getItem(fontKey) === '0' &&
+      increased - lyricSize() === 2, 'the carried setting changes the timed line by two CSS pixels');
+    const fontPixelDelta = increased - lyricSize();
+    await closeFont();
     const pure = await select('4');
     await rejected(third);
     await wait(() => !action() && one('.lyrics-panel .empty-state')?.textContent.includes('纯音乐，请欣赏'),
       'instrumental has no contribution entry');
+    assert(font()?.offsetWidth, 'instrumental lyrics still offer a font control');
     await rejected(pure);
     await capture('instrumental', '4');
     const failed = await select('5');
     await wait(() => !action() && one('.lyrics-panel .empty-state')?.textContent.includes('歌词加载失败')
       && one('.lyrics-panel .empty-state button')?.textContent.trim() === '刷新',
       'lyric fetch failure has retry only');
+    assert(font()?.offsetWidth, 'lyric failure still offers a font control');
     await rejected(failed);
     await capture('lyric_failed', '5');
     await showMenu(['歌词报错']);
@@ -160,14 +203,14 @@
     const lyricsTab = one('.lyrics-panel button[aria-controls="vinyl-lyrics-content"]');
     assert(wikiTab && lyricsTab, 'classic playback tabs are available');
     wikiTab.click();
-    await wait(() => wikiTab.getAttribute('aria-selected') === 'true' && !operator()?.offsetWidth,
+    await wait(() => wikiTab.getAttribute('aria-selected') === 'true' && !operator()?.offsetWidth && !font()?.offsetWidth,
       'wiki hides the lyrics operator');
     lyricsTab.click();
-    await wait(() => lyricsTab.getAttribute('aria-selected') === 'true' && operator()?.offsetWidth,
+    await wait(() => lyricsTab.getAttribute('aria-selected') === 'true' && operator()?.offsetWidth && font()?.offsetWidth,
       'operator returns on the lyrics tab');
     assert((await playback()).playId === translation, 'switching tabs preserves current native playback');
     await emit('complete', { ok: true, stageCount: count, staleRejected: true, toolbarVerified: true,
-      wikiHidesToolbar: true });
+      wikiHidesToolbar: true, emptyLyricFont: true, fontPixelDelta });
   } catch (error) {
     await emit('failed', { error: String(error), stack: error.stack,
       panel: one('.lyrics-panel')?.innerText.slice(0, 400), stageCount: count });

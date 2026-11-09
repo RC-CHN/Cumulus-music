@@ -563,6 +563,13 @@ const currentLyric = computed(() => {
     ? document
     : undefined;
 });
+const lyricFontAvailable = computed(
+  () =>
+    view.value?.epoch === props.account.epoch &&
+    !!(view.value?.playId && view.value.track && !view.value.track.voiceId) &&
+    !lyricLoading.value &&
+    !!(currentLyric.value || lyricError.value),
+);
 const contributionCopy = {
   upload: ['', '上传歌词'],
   scrolling: ['该歌词暂无自动滚动，', '上传滚动歌词'],
@@ -1447,8 +1454,12 @@ const displayedAuxiliary = computed(() =>
                 class="lyric-tools"
                 :aria-busy="contributionOpening"
               >
+                <LyricFontSize
+                  v-if="lyricFontAvailable"
+                  :key="`${currentEpoch}:${currentPlayId}`"
+                  v-model="lyricFontGain"
+                />
                 <template v-if="lyrics">
-                  <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
                   <template v-if="lyrics.scrollable">
                     <button
                       class="icon-button"

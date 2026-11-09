@@ -53,15 +53,17 @@ def main():
     assert code == 0, code
     complete = json.loads((out / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['staleRejected'] and complete['toolbarVerified']
-    assert complete['stageCount'] == 11 and complete['wikiHidesToolbar'], complete
+    assert complete['stageCount'] == 13 and complete['wikiHidesToolbar'], complete
+    assert complete['emptyLyricFont'] and complete['fontPixelDelta'] == 2, complete
     images = sorted(out.glob('ux_*.png'))
-    assert len(images) == 11
+    assert len(images) == 13
     urls = browser.with_suffix('.receipt').read_text(encoding='utf-8').splitlines()
     assert urls == ['https://music.163.com/#/wiki/song?type=2&songId=' + song
                     for song in ('1', '1', '2', '6', '6', '7', '8')], urls
     report = {'ok': True, 'actualLinuxWebView': True, 'screenshots': len(images),
               'browserCalls': urls, 'firstShellFailedAndRetried': True,
               'staleNativeSelectionRejected': True, 'toolbarVerified': True, 'wikiHidesToolbar': True,
+              'emptyLyricFont': True, 'fontPixelDelta': complete['fontPixelDelta'],
               'realBrowserRequests': 0,
               'realAccountWrites': 0}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
