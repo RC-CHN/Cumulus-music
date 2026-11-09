@@ -1,4 +1,4 @@
-//! Process-local authority for actual comprehensive Search AudioCards.
+//! Process-local authority for comprehensive AudioCards and classified Audio rows.
 use super::{SearchCategory, SearchItem, SearchResultView};
 use crate::{
     Error, Result,
@@ -19,7 +19,14 @@ const PAGE_LIMIT: usize = 16;
 const RADIO_LIMIT: usize = 128;
 const LIFETIME: Duration = Duration::from_secs(30 * 60);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::client) enum PodcastPlaybackLane {
+    Card,
+    Row,
+}
+
 struct Page {
+    lane: PodcastPlaybackLane,
     token: SessionToken,
     api: Weak<dyn Api>,
     credentials: Option<String>,
@@ -47,21 +54,25 @@ impl SearchPodcastPlaybacks {
         credentials: Option<String>,
         view: &mut SearchResultView,
     ) -> Result<()> {
-        if view.query.category != SearchCategory::All
-            || api.search_privilege_credential_revision().ok() != Some(credentials.clone())
-        {
+        let lane = match view.query.category {
+            SearchCategory::All => PodcastPlaybackLane::Card,
+            SearchCategory::Podcasts => PodcastPlaybackLane::Row,
+            _ => return Ok(()),
+        };
+        if api.search_privilege_credential_revision().ok() != Some(credentials.clone()) {
             return Ok(());
         }
         let mut radios = BTreeMap::<String, Option<Radio>>::new();
-        let observed = |section: &super::SearchSection| {
-            matches!(
+        let observed = |section: &super::SearchSection| match lane {
+            PodcastPlaybackLane::Row => section.category == Some(SearchCategory::Podcasts),
+            PodcastPlaybackLane::Card => matches!(
                 section.id.rsplit_once(':').map(|(code, _)| code),
                 Some(
                     "search_block_best_match"
                         | "search_block_hot_result_core_resources"
                         | "search_block_voicelist"
                 )
-            )
+            ),
         };
         for section in view.sections.iter().filter(|section| observed(section)) {
             for item in &section.items {
@@ -125,6 +136,7 @@ impl SearchPodcastPlaybacks {
             }
         }
         pages.push_back(Page {
+            lane,
             token: token.clone(),
             api: Arc::downgrade(api),
             credentials,
@@ -139,6 +151,7 @@ impl SearchPodcastPlaybacks {
         token: &SessionToken,
         api: &Arc<dyn Api>,
         credentials: Option<&str>,
+        lane: PodcastPlaybackLane,
         receipt: &str,
         id: &str,
     ) -> Result<Radio> {
@@ -146,7 +159,7 @@ impl SearchPodcastPlaybacks {
             .lock()
             .map_err(|_| Error::LockPoisoned)?
             .iter()
-            .filter(|page| page.owns(token, api, credentials))
+            .filter(|page| page.lane == lane && page.owns(token, api, credentials))
             .find_map(|page| {
                 page.cards
                     .get(receipt)
@@ -161,12 +174,15 @@ impl SearchPodcastPlaybacks {
         token: &SessionToken,
         api: &Arc<dyn Api>,
         credentials: Option<&str>,
+        lane: PodcastPlaybackLane,
         receipt: &str,
     ) -> bool {
         self.0.lock().is_ok_and(|pages| {
-            pages
-                .iter()
-                .any(|page| page.cards.contains_key(receipt) && page.owns(token, api, credentials))
+            pages.iter().any(|page| {
+                page.lane == lane
+                    && page.cards.contains_key(receipt)
+                    && page.owns(token, api, credentials)
+            })
         })
     }
 }
@@ -176,6 +192,7 @@ impl MusicClient {
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,
+        lane: PodcastPlaybackLane,
         receipt: &str,
         id: &str,
     ) -> Result<(Radio, Cancellation)> {
@@ -188,7 +205,7 @@ impl MusicClient {
         self.session.require_api(token, api)?;
         let credentials = api.search_privilege_credential_revision()?;
         let pages = self.search.podcast_playbacks.clone();
-        let radio = pages.resolve(token, api, credentials.as_deref(), receipt, id)?;
+        let radio = pages.resolve(token, api, credentials.as_deref(), lane, receipt, id)?;
         let (session, token, api, receipt) = (
             self.session.clone(),
             token.clone(),
@@ -198,7 +215,7 @@ impl MusicClient {
         let guard = Cancellation::new(move || {
             session.require_api(&token, &api).is_ok()
                 && api.search_privilege_credential_revision().ok().as_ref() == Some(&credentials)
-                && pages.still_observed(&token, &api, credentials.as_deref(), &receipt)
+                && pages.still_observed(&token, &api, credentials.as_deref(), lane, &receipt)
         });
         Ok((radio, guard))
     }

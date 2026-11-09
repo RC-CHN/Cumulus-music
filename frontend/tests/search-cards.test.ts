@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   searchCardSelection,
   searchPodcastCardSelection,
+  searchPodcastRowSelection,
   searchAlbumCredits,
   searchCardIsCurrent,
   searchCardCanPlay,
@@ -57,7 +58,7 @@ test('ordinary search links use the observed public program even without a playa
   const malformed = { ...row, voice: { ...row.voice, id: '21&uid=7' } };
   assert.equal(searchVoiceProgram('all', { ...section, items: [malformed] }, malformed), undefined);
 });
-test('artist covers select the native resolver; album and radio keep their own snapshots', async () => {
+test('artist covers select the native resolver and albums keep their own snapshots', async () => {
   const calls: unknown[] = [];
   const core = {
     catalogPage: async (...args: unknown[]) => {
@@ -77,10 +78,6 @@ test('artist covers select the native resolver; album and radio keep their own s
         },
       };
     },
-    podcastPage: async (...args: unknown[]) => {
-      calls.push(args);
-      return { epoch: '1', revision: 'radio-fresh', episodes: [{ id: '21', unavailable: false }] };
-    },
   } as unknown as CoreClient;
   assert.deepEqual(await searchCardSelection(core, '1', artist, 'lossless'), {
     kind: 'search_artist_card',
@@ -94,25 +91,17 @@ test('artist covers select the native resolver; album and radio keep their own s
     index: 1,
     quality: 'lossless',
   });
-  assert.deepEqual(await searchCardSelection(core, '1', podcast, 'standard'), {
-    kind: 'podcast',
-    scope: { kind: 'radio', id: '7', ascending: true },
-    revision: 'radio-fresh',
-    start_id: '21',
-  });
   assert.equal((calls[0] as unknown[])[2], true);
-  assert.equal((calls[1] as unknown[])[2], true);
+  assert.equal(calls.length, 1);
   assert.equal(searchCardIsCurrent(artist, { kind: 'album', id: '12' }), false);
   assert.equal(searchCardIsCurrent(artist, { kind: 'artist', id: '12' }), true);
   assert.equal(searchCardIsCurrent(voice, null, '21'), true);
 });
-test('missing catalog data and stale radio snapshots cannot become playback selections', async () => {
+test('missing catalog data cannot become an album playback selection', async () => {
   const core = {
     catalogPage: async () => ({ epoch: '1', value: null }),
-    podcastPage: async () => ({ epoch: 'old', revision: 'stale' }),
   } as unknown as CoreClient;
   await assert.rejects(searchCardSelection(core, '1', album, 'standard'), { code: 'unavailable' });
-  await assert.rejects(searchCardSelection(core, '1', podcast, 'standard'), { code: 'stale' });
 });
 
 test('comprehensive podcast cards require their exact native playback receipt', () => {
@@ -326,4 +315,25 @@ test('album search credits put the primary artist first and preserve names witho
     { id: lead.id, name: 'Primary credit' },
   ]);
   assert.deepEqual(searchAlbumCredits(podcast), []);
+});
+
+test('classified podcasts carry a row receipt and explicit gesture, never a card or raw ID', () => {
+  const classified = { ...podcast, table: { subscriptionEligible: false }, playbackReceipt: 'row' };
+  assert.equal(searchPodcastCardSelection(classified), undefined);
+  assert.equal(
+    searchPodcastRowSelection({ ...podcast, playbackReceipt: 'card' }, 'index'),
+    undefined,
+  );
+  assert.equal(
+    searchPodcastRowSelection({ ...classified, playbackReceipt: undefined }, 'index'),
+    undefined,
+  );
+  for (const gesture of ['index', 'double_click', 'menu'] as const) {
+    assert.deepEqual(searchPodcastRowSelection(classified, gesture), {
+      kind: 'search_podcast_row',
+      id: '7',
+      receipt: 'row',
+      gesture,
+    });
+  }
 });

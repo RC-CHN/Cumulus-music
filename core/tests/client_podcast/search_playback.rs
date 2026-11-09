@@ -240,3 +240,256 @@ async fn denied_or_stale_search_podcast_does_not_replace_old_queue() {
     assert_eq!(api.calls.lock().unwrap().len(), calls);
     assert_eq!(device.state.lock().unwrap().loads, 1);
 }
+
+async fn row_receipt(client: &MusicClient) -> String {
+    let data = client
+        .search_results(
+            "1",
+            SearchResultQuery {
+                keyword: "synthetic search podcast".into(),
+                category: SearchCategory::Podcasts,
+                offset: 0,
+                limit: 10,
+                correct: true,
+                channel: None,
+            },
+        )
+        .await
+        .unwrap();
+    let rows = serde_json::to_value(data.value).unwrap();
+    assert!(
+        rows["sections"][0]["items"][1]
+            .get("playbackReceipt")
+            .is_none()
+    );
+    rows["sections"][0]["items"][0]["playbackReceipt"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+fn select_row(receipt: &str, gesture: SearchPodcastRowGesture) -> PlaySelection {
+    PlaySelection::SearchPodcastRow {
+        receipt: receipt.into(),
+        id: "7".into(),
+        gesture,
+    }
+}
+fn replace_preference(client: &MusicClient, enabled: bool) {
+    let prefs = client.queue_click_preferences("1").unwrap();
+    client
+        .queue_click_preferences_command(
+            "1",
+            QueueClickPreferencesCommand::Change {
+                expected_revision: serde_json::to_value(prefs.value).unwrap()["revision"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+                replace_queue: enabled,
+            },
+        )
+        .unwrap();
+}
+
+#[tokio::test]
+async fn classified_podcast_index_uses_the_row_lane_resume_and_exact_same_decoder() {
+    let (dir, api, _session, client, device) = fixture_with_device();
+    api.count.store(2, Ordering::SeqCst);
+    seed_search(&api);
+    store_checkpoint(dir.path());
+    api.search_playback_missing_list_media
+        .store(true, Ordering::SeqCst);
+    let row = row_receipt(&client).await;
+    let (card, _) = receipts(&client).await;
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    api.calls.lock().unwrap().clear();
+    for input in [
+        select_row(&card, SearchPodcastRowGesture::Index),
+        select(&row, "7"),
+    ] {
+        assert!(matches!(
+            prepared(&client, input).await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    assert!(
+        client
+            .play_selection("1", select_row(&row, SearchPodcastRowGesture::Index))
+            .await
+            .is_err()
+    );
+    assert!(api.calls.lock().unwrap().is_empty());
+    let first = prepared(&client, select_row(&row, SearchPodcastRowGesture::Index))
+        .await
+        .unwrap();
+    assert_eq!(first.mode, PlaybackMode::Sequential);
+    assert_eq!(first.track.as_ref().unwrap().voice_id.as_deref(), Some("1"));
+    assert_eq!(first.position, Some(19.0));
+    assert_eq!(first.queue_len, 2);
+    let paused = prepared(&client, select_row(&row, SearchPodcastRowGesture::Index))
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.play_id, first.play_id);
+    assert_eq!(paused.position, first.position);
+    assert_eq!(paused.queue_revision, first.queue_revision);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let calls = api.calls.lock().unwrap().clone();
+    assert_eq!(
+        calls[0],
+        (
+            "/api/v6/dj/program/byradio".into(),
+            json!({"radioId":"7","limit":250,"offset":0,"asc":false})
+        )
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(path, _)| path == "/api/dj/play/url/check")
+            .count(),
+        1
+    );
+    assert!(!calls.iter().any(|(p, _)| matches!(
+        p.as_str(),
+        "/api/djradio/v3/get" | "/api/dj/around/program/v1"
+    )));
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(path, _)| path == "/api/dj/program/detail")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn missing_classified_podcast_checkpoint_never_guesses_another_episode() {
+    let (dir, api, _session, client, device) = fixture_with_device();
+    api.count.store(3, Ordering::SeqCst);
+    let row = row_receipt(&client).await;
+    let baseline = prepared(&client, PlaySelection::Voice { id: "5".into() })
+        .await
+        .unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::SingleLoop,
+            },
+        )
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap().store().put(
+        "9", "podcast-latest-voice-v1", "7",
+        &json!({"id":"50","mainTrackId":"1050","name":"Missing episode","time":19,"duration":120}),
+    ).unwrap();
+    api.calls.lock().unwrap().clear();
+    assert!(
+        prepared(
+            &client,
+            select_row(&row, SearchPodcastRowGesture::DoubleClick)
+        )
+        .await
+        .is_err()
+    );
+    let unchanged = client.player_snapshot("1").await.unwrap();
+    assert_eq!(unchanged.play_id, paused.play_id);
+    assert_eq!(unchanged.queue_revision, paused.queue_revision);
+    replace_preference(&client, false);
+    let inserted = prepared(
+        &client,
+        select_row(&row, SearchPodcastRowGesture::DoubleClick),
+    )
+    .await
+    .unwrap();
+    assert_eq!(inserted.state, PlaybackStatus::Paused);
+    assert_eq!(inserted.play_id, paused.play_id);
+    assert_eq!(inserted.position, paused.position);
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|t| t.track.voice_id.as_deref().unwrap())
+            .collect::<Vec<_>>(),
+        ["5", "1", "2", "3"]
+    );
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(baseline.play_id, paused.play_id);
+
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    // Menu is PlayAll, independent of the double-click preference. With no
+    // running decoder the same stale bookmark permits a queue-only clear.
+    let idle = prepared(&client, select_row(&row, SearchPodcastRowGesture::Menu))
+        .await
+        .unwrap();
+    assert_eq!(idle.state, PlaybackStatus::Idle);
+    assert!(idle.play_id.is_none());
+    assert_eq!(idle.mode, PlaybackMode::Sequential);
+    assert_eq!(idle.queue_len, 3);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let calls = api.calls.lock().unwrap().clone();
+    assert_eq!(
+        calls,
+        vec![
+            (
+                "/api/v6/dj/program/byradio".into(),
+                json!({"radioId":"7","limit":250,"offset":0})
+            );
+            3
+        ]
+    );
+}
+
+#[tokio::test]
+async fn classified_podcast_no_checkpoint_chooses_the_batch_and_preserves_random_mode() {
+    let (_dir, api, _session, client, _device) = fixture_with_device();
+    api.count.store(3, Ordering::SeqCst);
+    let row = row_receipt(&client).await;
+    prepared(&client, PlaySelection::Voice { id: "5".into() })
+        .await
+        .unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    replace_preference(&client, false);
+    let started = prepared(
+        &client,
+        select_row(&row, SearchPodcastRowGesture::DoubleClick),
+    )
+    .await
+    .unwrap();
+    assert_eq!(started.mode, PlaybackMode::Random);
+    assert!(matches!(
+        started.track.unwrap().voice_id.as_deref(),
+        Some("1" | "2" | "3")
+    ));
+    assert_eq!(
+        client
+            .player_queue("1")
+            .await
+            .unwrap()
+            .tracks
+            .iter()
+            .map(|t| t.track.voice_id.as_deref().unwrap())
+            .collect::<Vec<_>>(),
+        ["5", "1", "2", "3"]
+    );
+}

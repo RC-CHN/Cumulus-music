@@ -48,6 +48,7 @@ struct Backend {
     search_playback_response: Mutex<Value>,
     search_playback_revision: AtomicUsize,
     search_playback_deny: AtomicUsize,
+    search_playback_missing_list_media: AtomicBool,
     search_playback_hold: AtomicBool,
     search_playback_started: tokio::sync::Notify,
     search_playback_release: tokio::sync::Notify,
@@ -137,6 +138,19 @@ impl Api for Backend {
                 return Err(Error::State("fixture offline"));
             }
             Ok(match path {
+                "/api/search/voicelist/get" => {
+                    assert_eq!(
+                        p,
+                        json!({"keyword":"synthetic search podcast","scene":"normal","offset":0,"limit":10})
+                    );
+                    assert!(!cache);
+                    let mut playable = radio();
+                    playable["categoryId"] = json!(2);
+                    json!({"code":200,"data":{"totalCount":2,"hasMore":false,"resources":[
+                        {"type":"voicelist","baseInfo":playable},
+                        {"type":"voicelist","baseInfo":{"id":8,"name":"Unlisted","underShelf":true}}
+                    ]}})
+                }
                 "/api/search/pc/complex/page" => {
                     assert_eq!(p["keyword"], "synthetic search podcast");
                     self.search_playback_response.lock().unwrap().clone()
@@ -240,7 +254,13 @@ impl Api for Backend {
                     if p["asc"] == false {
                         ids.reverse();
                     }
-                    json!({"code":200,"data":{"programs":ids.into_iter().skip(offset).take(limit).map(|id| self.episode(id)).collect::<Vec<_>>(),"count":count,"more":offset+limit<count,"asc":p["asc"]}})
+                    json!({"code":200,"data":{"programs":ids.into_iter().skip(offset).take(limit).map(|id| {
+                        let mut episode = self.episode(id);
+                        if id == 1 && self.search_playback_missing_list_media.load(Ordering::SeqCst) {
+                            episode.as_object_mut().unwrap().remove("mainSong");
+                        }
+                        episode
+                    }).collect::<Vec<_>>(),"count":count,"more":offset+limit<count,"asc":p["asc"]}})
                 }
                 "/api/content/my/liked/voice" => {
                     json!({"code":200,"data":{"data":self.liked.lock().unwrap().iter().map(|id|json!({"voiceId":id,"voiceName":"Liked","likeTime":1234})).collect::<Vec<_>>(),"hasMore":false}})

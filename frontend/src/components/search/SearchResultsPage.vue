@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SearchPodcastRowGesture } from '../../services/player';
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
@@ -124,7 +125,7 @@ const emit = defineEmits<{
   album: [id: string];
   mv: [id: string];
   expired: [];
-  playCard: [item: SearchItem];
+  playCard: [item: SearchItem, gesture?: SearchPodcastRowGesture];
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queueCard: [request: SearchQueueRequest];
   queueDrag: [
@@ -1174,7 +1175,7 @@ onBeforeUnmount(() => {
                   item.table?.subscriptionEligible &&
                   podcastFollow.activate(item.podcast.id, $event)
                 "
-                @play="emit('playCard', $event)"
+                @play="(item, gesture) => emit('playCard', item, gesture)"
                 @toggle-pending-voice="
                   (target, anchor) => emit('togglePendingVoice', target, anchor)
                 "

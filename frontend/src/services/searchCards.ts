@@ -4,6 +4,7 @@ import {
   type PlaySelection,
   type PlayerOrigin,
   type PlayerView,
+  type SearchPodcastRowGesture,
   type Quality,
 } from './player.ts';
 import type { SearchCategory, SearchItem, SearchSection } from './search.ts';
@@ -173,16 +174,31 @@ export function searchVoiceSelection(item: Extract<SearchItem, { kind: 'voice' }
 }
 /** Comprehensive podcast overlays can only use an admitted native result. */
 export function searchPodcastCardSelection(item: Extract<SearchItem, { kind: 'podcast' }>) {
-  return !item.podcast.unavailable && item.playbackReceipt
+  return !item.table && !item.podcast.unavailable && item.playbackReceipt
     ? { kind: 'search_podcast_card' as const, id: item.podcast.id, receipt: item.playbackReceipt }
+    : undefined;
+}
+
+/** The classified table has its own native response authority and gesture. */
+export function searchPodcastRowSelection(
+  item: Extract<SearchItem, { kind: 'podcast' }>,
+  gesture: SearchPodcastRowGesture,
+) {
+  return item.table && !item.podcast.unavailable && item.playbackReceipt
+    ? {
+        kind: 'search_podcast_row' as const,
+        id: item.podcast.id,
+        receipt: item.playbackReceipt,
+        gesture,
+      }
     : undefined;
 }
 
 /** Artist covers resolve the signed cohort and track list entirely in Rust. */
 export async function searchCardSelection(
-  core: Pick<CoreClient, 'catalogPage' | 'podcastPage'>,
+  core: Pick<CoreClient, 'catalogPage'>,
   epoch: string,
-  item: Exclude<SearchItem, { kind: 'voice' }>,
+  item: Exclude<SearchItem, { kind: 'voice' | 'podcast' }>,
   quality: Quality,
 ): Promise<PlaySelection> {
   if (!searchCardCanPlay(item)) throw { code: 'unavailable', message: '此内容暂不可播放' };
@@ -191,17 +207,5 @@ export async function searchCardSelection(
   if (item.kind === 'artist') return { kind: 'search_artist_card', id: item.artist.id, quality };
   if (item.kind === 'album')
     return catalogResourceSelection(core, epoch, { kind: 'album', id: item.album.id }, quality);
-  if (item.kind === 'podcast') {
-    const scope = { kind: 'radio' as const, id: item.podcast.id, ascending: true };
-    const view = await core.podcastPage(
-      epoch,
-      { scope, keyword: '', offset: 0, limit: 100, revision: null },
-      true,
-    );
-    if (view.epoch !== epoch) throw { code: 'stale', message: '账号已切换' };
-    const id = view.episodes.find((episode) => !episode.unavailable)?.id;
-    if (!id) throw { code: 'unavailable', message: '暂无可播放声音' };
-    return { kind: 'podcast', scope, revision: view.revision, start_id: id };
-  }
   throw { code: 'unavailable', message: '此内容暂不可播放' };
 }

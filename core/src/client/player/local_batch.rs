@@ -171,7 +171,7 @@ fn insert_local_batch(
     Ok(queue)
 }
 
-fn random_order(
+pub(super) fn random_order(
     queue: &QueueSnapshot,
     inserted: &HashSet<&str>,
     first_inserted: &str,

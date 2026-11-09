@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
 import { podcastProgramPublicLink, type PodcastSearchFollow } from '../../services/podcast';
 import type { PlaylistView } from '../../services/contracts';
@@ -9,7 +9,7 @@ import {
   type PlaylistLinkAction,
 } from '../../services/playlistMenu';
 import { artworkAt } from '../../services/artwork';
-import { time } from '../../services/player';
+import { time, type SearchPodcastRowGesture } from '../../services/player';
 import { playlistCoverCount, playlistTableCount } from '../../services/playlistHeader';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
@@ -27,6 +27,7 @@ import {
   searchMvPlaybackTarget,
   searchPlaylistCreator,
   searchPodcastCardSelection,
+  searchPodcastRowSelection,
   searchVideoCredits,
   searchVideoCoverStats,
   type SearchPendingVoiceToggle,
@@ -58,7 +59,7 @@ const emit = defineEmits<{
   artistAction: [request: ArtistCardRequest];
   albumAction: [request: AlbumCardRequest];
   podcastFollow: [state: PodcastSearchFollow];
-  play: [item: SearchItem];
+  play: [item: SearchItem, gesture?: SearchPodcastRowGesture];
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queue: [request: SearchQueueRequest];
   queueVoice: [id: string];
@@ -113,6 +114,7 @@ const playbackFocus = usePlaybackTriggerFocus(
     !element.value?.closest('.page-leave-active,.search-results-leave-active'),
 );
 function contextMenu(event: MouseEvent | KeyboardEvent) {
+  cancelRowLink();
   const focused =
     event instanceof KeyboardEvent && event.target instanceof Element
       ? event.target.closest<HTMLButtonElement>('button:not(:disabled)')
@@ -133,9 +135,12 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
   );
 }
 const failedCover = ref(false);
+const podcastRow = computed(() => props.category === 'podcasts' && !!props.tableRow);
 const canPlay = computed(() =>
-  props.item.kind === 'podcast' && props.category === 'all'
-    ? !!searchPodcastCardSelection(props.item)
+  props.item.kind === 'podcast'
+    ? podcastRow.value
+      ? !!searchPodcastRowSelection(props.item, 'index')
+      : !!searchPodcastCardSelection(props.item)
     : searchCardCanPlay(props.item) || (props.item.kind === 'playlist' && props.current),
 );
 const canQueue = computed(
@@ -192,8 +197,8 @@ const items = computed<MenuItem[]>(() => {
       ? [
           {
             key: 'play',
-            label: props.current && props.playing ? '暂停' : '播放',
-            icon: props.current && props.playing ? 'pause' : 'play',
+            label: !podcastRow.value && props.current && props.playing ? '暂停' : '播放',
+            icon: !podcastRow.value && props.current && props.playing ? 'pause' : 'play',
             disabled: !props.playable || !canPlay.value,
           },
         ]
@@ -310,13 +315,21 @@ function playButton(event: MouseEvent) {
     if (!target.disabled) emit('togglePendingVoice', target, event.currentTarget);
     return;
   }
-  action('play');
+  action('play', 'index');
 }
-function action(key: string) {
+function action(key: string, gesture: SearchPodcastRowGesture = 'menu') {
+  cancelRowLink();
   if (key === 'play' && canPlay.value && props.playable)
     playbackFocus.start(
-      () => emit('play', props.item),
-      element.value?.querySelector<HTMLElement>('.search-card-play'),
+      () =>
+        emit(
+          'play',
+          props.item,
+          podcastRow.value && props.item.kind === 'podcast' ? gesture : undefined,
+        ),
+      gesture === 'double_click'
+        ? actionAnchor()
+        : element.value?.querySelector<HTMLElement>('.search-card-play'),
     );
   else if (key === 'open' && !unavailable.value) emit('open', props.item);
   else if (props.item.kind === 'artist' && (key === 'collect' || key === 'copy')) {
@@ -373,22 +386,62 @@ function action(key: string) {
   else if (key === 'download' && props.item.kind === 'voice' && !props.item.voice.unavailable)
     emit('download', props.item);
 }
+// A Vue route change removes the row after the first physical click. Leave
+// the podcast body a bounded native double-click interval, while explicit
+// title/creator/index/menu controls remain immediate.
+let rowLinkTimer: ReturnType<typeof setTimeout> | undefined;
+function cancelRowLink() {
+  if (rowLinkTimer === undefined) return;
+  clearTimeout(rowLinkTimer);
+  rowLinkTimer = undefined;
+}
+watch([() => props.item, () => props.category], cancelRowLink, { flush: 'sync' });
+onBeforeUnmount(cancelRowLink);
+
+function rowBody(event: MouseEvent) {
+  return (
+    !event.defaultPrevented &&
+    event.target instanceof Element &&
+    !event.target.closest('button, a, input, [role="menu"], .action-menu-host')
+  );
+}
 function doubleClick(event: MouseEvent) {
-  if (
-    props.item.kind === 'voice' &&
-    !(event.target instanceof Element && event.target.closest('button, a, [role="menu"]'))
-  )
-    action('play');
+  if (props.item.kind === 'voice') {
+    if (!(event.target instanceof Element && event.target.closest('button, a, [role="menu"]')))
+      action('play');
+    return;
+  }
+  if (props.item.kind === 'podcast' && podcastRow.value && rowBody(event)) {
+    cancelRowLink();
+    action('play', 'double_click');
+  }
 }
 function activateRow(event: MouseEvent) {
   if (
-    props.tableRow &&
-    props.item.kind !== 'voice' &&
-    !event.defaultPrevented &&
-    event.target instanceof Element &&
-    !event.target.closest('button, a, .action-menu-host')
+    !props.tableRow ||
+    props.item.kind === 'voice' ||
+    event.defaultPrevented ||
+    !(event.target instanceof Element) ||
+    event.target.closest('button, a, .action-menu-host')
   )
+    return;
+  if (props.item.kind !== 'podcast' || !podcastRow.value || event.detail === 0) {
     action('open');
+    return;
+  }
+  if (!rowBody(event)) return;
+  cancelRowLink();
+  if (event.detail > 1) return;
+  const item = props.item;
+  rowLinkTimer = setTimeout(() => {
+    rowLinkTimer = undefined;
+    if (
+      props.item === item &&
+      element.value?.isConnected &&
+      !element.value.closest('.page-leave-active,.search-results-leave-active')
+    )
+      action('open');
+  }, 500);
 }
 
 const unavailable = computed(() =>

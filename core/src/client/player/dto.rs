@@ -110,6 +110,16 @@ pub struct QualityPreferencesView {
     pub quality: Quality,
     pub damaged: bool,
 }
+/// The physical index click and body double click both use the official
+/// table's double-click action, but only the index offers a transport toggle.
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchPodcastRowGesture {
+    Index,
+    DoubleClick,
+    Menu,
+}
+
 /// Public resource identity only; queue source metadata never crosses IPC.
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -402,6 +412,11 @@ pub enum PlaySelection {
     SearchPodcastCard {
         id: String,
         receipt: String,
+    },
+    SearchPodcastRow {
+        id: String,
+        receipt: String,
+        gesture: SearchPodcastRowGesture,
     },
     PodcastBrowseVoice {
         receipt: String,

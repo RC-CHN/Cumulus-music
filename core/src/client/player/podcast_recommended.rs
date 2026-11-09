@@ -29,8 +29,18 @@ fn episode_progress(episode: &Episode) -> f64 {
 
 pub(super) struct RadioPlaybackPlan {
     pub(super) resources: Vec<Value>,
+    pub(super) start: Option<RadioPlaybackTarget>,
+}
+pub(super) struct RadioPlaybackTarget {
     pub(super) index: usize,
     pub(super) position: f64,
+    // Only a fresh detail fetched here may satisfy the later source gate.
+    pub(super) detail: Option<Episode>,
+}
+
+pub(super) enum RadioPlaybackStart {
+    Overlay { select_checkpoint: bool },
+    Table { mode: crate::playback::PlaybackMode },
 }
 
 pub(super) fn same_radio_transport(
@@ -120,13 +130,20 @@ impl MusicClient {
         {
             return Ok((command, guard));
         }
-        let RadioPlaybackPlan {
-            resources,
-            index,
-            position,
-        } = self
-            .prepare_radio_playback(token, &api, &radio, &guard, next_queue.is_none())
+        let RadioPlaybackPlan { resources, start } = self
+            .prepare_radio_playback(
+                token,
+                &api,
+                &radio,
+                &guard,
+                RadioPlaybackStart::Overlay {
+                    select_checkpoint: next_queue.is_none(),
+                },
+            )
             .await?;
+        let RadioPlaybackTarget {
+            index, position, ..
+        } = start.ok_or(Error::QueueChanged)?;
         let source =
             json!({"kind":"podcast_subscription_recommendation","id":id,"scene":"unknown"});
         check_list()?;
@@ -168,7 +185,7 @@ impl MusicClient {
         api: &Arc<dyn Api>,
         radio: &Radio,
         guard: &Cancellation,
-        select_checkpoint: bool,
+        policy: RadioPlaybackStart,
     ) -> Result<RadioPlaybackPlan> {
         let id = radio.id.as_str();
         let library = PodcastLibrary::new(self.session.clone())?;
@@ -226,7 +243,13 @@ impl MusicClient {
         } else {
             true
         };
-        let latest = if allow_resume && select_checkpoint {
+        let latest = if allow_resume
+            && !matches!(
+                policy,
+                RadioPlaybackStart::Overlay {
+                    select_checkpoint: false
+                }
+            ) {
             let store = self.session.persistent_store()?;
             self.session.with_token(token, |owner| {
                 store.read_snapshot(|tx| latest::read(tx, owner, id))
@@ -234,28 +257,74 @@ impl MusicClient {
         } else {
             None
         };
-        let selected = match &latest {
-            Some(checkpoint) => episodes
+        let table = matches!(policy, RadioPlaybackStart::Table { .. });
+        if table
+            && episodes
                 .iter()
-                .position(|voice| voice.id == checkpoint.id)
-                .ok_or(Error::QueueChanged)?,
-            None => 0,
+                .any(|voice| voice.radio.as_ref().is_some_and(|parent| parent.id != id))
+        {
+            return Err(Error::QueueChanged);
+        }
+        if table {
+            episodes.truncate(super::queue_playlist::QUEUE_LIMIT);
+        }
+        let selected = match (&latest, &policy) {
+            (Some(checkpoint), _) => {
+                let selected = episodes.iter().position(|voice| voice.id == checkpoint.id);
+                if selected.is_none() && matches!(policy, RadioPlaybackStart::Overlay { .. }) {
+                    return Err(Error::QueueChanged);
+                }
+                selected
+            }
+            (
+                None,
+                RadioPlaybackStart::Table {
+                    mode: crate::playback::PlaybackMode::Random,
+                },
+            ) => {
+                use rand::seq::IteratorRandom;
+                episodes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, voice)| voice.raw["grayDisplay"] != true)
+                    .map(|(index, _)| index)
+                    .choose(&mut rand::rng())
+            }
+            (None, RadioPlaybackStart::Table { .. }) => episodes
+                .iter()
+                .position(|voice| voice.raw["grayDisplay"] != true),
+            (None, _) => Some(0),
         };
         let mut resources = Vec::with_capacity(episodes.len());
         let mut start = None;
         for (index, mut voice) in episodes.drain(..).enumerate() {
             guard.check()?;
-            if voice.song_id.is_none() {
-                if index != selected {
+            if table && voice.raw["grayDisplay"] == true {
+                if Some(index) == selected {
+                    return Err(Error::State("selected podcast episode is unavailable"));
+                }
+                continue;
+            }
+            let from_detail = voice.song_id.is_none();
+            if from_detail {
+                if Some(index) != selected {
                     continue;
                 }
-                let program_id = json!(voice.id);
+                let expected = voice.id.clone();
+                let program_id = json!(expected);
                 voice = self
                     .session
                     .run_for(token, |api, _| async move {
                         PodcastApi::new(api).episode(&program_id).await
                     })
                     .await?;
+                if table
+                    && (voice.id != expected
+                        || voice.raw["grayDisplay"] == true
+                        || voice.radio.as_ref().is_some_and(|parent| parent.id != id))
+                {
+                    return Err(Error::QueueChanged);
+                }
             }
             if voice.radio.is_none() {
                 voice.radio = Some(radio.clone());
@@ -263,7 +332,7 @@ impl MusicClient {
             let mut resource = voice.playback_resource()?;
             resource["song"] = voice.download_metadata()?;
             resource["level"] = json!("standard");
-            if index == selected {
+            if Some(index) == selected {
                 let position = if let Some(checkpoint) = &latest {
                     if voice.radio.as_ref().is_none_or(|source| source.id != id)
                         || voice.song_id.as_deref() != Some(checkpoint.main_track_id.as_str())
@@ -292,17 +361,19 @@ impl MusicClient {
                         0.0
                     }
                 };
-                start = Some((resources.len(), position));
+                start = Some(RadioPlaybackTarget {
+                    index: resources.len(),
+                    position,
+                    detail: (table && from_detail).then_some(voice),
+                });
             }
             resources.push(resource);
         }
-        let (index, position) = start.ok_or(Error::QueueChanged)?;
+        if resources.is_empty() || (selected.is_some() && start.is_none()) {
+            return Err(Error::QueueChanged);
+        }
         guard.check()?;
-        Ok(RadioPlaybackPlan {
-            resources,
-            index,
-            position,
-        })
+        Ok(RadioPlaybackPlan { resources, start })
     }
 }
 

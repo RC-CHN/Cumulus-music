@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SearchPodcastRowGesture } from './services/player';
 import {
   confirmLyricContributorTarget,
   type LyricContributorTarget,
@@ -41,6 +42,7 @@ import {
   searchCardIsCurrent,
   searchCardSelection,
   searchPodcastCardSelection,
+  searchPodcastRowSelection,
   searchMvPlaybackTarget,
   searchVoiceSelection,
   type SearchPendingVoiceToggle,
@@ -1491,12 +1493,17 @@ function playPodcastBrowseVoice(voice: EpisodeView) {
     return { kind: 'podcast_browse_voice', receipt };
   });
 }
-function playSearchCard(item: SearchItem) {
+function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
   const route = page.value;
   if (route.kind !== 'search') return;
   if (item.kind === 'voice') return playVoiceCard(item.voice);
-  if (item.kind === 'podcast' && (route.category ?? 'all') === 'all') {
-    const selection = searchPodcastCardSelection(item);
+  if (item.kind === 'podcast') {
+    const selection =
+      (route.category ?? 'all') === 'all' && !gesture
+        ? searchPodcastCardSelection(item)
+        : route.category === 'podcasts' && gesture
+          ? searchPodcastRowSelection(item, gesture)
+          : undefined;
     if (!selection || !signedIn.value || player.busy.value) return;
     void player.prepareSelection(async () => {
       if (page.value !== route)

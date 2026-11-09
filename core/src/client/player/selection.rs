@@ -83,9 +83,11 @@ impl MusicClient {
             PlaySelection::PodcastBrowseVoice { .. } => Err(Error::InvalidInput(
                 "podcast browse playback requires a preparation ticket",
             )),
-            PlaySelection::SearchPodcastCard { .. } => Err(Error::InvalidInput(
-                "search podcast playback requires a preparation ticket",
-            )),
+            PlaySelection::SearchPodcastCard { .. } | PlaySelection::SearchPodcastRow { .. } => {
+                Err(Error::InvalidInput(
+                    "search podcast playback requires a preparation ticket",
+                ))
+            }
             input => self.play_selection_inner(epoch, input, None).await,
         }
     }
@@ -404,6 +406,36 @@ impl MusicClient {
                         Some(source_guard),
                     )
                     .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+            PlaySelection::SearchPodcastRow {
+                id,
+                receipt,
+                gesture,
+            } => {
+                use super::search_podcast::SearchPodcastRowPlan;
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (plan, source_guard) = self
+                    .search_podcast_row_selection(&token, &receipt, &id, gesture, prepared)
+                    .await?;
+                let state = match plan {
+                    SearchPodcastRowPlan::Play(command) => {
+                        self.submit_selection_with_source(
+                            &token,
+                            command,
+                            attempt,
+                            lease,
+                            Some(prepared),
+                            Some(source_guard),
+                        )
+                        .await?
+                    }
+                    SearchPodcastRowPlan::QueueOnly(update) => {
+                        self.submit_prepared_queue_only(&token, prepared, update, source_guard)
+                            .await?
+                    }
+                };
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
@@ -934,6 +966,7 @@ impl MusicClient {
                     | PlaySelection::Voice { .. }
                     | PlaySelection::SearchArtistCard { .. }
                     | PlaySelection::SearchPodcastCard { .. }
+                    | PlaySelection::SearchPodcastRow { .. }
                     | PlaySelection::PodcastBrowseVoice { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {

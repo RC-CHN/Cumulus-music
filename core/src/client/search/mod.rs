@@ -3,7 +3,7 @@ mod default_context;
 pub(crate) mod experiment;
 mod guest;
 mod lyrics;
-mod podcast_playback;
+pub(super) mod podcast_playback;
 mod presentation;
 mod privilege;
 pub use presentation::{

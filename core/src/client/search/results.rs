@@ -386,6 +386,9 @@ impl MusicClient {
                         )
                     }
                 } else {
+                    if query.category == SearchCategory::Podcasts {
+                        podcast_credentials = api.search_privilege_credential_revision().ok();
+                    }
                     ("", None, None, api::request(api.as_ref(), &query).await)
                 };
                 let mut view = match raw {
@@ -611,7 +614,7 @@ fn podcast_table_item(resource: &Value, uid: &str) -> Result<Option<SearchItem>>
     Ok(Some(SearchItem::Podcast {
         podcast,
         playback_receipt: None,
-        playback_category: None,
+        playback_category: base["categoryId"].as_i64(),
         table: Some(PodcastSearchTable {
             creator_id,
             program_count,
