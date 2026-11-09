@@ -70,13 +70,13 @@ def main():
     assert tuple(p.stem for p in sorted(run.glob('ux_*.png'))) == STAGES
     states = [read(run / f'{label}.json') for label in STAGES]
     done = read(run / 'complete.json')
-    assert done['ok'] and done['states'] == len(STAGES)
+    assert done['ok'] and done['states'] == len(STAGES) and 1 <= done['setupAttempts'] <= 4
     frontend_entry = done['frontendEntry']
     assert re.fullmatch(r'index-[a-zA-Z0-9_-]+\.js', frontend_entry)
     if args.expected_app:
         assets = Path(__file__).resolve().parents[2] / 'frontend/dist/assets'
         entry_contents = (assets / frontend_entry).read_text(encoding='utf-8')
-        imports = set(re.findall(r'App-[a-zA-Z0-9_-]+\.js', entry_contents))
+        imports = set(re.findall(r'"\./(App-[a-zA-Z0-9_-]+\.js)"', entry_contents))
         assert imports == {args.expected_app}, ('wrong embedded frontend entry', frontend_entry, imports)
         assert (assets / args.expected_app).is_file()
     assert states[6]['trustedDown'] and states[6]['insertBefore'] == 3 and states[7]['trustedUp']

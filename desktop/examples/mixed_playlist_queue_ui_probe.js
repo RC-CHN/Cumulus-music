@@ -147,16 +147,24 @@
     click(local.querySelector('[data-local-track-menu]'));
     click(await wait(() => item('add_to_playlist'), 'local file add action'));
     const dialog = () => one('dialog[open][aria-labelledby="playlist-local-member-title"]');
-    const add = await wait(() => {
-      if (document.activeElement?.textContent.trim() !== '取消') return;
-      return [...(dialog()?.querySelectorAll('button') ?? [])]
-        .find((button) => button.textContent.trim() === '添加' && !button.disabled);
-    }, 'owned device-local add confirmation and settled cancel focus');
-    click(add);
-    await wait(() => {
-      require(!dialog()?.querySelector('[role="alert"]'), 'local membership setup rejected: ' + setupIssue);
-      return !dialog();
-    }, 'local membership save finished');
+    await wait(() => dialog() && document.activeElement?.textContent.trim() === '取消',
+      'device-local confirmation and settled cancel focus');
+    let setupAttempts = 0;
+    for (; setupAttempts < 4; setupAttempts++) {
+      setupIssue = undefined;
+      const add = await wait(() => [...(dialog()?.querySelectorAll('button') ?? [])]
+        .find((button) => button.textContent.trim() === '添加' && !button.disabled), 'enabled disposable setup confirmation');
+      click(add);
+      const outcome = await wait(() => !dialog() ? 'done' :
+        (setupIssue && dialog().querySelector('[role="alert"]') ? 'rejected' : undefined),
+      'local membership setup resolves');
+      if (outcome === 'done') { setupAttempts++; break; }
+      // Fixture setup is not an action under test. A definite pre-write busy
+      // reply permits repeating only this disposable membership preparation.
+      require(setupIssue === 'busy', 'local membership setup rejected: ' + setupIssue);
+      await delay((setupAttempts + 1) * 200);
+    }
+    require(!dialog(), 'native index stayed busy during disposable setup');
     core.mutatePlaylistLocal = originalMutation;
 
     step = 'play the independent local anchor';
@@ -264,7 +272,7 @@
     const frontendEntry = entryUrl && new URL(entryUrl).pathname.split('/').pop();
     require(/^index-[a-zA-Z0-9_-]+\.js$/.test(frontendEntry ?? ''), 'production Vite entry is loaded');
     await emit('complete', { ok: true, localId, anchorId, trustedDown, trustedUp, states: 10,
-      frontendEntry, ...compact(await state(), await queue()) });
+      frontendEntry, setupAttempts, ...compact(await state(), await queue()) });
   } catch (error) {
     await emit('failed', { step, error: String(error), setupIssue, originMismatches, playlist: visibleRows(),
       menus: all('.action-menu button').map((button) => ({ text: button.textContent.trim(), disabled: button.disabled })) });
