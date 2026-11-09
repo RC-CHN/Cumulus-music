@@ -26,6 +26,13 @@ body {
   inset: 0;
   margin: 0;
 }
+html[data-surface='main'] body {
+  --interface-font-fallback:
+    Arial, 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Sans CJK SC', system-ui, sans-serif, SimSun,
+    'Mongolian Baiti';
+  font-family: var(--interface-font-family, 'Microsoft YaHei', var(--interface-font-fallback));
+  font-size: var(--interface-font-size, 12px);
+}
 button,
 input {
   font: inherit;

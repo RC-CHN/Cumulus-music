@@ -33,6 +33,7 @@ mod fm;
 mod fm_discovery;
 mod focus;
 mod history;
+mod interface_font;
 mod likes;
 mod local;
 mod login_device_removal;

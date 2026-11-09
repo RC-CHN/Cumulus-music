@@ -4,6 +4,7 @@ mod windows;
 use cumulus_core::{
     Error, Result,
     client::{ClientError, MusicClient},
+    preferences::interface_font::{self as font_preferences, InterfaceFont},
 };
 use serde::Serialize;
 use tauri::{Manager, Runtime};
@@ -17,6 +18,11 @@ pub struct Catalog {
     epoch: String,
     families: Vec<Family>,
     fallbacks: Vec<String>,
+}
+#[derive(Serialize)]
+pub struct InterfaceCatalog {
+    epoch: String,
+    choices: Vec<String>,
 }
 #[derive(Default)]
 pub(crate) struct Host {
@@ -73,7 +79,46 @@ pub async fn system_font_catalog<R: Runtime>(
     app: tauri::AppHandle<R>,
     epoch: String,
 ) -> std::result::Result<Catalog, ClientError> {
-    check(&app, &epoch)?;
+    let families = read_families(&app, &epoch).await?;
+    Ok(Catalog {
+        epoch,
+        families,
+        fallbacks: cumulus_core::preferences::desktop_lyrics::font_families(""),
+    })
+}
+
+#[tauri::command]
+pub async fn interface_font_catalog<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    epoch: String,
+) -> std::result::Result<InterfaceCatalog, ClientError> {
+    let families = read_families(&app, &epoch).await?;
+    let choices = font_preferences::choices(families.iter().filter_map(|family| {
+        std::iter::once(&family.name)
+            .chain(&family.aliases)
+            .find(|name| font_preferences::is_choice(name))
+            .map(String::as_str)
+    }));
+    Ok(InterfaceCatalog { epoch, choices })
+}
+
+#[tauri::command]
+pub async fn interface_font(
+    client: tauri::State<'_, MusicClient>,
+) -> std::result::Result<InterfaceFont, ClientError> {
+    Ok(client.interface_font()?)
+}
+
+#[tauri::command]
+pub async fn set_interface_font(
+    client: tauri::State<'_, MusicClient>,
+    family: String,
+) -> std::result::Result<InterfaceFont, ClientError> {
+    Ok(client.set_interface_font((!family.is_empty()).then_some(family))?)
+}
+
+async fn read_families<R: Runtime>(app: &tauri::AppHandle<R>, epoch: &str) -> Result<Vec<Family>> {
+    check(app, epoch)?;
     let host = app.state::<Host>();
     let _operation = host.operation.try_lock().map_err(|_| Error::MutationBusy)?;
     let proof = app
@@ -81,15 +126,11 @@ pub async fn system_font_catalog<R: Runtime>(
         .and_then(|source| (source.0)());
     let families = match proof {
         Some(result) => result?,
-        None => platform_families(&app, &epoch).await?,
+        None => platform_families(app, epoch).await?,
     };
     let families = normalize(families)?;
-    check(&app, &epoch)?;
-    Ok(Catalog {
-        epoch,
-        families,
-        fallbacks: cumulus_core::preferences::desktop_lyrics::font_families(""),
-    })
+    check(app, epoch)?;
+    Ok(families)
 }
 async fn platform_families<R: Runtime>(
     app: &tauri::AppHandle<R>,
