@@ -189,9 +189,10 @@ fn main() {
                         let outcome=async {
                             let path=root.join("cloud-local-source/mapped.flac");
                             if action=="verify" {
-                                let directory=handle.state::<MusicClient>().cloud_directory_path(&epoch,"1001",&revision).await?;
-                                assert_eq!(directory.canonicalize()?,path.parent().unwrap().canonicalize()?);
-                                return Ok(json!({"verified":true,"osLauncherInjected":true}));
+                                let reveal=handle.state::<MusicClient>().cloud_file_reveal(&epoch,"1001",&revision).await?;
+                                assert_eq!(reveal.path(),path.canonicalize()?);
+                                reveal.check_current()?;
+                                return Ok(json!({"verified":true,"leafVerified":true,"osLauncherInjected":true}));
                             }
                             tauri::async_runtime::spawn_blocking(move || -> cumulus_core::Result<Value> {
                                 let lib=cumulus_core::library::LocalLibrary::new(store.clone())?;
@@ -234,8 +235,9 @@ fn main() {
                             if view.completed_count>completed {break;}
                             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                         }
-                        let path=client.cloud_directory_path(&epoch,&song_id,&page.revision.unwrap()).await.unwrap();
-                        assert!(path.canonicalize().unwrap().starts_with(directory.canonicalize().unwrap()));
+                        let reveal=client.cloud_file_reveal(&epoch,&song_id,&page.revision.unwrap()).await.unwrap();
+                        assert!(reveal.path().is_file()&&reveal.path().starts_with(directory.canonicalize().unwrap()));
+                        reveal.check_current().unwrap();
                         handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={{ok:true,verifiedOriginal:true}};",id)).unwrap();
                     });
                 }

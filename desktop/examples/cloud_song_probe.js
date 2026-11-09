@@ -304,7 +304,7 @@
         epoch: owner,
         revision,
       });
-      assert(r.verified && r.osLauncherInjected, "native directory check");
+      assert(r.verified && r.leafVerified && r.osLauncherInjected, "native exact file reveal check");
       directoryCalls++;
     };
     client.openCloudCapacity = async (owner) => {

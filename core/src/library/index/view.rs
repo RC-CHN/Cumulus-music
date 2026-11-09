@@ -99,20 +99,59 @@ impl LocalLibrary {
         });
         Ok(items)
     }
-    pub fn item(&self, id: &str) -> Result<LibraryItem> {
-        let index = self.load()?;
+    fn available_item(index: &Index, id: &str) -> Option<LibraryItem> {
         index
             .files
             .get(id)
             .cloned()
             .or_else(|| {
-                cue_items(&index, true)
+                cue_items(index, true)
                     .into_iter()
                     .find(|item| item.id == id)
             })
             .filter(LibraryItem::available)
-            .ok_or(Error::State("local track is not available"))
     }
+
+    pub fn item(&self, id: &str) -> Result<LibraryItem> {
+        Self::available_item(&self.load()?, id).ok_or(Error::State("local track is not available"))
+    }
+
+    /// Recheck one exact, visible local audio/CUE mapping under the index lock.
+    pub(crate) fn check_mapped_file(
+        &self,
+        session: &crate::account::AccountSession,
+        token: &crate::account::SessionToken,
+        catalog_id: &str,
+        expected: &LibraryItem,
+    ) -> Result<()> {
+        let _lock = self.lock()?;
+        let index = self.load_with_hidden(true)?;
+        let item = Self::available_item(&index, &expected.id).ok_or(Error::QueueChanged)?;
+        let scoped_path = match &item.revision {
+            LocalRevision::File { .. } => &item.path,
+            LocalRevision::Cue { sheet, .. } => sheet,
+        };
+        if item.path != expected.path
+            || item.revision != expected.revision
+            || index.hidden.get(&item.id) == Some(&item.revision)
+            || !index.directories.permits(scoped_path)
+        {
+            return Err(Error::QueueChanged);
+        }
+        Self::check_current(&item)?;
+        session.with_token(token, |owner| {
+            let raw = self
+                .store
+                .get(owner, super::MAPS, &item.id)?
+                .ok_or(Error::QueueChanged)?;
+            let mapping: super::LocalMapping = serde_json::from_value(raw)?;
+            if mapping.song_id != catalog_id || mapping.revision != item.revision {
+                return Err(Error::QueueChanged);
+            }
+            Ok(())
+        })
+    }
+
     /// Hide this exact indexed revision from lists without touching the file,
     /// its CUE siblings, or resources that were already placed on a queue.
     pub(crate) fn hide_revision(&self, id: &str, token: &str) -> Result<()> {

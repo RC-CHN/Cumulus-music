@@ -60,23 +60,31 @@ Rust / IPC / 请求
 - 收藏仍经目标歌单读取、revision、持久化意图、POST
   /api/v1/playlist/manipulate/tracks与读回确认；删除仍POST /api/cloud/del。
   参数、未知写入边界和单次/批次上限见cloud-batch-ui-contracts.txt。
-- 目录关联优先已发布/完成上传的已登记源文件，再找完整下载的Cloud来源或已知
-  catalog ID关联的Song来源，再查明确扫描库映射；catalog身份与分享权限分离。
-  下载候选必须完整、没有进行中文件操作、大小符合且非符号链接。真正打开前
-  重新读取并验证各来源完整性、成员、账号和revision。扫描/CUE细节见后续契约。
-  路径只在core→desktop内部传递，前端仅请求songId/revision。
-- desktop/file_manager为下载/云盘共享本机适配：Linux以直接argv调用xdg-open，
-  观察最多500ms即时失败，长期运行的管理器在后台回收，不等待窗口关闭阻塞IPC。
-  Windows使用专用STA线程、固定open动词的ShellExecuteW，按其返回约定判断
-  接受/失败，不拿Explorer进程的退出码当显示结果。显式处理UTF-16与verbatim/UNC
-  路径；无shell拼接、任意URL或提权。COM与Shell约定参考微软原始文档：
-  https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
-  UI仅反馈“已请求打开”，接受请求不等于目视验证文件管理器已展示目录。
+- 官方 M556:804–815、859–884 依次使用已上传任务 filename、完成下载的完整路径、
+  扫描库 localMap 首条的 audioFile。M3085:3160–3214 优先资源自身 filename，
+  否则取菜单 path，M4:13798–13806 的默认分支把文件路径交给 os.shellExplor。
+  这一行菜单选择文件，非仅打开目录。
+- Cumulus 保留已发布/完成的同账号上传源 → 以云盘 ID 匹配的完成下载 → 以已证实
+  catalog ID 匹配的完成下载 → 扫描库映射。菜单只查是否可能有可用本地关联。
+  点击后在原云盘 revision 内尝试候选；先发现缺失、不可读、篡改或证据不足的文件时，
+  仍可选择下一个同一歌曲的可验证候选。这是原有社区核验行为：官方按已保存的路径
+  组装菜单，没有证据显示它先校验哈希或处理失败后重新找候选。
+- 选中一个候选后，原生凭据绑定该文件，不会在系统调用前改用其他候选。上传源重新
+  核对任务、云盘 songId、阶段、路径和内容；完成下载核对发布身份、同账号账本和哈希。
+  扫描库重新核对当前账号映射、可见行、版本及本地文件身份；CUE 还核对曲目表和源
+  音频的版本，只定位源音频。已经移动、替换或失效则拒绝这次操作。
+- cloud_resource/open_cloud_directory 仍只接收账号代次、songId 和 revision。
+  桌面在交给 Windows Explorer 或 Linux FileManager1 之前重新核对凭据。Linux
+  明确没有选中文件的能力时才在同样的最终核对后打开原文件的父目录。系统接受路径
+  或由路径解析的 PIDL，不持有核验用的文件句柄；交付后无法原子保证文件仍未变化。
+  绝对路径与凭据都不交给 WebView，不增加官方业务请求。
 
 验证入口
 - cargo test -p cumulus-core --test client_cloud --test cloud_upload --locked
   覆盖不同资源域的同号队列、当前来源、captured query、实际合成FLAC下载后的
   本地关联、内容被改/删除/链接、账号/快照替换、已发布上传源重新验证。
+  cloud_file_reveal 用三个同时存在的合成来源核对选择顺序，替换选定文件后旧凭据
+  拒绝；新一次点击可重新核验下一来源。另覆盖映射变化和 CUE 曲目表变化。
 - frontend/tests/cloud-menu-state.test.ts比较官方冻结向量，验证选择/公开链接及
   迟到读取、失败、显式重试、账号/查询/卸载隔离。
 - scripts/ci/cloud_menu_smoke.py启动实际mini_ui_probe；生产WebView/IPC/core/
@@ -85,6 +93,10 @@ Rust / IPC / 请求
   只读读取与文件管理器失败由测试显式替换类型化CoreClient方法；其余请求实际
   通过生产IPC。目录关联与字节在native核对，注入失败不声称OS管理器通过。
   Linux与Windows各自runner执行；当前实际运行证据见ui-ux-validation.txt。
+- 本次 cloud_song_smoke 用私有 Xvfb/WebKitGTK、仅回环网络和合成服务通过 32 个
+  检查点及 32 张截图。另在同次探针的目录动作调用生产 open_cloud_directory，
+  私有 D-Bus FileManager1 只收到一次原始 mapped.flac 的文件 URI，不是目录 URI。
+  未打开用户的文件管理器，也未访问实服或在本轮运行 Windows Explorer。
 
 保留边界
 - 工具栏三项与完整查询范围另见cloud-toolbar-ui-contracts；普通列宽和默认容量
