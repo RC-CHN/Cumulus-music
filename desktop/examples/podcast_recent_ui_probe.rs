@@ -77,6 +77,7 @@ struct Library {
     next: AtomicUsize,
     calls: Mutex<Vec<Value>>,
     progress_enabled: bool,
+    program_menu: bool,
     progress_uploads: Mutex<Vec<Value>>,
     badges: Option<badge_fixture::Fixture>,
     scene_home: Option<scene_home_fixture::SceneHome>,
@@ -532,6 +533,39 @@ impl Api for Library {
             {
                 panic!("unexpected synthetic remote action: {path}");
             }
+            if self.program_menu && path == "/api/resource/commentInfo/list" {
+                assert!(!cache);
+                assert_eq!(body["resourceType"], 1);
+                let ids: Vec<String> = serde_json::from_str(body["resourceIds"].as_str().unwrap())?;
+                let [id] = ids.as_slice() else {
+                    panic!("one program menu count target");
+                };
+                let count = match id.as_str() {
+                    "501" => 51,
+                    "503" => 53,
+                    "504" => 54,
+                    _ => panic!("unexpected program count target"),
+                };
+                self.calls.lock().unwrap().push(json!([path, body]));
+                return Ok(
+                    json!({"code":200,"data":[{"threadId":format!("A_DJ_1_{id}"),"commentCount":count}]}),
+                );
+            }
+            if self.program_menu
+                && matches!(
+                    path,
+                    "/api/v1/resource/comments/A_DJ_1_503"
+                        | "/api/v1/resource/hotcomments/A_DJ_1_503"
+                )
+            {
+                self.calls.lock().unwrap().push(json!([path, body]));
+                return Ok(
+                    json!({"code":200,"comments":[],"hotComments":[],"topComments":[],"more":false,"hasMore":false,"total":0}),
+                );
+            }
+            if self.program_menu && path == "/api/song/enhance/privilege" {
+                panic!("program menu unexpectedly requested song sharing privileges");
+            }
             if matches!(
                 path,
                 RECENT
@@ -573,7 +607,19 @@ impl Api for Library {
                 "/api/content/my/liked/voice" => {
                     json!({"code":200,"data":{"data":[],"hasMore":false}})
                 }
+                "/api/djradio/v3/get" if self.program_menu => {
+                    let mut data = radio();
+                    data["programCount"] = json!(3);
+                    json!({"code":200,"data":data})
+                }
                 "/api/djradio/v3/get" => json!({"code":200,"data":radio()}),
+                "/api/v6/dj/program/byradio" if self.program_menu => {
+                    let mut ids = [501, 503, 504];
+                    if body["asc"] == false {
+                        ids.reverse();
+                    }
+                    json!({"code":200,"data":{"programs":ids.map(voice),"count":3,"more":false,"asc":body["asc"]}})
+                }
                 "/api/v6/dj/program/byradio" => {
                     json!({"code":200,"data":{"programs":[voice(501)],"count":1,"more":false,"asc":true}})
                 }
@@ -634,6 +680,7 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let progress_enabled = std::env::var_os("CUMULUS_PODCAST_PROGRESS_PROOF").is_some();
+    let program_menu = std::env::var("CUMULUS_PODCAST_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
     let recommendations_enabled =
         std::env::var("CUMULUS_PODCAST_RECOMMENDATIONS_PROOF").as_deref() == Ok("1");
     let badges_enabled = recommendations_enabled
@@ -774,6 +821,7 @@ fn main() {
         });
     let api = Arc::new(Library {
         progress_enabled,
+        program_menu,
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
         scene_home,
         palette: palette.clone(),
@@ -822,7 +870,9 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let source = std::env::var_os("CUMULUS_UX_SCRIPT").map_or_else(
         || {
-            if badges_enabled {
+            if program_menu {
+                include_str!("podcast_program_menu_ui_probe.js").to_owned()
+            } else if badges_enabled {
                 include_str!("podcast_badges_ui_probe.js").to_owned()
             } else if voice_song_collect_enabled {
                 include_str!("voice_song_collect_ui_probe.js").to_owned()
@@ -887,7 +937,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
-            if progress_enabled || scene_enabled || badges_enabled {
+            if progress_enabled || scene_enabled || badges_enabled || program_menu {
                 fs::write(output.join("locale.json"), serde_json::to_vec(&json!({
                     "numeric":locale(libc::LC_NUMERIC),
                     "messages":locale(libc::LC_MESSAGES),
@@ -1015,7 +1065,7 @@ fn main() {
                 }
                 if let Some(scene) = &api.scene_home {
                     value["calls"] = json!(scene.calls());
-                } else if stage == "complete" {
+                } else if stage == "complete" || program_menu {
                     value["calls"] = json!(api.calls.lock().unwrap().clone());
                 }
                 if progress_enabled {
@@ -1028,7 +1078,7 @@ fn main() {
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" {0} else {1});
                     } else if capture_ack::acknowledge(&handle, &output, &stage, true).await
-                        && (progress_enabled || scene_enabled || badges_enabled)
+                        && (progress_enabled || scene_enabled || badges_enabled || program_menu)
                     {
                         handle.get_webview_window("main").unwrap().eval(format!(
                             "window.__podcastProgressStage = {};",
