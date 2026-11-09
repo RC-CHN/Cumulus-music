@@ -67,8 +67,8 @@ pub async fn open_local_track_directory<R: tauri::Runtime>(
     if window.label() != "main" {
         return Err(Error::InvalidInput("local directory action requires main window").into());
     }
-    let path = client.local_track_directory(id, revision).await?;
-    crate::file_manager::open_directory(path)
+    let path = client.local_track_file(id, revision).await?;
+    crate::file_manager::reveal_file(path)
         .await
         .map_err(Into::into)
 }

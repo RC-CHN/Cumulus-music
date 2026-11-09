@@ -85,16 +85,25 @@ desktop/examples/local_resource_probe.js + scripts/ci/local_resource_smoke.py �
 Windows 结果取决于本批精确提交的完整 CI；macOS 不在支持范围。
 
 本地歌曲所在目录
-官方恢复 hybrid_app.chunk.1482700000000.js/556.js:779–805 在 Scene.local 资源
-菜单提供「打开文件所在目录」。本地行右键、Shift+F10 或更多按钮进入同一个菜单。
+官方模块位于 references/netease-3.1.42.205594-analysis/recovered-js/modules/。
+官方 3.1.42.205594 恢复 hybrid_app.chunk.1482700000000.js/556.js:779–803 在
+Scene.local 资源菜单提供「打开文件所在目录」。hybrid_73.chunk.1482700000000.js/
+3085.js:3160–3175、3209–3214、4351 从该资源的 filename 取得目标并调用
+Os.revealInFileExplorer(path)；hybrid_app/4.js:13798–13808 默认走 os.shellExplor，
+区别于传 true 的 os.shellOpen。Win64 原生入口使用 SHOpenFolderAndSelectItems
+选中一个项目，反汇编证据见 desktop-local-library-contracts.txt 的分组定位节。
+本地行右键、Shift+F10 或更多按钮进入同一个菜单。
 关闭菜单后返回原按钮；旧查询或行记录已变化时撤下动作。无法打开保留独立错误提示，
 不会重试播放或自动扫描。更多按钮和焦点处理是 Cumulus 的键盘适配。
 typed IPC open_local_track_directory(id,revision) 仅主窗口可调用：前端只交还
 当前索引的 ID 及版本，不提供目录路径；设备本地库不依赖账号联网。Rust 重新查询
-记录并核对文件、CUE 及其音源指纹，再从已索引的规范路径计算父目录。CUE 打开
-物理音频目录，NCM 打开原文件目录；不会触发解密或打开缓存。不新增业务 HTTP。
-Linux 合成桌面用例通过系统启动入口的受控替身核对完整单参数路径，不打开文件管理器
-窗口；Windows 用例只核对拒绝过期引用和 UI 调度，不视作 Windows Explorer 验证。
+记录并核对文件、CUE 及其音源指纹，再用已索引的规范路径定位并选中该文件。
+CUE 选中物理音频，NCM 选中原文件；不解密、不定位缓存，也不发业务 HTTP。
+Linux 使用 FileManager1.ShowItems 传编码后的文件 URI。仅会话总线或方法明确
+不可用时退回打开父目录；拒绝、超时等不确定结果不再启动一次。Windows 复用
+独立 STA 的 SHOpenFolderAndSelectItems。Linux 合成桌面用例在私有总线核对
+确切 CUE 音频 URI，未启动真实文件管理器；Windows 用例仅核对过期引用拒绝和
+UI 调度，Explorer 实际选中仍待原生 Windows 验证。
 
 从本地列表删除
 官方恢复 M/556:939–942 把「从列表中删除」与 :977–993 的磁盘删除分开；
