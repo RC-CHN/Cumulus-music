@@ -587,6 +587,8 @@ export function createTauriClient(): CoreClient {
       invoke('player_queue_like', { epoch, revision, entryId, liked }),
     playerQueueCatalogMenu: (epoch, revision, entryId) =>
       invoke('player_queue_catalog_menu', { epoch, revision, entryId }),
+    playerQueueOpenCatalogDirectory: (epoch, revision, entryId, receipt) =>
+      invoke('player_queue_open_catalog_directory', { epoch, revision, entryId, receipt }),
     playerQueueVoiceMenu: (epoch, revision, entryId) =>
       invoke('player_queue_voice_menu', { epoch, revision, entryId }),
     playerQueueOpenVoiceDirectory: (epoch, revision, entryId) =>

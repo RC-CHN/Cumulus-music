@@ -24,6 +24,8 @@ mod power;
 mod preferences;
 mod prepared_selection;
 mod quality;
+mod queue_catalog_reveal;
+pub use queue_catalog_reveal::QueueCatalogFileReveal;
 mod queue_click;
 mod queue_collection;
 mod queue_download_menu;
@@ -146,6 +148,7 @@ pub(super) struct PlayerHost {
     song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
     power_assignment: tokio::sync::Mutex<Option<power::Assignment>>,
     queue_more_memberships: queue_more_playlist::MembershipCache,
+    queue_catalog_reveal: queue_catalog_reveal::Host,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     pub(super) factory: EngineFactory,
@@ -188,6 +191,7 @@ impl PlayerHost {
             song_speed,
             power_assignment: Default::default(),
             queue_more_memberships: Default::default(),
+            queue_catalog_reveal: Default::default(),
             session,
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),

@@ -456,6 +456,11 @@ impl From<Error> for ClientError {
                     "该账号的登录身份已变化，请重新登录",
                     false,
                 ),
+                Error::State("queued catalog file is unavailable") => (
+                    "queue_catalog_file_unavailable",
+                    "关联的原文件已移动、变化或无法读取，请检查本地音乐或下载管理",
+                    false,
+                ),
                 Error::State("queued download file is unavailable") => (
                     "queue_download_file_unavailable",
                     "原下载文件已移动、变化或无法读取，请到「下载管理」检查原文件",

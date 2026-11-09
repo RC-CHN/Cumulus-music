@@ -1788,6 +1788,165 @@ async fn queued_download_reveals_its_own_publication_without_a_same_song_fallbac
 }
 
 #[tokio::test]
+async fn catalog_queue_location_keeps_the_offered_source_and_rejects_ambiguous_mappings() {
+    use cumulus_core::library::{AudioMetadata, LocalLibrary, probe::AudioProbe};
+    use std::path::Path;
+
+    struct Probe;
+    impl AudioProbe for Probe {
+        fn inspect(&self, path: &Path) -> cumulus_core::Result<AudioMetadata> {
+            Ok(AudioMetadata {
+                title: path.file_stem().unwrap().to_string_lossy().into(),
+                duration: 45.0,
+                album: String::new(),
+                artists: Vec::new(),
+                format: Some("flac".into()),
+                container: "flac".into(),
+                bitrate: None,
+                sample_rate: Some(8000),
+                channels: Some(1),
+                cover_bytes: None,
+            })
+        }
+    }
+
+    let f = Fixture::new();
+    let (id, view) = f.completed().await;
+    let original = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let local_root = f.root.path().join("mapped");
+    fs::create_dir(&local_root).unwrap();
+    for name in ["mapped original.flac", "alternate local.flac"] {
+        fs::write(local_root.join(name), FLAC).unwrap();
+    }
+    let library = LocalLibrary::with_probe(f.store.clone(), Arc::new(Probe)).unwrap();
+    library.scan(&local_root).unwrap();
+    let files = library.list(Default::default()).unwrap();
+    let item = |name| {
+        files
+            .iter()
+            .find(|item| item.path.file_name().unwrap() == name)
+            .unwrap()
+    };
+    let mapped = item("mapped original.flac");
+    let alternate = item("alternate local.flac");
+    library
+        .map_online(&f.session, &mapped.id, &json!("123"))
+        .unwrap();
+    f.api.catalog_menu_enabled.store(true, Ordering::Release);
+    f.client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["123".into()],
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let queue = f.client.player_queue("1").await.unwrap();
+    let entry = queue.current.as_deref().unwrap();
+    let menu = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap();
+    assert!(menu.downloaded);
+    assert_eq!(menu.comment_count, Some(9));
+    let ticket = menu.directory_receipt.unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_catalog_file_reveal("1", &queue.revision, &id, &ticket)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let download = f
+        .client
+        .player_queue_catalog_file_reveal("1", &queue.revision, entry, &ticket)
+        .await
+        .unwrap();
+    assert_eq!(download.path(), original);
+    download.check_current(&f.client).await.unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_catalog_file_reveal("1", &queue.revision, entry, &ticket)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+
+    let failed = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap()
+        .directory_receipt
+        .unwrap();
+    let mut bytes = fs::read(&original).unwrap();
+    bytes[0] ^= 1;
+    fs::write(&original, bytes).unwrap();
+    assert!(
+        f.client
+            .player_queue_catalog_file_reveal("1", &queue.revision, entry, &failed)
+            .await
+            .is_err()
+    );
+    assert_eq!(fs::read(&mapped.path).unwrap(), FLAC);
+    fs::write(&original, FLAC).unwrap();
+
+    f.client
+        .download_command(
+            "1",
+            DownloadCommand::File {
+                task_id: id,
+                action: FileAction::Delete,
+                target: None,
+            },
+        )
+        .await
+        .unwrap();
+    wait(&f.client, "1", DownloadTab::Completed, |v| {
+        v.completed_count == 0 && v.jobs.iter().all(|j| !j.running)
+    })
+    .await;
+    let queue = f.client.player_queue("1").await.unwrap();
+    let entry = queue.current.as_deref().unwrap();
+    let menu = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap();
+    assert!(!menu.downloaded);
+    let file = f
+        .client
+        .player_queue_catalog_file_reveal(
+            "1",
+            &queue.revision,
+            entry,
+            &menu.directory_receipt.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(file.path(), mapped.path);
+    file.check_current(&f.client).await.unwrap();
+    library
+        .map_online(&f.session, &alternate.id, &json!("123"))
+        .unwrap();
+    let ambiguous = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap();
+    assert!(ambiguous.directory_receipt.is_none());
+    library
+        .map_online(&f.session, &mapped.id, &json!("124"))
+        .unwrap();
+    assert!(matches!(
+        file.check_current(&f.client).await,
+        Err(Error::QueueChanged)
+    ));
+}
+
+#[tokio::test]
 async fn completed_file_reveal_refuses_a_stale_account_and_a_missing_ledger() {
     use cumulus_core::download::offline::OfflineLibrary;
 

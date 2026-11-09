@@ -29,6 +29,9 @@ pub fn enabled() -> bool {
 pub fn queue_download_reveal_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_QUEUE_DOWNLOAD_REVEAL_PROOF").is_some()
 }
+pub fn queue_catalog_reveal_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_QUEUE_CATALOG_REVEAL_PROOF").is_some()
+}
 fn clear_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_CLEAR_PROOF").is_some()
 }
@@ -159,6 +162,18 @@ static MV_DETAIL: AtomicUsize = AtomicUsize::new(0);
 static MV_STREAM: AtomicUsize = AtomicUsize::new(0);
 const MEDIA: &str = "https://m1.music.126.net/cumulus-download-fixture.wav";
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if queue_catalog_reveal_enabled() && path == "/api/resource/commentInfo/list" {
+        let song = match args["resourceIds"].as_str() {
+            Some("[\"7\"]") => "7",
+            Some("[\"8\"]") => "8",
+            Some("[\"9\"]") => "9",
+            _ => return None,
+        };
+        assert_eq!(args["resourceType"], 4);
+        return Some(Ok(json!({"code":200,"data":[{
+            "threadId":format!("R_SO_4_{song}"),"commentCount":9,
+        }]})));
+    }
     if queue_download_reveal_enabled() {
         match path {
             "/api/dj/program/detail" => {
@@ -522,7 +537,9 @@ impl Fixture {
                     }
                 );
             }
-            "observe_queue_download_shell" if queue_download_reveal_enabled() => {
+            "observe_queue_download_shell"
+                if queue_download_reveal_enabled() || queue_catalog_reveal_enabled() =>
+            {
                 let expected = value["count"]
                     .as_u64()
                     .filter(|n| (1..=2).contains(n))
@@ -552,8 +569,16 @@ impl Fixture {
                     .open(self.root.join("media/queued original 合成.wav"))?
                     .write_all(b"CHGD")?;
             }
+            "change_queue_catalog_file" if queue_catalog_reveal_enabled() => {
+                use std::io::Write;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(self.root.join("media/published-queue-song.wav"))?
+                    .write_all(b"CHGD")?;
+            }
             "seed_queue_collection"
-                if std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() =>
+                if std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some()
+                    || queue_catalog_reveal_enabled() =>
             {
                 assert_eq!(self.session.token()?.uid.as_deref(), Some("2"));
                 assert!(self.store.values("2", "download_tasks_v1")?.is_empty());
@@ -598,15 +623,34 @@ impl Fixture {
                     std::fs::create_dir(&local)?;
                     let mapped = local.join("linked-queue-song.wav");
                     std::fs::copy(&wave, &mapped)?;
-                    std::fs::copy(wave, local.join("unlinked-queue-song.wav"))?;
+                    std::fs::copy(&wave, local.join("unlinked-queue-song.wav"))?;
+                    let extra = [
+                        ("also downloaded 合成.wav", "7"),
+                        ("ambiguous first.wav", "9"),
+                        ("ambiguous second.wav", "9"),
+                    ];
+                    if queue_catalog_reveal_enabled() {
+                        for (leaf, _) in extra {
+                            std::fs::copy(&wave, local.join(leaf))?;
+                        }
+                    }
                     let library = cumulus_core::library::LocalLibrary::new(store)?;
                     library.scan(&local)?;
-                    let item = library
-                        .list(Default::default())?
-                        .into_iter()
-                        .find(|item| item.path.file_name() == mapped.file_name())
-                        .ok_or(Error::State("synthetic indexed track missing"))?;
-                    library.map_online(&session, &item.id, &json!("8"))
+                    let files = library.list(Default::default())?;
+                    let associate = |path: PathBuf, song: &str| {
+                        let item = files
+                            .iter()
+                            .find(|item| item.path.file_name() == path.file_name())
+                            .ok_or(Error::State("synthetic indexed track missing"))?;
+                        library.map_online(&session, &item.id, &json!(song))
+                    };
+                    associate(mapped, "8")?;
+                    if queue_catalog_reveal_enabled() {
+                        for (leaf, song) in extra {
+                            associate(local.join(leaf), song)?;
+                        }
+                    }
+                    Ok::<_, Error>(())
                 })
                 .await
                 .map_err(|_| Error::State("synthetic local library worker stopped"))??;

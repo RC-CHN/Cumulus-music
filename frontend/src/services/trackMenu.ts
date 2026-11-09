@@ -59,6 +59,7 @@ interface QueueRowMenuRequest {
   live(): boolean;
   play(): void;
   remove(): void;
+  report(message: string): void;
 }
 export interface QueueTrackMenuRequest extends QueueRowMenuRequest {
   kind: 'catalog';
@@ -69,7 +70,6 @@ export interface QueueTrackMenuRequest extends QueueRowMenuRequest {
 export interface QueueVoiceMenuRequest extends QueueRowMenuRequest {
   kind: 'voice';
   info: QueueVoiceMenu;
-  report(message: string): void;
 }
 interface QueueFileMenuRequest extends QueueRowMenuRequest {
   info: {
@@ -81,7 +81,6 @@ interface QueueFileMenuRequest extends QueueRowMenuRequest {
   };
   collect(): void;
   collectionLocked(): boolean;
-  report(message: string): void;
 }
 type QueueLocalMenuRequest = QueueFileMenuRequest & { kind: 'local' };
 type QueueDownloadMenuRequest = QueueFileMenuRequest & {
@@ -235,7 +234,7 @@ export function queueSongMenuItems(
     },
     { key: 'source', label: `来自：${input.sourceLabel}`, icon: 'source', disabled: !input.origin },
     ...(!group && link ? [{ key: 'copy', label: '复制链接', icon: 'copy' }] : []),
-    ...(input.downloadTaskId
+    ...(input.directoryReceipt
       ? [{ key: 'directory', label: '打开文件所在目录', icon: 'folder' }]
       : []),
     { key: 'remove-divider', label: '', separator: true },

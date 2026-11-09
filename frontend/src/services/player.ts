@@ -270,7 +270,7 @@ export interface QueueCatalogMenu {
   origin: QueueOrigin | null;
   commentCount: number | null;
   downloaded: boolean;
-  downloadTaskId: string | null;
+  directoryReceipt: string | null;
 }
 export interface QueueVoiceMenu {
   epoch: string;
@@ -887,6 +887,12 @@ export interface PlayerClient
     revision: string,
     entryId: string,
   ): Promise<QueueCatalogMenu>;
+  playerQueueOpenCatalogDirectory(
+    epoch: string,
+    revision: string,
+    entryId: string,
+    receipt: string,
+  ): Promise<void>;
   playerQueueVoiceMenu(epoch: string, revision: string, entryId: string): Promise<QueueVoiceMenu>;
   playerQueueOpenVoiceDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
   playerQueueOpenLocalDirectory(epoch: string, revision: string, entryId: string): Promise<void>;

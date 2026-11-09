@@ -31,6 +31,7 @@ pub struct Server {
     pub lyric: Mutex<Result<Value>>,
     pub play: Mutex<Result<Value>>,
     pub follow_latest: Mutex<Value>,
+    pub catalog_menu_enabled: AtomicBool,
     pub membership_fails: AtomicBool,
     pub membership_expiry: AtomicU64,
     pub play_gate: Mutex<Option<Arc<PlaybackGate>>>,
@@ -53,6 +54,7 @@ impl Server {
                 "level":"standard","expi":120}]}))),
             play_gate: Mutex::new(None),
             follow_latest: Mutex::new(json!([])),
+            catalog_menu_enabled: AtomicBool::new(false),
             membership_fails: AtomicBool::new(false),
             membership_expiry: AtomicU64::new(9999999999999),
             calls: Mutex::new(Vec::new()),
@@ -97,6 +99,12 @@ impl Api for Server {
                 }
                 "/api/v3/song/detail" => {
                     json!({"code":200,"songs":[self.song.lock().unwrap().clone()]})
+                }
+                "/api/resource/commentInfo/list"
+                    if self.catalog_menu_enabled.load(Ordering::Acquire) =>
+                {
+                    assert_eq!(payload, json!({"resourceType":4,"resourceIds":"[\"123\"]"}));
+                    json!({"code":200,"data":[{"threadId":"R_SO_4_123","commentCount":9}]})
                 }
                 "/api/song/lyric/v1" => match &*self.lyric.lock().unwrap() {
                     Ok(v) => v.clone(),

@@ -24,7 +24,7 @@ const completed: QueueCatalogMenu = {
   origin: null,
   commentCount: null,
   downloaded: true,
-  downloadTaskId: 'verified-task',
+  directoryReceipt: 'opaque-native-receipt',
 };
 
 test('a completed song reveals only an authorized folder and never offers another download', () => {
@@ -34,7 +34,7 @@ test('a completed song reveals only an authorized folder and never offers anothe
   assert.equal(item('download'), undefined);
   assert.equal(item('directory')?.label, '打开文件所在目录');
   assert.equal(
-    queueSongMenuItems({ ...completed, downloadTaskId: null }, false, false, false).some(
+    queueSongMenuItems({ ...completed, directoryReceipt: null }, false, false, false).some(
       ({ key }) => key === 'download' || key === 'directory',
     ),
     false,
@@ -44,6 +44,12 @@ test('a completed song reveals only an authorized folder and never offers anothe
   assert.equal(item('album')?.disabled, true);
   assert.equal(item('source')?.label, '来自：搜索');
   assert.equal(item('source')?.disabled, true);
+});
+
+test('a verified mapped file offers original location without pretending it is a download', () => {
+  const menu = queueSongMenuItems({ ...completed, downloaded: false }, false, false, false);
+  assert.ok(menu.some(({ key }) => key === 'directory'));
+  assert.ok(menu.some(({ key }) => key === 'download'));
 });
 
 test('voice groups keep queue controls without single-episode actions or catalog collection', () => {

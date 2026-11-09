@@ -1,14 +1,12 @@
 //! Prepare the ordinary song menu from the live native queue.
-use super::{MusicClient, QueueCatalogMenu, origin, queue_collection, track};
+use super::{MusicClient, QueueCatalogMenu, origin, queue_catalog_reveal, queue_collection, track};
 use crate::{
     Error, Result,
     comments::{CommentApi, ResourceKind},
-    download::service::DownloadService,
     playback::{QueueEntry, QueueSnapshot},
-    storage::PlaybackDownloadKind,
 };
 use serde_json::Value;
-use std::{path::Path, time::Duration};
+use std::time::Duration;
 
 fn eligible(resource: &Value) -> bool {
     queue_collection::catalog_row(resource)
@@ -45,10 +43,6 @@ fn source_label(item: &QueueEntry) -> &str {
     }
 }
 
-fn file_present(path: &Path) -> bool {
-    path.is_absolute() && std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file())
-}
-
 impl MusicClient {
     pub async fn player_queue_catalog_menu(
         &self,
@@ -73,42 +67,25 @@ impl MusicClient {
         let item = entry(&queue, entry_id)?;
         let song = track(&item.resource)?;
         let api = self.session.native_api(&token)?;
-        let comment_count = tokio::time::timeout(
-            Duration::from_secs(2),
-            CommentApi::new(api.clone()).count(ResourceKind::Track, song.id.clone()),
-        )
-        .await
-        .ok()
-        .and_then(std::result::Result::ok);
-        let (downloaded, download_task_id) = if token.uid.is_some() {
-            let session = self.session.clone();
-            let checked = token.clone();
-            let id = song.id.clone();
-            tokio::task::spawn_blocking(move || {
-                let owner = session.with_token(&checked, |owner| Ok(owner.to_owned()))?;
-                let downloaded = session
-                    .persistent_store()?
-                    .playback_download_rows(&owner, &id, PlaybackDownloadKind::Song)?
-                    .into_iter()
-                    .any(|row| {
-                        row.status == "complete"
-                            && !row.moving
-                            && row.path.as_deref().is_some_and(file_present)
-                    });
-                let task_id = if downloaded {
-                    DownloadService::published_catalog_song(&session, &checked, &id)?
-                        .filter(|task| task.playback_target().is_ok_and(file_present))
-                        .map(|task| task.id)
-                } else {
-                    None
-                };
-                Ok::<_, Error>((downloaded, task_id))
-            })
+        let visit = self.player.queue_catalog_reveal.begin()?;
+        let song_id = song.id.clone();
+        let session = self.session.clone();
+        let checked = token.clone();
+        let comments = async {
+            tokio::time::timeout(
+                Duration::from_secs(2),
+                CommentApi::new(api.clone()).count(ResourceKind::Track, song.id.clone()),
+            )
             .await
-            .map_err(|_| Error::State("queue menu download check stopped"))??
-        } else {
-            (false, None)
+            .ok()
+            .and_then(std::result::Result::ok)
         };
+        let candidates = tokio::task::spawn_blocking(move || {
+            queue_catalog_reveal::discover(session, checked, song_id)
+        });
+        let (comment_count, candidates) = tokio::join!(comments, candidates);
+        let (downloaded, directory) =
+            candidates.map_err(|_| Error::State("queue menu file check stopped"))??;
         let (after, latest) = controller.queue_with_state(&token).await?;
         self.session.require_api(&token, &api)?;
         if after.queue_revision != revision_number
@@ -118,6 +95,17 @@ impl MusicClient {
         {
             return Err(Error::QueueChanged);
         }
+        let directory_receipt = if latest.intelligence.is_none() {
+            self.player.queue_catalog_reveal.offer(
+                visit,
+                token,
+                revision_number,
+                item.clone(),
+                directory,
+            )?
+        } else {
+            None
+        };
         Ok(QueueCatalogMenu {
             epoch: epoch.into(),
             revision: revision.into(),
@@ -127,7 +115,7 @@ impl MusicClient {
             origin: origin::queue(item),
             comment_count,
             downloaded,
-            download_task_id,
+            directory_receipt,
         })
     }
 }

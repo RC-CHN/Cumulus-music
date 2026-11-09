@@ -608,6 +608,9 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent | KeyboardEvent)
           shown,
         );
     },
+    report(message: string) {
+      if (attempt === menuAttempt && live()) menuIssue.value = message;
+    },
   };
   if (row.localMenu || row.downloadMenu) {
     menuPending.value = undefined;
@@ -627,9 +630,6 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent | KeyboardEvent)
         if (live()) void prepareCollection(anchor, ids);
       },
       collectionLocked: () => collectionLocked.value || rows.some((entry) => !entry?.collectible),
-      report(message) {
-        if (attempt === menuAttempt && live()) menuIssue.value = message;
-      },
     });
     return;
   }
@@ -655,9 +655,6 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent | KeyboardEvent)
           kind: 'voice',
           info,
           ...actions,
-          report(message) {
-            if (live()) menuIssue.value = message;
-          },
         });
     } else if (row.catalogMenu) {
       emit('more', {
@@ -997,7 +994,8 @@ async function confirmClear(event: Event) {
           :aria-current="item.entryId === currentEntry ? 'true' : undefined"
           @contextmenu="openQueueMenu(item, $event)"
           @keydown.shift.f10="
-            (item.voiceMenu || item.localMenu || item.downloadMenu) && openQueueMenu(item, $event)
+            (item.catalogMenu || item.voiceMenu || item.localMenu || item.downloadMenu) &&
+            openQueueMenu(item, $event)
           "
         >
           <span

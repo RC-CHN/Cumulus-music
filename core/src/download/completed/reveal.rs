@@ -27,6 +27,18 @@ pub struct DownloadFileReveal {
     facts: fs::Facts,
 }
 
+/// A menu-time pin using the existing publication receipt, before hashing bytes.
+pub(crate) struct DownloadFileCandidate(DownloadFileReveal);
+
+impl DownloadFileCandidate {
+    pub(crate) fn verify(self) -> Result<DownloadFileReveal> {
+        let reveal = self.0;
+        verify_reveal_bytes(reveal.path(), &reveal.record.integrity, &reveal.facts)?;
+        reveal.check_current()?;
+        Ok(reveal)
+    }
+}
+
 impl DownloadFileReveal {
     pub fn path(&self) -> &Path {
         &self.record.path
@@ -130,22 +142,37 @@ impl CompletedDownloads {
         id: &str,
         path: Option<&Path>,
     ) -> Result<DownloadFileReveal> {
+        self.prepare_reveal_at(id, path)?.verify()
+    }
+
+    pub(crate) fn catalog_song_reveal_candidate(
+        &self,
+        id: &str,
+        song: &str,
+        path: &Path,
+    ) -> Result<DownloadFileCandidate> {
+        let candidate = self.prepare_reveal_at(id, Some(path))?;
+        if !candidate.0.matches_song_association(song) {
+            return Err(Error::QueueChanged);
+        }
+        candidate.0.check_current()?;
+        Ok(candidate)
+    }
+
+    fn prepare_reveal_at(&self, id: &str, path: Option<&Path>) -> Result<DownloadFileCandidate> {
         let token = self.token()?.ok_or(Error::StaleResponse)?;
         let (record, origin) = self.reveal_publication(&token, id)?;
         if path.is_some_and(|expected| record.path != expected) {
             return Err(Error::QueueChanged);
         }
         let facts = fs::recorded_facts(&record.path, record.integrity.clone())?;
-        verify_reveal_bytes(&record.path, &record.integrity, &facts)?;
-        let reveal = DownloadFileReveal {
+        Ok(DownloadFileCandidate(DownloadFileReveal {
             downloads: self.clone(),
             token,
             record,
             origin,
             facts,
-        };
-        reveal.check_current()?;
-        Ok(reveal)
+        }))
     }
 }
 

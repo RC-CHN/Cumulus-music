@@ -487,6 +487,36 @@ pub async fn player_queue_catalog_menu<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_queue_open_catalog_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue catalog directory requires the main window").into());
+    }
+    let reveal = client
+        .player_queue_catalog_file_reveal(&epoch, &revision, &entry_id, &receipt)
+        .await?;
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        let client = app.state::<MusicClient>();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                reveal.check_current(&client),
+            )
+            .await
+            .map_err(|_| Error::State("queue catalog file validation timed out"))?
+        })
+    })
+    .await
+    .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_queue_voice_menu<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

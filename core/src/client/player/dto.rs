@@ -206,7 +206,7 @@ pub struct QueueCatalogMenu {
     pub origin: Option<QueueOrigin>,
     pub comment_count: Option<u64>,
     pub downloaded: bool,
-    pub download_task_id: Option<String>,
+    pub directory_receipt: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -2595,8 +2595,13 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
     if (track.albumId) navigateFromQueue({ kind: 'album', id: track.albumId });
   } else if (key === 'source') {
     if (input.info.origin) navigateFromQueue(input.info.origin);
-  } else if (key === 'directory') {
-    if (input.info.downloadTaskId) void downloads.open(input.info.downloadTaskId);
+  } else if (key === 'directory' && input.info.directoryReceipt) {
+    const { epoch, revision, entryId, directoryReceipt } = input.info;
+    void core
+      .playerQueueOpenCatalogDirectory(epoch, revision, entryId, directoryReceipt)
+      .catch((error) => {
+        if (input.live()) input.report(failure(error).message);
+      });
   }
 }
 function queueCollectionFallback() {
