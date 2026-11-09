@@ -38,6 +38,18 @@ fn foreground<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> bool {
 }
 
 pub fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::ObjectExt;
+        // Tao's outer_position is a cached Ok() even on Wayland, where the
+        // compositor need not disclose absolute coordinates. Inspect GTK's
+        // actual display (not the session environment), on the setup thread.
+        if !gtk::gdk::Display::default()
+            .is_some_and(|display| display.type_().name() == "GdkX11Display")
+        {
+            return Ok(());
+        }
+    }
     let host = app.state::<Host>();
     let mut task = host.0.lock().map_err(|_| Error::LockPoisoned)?;
     if task.is_some() {
