@@ -420,10 +420,11 @@ fn main() {
                 } else {
                     include_str!("main_flow_ui_probe.js")
                 };
+                let source = format!("{}\n{source}", include_str!("support/search_online_fixture.js"));
                 if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
-                    webview.eval(capture_ack::script(source)).unwrap();
+                    webview.eval(capture_ack::script(&source)).unwrap();
                 } else {
-                    webview.eval(source).unwrap();
+                    webview.eval(&source).unwrap();
                 }
             }
         })

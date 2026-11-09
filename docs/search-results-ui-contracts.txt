@@ -678,3 +678,39 @@ comprehensive algorithm tags are unchanged. No extra request is required.
 The synthetic `--song-waterfall` desktop proof checks initial/late-row
 highlighting, malformed input, compact layout and unchanged cursor/queue
 behavior across retry and numbered fallback.
+
+搜索结果离线与恢复（PC 3.1.42.205594）
+-------------------------------------
+SearchResults/index.jsx:417–453（M/3095:4028–4067）将结果标题、纠错及分类结果
+放在默认 NoNet 下；NoNet/index.tsx:27–60（M/275:15–42）离线时卸载这些子树，
+保留外部路由、关键词和分类。Empty/index.tsx:271–277、360–405 显示
+“网络似乎有问题”和“网络诊断”，并可附加官方诊断摘要及标识。官方分类列表
+请求 /api/search/pc/result/tab（M/15:2182，M/3001:677–715）的关键词副作用位于
+NoNet 外（M/3095:3831–3838），恢复时没有独立的分类重查。子树重新挂载时走常规
+分类读取规则：单曲和专辑清空后读第一页（M/3095:2494–2509、2961–2977），综合
+等待 tabsUpdated（M/3095:1716–1740），部分分类从匹配的返回路由状态恢复时可
+跳过首次读取（M/3001:413–417）。离线不展示旧结果；原 DVA 在途任务不因此显式取消。
+
+Cumulus 同样只卸载搜索结果，保留关键词、分类、导航和播放。当前的原生搜索 IPC
+合并分类列表和结果读取，因此离线不启动这项合并读取；在途原生任务可结束，
+但旧结果页的访问代次已失效，回包不能重挂结果或写入新访问。恢复沿用现有视口
+缓存：当前账号、本次访问中已确认的同关键词与分类可恢复原结果、滚动及行焦点；
+未读、被中断或失效的结果使用同一分类的普通首次读取。没有额外的自动重试。
+WebView 仍在线但业务读取失败时，沿用该结果页的错误和显式重试，不能混为离线。
+点击“网络诊断”打开本地应用已有诊断，读取本机网络状态；不移植官方自动诊断摘要、
+标识或远程上传。
+
+官方初始化读 navigator.onLine，再通过 M/132:8–15、M/119:59–137 合并系统提示与
+业务确认。普通请求成功也能恢复在线（M/12:314–327）；已离线时系统恢复提示可
+安排约 1 秒后的 /api/pl/count 检查（M/236:53–69），系统提示本身不等于确认。
+此处 Cumulus 只使用 WebView 的 navigator.onLine 和 online/offline 事件，直接按
+浏览器状态切换结果视图。原生消息轮询的账号限定连接模型不作为搜索或游客的状态源，
+也不新增探测请求。因此没有复刻官方全局确认和定时语义。
+
+使用 `scripts/ci/loopback_only.sh` 启动隔离的 Linux GTK/WebKitGTK，运行
+`scripts/ci/search_results_smoke.py --offline-route`。只注入浏览器连通状态，
+使用真实结果视图、类型化 IPC、原生合成搜索响应和本机网络诊断。十个阶段逐一
+核对两个边界的读取次数、分类和结果挂载状态，覆盖首次离线零读取、恢复当前结果
+及其滚动和焦点、迟到回包、在线请求失败、手动重试。检查十张桌面截图；Linux
+数字 locale 为 C，字符和消息 locale 保持 en_US.UTF-8。无默认路由、实服请求或
+账号写入；未验证系统物理连通性变化或 Windows WebView2。

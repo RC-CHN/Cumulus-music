@@ -236,7 +236,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .on_page_load(|webview, page| {
             if page.event() != PageLoadEvent::Finished { return; }
-            let script = include_str!("../signed_window_read_ui_probe.js");
+            let script = concat!(
+                include_str!("search_online_fixture.js"),
+                "\n",
+                include_str!("../signed_window_read_ui_probe.js")
+            );
             let result = webview.eval(capture_ack::script(script));
             if result.is_err() { webview.app_handle().exit(1); }
         })

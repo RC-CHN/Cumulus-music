@@ -452,7 +452,8 @@ fn start(
         "live":true,"keyword":params.keyword,"songId":params.song_id,"dynamicCdn":mode == Mode::Arm,
     });
     let script = format!(
-        "window.__signedWindowInput={renderer};\n{}",
+        "{}\nwindow.__signedWindowInput={renderer};\n{}",
+        include_str!("search_online_fixture.js"),
         capture_ack::script(include_str!("../signed_window_read_ui_probe.js"))
     );
     let api = Arc::new(ApiScope {
