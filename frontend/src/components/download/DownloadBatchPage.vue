@@ -8,6 +8,7 @@ import {
   type DownloadQuery,
 } from '../../services/downloads';
 import type { BatchCategory } from '../../services/downloadBatch';
+import type { PlaylistMutationView } from '../../services/playlists';
 import type { DownloadModel } from '../../composables/useDownloads';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import type { PlayerModel } from '../../composables/usePlayer';
@@ -70,6 +71,11 @@ function closeCollection() {
   if (scope) retireCollection(scope.epoch, scope.receipt);
   collection.value = undefined;
   if (dialog.value === 'collect') dialog.value = undefined;
+}
+function showCollectionResult(result: PlaylistMutationView) {
+  if (!batch.active() || !collection.value) return;
+  failed.value = false;
+  message.value = result.phase === 'confirmed' ? '已收藏到歌单' : result.message;
 }
 onBeforeUnmount(closeCollection);
 onMounted(() => done.value?.focus({ preventScroll: true }));
@@ -312,6 +318,7 @@ defineExpose({ requestLeave });
         :download-collection="collection.scope"
         :playlists="playlists"
         @close="closeCollection"
+        @collected="showCollectionResult"
         @expired="emit('expired')"
       />
       <DownloadBatchConfirm

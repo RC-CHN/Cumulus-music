@@ -45,7 +45,7 @@
    和持久操作日志，向 /api/v1/playlist/manipulate/tracks 提交一次 pid、op:add、
    有序 trackIds。重复点击不重发已准入操作；丢回执时保留未决日志，由用户显式
    只读核对。账号、API、Cookie 代次、选择器或任一原任务的权限/身份改变，写入
-   前复查不通过。取消不提交，焦点回到批量收藏按钮。
+   前复查不通过。取消不提交，焦点回到批量收藏按钮；确认后在批量页显示已收藏。
 5. download_command(epoch,{kind:'delete_files',task_ids}) 接收定格的确认选择；单次最多
    5000项，按任务ID去重。核心串行执行已有 completed.start(Delete) / resume，核对
    标识和文件完整性，每个已开始的文件有持久操作记录。返回 accepted（已完成删除的

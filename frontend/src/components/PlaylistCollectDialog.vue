@@ -31,6 +31,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   expired: [];
+  collected: [result: PlaylistMutationView];
   downloadCreationChanged: [];
   downloadCreationComplete: [];
 }>();
@@ -247,7 +248,10 @@ async function collected(value: PlaylistMutationView | undefined) {
     // create a second playlist when retrying the second half of this flow.
     created.value = value.playlistId;
     await collect(value.playlistId);
-  } else emit('close');
+  } else {
+    emit('collected', value);
+    emit('close');
+  }
 }
 async function collect(id: string) {
   if (!alive || busy.value || pending.value || fixedDestination.value) return;
