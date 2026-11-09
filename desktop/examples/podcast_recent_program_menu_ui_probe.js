@@ -194,7 +194,12 @@
     await click(() => trigger('503'), 'More for comments');
     await menuReady('503', 53);
     await click(() => item('comments'), 'open recent program comments');
-    await wait(() => one('.comments-page')?.textContent.includes('合成单集 503'), 'comment route uses program');
+    await wait(() => {
+      const header = one('.comment-resource-header[data-resource-kind="voice"][data-resource-id="503"]');
+      return header?.getAttribute('aria-busy') === 'false' &&
+        one('.comment-resource-play', header) &&
+        one('[data-comment-resource-name]', header)?.textContent.trim() === '合成单集 503';
+    }, 'comment route loads the correct program metadata');
     await capture('comments');
     await click(() => button('返回上一页'), 'return to recent programs');
 

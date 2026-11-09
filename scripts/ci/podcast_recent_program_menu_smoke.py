@@ -78,9 +78,18 @@ def verify(output, screenshots):
         '501', '503', '503', '501', '503', '503', '503', '504', '504', '504',
     ], counts
     assert all(body['resourceType'] == 1 for body in counts)
-    assert [body for path, body in trace if path == DETAIL] == [
-        {'id': '501'}, {'id': '503'}, {'id': '504'},
-    ], trace
+    # Insertion hydrates 503 without authorizing playback; opening Comments
+    # separately reads its own program metadata. Neither is another playback.
+    details = lambda calls: [body for path, body in calls if path == DETAIL]
+    assert details(step['calls']) == [{'id': '501'}, {'id': '503'}]
+    assert details(stages['download']['calls']) == details(step['calls'])
+    assert details(stages['comments']['calls']) == [{'id': '501'}, {'id': '503'}, {'id': '503'}]
+    assert details(trace) == [{'id': '501'}, {'id': '503'}, {'id': '503'}, {'id': '504'}], trace
+    assert [body for path, body in trace if path == '/api/dj/play/url/check'] == [
+        {'voiceId': '501'}, {'voiceId': '504'},
+    ]
+    assert [json.loads(body['ids']) for path, body in trace
+            if path == '/api/song/enhance/player/url/v1'] == [['1501'], ['1504']]
     assert any(path == '/api/v1/resource/comments/A_DJ_1_503' for path, _ in trace)
     assert not any(path in {'/api/djradio/v3/get', '/api/v6/dj/program/byradio',
                             '/api/song/enhance/privilege'} for path, _ in trace)

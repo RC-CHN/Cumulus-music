@@ -577,6 +577,11 @@ impl Api for Library {
                     json!({"code":200,"comments":[],"hotComments":[],"topComments":[],"more":false,"hasMore":false,"total":0}),
                 );
             }
+            if self.recent_program_menu
+                && matches!(path, "/api/djradio/v3/get" | "/api/v6/dj/program/byradio")
+            {
+                panic!("recent program menu unexpectedly requested a surrounding radio");
+            }
             if (self.program_menu || self.recent_program_menu)
                 && path == "/api/song/enhance/privilege"
             {
