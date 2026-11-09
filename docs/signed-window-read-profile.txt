@@ -48,6 +48,37 @@ to stop the PC observer and check cleanup. TempDir also cleans up on ordinary
 unwind or early refusal. Termination without running destructors can leave the
 private scratch root; the outer launcher must own cleanup in that case.
 
+Stopped installation with a shared directory mode
+-------------------------------------------------
+If the Linux installation directory is not private but its database files
+already are, do not change its mode or pass it directly to native preparation.
+The separate host wrapper accepts an owned installation path without following
+symlinks. It requires owner-only, singly linked database files, an independent
+private UID file outside the installation, and no SQLite WAL, SHM or journal
+for either database. It reads the active PC registry binding from a memory
+copy and stages only the registry and that account's database, with their
+original bytes, under a mode-0700 temporary tree.
+
+Run the existing supervisor through the wrapper. Put the source path, UID file
+and stopped-source assertion before the separator; pass all other supervisor
+options after it, including the read-only opt-in:
+
+  python3 scripts/research/signed_window_stage_profile.py \
+    --source /absolute/installation --expected-uid-file /absolute/private/uid \
+    --source-stopped -- --authorize-readonly [remaining supervisor options]
+
+The wrapper uses Linux Python 3.11 or later with SQLite deserialize support.
+The native preparer still applies all its original checks and prepares a
+separate minimized input for the sandbox. The staging tree can contain private
+registry pages; it is never mounted into the WebView sandbox. The wrapper
+rechecks source identity, file bytes and sidecars before and after the
+consumer, then unlinks its temporary tree on ordinary exit or failure. It does
+not stop a writer or provide an atomic snapshot of running databases.
+
+Offline staging tests (synthetic files only):
+
+  python3 -m unittest discover -s scripts/research -p 'test_signed_window_stage_profile.py' -v
+
 Storage and authorization checks
 --------------------------------
 Source paths are walked component by component without following aliases, with
