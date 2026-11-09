@@ -59,6 +59,10 @@ def verify_batch(output, screenshots):
     rows = [read(f'ux_{i:02d}_{stage}.json') for i, stage in enumerate(stages, 1)]
     assert rows[0]['summary'] == '已选 4 项下载，将收藏 2 首歌曲。2 项歌曲无法收藏，已略过。'
     assert rows[1]['exactReturnFocus']
+    assert rows[3]['confirmed'] == '已收藏到歌单'
+    if screenshots:
+        paint = read('paint-ux_03_batch_uncertain.json')
+        assert len(paint['samples']) == 1 and paint['samples'][0]['ok']
     reports = [row['syntheticCollection'] for row in [*rows, result]]
     assert [report['writes'] for report in reports] == [0, 0, 1, 1, 1]
     expected = [{'pid': '2', 'trackIds': '["3","4"]', 'op': 'add'}]

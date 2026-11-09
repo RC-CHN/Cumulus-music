@@ -119,20 +119,31 @@
       click(button('关闭歌单操作', first.picker));
       await wait(() => !one('dialog[data-download-collect]') && document.activeElement === favorite,
         'cancel returns to exact Favorite button');
+      assert(!one('.batch-operation-feedback', batch), 'cancel has no collection result');
       await capture('batch_cancel', { exactReturnFocus: true });
       await server('uncertain');
       await openBatchPicker();
       click(destination());
-      const retry = await wait(() => dialog()?.getAttribute('aria-busy') === 'false' &&
-        button('核对结果', dialog()), 'uncertain batch offers read-only recovery');
+      const retry = await wait(() => {
+        const picker = dialog();
+        return picker?.getAttribute('aria-busy') === 'false' &&
+          !one('.collect-status,.collect-working', picker) && button('核对结果', picker);
+      }, 'settled uncertain batch offers read-only recovery');
       assert(destination().getAttribute('aria-disabled') === 'true' &&
         one('.mutation-result', dialog()).dataset.phase === 'uncertain', 'pending destination cannot write again');
-      await capture('batch_uncertain');
+      const notice = one('.mutation-result', dialog());
+      const rect = notice.getBoundingClientRect();
+      const paint = { x: rect.left + 24, y: rect.bottom - 4, color: getComputedStyle(notice).backgroundColor };
+      assert(/^rgb\(\d+, \d+, \d+\)$/.test(paint.color) && document.elementFromPoint(paint.x, paint.y) === notice,
+        'paint sample lies in opaque warning padding');
+      await capture('batch_uncertain', { paintSamples: [paint], screenX, screenY, ratio: devicePixelRatio });
       await server('success');
       click(retry);
       await wait(() => !one('dialog[data-download-collect]') && document.activeElement === favorite,
         'explicit verified recovery closes and returns focus');
-      await capture('batch_reconciled');
+      const confirmed = one('.batch-operation-feedback', batch)?.textContent.trim();
+      assert(confirmed === '已收藏到歌单', 'read-back confirmation remains visible on the batch page');
+      await capture('batch_reconciled', { confirmed });
       await emit('complete', {
         ok: true, batchCollect: true, stageCount: count,
         realMusicRequests: 0, realAccountWrites: 0,
