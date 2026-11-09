@@ -7,6 +7,8 @@ mod capture_ack;
 mod card_source_fixture;
 #[path = "support/daily_history_fixture.rs"]
 mod daily_history_fixture;
+#[path = "support/download_liked_fixture.rs"]
+mod download_liked_fixture;
 #[path = "support/download_page_fixture.rs"]
 mod download_page_fixture;
 #[path = "support/effect_directory_fixture.rs"]
@@ -222,6 +224,23 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn download_system_liked_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(download_liked_fixture::enabled().then(|| download_liked_fixture::REVISION.into()))
+    }
+    fn request_download_system_liked<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::SystemLikedRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::PlaylistAddPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if !download_liked_fixture::enabled() || revision != download_liked_fixture::REVISION {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            permission()?;
+            download_liked_fixture::read(read)
+        })
+    }
     fn download_collection_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(
             download_page_fixture::collection_enabled()
@@ -270,6 +289,9 @@ impl Api for Library {
             assert_eq!(payload.as_object().unwrap().len(), 3);
             permission()?;
             dispatched.store(true, std::sync::atomic::Ordering::Release);
+            if download_liked_fixture::enabled() && payload["pid"] == "83" {
+                return download_liked_fixture::write(payload);
+            }
             if playlist_collect_fixture::download_create_enabled() {
                 playlist_collect_fixture::guarded_download_creation(path, &payload);
             }
@@ -772,7 +794,10 @@ impl Api for Library {
                     };
                     json!({"code":200,"more":false,"playlist":(1..=last).map(playlist).collect::<Vec<_>>()})
                 }
-                "/api/song/like/get" => json!({"code":200,"ids":[3,7,10]}),
+                "/api/song/like/get" => {
+                    download_liked_fixture::observe_generic_likes();
+                    json!({"code":200,"ids":[3,7,10]})
+                }
                 "/api/v3/discovery/recommend/songs" => {
                     json!({"code":200,"data":{"dailySongs":(1..=40).map(song).collect::<Vec<_>>()}})
                 }
@@ -1550,6 +1575,11 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__collectFixtureAck={report};")).unwrap();
                 return;
             }
+            if download_liked_fixture::enabled() && stage=="download-liked-fixture" {
+                download_liked_fixture::settle();
+                handle.get_webview_window("main").unwrap().eval("window.__downloadLikedFixtureAck=true;").unwrap();
+                return;
+            }
             if library_fixture::enabled() && stage=="library-fixture" {
                 library_fixture::control(&value);
                 let report = library_fixture::report();
@@ -1674,6 +1704,7 @@ fn main() {
             if mode_fixture::enabled() { value["syntheticMode"] = mode_fixture::report(); }
             if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }
             if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
+            if download_liked_fixture::enabled() { value["syntheticDownloadLiked"] = download_liked_fixture::report(&proof_store); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
             if playlist_editor_fixture::enabled() {value["syntheticMetadataWrites"]=json!(playlist_editor_fixture::writes());}
             if let Some(fixture)=recovery.as_ref() {
