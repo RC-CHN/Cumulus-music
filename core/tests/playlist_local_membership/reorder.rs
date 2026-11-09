@@ -153,6 +153,117 @@ fn online(id: u32) -> PlaylistMixedOrderRow {
 }
 
 #[tokio::test]
+async fn mixed_move_uses_raw_pre_removal_gap_and_selection_order_on_the_full_list() {
+    let fixture = Fixture::new(&[10, 20, 30], Reply::Ack).await;
+    let (client, session) = fixture.open();
+    let before = fixture.api.current(&session);
+    let same_online = client
+        .move_playlist_mixed(
+            "1",
+            "73",
+            &before.revision,
+            vec![fixture.local(1), fixture.local(0)],
+            3,
+        )
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(same_online.phase, PlaylistPhase::Confirmed);
+    assert_eq!(
+        same_online.evidence,
+        Some(PlaylistMixedReorderEvidence::Acknowledged)
+    );
+    let after_first = fixture.api.current(&session);
+    assert_eq!(
+        after_first.rows,
+        [
+            PlaylistLocalRow::Remote { index: 0 },
+            PlaylistLocalRow::Local(fixture.rows[1].clone()),
+            PlaylistLocalRow::Local(fixture.rows[0].clone()),
+            PlaylistLocalRow::Remote { index: 1 },
+            PlaylistLocalRow::Remote { index: 2 },
+        ]
+    );
+    let changed_online = client
+        .move_playlist_mixed(
+            "1",
+            "73",
+            &after_first.revision,
+            vec![online(30), fixture.local(0), online(10)],
+            4,
+        )
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(changed_online.phase, PlaylistPhase::Confirmed);
+    assert_eq!(
+        fixture.api.current(&session).rows,
+        [
+            PlaylistLocalRow::Local(fixture.rows[1].clone()),
+            PlaylistLocalRow::Remote { index: 0 },
+            PlaylistLocalRow::Remote { index: 1 },
+            PlaylistLocalRow::Local(fixture.rows[0].clone()),
+            PlaylistLocalRow::Remote { index: 2 },
+        ]
+    );
+    assert_eq!(
+        *fixture.api.writes.lock().unwrap(),
+        [
+            json!({"pid":"73","op":"update","trackIds":"[\"10\",\"20\",\"30\"]"}),
+            json!({"pid":"73","op":"update","trackIds":"[\"20\",\"30\",\"10\"]"}),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn mixed_move_rejects_stale_or_forged_selection_without_sending() {
+    let fixture = Fixture::new(&[10, 20], Reply::Ack).await;
+    let (client, session) = fixture.open();
+    let before = fixture.api.current(&session);
+    let mut stale_local = fixture.rows[0].clone();
+    stale_local.revision = "a".repeat(64);
+    for (selected, gap) in [
+        (vec![], 0),
+        (vec![online(10)], 5),
+        (vec![online(10), online(10)], 1),
+        (vec![online(99)], 2),
+        (vec![PlaylistMixedOrderRow::Local(stale_local)], 1),
+    ] {
+        assert!(matches!(
+            client
+                .move_playlist_mixed("1", "73", &before.revision, selected, gap)
+                .await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    fixture.api.detail.lock().unwrap()["trackIds"][0]["v"] = json!(1);
+    assert!(matches!(
+        client
+            .move_playlist_mixed("1", "73", &before.revision, vec![online(10)], 1)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    fixture.api.detail.lock().unwrap()["trackIds"][0]["v"] = json!(-1);
+    let with_unbound = fixture.api.current(&session);
+    assert!(matches!(
+        client
+            .move_playlist_mixed("1", "73", &with_unbound.revision, vec![fixture.local(0)], 0)
+            .await,
+        Err(Error::State(
+            "cannot reorder unbound server local playlist rows"
+        ))
+    ));
+    assert!(fixture.api.writes.lock().unwrap().is_empty());
+    assert!(
+        client
+            .playlist_mixed_reorder_receipt("1", "73")
+            .unwrap()
+            .value
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn mixed_reorder_sends_empty_projection_and_waits_for_explicit_acknowledgement() {
     let fixture = Fixture::new(&[], Reply::Ack).await;
     let (client, session) = fixture.open();

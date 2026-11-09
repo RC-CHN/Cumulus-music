@@ -552,6 +552,8 @@ export function createTauriClient(): CoreClient {
     playlistOperations: (epoch) => invoke('playlist_operations', { epoch }),
     reorderPlaylistMixed: (epoch, id, revision, rows) =>
       invoke('reorder_playlist_mixed', { epoch, id, revision, rows }),
+    movePlaylistMixed: (epoch, id, revision, selected, gap) =>
+      invoke('move_playlist_mixed', { epoch, id, revision, selected, gap }),
     playlistMixedReorderReceipt: (epoch, id) =>
       invoke('playlist_mixed_reorder_receipt', { epoch, id }),
     reconcilePlaylistMixedReorder: (epoch, id, operationId) =>

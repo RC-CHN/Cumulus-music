@@ -100,6 +100,13 @@ export interface PlaylistClient {
     revision: string,
     rows: PlaylistMixedOrderRow[],
   ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
+  movePlaylistMixed(
+    epoch: string,
+    id: string,
+    revision: string,
+    selected: PlaylistMixedOrderRow[],
+    gap: number,
+  ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
   playlistMixedReorderReceipt(
     epoch: string,
     id: string,

@@ -604,6 +604,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 playlists::mutate_playlist,
                 playlists::mutate_playlist_local,
                 playlists::reorder_playlist_mixed,
+                playlists::move_playlist_mixed,
                 playlists::playlist_mixed_reorder_receipt,
                 playlists::reconcile_playlist_mixed_reorder,
                 playlists::reconcile_playlist,

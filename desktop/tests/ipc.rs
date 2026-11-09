@@ -50,6 +50,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "pick_local_directory",
             "download_collect_creation",
             "reorder_playlist_mixed",
+            "move_playlist_mixed",
             "playlist_mixed_reorder_receipt",
             "reconcile_playlist_mixed_reorder",
             "player_action",
@@ -161,6 +162,23 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         &window,
         request("reorder_playlist_mixed", reorder.clone()),
         Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
+    );
+    let movement = json!({
+        "epoch":"0","id":"10","revision":revision,"selected":reorder["rows"],"gap":2,
+    });
+    assert_ipc_response(
+        &window,
+        request("move_playlist_mixed", movement.clone()),
+        Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
+    );
+    let mut malformed = movement;
+    malformed["gap"] = json!(-1);
+    let error = tauri::test::get_ipc_response(&window, request("move_playlist_mixed", malformed))
+        .expect_err("a raw drop gap cannot be negative");
+    assert!(
+        error
+            .as_str()
+            .is_some_and(|message| message.contains("invalid args `gap`"))
     );
     let mut untrusted = reorder;
     untrusted["rows"][1]["path"] = json!("forged.wav");

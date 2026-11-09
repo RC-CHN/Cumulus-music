@@ -100,6 +100,21 @@ pub async fn reorder_playlist_mixed(
 }
 
 #[tauri::command]
+pub async fn move_playlist_mixed(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    revision: String,
+    selected: Vec<PlaylistMixedOrderRow>,
+    gap: usize,
+) -> Result<AccountData<PlaylistMixedReorderReceipt>, ClientError> {
+    client
+        .move_playlist_mixed(&epoch, &id, &revision, selected, gap)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn playlist_mixed_reorder_receipt(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

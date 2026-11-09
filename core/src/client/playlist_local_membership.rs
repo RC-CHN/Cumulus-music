@@ -59,6 +59,25 @@ impl MusicClient {
         })
     }
 
+    pub async fn move_playlist_mixed(
+        &self,
+        epoch: &str,
+        id: &str,
+        expected_revision: &str,
+        selected: Vec<PlaylistMixedOrderRow>,
+        gap: usize,
+    ) -> Result<AccountData<PlaylistMixedReorderReceipt>> {
+        let token = self.playlist_token(epoch)?;
+        let value = PlaylistLocalStore::new(self.session.clone())?
+            .move_mixed(&token, id, expected_revision, selected, gap)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+
     pub async fn reconcile_playlist_mixed_reorder(
         &self,
         epoch: &str,

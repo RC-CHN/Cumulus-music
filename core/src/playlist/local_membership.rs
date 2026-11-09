@@ -20,7 +20,7 @@ const RECORDS: &str = "playlist-local-membership-v1";
 const MAX_REMOTE: usize = 100_000; // Complete PC v6 detail contract.
 const MAX_LOCAL: usize = 50_000;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaylistLocalRef {
     pub id: String,

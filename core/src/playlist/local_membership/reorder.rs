@@ -12,7 +12,7 @@ const INTENTS: &str = "playlist-local-reorders-v1";
 const PATH: &str = "/api/v1/playlist/manipulate/tracks";
 const REJECTIONS: &[i64] = &[400, 403, 405, 406, 502, 505, 506, 511, 512];
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaylistMixedOrderRow {
     Online { id: String },
@@ -113,6 +113,14 @@ enum Outcome {
     Unknown,
 }
 
+enum Reorder {
+    Complete(Vec<String>, Vec<LocatedLocal>),
+    Move {
+        selected: Vec<PlaylistMixedOrderRow>,
+        gap: usize,
+    },
+}
+
 pub(in crate::playlist) fn require_settled(
     store: &StateStore,
     owner: &str,
@@ -137,11 +145,47 @@ impl PlaylistLocalStore {
         expected_revision: &str,
         rows: Vec<PlaylistMixedOrderRow>,
     ) -> Result<PlaylistMixedReorderReceipt> {
+        let (online, local) = split(rows)?;
+        self.submit_reorder(
+            token,
+            id,
+            expected_revision,
+            Reorder::Complete(online, local),
+        )
+        .await
+    }
+
+    pub(crate) async fn move_mixed(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        expected_revision: &str,
+        selected: Vec<PlaylistMixedOrderRow>,
+        gap: usize,
+    ) -> Result<PlaylistMixedReorderReceipt> {
+        if selected.is_empty() || selected.len() > MAX_LOCAL + MAX_REMOTE {
+            return Err(Error::InvalidInput("invalid mixed playlist selection"));
+        }
+        self.submit_reorder(
+            token,
+            id,
+            expected_revision,
+            Reorder::Move { selected, gap },
+        )
+        .await
+    }
+
+    async fn submit_reorder(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        expected_revision: &str,
+        reorder: Reorder,
+    ) -> Result<PlaylistMixedReorderReceipt> {
         identifier(&json!(id))?;
         if !digest(expected_revision) {
             return Err(Error::InvalidInput("invalid mixed playlist revision"));
         }
-        let (desired_online, desired_local) = split(rows)?;
         let owner = self
             .session
             .with_token(token, |owner| Ok(owner.to_owned()))?;
@@ -156,16 +200,26 @@ impl PlaylistLocalStore {
         let remote = Remote::read(&owner, id, &detail)?;
         require_owner(&remote)?;
         let before_online = online_ids(&detail)?;
-        if !online_permutation(&before_online, &desired_online) {
-            return Err(Error::InvalidInput(
-                "mixed reorder must retain every online row",
-            ));
-        }
-        let operation = self.session.with_token(token, |owner| {
+        let (operation, desired_online) = self.session.with_token(token, |owner| {
             self.store.transaction(|tx| {
                 let current = read_local(tx, owner, id)?;
-                if project(owner, id, &remote, Some(&current))?.revision != expected_revision {
+                let projected = project(owner, id, &remote, Some(&current))?;
+                if projected.revision != expected_revision {
                     return Err(Error::QueueChanged);
+                }
+                let (desired_online, desired_local) = match reorder {
+                    Reorder::Complete(online, local) => (online, local),
+                    Reorder::Move { selected, gap } => split(materialize_move(
+                        projected.rows,
+                        &before_online,
+                        selected,
+                        gap,
+                    )?)?,
+                };
+                if !online_permutation(&before_online, &desired_online) {
+                    return Err(Error::InvalidInput(
+                        "mixed reorder must retain every online row",
+                    ));
                 }
                 if !same_members(&current.local, &desired_local) {
                     return Err(Error::InvalidInput(
@@ -183,14 +237,14 @@ impl PlaylistLocalStore {
                     before_revision: expected_revision.to_owned(),
                     generation: current.generation,
                     before_online,
-                    desired_online: desired_online.clone(),
+                    desired_online,
                     desired_local,
                     phase: PlaylistPhase::Sending,
                     evidence: None,
                     service_code: None,
                 };
-                tx.put(owner, INTENTS, id, &serde_json::to_value(journal)?)?;
-                Ok(operation)
+                tx.put(owner, INTENTS, id, &serde_json::to_value(&journal)?)?;
+                Ok((operation, journal.desired_online))
             })
         })?;
         // The official array is truthy even when empty. Never elide the
@@ -373,6 +427,51 @@ fn online_ids(detail: &Value) -> Result<Vec<String>> {
             identifier(&row["id"])
         })
         .collect()
+}
+
+fn materialize_move(
+    rows: Vec<PlaylistLocalRow>,
+    online: &[String],
+    selected: Vec<PlaylistMixedOrderRow>,
+    gap: usize,
+) -> Result<Vec<PlaylistMixedOrderRow>> {
+    let len = rows.len();
+    if gap > len || selected.len() > len {
+        return Err(Error::InvalidInput("mixed playlist move is out of bounds"));
+    }
+    let mut picked = selected.iter().collect::<HashSet<_>>();
+    if picked.len() != selected.len() {
+        return Err(Error::InvalidInput("duplicate mixed playlist selection"));
+    }
+    let mut next = Vec::with_capacity(len);
+    let mut insertion = 0;
+    for (index, row) in rows.into_iter().enumerate() {
+        let row = match row {
+            PlaylistLocalRow::Remote { index } => PlaylistMixedOrderRow::Online {
+                id: online.get(index).cloned().ok_or(Error::State(
+                    "mixed playlist online projection is incomplete",
+                ))?,
+            },
+            PlaylistLocalRow::Local(reference) => PlaylistMixedOrderRow::Local(reference),
+        };
+        if !picked.remove(&row) {
+            next.push(row);
+            if index < gap {
+                insertion += 1;
+            }
+        }
+    }
+    if !picked.is_empty() {
+        return Err(Error::InvalidInput(
+            "mixed playlist selection contains an unknown row",
+        ));
+    }
+    drop(picked);
+    // M/3085:2489–2505 leaves a placeholder for each selected row, splices
+    // at the raw table gap, and then filters placeholders. Count only rows
+    // still present before the gap, while preserving selectedData order.
+    next.splice(insertion..insertion, selected);
+    Ok(next)
 }
 
 fn split(rows: Vec<PlaylistMixedOrderRow>) -> Result<(Vec<String>, Vec<LocatedLocal>)> {
