@@ -1159,6 +1159,17 @@ fn main() {
         if daily_notification_proof {
             let config=signed_search.as_ref().expect("sealed signed daily startup").daily_notification_config()?;
             client=client.with_native_daily_notification_config(config);
+            // Establish the sealed signed cohort before the timed page. A busy
+            // runner can take >3s to restore after page load; the recovered
+            // native timer intentionally does not rearm on late assignment.
+            tauri::async_runtime::block_on(async {
+                assert_eq!(client.restore_account().await?.status,
+                    cumulus_core::account::SessionStatus::Authenticated);
+                client.refresh_pc_presentation().await?;
+                assert_eq!(client.daily_notification_startup_plan()?.is_some(),
+                    daily_notification_fixture::mode().as_deref()!=Some("control"));
+                Ok::<_,cumulus_core::Error>(())
+            })?;
         }
         if playback_power_guide_fixture::enabled() {
             playback_power_guide_fixture::initialize(&proof_store)?;
@@ -1260,7 +1271,7 @@ fn main() {
         system_master_volume_fixture::install(app);
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         queue_more_fixture::phase_milestone("client_managed");
-        if search_signed_fixture::presentation_enabled() || guest_search.is_some() || daily_notification_proof {
+        if search_signed_fixture::presentation_enabled() || guest_search.is_some() {
             cumulus_desktop::pc_presentation::start(app.handle())?;
         }
         if member_lifecycle_fixture::enabled() || download_page_fixture::quality_enabled() {

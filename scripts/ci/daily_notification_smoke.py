@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from motion_smoke import launch
-from search_signed_trace import assignment_arguments, signed_assignment
+from search_signed_trace import ACCOUNT, ASSIGNMENT, assignment_arguments, signed_assignment
 
 CASES = ("play", "settings", "snooze", "disable", "close", "details", "privacy", "fullscreen", "control")
 SUPPRESSED = {"privacy", "fullscreen", "control"}
@@ -16,6 +16,13 @@ MEDIA = "/api/song/enhance/player/url/v1"
 
 def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def signed_ready_before_page(trace, expected):
+    calls = trace["calls"]
+    assert [call["path"] for call in calls] == [ACCOUNT, ASSIGNMENT, ACCOUNT], calls
+    signed_assignment({**trace, "calls": calls[:2]}, "t1", expected)
+    assert calls[2] == calls[0], "WebView restores the same sealed native account without another assignment"
 
 
 def verify(directory, mode, expected, screenshots):
@@ -29,16 +36,17 @@ def verify(directory, mode, expected, screenshots):
     assert [path.stem for path in files] == [f"ux_{i:02}_{label}" for i, label in enumerate(labels, 1)]
     states = dict(zip(labels, map(read, files)))
     assert complete["count"] == len(states)
-    signed_assignment(complete["signedSearch"], "t1", expected)
+    signed_ready_before_page(complete["signedSearch"], expected)
     assert all(state["noOverflow"] for state in states.values())
     for row in states.values():
-        signed_assignment(row["signedSearch"], "t1", expected)
+        signed_ready_before_page(row["signedSearch"], expected)
     locale = read(output / "locale.json")
     assert locale["numeric"] == "C"
     assert all(locale[key].casefold().replace("-", "") == "en_us.utf8"
                for key in ("messages", "characters")), locale
     native_preflight = read(output / "daily-preflight.json")
     assert native_preflight[0]["elapsedMs"] < 1000, native_preflight
+    assert native_preflight[0]["armed"] is (mode != "control"), native_preflight
     before_due = next(frame for frame in native_preflight if frame["elapsedMs"] >= 4000)
     assert before_due["planError"] is None, native_preflight
     assert before_due["armed"] is (mode != "control"), native_preflight
