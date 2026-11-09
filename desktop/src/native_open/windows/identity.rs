@@ -266,12 +266,26 @@ fn integrity_sid(token: HANDLE) -> io::Result<Vec<u8>> {
 }
 
 fn is_elevated(token: HANDLE) -> io::Result<bool> {
-    let buffer = TokenBuffer::query(token, TokenElevation)?;
-    if buffer.len < size_of::<TOKEN_ELEVATION>() {
+    let mut elevation = TOKEN_ELEVATION::default();
+    let expected = size_of::<TOKEN_ELEVATION>() as u32;
+    let mut actual = 0;
+    // SAFETY: the token is live and both output pointers refer to initialized,
+    // correctly sized writable values. Windows may reject a null sizing call
+    // for this fixed-size class with ERROR_BAD_LENGTH.
+    if unsafe {
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            ptr::from_mut(&mut elevation).cast(),
+            expected,
+            &mut actual,
+        )
+    } == 0
+        || actual != expected
+    {
         return Err(denied());
     }
-    // SAFETY: the aligned returned buffer contains the checked elevation structure.
-    Ok(unsafe { (*buffer.words.as_ptr().cast::<TOKEN_ELEVATION>()).TokenIsElevated } != 0)
+    Ok(elevation.TokenIsElevated != 0)
 }
 
 fn user_sid(token: HANDLE) -> io::Result<Vec<u8>> {

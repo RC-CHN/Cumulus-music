@@ -13,13 +13,14 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{ERROR_NO_TOKEN, HANDLE},
     Security::{
-        LUID_AND_ATTRIBUTES, RevertToSelf, SID_AND_ATTRIBUTES, SecurityIdentification,
-        TOKEN_APPCONTAINER_INFORMATION, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_OWNER,
-        TOKEN_PRIMARY_GROUP, TOKEN_PRIVILEGES, TOKEN_QUERY, TokenAppContainerSid,
-        TokenDeviceClaimAttributes, TokenDeviceGroups, TokenGroups, TokenHasRestrictions,
-        TokenIsAppContainer, TokenMandatoryPolicy, TokenOwner, TokenPrimaryGroup, TokenPrivileges,
-        TokenRestrictedSids, TokenSessionId, TokenUIAccess, TokenUserClaimAttributes,
-        TokenVirtualizationAllowed, TokenVirtualizationEnabled,
+        GetTokenInformation, LUID_AND_ATTRIBUTES, RevertToSelf, SID_AND_ATTRIBUTES,
+        SecurityIdentification, TOKEN_APPCONTAINER_INFORMATION, TOKEN_GROUPS,
+        TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_POLICY, TOKEN_OWNER, TOKEN_PRIMARY_GROUP,
+        TOKEN_PRIVILEGES, TOKEN_QUERY, TokenAppContainerSid, TokenDeviceClaimAttributes,
+        TokenDeviceGroups, TokenGroups, TokenHasRestrictions, TokenIsAppContainer,
+        TokenMandatoryPolicy, TokenOwner, TokenPrimaryGroup, TokenPrivileges, TokenRestrictedSids,
+        TokenSessionId, TokenUIAccess, TokenUserClaimAttributes, TokenVirtualizationAllowed,
+        TokenVirtualizationEnabled,
     },
     System::{
         Pipes::ImpersonateNamedPipeClient,
@@ -233,10 +234,79 @@ unsafe fn read<T: Copy>(buffer: &TokenBuffer, offset: usize) -> io::Result<T> {
     })
 }
 
+// `value` must match the verified fixed-size Win32 POD output for `class`.
+unsafe fn query_fixed<T>(
+    token: HANDLE,
+    class: TOKEN_INFORMATION_CLASS,
+    value: &mut T,
+) -> (bool, u32) {
+    let mut actual = 0;
+    // SAFETY: caller selects the exact POD type and this call writes at most its size.
+    let success = unsafe {
+        GetTokenInformation(
+            token,
+            class,
+            ptr::from_mut(value).cast(),
+            size_of::<T>() as u32,
+            &mut actual,
+        )
+    } != 0;
+    (success, actual)
+}
+
 fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {
-    let buffer = TokenBuffer::query(token, class)?;
-    // SAFETY: each caller uses a DWORD or one-DWORD Win32 structure.
-    unsafe { read(&buffer, 0) }
+    if class == TokenHasRestrictions {
+        let (success, actual, value) = query_restriction_boolean(token);
+        return restriction_boolean(success, actual, value);
+    }
+    if class == TokenMandatoryPolicy {
+        let mut value = TOKEN_MANDATORY_POLICY::default();
+        // SAFETY: this fixed class returns exactly TOKEN_MANDATORY_POLICY.
+        let (success, actual) = unsafe { query_fixed(token, class, &mut value) };
+        return if success && actual as usize == size_of::<TOKEN_MANDATORY_POLICY>() {
+            Ok(value.Policy)
+        } else {
+            Err(denied())
+        };
+    }
+    if ![
+        TokenIsAppContainer,
+        TokenSessionId,
+        TokenUIAccess,
+        TokenVirtualizationAllowed,
+        TokenVirtualizationEnabled,
+    ]
+    .contains(&class)
+    {
+        return Err(denied());
+    }
+    // A zero-length sizing probe is not required for these fixed DWORD outputs.
+    let mut value = 0u32;
+    // SAFETY: every class admitted above documents a DWORD output.
+    let (success, actual) = unsafe { query_fixed(token, class, &mut value) };
+    if success && actual as usize == size_of::<u32>() {
+        Ok(value)
+    } else {
+        Err(denied())
+    }
+}
+
+fn query_restriction_boolean(token: HANDLE) -> (bool, u32, u8) {
+    // Hosted Windows x64 rejected the one-byte buffer but accepted a DWORD
+    // buffer, reported length one, and wrote only its first byte. Preserve the
+    // accepted alignment/capacity; the sentinel rejects an unwritten result.
+    let mut buffer = u32::MAX;
+    // SAFETY: the DWORD is writable and the API receives its full capacity.
+    let (success, actual) = unsafe { query_fixed(token, TokenHasRestrictions, &mut buffer) };
+    (success, actual, buffer.to_ne_bytes()[0])
+}
+
+fn restriction_boolean(success: bool, actual: u32, value: u8) -> io::Result<u32> {
+    if success && actual as usize == size_of::<u8>() && matches!(value, 0 | 1) {
+        Ok(u32::from(value))
+    } else {
+        Err(denied())
+    }
 }
 
 fn claims_empty(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<bool> {
@@ -368,6 +438,26 @@ mod tests {
     };
 
     const LIMIT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn restriction_boolean_rejects_unwritten_invalid_and_wrong_size_results() {
+        assert_eq!(restriction_boolean(true, 1, 0).unwrap(), 0);
+        assert_eq!(restriction_boolean(true, 1, 1).unwrap(), 1);
+        for (success, actual, value) in [
+            (false, 1, 1),
+            (true, 0, 0),
+            (true, 4, 1),
+            (true, 1, 2),
+            (true, 1, u8::MAX),
+        ] {
+            assert_eq!(
+                restriction_boolean(success, actual, value)
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::PermissionDenied
+            );
+        }
+    }
 
     #[test]
     fn effective_connector_rejects_same_logon_restricted_thread_before_ready() {
