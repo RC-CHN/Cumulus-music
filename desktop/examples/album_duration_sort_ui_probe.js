@@ -38,7 +38,7 @@
   const act = (action) => invoke('player_action', { epoch, action });
   const queueIds = (view) => view.tracks.map((entry) => entry.track.id).join(',');
   const states = [];
-  let transportAttempt;
+  let transportAttempt, sourceFocus;
   async function capture(name, playing = false) {
     await wait(() => !one('.page-enter-active,.page-leave-active,.catalog-tab-enter-active,.menu-leave-active'), 'layout settled');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -187,7 +187,26 @@
     await captureOrigin('queue_source_ready', { sourceFocused: true, source: fromAlbum.origin });
     click(source);
     await wait(albumPage, 'queue source opened the originating album');
-    assert(one('.queue-panel') && document.activeElement === sourceButton(),
+    const sourceDestination = one('.catalog-page .album-header:not(.album-header-compact) h1');
+    const painted = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    // Checking as soon as H1 exists can miss the deferred page-entry focus
+    // effect. Wait for the destination animation and its final focus frame.
+    await painted();
+    await wait(() => !(sourceDestination.closest('.page-view')?.getAnimations() ?? []).some((animation) => {
+      const end = animation.effect?.getComputedTiming().endTime;
+      return Number.isFinite(end) && (animation.playState === 'running' || animation.pending);
+    }), 'origin destination animation finished');
+    await painted();
+    sourceFocus = {
+      queueOpen: !!one('.queue-panel'),
+      sourceConnected: source.isConnected,
+      sameSource: sourceButton() === source,
+      activeOnSource: document.activeElement === sourceButton(),
+      activeOnDestination: document.activeElement === sourceDestination,
+      activeTag: document.activeElement?.tagName,
+      activeClass: document.activeElement?.className,
+    };
+    assert(sourceFocus.queueOpen && sourceFocus.sameSource && sourceFocus.activeOnSource,
       'source navigation dismissed the queue or stole row focus');
     const unchanged = async () => {
       const current = await player(), displayed = await queue();
@@ -196,7 +215,7 @@
         current.queueRevision === after.queueRevision && JSON.stringify(displayed) === JSON.stringify(queued);
     };
     assert(await unchanged(), 'source navigation changed paused decoder, clock or queue');
-    await captureOrigin('queue_source_opened', { queueStayedOpen: true, source: fromAlbum.origin });
+    await captureOrigin('queue_source_opened', { queueStayedOpen: true, source: fromAlbum.origin, focus: sourceFocus });
     click(sourceButton());
     assert(albumPage() && await unchanged(), 'same destination changed playback');
     click(one('.back-button'));
@@ -426,7 +445,7 @@
   } catch (error) {
     const snapshot = transportAttempt ? await player().catch(() => null) : null;
     await emit('failed', { ok: false, error: String(error), stack: error?.stack, states,
-      transportAttempt, transportSnapshot: snapshot && {
+      sourceFocus, transportAttempt, transportSnapshot: snapshot && {
         state: snapshot.state, playId: snapshot.playId, entryId: snapshot.entryId,
         queueRevision: snapshot.queueRevision, position: snapshot.position, errorCode: snapshot.errorCode,
       },

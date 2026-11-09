@@ -589,6 +589,10 @@ def main():
         assert appended['player']['position'] > 4
         assert [entry['track']['id'] for entry in appended['queue']['tracks']] == ['900','12','14','11','13','901']
         assert stages['queue_source_ready']['sourceFocused'] is True
+        focus = stages['queue_source_opened']['focus']
+        assert focus['queueOpen'] is True and focus['sourceConnected'] is True
+        assert focus['sameSource'] is True and focus['activeOnSource'] is True
+        assert focus['activeOnDestination'] is False and focus['activeTag'] == 'BUTTON'
         for name in ('queue_source_ready', 'queue_source_opened', 'queue_source_back'):
             stage = stages[name]
             assert stage['source'] == {'kind': 'album', 'id': '8'}
