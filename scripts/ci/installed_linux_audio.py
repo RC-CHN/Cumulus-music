@@ -347,6 +347,7 @@ def focus_installed_control(atspi, app, name, roles, dialog=None, *, reveal_side
              lambda: control.get_state_set().contains(atspi.StateType.FOCUSED))
     if viewport is not None:
         assert visible_in_sidebar(), f'installed sidebar control {name!r} moved out of view after focus'
+    return control
 
 
 
@@ -666,8 +667,8 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
     with closing(Input(x, y)) as inputs, monitor_context as capture_monitor:
         assert accessibility is not None, 'installed playback proof requires a private AT-SPI session'
 
-        def activate(name, roles, *, reveal_sidebar=False):
-            focus_installed_control(accessibility, app, name, roles, reveal_sidebar=reveal_sidebar)
+        def activate(name, roles, *, dialog=None, reveal_sidebar=False):
+            focus_installed_control(accessibility, app, name, roles, dialog=dialog, reveal_sidebar=reveal_sidebar)
             assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
             inputs.key('Return')
 
@@ -684,17 +685,23 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             master_roles += (switch_role,)
         wait_for('installed main window focus', lambda: active_window() == window)
         activate('本地音乐', (*button_roles, accessibility.Role.LINK), reveal_sidebar=True)
-        focus_installed_control(accessibility, app, '选择音乐目录', button_roles)
         screenshot('installed-local-page.png')
-        assert active_window() == window, 'installed app lost keyboard focus before opening the picker'
-        inputs.key('Return')
+        directory_dialog = '选择本地文件夹'
+        chooser_title = '选择本地音乐目录'
+        activate('选择音乐目录', button_roles)
+        activate('添加文件夹', button_roles, dialog=directory_dialog)
+
         def current_picker():
             active = active_window()
-            return active if active not in (None, window) else None
+            if active in (None, window):
+                return None
+            title = subprocess.run(['xprop', '-id', hex(active), '_NET_WM_NAME'],
+                                   capture_output=True, text=True, timeout=3)
+            return active if title.returncode == 0 and title.stdout.strip().endswith(f'= "{chooser_title}"') else None
 
-        picker = wait_for('native file picker focus', current_picker)
+        picker = wait_for('focused native chooser owned by the installed application', current_picker)
         location = str(source.parent)
-        picker_status = {'pickerWindow': hex(picker), 'sourceLocationVerified': False}
+        picker_status = {'pickerWindow': hex(picker), 'title': chooser_title, 'sourceLocationVerified': False}
         try:
             inputs.key('l', 'Control_L')
             editable, _ = wait_for('focused native chooser location entry',
@@ -710,6 +717,22 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             inputs.key('Return')
             wait_for('installed main window focus after selection', lambda: active_window() == window)
             picker_status['chooserClosed'] = True
+
+            # The chooser only registers the directory. The real management
+            # dialog starts it unchecked and applies the scan on confirmation.
+            checkbox = focus_installed_control(accessibility, app, location, (accessibility.Role.CHECK_BOX,),
+                                               dialog=directory_dialog)
+
+            def selected_for_scan():
+                return checkbox.get_state_set().contains(accessibility.StateType.CHECKED)
+
+            assert active_window() == window and not selected_for_scan() and indexed() is None
+            inputs.key('space')
+            wait_for('selected directory in the pending scan draft', selected_for_scan)
+            assert indexed() is None, 'the directory was scanned before confirmation'
+            picker_status['selectedOnlyInDraft'] = True
+            activate('确认', button_roles, dialog=directory_dialog)
+            picker_status['confirmedScan'] = True
         finally:
             (root/'picker-observation.json').write_text(json.dumps(picker_status, indent=2)+'\n', encoding='utf-8')
         indexed_row = wait_for('generated FLAC indexed by the installed app', indexed)
