@@ -261,3 +261,126 @@ ERR counters stayed zero. See `.build/ui-proof/phase86-indexed-1024-i-speed-nobl
 The next Debian package gate runs the 4608-frame sequence including speed,
 seek and fresh selection against the exact hosted build. These results
 cover synthetic audio on the private output, not physical devices or Windows.
+
+An opt-in `Ffprobe::inspect_held_flac` can compare Windows scan metadata
+without giving FFprobe a pathname to reopen. It accepts a previously checked
+regular file with a plain FLAC marker and a separate leaf filename used only
+for metadata projection. It duplicates the existing file as child stdin,
+forces the FLAC demuxer, permits only the `fd` protocol, and restores the
+caller's original cursor after child exit. A failed probe has no pathname
+fallback. This helper does not validate the original open or enable a new
+scanner, queue, or playback route.
+
+The pinned Windows source archive in `scripts/ci/windows_media.lock.json`
+is FFmpeg 9.0.2. Its `libavformat/file.c:494–533` selects fd 0 for reads,
+checks it with `fstat`, and exposes seek on a regular input. Source recovery
+does not establish UCRT inheritance or installed metadata parity. To verify
+the exact staged Windows executable with its accompanying DLLs, set
+`CUMULUS_HELD_FFPROBE` to its absolute `ffprobe.exe` path, then run:
+
+cargo test -p cumulus-core --locked --test held_flac_probe -- --ignored --exact actual_ffprobe_held_flac_matches_path_metadata_and_never_reopens
+
+The test compares every projected field, including tagged and untagged title,
+duration, and bitrate. It substitutes another valid file at the same name,
+probes the original held file again, checks both cursor and following bytes,
+and requires a corrupt held FLAC to fail even when a valid pathname exists.
+These cases ran with the local Linux FFprobe 8.0.1; the bundled Windows
+FFprobe 9.0.2 test remains pending on an actual Windows runner.
+
+The native Windows probe can now obtain that file from the opt-in
+`WindowsFileIdentity::open_local_fixed_ntfs_nofollow`. It first admits only
+an absolute drive-letter path, including its extended drive spelling. The
+original spelling is checked before any filesystem lookup. UNC, device
+namespace prefixes, alternate streams and ambiguous components are out of
+scope. It opens the drive root, checks the root handle resolves to an actual
+local fixed volume GUID root on NTFS, then uses the held root as
+`OBJECT_ATTRIBUTES.RootDirectory` for a single relative `NtCreateFile`.
+This avoids using an earlier pathname check as authority for a later open.
+
+The open is read-only, synchronous and restricted to `FILE_OPEN`.
+`OBJ_DONT_REPARSE` rejects reparses during resolution, and the nofollow leaf
+option and the existing attribute/full-ID helper reject a reparse object at
+the end. `FileStandardInfo` requires one link and no pending deletion on
+the same returned descriptor. Sharing permits rename and excludes ordinary
+writer opens; the link count and attributes are point-in-time checks, not
+a content digest. The helper neither binds a queue selection nor replaces
+the current Windows scan. It uses the existing locked windows-sys package.
+
+Microsoft contracts: https://learn.microsoft.com/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntcreatefile
+and https://learn.microsoft.com/windows/win32/api/ntdef/ns-ntdef-_object_attributes.
+The focused Windows GNU harness links the exact bindings but does not run
+Win32. On an actual Windows x86_64 runner with a fixed local NTFS temp
+directory, run the replacement fixture and the exact staged FFprobe fixture
+above; opt into the real symlink fixture only where Windows permits creation:
+
+cargo test -p cumulus-core --locked --lib fixed_drive_handle_rejects_writes_and_keeps_old_bytes_after_equal_metadata_replacement -- --ignored
+cargo test -p cumulus-core --locked --lib fixed_drive_handle_rejects_real_leaf_and_ancestor_reparse_points -- --ignored
+
+The first exercise rejects a writer, keeps reading the old handle after
+a same-size/same-creation-time/same-modification-time replacement, confirms
+different full IDs, and rejects hard-linked files. The second requires both
+leaf and ancestor reparses to be rejected despite their targets being readable
+via ordinary paths. Neither fixture has run on Windows yet.
+
+
+Explicit Windows native media (candidate, independent of the library index)
+
+The rooted media candidate now reads the DOS drive mapping only as a namespace
+string. It accepts a direct local HarddiskVolume device, opens that NT root,
+and checks the live handle for a real fixed local NTFS root. It does not reopen
+the drive alias after the check. Sources on the live native queue retain a
+process-owned file from the same metadata probe through stock libmpv reading.
+The queue keeps only an opaque lookup key. Old persisted rows cannot reopen
+that path. Neither library scanning nor the existing indexed FLAC receipt is
+enabled on Windows by this candidate.
+
+Platform contracts: Microsoft QueryDosDeviceW (current mapping is the first
+string), NtCreateFile (root-relative and NT device names), OBJECT_ATTRIBUTES
+(OBJ_DONT_REPARSE), and FileFsDeviceInformation (remote/removable flags):
+- https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-querydosdevicew
+- https://learn.microsoft.com/windows/win32/api/winternl/nf-winternl-ntcreatefile
+- https://learn.microsoft.com/windows-hardware/drivers/ddi/wudfwdm/ns-wudfwdm-_object_attributes
+- https://learn.microsoft.com/openspecs/windows_protocols/ms-fscc/616b66d5-b335-4e1c-8f87-b4a55e8d3e4a
+
+On Windows with a fixed NTFS temp root, run the ignored
+`windows_rooted_wav_metadata_and_readers_keep_the_exact_open_object`,
+`windows_rooted_actor_loads_held_wav_after_filename_replacement`, and
+`windows_rooted_actor_loads_held_flac_after_filename_replacement` core lib
+tests. The actor tests use actual libmpv with null output and the trusted
+runtime discovery rules. Run them and the separate held FLAC metadata test
+against the packaged ffprobe executable. These native cases are not reported
+as passed by cross-compilation.
+
+
+The same explicit Windows media candidate admits bounded raw MPEG Layer III
+MP3. It rejects files over 256 MiB, an ID3v2 tag over 16 MiB, a malformed tag
+or inconsistent/truncated first two frames, other MPEG layers, and free
+format. In ffprobe it uses only the seekable inherited `fd:`, explicit MP3
+demuxer/format, MP3 audio and PNG/JPEG attached-picture decoder allowlist,
+a 16,777,216-pixel image limit, 1 MiB probe size, 1.5 s analysis limit, and
+an eight-packet frame decode. Only one explicit MP3 audio stream, matching
+decoded audio frames and consistent positive bounded metadata are accepted.
+Error-level decoder output fails even if ffprobe exits zero; later packets
+are not predecoded. The child exits before the caller's original cursor is
+restored. Stock libmpv consumes the same held file and must report MP3.
+Missing `fd:` support, reparse, probe/decoder errors, and unknown formats
+never fall back to a pathname.
+
+FFmpeg source and CLI contracts:
+- https://www.ffmpeg.org/ffprobe-all.html
+- https://www.ffmpeg.org/doxygen/trunk/mp3dec_8c_source.html
+- https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/mpegaudiodecheader.c
+- https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/mpegaudiodata.c
+- https://id3.org/id3v2.4.0-structure
+
+The exact packaged Windows `ffprobe.exe` must pass
+`actual_ffprobe_decodes_only_the_held_mp3_and_rejects_corrupt_audio` in
+`--test held_mp3_probe` with `CUMULUS_HELD_FFPROBE` set to its absolute
+path. Run the ignored
+`windows_rooted_actor_loads_held_mp3_after_filename_replacement` core lib
+test on fixed local NTFS with the package libmpv and ffprobe; the latter
+checks that stock libmpv still plays the original after FLAC is placed at
+the old MP3 pathname. Native Windows desktop startup/handoff remains a
+separate proof. The Linux fixture verifies a tagged synthetic MP3 with
+embedded cover art, the same raw audio, an ordinary stereo MPEG-1 sample,
+and corrupted streams; it does not validate Windows descriptor inheritance.

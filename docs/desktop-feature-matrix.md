@@ -30,6 +30,15 @@
 
 以下继续保留基线和各专项的证据，不由本批覆盖其他业务。
 
+后续本机候选分别核对了 [搜索声音菜单](search-card-ui-contracts.txt) 和
+[首页回忆引导](discovery-home-contracts.txt)。前者在真实 Linux WebView
+确认「播放」不会暂停正在播放的同一声音，暂停时沿用原生实例续播，行号
+仍能暂停；评论数和完成文件目录分别核对官方参数与原生交接。后者把
+「引导消失、播放器仍空闲」的截图放在真实点击播放之前。
+[Windows 本地文件打开候选](default-player-contracts.txt)接入持有句柄的
+MP3、FLAC 和 PCM WAV，提供同次便携包的原生复验入口；GNU 交叉检查和
+Linux FFprobe 对照仍不能替代 Windows 原生验证。这些候选不视为 RC 已包含。
+
 后续隔离集成源码 `8146a18d8f8e42c0a154e403fbe2bff2a6bf1d06`：独立 Linux
 应用用本地 FLAC 真实播放和暂停，进度由原生音频推进，输出接隔离的 PipeWire
 null sink。相同源码的 Tauri 探针重走 [HTTPS 主流程](desktop-main-flow-proof.txt)
@@ -136,7 +145,7 @@ Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为�
 - [搜索热点卡](search-results-ui-contracts.txt)接通歌曲和播客单集；封面控制音频、详情入口返回原搜索位置，未经确认的链接仍不打开。
 - [普通歌单拖放](queue-drop-contracts.txt)保留筛选后的原序号和官方多选顺序。歌单版本过期时可显式重读，保留筛选和当前播放；由用户重新选中并拖动，不重放旧操作。
 - [精选歌单卡片菜单](ordinary-essential-contracts.txt)接通查看、播放、下一首、收藏、分享、复制和下载全部；精选有声书的单期菜单只操作该期。下载仍须确认，不能把该期的相同编号误当歌曲或整个节目。
-- [本地文件打开](default-player-contracts.txt)按原生命令行顺序打开经验证的 MP3/FLAC。Linux 冷启动和向同资料目录既有进程的暖交接分别通过真实窗口、私有 PipeWire 验证；无效暖打开不动现有队列。Debian 包登记 MP3/FLAC 的「打开方式」候选，已有显式默认不变；Windows 只有冷启动实现，尚缺原生实测。
+- [本地文件打开](default-player-contracts.txt)按原生命令行顺序打开经验证的 MP3/FLAC。Linux 冷启动和向同资料目录既有进程的暖交接分别通过真实窗口、私有 PipeWire 验证；无效暖打开不动现有队列。Debian 包登记 MP3/FLAC 的「打开方式」候选，已有显式默认不变；该基线 Windows 只有冷启动，尚缺原生实测；后续冷暖候选另按上文独立验收。
 - [综合搜索替代 MV](search-preview-ui-contracts.txt)由官方 PC 配置、当前资源的版权状态和明确推荐共同控制；独立视频授权，返回保留搜索位置、焦点和音频队列。官方自动跳歌的整队列预检仍分开处理。
 - [普通扫码](desktop-login-contracts.txt)的服务异常可原地重试，失败候选会释放；按原版区分 legacy/JSK 扫码后收到 801 的显示，不替换二维码或重复发并行轮询。
 - [快速登录许可](quick-login-offer-contracts.txt)独立于启动自动登录和本机恢复；官方 PC 分组开启后才能显式加入，普通新登录不会自动发送快捷历史。主动退出仍清除对应凭据。服务判失效只删除对应快捷资格，保留本机账号和手动恢复。

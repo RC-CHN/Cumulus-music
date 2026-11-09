@@ -2,13 +2,13 @@
 mod host;
 mod wire;
 
-use super::{Pending, ProcessGuard};
+use super::{Pending, ProcessGuard, warm::Reply};
 use std::{
     fs, io,
     os::unix::{fs::MetadataExt, net::UnixListener},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
-use wire::{Reply, address, effective_uid, forward};
+use wire::{address, effective_uid, forward};
 
 pub(crate) use host::{Relay, install};
 
@@ -26,6 +26,12 @@ pub(crate) struct Claim {
     pub root: PathBuf,
     pub lease: ProcessGuard,
     pub listener: Option<UnixListener>,
+}
+
+impl Claim {
+    pub fn matches_root(&self, root: &Path) -> io::Result<bool> {
+        Ok(root.canonicalize()? == self.root)
+    }
 }
 
 fn claim(config: &tauri::Config, pending: &Pending) -> io::Result<Option<Claim>> {

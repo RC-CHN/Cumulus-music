@@ -137,9 +137,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 messages::counts::window_visibility(window.app_handle(), false);
             }
             if matches!(event, tauri::WindowEvent::Destroyed) {
+                player::close(window);
                 if window.label() == "main" {
-                    #[cfg(target_os = "linux")]
-                    if let Some(relay) = window.try_state::<native_open::linux::Relay>() {
+                    #[cfg(any(target_os = "linux", target_os = "windows"))]
+                    if let Some(relay) = window.try_state::<native_open::platform::Relay>() {
                         relay.stop();
                     }
                     daily_notification::stop(window.app_handle());
@@ -169,7 +170,6 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                         .state::<watchman::collection::MeasurementBridge>()
                         .page_started();
                 }
-                player::close(window);
             }
         })
         .invoke_handler(|invoke| {
@@ -662,34 +662,37 @@ pub fn run() {
     let mut context = tauri::generate_context!();
     // An explicit handoff from the shell never depends on initializing its
     // own graphics stack. Renderer diagnostics have no native file request.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let pre_graphics = file_open
         .requested()
-        .then(|| native_open::linux::claim_or_exit(context.config(), &file_open));
+        .then(|| native_open::platform::claim_or_exit(context.config(), &file_open));
     if !graphics::bootstrap() {
         return;
     }
     // SAFETY: desktop entry point, before the GUI runtime and worker creation.
     unsafe { prepare_graphics() };
     let launch = lifecycle::LaunchKind::from_args(std::env::args_os().skip(1));
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     let native_claim = pre_graphics
-        .unwrap_or_else(|| native_open::linux::claim_or_exit(context.config(), &file_open));
+        .unwrap_or_else(|| native_open::platform::claim_or_exit(context.config(), &file_open));
     launch.prepare(&mut context);
     configure(tauri::Builder::default())
         .setup(move |app| {
+            #[cfg(windows)]
+            let root = native_open::platform::profile_root(app.config())?;
+            #[cfg(not(windows))]
             let root = match std::env::var_os("CUMULUS_DATA_DIR") {
                 Some(value) => std::path::PathBuf::from(value),
                 None => app.path().app_data_dir()?,
             };
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             let (root, preclaimed, relay_listener) = match native_claim {
-                Some(claim) if root.canonicalize()? == claim.root =>
+                Some(claim) if claim.matches_root(&root)? =>
                     (claim.root, Some(claim.lease), claim.listener),
                 Some(_) => return Err(std::io::Error::other("application data directory changed").into()),
                 None => (root, None, None),
             };
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
             let preclaimed = None;
             let guard = match preclaimed {
                 Some(lease) => Ok(lease),
@@ -757,19 +760,36 @@ pub fn run() {
             if member::start_lifecycle(app.handle()).is_err() {
                 eprintln!("Cumulus membership refresh is unavailable.");
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
             if let Some(listener) = relay_listener
-                && native_open::linux::install(app.handle(), listener).is_err()
+                && native_open::platform::install(app.handle(), listener).is_err()
             {
                 eprintln!("Cumulus native file handoff is unavailable; cold startup continues.");
             }
             Ok(())
         })
-        .on_page_load(daily_notification::page_loaded)
+        .on_page_load(|webview, page| {
+            #[cfg(windows)]
+            if webview.label() == "main"
+                && page.event() == tauri::webview::PageLoadEvent::Started
+                && let Some(streams) = webview.try_state::<player::PlayerStreams>()
+            {
+                streams.stop("main", None);
+            }
+            daily_notification::page_loaded(webview, page);
+        })
         .build(context)
         .expect("could not start Cumulus")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
+                #[cfg(windows)]
+                if let Some(streams) = app.try_state::<player::PlayerStreams>() {
+                    streams.stop("main", None);
+                }
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                if let Some(relay) = app.try_state::<native_open::platform::Relay>() {
+                    relay.stop();
+                }
                 renewal::stop(app);
                 pc_presentation::stop(app);
                 daily_notification::stop(app);

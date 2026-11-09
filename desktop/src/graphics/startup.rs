@@ -131,6 +131,10 @@ fn check(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    #[cfg(target_os = "windows")]
+    // WebView2's environment override takes precedence over the builder's
+    // data directory. Confine only this child's profile to the probe root.
+    command.env("WEBVIEW2_USER_DATA_FOLDER", root.path().join("webview"));
     if diagnostic {
         eprintln!("renderer probe: starting {}", mode.name());
         command.env(probe::TRACE_ENV, "1").stderr(Stdio::inherit());

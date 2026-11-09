@@ -8,6 +8,7 @@ enum SideEffect<'a> {
     Fm(FmCommit<'a>),
     More(Option<bool>),
     Recall(i64),
+    NativeGuard(&'a dyn Fn() -> Result<()>),
 }
 
 struct FmCommit<'a> {
@@ -199,6 +200,24 @@ impl PlaybackQueue {
         )
     }
 
+    pub(super) fn commit_replacement(
+        &mut self,
+        candidate: QueueSnapshot,
+        release_fm: bool,
+        guard: Option<&dyn Fn() -> Result<()>>,
+    ) -> Result<()> {
+        let Some(guard) = guard else {
+            return self.commit_with_fm_release(candidate, release_fm);
+        };
+        self.commit_owned_with_side_effect(
+            candidate,
+            release_fm,
+            None,
+            None,
+            SideEffect::NativeGuard(guard),
+        )
+    }
+
     fn commit_owned_with_side_effect(
         &mut self,
         mut candidate: QueueSnapshot,
@@ -224,7 +243,9 @@ impl PlaybackQueue {
         } else if candidate.intelligence.is_some() {
             return Err(Error::State("missing intelligence state"));
         }
-        if (quality.is_some() || intelligence.is_some() || !matches!(side_effect, SideEffect::None))
+        if (quality.is_some()
+            || intelligence.is_some()
+            || !matches!(side_effect, SideEffect::None | SideEffect::NativeGuard(_)))
             && self.store.is_none()
         {
             return Err(Error::State("transition requires persistent queue"));
@@ -322,7 +343,13 @@ impl PlaybackQueue {
                     tx.delete(&self.owner, "fm-player-v1", "source")?;
                     tx.delete(&self.owner, "fm-player-v1", "failure")?;
                 }
-                tx.change_stamp()
+                let stamp = tx.change_stamp()?;
+                // Check inside the transaction after all staged writes.
+                // A retired native window must roll them all back.
+                if let SideEffect::NativeGuard(guard) = side_effect {
+                    guard()?;
+                }
+                Ok(stamp)
             });
             if let Err(error) = result {
                 // No candidate state is published after a failed write. On a
@@ -347,6 +374,8 @@ impl PlaybackQueue {
             }
             self.store_stamp = Some(result?);
             self.persisted = Some(snapshot);
+        } else if let SideEffect::NativeGuard(guard) = side_effect {
+            guard()?;
         }
         self.state = candidate;
         self.intelligence_raw = intelligence_raw;
@@ -367,4 +396,46 @@ fn recall_due(previous: Option<Value>, now: i64) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod guarded_native_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn native_commit_rechecks_authority_inside_the_write_transaction() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(dir.path()).unwrap());
+        let owner = "local-guest";
+        let mut queue = PlaybackQueue::new(Some(store.clone()), owner).unwrap();
+        queue
+            .replace(vec![json!({"id":"before"})], 0, json!({"kind":"songs"}))
+            .unwrap();
+        let saved = store.get(owner, "playback", "queue").unwrap();
+        let fm_backup = json!({"synthetic": true});
+        store
+            .put(owner, "playback", FM_BACKUP_QUEUE, &fm_backup)
+            .unwrap();
+        let attempts = Cell::new(0);
+        let denied = || {
+            attempts.set(attempts.get() + 1);
+            Err(Error::StaleResponse)
+        };
+        assert!(matches!(
+            queue.replace_guarded_native(
+                vec![json!({"local_id":"held"})],
+                json!({"kind":"local", "nativeOpen":true}),
+                &denied,
+            ),
+            Err(Error::StaleResponse)
+        ));
+        assert_eq!(attempts.get(), 1);
+        assert_eq!(store.get(owner, "playback", "queue").unwrap(), saved);
+        assert_eq!(
+            store.get(owner, "playback", FM_BACKUP_QUEUE).unwrap(),
+            Some(fm_backup)
+        );
+        assert_eq!(queue.selected().unwrap().resource["id"], "before");
+    }
 }

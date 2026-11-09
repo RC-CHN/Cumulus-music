@@ -271,6 +271,9 @@ pub enum PlaybackCommand {
         index: usize,
         source: Value,
     },
+    /// Native Windows file ingress with process-held rooted media handles.
+    #[cfg(windows)]
+    ReplaceWindowsNative(crate::library::WindowsNativeOpenBatch),
     /// M404's explicit recommended-radio play-all, with first-load position.
     ReplacePodcastCollection {
         resources: Vec<Value>,

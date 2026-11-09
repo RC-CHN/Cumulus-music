@@ -1,10 +1,9 @@
 //! Dispatch only into the owner application's active, ready player generation.
-use super::wire::{READY, Reply, receive, same_user, send_code};
-use cumulus_core::{Error, client::MusicClient, playback::engine::Cancellation};
+use super::super::warm::{Reply, dispatch};
+use super::wire::{READY, receive, same_user, send_code};
 use std::{
     io,
     os::unix::net::UnixListener,
-    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -54,7 +53,7 @@ pub(crate) fn install<R: Runtime>(app: &AppHandle<R>, listener: UnixListener) ->
                                 }
                                 let reply = match receive(&mut stream) {
                                     Ok(paths) if !stopped.load(Ordering::Acquire) => {
-                                        dispatch(&app, paths, stopped.clone())
+                                        dispatch(&app, paths, stopped.clone(), None)
                                     }
                                     Ok(_) => Reply::Unavailable,
                                     Err(_) => Reply::Invalid,
@@ -75,47 +74,5 @@ struct Busy(Arc<AtomicBool>);
 impl Drop for Busy {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);
-    }
-}
-
-fn dispatch<R: Runtime>(
-    app: &AppHandle<R>,
-    paths: Vec<PathBuf>,
-    stopped: Arc<AtomicBool>,
-) -> Reply {
-    let Some(client) = app.try_state::<MusicClient>() else {
-        return Reply::Unavailable;
-    };
-    let Ok(account) = client.account() else {
-        return Reply::Unavailable;
-    };
-    if app.get_webview_window("main").is_none()
-        || !app
-            .state::<crate::player::PlayerStreams>()
-            .ready_for_native_open(&account.epoch)
-    {
-        return Reply::Unavailable;
-    }
-    let alive = stopped.clone();
-    let authority = Cancellation::new(move || !alive.load(Ordering::Acquire));
-    match tauri::async_runtime::block_on(client.play_native_open_files_warm(
-        &account.epoch,
-        paths,
-        authority,
-    )) {
-        Ok(_) => {
-            let handle = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if !stopped.load(Ordering::Acquire) {
-                    crate::lifecycle::show(&handle);
-                }
-            });
-            Reply::Accepted
-        }
-        Err(error) => match error.root() {
-            Error::StaleResponse | Error::Cancelled | Error::QueueChanged => Reply::Unavailable,
-            Error::InvalidInput(_) => Reply::Invalid,
-            _ => Reply::Unknown,
-        },
     }
 }

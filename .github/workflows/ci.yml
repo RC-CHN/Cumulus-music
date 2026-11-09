@@ -14,6 +14,10 @@ on:
         description: Also verify Windows SMTC through an independent OS session consumer
         type: boolean
         default: false
+      windows_native_file_diagnostic:
+        description: Run the candidate Windows native file handoff against this run's portable package
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -521,6 +525,42 @@ jobs:
         shell: pwsh
         run: |
           python scripts/ci/windows_zip_smoke.py --packages .build/packages/windows-x64 --commit "$env:GITHUB_SHA" --root .build/ci-windows-zip
+      - name: Verify Windows native open tokens, profile and retained decoder inputs
+        if: github.event_name == 'workflow_dispatch' && inputs.windows_native_file_diagnostic
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $runtime = (Resolve-Path -LiteralPath '.build/package-stage/windows-x64/native').Path
+          $env:MPV_DLL_DIR_CUMULUS = $runtime
+          $env:CUMULUS_HELD_FFPROBE = Join-Path $runtime 'ffprobe.exe'
+          cargo test --locked --manifest-path desktop/probes/native-open-windows/Cargo.toml effective_connector_rejects_same_logon_restricted_thread_before_ready
+          if ($LASTEXITCODE -ne 0) { throw 'Effective connector proof failed' }
+          cargo test --locked -p cumulus-desktop --lib --features custom-protocol native_open::windows::profile::tests
+          if ($LASTEXITCODE -ne 0) { throw 'Held profile or database proof failed' }
+          cargo test --locked -p cumulus-desktop --lib --features custom-protocol a_reparse_ancestor_or_lock_cannot_open_its_target -- --ignored
+          if ($LASTEXITCODE -ne 0) { throw 'Windows profile reparse proof failed' }
+          cargo test --locked -p cumulus-core --test held_flac_probe --test held_mp3_probe -- --include-ignored
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged held ffprobe proof failed' }
+          cargo test --locked -p cumulus-core --lib windows_rooted_actor_loads_held -- --ignored
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged held libmpv proof failed' }
+      - name: Launch exact Windows package and exercise cold and warm native file open
+        if: github.event_name == 'workflow_dispatch' && inputs.windows_native_file_diagnostic
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          python scripts/ci/windows_native_open_smoke.py --packages .build/packages/windows-x64 --fixture-encoder "$env:CUMULUS_LOCAL_FIXTURE_FFMPEG" --root .build/ci-native-open-windows
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaged file activation proof failed' }
+      - name: Preserve Windows packaged native open evidence
+        if: always() && !cancelled() && hashFiles('.build/ci-native-open-windows/owner.log') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-packaged-native-open-attempt-${{ github.run_attempt }}
+          path: |
+            .build/ci-native-open-windows/report.json
+            .build/ci-native-open-windows/owner.log
+            .build/ci-native-open-windows/sender.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Verify local queue with the Windows media fixture encoder
         if: runner.os == 'Windows'
         run: |

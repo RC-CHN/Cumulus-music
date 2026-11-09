@@ -1,7 +1,7 @@
 //! Use only kernel-observed identities; never log or persist them.
 use sha2::{Digest, Sha256};
 use std::{
-    fs::OpenOptions,
+    fs::{File, OpenOptions},
     io,
     mem::{offset_of, size_of},
     os::windows::{
@@ -14,9 +14,10 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE, WAIT_TIMEOUT},
     Security::{
-        GetTokenInformation, IsValidSid, PSID, SID_AND_ATTRIBUTES, TOKEN_GROUPS,
-        TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER, TokenGroups,
-        TokenLogonSid, TokenRestrictedSids, TokenStatistics, TokenUser,
+        GetTokenInformation, IsValidSid, PSID, SID_AND_ATTRIBUTES, TOKEN_ELEVATION, TOKEN_GROUPS,
+        TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER,
+        TokenElevation, TokenGroups, TokenIntegrityLevel, TokenLogonSid, TokenRestrictedSids,
+        TokenStatistics, TokenUser,
     },
     Storage::FileSystem::{
         FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_INFO, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
@@ -45,6 +46,8 @@ fn denied() -> io::Error {
 pub struct Identity {
     user: Vec<u8>,
     logon: Vec<u8>,
+    integrity: Vec<u8>,
+    elevated: bool,
 }
 
 impl Identity {
@@ -54,27 +57,25 @@ impl Identity {
     }
 
     fn for_process(process: HANDLE) -> io::Result<Self> {
-        let mut raw = ptr::null_mut();
-        // SAFETY: process is live and output points at one writable HANDLE.
-        if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut raw) } == 0 || raw.is_null() {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: OpenProcessToken returned unique ownership of the token handle.
-        let token = unsafe { OwnedHandle::from_raw_handle(raw) };
+        let token = process_token(process)?;
         Self::for_token(token.as_raw_handle())
     }
 
-    fn for_token(token: HANDLE) -> io::Result<Self> {
+    pub(super) fn for_token(token: HANDLE) -> io::Result<Self> {
         Ok(Self {
             user: user_sid(token)?,
             logon: logon_sid(token)?,
+            integrity: integrity_sid(token)?,
+            elevated: is_elevated(token)?,
         })
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(super) fn token_user_matches(&self, token: HANDLE) -> io::Result<bool> {
         Ok(user_sid(token)? == self.user)
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(super) fn token_logon_matches(&self, token: HANDLE) -> io::Result<bool> {
         if logon_sid(token)? != self.logon {
             return Ok(false);
@@ -107,7 +108,19 @@ impl Identity {
             && groups.sid(entry.Sid)? == self.logon)
     }
 
+    #[allow(
+        dead_code,
+        reason = "the standalone lab checks the basic process identity"
+    )]
     pub fn verify_peer(&self, pipe: HANDLE, client_is_peer: bool) -> io::Result<()> {
+        self.verified_peer_token(pipe, client_is_peer).map(drop)
+    }
+
+    pub(super) fn verified_peer_token(
+        &self,
+        pipe: HANDLE,
+        client_is_peer: bool,
+    ) -> io::Result<OwnedHandle> {
         let query = if client_is_peer {
             GetNamedPipeClientProcessId
         } else {
@@ -125,7 +138,8 @@ impl Identity {
         }
         // SAFETY: OpenProcess returned a uniquely owned handle.
         let process = unsafe { OwnedHandle::from_raw_handle(raw) };
-        let peer = Self::for_process(process.as_raw_handle()).map_err(|_| denied())?;
+        let token = process_token(process.as_raw_handle()).map_err(|_| denied())?;
+        let peer = Self::for_token(token.as_raw_handle()).map_err(|_| denied())?;
         let mut observed = 0;
         // SAFETY: both handles and the PID buffer stay valid for these calls.
         let live = unsafe {
@@ -136,7 +150,7 @@ impl Identity {
         if !live || peer != *self {
             return Err(denied());
         }
-        Ok(())
+        Ok(token)
     }
 
     pub fn logon_sddl(&self) -> String {
@@ -158,6 +172,7 @@ impl Identity {
         text
     }
 
+    #[allow(dead_code, reason = "the standalone lab has a disjoint endpoint")]
     pub fn address(&self, root: &Path) -> io::Result<String> {
         let canonical = root.canonicalize()?;
         if !local_path(&canonical) {
@@ -168,32 +183,95 @@ impl Identity {
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
             .open(canonical)?;
-        if !directory.metadata()?.is_dir() {
-            return Err(denied());
-        }
-        let mut id = FILE_ID_INFO::default();
-        // SAFETY: correct information class/length and live directory handle.
-        if unsafe {
-            GetFileInformationByHandleEx(
-                directory.as_raw_handle(),
-                FileIdInfo,
-                (&mut id as *mut FILE_ID_INFO).cast(),
-                size_of::<FILE_ID_INFO>() as u32,
-            )
-        } == 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-        let mut hash = Sha256::new();
-        hash.update(b"cumulus-windows-file-open-lab-v1\0");
-        hash.update(id.VolumeSerialNumber.to_le_bytes());
-        hash.update(id.FileId.Identifier);
-        hash.update(&self.logon);
-        Ok(format!(
-            r"\\.\pipe\io.cumulus.music.open.lab.{:x}",
-            hash.finalize()
-        ))
+        Ok(self.address_for(directory_id(&directory)?, None))
     }
+
+    #[allow(
+        dead_code,
+        reason = "the standalone lab never reaches the product endpoint"
+    )]
+    pub(super) fn product_address(&self, id: DirectoryId, volume: &str) -> String {
+        self.address_for(id, Some(volume))
+    }
+
+    fn address_for(&self, id: DirectoryId, volume: Option<&str>) -> String {
+        let mut hash = Sha256::new();
+        let prefix = if let Some(volume) = volume {
+            hash.update(b"cumulus-windows-file-open-v1\0");
+            hash.update(&self.integrity);
+            hash.update([u8::from(self.elevated)]);
+            hash.update(volume.to_ascii_lowercase().as_bytes());
+            r"\\.\pipe\io.cumulus.music.open."
+        } else {
+            hash.update(b"cumulus-windows-file-open-lab-v1\0");
+            r"\\.\pipe\io.cumulus.music.open.lab."
+        };
+        hash.update(id.serial.to_le_bytes());
+        hash.update(id.file);
+        hash.update(&self.logon);
+        format!("{prefix}{:x}", hash.finalize())
+    }
+}
+
+pub(super) fn process_token(process: HANDLE) -> io::Result<OwnedHandle> {
+    let mut raw = ptr::null_mut();
+    // SAFETY: process is live and output points at one writable HANDLE.
+    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut raw) } == 0 || raw.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: OpenProcessToken returned unique ownership of the token handle.
+    Ok(unsafe { OwnedHandle::from_raw_handle(raw) })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DirectoryId {
+    serial: u64,
+    file: [u8; 16],
+}
+
+pub(super) fn directory_id(directory: &File) -> io::Result<DirectoryId> {
+    if !directory.metadata()?.is_dir() {
+        return Err(denied());
+    }
+    let mut id = FILE_ID_INFO::default();
+    // SAFETY: correct information class/length and live directory handle.
+    if unsafe {
+        GetFileInformationByHandleEx(
+            directory.as_raw_handle(),
+            FileIdInfo,
+            (&mut id as *mut FILE_ID_INFO).cast(),
+            size_of::<FILE_ID_INFO>() as u32,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(DirectoryId {
+        serial: id.VolumeSerialNumber,
+        file: id.FileId.Identifier,
+    })
+}
+
+fn integrity_sid(token: HANDLE) -> io::Result<Vec<u8>> {
+    let buffer = TokenBuffer::query(token, TokenIntegrityLevel)?;
+    if buffer.len < size_of::<TOKEN_MANDATORY_LABEL>() {
+        return Err(denied());
+    }
+    // SAFETY: the aligned returned buffer contains the checked label header.
+    buffer.sid(unsafe {
+        (*buffer.words.as_ptr().cast::<TOKEN_MANDATORY_LABEL>())
+            .Label
+            .Sid
+    })
+}
+
+fn is_elevated(token: HANDLE) -> io::Result<bool> {
+    let buffer = TokenBuffer::query(token, TokenElevation)?;
+    if buffer.len < size_of::<TOKEN_ELEVATION>() {
+        return Err(denied());
+    }
+    // SAFETY: the aligned returned buffer contains the checked elevation structure.
+    Ok(unsafe { (*buffer.words.as_ptr().cast::<TOKEN_ELEVATION>()).TokenIsElevated } != 0)
 }
 
 fn user_sid(token: HANDLE) -> io::Result<Vec<u8>> {
@@ -221,6 +299,7 @@ fn logon_sid(token: HANDLE) -> io::Result<Vec<u8>> {
     logon.sid(group.Sid)
 }
 
+#[allow(dead_code, reason = "exercised by the standalone Windows lab")]
 pub(super) fn token_statistics(token: HANDLE) -> io::Result<TOKEN_STATISTICS> {
     let statistics = TokenBuffer::query(token, TokenStatistics)?;
     if statistics.len < size_of::<TOKEN_STATISTICS>() {
@@ -230,6 +309,7 @@ pub(super) fn token_statistics(token: HANDLE) -> io::Result<TOKEN_STATISTICS> {
     Ok(unsafe { *statistics.words.as_ptr().cast::<TOKEN_STATISTICS>() })
 }
 
+#[allow(dead_code, reason = "exercised by the standalone Windows lab")]
 pub(super) fn only_restricting_sid(token: HANDLE, expected: &[u8]) -> io::Result<bool> {
     let groups = TokenBuffer::query(token, TokenRestrictedSids)?;
     if groups.len < size_of::<TOKEN_GROUPS>() {
@@ -249,13 +329,13 @@ pub fn local_path(path: &Path) -> bool {
         if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
 }
 
-struct TokenBuffer {
-    words: Vec<usize>,
-    len: usize,
+pub(super) struct TokenBuffer {
+    pub(super) words: Vec<usize>,
+    pub(super) len: usize,
 }
 
 impl TokenBuffer {
-    fn query(token: HANDLE, kind: TOKEN_INFORMATION_CLASS) -> io::Result<Self> {
+    pub(super) fn query(token: HANDLE, kind: TOKEN_INFORMATION_CLASS) -> io::Result<Self> {
         let mut required = 0;
         // SAFETY: documented zero-length sizing request; output is writable.
         let status = unsafe { GetTokenInformation(token, kind, ptr::null_mut(), 0, &mut required) };
@@ -288,7 +368,7 @@ impl TokenBuffer {
         })
     }
 
-    fn sid(&self, sid: PSID) -> io::Result<Vec<u8>> {
+    pub(super) fn sid(&self, sid: PSID) -> io::Result<Vec<u8>> {
         let offset = (sid as usize)
             .checked_sub(self.words.as_ptr() as usize)
             .ok_or_else(denied)?;

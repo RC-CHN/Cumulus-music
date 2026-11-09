@@ -42,6 +42,13 @@ impl PreparedSelection {
     }
 }
 
+#[derive(Clone, Copy)]
+enum NativeFileAdmission {
+    Legacy,
+    #[cfg(windows)]
+    RootedWindows,
+}
+
 impl MusicClient {
     pub(super) fn pending_preparation_guard(
         &self,
@@ -255,7 +262,8 @@ impl MusicClient {
         epoch: &str,
         paths: Vec<std::path::PathBuf>,
     ) -> Result<PlayerView> {
-        self.open_native_files(epoch, paths, true, None).await
+        self.open_native_files(epoch, paths, true, None, NativeFileAdmission::Legacy)
+            .await
     }
 
     /// Trusted same-user native relay only. Uses the live selection fence and
@@ -266,8 +274,53 @@ impl MusicClient {
         paths: Vec<std::path::PathBuf>,
         authority: Cancellation,
     ) -> Result<PlayerView> {
-        self.open_native_files(epoch, paths, false, Some(authority))
-            .await
+        self.open_native_files(
+            epoch,
+            paths,
+            false,
+            Some(authority),
+            NativeFileAdmission::Legacy,
+        )
+        .await
+    }
+
+    /// Candidate Windows cold entry: paths come only from native shell input.
+    /// The native readiness predicate has the same constraints as for warm.
+    #[cfg(windows)]
+    pub async fn play_windows_native_open_files(
+        &self,
+        epoch: &str,
+        paths: Vec<std::path::PathBuf>,
+        authority: Cancellation,
+    ) -> Result<PlayerView> {
+        self.open_native_files(
+            epoch,
+            paths,
+            true,
+            Some(authority),
+            NativeFileAdmission::RootedWindows,
+        )
+        .await
+    }
+
+    /// Candidate Windows warm entry. The source authority is a cheap native
+    /// window/relay check, including at the final queue commit. Its predicate
+    /// must not access the account session, playback host, or state database.
+    #[cfg(windows)]
+    pub async fn play_windows_native_open_files_warm(
+        &self,
+        epoch: &str,
+        paths: Vec<std::path::PathBuf>,
+        authority: Cancellation,
+    ) -> Result<PlayerView> {
+        self.open_native_files(
+            epoch,
+            paths,
+            false,
+            Some(authority),
+            NativeFileAdmission::RootedWindows,
+        )
+        .await
     }
 
     async fn open_native_files(
@@ -276,6 +329,7 @@ impl MusicClient {
         paths: Vec<std::path::PathBuf>,
         cold: bool,
         authority: Option<Cancellation>,
+        admission: NativeFileAdmission,
     ) -> Result<PlayerView> {
         use crate::{
             library::{
@@ -320,6 +374,8 @@ impl MusicClient {
             let probe = Ffprobe::for_native_open();
             let deadline = Instant::now() + Duration::from_secs(10);
             let mut resources = Vec::new();
+            #[cfg(windows)]
+            let mut rooted = crate::library::WindowsNativeOpenBatch::new();
             for path in paths {
                 session.check_generation(&worker_token)?;
                 if let Some(authority) = &worker_authority {
@@ -328,27 +384,39 @@ impl MusicClient {
                 if Instant::now() >= deadline {
                     break;
                 }
-                if let Ok(resource) = inspect_opened_file(&path, &probe) {
-                    resources.push(resource);
+                match admission {
+                    NativeFileAdmission::Legacy => {
+                        if let Ok(resource) = inspect_opened_file(&path, &probe) {
+                            resources.push(resource);
+                        }
+                    }
+                    #[cfg(windows)]
+                    NativeFileAdmission::RootedWindows => {
+                        let _ = rooted.push(path, &probe);
+                    }
                 }
             }
-            Ok::<_, Error>(resources)
+            #[cfg(windows)]
+            if matches!(admission, NativeFileAdmission::RootedWindows) && !rooted.is_empty() {
+                return Ok(PlaybackCommand::ReplaceWindowsNative(rooted));
+            }
+            if resources.is_empty() {
+                return Err(Error::InvalidInput("no supported native local audio files"));
+            }
+            Ok(PlaybackCommand::Replace {
+                resources,
+                index: 0,
+                source: serde_json::json!({"kind":"local", "nativeOpen":true}),
+            })
         });
-        let resources = tokio::time::timeout(Duration::from_secs(12), worker)
+        let command = tokio::time::timeout(Duration::from_secs(12), worker)
             .await
             .map_err(|_| Error::Media("native local audio probe timed out"))?
             .map_err(|_| Error::State("native local audio worker stopped"))??;
-        if resources.is_empty() {
-            return Err(Error::InvalidInput("no supported native local audio files"));
-        }
         let state = self
             .submit_selection_with_source(
                 &token,
-                PlaybackCommand::Replace {
-                    resources,
-                    index: 0,
-                    source: serde_json::json!({"kind":"local", "nativeOpen":true}),
-                },
+                command,
                 ticket.observed,
                 None,
                 Some(&ticket),

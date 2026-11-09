@@ -1,4 +1,5 @@
 pub mod intelligence;
+mod native_authority;
 pub mod power;
 pub mod quality;
 pub mod reports;
@@ -13,6 +14,7 @@ use cumulus_core::{
     lyrics::LyricPreferences,
     playback::controller::OrdinarySkipNotice,
 };
+use native_authority::{Lease, RevokeOnDrop};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Mutex};
 use tauri::{Manager, ipc::Channel};
@@ -20,12 +22,37 @@ use tauri::{Manager, ipc::Channel};
 struct Running {
     id: String,
     epoch: u64,
+    lease: Lease,
     task: Option<tauri::async_runtime::JoinHandle<()>>,
 }
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        self.lease.revoke();
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+#[cfg(windows)]
+#[derive(Clone)]
+pub(crate) struct NativeOpenPermit {
+    pub(crate) epoch: String,
+    lease: Lease,
+}
+
+#[cfg(windows)]
+impl NativeOpenPermit {
+    pub(crate) fn ready(&self) -> bool {
+        self.lease.ready()
+    }
+}
+
 #[derive(Default)]
 pub struct PlayerStreams(Mutex<HashMap<String, Running>>);
 impl PlayerStreams {
-    fn reserve(&self, window: &str, id: &str, epoch: u64) -> cumulus_core::Result<()> {
+    fn reserve(&self, window: &str, id: &str, epoch: u64) -> cumulus_core::Result<Lease> {
         let mut values = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         if values
             .get(window)
@@ -33,27 +60,55 @@ impl PlayerStreams {
         {
             return Err(Error::StaleResponse);
         }
-        if let Some(Running {
-            task: Some(old), ..
-        }) = values.insert(
+        let lease = Lease::default();
+        values.insert(
             window.into(),
             Running {
                 id: id.into(),
                 epoch,
+                lease: lease.clone(),
                 task: None,
             },
-        ) {
-            old.abort();
-        }
-        Ok(())
+        );
+        Ok(lease)
     }
+
+    #[cfg(any(target_os = "linux", windows))]
+    fn ready_lease(&self, epoch: &str) -> Option<Lease> {
+        let values = self.0.lock().ok()?;
+        let current = values.get("main")?;
+        (current.epoch.to_string() == epoch
+            && current.lease.ready()
+            && current
+                .task
+                .as_ref()
+                .is_some_and(|task| !task.inner().is_finished()))
+        .then(|| current.lease.clone())
+    }
+
     #[cfg(target_os = "linux")]
     pub(crate) fn ready_for_native_open(&self, epoch: &str) -> bool {
-        self.0.lock().is_ok_and(|values| {
-            values
-                .get("main")
-                .is_some_and(|current| current.task.is_some() && current.epoch.to_string() == epoch)
+        self.ready_lease(epoch).is_some()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn native_open_permit(&self, epoch: String) -> Option<NativeOpenPermit> {
+        Some(NativeOpenPermit {
+            lease: self.ready_lease(&epoch)?,
+            epoch,
         })
+    }
+
+    #[cfg(windows)]
+    fn take_pending_native_open(
+        &self,
+        lease: &Lease,
+        epoch: u64,
+        pending: &crate::native_open::Pending,
+    ) -> Option<Vec<std::path::PathBuf>> {
+        let values = self.0.lock().ok()?;
+        let current = values.get("main")?;
+        (current.lease.same(lease) && lease.active()).then(|| pending.take_for_epoch(epoch))?
     }
 
     pub fn stop(&self, window: &str, id: Option<&str>) {
@@ -61,11 +116,8 @@ impl PlayerStreams {
             && values
                 .get(window)
                 .is_some_and(|current| id.is_none_or(|id| id == current.id))
-            && let Some(Running {
-                task: Some(task), ..
-            }) = values.remove(window)
         {
-            task.abort();
+            values.remove(window);
         }
     }
 }
@@ -104,9 +156,11 @@ pub async fn watch_player<R: tauri::Runtime>(
     let generation = epoch
         .parse()
         .map_err(|_| ClientError::from(Error::InvalidInput("invalid epoch")))?;
-    streams
+    let lease = streams
         .reserve(window.label(), &stream_id, generation)
         .map_err(ClientError::from)?;
+    let mut registration = RevokeOnDrop::new(&lease);
+    #[cfg(not(windows))]
     let native_open_error = if window.label() == "main"
         && let Some(pending) = window.try_state::<crate::native_open::Pending>()
         && let Some(paths) = pending.take()
@@ -132,6 +186,24 @@ pub async fn watch_player<R: tauri::Runtime>(
     } else {
         None
     };
+    #[cfg(windows)]
+    let native_open_error = if window.label() == "main"
+        && let Some(pending) = window.try_state::<crate::native_open::Pending>()
+        && let Some(paths) = streams.take_pending_native_open(&lease, generation, &pending)
+    {
+        let opening = lease.clone();
+        let authority = cumulus_core::playback::engine::Cancellation::new(move || opening.active());
+        client
+            .play_windows_native_open_files(&epoch, paths, authority)
+            .await
+            .err()
+            .map(crate::native_open::public_error)
+    } else {
+        None
+    };
+    // Account access happens outside the stream map lock. The exact lease
+    // is checked again before publishing this first state.
+    let initial = source.current().map_err(ClientError::from)?;
     let mut values = streams
         .0
         .lock()
@@ -139,17 +211,19 @@ pub async fn watch_player<R: tauri::Runtime>(
     let Some(current) = values.get_mut(window.label()) else {
         return Err(Error::Cancelled.into());
     };
-    if current.id != stream_id {
+    if !current.lease.same(&lease) {
         return Err(Error::Cancelled.into());
     }
     on_update
         .send(PlayerUpdate::State {
-            value: Box::new(source.current().map_err(ClientError::from)?),
+            value: Box::new(initial),
             native_open_error,
         })
         .map_err(|_| ClientError::from(Error::Cancelled))?;
     let app = window.app_handle().clone();
-    current.task = Some(tauri::async_runtime::spawn(async move {
+    let task_revocation = RevokeOnDrop::new(&lease);
+    let task = tauri::async_runtime::spawn(async move {
+        let _task_revocation = task_revocation;
         loop {
             let event = tokio::select! {
                 next = source.changed() => match next {
@@ -186,7 +260,13 @@ pub async fn watch_player<R: tauri::Runtime>(
                 break;
             }
         }
-    }));
+    });
+    if !lease.install() {
+        task.abort();
+        return Err(Error::Cancelled.into());
+    }
+    current.task = Some(task);
+    registration.disarm();
     Ok(())
 }
 #[tauri::command]
@@ -253,6 +333,17 @@ pub async fn player_action<R: tauri::Runtime>(
     ) && window.label() != "main"
     {
         return Err(Error::InvalidInput("podcast program queue requires the main window").into());
+    }
+    #[cfg(windows)]
+    if matches!(&action, PlayerAction::Startup)
+        && window.label() == "main"
+        && window
+            .try_state::<crate::native_open::Pending>()
+            .is_some_and(|pending| pending.blocks_startup(&epoch))
+    {
+        // An explicit process launch is one-shot. If a rebind superseded the
+        // opening stream, the replacement cannot autoplay the restored queue.
+        return client.player_snapshot(&epoch).await.map_err(Into::into);
     }
     client
         .player_action(&epoch, action)
@@ -573,6 +664,78 @@ pub fn close<R: tauri::Runtime>(window: &tauri::Window<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn warm_file_open_requires_a_live_main_subscription() {
+        let streams = PlayerStreams::default();
+        let lease = streams.reserve("main", "player", 42).unwrap();
+        assert!(!streams.ready_for_native_open("42"));
+        let (finish, waiting) = tokio::sync::oneshot::channel::<()>();
+        let task = tauri::async_runtime::spawn(async move {
+            let _ = waiting.await;
+        });
+        streams.0.lock().unwrap().get_mut("main").unwrap().task = Some(task);
+        assert!(lease.install());
+        assert!(streams.ready_for_native_open("42"));
+        assert!(!streams.ready_for_native_open("43"));
+        finish.send(()).unwrap();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while streams.ready_for_native_open("42") {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+        });
+        // The terminated handle is still present until the WebView unbinds.
+        assert!(
+            streams
+                .0
+                .lock()
+                .unwrap()
+                .get("main")
+                .unwrap()
+                .task
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn same_epoch_rebind_never_resurrects_a_captured_permit() {
+        let streams = PlayerStreams::default();
+        let first = streams.reserve("main", "same-id", 42).unwrap();
+        assert!(first.install());
+        let next = streams.reserve("main", "same-id", 42).unwrap();
+        assert!(!first.ready());
+        assert!(!first.install());
+        assert!(!first.same(&next));
+        let guard = RevokeOnDrop::new(&next);
+        let unpolled = async move { drop(guard) };
+        drop(unpolled);
+        assert!(!next.install());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn pending_open_is_bound_once_and_suppresses_startup_after_a_same_epoch_rebind() {
+        let streams = PlayerStreams::default();
+        let pending = crate::native_open::Pending::from_args(["--play".into()].into_iter());
+        let old = streams.reserve("main", "first", 42).unwrap();
+        assert_eq!(
+            streams.take_pending_native_open(&old, 42, &pending),
+            Some(Vec::new())
+        );
+        let replacement = streams.reserve("main", "replacement", 42).unwrap();
+        assert!(!old.active());
+        assert_eq!(
+            streams.take_pending_native_open(&replacement, 42, &pending),
+            None
+        );
+        assert!(pending.blocks_startup("42"));
+        assert!(!pending.blocks_startup("43"));
+    }
+
     #[test]
     fn old_account_subscription_and_late_unwatch_cannot_remove_the_new_stream() {
         let streams = PlayerStreams::default();

@@ -1,5 +1,8 @@
 //! A separate Windows handle identity. It does not change library fingerprints.
 
+mod drive_path;
+mod drive_root;
+
 use std::{fs::File, io, os::windows::io::AsRawHandle};
 use windows_sys::Win32::{
     Foundation::{ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED},

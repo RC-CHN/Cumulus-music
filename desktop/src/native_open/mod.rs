@@ -1,6 +1,14 @@
 //! One cold process argument group. Nothing in the WebView can supply a path.
 #[cfg(target_os = "linux")]
 pub(crate) mod linux;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+mod warm;
+#[cfg(target_os = "windows")]
+pub(crate) mod windows;
+#[cfg(target_os = "linux")]
+pub(crate) use linux as platform;
+#[cfg(target_os = "windows")]
+pub(crate) use windows as platform;
 
 use cumulus_core::{Error, client::ClientError};
 use std::{
@@ -12,7 +20,11 @@ use std::{
 };
 
 #[derive(Default)]
-pub(crate) struct Pending(Mutex<Option<Vec<PathBuf>>>);
+pub(crate) struct Pending {
+    paths: Mutex<Option<Vec<PathBuf>>>,
+    #[cfg(windows)]
+    opening_epoch: std::sync::OnceLock<u64>,
+}
 
 impl Pending {
     pub(crate) fn from_args(mut args: impl Iterator<Item = OsString>) -> Self {
@@ -32,7 +44,7 @@ impl Pending {
             let Some(path) = first.to_str().and_then(|text| text.strip_prefix("--play=")) else {
                 // A lossless queue path is required, but the unsupported
                 // explicit activation must still suppress old-queue autoplay.
-                return Self(Mutex::new(Some(Vec::new())));
+                return Self::explicit(Vec::new());
             };
             vec![PathBuf::from(path)]
         } else {
@@ -44,22 +56,48 @@ impl Pending {
         if paths.len() > 8 || paths.iter().any(|path| !path.is_absolute()) {
             paths.clear();
         }
-        Self(Mutex::new(Some(paths)))
+        Self::explicit(paths)
+    }
+
+    fn explicit(paths: Vec<PathBuf>) -> Self {
+        Self {
+            paths: Mutex::new(Some(paths)),
+            #[cfg(windows)]
+            opening_epoch: std::sync::OnceLock::new(),
+        }
     }
 
     pub(crate) fn requested(&self) -> bool {
-        self.0.lock().is_ok_and(|pending| pending.is_some())
+        self.paths.lock().is_ok_and(|pending| pending.is_some())
     }
 
     pub(crate) fn take(&self) -> Option<Vec<PathBuf>> {
-        self.0.lock().ok()?.take()
+        self.paths.lock().ok()?.take()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn take_for_epoch(&self, epoch: u64) -> Option<Vec<PathBuf>> {
+        let mut pending = self.paths.lock().ok()?;
+        if pending.is_none() || self.opening_epoch.set(epoch).is_err() {
+            return None;
+        }
+        pending.take()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn blocks_startup(&self, epoch: &str) -> bool {
+        self.opening_epoch
+            .get()
+            .is_some_and(|current| epoch.parse::<u64>().ok() == Some(*current))
     }
 }
 
-/// Normal launches can coexist as before, but a cold file activation never
-/// claims a profile already in use. The file itself holds no application data.
+/// Platform owners request the exclusive lease; a profile without a relay
+/// may retain the shared fallback. The file itself holds no application data.
 pub(crate) struct ProcessGuard {
     lock: File,
+    #[cfg(windows)]
+    windows_profile: Option<windows::Profile>,
 }
 impl ProcessGuard {
     pub(crate) fn acquire(root: &Path, exclusive: bool) -> io::Result<Self> {
@@ -77,13 +115,21 @@ impl ProcessGuard {
             .create(true)
             .truncate(false)
             .open(path)?;
+        Self::from_file(lock, exclusive)
+    }
+
+    fn from_file(lock: File, exclusive: bool) -> io::Result<Self> {
         if exclusive {
             lock.try_lock()
         } else {
             lock.try_lock_shared()
         }
         .map_err(io::Error::from)?;
-        Ok(Self { lock })
+        Ok(Self {
+            lock,
+            #[cfg(windows)]
+            windows_profile: None,
+        })
     }
 }
 
