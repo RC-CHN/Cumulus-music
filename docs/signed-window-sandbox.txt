@@ -1,0 +1,37 @@
+Signed same-window proof: Linux process isolation
+================================================
+
+The research launcher calls scripts/research/signed_window_sandbox.py:
+
+  run(binary, prepared, work, output, broker, timeout=55)
+
+All arguments are absolute paths without symlink components. Stage an exact
+ELF copy owned by the caller and not writable by group/others. The input
+directory contains only the closed, private prepared proof inputs, including
+parameters.json. The launcher checks its bounds and rejects links and SQLite
+journal sidecars. Work and output are separate, fresh mode-0700 directories;
+the running broker must expose an owner-only Unix socket under a private
+directory. The launcher does not create or authorize the external broker.
+
+The only proof invocation is `/probe --live`. `/prepared` and `/probe` are
+read-only; `/work` and `/proof` are the only host-backed writable directories.
+Bubblewrap starts a fresh network and PID namespace, clears environment, and
+does not mount a host home, resolver, sysfs, or system D-Bus. A new Xvfb with
+its own MIT cookie and no TCP listener provides the one mounted X11 socket.
+The private session bus listens only on `/runtime/bus`. The native proxy
+address `127.0.0.1:41389` is the only proof-specific environment setting; user
+inputs belong in the prepared file rather than command arguments or env.
+
+The isolated listener forwards only to `/relay`, the exact mounted Unix
+broker socket. It limits active streams and lifetimes; the separate host
+broker and Rust request gate still have to enforce TLS, destination, request
+and content scope. The process timeout kills the isolated lifetime without
+writing a success receipt. No app stdout or stderr leaves the wrapper. After
+a successful app exit, `/proof/isolation.json` records the checked namespace,
+absence of external routes, private display/bus, and bridge count. It is not
+an account, native playback, or host broker request receipt.
+
+Run `python3 scripts/research/test_signed_window_sandbox.py -v` to verify
+the local Linux prerequisites and isolated bridge. These tests compile
+closed synthetic stubs and use a local Unix socket. They do not read any
+account data or connect to a real service.
