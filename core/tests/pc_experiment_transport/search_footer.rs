@@ -2,14 +2,14 @@
 use super::{HttpResponse, ScriptHttp, gate, reply, vinyl_http};
 use cumulus_core::{
     Error,
-    account::{AccountSession, profiles::ProfileRegistry},
+    account::AccountSession,
     client::{
         MusicClient,
         dto::{SearchCategory, SearchResultQuery},
         pc_experiments::OrdinarySkipAssignment,
     },
     protocol::{
-        http::{ApiOrigin, MusicHttpClient},
+        http::MusicHttpClient,
         pc_experiments::{ASSIGNMENT_PATH, assignment_arguments},
     },
 };
@@ -35,7 +35,7 @@ impl Fixture {
     fn new(responses: impl IntoIterator<Item = HttpResponse>) -> Self {
         let root = tempfile::tempdir().unwrap();
         let (native, http) = vinyl_http(root.path(), &[COOKIE], responses);
-        let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+        let registry = super::fixture_registry(&root.path().join("host"));
         let session = Arc::new(AccountSession::new(native.clone(), Some(registry.store())));
         session
             .adopt(

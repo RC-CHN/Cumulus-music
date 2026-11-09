@@ -39,7 +39,7 @@ impl Fixture {
         let cookies: &[&str] = if authenticated { &[COOKIE] } else { &[] };
         let (native, http, credentials) =
             vinyl_http_with_credentials(root.path(), cookies, responses);
-        let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+        let registry = super::fixture_registry(&root.path().join("host"));
         let session = Arc::new(AccountSession::new(native.clone(), Some(registry.store())));
         if authenticated {
             session
