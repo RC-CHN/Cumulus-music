@@ -15,6 +15,9 @@ pub fn menu_enabled() -> bool {
 pub fn batch_enabled() -> bool {
     std::env::var_os("CUMULUS_CLOUD_BATCH_UI_PROOF").is_some()
 }
+fn capacity_enabled() -> bool {
+    std::env::var_os("CUMULUS_CLOUD_CAPACITY_PROOF").is_some()
+}
 #[path = "cloud_batch_media.rs"]
 pub mod media;
 pub struct Fixture {
@@ -29,6 +32,9 @@ pub struct Fixture {
     collections: Mutex<Vec<Value>>,
     collect_fail: AtomicBool,
     download_auths: Mutex<Vec<String>>,
+    capacity_member: AtomicUsize,
+    capacity_member_reads: Mutex<Vec<usize>>,
+    capacity_version_reads: AtomicUsize,
 }
 fn rows(count: usize) -> Vec<Value> {
     (1..=count).map(|i| {
@@ -44,7 +50,13 @@ fn rows(count: usize) -> Vec<Value> {
 impl Default for Fixture {
     fn default() -> Self {
         Self {
-            rows: Mutex::new(if enabled() { rows(405) } else { vec![] }),
+            rows: Mutex::new(if capacity_enabled() {
+                rows(2)
+            } else if enabled() {
+                rows(405)
+            } else {
+                vec![]
+            }),
             capacity: Mutex::new((json!(123456789), json!(1073741824))),
             writes: Mutex::new(vec![]),
             fail: AtomicBool::new(false),
@@ -55,11 +67,20 @@ impl Default for Fixture {
             collections: Mutex::new(vec![]),
             collect_fail: AtomicBool::new(false),
             download_auths: Mutex::new(vec![]),
+            capacity_member: AtomicUsize::new(0),
+            capacity_member_reads: Mutex::new(vec![]),
+            capacity_version_reads: AtomicUsize::new(0),
         }
     }
 }
 impl Fixture {
     pub fn configure(&self, v: &Value) {
+        if capacity_enabled()
+            && let Some(mode) = v["capacityMembership"].as_u64()
+        {
+            assert!((1..=4).contains(&mode));
+            self.capacity_member.store(mode as usize, Ordering::Release);
+        }
         if let Some(kinds) = v["deletionKinds"].as_object() {
             let mut rows = self.rows.lock().unwrap();
             for (id, kind) in kinds {
@@ -108,13 +129,53 @@ impl Fixture {
         }
     }
     pub fn report(&self) -> Value {
-        json!({"writes":self.writes.lock().unwrap().clone(),"rows":self.rows.lock().unwrap().len(),"realRequests":0,
+        let mut report = json!({"writes":self.writes.lock().unwrap().clone(),"rows":self.rows.lock().unwrap().len(),"realRequests":0,
             "collection":self.collection.lock().unwrap().clone(),"collectWrites":self.collections.lock().unwrap().clone(),
-            "downloadAuths":self.download_auths.lock().unwrap().clone(),"mediaRequests":media::requests()})
+            "downloadAuths":self.download_auths.lock().unwrap().clone(),"mediaRequests":media::requests()});
+        if capacity_enabled() {
+            report["capacityMembershipReads"] =
+                json!(self.capacity_member_reads.lock().unwrap().clone());
+            report["capacityVersionReads"] =
+                json!(self.capacity_version_reads.load(Ordering::Acquire));
+        }
+        report
     }
     pub async fn response(&self, path: &str, payload: &Value) -> Option<Result<Value>> {
         if !enabled() {
             return None;
+        }
+        if capacity_enabled() {
+            if path == "/api/pc/version" {
+                self.capacity_version_reads.fetch_add(1, Ordering::AcqRel);
+                return Some(Err(Error::State(
+                    "capacity proof must not request commerce configuration",
+                )));
+            }
+            if path == "/api/music-vip-membership/client/vip/info" {
+                assert_eq!(*payload, json!({"userId":"2"}));
+                let mode = self.capacity_member.load(Ordering::Acquire);
+                self.capacity_member_reads.lock().unwrap().push(mode);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as i64;
+                let mut data = json!({"now":now,"userId":2});
+                let delta = match mode {
+                    1 => Some(9 * 86_400_000),
+                    2 => Some(6 * 86_400_000),
+                    3 => Some(-86_400_000),
+                    4 => None,
+                    _ => {
+                        return Some(Err(Error::State(
+                            "capacity proof membership is not available",
+                        )));
+                    }
+                };
+                if let Some(delta) = delta {
+                    data["redplus"] = json!({"expireTime":now + delta,"vipLevel":1});
+                }
+                return Some(Ok(json!({"code":200,"data":data})));
+            }
         }
         if batch_enabled() {
             if path == "/api/user/playlist" {
