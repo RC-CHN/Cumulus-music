@@ -160,8 +160,12 @@ fn main() {
     assert!(!folder_reveal || cfg!(target_os = "linux"));
     let group_hide = std::env::var("CUMULUS_LOCAL_GROUP_HIDE_PROOF").as_deref() == Ok("1");
     assert!(!group_hide || !folder_reveal);
-    let queue =
-        folder_reveal || group_hide || std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
+    let batch_hide = std::env::var("CUMULUS_LOCAL_BATCH_HIDE_PROOF").as_deref() == Ok("1");
+    assert!(!batch_hide || (!group_hide && !folder_reveal));
+    let queue = folder_reveal
+        || group_hide
+        || batch_hide
+        || std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
     assert!(
         !queue || (!cold && !reopen),
         "queue proof needs a fresh profile"
@@ -193,6 +197,20 @@ fn main() {
                         .expect("synthetic group media");
                 }
             }
+            if batch_hide {
+                let mut wav = fs::read(media.join("雨声.wav")).expect("synthetic audio bytes");
+                let size = 16_000u32;
+                wav.truncate(44 + size as usize);
+                wav[4..8].copy_from_slice(&(size + 36).to_le_bytes());
+                wav[40..44].copy_from_slice(&size.to_le_bytes());
+                for index in 0..105 {
+                    fs::write(
+                        media.join(format!("qx-local-selection {index:03}.wav")),
+                        &wav,
+                    )
+                    .expect("synthetic batch audio");
+                }
+            }
         }
     }
     let setup = root.clone();
@@ -211,7 +229,8 @@ fn main() {
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
             let folder_capture = folder_reveal && ["ux_01_folder_menu", "ux_02_folder_focus", "ux_03_folder_failure"].contains(&stage);
             let hide_capture = group_hide && ["ux_01_group_hide_menu", "ux_02_group_hidden", "ux_03_group_restored"].contains(&stage);
-            if folder_capture || hide_capture {
+            let batch_capture = batch_hide && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_hidden", "ux_04_batch_restored"].contains(&stage);
+            if folder_capture || hide_capture || batch_capture {
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -287,6 +306,8 @@ fn main() {
                 include_str!("local_folder_reveal_ui_probe.js")
             } else if group_hide {
                 include_str!("local_group_hide_ui_probe.js")
+            } else if batch_hide {
+                include_str!("local_batch_hide_ui_probe.js")
             } else if queue {
                 include_str!("local_queue_ui_probe.js")
             } else {include_str!("local_ui_probe.js")}).unwrap();
