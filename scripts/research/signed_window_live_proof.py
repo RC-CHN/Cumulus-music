@@ -24,6 +24,8 @@ PLAN_REJECTIONS = frozenset(("envelope", "allowlist", "credential_scope",
                              "reconstruction", "headers", "payload"))
 GATE_READS = frozenset(("account", "playlists", "likes", "default_word", "assignment",
                        "tabs", "comprehensive", "songs", "detail", "source"))
+MEDIA_STAGES = frozenset(("cdn_admission", "transport", "http_status", "headers",
+                         "body", "integrity", "anonymous_file", "file_verified"))
 
 
 class Refused(ValueError):
@@ -164,7 +166,10 @@ def rejected_checkpoint(output):
         facts["gate"] = {key: gate[key] for key in booleans if type(gate.get(key)) is bool}
         facts["gate"].update({key: gate[key] for key in bounded
                               if count(gate.get(key), 0, 1000000)})
-        for key, allowed in (("firstPlanRejection", PLAN_REJECTIONS), ("unfinishedRead", GATE_READS)):
+        if count(gate.get("mediaHttpStatus"), 100, 599):
+            facts["gate"]["mediaHttpStatus"] = gate["mediaHttpStatus"]
+        for key, allowed in (("firstPlanRejection", PLAN_REJECTIONS), ("unfinishedRead", GATE_READS),
+                             ("mediaStage", MEDIA_STAGES)):
             value = gate.get(key)
             if type(value) is str and value in allowed:
                 facts["gate"][key] = value

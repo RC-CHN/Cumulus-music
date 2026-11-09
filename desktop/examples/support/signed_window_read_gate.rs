@@ -106,6 +106,8 @@ struct Progress {
     unfinished_read: Option<Read>,
     closed: bool,
     media_consumed: bool,
+    media_stage: Option<&'static str>,
+    media_http_status: Option<u16>,
 }
 
 /// Does not retain or expose the URL, account, song ID, or original reply.
@@ -124,6 +126,8 @@ pub struct Facts {
     pub song_detail_read: bool,
     pub media_authorized: bool,
     pub media_consumed: bool,
+    pub media_stage: Option<&'static str>,
+    pub media_http_status: Option<u16>,
     pub attempted_reads: usize,
     pub denied_before_dispatch: usize,
     pub first_plan_rejection: Option<&'static str>,
@@ -276,6 +280,8 @@ impl Gate {
             song_detail_read: p.detail,
             media_authorized: p.receipt.is_some() || p.media_consumed,
             media_consumed: p.media_consumed,
+            media_stage: p.media_stage,
+            media_http_status: p.media_http_status,
             attempted_reads: p.attempts.iter().map(|&value| usize::from(value)).sum(),
             denied_before_dispatch: p.denied,
             first_plan_rejection: p.first_plan_rejection,

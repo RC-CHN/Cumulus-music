@@ -20,6 +20,14 @@ pub trait MediaArm: Send + Sync {
 }
 
 impl Gate {
+    async fn media_checkpoint(&self, stage: &'static str, status: Option<u16>) {
+        let mut progress = self.progress.lock().await;
+        progress.media_stage = Some(stage);
+        if let Some(code) = status.filter(|code| (100..=599).contains(code)) {
+            progress.media_http_status = Some(code);
+        }
+    }
+
     /// Bind the one-use receipt to the exact normalized URL, fetch one
     /// complete response through the caller's fenced media transport, and
     /// hand back an anonymous file. The engine never receives the CDN URL.
@@ -45,6 +53,7 @@ impl Gate {
         cancel.check()?;
         let receipt = self.take_media(url).await?;
         if let Some(arm) = arm {
+            self.media_checkpoint("cdn_admission", None).await;
             let deadline = receipt.expires.min(Instant::now() + MEDIA_ARM_TIMEOUT);
             let expired = || Error::State("signed window media authorization expired");
             if Instant::now() >= deadline {
@@ -61,6 +70,7 @@ impl Gate {
         }
         tokio::time::timeout(Duration::from_secs(12), async {
             cancel.check()?;
+            self.media_checkpoint("transport", None).await;
             let mut response = backend
                 .get(MediaRequest {
                     url: url.clone(),
@@ -70,11 +80,16 @@ impl Gate {
                 .await
                 .map_err(|_| Error::Transport("signed window media transport refused".into()))?;
             let failure = || Error::Response("signed window media integrity refused");
-            if response.status != 200
-                || response
-                    .headers
-                    .keys()
-                    .any(|key| key.eq_ignore_ascii_case("content-range"))
+            self.media_checkpoint("http_status", Some(response.status))
+                .await;
+            if response.status != 200 {
+                return Err(failure());
+            }
+            self.media_checkpoint("headers", None).await;
+            if response
+                .headers
+                .keys()
+                .any(|key| key.eq_ignore_ascii_case("content-range"))
                 || header(&response.headers, "content-encoding")?
                     .is_some_and(|value| !value.eq_ignore_ascii_case("identity"))
                 || header(&response.headers, "content-length")?.and_then(|value| value.parse().ok())
@@ -82,6 +97,7 @@ impl Gate {
             {
                 return Err(failure());
             }
+            self.media_checkpoint("body", None).await;
             let mut payload = Vec::with_capacity(receipt.bytes as usize);
             let mut block = [0_u8; 64 * 1024];
             loop {
@@ -99,10 +115,12 @@ impl Gate {
                 }
                 payload.extend_from_slice(&block[..count]);
             }
+            self.media_checkpoint("integrity", None).await;
             if payload.len() as u64 != receipt.bytes || eapi::md5_hex(&payload) != receipt.md5 {
                 return Err(failure());
             }
             cancel.check()?;
+            self.media_checkpoint("anonymous_file", None).await;
             let mut file = tempfile::tempfile_in(private_dir)?;
             #[cfg(unix)]
             {
@@ -113,6 +131,7 @@ impl Gate {
             file.rewind()?;
             cancel.check()?;
             self.require_original_account()?;
+            self.media_checkpoint("file_verified", None).await;
             Ok(file)
         })
         .await

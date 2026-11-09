@@ -175,6 +175,7 @@ class SignedWindowLauncherTests(unittest.TestCase):
                 report["gate"]["attemptedReads"] = "synthetic private sentinel"
                 report["gate"]["firstPlanRejection"] = "headers"
                 report["gate"]["unfinishedRead"] = "source"
+                report["gate"].update(mediaStage="headers", mediaHttpStatus=200)
                 destination.write_text(json.dumps(report))
                 raise RuntimeError("synthetic private exception")
 
@@ -192,6 +193,8 @@ class SignedWindowLauncherTests(unittest.TestCase):
             self.assertNotIn("attemptedReads", receipt["checkpoint"]["gate"])
             self.assertEqual(receipt["checkpoint"]["gate"]["firstPlanRejection"], "headers")
             self.assertEqual(receipt["checkpoint"]["gate"]["unfinishedRead"], "source")
+            self.assertEqual(receipt["checkpoint"]["gate"]["mediaStage"], "headers")
+            self.assertEqual(receipt["checkpoint"]["gate"]["mediaHttpStatus"], 200)
             self.assertNotIn("synthetic private", failed.read_text())
             self.assertFalse(scratch[-1].exists())
 
@@ -211,7 +214,8 @@ class SignedWindowLauncherTests(unittest.TestCase):
             report = sample()
             report.update(ok=False, stages=proof.STAGES[:1])
             report["gate"].update(firstPlanRejection={"headers": "synthetic private sentinel"},
-                                  unfinishedRead="https://synthetic.invalid/secret")
+                                  unfinishedRead="https://synthetic.invalid/secret",
+                                  mediaStage="synthetic private sentinel", mediaHttpStatus=999)
             path = output / "report.json"
             path.write_text(json.dumps(report), encoding="utf-8")
             path.chmod(0o600)
@@ -219,6 +223,8 @@ class SignedWindowLauncherTests(unittest.TestCase):
             self.assertEqual(checkpoint["completedStages"], 1)
             self.assertNotIn("firstPlanRejection", checkpoint["gate"])
             self.assertNotIn("unfinishedRead", checkpoint["gate"])
+            self.assertNotIn("mediaStage", checkpoint["gate"])
+            self.assertNotIn("mediaHttpStatus", checkpoint["gate"])
             self.assertNotIn("synthetic", json.dumps(checkpoint))
 
     def test_discovery_supervisor_pins_only_pc_and_refuses_any_cdn_dial(self):

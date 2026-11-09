@@ -817,5 +817,13 @@ async fn wrong_authorizations_and_unverified_bytes_never_make_a_native_file() {
             media.calls.load(Ordering::Relaxed),
             usize::from(authorization.is_ok())
         );
+        let facts = f.gate.facts().await;
+        let diagnostic = match error {
+            "redirect" => (Some("http_status"), Some(302)),
+            "range" | "encoding" | "length" => (Some("headers"), Some(200)),
+            "body" => (Some("integrity"), Some(200)),
+            _ => (None, None),
+        };
+        assert_eq!((facts.media_stage, facts.media_http_status), diagnostic);
     }
 }
