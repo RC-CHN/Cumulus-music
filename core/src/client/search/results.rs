@@ -503,6 +503,29 @@ fn array<'a>(v: &'a Value, key: &str) -> Result<&'a [Value]> {
         .map(Vec::as_slice)
         .ok_or(Error::Response("missing search result list"))
 }
+
+fn podcast_page(data: &Value) -> Result<(&[Value], Option<u64>)> {
+    let resources = data
+        .as_object()
+        .ok_or(Error::Response("missing search result list"))?
+        .get("resources");
+    let rows = match resources {
+        None | Some(Value::Null) => &[],
+        Some(_) => array(data, "resources")?,
+    };
+    // M/15.Jn keeps the reported total for explicit null resources, but an
+    // empty mapped list with a truthy hasMore instead clears the total.
+    // M/21.D defaults undefined to [], and otherwise maps one item per row.
+    let reported = &data["totalCount"];
+    let total = if !js_truthy(reported)
+        || (rows.is_empty() && resources != Some(&Value::Null) && js_truthy(&data["hasMore"]))
+    {
+        Some(0)
+    } else {
+        reported.as_u64()
+    };
+    Ok((rows, total))
+}
 pub(super) fn clean(s: &str) -> String {
     s.replace("<em>", "")
         .replace("</em>", "")
@@ -1023,21 +1046,27 @@ pub(super) fn project(
         All => unreachable!(),
     };
     let lyrics = query.category == Lyrics;
-    // M/15.Wn treats an explicitly null resources list as an empty lyric
-    // result. A missing or malformed list is still a retryable response error.
-    let rows = if lyrics && container.get(list).is_some_and(Value::is_null) {
-        &[]
+    let podcasts = query.category == Podcasts && !uid.is_empty();
+    let (rows, reported_total) = if podcasts {
+        podcast_page(container)?
     } else {
-        array(container, list)?
+        // M/15.Wn treats explicitly null as empty. Other invalid lyric lists
+        // retain their existing retryable error.
+        let rows = if lyrics && container.get(list).is_some_and(Value::is_null) {
+            &[]
+        } else {
+            array(container, list)?
+        };
+        (rows, container[total].as_u64())
     };
     if rows.len() > 100 {
         return Err(Error::Response("oversized search result page"));
     }
-    result.total = container[total].as_u64();
+    result.total = reported_total;
     result.next_offset = query.offset + rows.len();
-    let remote_more = if lyrics {
-        // M/3001 uses the length of the lyric batch, not totalCount or
-        // hasMore. Advance by the raw count even if a row cannot be displayed.
+    let remote_more = if lyrics || podcasts {
+        // M/3001 uses the length of the mapped batch, not totalCount or
+        // hasMore. The native cursor still counts rows that IPC cannot expose.
         rows.len() == query.limit
     } else {
         container["hasMore"].as_bool().unwrap_or_else(|| {
@@ -1051,9 +1080,9 @@ pub(super) fn project(
         result.notice =
             Some("服务返回了结果数量，但本页没有可展示的内容。可重试或更换关键词。".into());
     }
-    if query.correct && !lyrics {
-        // M/15.Wn never supplies a category rewrite. The effective term
-        // selected before entering lyrics remains in the request query.
+    if query.correct && !lyrics && !podcasts {
+        // M/15.Wn and Jn do not supply a category rewrite; keep the effective
+        // term from before entering either classified flow.
         result.correction = [
             &container["queryRewriteInfo"],
             &raw["queryRewriteInfo"],

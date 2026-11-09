@@ -1534,12 +1534,14 @@
       const radio=await readQueue();
       assert(radio.tracks.map(row=>row.track.voiceId).join(',')==='401,402,403','explicit podcast card still plays its episode list');
       await capture('search_podcast_keeps_explicit_radio_play');
-      const audioReads=[], fetchIPC=window.fetch;
+      const audioReads=[], emptyAudioReads=[], fetchIPC=window.fetch;
       window.fetch=function(url,options){
         if(String(url).endsWith('/search_results')){
           const {query}=JSON.parse(options.body);
           if(['voices','podcasts'].includes(query.category)&&query.keyword==='合成长音频续页')
             audioReads.push([query.category,query.offset,query.limit]);
+          if(query.category==='podcasts'&&query.keyword.startsWith('合成播客空'))
+            emptyAudioReads.push([query.keyword,query.offset,query.limit]);
         }
         return fetchIPC.call(window,url,options);
       };
@@ -1565,9 +1567,19 @@
             grid()?.dataset.loadedCount==='10','waiting for the next voice page keeps current rows');
           await capture('search_voice_table_loading');
           release();
+        }else{
+          await wait(()=>button('重试加载更多'),'full podcast batch continues despite hasMore false');
+          const top=panel().scrollTop, reads=audioReads.length;
+          panel().dispatchEvent(new Event('scroll'));
+          await sleep(350);
+          assert(top>0&&panel().scrollTop===top&&grid()?.dataset.loadedCount==='10'&&
+            button('重试加载更多')&&audioReads.length===reads,'failed podcast page retains rows and waits for explicit retry');
+          await capture('search_podcasts_retry');
+          click(button('重试加载更多'));
         }
+        const loaded=category==='voices'?'20':'13';
         const opener=()=>grid()?.querySelector(`[data-grid-index="10"] ${category==='voices'?'.search-voice-radio':'.search-card-open'}`);
-        await wait(()=>grid()?.dataset.loadedCount==='20'&&opener(),'scroll appends ten long-audio results');
+        await wait(()=>grid()?.dataset.loadedCount===loaded&&opener(),'scroll appends the next audio results');
         if(category==='voices'){
           const row=opener().closest('.search-voice-row');
           assert(aligned(row)&&row.getAttribute('aria-rowindex')==='12'&&all('.search-voice-row').length<20,
@@ -1575,24 +1587,45 @@
         }else{
           const row=opener().closest('.search-podcast-row');
           assert(podcastAligned(row)&&row.getAttribute('aria-rowindex')==='12'&&
-            all('.search-podcast-row').length<20&&!one('.search-podcast-column-resizer'),
+            all('.search-podcast-row').length<20&&!one('.search-podcast-column-resizer')&&
+            one('.search-load-more')?.textContent.includes('没有更多可显示的结果')&&!button('加载更多'),
             'compact podcast table keeps the late row aligned without ineffective resize handles');
+          const reads=audioReads.length;
+          panel().scrollTop=panel().scrollHeight;
+          panel().dispatchEvent(new Event('scroll'));
+          await sleep(350);
+          assert(audioReads.length===reads,'short podcast batch remains terminal despite hasMore true');
         }
-        opener().scrollIntoView({block:'nearest'});
-        const rect=opener().getBoundingClientRect(), position=panel().scrollTop;
-        assert(opener().contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
-          'appended audio result offers a visible navigation control');
+        opener().scrollIntoView({block:category==='podcasts'?'center':'nearest'});
+        await wait(()=>{
+          const node=opener(), rect=node?.getBoundingClientRect();
+          return rect&&node.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
+        },'appended audio result offers a visible navigation control');
+        const position=panel().scrollTop;
         click(opener());
         await wait(()=>one('.podcast-cover h2')?.textContent.includes('合成播客'),'appended result opens native podcast details');
         click(button('返回上一页'));
-        await wait(()=>ready()&&grid()?.dataset.loadedCount==='20'&&document.activeElement===opener()&&
+        await wait(()=>ready()&&grid()?.dataset.loadedCount===loaded&&document.activeElement===opener()&&
           Math.abs(panel().scrollTop-position)<=1,'Back restores results, scroll and exact audio result control');
         const restored=await invoke('player_snapshot',{epoch});
         assert(restored.playId===radioPlaying.playId&&restored.queueRevision===radioPlaying.queueRevision,
           'appending or opening details cannot alter the existing native queue');
         await capture('search_'+category+'_waterfall_back');
       }
-      await emit('complete',{ok:true,voiceQueueVerified:true,voiceTableVerified:true,podcastTableVerified:true,audioWaterfallVerified:true,audioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      for(const [word,total,label] of [['合成播客空值',99,'null'],['合成播客空列表',0,'empty']]){
+        await fresh(word);
+        await choose('podcasts');
+        const headline=one('.search-results-page [aria-live="polite"]')?.textContent.trim();
+        const message=one('.search-empty-category')?.textContent.trim();
+        assert(headline===`找到 ${total} 个播客`&&message?.includes(word)&&!grid()&&
+          !button('加载更多')&&!button('重试加载更多'),'null and array empties have distinct totals and no continuation');
+        await capture('search_podcasts_'+label,{headline,message});
+      }
+      const afterEmpty=await invoke('player_snapshot',{epoch});
+      assert(afterEmpty.playId===radioPlaying.playId&&afterEmpty.queueRevision===radioPlaying.queueRevision,
+        'empty podcast search cannot alter the existing native queue');
+      await emit('complete',{ok:true,voiceQueueVerified:true,voiceTableVerified:true,podcastTableVerified:true,audioWaterfallVerified:true,
+        audioReads,emptyAudioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchSongWaterfallProof){

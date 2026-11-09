@@ -17,6 +17,7 @@ static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static MV_PREVIEW_PRIVILEGE_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static PODCAST_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 static VOICE_NEXT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -1241,6 +1242,45 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     CALLS.fetch_add(1, Ordering::SeqCst);
     let mode = MODE.lock().unwrap().clone();
+    if mode == "voice_queue"
+        && category == "podcasts"
+        && let Some(word @ ("合成长音频续页" | "合成播客空值" | "合成播客空列表")) =
+            args["keyword"].as_str()
+    {
+        let offset = args["offset"].as_u64().unwrap();
+        assert_eq!(
+            *args,
+            json!({"keyword":word,"scene":"normal","offset":offset,"limit":10})
+        );
+        let rows = |start, end| {
+            json!(
+                (start..end)
+                    .map(|id| json!({"type":"voicelist","baseInfo":{
+                        "id":id,"name":format!("合成播客 {id}"),"voiceCount":3,
+                        "dj":{"nickname":"合成主播"}
+                    }}))
+                    .collect::<Vec<_>>()
+            )
+        };
+        let (resources, more) = match (word, offset) {
+            ("合成长音频续页", 0) => (rows(301, 311), false),
+            ("合成长音频续页", 10) => {
+                if !PODCAST_BATCH_FAILED.swap(true, Ordering::SeqCst) {
+                    return Some(Err(Error::Transport("合成播客续页失败".into())));
+                }
+                (rows(311, 314), true)
+            }
+            ("合成播客空值", 0) => (Value::Null, true),
+            ("合成播客空列表", 0) => (json!([]), true),
+            _ => {
+                return Some(Err(Error::InvalidInput("unexpected podcast continuation")));
+            }
+        };
+        return Some(Ok(json!({"code":200,"data":{
+            "resources":resources,"totalCount":99,"hasMore":more,
+            "queryRewriteInfo":{"rewriteQuery":"不属于播客分类的纠正"}
+        }})));
+    }
     if category == "all" && default_recovery_enabled() {
         assert_eq!(args["keyword"], "合成恢复第二词");
         let context = match args["channel"].as_str() {

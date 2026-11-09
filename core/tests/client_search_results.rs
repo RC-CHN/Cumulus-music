@@ -182,7 +182,7 @@ async fn podcast_search_projects_official_table_metadata_without_guessing() {
     query.offset = 6;
     query.limit = 10;
     let result = client.search_results(&epoch, query).await.unwrap().value;
-    assert!(result.more);
+    assert!(!result.more);
     assert_eq!(result.next_offset, 10);
     assert_eq!(result.unavailable_count, 1);
     let view = serde_json::to_value(result).unwrap();
