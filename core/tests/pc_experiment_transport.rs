@@ -1,3 +1,5 @@
+#[path = "pc_experiment_transport/listened_books_resume.rs"]
+mod listened_books_resume;
 #[path = "pc_experiment_transport/minibar_skip.rs"]
 mod minibar_skip;
 #[path = "pc_experiment_transport/natural_eof.rs"]

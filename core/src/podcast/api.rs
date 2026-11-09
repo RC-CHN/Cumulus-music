@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    protocol::api::{Api, identifier},
+    protocol::api::{Api, PODCAST_RESUME_READ_PATH, identifier},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -141,7 +141,7 @@ impl PodcastApi {
         let result = self
             .api
             .call(
-                "/api/dj/user/setting/resumeplay/get",
+                PODCAST_RESUME_READ_PATH,
                 json!({"radioId":identifier(id)?}),
                 false,
                 &[200],

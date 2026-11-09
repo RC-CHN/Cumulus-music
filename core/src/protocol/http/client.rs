@@ -1217,6 +1217,29 @@ impl Api for MusicHttpClient {
         Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
     }
 
+    fn podcast_resume_observation_revision(&self) -> Result<Option<String>> {
+        use crate::protocol::{api::PODCAST_RESUME_READ_PATH, pc_experiments::ASSIGNMENT_PATH};
+        let revision = self.pc_experiment_revision()?;
+        let origin = self.credentials.origin();
+        let route = select_route_with_policy(
+            origin,
+            PODCAST_RESUME_READ_PATH,
+            &json!({}),
+            self.options.routing,
+        )?;
+        if route != WireRoute::Eapi {
+            return Ok(None);
+        }
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, PODCAST_RESUME_READ_PATH)?)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get", ASSIGNMENT_PATH])?;
+        Ok(Some(revision))
+    }
+
     fn upload_podcast_progress<'a>(
         &'a self,
         payload: Value,

@@ -16,6 +16,7 @@ pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + '
 
 pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
 pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
+pub(crate) const PODCAST_RESUME_READ_PATH: &str = "/api/dj/user/setting/resumeplay/get";
 
 /// One original chorus endpoint batch. The IDs are selected by the native queue.
 pub struct PlaybackChorusRead(Vec<Value>);
@@ -702,6 +703,12 @@ pub trait Api: Send + Sync + std::any::Any {
     /// Scoped native credential revision for the episode progress write.
     /// Ordinary adapters do not opt into automatic account writes.
     fn podcast_progress_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// Same native PC account, assignment, and resume-setting cookie scope.
+    /// An ordinary read still works when this optional presentation proof is absent.
+    fn podcast_resume_observation_revision(&self) -> Result<Option<String>> {
         Ok(None)
     }
 

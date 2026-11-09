@@ -108,6 +108,9 @@ impl PodcastService {
         id: &str,
     ) -> Result<bool> {
         let id = identifier(&json!(id))?;
+        if action == PodcastAction::Resume {
+            return super::resume::read_for(&self.session, token, &json!(id)).await;
+        }
         self.session
             .run_for(token, |api, _| async move {
                 let api = PodcastApi::new(api);
@@ -118,7 +121,7 @@ impl PodcastService {
                         .subscribed
                         .ok_or(Error::Response("podcast subscription state missing")),
                     PodcastAction::Like => Ok(api.liked_voices().await?.iter().any(|v| v.id == id)),
-                    PodcastAction::Resume => api.resume_enabled(&json!(id)).await,
+                    PodcastAction::Resume => unreachable!("handled above"),
                 }
             })
             .await

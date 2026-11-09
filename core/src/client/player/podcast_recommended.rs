@@ -15,8 +15,6 @@ use crate::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-const RESUME_EXPERIMENT: &str = "Podcast_ResumePlaySwitch";
-
 fn episode_progress(episode: &Episode) -> f64 {
     let record = &episode.raw["djPlayRecordVo"];
     let location = record["listenLocation"].as_f64().unwrap_or(0.0);
@@ -207,18 +205,18 @@ impl MusicClient {
             .verified_pc_experiment_revision()?
             .as_deref()
             .map(|revision| {
-                self.pc_experiments
-                    .observed_group(token, api, revision, RESUME_EXPERIMENT)
+                self.pc_experiments.observed_group(
+                    token,
+                    api,
+                    revision,
+                    crate::podcast::resume::EXPERIMENT,
+                )
             })
             .transpose()?
             .flatten();
         let read_resume = |radio_id: String| async move {
-            let setting = self
-                .session
-                .run_for(token, |api, _| async move {
-                    PodcastApi::new(api).resume_enabled(&json!(radio_id)).await
-                })
-                .await;
+            let setting =
+                crate::podcast::resume::read_for(&self.session, token, &json!(radio_id)).await;
             match setting {
                 // The original setting reader returns null on failure; an
                 // actual identity or authentication change is never a default.

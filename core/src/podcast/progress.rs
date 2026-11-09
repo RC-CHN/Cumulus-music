@@ -127,11 +127,7 @@ pub(crate) async fn position(
         return Ok(None);
     }
     // Re-evaluate on selection, never cache a checkpoint together with a URL.
-    let enabled = session
-        .run_for(token, |api, _| async {
-            super::PodcastApi::new(api).resume_enabled(radio).await
-        })
-        .await?;
+    let enabled = super::resume::read_for(session, token, radio).await?;
     if !enabled {
         return Ok(None);
     }
