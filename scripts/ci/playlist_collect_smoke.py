@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from motion_smoke import launch
+from motion_smoke import launch, set_webview2_motion_preference
 
 
 def main():
@@ -20,6 +20,10 @@ def main():
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_PLAYLIST_COLLECT_PROOF='1')
+    if os.name == 'nt':
+        # This proof measures the real 8px entry, which reduced motion skips.
+        # motion_smoke.py separately tests the native reduced preference.
+        set_webview2_motion_preference(env, reduced=False)
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -56,6 +60,7 @@ def verify(root, capture, stall_frames=False):
     assert round(stable['width']) == stable['layoutWidth'] == 442
     assert stable['opacity'] == '1' and stable['transform'] == 'none'
     creation = json.loads((root / 'first/ux_04_create_1120_light.json').read_text(encoding='utf-8'))
+    assert initial['motionPolicy'] == creation['motionPolicy'] == {'app': 'full', 'nativeReduced': False}
     assert creation['invalidNameConfirmed'] is True
     entrance = creation['firstCreateEntrance']
     assert entrance['shift'] == 8 and entrance['form']['transform'] != 'none'

@@ -13,6 +13,14 @@ import subprocess
 import time
 
 
+def set_webview2_motion_preference(env, *, reduced):
+    """Align CSS and JS preferences in one isolated WebView2 child process."""
+    existing = re.sub(r'(?<!\S)--force-prefers-(?:no-)?reduced-motion(?=\s|$)', '',
+                      env.get('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', '')).strip()
+    flag = '--force-prefers-reduced-motion' if reduced else '--force-prefers-no-reduced-motion'
+    env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = (existing + ' ' + flag).strip()
+
+
 def paint_checks(picture, payload):
     """Check declared opaque padding/cover samples after CSS settles.
 
@@ -130,10 +138,7 @@ def main():
             # Match the synthetic MQL baseline with Chromium's real CSS query.
             # This affects only the isolated WebView2 child, never OS settings
             # or the production app. Also test a real reduced-motion query.
-            existing = re.sub(r'(?<!\S)--force-prefers-(?:no-)?reduced-motion(?=\s|$)', '',
-                              env.get('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', '')).strip()
-            flag = '--force-prefers-reduced-motion' if phase == 'native-reduced' else '--force-prefers-no-reduced-motion'
-            env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = (existing + ' ' + flag).strip()
+            set_webview2_motion_preference(env, reduced=phase == 'native-reduced')
         if phase == 'native-reduced':
             env['CUMULUS_MOTION_NATIVE_REDUCED'] = '1'
         if phase == 'reopen':

@@ -48,6 +48,10 @@
   let blockedFrames = 0;
   let openingFrameStall = null;
   let firstCreateEntrance = null;
+  const motionPolicy = () => ({
+    app: document.documentElement.dataset.motion ?? null,
+    nativeReduced: window.__motionProof?.nativeReduced ?? null,
+  });
   const motionClasses =
     ".playlist-collect-dialog.modal-enter-active,.playlist-collect-dialog.modal-leave-active,.collect-step-enter-active,.collect-step-leave-active";
   const geometry = (d) => {
@@ -155,6 +159,7 @@
       rows: all(".collect-row").length,
       dialog: !!d,
       geometry: geometry(d),
+      motionPolicy: motionPolicy(),
       ...(count === 1 && { openingFrameStall }),
     });
     await sleep(420);
@@ -247,7 +252,10 @@
     assert(false, "collection reached terminal page");
   }
   try {
-    await wait(() => one(".track-more"), "daily");
+    await wait(() => one(".track-more") && motionPolicy().app, "daily and motion policy");
+    const motion = motionPolicy();
+    assert(motion.app === "full" && motion.nativeReduced === false,
+      `playlist animation proof requires full motion: ${JSON.stringify(motion)}`);
     for (const [w, h, theme] of [
       [1120, 760, "light"],
       [1120, 760, "dark"],
@@ -443,6 +451,7 @@
       active: document.activeElement?.outerHTML?.slice(0, 250),
       dialog: dialog()?.textContent?.slice(0, 800),
       geometry: geometry(dialog()),
+      motionPolicy: motionPolicy(),
       firstCreateEntrance,
     });
   }
