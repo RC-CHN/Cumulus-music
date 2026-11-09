@@ -146,7 +146,7 @@ Windows 暖转交候选（尚不进入主线／安装包）
 
 Windows 原生复验入口
 - 在包含候选的 ref 上手动运行 CI，选择 windows_native_file_diagnostic。Windows
-  打包 runner 先用本次构建的媒体库运行受限连接令牌、持有资料目录、重解析
+  package-runtime runner 从同次校验后的便携包读取媒体库并运行受限连接令牌、持有资料目录、重解析
   拒绝、SQLite 日志以及同句柄 FFprobe/libmpv 用例。媒体测试用空输出，
   测量真实解码，不作声卡听感证明。
 - scripts/ci/windows_native_open_smoke.py 复核同一提交、运行及尝试的 portable

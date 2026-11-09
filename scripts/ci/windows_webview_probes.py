@@ -1,8 +1,10 @@
 """Build and hand off each Windows WebView shard's same-attempt test probes."""
 import argparse
+from collections import Counter
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 
@@ -26,6 +28,7 @@ PROBES = {
     'package-media': (
         'audiobook_skip_ui_probe', 'minibar_skip_ui_probe', 'native_local_equalizer_probe',
     ),
+    'package-runtime': ('local_ui_probe', 'native_audio_probe'),
     'search-account': (
         'account_login_ui_probe', 'auth_ui_probe', 'device_login_ui_probe', 'email_login_ui_probe',
         'legacy_renewal_ui_probe', 'login_notice_ui_probe', 'phone_entry_ui_probe',
@@ -52,14 +55,19 @@ def receipt(directory, identity, shard, frontend):
 def stage(repo, identity, frontend):
     root, examples = repo / ARTIFACT, repo / EXAMPLES
     manifests = {shard: receipt(examples, identity, shard, frontend) for shard in PROBES}
+    remaining = Counter(name for shard in PROBES for name in binary_names(shard))
     root.mkdir(parents=True)
     for shard, manifest in manifests.items():
         directory = root / shard
         directory.mkdir()
         for name in binary_names(shard):
-            # Both directories are in the same checkout. Don't duplicate the
-            # linked binaries on the runner before uploading the artifacts.
-            (examples / name).rename(directory / name)
+            remaining[name] -= 1
+            source = examples / name
+            if remaining[name]:
+                # A second shard needs these same bytes; link with Cargo only once.
+                shutil.copyfile(source, directory / name)
+            else:
+                source.rename(directory / name)
         (directory / MANIFEST).write_text(
             json.dumps(manifest, sort_keys=True) + '\n', encoding='utf-8',
         )

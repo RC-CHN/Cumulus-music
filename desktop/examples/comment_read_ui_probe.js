@@ -147,8 +147,14 @@
     click(one('.track-row .track-more'));await wait(()=>one('[role="menu"]'),'song menu');
     click(button('查看评论',one('[role="menu"]')));await wait(()=>ready()&&ids()[0]==='101','comments first page');await settle();
   }
-  async function locate(value) {
-    input('评论编号',value);await wait(()=>!button('定位评论',page())?.disabled,'location input committed');click(button('定位评论',page()));await wait(ready,'location settled');await settle();
+  async function locate(value, outcome, label) {
+    input('评论编号',value);
+    await wait(()=>{const submit=button('定位评论',page());return submit&&!submit.disabled;},'location input committed');
+    click(button('定位评论',page()));
+    // aria-busy=false can still describe the previous render immediately
+    // after submit. Fast native replies can also skip a visible busy frame.
+    await wait(()=>ready()&&outcome(),label);
+    await settle();
   }
   async function read(buttonNode,test,label) {click(buttonNode);await wait(test,label);await settle();}
   async function openFloor(id=101) {
@@ -219,10 +225,22 @@
     await theme('dark');await mode('fail-hot');await read(one('[data-comment-sort="hot"]'),()=>ready()&&one('.comment-read-error'),'hot failed');assert(one('[data-comment-sort="latest"]').getAttribute('aria-selected')==='true','failed sort retains selection');await capture('hot_failed_dark');
     await mode('none');await read(button('重试',one('.comment-read-error')),()=>ready()&&ids()[0]==='301','hot retry');await capture('hot_retry_dark');
     const hot=one('[data-comment-sort="hot"]');hot.focus();hot.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));await wait(()=>ready()&&ids()[0]==='101','keyboard latest');await settle();assert(document.activeElement?.dataset.commentSort==='latest','keyboard selected tab focus');await capture('keyboard_latest_dark');
-    await locate('invalid');assert(one('.comment-read-error')&&!button('重试',one('.comment-read-error')),'invalid ID is editable not a queued request');await capture('invalid_target_dark');
-    await mode('fail-target');await locate('900719925474099312345');assert(one('.comment-read-error'),'target read error');await capture('target_failed_dark');
+    const invalidTarget = () => {
+      const error=one('.comment-read-error');
+      return error?.textContent.trim()==='请输入有效的评论编号'&&!button('重试',error);
+    };
+    const failedTarget = () => {
+      const error=one('.comment-read-error');
+      return error&&button('重试',error)&&ids()[0]==='101'&&ids().length===20;
+    };
+    const missingTarget = () => one('.comment-target-missing')&&ids().length===20;
+    await locate('invalid',invalidTarget,'invalid target validation');
+    assert(invalidTarget(),'invalid ID is editable not a queued request');await capture('invalid_target_dark');
+    await mode('fail-target');await locate('900719925474099312345',failedTarget,'target read error');
+    assert(failedTarget(),'target read error retains ordinary page and offers exact retry');await capture('target_failed_dark');
     await mode('none');await read(button('重试',one('.comment-read-error')),()=>ready()&&one('[data-group="current"] [data-comment-id="900719925474099312345"]'),'target retry');await capture('target_retry_dark');
-    await mode('missing-target');await locate('777');assert(one('.comment-target-missing')&&ids().length===20,'missing target explicit with ordinary page preserved');await capture('missing_target_dark');
+    await mode('missing-target');await locate('777',missingTarget,'missing target read');
+    assert(missingTarget(),'missing target explicit with ordinary page preserved');await capture('missing_target_dark');
     await mode('empty');await read(one('[data-comment-sort="latest"]'),()=>ready()&&ids().length===0,'empty comments');await capture('empty_dark');
     await mode('none');await theme('light');await read(button('刷新评论',page()),()=>ready()&&ids()[0]==='101','latest recovery');await capture('latest_recovered_light');
     await mode('fail-floor-first');await openFloor();assert(one('.comment-floor-panel .error-state'),'first floor failure');await capture('floor_failed_first_light');

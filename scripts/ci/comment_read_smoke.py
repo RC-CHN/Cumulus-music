@@ -54,7 +54,17 @@ def main():
     assert a['args'] == c['args'] and c['args']['offset'] == 20
     assert states['hot_failed_dark']['sort'] == 'latest' and states['hot_retry_dark']['sort'] == 'hot'
     assert states['keyboard_latest_dark']['focusSort'] == 'latest'
-    assert states['target_retry_dark']['commentReadFixture']['calls'][-1]['args']['commentId'] == '900719925474099312345'
+    target = '900719925474099312345'
+    assert states['target_retry_dark']['commentReadFixture']['calls'][-1]['args']['commentId'] == target
+    targeted = [c for c in states['missing_target_dark']['commentReadFixture']['calls']
+                if c['args'].get('commentId') not in (None, '0')]
+    assert not any(c['args'].get('commentId') not in (None, '0')
+                   for c in states['invalid_target_dark']['commentReadFixture']['calls'])
+    assert [(c['args']['commentId'], c['mode']) for c in targeted] == [
+        (target, 'fail-target'), (target, 'none'), ('777', 'missing-target'),
+    ]
+    assert targeted[0]['path'] == targeted[1]['path'] == '/api/v1/resource/comments/R_SO_4_1'
+    assert targeted[0]['args'] == targeted[1]['args']
     assert states['floor_failed_first_light']['floorIds'] == [] and states['floor_retry_light']['floorCurrent'] == '602'
     assert states['floor_next_failed_light']['floorIds'][0] == '501' and states['floor_next_retry_light']['floorIds'][0] == '521'
     a=states['floor_next_failed_light']['commentReadFixture']['calls'][-1]
