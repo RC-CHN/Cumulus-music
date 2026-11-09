@@ -5,6 +5,7 @@ from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
+import sys
 
 from motion_smoke import launch
 from search_queue_drop_smoke import TrustedDrag
@@ -26,8 +27,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--root', required=True, type=Path)
+    parser.add_argument('--expected-app', help='exact Vite App asset name for the embedded bundle')
     args = parser.parse_args()
-    if os.name != 'posix' or not os.environ.get('DISPLAY'):
+    if not sys.platform.startswith('linux') or not os.environ.get('DISPLAY'):
         parser.error('requires a dedicated Xvfb display on Linux')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -65,6 +67,8 @@ def main():
     states = [read(run / f'{label}.json') for label in STAGES]
     done = read(run / 'complete.json')
     assert done['ok'] and done['states'] == len(STAGES)
+    if args.expected_app:
+        assert done.get('frontendApp') == args.expected_app, ('wrong embedded frontend', done.get('frontendApp'))
     assert states[6]['trustedDown'] and states[6]['insertBefore'] == 3 and states[7]['trustedUp']
     assert done['trustedDown'] and done['trustedUp']
     paint = read(run / f'paint-{STAGES[6]}.json')
@@ -112,6 +116,7 @@ def main():
     assert locale['numericLocale'] == 'C' and locale['messageLocale'] not in ('C', 'POSIX')
     result = dict(ok=True, actualWebView=True, actualNativePlayback=True,
                   trustedPointer=True, states=len(STAGES), screenshots=len(STAGES),
+                  frontendApp=done.get('frontendApp'),
                   pausedPlaybackPreserved=True, originalFilesPreserved=True,
                   menuQueueOrders=[['anchor', 'local'], ['anchor', '702', 'local'],
                                    ['anchor', 'local', '701', '702']],

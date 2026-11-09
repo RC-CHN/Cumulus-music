@@ -210,8 +210,11 @@
     await wait(() => !one('.queue-panel'), 'queue drawer closed');
     click(library);
     await wait(() => libraryRow(anchorName)?.dataset.localId === anchorId, 'same anchor file remains indexed');
+    const frontendApp = performance.getEntriesByType('resource')
+      .map(({ name }) => new URL(name).pathname.split('/').pop())
+      .find((name) => /^App-[a-zA-Z0-9_-]+\.js$/.test(name));
     await emit('complete', { ok: true, localId, anchorId, trustedDown, trustedUp, states: 8,
-      ...compact(await state(), await queue()) });
+      frontendApp, ...compact(await state(), await queue()) });
   } catch (error) {
     await emit('failed', { step, error: String(error), playlist: visibleRows(),
       menus: all('.action-menu button').map((button) => ({ text: button.textContent.trim(), disabled: button.disabled })) });
