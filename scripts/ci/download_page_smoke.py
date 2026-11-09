@@ -97,12 +97,10 @@ def main():
     if script == 'download_page_ui_probe.js':
         env['CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF'] = '1'
     if args.menu:
-        env.update(
-            CUMULUS_DOWNLOAD_MENU_COMMENT_PROOF='1',
-            # The menu now hands off to a receipt-bound native picker.
-            CUMULUS_DOWNLOAD_COLLECTION_PROOF='1',
-            CUMULUS_PLAYLIST_COLLECT_PROOF='1',
-        )
+        env['CUMULUS_DOWNLOAD_MENU_COMMENT_PROOF'] = '1'
+    if args.menu or args.batch:
+        # Both entry points use the receipt-bound native picker.
+        env.update(CUMULUS_DOWNLOAD_COLLECTION_PROOF='1', CUMULUS_PLAYLIST_COLLECT_PROOF='1')
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script)
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)

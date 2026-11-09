@@ -545,15 +545,13 @@ impl Fixture {
                     })?,
                 )?;
             }
-            "seed" | "seed_collection" if mode == "seed" || collection_enabled() => {
+            "seed" | "seed_collection" | "seed_collection_batch"
+                if mode == "seed" || collection_enabled() =>
+            {
                 // Only the dedicated collector requests the small inventory.
                 // Other proofs can share its authority flag and still need
                 // all 146 real fixture records and the five transfer states.
-                let limit = if mode == "seed_collection" {
-                    7_u64
-                } else {
-                    146
-                };
+                let limit = if mode != "seed" { 7_u64 } else { 146 };
                 assert!(self.records.lock().unwrap().is_empty());
                 let delay = std::env::var("CUMULUS_DOWNLOAD_SEED_DELAY_MS")
                     .ok()
@@ -669,6 +667,16 @@ impl Fixture {
                         task.song.as_mut().unwrap()["dt"] = json!(6000);
                         task.song.as_mut().unwrap()["ar"] =
                             json!([{"id":17,"name":"Artist 17"},{"name":"无标识艺人"}]);
+                    }
+                    if mode == "seed_collection_batch"
+                        && let Some(privilege) = match i {
+                            1 => Some(json!({"id":1,"subp":0})),
+                            2 => Some(json!({"id":2,"subp":-1})),
+                            4 => Some(json!({"id":4,"subp":2})),
+                            _ => None,
+                        }
+                    {
+                        task.song.as_mut().unwrap()["privilege"] = privilege;
                     }
                     task.created_ms = 1700000000000 + i * 1000;
                     if lyric_repair && i == 1 {

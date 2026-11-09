@@ -2023,7 +2023,10 @@ fn main() {
             queue_more_fixture::phase_milestone("main_page_loaded");
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             let default_script = if std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some() { include_str!("like_recovery_ui_probe.js") } else if std::env::var_os("CUMULUS_MOTION_PROOF").is_some() { include_str!("motion_ui_probe.js") } else { include_str!("ux_ui_probe.js") };
-            let source=script.as_deref().unwrap_or(default_script);
+            let batch_source = script.as_ref().filter(|_| download_page_fixture::collection_enabled()
+                && std::env::var_os("CUMULUS_DOWNLOAD_BATCH_COLLECT_PROOF").is_some())
+                .map(|source| format!("window.__downloadBatchCollectProof=true;\n{source}"));
+            let source=batch_source.as_deref().or(script.as_deref()).unwrap_or(default_script);
             if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {view.eval(capture_ack::script(source)).unwrap();}
             else {view.eval(source).unwrap();}
             queue_more_fixture::phase_milestone("script_queued");
