@@ -15,6 +15,8 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 mod artist_mv_fixture;
 #[path = "support/books_resume_assignment.rs"]
 mod books_resume_assignment;
+#[path = "support/capture_ack.rs"]
+mod capture_ack;
 #[path = "support/collection_fixture.rs"]
 mod collection_fixture;
 #[path = "support/comment_read_fixture.rs"]
@@ -143,6 +145,9 @@ fn main() {
         "collection context proof uses isolated synthetic APIs only"
     );
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
+    let history_chapters =
+        std::env::var("CUMULUS_HISTORY_RADIO_CHAPTER_PROOF").as_deref() == Ok("1");
+    assert!(!history_chapters || (histories && !is_live && !interactive && !collections));
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
     let relay_recovery = std::env::var("CUMULUS_RELAY_RECOVERY_PROOF").as_deref() == Ok("1");
@@ -157,7 +162,7 @@ fn main() {
         || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if ordinary_essential || album_queue_drop || album_duration_sort || artists {
+        if ordinary_essential || album_queue_drop || album_duration_sort || artists || history_chapters {
             let numeric=current_locale(libc::LC_NUMERIC);
             let messages=current_locale(libc::LC_MESSAGES);
             let characters=current_locale(libc::LC_CTYPE);
@@ -179,7 +184,8 @@ fn main() {
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let comment_fixture=Arc::new(comment_read_fixture::Library::default());
         let follow_new_song_fixture=Arc::new(follow_new_song_fixture::Library::new(collection_fixture.clone(),follow_offline_head));
-        let history_fixture=Arc::new(history_fixture::Library::default());
+        let history_fixture=Arc::new(if history_chapters { history_fixture::Library::with_chapters() }
+            else { history_fixture::Library::default() });
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
         if relay_settings {relay_fixture.mode("setting-off");}
@@ -329,6 +335,7 @@ fn main() {
             let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
             let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);
             let comment_reads=catalog_fixture.comment_reads.load(std::sync::atomic::Ordering::SeqCst);
+            let history_chapter_report=history_chapters.then(||history_fixture.chapter_report());
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let history_reads=history_fixture.reads.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
@@ -347,6 +354,7 @@ fn main() {
                 if let Some(report)=comment_read_report {value["commentReadFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
+                if let Some(report)=history_chapter_report {value["historyChapterCalls"]=report;}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);value["syntheticHistoryReads"]=serde_json::json!(history_reads);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
                 if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}
@@ -357,7 +365,7 @@ fn main() {
                     value["publicationCalls"]=serde_json::json!(publication_fixture.publications.lock().unwrap().len());
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
                 }
-                if (is_live || relays || interactive) && value["playing"]==true {
+                if (is_live || relays || interactive || history_chapters) && value["playing"]==true {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some(){
                         let failure=serde_json::json!({"ok":false,"error":"native playback did not advance",
@@ -373,7 +381,7 @@ fn main() {
                         value["nativeFollowSources"]=serde_json::json!(queue["items"].as_array().unwrap().iter().map(|item|&item["source"]).collect::<Vec<_>>());
                     }
                 }
-                if (is_live || relays || interactive) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
+                if (is_live || relays || interactive || history_chapters) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
                 if relay_publication && stage=="complete" {
                     let token=publication_session.token().unwrap();
                     let settled=tokio::time::timeout(std::time::Duration::from_secs(5),async {
@@ -384,6 +392,8 @@ fn main() {
                     value["publicationPhases"]=serde_json::json!(publication.intents_for(&token).unwrap().into_iter().map(|r|r.phase).collect::<Vec<_>>());
                 }
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                if history_chapters && !capture_ack::acknowledge(
+                    &handle,&output,&stage,value["captureHandshake"]==true).await {return;}
                 if (interactive || collection_context) && stage.starts_with("ux_") {
                     if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
                         let marker=output.join(format!("{stage}.captured"));
@@ -407,6 +417,15 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
+            if history_chapters {
+                let source=script.as_deref().unwrap_or(include_str!("history_radio_chapter_ui_probe.js"));
+                if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
+                    view.eval(capture_ack::script(source)).unwrap();
+                } else {
+                    view.eval(source).unwrap();
+                }
+                return;
+            }
             view.eval(script.as_deref().unwrap_or(if ordinary_essential {include_str!("ordinary_essential_ui_probe.js")}else if follow_new_song {include_str!("follow_new_song_ui_probe.js")}else if relay_recovery {include_str!("relay_recovery_ui_probe.js")}else if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
                 include_str!("relay_ui_probe.js")
             } else if settings {

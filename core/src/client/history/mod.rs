@@ -1,4 +1,6 @@
 mod dto;
+mod radio_chapter;
+pub(super) use radio_chapter::RadioChaptersHost;
 mod listened_books;
 pub(super) use listened_books::ListenedBooksHost;
 pub use listened_books::{ListenedBooksPage, ListenedBooksQuery};
@@ -13,7 +15,7 @@ use crate::{
     history::{HistoryKind, HistoryService, HistorySyncAction, HistorySyncState},
 };
 pub use dto::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 impl MusicClient {
     pub fn history_sync_preference(
@@ -82,20 +84,53 @@ impl MusicClient {
             )
         });
         operations.truncate(20);
-        let entries = snapshot
-            .entries
-            .into_iter()
-            .map(|row| {
-                let usable = available.contains(&row.id);
-                view::entry(kind, row, usable)
-            })
-            .collect::<Result<_>>()?;
-        self.session.with_local_owner(&token, |_| {
+        let chapters = radio_chapter::supported(kind);
+        let hidden = if chapters && token.uid.is_some() {
+            let api = self.session.native_api(&token)?;
+            self.hidden_radio_progress(&token, &api)
+        } else {
+            HashSet::new()
+        };
+        self.session.with_local_owner(&token, |owner| {
+            let (entries, chapter_revision) = if chapters {
+                let store = self.session.persistent_store()?;
+                let (entries, selectable) = store.read_snapshot(|tx| {
+                    let mut entries = Vec::with_capacity(snapshot.entries.len());
+                    let mut selectable = HashMap::new();
+                    for row in snapshot.entries {
+                        let (chapter, selected) =
+                            radio_chapter::view(tx, owner, &row, token.uid.is_some(), &hidden)?;
+                        if let Some(selected) = selected {
+                            selectable.insert(row.id.clone(), selected);
+                        }
+                        entries.push(view::entry(kind, row, false, chapter)?);
+                    }
+                    Ok((entries, selectable))
+                })?;
+                let receipt = self.history_radio_chapters.publish(
+                    &token,
+                    kind,
+                    &snapshot.revision,
+                    selectable,
+                )?;
+                (entries, Some(receipt))
+            } else {
+                let entries = snapshot
+                    .entries
+                    .into_iter()
+                    .map(|row| {
+                        let usable = available.contains(&row.id);
+                        view::entry(kind, row, usable, None)
+                    })
+                    .collect::<Result<_>>()?;
+                (entries, None)
+            };
             Ok(AccountData {
                 epoch: epoch.into(),
                 value: HistoryPage {
                     kind,
                     revision: snapshot.revision,
+                    chapter_revision,
                     sync_enabled: snapshot.sync_enabled,
                     can_sync: token.uid.is_some(),
                     remote_included: snapshot.sync_enabled && snapshot.remote.is_some(),

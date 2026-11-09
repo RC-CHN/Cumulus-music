@@ -338,6 +338,11 @@ pub enum PlaySelection {
         revision: String,
         key: usize,
     },
+    HistoryRadioChapter {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        id: String,
+    },
     History {
         history_kind: crate::history::HistoryKind,
         revision: String,

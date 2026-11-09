@@ -424,6 +424,12 @@ export type PlaySelection =
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'listened_book_chapter'; revision: string; key: number }
   | {
+      kind: 'history_radio_chapter';
+      history_kind: 'podcast' | 'audiobook';
+      revision: string;
+      id: string;
+    }
+  | {
       kind: 'podcast_subscription_recommendation';
       id: string;
       receipt: string;

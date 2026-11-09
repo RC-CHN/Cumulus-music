@@ -61,16 +61,16 @@ struct ChapterView {
     playable: bool,
 }
 
-#[derive(Clone)]
-struct Chapter {
-    id: String,
-    media_id: Option<String>,
-    name: String,
-    recent: bool,
-    location: u64,
-    duration: u64,
-    completed: bool,
-    playable: bool,
+#[derive(Clone, PartialEq, Eq)]
+pub(super) struct Chapter {
+    pub(super) id: String,
+    pub(super) media_id: Option<String>,
+    pub(super) name: String,
+    pub(super) recent: bool,
+    pub(super) location: u64,
+    pub(super) duration: u64,
+    pub(super) completed: bool,
+    pub(super) playable: bool,
 }
 
 struct Book {
@@ -82,7 +82,7 @@ fn number_value(value: &Value) -> Option<u64> {
     value.as_u64().or_else(|| value.as_str()?.parse().ok())
 }
 
-fn unavailable(value: &Value) -> bool {
+pub(super) fn unavailable(value: &Value) -> bool {
     value["grayDisplay"] == true
         || value["underShelf"] == true
         || value["disPlayStatus"]
@@ -139,7 +139,7 @@ fn decode(value: &Value) -> Result<Vec<Book>> {
     Ok(rows)
 }
 
-fn local_chapter(chapter: &mut Chapter, local: latest::LatestVoice) {
+pub(super) fn local_chapter(chapter: &mut Chapter, local: latest::LatestVoice) {
     if local.id != chapter.id
         || local.name.is_empty()
         || chapter
@@ -242,7 +242,7 @@ impl ListenedBooksHost {
 }
 
 impl MusicClient {
-    fn listened_books_hidden_progress(
+    pub(super) fn hidden_radio_progress(
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,
@@ -314,7 +314,7 @@ impl MusicClient {
                             rows,
                             source: Cancellation::default(),
                         };
-                        let hidden = self.listened_books_hidden_progress(&token, &api);
+                        let hidden = self.hidden_radio_progress(&token, &api);
                         let page = snapshot.page(1, &hidden)?;
                         let mut slot = self
                             .listened_books
@@ -329,7 +329,7 @@ impl MusicClient {
             }
             ListenedBooksQuery::Page { revision, number } => {
                 self.session.with_verified_profile(&token, &api, |_, _| {
-                    let hidden = self.listened_books_hidden_progress(&token, &api);
+                    let hidden = self.hidden_radio_progress(&token, &api);
                     self.listened_books
                         .current(&token, &revision, |snapshot| snapshot.page(number, &hidden))
                 })?
@@ -383,6 +383,24 @@ impl MusicClient {
             self.with_listened_chapter(token, revision, key, |radio, chapter, source| {
                 (radio.clone(), chapter.clone(), source.clone())
             })?;
+        let (resources, selected) = self
+            .resolve_radio_chapter_queue(token, &radio, &chapter, &source)
+            .await?;
+        Ok((
+            resources,
+            selected,
+            json!({"kind":"listened_book","scene":"unknown","id":radio.id,"text":radio.name}),
+            source,
+        ))
+    }
+
+    pub(super) async fn resolve_radio_chapter_queue(
+        &self,
+        token: &SessionToken,
+        radio: &Radio,
+        chapter: &Chapter,
+        source: &Cancellation,
+    ) -> Result<(Vec<Value>, usize)> {
         let (locally_latest, ascending) = self.session.with_token(token, |owner| {
             let store = self.session.persistent_store()?;
             store.read_snapshot(|tx| {
@@ -401,7 +419,7 @@ impl MusicClient {
             let voices = if locally_latest {
                 around(api.as_ref(), &chapter.id, ascending.unwrap_or(false)).await?
             } else {
-                by_radio(api.as_ref(), &radio.id, ascending, &source).await?
+                by_radio(api.as_ref(), &radio.id, ascending, source).await?
             };
             let mut resources = Vec::with_capacity(voices.len());
             let mut selected = None;
@@ -452,11 +470,6 @@ impl MusicClient {
         if source.is_cancelled() {
             return Err(Error::QueueChanged);
         }
-        Ok((
-            resources,
-            selected,
-            json!({"kind":"listened_book","scene":"unknown","id":radio.id,"text":radio.name}),
-            source,
-        ))
+        Ok((resources, selected))
     }
 }

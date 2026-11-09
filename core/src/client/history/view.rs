@@ -10,6 +10,7 @@ pub(super) fn entry(
     kind: HistoryKind,
     record: HistoryRecord,
     available: bool,
+    chapter: Option<HistoryRadioChapterView>,
 ) -> Result<HistoryEntry> {
     let value = &record.resource;
     let resource = match kind {
@@ -70,6 +71,7 @@ pub(super) fn entry(
         play_progress: record.play_progress,
         listened: record.listened,
         resource,
+        chapter,
     })
 }
 pub(super) fn operation(op: HistoryMutation) -> HistoryOperationView {

@@ -29,6 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   scope: [kind: HistoryKind];
   play: [kind: HistoryKind, revision: string, ids: string[], index: number];
+  chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   open: [resource: HistoryResource];
 }>();
 const { page, kind, loading, busy, error, uncertain, pending, canMutate } = props.model;
@@ -110,6 +111,20 @@ function playSelected() {
   )
     return;
   emit('play', snapshot.kind, snapshot.revision, selectedForPlayback.value, 0);
+}
+function playChapter(entry: HistoryEntry) {
+  const snapshot = page.value;
+  if (
+    !snapshot?.chapterRevision ||
+    !props.playable ||
+    loading.value ||
+    busy.value ||
+    !entry.chapter?.playable ||
+    (snapshot.kind !== 'podcast' && snapshot.kind !== 'audiobook') ||
+    snapshot.kind !== kind.value
+  )
+    return;
+  emit('chapter', snapshot.kind, snapshot.chapterRevision, entry.id);
 }
 function remove(action: HistoryAction) {
   if (!page.value || !canMutate.value) return;
@@ -337,7 +352,36 @@ function keyboard(event: KeyboardEvent) {
                       >
                         {{ historyLabel(entry).name || '未命名' }}
                       </button>
-                      <p :title="historyLabel(entry).subtitle">
+                      <div v-if="entry.chapter" class="history-chapter" @dblclick.stop>
+                        <span v-if="entry.chapter.recent" class="history-chapter-prefix"
+                          >最近播放：</span
+                        >
+                        <span v-else-if="entry.chapter.tag" class="history-chapter-prefix"
+                          >{{ entry.chapter.tag }}：</span
+                        >
+                        <button
+                          v-if="entry.chapter.playable"
+                          type="button"
+                          :disabled="!playable || loading || busy"
+                          :title="entry.chapter.name"
+                          :aria-label="`播放章节 ${entry.chapter.name}`"
+                          @click.stop="playChapter(entry)"
+                        >
+                          {{ entry.chapter.name }}
+                        </button>
+                        <span v-else class="history-chapter-name" :title="entry.chapter.name">
+                          {{ entry.chapter.name }}
+                        </span>
+                        <span
+                          v-if="entry.chapter.completed || entry.chapter.percent !== null"
+                          class="history-chapter-progress"
+                        >
+                          {{
+                            entry.chapter.completed ? '已播完' : `已播 ${entry.chapter.percent}%`
+                          }}
+                        </span>
+                      </div>
+                      <p v-else :title="historyLabel(entry).subtitle">
                         {{ historyLabel(entry).subtitle || '未知创作者'
                         }}<span v-if="!historyLabel(entry).available"> · 暂不可播放</span>
                       </p>

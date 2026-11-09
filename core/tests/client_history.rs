@@ -413,6 +413,121 @@ async fn unusable_download_reference_falls_back_only_through_fresh_online_metada
 }
 
 #[tokio::test]
+async fn recent_radio_chapter_uses_only_its_row_and_matching_local_bookmark() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let kind = HistoryKind::Audiobook;
+    let token = f.session.token().unwrap();
+    f.history.set_sync_for(&token, false).unwrap();
+    f.api.resume_books.store(true, Ordering::SeqCst);
+    let record = |voice_id, at| {
+        let mut raw = radio(&json!(22));
+        raw["voiceId"] = json!(voice_id);
+        raw["voiceName"] = json!("合成行章节");
+        raw["tag"] = json!("上次听到");
+        // M/21.j does not promote these wire fields in the timeline.
+        raw["extPlayRecord"] = json!({"isListened":true,"listenLocation":110000});
+        HistoryRecord::local(kind, raw, at).unwrap()
+    };
+    f.history.record_for(&token, kind, record(6, 100)).unwrap();
+    let page = f
+        .client
+        .history_page(&epoch, kind, false)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(
+        serde_json::to_value(&page.entries[0].chapter).unwrap(),
+        json!({"name":"合成行章节","tag":"上次听到","recent":false,"percent":null,"completed":false,"playable":true})
+    );
+    assert!(
+        f.api.calls.lock().unwrap().is_empty(),
+        "timeline display has no extra requests"
+    );
+    f.store
+        .put(
+            "9",
+            "podcast-latest-voice-v1",
+            "22",
+            &json!({"id":"6","mainTrackId":"1006","name":"本机章节","time":18,"duration":120}),
+        )
+        .unwrap();
+    let page = f
+        .client
+        .history_page(&epoch, kind, false)
+        .await
+        .unwrap()
+        .value;
+    let chapter = page.entries[0].chapter.as_ref().unwrap();
+    assert_eq!(
+        (chapter.name.as_str(), chapter.recent, chapter.percent),
+        ("本机章节", true, Some(15))
+    );
+    let select = || PlaySelection::HistoryRadioChapter {
+        history_kind: kind,
+        revision: page.chapter_revision.as_ref().unwrap().clone(),
+        id: "22".into(),
+    };
+    f.store
+        .put(
+            "9",
+            "podcast-latest-voice-v1",
+            "22",
+            &json!({"id":"6","mainTrackId":"1006","name":"本机章节","time":24,"duration":120}),
+        )
+        .unwrap();
+    let current = f.client.player_snapshot(&epoch).await.unwrap();
+    let ticket = f
+        .client
+        .prepare_play_selection(&epoch, &current.queue_revision, None)
+        .unwrap();
+    let played = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket, select())
+        .await
+        .unwrap();
+    assert_eq!(played.position, Some(18.0));
+    let track = played.track.as_ref().unwrap();
+    assert_eq!(
+        (track.id.as_str(), track.voice_id.as_deref()),
+        ("1006", Some("6"))
+    );
+    assert_eq!(played.queue_len, 3);
+    let calls = f.api.calls.lock().unwrap().clone();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|path| *path == "/api/dj/around/program/v1")
+            .count(),
+        1
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|path| path == "/api/v6/dj/program/byradio")
+    );
+    // Change the native row after rendering it; no newer read is required
+    // for a stale click to fail without replacing the active media.
+    f.history
+        .record_for(&token, kind, record(7, u64::MAX))
+        .unwrap();
+    let ticket = f
+        .client
+        .prepare_play_selection(&epoch, &played.queue_revision, played.play_id.as_deref())
+        .unwrap();
+    assert!(matches!(
+        f.client
+            .commit_prepared_selection(&epoch, &ticket, select())
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(*f.api.calls.lock().unwrap(), calls);
+    let current = f.client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(current.play_id, played.play_id);
+    assert_eq!(current.queue_revision, played.queue_revision);
+}
+
+#[tokio::test]
 async fn listened_books_owns_local_pages_and_exact_chapter_selection() {
     let f = fixture(true);
     let epoch = f.epoch();

@@ -32,6 +32,14 @@ export interface HistoryEntry {
   playProgress: number | null;
   listened: boolean | null;
   resource: HistoryResource;
+  chapter?: {
+    name: string;
+    tag: string | null;
+    recent: boolean;
+    percent: number | null;
+    completed: boolean;
+    playable: boolean;
+  };
 }
 export interface HistoryOperation {
   id: string;
@@ -52,6 +60,7 @@ export interface HistoryOperation {
 export interface HistoryPage {
   kind: HistoryKind;
   revision: string;
+  chapterRevision?: string;
   syncEnabled: boolean;
   canSync: boolean;
   remoteIncluded: boolean;

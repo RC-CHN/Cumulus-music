@@ -286,6 +286,34 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
 - 沿用已有 History 播放命令，原生校验账号、快照版本、顺序与可播放性。此动作不会提交历史
   删除或同步变更；队列仍遵循 Cumulus 原有历史播放语义。
 
+最近播放：播客和有声书行内选章
+- 官方 3.1.42.205594 的 HistoryDjRadio.tsx、HistoryAudiobook.tsx 向
+  NormalAudioTable 传入 showPlayRecord。M/15:1637–1650、M/259:58–85 对两路
+  行的 data 调用 M/21.j；M/21:853–855 保留 tag、voiceName、voiceId。
+  不把另一个「听过的书」接口 M/3010 注入的 extDataVoice/extPlayRecord 当作
+  这两路时间线也有的字段；页面不新增逐行网络请求。
+- AudioTitleCellWithPlayRecord.tsx:151–235：本机记录与该行章节 ID 相等且有名字时，
+  显示「最近播放：」及本机整秒进度；非零未完成的比例向下取整、最低 1%，
+  达时长显示「已播完」。Podcast_ResumePlaySwitch=t1 且同账号已知该节目明确 Off
+  时只隐藏比例/完读字样。不匹配时用该行的标签及章节名；有名字但无可信章节 ID
+  只显示文字。既有行标题继续打开节目详情。
+- 原行中的章节点击携带 assignedPlayId 和显式断点进入 M/404:202–259。
+  Core 的 history_radio_chapter 只接收类别、当前章节快照凭据和节目行 ID；章节 ID、
+  主媒体 ID、断点和播放授权留在原生。正好匹配本机最近章节时走相邻节目
+  /api/dj/around/program/v1 {programId,roundNum:250}；否则按已存排序逐页读取
+  /api/v6/dj/program/byradio（limit 250，未存排序省略 asc）。选中准确章节，
+  通过既有节目详情、权限、音源和续播设置链；已播完或媒体标识不再匹配时从零开始。
+  点击使用该行渲染时记录的断点；M/404 仍在点击时判断是否用本机相邻列表。
+- 账号、已发布历史版本、原生播放意图及队列护栏检查失败时，不替换原队列。
+  这是独立的章节控件，不改已有行「播放」的整节目行为，也不新增历史写操作。
+  收藏、菜单以及普通官方表格其余列不属于本次恢复。合成 WebView 验收入口
+  scripts/ci/history_radio_chapter_smoke.py，保留现有历史和「听过的书」验收。
+- Linux 实窗逐张复核了播客/有声书各自的章名与原生起播（4 态），并在同一
+  构建复验「听过的书」6 态。时间线只发两路读取，两个章节各验证节目详情、
+  权限和媒体选择，零远端写入。新本机行胜出且缺章名时按原合并规则撤掉旧
+  副标题。Rust 测试另核对当前行渲染时的 18 秒断点、原生后来更新至 24 秒
+  不改旧点击和过期历史拒绝。没有 Windows 实窗、实体音频或实服证据。
+
 精选 → 听过的书（独立在线页面）
 - 官方 3.1.42.205594：M2123:129–163、238–316 的「听过的有声书」卡进入
   myHistoryAudioOnline；M3009:35–77 与恢复源码 my-history-audio-online/index.tsx:37–71

@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 pub struct HistoryPage {
     pub kind: HistoryKind,
     pub revision: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter_revision: Option<String>,
     pub sync_enabled: bool,
     pub can_sync: bool,
     pub remote_included: bool,
@@ -27,6 +29,18 @@ pub struct HistoryEntry {
     pub play_progress: Option<f64>,
     pub listened: Option<bool>,
     pub resource: HistoryResource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter: Option<HistoryRadioChapterView>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryRadioChapterView {
+    pub name: String,
+    pub tag: Option<String>,
+    pub recent: bool,
+    pub percent: Option<u8>,
+    pub completed: bool,
+    pub playable: bool,
 }
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

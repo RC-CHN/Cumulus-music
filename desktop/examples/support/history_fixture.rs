@@ -15,11 +15,135 @@ use std::{
 pub struct Library {
     base: super::fixture::Library,
     mode: AtomicU8,
+    chapters: bool,
+    chapter_calls: Mutex<Vec<Value>>,
     removed: Mutex<BTreeMap<String, BTreeSet<String>>>,
     pub reads: AtomicUsize,
     pub writes: AtomicUsize,
 }
 impl Library {
+    pub fn with_chapters() -> Self {
+        Self {
+            chapters: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn chapter_report(&self) -> Value {
+        json!(self.chapter_calls.lock().unwrap().clone())
+    }
+
+    fn chapter_response(
+        &self,
+        path: &str,
+        args: &Value,
+        cached: bool,
+    ) -> Option<cumulus_core::Result<Value>> {
+        if !self.chapters {
+            return None;
+        }
+        const PODCAST: &str = "/api/play-record/djradio/list";
+        const BOOK: &str = "/api/play-record/voice/book/timeline/list";
+        const PROGRAMS: &str = "/api/v6/dj/program/byradio";
+        const AROUND: &str = "/api/dj/around/program/v1";
+        const RADIO: &str = "/api/djradio/v3/get";
+        const DETAIL: &str = "/api/dj/program/detail";
+        const RESUME: &str = "/api/dj/user/setting/resumeplay/get";
+        const RIGHTS: &str = "/api/dj/play/url/check";
+        const SOURCE: &str = "/api/song/enhance/player/url/v1";
+        if !matches!(
+            path,
+            PODCAST | BOOK | PROGRAMS | AROUND | RADIO | DETAIL | RESUME | RIGHTS | SOURCE
+        ) {
+            return None;
+        }
+        self.chapter_calls
+            .lock()
+            .unwrap()
+            .push(json!({"path":path,"args":args,"cached":cached}));
+        let bad = || Error::Response("unexpected synthetic history chapter request");
+        let result = (|| {
+            let row = |id, name: &str, episode: Option<u64>, chapter: &str, kind: &str| {
+                let mut data = json!({"id":id,"name":name,"resourceType":kind,"programCount":2,
+                    "dj":{"nickname":"合成主播"},"voiceName":chapter,"tag":"续听"});
+                if let Some(episode) = episode {
+                    data["voiceId"] = json!(episode);
+                }
+                json!({"data":data,"playTime":1793180000000_u64-id,
+                    "multiTerminalInfo":{"os":"windows","osText":"Windows"}})
+            };
+            let program = |radio, id, name: &str| {
+                json!({"id":id,"name":name,"mainSong":{"id":id+1000},
+                    "duration":30000,"radio":{"id":radio,"name":if radio==81 {"合成历史播客"} else {"合成历史有声书"},
+                    "categoryId":if radio==82 {10001} else {3}}})
+            };
+            let number = |value: &Value| value.as_u64().or_else(|| value.as_str()?.parse().ok());
+            if cached {
+                return Err(bad());
+            }
+            Ok(match path {
+                PODCAST if args == &json!({"filterVoiceBook":true}) => {
+                    self.reads.fetch_add(1, Ordering::SeqCst);
+                    json!({"code":200,"data":{"list":[
+                        row(81,"合成历史播客",Some(812),"播客第二集","DJ_RADIO"),
+                        row(83,"合成仅文本播客",None,"只有标题的单集","DJ_RADIO")
+                    ]}})
+                }
+                BOOK if args == &json!({}) => {
+                    self.reads.fetch_add(1, Ordering::SeqCst);
+                    json!({"code":200,"data":{"data":{
+                        "todayRecords":[row(82,"合成历史有声书",Some(822),"有声书第二章","VOICE_BOOK")],
+                        "yesterdayRecords":[],"theDayBeforeYesterdayRecords":[],"earlierRecords":[]
+                    }}})
+                }
+                PROGRAMS => {
+                    let radio = number(&args["radioId"])
+                        .filter(|id| matches!(id, 81 | 82))
+                        .ok_or_else(bad)?;
+                    if args != &json!({"radioId":radio.to_string(),"limit":250,"offset":0}) {
+                        return Err(bad());
+                    }
+                    let names = if radio == 81 {
+                        ["播客第一集", "播客第二集"]
+                    } else {
+                        ["有声书第一章", "有声书第二章"]
+                    };
+                    json!({"code":200,"data":{"programs":[program(radio,radio*10+1,names[0]),
+                        program(radio,radio*10+2,names[1])],"count":2,"more":false}})
+                }
+                DETAIL if matches!(args["id"].as_str(), Some("812" | "822")) => {
+                    let id = number(&args["id"]).unwrap();
+                    let radio = id / 10;
+                    let name = if radio == 81 {
+                        "播客第二集"
+                    } else {
+                        "有声书第二章"
+                    };
+                    json!({"code":200,"program":program(radio,id,name)})
+                }
+                RESUME if matches!(args["radioId"].as_str(), Some("81" | "82")) => {
+                    json!({"code":200,"data":{"resumePlayValue":0}})
+                }
+                RIGHTS if matches!(args["voiceId"].as_str(), Some("812" | "822")) => {
+                    let id = number(&args["voiceId"]).unwrap();
+                    json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":true}})
+                }
+                SOURCE => {
+                    let ids: Vec<String> =
+                        serde_json::from_str(args["ids"].as_str().ok_or_else(bad)?)?;
+                    if ids.len() != 1 || !matches!(ids[0].as_str(), "1812" | "1822") {
+                        return Err(bad());
+                    }
+                    json!({"code":200,"data":[{"id":ids[0],
+                        "url":"https://m1.music.126.net/cumulus-relay-fixture.wav",
+                        "code":200,"md5":"fixture","level":"standard","expi":120}]})
+                }
+                _ => return Err(bad()),
+            })
+        })();
+        Some(result)
+    }
+
     pub fn mode(&self, value: &str) {
         self.mode.store(
             match value {
@@ -60,6 +184,9 @@ fn resource(kind: &str, id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self.chapter_response(path, &args, cache) {
+                return result;
+            }
             let mode = self.mode.load(Ordering::SeqCst);
             if path.starts_with("/api/play-record/") {
                 if path.ends_with("/delete") || path.ends_with("/clear") {

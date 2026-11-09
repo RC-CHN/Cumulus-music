@@ -673,6 +673,20 @@ function playHistory(kind: HistoryKind, revision: string, ids: string[], index: 
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
+function playHistoryChapter(kind: 'podcast' | 'audiobook', revision: string, id: string) {
+  const route = music.page.value;
+  if (
+    route.kind !== 'history' ||
+    recent.page.value?.chapterRevision !== revision ||
+    !signedIn.value
+  )
+    return;
+  void player.prepareSelection(async () => {
+    if (music.page.value !== route || recent.page.value?.chapterRevision !== revision)
+      throw { code: 'stale', message: '播放记录已更新', retryable: false };
+    return { kind: 'history_radio_chapter', history_kind: kind, revision, id };
+  });
+}
 function openHistory(resource: HistoryResource) {
   switch (resource.kind) {
     case 'song':
@@ -5356,6 +5370,7 @@ onUnmounted(() => {
                 :current-voice-id="currentVoiceId"
                 @scope="music.replace({ kind: 'history', scope: $event })"
                 @play="playHistory"
+                @chapter="playHistoryChapter"
                 @open="openHistory"
               />
               <SettingsPage

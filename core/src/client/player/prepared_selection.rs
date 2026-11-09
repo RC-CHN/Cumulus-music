@@ -226,6 +226,7 @@ impl MusicClient {
                 | PlaySelection::SearchPodcastRow { .. }
                 | PlaySelection::SearchVoiceMenu { .. }
                 | PlaySelection::PodcastBrowseVoice { .. }
+                | PlaySelection::HistoryRadioChapter { .. }
                 | PlaySelection::Songs { .. }
         ) {
             return Err(Error::InvalidInput(

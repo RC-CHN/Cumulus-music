@@ -91,6 +91,9 @@ impl MusicClient {
             PlaySelection::SearchVoiceMenu { .. } => Err(Error::InvalidInput(
                 "search voice menu playback requires a preparation ticket",
             )),
+            PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
+                "history chapter playback requires a preparation ticket",
+            )),
             input => self.play_selection_inner(epoch, input, None).await,
         }
     }
@@ -594,6 +597,32 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
+            PlaySelection::HistoryRadioChapter {
+                history_kind,
+                revision,
+                id,
+            } => {
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (resources, index, source, cancellation) = self
+                    .history_radio_chapter_queue(&token, history_kind, &revision, &id)
+                    .await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::ReplaceListenedBook {
+                            resources,
+                            index,
+                            source,
+                        },
+                        attempt,
+                        lease,
+                        Some(prepared),
+                        Some(cancellation),
+                    )
+                    .await?;
+                self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
             PlaySelection::PodcastSubscriptionRecommendation {
                 receipt,
                 revision,
@@ -969,6 +998,7 @@ impl MusicClient {
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::ListenedBookChapter { .. }
+                    | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::LocalBatch { .. }
                     | PlaySelection::LocalBatchAdd { .. }
