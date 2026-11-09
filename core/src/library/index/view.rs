@@ -164,6 +164,39 @@ impl LocalLibrary {
         })
     }
 
+    /// Resolve the whole selected set in one locked index snapshot. The
+    /// command affects list visibility only, including for virtual CUE rows.
+    pub(crate) fn hide_selection(
+        &self,
+        query: &LocalQuery,
+        revision: &str,
+        references: &[(&str, &str)],
+    ) -> Result<()> {
+        let _lock = self.lock()?;
+        self.store.transaction(|tx| {
+            let items = Self::visible_items(
+                Self::load_index(tx, true)?,
+                ListOptions {
+                    include_missing: true,
+                    ..Default::default()
+                },
+            )?;
+            if catalog::revision(&items)? != revision {
+                return Err(Error::QueueChanged);
+            }
+            let targets = catalog::batch_hide_targets(&items, query, references)?;
+            for item in targets {
+                tx.put(
+                    OWNER,
+                    HIDDEN,
+                    &item.id,
+                    &serde_json::to_value(&item.revision)?,
+                )?;
+            }
+            Ok(())
+        })
+    }
+
     /// A user-requested rescan may restore list entries. Automatic monitoring
     /// never clears this state.
     pub(crate) fn restore_hidden(&self) -> Result<()> {

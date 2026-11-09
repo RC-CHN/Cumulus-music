@@ -23,6 +23,25 @@ export const defaultLocalQuery = (): LocalQuery => ({
   limit: 200,
   revision: null,
 });
+export const LOCAL_BATCH_PAGE_SIZE = 100;
+export const LOCAL_BATCH_MAX_SELECTION = 50_000;
+/** The batch route shows flat local tracks even when entered from a group. */
+export function localBatchQuery(query: LocalQuery): LocalQuery {
+  return {
+    ...query,
+    group: 'list',
+    groupKey: null,
+    offset: 0,
+    limit: LOCAL_BATCH_PAGE_SIZE,
+    revision: null,
+  };
+}
+export interface LocalListCheckpoint {
+  queryKey: string;
+  scrollTop: number;
+  groupScrollTop: number;
+  expandedFolders: readonly string[];
+}
 /** Revision is an index precondition; every presentation field owns its rows. */
 export function localQueryKey(query: LocalQuery): string {
   return JSON.stringify([
@@ -88,7 +107,12 @@ export type LocalCommand =
   | { kind: 'enable' | 'disable'; id: string }
   | { kind: 'rescan' }
   | { kind: 'hide_track'; id: string; revision: string }
-  | { kind: 'hide_group'; query: LocalQuery; revision: string };
+  | { kind: 'hide_group'; query: LocalQuery; revision: string }
+  | { kind: 'hide_tracks'; query: LocalQuery; revision: string; tracks: LocalTrackReference[] };
+export interface LocalTrackReference {
+  id: string;
+  revision: string;
+}
 export interface LocalClient {
   localPage(query: LocalQuery): Promise<LocalPage>;
   localCommand(command: LocalCommand): Promise<void>;

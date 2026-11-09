@@ -123,6 +123,30 @@ fn matches_filter(item: &LibraryItem, needle: &str, include_missing: bool) -> bo
             || folded(&item.path.to_string_lossy()).contains(needle))
 }
 
+pub(super) fn batch_hide_targets<'a>(
+    items: &'a [LibraryItem],
+    query: &LocalQuery,
+    references: &[(&str, &str)],
+) -> Result<Vec<&'a LibraryItem>> {
+    let needle = folded(query.keyword.trim());
+    let mut visible = items
+        .iter()
+        .filter(|item| matches_filter(item, &needle, query.include_missing))
+        .map(|item| (item.id.as_str(), item))
+        .collect::<BTreeMap<_, _>>();
+    // Removing the matched row from this temporary map rejects both duplicate
+    // references and IDs outside the current flat query before any index write.
+    references
+        .iter()
+        .map(|(id, token)| {
+            visible
+                .remove(id)
+                .filter(|item| item.revision.token() == *token)
+                .ok_or(Error::QueueChanged)
+        })
+        .collect()
+}
+
 pub(super) fn group_hide_targets(items: &[LibraryItem], query: &LocalQuery) -> Result<Vec<usize>> {
     let key = query
         .group_key

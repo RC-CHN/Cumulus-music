@@ -236,6 +236,7 @@ import {
   type CommentResourceDestination,
 } from './services/commentResource';
 import LocalPage from './components/LocalPage.vue';
+import LocalBatchPage from './components/LocalBatchPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
 import { usePodcastRecent } from './composables/usePodcastRecent';
 import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
@@ -273,7 +274,7 @@ import {
 } from './services/contracts';
 import { useLocal } from './composables/useLocal';
 import { useLocalMatching } from './composables/useLocalMatching';
-import type { LocalQuery } from './services/local';
+import { localBatchQuery, type LocalListCheckpoint, type LocalQuery } from './services/local';
 import { useComments, type CommentReadPosition } from './composables/useComments';
 import type { CommentResource } from './services/comments';
 import { useMv } from './composables/useMv';
@@ -1856,6 +1857,21 @@ function downloadComments(task: DownloadTask) {
 }
 const local = useLocal();
 const localPageRef = ref<InstanceType<typeof LocalPage>>();
+const localBatchReturns = new WeakMap<Page, { origin: Page; checkpoint: LocalListCheckpoint }>();
+const localBatchReturn = shallowRef<{
+  checkpoint: LocalListCheckpoint;
+  focusFrom: Element | null;
+}>();
+function openLocalBatch(query: LocalQuery, checkpoint: LocalListCheckpoint) {
+  const origin = page.value;
+  if (origin.kind !== 'local') return;
+  const route: Page = { kind: 'local_batch', query: localBatchQuery(query) };
+  localBatchReturns.set(route, { origin, checkpoint });
+  music.navigate(route);
+}
+function currentLocalBatch(query: LocalQuery) {
+  return page.value.kind === 'local_batch' && page.value.query === query;
+}
 const queuePanel = ref<InstanceType<typeof QueuePanel>>();
 const localMatching = useLocalMatching(undefined, () => {
   void music.bootstrap(false);
@@ -3044,6 +3060,11 @@ watch(
       rankings.leave();
     }
     if (previous.kind === 'local' && next.kind !== 'local') localPageRef.value?.checkpoint();
+    const localBack = previous.kind === 'local_batch' ? localBatchReturns.get(previous) : undefined;
+    localBatchReturn.value =
+      localBack?.origin === next
+        ? { checkpoint: localBack.checkpoint, focusFrom: topbarBack.value ?? null }
+        : undefined;
     if (previous.kind === 'downloads') {
       downloadPageRef.value?.checkpoint();
       downloads.leaveVisit();
@@ -4315,7 +4336,9 @@ onUnmounted(pageTransition.dispose);
 const pageKey = computed(() =>
   JSON.stringify({
     account:
-      page.value.kind === 'local' || page.value.kind === 'decoration'
+      page.value.kind === 'local' ||
+      page.value.kind === 'local_batch' ||
+      page.value.kind === 'decoration'
         ? undefined
         : [account.value.epoch, account.value.status],
     page:
@@ -4666,10 +4689,10 @@ watch([() => player.view.value?.entryId, () => player.view.value?.state], () => 
 });
 watch(
   () => page.value.kind,
-  (kind) => {
+  (kind, previous) => {
     cloudDialogOpen.value = false;
     void cloud.show(kind === 'cloud');
-    local.show(kind === 'local');
+    local.show(kind === 'local', previous === 'local_batch');
     podcasts.show(kind === 'podcasts');
     together.show(kind === 'together');
     fm.show(kind === 'fm');
@@ -4979,7 +5002,13 @@ onUnmounted(() => {
   <div class="app-shell">
     <AppSidebar
       :key="`${account.epoch}:${account.status}`"
-      :page="page.kind === 'daily_batch' ? { kind: 'daily' } : page"
+      :page="
+        page.kind === 'daily_batch'
+          ? { kind: 'daily' }
+          : page.kind === 'local_batch'
+            ? { kind: 'local' }
+            : page
+      "
       :playlists="playlists"
       :history-kind="recent.kind.value"
       :initializing="initializing"
@@ -5208,9 +5237,16 @@ onUnmounted(() => {
                 :queue-local="player.queueLocal"
                 :queue-drop-enabled="player.queueOpen.value && queuePanel?.canDrop"
                 :current-id="currentLocalId"
+                :batch-return="localBatchReturn"
+                @batch="openLocalBatch"
                 @play="playLocal"
                 @queue-drag="(event, source) => queuePanel?.beginDrop(event, source)"
                 @comments="(id, title) => openComments({ kind: 'track', id }, title)"
+              />
+              <LocalBatchPage
+                v-else-if="page.kind === 'local_batch'"
+                :query="page.query"
+                :current="currentLocalBatch"
               />
               <SkinCenter v-else-if="page.kind === 'decoration'" :account="account" />
               <div v-else-if="initializing" class="empty-state" role="status">

@@ -15,7 +15,7 @@ pub use super::history::{
 };
 pub use super::local::{
     LocalCommand, LocalGroup, LocalGroupEntry, LocalLinkView, LocalMatchCommand, LocalMatchView,
-    LocalPageView, LocalQuery, LocalRootView, LocalSort, LocalTrackView,
+    LocalPageView, LocalQuery, LocalRootView, LocalSort, LocalTrackReference, LocalTrackView,
 };
 pub use super::login_device_removal::{
     LoginDeviceRemovalCommand, LoginDeviceRemovalPhase, LoginDeviceRemovalView,

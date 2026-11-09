@@ -1,3 +1,4 @@
+import { defaultLocalQuery } from '../src/services/local.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useMusic } from '../src/composables/useMusic.ts';
@@ -376,6 +377,27 @@ test('native local identity and navigation work while remote account restore is 
   assert.equal(music.accountReady.value, true);
   assert.equal(music.initializing.value, false);
   assert.equal(onlineReads, 0);
+});
+
+test('local batch opens before restore and Back survives a new account generation', async () => {
+  const restore = deferred<Awaited<ReturnType<CoreClient['restoreAccount']>>>();
+  const music = useMusic(backend({ restoreAccount: () => restore.promise }));
+  const pending = music.bootstrap();
+  music.navigate({ kind: 'local' });
+  const ordinary = music.page.value;
+  const query = { ...defaultLocalQuery(), keyword: '合成筛选' };
+  music.navigate({ kind: 'local_batch', query });
+  assert.deepEqual(music.page.value, { kind: 'local_batch', query });
+  music.back();
+  assert.equal(music.page.value, ordinary, 'offline Back never waits for remote restore');
+  music.navigate({ kind: 'local_batch', query });
+  restore.resolve({ epoch: '9', status: 'authenticated', nickname: 'synthetic', avatarUrl: null });
+  await pending;
+  assert.deepEqual(music.page.value, { kind: 'local_batch', query });
+  assert.equal(music.historyLength.value, 1);
+  music.back();
+  assert.equal(music.page.value, ordinary);
+  assert.equal(music.historyLength.value, 0, 'discard the account-owned older route');
 });
 
 test('late local identity cannot replace the identity read for an account notification', async () => {

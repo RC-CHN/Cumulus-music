@@ -67,12 +67,14 @@ export function useLocal(core: LocalClient = useCore()) {
       }
     }
   }
-  function show(value: boolean) {
+  function show(value: boolean, refreshRevision = false) {
     if (visible !== value) visit++;
     visible = value;
     stop();
-    if (value) void refresh();
-    else {
+    if (value) {
+      if (refreshRevision) query.value = { ...query.value, revision: null };
+      void refresh();
+    } else {
       read++;
       loading.value = false;
     }
@@ -101,7 +103,8 @@ export function useLocal(core: LocalClient = useCore()) {
     if (busy.value || disposed) return;
     const commandVisit = visit;
     let commandQuery = localQueryKey(query.value);
-    const listRemoval = input.kind === 'hide_track' || input.kind === 'hide_group';
+    const listRemoval =
+      input.kind === 'hide_track' || input.kind === 'hide_group' || input.kind === 'hide_tracks';
     const stillShowingCommand = () =>
       visit === commandVisit && localQueryKey(query.value) === commandQuery;
     busy.value = true;
@@ -133,7 +136,7 @@ export function useLocal(core: LocalClient = useCore()) {
       }
     } catch (e) {
       if (!disposed && (!listRemoval || stillShowingCommand()))
-        error.value = `${{ watch: '添加目录', enable: '恢复扫描', disable: '暂停扫描', rescan: '重新扫描', hide_track: '从列表中删除', hide_group: '从列表中删除' }[input.kind]}：${failure(e).message}`;
+        error.value = `${{ watch: '添加目录', enable: '恢复扫描', disable: '暂停扫描', rescan: '重新扫描', hide_track: '从列表中删除', hide_group: '从列表中删除', hide_tracks: '从列表中删除' }[input.kind]}：${failure(e).message}`;
     } finally {
       if (!disposed) {
         busy.value = false;

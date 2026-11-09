@@ -59,6 +59,7 @@ type Destination =
       rankVisit?: number;
     }
   | { kind: 'local' }
+  | { kind: 'local_batch'; query: import('../services/local').LocalQuery }
   | { kind: 'daily' }
   | { kind: 'daily_batch' }
   | { kind: 'style_recommendations'; seed?: StyleSeedHandle; origin?: 'home_recent' }
@@ -258,6 +259,7 @@ export function useMusic(
         target.kind === 'settings' ||
         target.kind === 'decoration' ||
         target.kind === 'local' ||
+        target.kind === 'local_batch' ||
         target.kind === 'downloads' ||
         target.kind === 'cloud' ||
         target.kind === 'mvs' ||
@@ -367,10 +369,14 @@ export function useMusic(
       const next = restoring ? await core.restoreAccount() : await core.accountSnapshot();
       if (current !== accountRequest) return;
       if (next.epoch !== account.value.epoch) {
+        // Account-owned history expires, but Back from a device-local
+        // batch must still return to its ordinary local list.
+        const previous = history.at(-1);
         history.length = 0;
+        if (page.value.kind === 'local_batch' && previous?.kind === 'local') history.push(previous);
         playlistPrefixes.clear();
         styleBackRevisions.clear();
-        historyLength.value = 0;
+        historyLength.value = history.length;
         if (
           [
             'playlist',
@@ -415,7 +421,7 @@ export function useMusic(
     }
   }
   function navigate(next: Page, subscriberReturn?: number) {
-    const local = next.kind === 'local';
+    const local = next.kind === 'local' || next.kind === 'local_batch';
     if (initializing.value && !local) return;
     navigation(() => {
       const keepDaily =
@@ -466,19 +472,22 @@ export function useMusic(
     }, local);
   }
   function back() {
-    navigation(() => {
-      const previous = history.pop();
-      historyLength.value = history.length;
-      if (previous) {
-        page.value = previous;
-        const prefix = playlistPrefixes.get(previous);
-        const styleBack = styleBackRevisions.get(previous);
-        playlistPrefixes.delete(previous);
-        styleBackRevisions.delete(previous);
-        if (!initializing.value || previous.kind === 'local')
-          void load(false, false, prefix, styleBack);
-      }
-    }, page.value.kind === 'local');
+    navigation(
+      () => {
+        const previous = history.pop();
+        historyLength.value = history.length;
+        if (previous) {
+          page.value = previous;
+          const prefix = playlistPrefixes.get(previous);
+          const styleBack = styleBackRevisions.get(previous);
+          playlistPrefixes.delete(previous);
+          styleBackRevisions.delete(previous);
+          if (!initializing.value || previous.kind === 'local' || previous.kind === 'local_batch')
+            void load(false, false, prefix, styleBack);
+        }
+      },
+      page.value.kind === 'local' || page.value.kind === 'local_batch',
+    );
   }
   function replacePlaylistSection(section: PlaylistSection) {
     const current = page.value;

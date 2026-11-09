@@ -148,6 +148,40 @@ test('returning to the library keeps its committed query; grouping clears the ol
   assert.equal(model.view.value?.revision, 'artist');
 });
 
+test('Back from a batch refreshes the ordinary list at its existing offset without an old revision', async (t) => {
+  const reads: LocalQuery[] = [];
+  let revision = 'before';
+  const model = useLocal(
+    fixture({
+      localPage: async (query) => {
+        reads.push(query);
+        return { ...page(revision, 450), offset: query.offset };
+      },
+    }),
+  );
+  t.after(model.dispose);
+  model.show(true);
+  model.filter({ keyword: '合成', sort: 'album', group: 'artist', groupKey: 'singer' });
+  await turn();
+  model.page(200);
+  await turn();
+  assert.equal(reads.at(-1)?.revision, 'before');
+  model.show(false);
+  revision = 'after';
+  model.show(true, true);
+  await turn();
+  assert.deepEqual(reads.at(-1), {
+    ...defaultLocalQuery(),
+    keyword: '合成',
+    sort: 'album',
+    group: 'artist',
+    groupKey: 'singer',
+    offset: 200,
+    revision: null,
+  });
+  assert.equal(model.view.value?.revision, 'after');
+});
+
 test('refreshing native state clears only read errors and keeps an explicit failed command reviewable', async (t) => {
   let fail = false;
   const model = useLocal(

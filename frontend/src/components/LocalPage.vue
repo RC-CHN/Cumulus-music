@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, shallowRef, useId, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, shallowRef, useId, watch } from 'vue';
 import Icon from './Icon.vue';
 import ActionMenu from './ActionMenu.vue';
 import { failure } from '../services/contracts';
@@ -13,6 +13,7 @@ import {
   localGroupQuery,
   localQueryKey,
   type LocalGroup,
+  type LocalListCheckpoint,
   type LocalQuery,
   type LocalSort,
   type LocalTrack,
@@ -27,11 +28,13 @@ const props = defineProps<{
   queueDropEnabled?: boolean;
   queueLocal: (query: LocalQuery, revision: string, trackId?: string) => Promise<unknown>;
   currentId?: string;
+  batchReturn?: { checkpoint: LocalListCheckpoint; focusFrom: Element | null };
 }>();
 const emit = defineEmits<{
   play: [query: LocalQuery, revision: string, id: string | null];
   comments: [id: string, title: string];
   queueDrag: [event: PointerEvent, source: LocalQueueDropSource];
+  batch: [query: LocalQuery, checkpoint: LocalListCheckpoint];
 }>();
 const { view, query, loading, busy, error, readError, notice } = props.model;
 const groupCollator = new Intl.Collator('zh-CN-u-co-pinyin');
@@ -48,6 +51,7 @@ const { keyword } = search;
 const searchInput = ref<HTMLInputElement>();
 const pageRoot = ref<HTMLElement>();
 const browser = ref<HTMLElement>();
+const groupList = ref<HTMLElement>();
 const groupSeparator = ref<HTMLElement>();
 const groupsId = useId();
 const {
@@ -71,7 +75,27 @@ watch(canResizeGroups, async (enabled) => {
   );
   (selected ?? searchInput.value)?.focus({ preventScroll: true });
 });
-const expandedFolders = shallowRef(new Set<string>());
+const expandedFolders = shallowRef(new Set(props.batchReturn?.checkpoint.expandedFolders));
+let batchRestored = false;
+function restoreBatchReturn() {
+  const saved = props.batchReturn;
+  const root = pageRoot.value;
+  if (!saved || batchRestored || !root || loading.value || (!view.value && !readError.value))
+    return;
+  if (!ownsVisit()) return;
+  batchRestored = true;
+  if (saved.checkpoint.queryKey === localQueryKey(query.value)) {
+    root.scrollTop = saved.checkpoint.scrollTop;
+    if (groupList.value) groupList.value.scrollTop = saved.checkpoint.groupScrollTop;
+  }
+  const active = document.activeElement;
+  if (active !== document.body && active !== saved.focusFrom) return;
+  root
+    .querySelector<HTMLElement>('[aria-label="更多本地音乐操作"]')
+    ?.focus({ preventScroll: true });
+}
+onMounted(restoreBatchReturn);
+watch([view, loading, readError], restoreBatchReturn, { flush: 'post' });
 let groupFocus: { key: string | null; queryKey: string } | undefined;
 function selectGroup(key: string | null) {
   const active = document.activeElement;
@@ -336,6 +360,7 @@ const queueMenu = computed(() => [
     disabled: !canAdd.value,
     hint: (view.value?.playable ?? 0) > 10000 ? '请缩小筛选范围至 10000 首以内' : undefined,
   },
+  { key: 'batch', label: '批量操作', icon: 'list' as const, disabled: busy.value },
 ]);
 const groupMenu = ref<InstanceType<typeof ActionMenu>>();
 const groupScope = shallowRef<{ query: LocalQuery; revision: string; ownerKey: string }>();
@@ -468,9 +493,25 @@ async function groupAction(action: string) {
   if (action === 'play' && props.playable) emit('play', scope.query, scope.revision, null);
   else if (action === 'next' && props.queueable) await queueScope(scope.query, scope.revision);
 }
-function addAll(key: string) {
-  if (key === 'queue_all' && canAdd.value && view.value)
+function localMenuAction(key: string) {
+  if (!ownsVisit()) return;
+  if (key === 'queue_all' && canAdd.value && view.value) {
     void queueScope({ ...query.value }, view.value.revision);
+  } else if (key === 'batch' && !busy.value) {
+    const before = localQueryKey(query.value);
+    search.flush();
+    const queryKey = localQueryKey(query.value);
+    emit(
+      'batch',
+      { ...query.value },
+      {
+        queryKey,
+        scrollTop: queryKey === before ? (pageRoot.value?.scrollTop ?? 0) : 0,
+        groupScrollTop: groupList.value?.scrollTop ?? 0,
+        expandedFolders: [...expandedFolders.value],
+      },
+    );
+  }
 }
 async function queueScope(captured: LocalQuery, revision: string, trackId?: string) {
   adding.value = true;
@@ -631,7 +672,12 @@ function status(root: LocalRoot) {
       >
         重新扫描
       </button>
-      <ActionMenu variant="song" label="更多本地音乐操作" :items="queueMenu" @select="addAll" />
+      <ActionMenu
+        variant="song"
+        label="更多本地音乐操作"
+        :items="queueMenu"
+        @select="localMenuAction"
+      />
       <form class="local-search" @submit.prevent="search.flush">
         <input
           ref="searchInput"
@@ -782,6 +828,7 @@ function status(root: LocalRoot) {
     <div v-else ref="browser" class="local-browser">
       <aside
         v-if="query.group !== 'list'"
+        ref="groupList"
         class="local-groups"
         :id="groupsId"
         :style="{ width: groupsWidth + 'px' }"

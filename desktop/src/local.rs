@@ -43,7 +43,9 @@ pub async fn local_command<R: tauri::Runtime>(
 ) -> Result<(), ClientError> {
     if matches!(
         command,
-        LocalCommand::HideTrack { .. } | LocalCommand::HideGroup { .. }
+        LocalCommand::HideTrack { .. }
+            | LocalCommand::HideGroup { .. }
+            | LocalCommand::HideTracks { .. }
     ) && window.label() != "main"
     {
         return Err(Error::InvalidInput("local list removal requires main window").into());

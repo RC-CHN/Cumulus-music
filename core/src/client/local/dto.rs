@@ -46,12 +46,36 @@ pub struct LocalPageView {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LocalCommand {
-    Watch { path: String },
-    Disable { id: String },
-    Enable { id: String },
+    Watch {
+        path: String,
+    },
+    Disable {
+        id: String,
+    },
+    Enable {
+        id: String,
+    },
     Rescan,
-    HideTrack { id: String, revision: String },
-    HideGroup { query: LocalQuery, revision: String },
+    HideTrack {
+        id: String,
+        revision: String,
+    },
+    HideGroup {
+        query: LocalQuery,
+        revision: String,
+    },
+    HideTracks {
+        query: LocalQuery,
+        revision: String,
+        tracks: Vec<LocalTrackReference>,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalTrackReference {
+    pub id: String,
+    pub revision: String,
 }
 
 #[derive(Serialize)]

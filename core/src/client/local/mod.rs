@@ -200,6 +200,30 @@ impl MusicClient {
                     }
                     context.library.hide_group(&query, &revision)?;
                 }
+                LocalCommand::HideTracks {
+                    query,
+                    revision,
+                    tracks,
+                } => {
+                    query.validate()?;
+                    if query.group != LocalGroup::List
+                        || query.offset != 0
+                        || query.revision.is_some()
+                        || revision.len() != 64
+                        || !revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+                        || !(1..=50_000).contains(&tracks.len())
+                    {
+                        return Err(Error::InvalidInput("invalid local batch reference"));
+                    }
+                    let tracks = tracks
+                        .iter()
+                        .map(|track| {
+                            track_reference(&track.id, &track.revision)?;
+                            Ok((track.id.as_str(), track.revision.as_str()))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    context.library.hide_selection(&query, &revision, &tracks)?;
+                }
             }
             Ok(())
         })
