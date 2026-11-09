@@ -391,8 +391,14 @@ impl SearchPublication {
             if read == 0 {
                 break;
             }
+            let previous = count;
             count += read as u64;
             digest.update(&block[..read]);
+            if self.playlist_download.is_some() && previous >> 24 != count >> 24 {
+                // Let a durable move/delete intent drain an in-flight large
+                // hash without waiting until the entire source is read.
+                self.revalidate_publication(None)?;
+            }
         }
         let after = file.metadata()?;
         if count != expected.bytes
@@ -572,6 +578,49 @@ mod tests {
         let receipt =
             SearchPublication::bind(session.clone(), token.clone(), &task, "123").unwrap();
         let cancel = Cancellation::default();
+        let marker = receipt.playlist_candidate().unwrap();
+        let offline = SearchPublication::bind_playlist_download(
+            session.clone(),
+            token.clone(),
+            &task,
+            "123",
+            marker.clone(),
+        )
+        .unwrap();
+        let offline_entry = QueueEntry {
+            entry_id: "offline-selected".into(),
+            resource: json!({"id":"123","download_task_id":task.id,OFFLINE_PLAYLIST_DOWNLOAD:marker}),
+            source: json!({"kind":"playlist","id":"73","offline_playlist":true}),
+        };
+        put_queue(&offline_entry);
+        let held = offline.open(&cancel).unwrap();
+        assert!(matches!(
+            crate::download::playback::lock(&store, "1", &task.id),
+            Err(Error::MutationBusy)
+        ));
+        let (file, encrypted, authority) = held.into_native(&offline_entry, &cancel).unwrap();
+        assert!(!encrypted);
+        assert!(matches!(
+            crate::download::playback::lock(&store, "1", &task.id),
+            Err(Error::MutationBusy)
+        ));
+        store
+            .put(
+                "1",
+                crate::download::directory::gate::SETTINGS,
+                "active",
+                &json!("moving"),
+            )
+            .unwrap();
+        assert!(offline.revalidate_playback(None).is_err());
+        drop(file);
+        drop(authority);
+        drop(crate::download::playback::lock(&store, "1", &task.id).unwrap());
+        store
+            .delete("1", crate::download::directory::gate::SETTINGS, "active")
+            .unwrap();
+
+        put_queue(&queue_entry);
         let prepared = receipt.open(&cancel).unwrap();
         assert!(prepared.is_plain_flac());
         let next = QueueEntry {

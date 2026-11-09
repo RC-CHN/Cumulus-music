@@ -116,6 +116,9 @@ impl SourceResolver {
             return Ok(None);
         };
         if resource.get("local_id").is_some()
+            || resource
+                .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                .is_some()
             || !resource["cloud_song_id"].is_null()
             || !resource["voice_id"].is_null()
             || !resource["song"]["voice_id"].is_null()
