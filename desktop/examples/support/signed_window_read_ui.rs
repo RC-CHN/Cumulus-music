@@ -183,7 +183,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         ["playlists", "likes"].iter().all(|route| calls[..search].contains(route))
                     });
                     calls.sort_unstable();
-                    let required_calls = ["account", "assignment", "comprehensive", "detail", "likes", "playlists", "songs", "source", "tabs"];
+                    let required_calls = ["account", "assignment", "comprehensive", "detail", "likes", "playlists", "source", "tabs"];
                     let all_reads_once = calls.iter().copied().filter(|name| *name != "default").eq(required_calls)
                         && calls.iter().filter(|&&name| name == "default").count() <= 1;
                     let media_reads = fixture.media_reads.load(Ordering::Acquire);
@@ -196,7 +196,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         && gate_facts.expected_account_verified && gate_facts.playlist_count == Some(1)
                         && gate_facts.liked_count == Some(1) && !gate_facts.closed_after_failure
                         && auxiliary == 0 && other_media == 0
-                        && (*index < 1 || gate_facts.selected_song_found && gate_facts.comprehensive_read && gate_facts.search_tab_read)
+                        && (*index < 1 || gate_facts.selected_from_preview && gate_facts.comprehensive_read && gate_facts.search_tab_read)
                         && (*index < 2 || all_reads_once && gate_facts.song_detail_read && gate_facts.media_authorized
                             && gate_facts.media_consumed && media_reads == 1 && pinned_loads == 1 && null_clock);
                     let proof = json!({

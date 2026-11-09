@@ -63,13 +63,12 @@
       const comprehensive = one('#search-result-panel[aria-labelledby="search-tab-all"][aria-busy="false"]');
       return comprehensive && !comprehensive.querySelector('[role="alert"]');
     }, 'comprehensive search did not settle');
-    await click('[data-category="songs"]', 'songs tab missing');
-    const row = `[aria-labelledby="search-tab-songs"] [data-track-id="${song}"]`;
+    const row = `[aria-labelledby="search-tab-all"] article[data-result-key="song:${song}"]`;
     await wait(() => live ? one(row) : one(row)?.textContent.includes('合成窗口音频') &&
       one(`${row} [aria-label="取消喜欢 合成窗口音频"]`), 'fixed result or own liked state missing');
     await stage('search_song');
 
-    await click(`${row} .track-more`, 'fixed row menu missing');
+    await click(`${row} button[aria-haspopup="menu"][aria-label^="更多操作"]`, 'fixed row menu missing');
     await click('.song-action-menu [data-menu-key="next"]', 'search next-play action missing');
     const player = () => invoke('player_snapshot', { epoch: account.epoch });
     const playing = await wait(async () => {

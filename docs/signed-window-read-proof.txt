@@ -27,11 +27,13 @@ subscribed items; completion is not proof that every row is owned. Liked IDs
 are one bounded read with the same expected UID. A single default keyword read
 is optional. The query requires the complete native 190-key experiment vector,
 chooses exactly one V1/V3 comprehensive branch, and reads result/tab first for
-V3. The fixed query uses the current SearchBox `typing` channel and the first
-Songs waterfall page (limit 10, offset 0). No corrected or alternate keyword is
-admitted. Exactly one matching song from that page permits one detail and then
-one source request, with `standard`/`aac`/`c51` and the current SearchNextPlay
-scene 42. A different account, credential rotation, malformed/partial reply,
+V3. The fixed query uses the current SearchBox `typing` channel. The current
+window proof admits the exact song from a recognized comprehensive result
+block and uses its ordinary SongCard menu. The native gate admits one detail
+and then one source request for that ID only, with `standard`/`aac`/`c51` and
+the current SearchNextPlay scene 42. No corrected or alternate keyword is
+admitted. Separate closed Rust tests cover the first Songs waterfall page
+(limit 10, offset 0); the live arm explicitly denies that path. A different account, credential rotation, malformed/partial reply,
 HTTP redirect, error or interrupted transport closes the gate. Declared EAPI
 encryption is decoded for validation; the unchanged original body is returned.
 No Set-Cookie or fresh configuration response is applied by the proof.
@@ -70,7 +72,8 @@ namespace and uses a new proof profile with synthetic PC credentials, a fixed
 query, one playlist and one liked song. Only the fixed in-memory PC/CDN
 responders are wired; ordinary download transport and auxiliary SDK/config
 requests are closed. The proof opens My Playlists, checks the liked song in
-the Songs search tab, and uses the row's Next Play action on an empty queue.
+the comprehensive search results, and uses the SongCard's Next Play action on
+an empty queue.
 The gate's one authorized AAC response goes into an anonymous, mode-0600
 file and the same window's playback controller decodes it through the real
 libmpv pinned-input path. It checks advancement, a stable pause, resume of
@@ -92,8 +95,9 @@ The driver's report binds the actual embedded asset set and probe binary by
 SHA-256. Screenshot barriers keep each frame tied to its named native state.
 Only result counts, action categories and clock observations enter the report.
 This is the same-window synthetic pinned file proof; a supervised HTTPS broker
-and independent real-account input remain separate work. It proves neither
-real-account playback nor direct upstream URLs through libmpv.
+and independent real-account input are verified separately. The synthetic
+report proves neither real-account playback nor direct upstream URLs through
+libmpv.
 
 2026-11-10 sealed Linux run: six checkpoints and six screenshots passed.
 The native clock advanced to 0.299 seconds, held at 0.540 during the pause,
@@ -136,3 +140,27 @@ Run offline shell admission checks with:
 These checks do not establish successful live playback. Launching the live arm
 requires the independent prepared profile and broker supervision, documented in
 signed-window-read-broker.txt.
+
+2026-11-10 real Linux discovery and fixed-host attempt
+-----------------------------------------------------
+The existing authorized PC session was staged from the stopped installation;
+the supervisor independently confirmed its selected account from the earlier
+approved QR profile. The source SQLite files passed the snapshot rechecks. The
+first live window reached own playlists and liked IDs and successfully read V3
+comprehensive search. Its next action attempted the separate Songs tab: the
+actual saved PC configuration marks `/api/search/song/list/page` as needing a
+fresh anti-cheat token. The proof correctly refused the token operation and
+never sent that request. The signed desktop Songs branch remains dependent on
+an actual supported token provider when this policy applies.
+
+The updated window instead opens the ordinary song card in official V3
+comprehensive results. In the real discovery run, the same embedded Vue/Tauri
+window verified the account, loaded both resource lists, located the selected
+song, fetched exact details and consumed one valid nontrial source receipt.
+Nine allowlisted API reads used a single TLS connection; no media or auxiliary
+network request was made. Only the canonical CDN authority and bounded proof
+facts were retained. The closed regression of that exact probe also passed
+all six window states with one pinned synthetic AAC load. A separate real play
+attempt also verified the account, card, details and nontrial receipt, but
+stopped locally before a CDN dial. This does not establish real playback;
+source authorization does not guarantee the same authority between requests.

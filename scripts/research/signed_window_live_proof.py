@@ -109,7 +109,7 @@ def accepted_report(report, assets_sha, *, discover_cdn=False):
     require(isinstance(assets, dict) and assets.get("embedded") is True
             and assets.get("sha256") == assets_sha and count(assets.get("entries"), 1, 10000))
     gate = report.get("gate")
-    gate_checks = ("expectedAccountVerified", "comprehensiveRead", "selectedSongFound",
+    gate_checks = ("expectedAccountVerified", "comprehensiveRead", "selectedSongFound", "selectedFromPreview",
                    "songDetailRead", "mediaAuthorized", "mediaConsumed")
     require(isinstance(gate, dict) and all(gate.get(key) is True for key in gate_checks)
             and gate.get("closedAfterFailure") is False
@@ -119,7 +119,7 @@ def accepted_report(report, assets_sha, *, discover_cdn=False):
             and count(gate.get("playlistPages"), 1, 16)
             and count(gate.get("playlistCount"), 0, 3200)
             and count(gate.get("likedCount"), 0, 1000000)
-            and count(gate.get("attemptedReads"), 8, PC_DIALS)
+            and count(gate.get("attemptedReads"), 7, PC_DIALS)
             and count(gate.get("deniedBeforeDispatch"), 0, 10000))
     return {**{key: True for key in positives}, **mode_facts, "physicalAudioOutput": False,
             "stages": stages.copy(), "mediaReads": media_count, "anonymousPinnedLoads": media_count,
@@ -150,7 +150,7 @@ def rejected_checkpoint(output):
             facts[key] = report[key]
     gate = report.get("gate")
     if isinstance(gate, dict):
-        booleans = ("expectedAccountVerified", "comprehensiveRead", "selectedSongFound",
+        booleans = ("expectedAccountVerified", "comprehensiveRead", "selectedSongFound", "selectedFromPreview",
                     "songDetailRead", "mediaAuthorized", "mediaConsumed", "searchV3",
                     "searchTabRead", "closedAfterFailure")
         bounded = ("playlistPages", "playlistCount", "likedCount", "attemptedReads",

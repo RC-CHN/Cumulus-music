@@ -23,7 +23,7 @@ def sample():
             "auxiliaryAttempts": 0, "otherMediaAttempts": 0,
             "assets": {"embedded": True, "entries": 31, "sha256": ASSETS},
             "gate": {"expectedAccountVerified": True, "comprehensiveRead": True,
-                     "selectedSongFound": True, "songDetailRead": True,
+                     "selectedSongFound": True, "selectedFromPreview": True, "songDetailRead": True,
                      "mediaAuthorized": True, "mediaConsumed": True,
                      "closedAfterFailure": False, "searchV3": True, "searchTabRead": True,
                      "playlistPages": 1, "playlistCount": 2, "likedCount": 12,
@@ -77,7 +77,7 @@ class SignedWindowLauncherTests(unittest.TestCase):
             report[field] = replacement
             with self.assertRaises(proof.Refused):
                 proof.accepted_report(report, ASSETS)
-        for field, replacement in (("expectedAccountVerified", False), ("searchTabRead", False),
+        for field, replacement in (("expectedAccountVerified", False), ("selectedFromPreview", False), ("searchTabRead", False),
                                    ("playlistPages", 17), ("attemptedReads", 26),
                                    ("unfinishedRead", "source")):
             report = sample()

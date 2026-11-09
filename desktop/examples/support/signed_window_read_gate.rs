@@ -94,6 +94,7 @@ struct Progress {
     tab: bool,
     comprehensive: bool,
     selected_song_found: bool,
+    selected_from_preview: bool,
     detail: bool,
     receipt: Option<(MediaUrl, MediaReceipt, Instant)>,
     attempts: [u8; 10],
@@ -116,6 +117,7 @@ pub struct Facts {
     pub search_tab_read: bool,
     pub comprehensive_read: bool,
     pub selected_song_found: bool,
+    pub selected_from_preview: bool,
     pub song_detail_read: bool,
     pub media_authorized: bool,
     pub media_consumed: bool,
@@ -143,6 +145,7 @@ pub struct Gate {
     owner: String,
     keyword: String,
     song: String,
+    preview_only: bool,
     progress: Mutex<Progress>,
 }
 
@@ -242,8 +245,16 @@ impl Gate {
             owner,
             keyword,
             song,
+            preview_only: false,
             progress: Mutex::default(),
         })
+    }
+
+    /// Select the ordinary comprehensive song card, without using the
+    /// separately protected Songs tab or inventing an SDK token.
+    pub fn with_comprehensive_track(mut self) -> Self {
+        self.preview_only = true;
+        self
     }
 
     pub async fn facts(&self) -> Facts {
@@ -257,6 +268,7 @@ impl Gate {
             search_tab_read: p.tab,
             comprehensive_read: p.comprehensive,
             selected_song_found: p.selected_song_found,
+            selected_from_preview: p.selected_from_preview,
             song_detail_read: p.detail,
             media_authorized: p.receipt.is_some() || p.media_consumed,
             media_consumed: p.media_consumed,
@@ -315,7 +327,7 @@ impl Gate {
                     "bizQueryInfo":""
                 }),
             ),
-            SONGS if p.comprehensive => (
+            SONGS if p.comprehensive && !self.preview_only => (
                 Read::Songs,
                 json!({
                     "keyword":self.keyword,"scene":"normal","needCorrect":true,"channel":"typing",
@@ -466,7 +478,33 @@ impl Gate {
                 p.tab = true;
             }
             Read::Comprehensive => {
-                array(&value["data"]["blocks"], 100)?;
+                let blocks = array(&value["data"]["blocks"], 100)?;
+                if self.preview_only {
+                    let v3 = p.v3 == Some(true);
+                    p.selected_from_preview = blocks.iter().take(50).any(|block| {
+                        let ordinary = matches!(
+                            block["blockCode"].as_str(),
+                            Some("search_block_song" | "search_block_song_rec")
+                        );
+                        let mixed = block["blockCode"] == "search_block_best_match";
+                        (ordinary || mixed)
+                            && block["resources"].as_array().is_some_and(|rows| {
+                                rows.iter().take(100).any(|row| {
+                                    if (!ordinary || !v3) && row["type"] != "song" {
+                                        return false;
+                                    }
+                                    let base = &row["baseInfo"];
+                                    let candidate = if v3 {
+                                        &base["simpleSongData"]["id"]
+                                    } else {
+                                        &base["id"]
+                                    };
+                                    id(candidate).is_ok_and(|id| id == self.song)
+                                })
+                            })
+                    });
+                    p.selected_song_found = p.selected_from_preview;
+                }
                 p.comprehensive = true;
             }
             Read::Songs => {

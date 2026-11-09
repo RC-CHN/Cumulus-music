@@ -55,3 +55,14 @@ and failed runs remove the credential copy and application work directory.
 Only a whitelist of counts, status, asset hashes and native clock timings is
 retained. Real-account screenshots and child logs are not retained. The proof
 does not exercise real mutations or direct URL input into libmpv.
+
+`--discover-cdn` admits only the PC authority and has no media transport.
+Its acceptance boundary is the two actual window checkpoints and one consumed
+valid nontrial source receipt with zero media connections. The subsequent
+fixed-host arm verifies that its independently pinned authority is exactly the
+authority of the fresh receipt; a different authority is refused locally.
+Discovery and fixed-host receipts are not interchangeable with a playback
+receipt. The private profile staging wrapper may accept a stopped installation
+whose directory is owned but not mode 0700; it passes only verified, bounded
+read-only database copies in a new mode-0700 source to the supervisor, rechecks
+original bytes/metadata, and cleans the copies.

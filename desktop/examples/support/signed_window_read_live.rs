@@ -401,15 +401,18 @@ fn start(
         APP_VERSION,
         services.clone(),
     )?);
-    let gate = Arc::new(Gate::new(
-        api.clone(),
-        credentials,
-        params.profile(),
-        &config.snapshot()?,
-        params.expected_uid.clone(),
-        params.keyword.clone(),
-        params.song_id.clone(),
-    )?);
+    let gate = Arc::new(
+        Gate::new(
+            api.clone(),
+            credentials,
+            params.profile(),
+            &config.snapshot()?,
+            params.expected_uid.clone(),
+            params.keyword.clone(),
+            params.song_id.clone(),
+        )?
+        .with_comprehensive_track(),
+    );
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             let native = Arc::new(audio::NativeFacts::default());
@@ -441,7 +444,7 @@ fn start(
                     let expected = STAGES.get(progress.count).copied().unwrap_or("complete");
                     if discover && stage == "failed" && progress.count == 2
                         && resources_first && observed.expected_account_verified
-                        && observed.comprehensive_read && observed.selected_song_found
+                        && observed.comprehensive_read && observed.selected_from_preview
                         && observed.song_detail_read && observed.media_authorized
                         && observed.media_consumed && !observed.closed_after_failure
                         && media.reads.load(Ordering::Acquire) == 0
@@ -465,7 +468,7 @@ fn start(
                         && !observed.closed_after_failure && services.auxiliary.load(Ordering::Acquire) == 0
                         && services.other_media.load(Ordering::Acquire) == 0;
                     if progress.count >= 1 {
-                        ok &= observed.selected_song_found && observed.comprehensive_read
+                        ok &= observed.selected_from_preview && observed.comprehensive_read
                             && observed.search_v3.is_some_and(|v3| observed.search_tab_read == v3);
                     }
                     if progress.count >= 2 {

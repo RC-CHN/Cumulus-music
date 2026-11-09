@@ -150,6 +150,10 @@ impl Fixture {
     }
 
     fn with_extra_cookies(extra: &[&str]) -> Self {
+        Self::build(extra, false)
+    }
+
+    fn build(extra: &[&str], preview_only: bool) -> Self {
         let root = tempfile::tempdir().unwrap();
         let credentials = Arc::new(
             Credentials::open(
@@ -188,18 +192,21 @@ impl Fixture {
         let config = PcConfig::new(store, aux.clone()).unwrap();
         let context =
             Arc::new(RequestContext::from_pc(config.clone(), APP_VERSION, aux.clone()).unwrap());
-        let gate = Arc::new(
-            Gate::new(
-                script.clone(),
-                credentials.clone(),
-                profile.clone(),
-                &config.snapshot().unwrap(),
-                OWNER.into(),
-                QUERY.into(),
-                SONG.into(),
-            )
-            .unwrap(),
-        );
+        let gate = Gate::new(
+            script.clone(),
+            credentials.clone(),
+            profile.clone(),
+            &config.snapshot().unwrap(),
+            OWNER.into(),
+            QUERY.into(),
+            SONG.into(),
+        )
+        .unwrap();
+        let gate = Arc::new(if preview_only {
+            gate.with_comprehensive_track()
+        } else {
+            gate
+        });
         Self {
             root,
             profile,
@@ -368,6 +375,69 @@ impl MediaBackend for Source {
                 body: Box::new(Blob(Cursor::new(self.bytes))),
             })
         })
+    }
+}
+
+#[tokio::test]
+async fn scoped_comprehensive_preview_only_authorizes_the_exact_song_without_songs_tab() {
+    for v3 in [false, true] {
+        let f = Fixture::build(&[], true);
+        f.script.push(ACCOUNT, account(OWNER));
+        let client = f.client();
+        let identity = client.restore_account().await.unwrap();
+        f.script.push(
+            ASSIGNMENT_PATH,
+            reply(json!({"code":200,"data":[{
+                "expName":"PH-PC-searchHot","expGroupName":if v3 { "t1" } else { "c" }
+            }]})),
+        );
+        if v3 {
+            f.script.push(
+                TABS,
+                reply(json!({"code":200,"data":{"defaultTabs":[{"title":"综合"}]}})),
+            );
+        }
+        let base = if v3 {
+            json!({"simpleSongData":song()})
+        } else {
+            song()
+        };
+        f.script.push(
+            if v3 { V3 } else { V1 },
+            reply(json!({"code":200,"data":{"blocks":[{
+                "blockCode":"search_block_song","resources":[{"type":"song","baseInfo":base}]
+            }]}})),
+        );
+        let query = SearchResultQuery {
+            keyword: QUERY.into(),
+            category: SearchCategory::All,
+            offset: 0,
+            limit: 30,
+            correct: true,
+            channel: Some(SearchChannel::Typing),
+        };
+        client.search_results(&identity.epoch, query).await.unwrap();
+        let facts = f.gate.facts().await;
+        assert!(
+            facts.comprehensive_read && facts.selected_from_preview && facts.selected_song_found
+        );
+        assert!(
+            f.send(
+                SONGS,
+                json!({"keyword":QUERY,"scene":"normal","needCorrect":true,
+            "channel":"typing","limit":10,"offset":0})
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            f.send(DETAIL, json!({"c":"[{\"id\":\"999\",\"v\":0}]"}))
+                .await
+                .is_err()
+        );
+        assert_eq!(f.gate.facts().await.attempted_reads, facts.attempted_reads);
+        f.authorize(source()).await.unwrap();
+        assert!(f.gate.facts().await.media_authorized);
     }
 }
 

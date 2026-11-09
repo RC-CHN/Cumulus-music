@@ -78,13 +78,11 @@ impl HttpBackend for Closed {
                     json!({"code":200,"data":{"defaultTabs":[
                     {"title":"综合"},{"title":"单曲"}]}}),
                 ),
-                "/eapi/search/pc/complex/page/v3" => {
-                    ("comprehensive", json!({"code":200,"data":{"blocks":[]}}))
-                }
-                "/eapi/search/song/list/page" => (
-                    "songs",
-                    json!({"code":200,"data":{"totalCount":1,
-                    "resources":[{"type":"song","baseInfo":{"simpleSongData":song()}}],"hasMore":false}}),
+                "/eapi/search/pc/complex/page/v3" => (
+                    "comprehensive",
+                    json!({"code":200,"data":{"blocks":[{
+                        "blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":song()}}]
+                    }]}}),
                 ),
                 "/eapi/v3/song/detail" => ("detail", json!({"code":200,"songs":[song()]})),
                 "/eapi/song/enhance/player/url/v1" => (
@@ -212,15 +210,18 @@ impl State {
             APP_VERSION,
             fixture.clone(),
         )?);
-        let gate = Arc::new(Gate::new(
-            fixture.clone(),
-            credentials,
-            native.clone(),
-            &config.snapshot()?,
-            OWNER.into(),
-            QUERY.into(),
-            SONG.into(),
-        )?);
+        let gate = Arc::new(
+            Gate::new(
+                fixture.clone(),
+                credentials,
+                native.clone(),
+                &config.snapshot()?,
+                OWNER.into(),
+                QUERY.into(),
+                SONG.into(),
+            )?
+            .with_comprehensive_track(),
+        );
         Ok(Self {
             fixture,
             gate,
