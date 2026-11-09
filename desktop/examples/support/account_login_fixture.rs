@@ -72,9 +72,12 @@ impl Service {
     pub fn pending(&self) -> bool {
         self.held.lock().unwrap().is_some()
     }
+    pub fn completed(&self) -> u64 {
+        *self.completed.lock().unwrap()
+    }
     pub fn snapshot(&self) -> Value {
         let avatars = self.avatars.lock().unwrap();
-        json!({"paths":*self.paths.lock().unwrap(),"pending":self.pending(),"completed":*self.completed.lock().unwrap(),"switchIdentityReads":*self.switch_identity_reads.lock().unwrap(),"qrCandidateIdentityReads":*self.qr_candidate_identity_reads.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len(),"deviceRemoved":self.removed_devices.lock().unwrap().contains(&2)})
+        json!({"paths":*self.paths.lock().unwrap(),"pending":self.pending(),"completed":self.completed(),"switchIdentityReads":*self.switch_identity_reads.lock().unwrap(),"qrCandidateIdentityReads":*self.qr_candidate_identity_reads.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len(),"deviceRemoved":self.removed_devices.lock().unwrap().contains(&2)})
     }
 }
 impl HttpBackend for Service {

@@ -275,9 +275,13 @@ def main():
     elif not args.baseline:
         by_name = {state['stage'].split('_',2)[2]: state for state in states}
         assert complete['accountLogin']
-        assert by_name['email_inflight_small_dark']['fixture']['pending']
-        assert by_name['late_login_cancelled_dark']['fixture']['completed'] == 1
-        assert by_name['late_login_cancelled_dark']['nativeAccount']['status'] != 'authenticated'
+        rejected, held, cancelled = (by_name[name] for name in (
+            'email_rejected_small_dark', 'email_inflight_small_dark',
+            'late_login_cancelled_dark'))
+        assert [row['fixture']['paths']['/api/login'] for row in (rejected, held, cancelled)] == [1, 2, 2]
+        assert held['fixture']['pending'] and held['fixture']['completed'] == 0
+        assert not cancelled['fixture']['pending'] and cancelled['fixture']['completed'] == 1
+        assert cancelled['nativeAccount']['status'] != 'authenticated'
         assert by_name['logout_failed_small_light']['nativeAccount']['status'] == 'authenticated'
         assert by_name['local_logout_light']['nativeAccount']['status'] != 'authenticated'
         unikey, poll = '/api/login/qrcode/unikey', '/api/login/qrcode/client/login'

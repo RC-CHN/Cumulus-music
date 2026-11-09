@@ -72,7 +72,7 @@ fn main() {
             app.listen("account-login-fixture", move |event| {
                 let value: Value = serde_json::from_str(event.payload()).unwrap();
                 fixture.command(value["mode"].as_str().unwrap());
-                handle.get_webview_window("main").unwrap().eval(format!("window.__accountLoginPending={};window.__accountLoginAck={};", fixture.pending(), value["id"])).unwrap();
+                handle.get_webview_window("main").unwrap().eval(format!("window.__accountLoginPending={};window.__accountLoginCompleted={};window.__accountLoginAck={};", fixture.pending(), fixture.completed(), value["id"])).unwrap();
             });
             let handle = app.handle().clone();
             app.listen("ux-proof", move |event| {

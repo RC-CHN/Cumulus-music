@@ -1120,16 +1120,22 @@
     if (!one('[aria-label="同意登录协议"]').checked)
       click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
-    await sleep(120);
+    await wait(async () => {
+      await mode("inspect");
+      return window.__accountLoginPending === true;
+    }, "retried email login reached the held backend");
     await stage("email_inflight_small_dark", { expectGuest: true });
     click(button("手机", one(".login-methods")));
     await mode("release");
+    await wait(async () => {
+      await mode("inspect");
+      return window.__accountLoginCompleted === 1;
+    }, "late email login response released by backend");
     await wait(
       () => status() === "ready" && !one(".tab-leave-active"),
       "replacement login ready",
     );
     await settle();
-    await sleep(250);
     assert(
       one(".login-methods") && status() === "ready",
       "late login cannot close replacement",
