@@ -4,6 +4,7 @@ use crate::{
     Error, Result,
     client::dto::AccountData,
     comments::{CommentApi, ResourceKind},
+    network_diagnostics::DefaultRoute,
 };
 use std::time::Duration;
 
@@ -20,30 +21,38 @@ impl MusicClient {
         &self,
         epoch: &str,
         task_id: &str,
+        route: DefaultRoute,
     ) -> Result<AccountData<Option<u64>>> {
         let context = self.downloads.inner.context(epoch)?;
         let id = download_comment_song(&context, task_id)?;
-        let request_id = id.clone();
-        let count = tokio::time::timeout(
-            MENU_READ_LIMIT,
-            context
-                .session
-                .run_for(&context.token, |api, _| async move {
-                    CommentApi::new(api)
-                        .count(ResourceKind::Track, request_id)
-                        .await
-                }),
-        )
-        .await;
-        // A harmless network or response failure may produce a plain label,
-        // but it must not make a now foreign or deleted task visible again.
-        if download_comment_song(&context, task_id)? != id {
-            return Err(Error::StaleResponse);
-        }
+        let count = if route == DefaultRoute::Missing {
+            // Prefetching a label is optional. Local actions still have the
+            // same native source and account checks when routing is absent.
+            None
+        } else {
+            let request_id = id.clone();
+            let count = tokio::time::timeout(
+                MENU_READ_LIMIT,
+                context
+                    .session
+                    .run_for(&context.token, |api, _| async move {
+                        CommentApi::new(api)
+                            .count(ResourceKind::Track, request_id)
+                            .await
+                    }),
+            )
+            .await;
+            // A failed count may produce a plain label but may not revive a
+            // deleted or now foreign row.
+            if download_comment_song(&context, task_id)? != id {
+                return Err(Error::StaleResponse);
+            }
+            count.ok().and_then(Result::ok)
+        };
         context.guard()?;
         Ok(AccountData {
             epoch: epoch.into(),
-            value: count.ok().and_then(Result::ok),
+            value: count,
         })
     }
 }

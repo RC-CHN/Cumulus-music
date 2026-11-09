@@ -1,5 +1,9 @@
 mod route;
 
+pub(crate) fn default_route() -> cumulus_core::network_diagnostics::DefaultRoute {
+    route::default_route()
+}
+
 use cumulus_core::{
     Error,
     client::ClientError,
@@ -23,7 +27,7 @@ pub async fn local_network_diagnostics<R: tauri::Runtime>(
         let _single = CHECK
             .try_lock()
             .map_err(|_| Error::State("network diagnostics are already running"))?;
-        Ok::<_, Error>(check_local_network(route::default_route()))
+        Ok::<_, Error>(check_local_network(default_route()))
     })
     .await
     .map_err(|_| Error::State("network diagnostics did not finish"))?

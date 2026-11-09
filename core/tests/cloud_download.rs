@@ -132,6 +132,7 @@ async fn downloaded_cloud_comments_keep_the_catalogue_id_separate_from_the_origi
     use cumulus_core::{
         account::profiles::ProfileRegistry,
         client::{MusicClient, dto::*},
+        network_diagnostics::DefaultRoute,
         protocol::http::ApiOrigin,
     };
     for (kind, expected_id) in [(0, Some("987")), (1, None)] {
@@ -165,7 +166,18 @@ async fn downloaded_cloud_comments_keep_the_catalogue_id_separate_from_the_origi
         };
         assert_eq!(row.track.id, "123");
         assert_eq!(row.comment_track_id.as_deref(), expected_id);
-        let result = client.download_song_comment_count("1", &task.id).await;
+        let offline = client
+            .download_song_comment_count("1", &task.id, DefaultRoute::Missing)
+            .await;
+        assert_eq!(f.api.count(COMMENTS), 0);
+        if expected_id.is_some() {
+            assert_eq!(offline.unwrap().value, None);
+        } else {
+            assert!(matches!(offline, Err(Error::InvalidInput(_))));
+        }
+        let result = client
+            .download_song_comment_count("1", &task.id, DefaultRoute::Present)
+            .await;
         if expected_id.is_some() {
             assert_eq!(result.unwrap().value, Some(42));
             assert_eq!(f.api.count(COMMENTS), 1);
