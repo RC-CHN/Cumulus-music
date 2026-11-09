@@ -4,6 +4,7 @@ use cumulus_core::{
     protocol::api::{Api, ApiFuture},
     storage::StateStore,
 };
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -17,6 +18,27 @@ use std::{
 const OPAQUE: &str = "a10c0000000000000000000000000001";
 const MEDIA: &str = "合成混排本地曲目.wav";
 const TARGET: &str = "11";
+const PLAYER_URL: &str = "/api/song/enhance/player/url/v1";
+
+#[derive(Serialize)]
+enum CatalogAudioId {
+    #[serde(rename = "701")]
+    First,
+    #[serde(rename = "702")]
+    Second,
+}
+
+fn catalog_audio_id(args: &Value) -> Option<CatalogAudioId> {
+    let ids = serde_json::from_str::<Vec<Value>>(args["ids"].as_str()?).ok()?;
+    let [id] = ids.as_slice() else {
+        return None;
+    };
+    match cumulus_core::protocol::api::identifier(id).ok()?.as_str() {
+        "701" => Some(CatalogAudioId::First),
+        "702" => Some(CatalogAudioId::Second),
+        _ => None,
+    }
+}
 
 pub struct Fixture {
     audio: PathBuf,
@@ -24,7 +46,8 @@ pub struct Fixture {
     catalog_reads: Mutex<Vec<Vec<String>>>,
     details: AtomicUsize,
     remote_mutations: AtomicUsize,
-    online_audio: AtomicUsize,
+    catalog_audio: Mutex<Vec<CatalogAudioId>>,
+    unsafe_audio: AtomicUsize,
 }
 
 impl Fixture {
@@ -40,7 +63,8 @@ impl Fixture {
             catalog_reads: Mutex::new(Vec::new()),
             details: AtomicUsize::new(0),
             remote_mutations: AtomicUsize::new(0),
-            online_audio: AtomicUsize::new(0),
+            catalog_audio: Mutex::new(Vec::new()),
+            unsafe_audio: AtomicUsize::new(0),
         })
     }
 
@@ -56,7 +80,9 @@ impl Fixture {
             "detailReads":self.details.load(Ordering::Acquire),
             "catalogReads":&*self.catalog_reads.lock().unwrap(),
             "remoteMutations":self.remote_mutations.load(Ordering::Acquire),
-            "onlineAudio":self.online_audio.load(Ordering::Acquire),
+            "catalogAudioChecks":self.catalog_audio.lock().unwrap().iter()
+                .map(|id| json!({"route":PLAYER_URL,"id":id})).collect::<Vec<_>>(),
+            "unsafeAudioAttempts":self.unsafe_audio.load(Ordering::Acquire),
             "originalUnchanged":fs::read(&self.audio).is_ok_and(|bytes| bytes == self.audio_bytes),
         }))
     }
@@ -73,7 +99,7 @@ fn target_playlist() -> Value {
 }
 
 impl Api for Fixture {
-    fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
+    fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             Ok(match path {
                 "/api/w/nuser/account/get" => {
@@ -112,8 +138,20 @@ impl Api for Fixture {
                 "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
                 path if path.starts_with("/api/song/enhance/player/") => {
-                    self.online_audio.fetch_add(1, Ordering::AcqRel);
-                    return Err(Error::Response("synthetic proof refuses online audio"));
+                    if path == PLAYER_URL
+                        && !cache
+                        && let Some(id) = catalog_audio_id(&args)
+                    {
+                        self.catalog_audio.lock().unwrap().push(id);
+                        // Observe only the next catalog identity. No authorized
+                        // URL can be returned or passed to libmpv.
+                        json!({"code":200,"data":[]})
+                    } else {
+                        self.unsafe_audio.fetch_add(1, Ordering::AcqRel);
+                        return Err(Error::Response(
+                            "synthetic proof refuses an unbound audio request",
+                        ));
+                    }
                 }
                 "/api/batch"
                 | "/api/v1/playlist/manipulate/tracks"

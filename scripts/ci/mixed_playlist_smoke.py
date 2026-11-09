@@ -53,8 +53,12 @@ def main():
     assert playing['queue'] == [local, '701', '702'] and playing['nativePosition'] > .08
     assert all(playing[key] == removed[key] for key in ('playId', 'nativePosition', 'queueRevision'))
     assert all(row['nativeReceipt']['originalUnchanged'] and
-               not row['nativeReceipt']['remoteMutations'] and not row['nativeReceipt']['onlineAudio']
+               not row['nativeReceipt']['remoteMutations'] and not row['nativeReceipt']['unsafeAudioAttempts']
                for row in (*states, done))
+    expected_prefetch = [{'route': '/api/song/enhance/player/url/v1', 'id': '701'}]
+    assert [row['nativeReceipt']['catalogAudioChecks'] for row in states[:3]] == [[], [], []]
+    assert all(row['nativeReceipt']['catalogAudioChecks'] == expected_prefetch
+               for row in (*states[3:], done))
     assert done['nativeReceipt']['detailReads'] >= 4
     assert ['701', '702'] in done['nativeReceipt']['catalogReads']
     assert all(set(ids) <= {'701', '702'} for ids in done['nativeReceipt']['catalogReads'])
@@ -65,7 +69,8 @@ def main():
     assert len(images) == (len(paths) if args.screenshots else 0)
     result = dict(ok=True, actualWebView=True, nativeLocalPlayback=True, states=len(paths),
                   screenshots=len(images), originalFilePreserved=True, localGeneration=2,
-                  remotePlaylistMutations=0, onlineAudioRequests=0, realMusicRequests=0)
+                  remotePlaylistMutations=0, catalogAudioChecks=expected_prefetch,
+                  unsafeAudioAttempts=0, realMusicRequests=0)
     (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(result))
 
