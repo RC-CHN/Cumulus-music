@@ -28,6 +28,13 @@
   const dialog = () => one('dialog[data-local-directories][open]');
   const trigger = () => button('选择目录', one('.local-page') ?? document);
   const box = () => dialog()?.querySelector('input[type="checkbox"]');
+  function inlineOption() {
+    const checkbox = box(), option = checkbox?.closest('label')?.querySelector('span');
+    if (!checkbox || !option) return false;
+    const a = checkbox.getBoundingClientRect(), b = option.getBoundingClientRect();
+    return a.width > 0 && a.right < b.left && Math.abs(a.top - b.top) < 10 &&
+      b.right <= dialog().getBoundingClientRect().right;
+  }
   const query = {
     keyword: '', sort: 'title', descending: true, group: 'list', groupKey: null,
     includeMissing: true, offset: 0, limit: 200, revision: null,
@@ -83,7 +90,8 @@
     await wait(focusReturned, 'cancel restores exact focus');
     await open();
     check(!box().checked && (await read()).total === 0, 'cancel preserves registration only');
-    await capture('unchecked_after_cancel');
+    check(inlineOption(), 'checkbox and wrapped path share one row');
+    await capture('unchecked_after_cancel', { inlineOption: true });
     click(box());
     await confirm();
     await wait(async () => visible(3) && (await read()).roots[0]?.status === 'ready', 'actual native scan');
@@ -110,7 +118,8 @@
     await open();
     check(box().checked && dialog().textContent.includes('已暂停自动扫描') && visible(3),
       'pause does not deselect or hide the directory');
-    await capture('paused_root', { stable: await stable() });
+    check(inlineOption(), 'paused annotation stays beside the checkbox');
+    await capture('paused_root', { stable: await stable(), inlineOption: true });
     click(box());
     check(visible(3) && (await dirs()).entries[0].checked, 'draft removal has not committed');
     await confirm();

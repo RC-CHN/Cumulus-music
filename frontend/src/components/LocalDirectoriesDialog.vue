@@ -114,8 +114,16 @@ async function confirm() {
 }
 .local-directory-option label {
   display: flex;
+  flex-direction: row;
   align-items: flex-start;
   gap: 10px;
+}
+.local-directory-option input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.local-directory-option span {
+  min-width: 0;
 }
 .local-directory-option label small {
   color: var(--muted);

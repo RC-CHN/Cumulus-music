@@ -131,6 +131,7 @@ def main():
         [{'checked': checked, 'paused': paused}]
         for checked, paused in [(False, False), (True, False), (True, True), (False, False), (True, False)]
     ]]
+    assert rows[1]['inlineOption'] and rows[3]['inlineOption']
     assert all(row['stable'] for row in rows[3:])
     assert len(list(target.glob('ux_*.png'))) == len(STAGES)
     locale = json.loads((target / 'native-startup.json').read_text(encoding='utf-8'))
