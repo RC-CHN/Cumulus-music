@@ -47,11 +47,28 @@ const model = useLocalBatch(
   () => favoritePreparing.value || !!favoriteScope.value,
 );
 const favoriteButton = ref<HTMLButtonElement>();
-function openFavorite() {
+async function openFavorite() {
   const selection = model.captureSelection();
   if (!selection) return;
-  if (!props.signedIn) emit('login');
-  else void favorite.open(props.epoch, selection);
+  if (!props.signedIn) {
+    emit('login');
+    return;
+  }
+  const epoch = props.epoch;
+  const trigger = favoriteButton.value;
+  await favorite.open(epoch, selection);
+  if (!favorite.error.value) return;
+  await nextTick();
+  if (
+    live() &&
+    props.signedIn &&
+    props.epoch === epoch &&
+    trigger?.isConnected &&
+    !trigger.disabled &&
+    !document.querySelector('dialog[open]') &&
+    (document.activeElement === trigger || document.activeElement === document.body)
+  )
+    trigger.focus({ preventScroll: true });
 }
 watch(
   () => [props.epoch, props.signedIn, live()],
