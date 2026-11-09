@@ -41,8 +41,8 @@ pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
 pub use super::pc_experiments::PcPresentationView;
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView,
-    MixedPlaylistStart, OutputCommand, OutputEngineView, OutputView, PlaySelection,
-    PlaybackPowerView, PlayerAction, PlayerOrigin, PlayerPodcastResumeAction,
+    MixedPlaylistDropRow, MixedPlaylistStart, OutputCommand, OutputEngineView, OutputView,
+    PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin, PlayerPodcastResumeAction,
     PlayerPodcastResumeView, PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail,
     PlayerVoicePlayCount, PlayerVoiceRadio, PlayerVoiceSongsView, PlaylistDropRow,
     PodcastRecommendationAction, QualityChoiceView, QualityDetailsView, QualityMenuPresentation,
