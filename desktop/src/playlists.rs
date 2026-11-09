@@ -1,6 +1,9 @@
 use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
-    playlist::{ExternalPlaylistInput, PlaylistCommand, preview_external_playlist_inputs},
+    playlist::{
+        ExternalPlaylistInput, PlaylistCommand, PlaylistLocalChange,
+        preview_external_playlist_inputs,
+    },
 };
 #[tauri::command]
 pub fn preview_external_playlist(
@@ -57,6 +60,31 @@ pub async fn mutate_playlist(
         .await
         .map_err(Into::into)
 }
+#[derive(serde::Serialize)]
+pub struct PlaylistLocalChanged {
+    changed: bool,
+}
+
+#[tauri::command]
+pub async fn mutate_playlist_local(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    revision: String,
+    change: PlaylistLocalChange,
+) -> Result<AccountData<PlaylistLocalChanged>, ClientError> {
+    let result = client
+        .mutate_playlist_local(&epoch, &id, &revision, change)
+        .await
+        .map_err(ClientError::from)?;
+    Ok(AccountData {
+        epoch: result.epoch,
+        value: PlaylistLocalChanged {
+            changed: result.value.changed,
+        },
+    })
+}
+
 #[tauri::command]
 pub async fn reconcile_playlist(
     client: tauri::State<'_, MusicClient>,

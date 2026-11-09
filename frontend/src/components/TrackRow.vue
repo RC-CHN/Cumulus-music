@@ -85,7 +85,7 @@ function duration(ms: number) {
     class="track-columns track-row"
     :class="{
       unavailable: track.missing,
-      current: !track.missing && !track.local && track.id === currentId,
+      current: !track.missing && (track.local ? !!currentToggle : track.id === currentId),
       striped: index % 2 === 0,
     }"
     @dblclick="!track.missing && playable && emit('play', index, 'double_click')"
@@ -195,7 +195,7 @@ function duration(ms: number) {
         :class="{ liked: liked }"
         :aria-label="`${liked ? '取消喜欢' : '喜欢'} ${track.name}`"
         :aria-pressed="liked"
-        :disabled="track.missing || busy"
+        :disabled="track.missing || track.local || busy"
         @click.stop="emit('like', track)"
         @dblclick.stop
       >

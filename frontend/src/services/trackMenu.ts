@@ -13,6 +13,7 @@ export interface TrackPendingToggle {
 
 export interface TrackCurrentToggle {
   trackId: string;
+  local?: boolean;
   epoch: string;
   playId: string;
   queueRevision: string;
@@ -27,6 +28,7 @@ export interface TrackMenuRequest {
   nextOrigin?: 'search';
   queueNext?: () => Promise<PlayerView | boolean | undefined>;
   playUnavailable?: boolean;
+  removeLocalMember?: () => void;
   episode?: {
     live: () => boolean;
     copyrightBlocked: boolean;

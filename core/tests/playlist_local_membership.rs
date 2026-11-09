@@ -1,7 +1,14 @@
+#[allow(dead_code)]
+#[path = "support/playback/mod.rs"]
+mod playback_support;
+
 use cumulus_core::{
     Error, Result,
     account::{AccountSession, profiles::ProfileRegistry},
-    client::{MusicClient, dto::LocalQuery},
+    client::{
+        MusicClient,
+        dto::{LocalQuery, MixedPlaylistStart, PageRequest, PlaySelection, PlayerResourceKind},
+    },
     library::{AudioMetadata, LocalLibrary, probe::AudioProbe},
     playlist::{
         PlaylistCommand, PlaylistLocalChange, PlaylistLocalMembership, PlaylistLocalRef,
@@ -39,6 +46,7 @@ impl AudioProbe for Probe {
 struct Server {
     detail: Mutex<Value>,
     reads: Mutex<Vec<Value>>,
+    songs: Mutex<Vec<Vec<String>>>,
 }
 
 impl Server {
@@ -48,6 +56,7 @@ impl Server {
                 "specialType":0, "trackIds":[{"id":11,"v":0},{"id":77,"v":-1},{"id":42,"v":0}],
                 "description":null, "tags":[]})),
             reads: Mutex::new(Vec::new()),
+            songs: Mutex::new(Vec::new()),
         }
     }
 }
@@ -55,14 +64,30 @@ impl Server {
 impl Api for Server {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            assert_eq!(
-                path, "/api/v6/playlist/detail",
-                "local membership must never write HTTP"
-            );
-            assert!(!cache);
-            assert_eq!(payload, json!({"id":"73","n":100000,"s":0}));
-            self.reads.lock().unwrap().push(payload);
-            Ok(json!({"code":200,"playlist":self.detail.lock().unwrap().clone()}))
+            match path {
+                "/api/v6/playlist/detail" => {
+                    assert!(!cache);
+                    assert_eq!(payload, json!({"id":"73","n":100000,"s":0}));
+                    self.reads.lock().unwrap().push(payload);
+                    Ok(json!({"code":200,"playlist":self.detail.lock().unwrap().clone()}))
+                }
+                "/api/v3/song/detail" => {
+                    let ids: Vec<Value> =
+                        serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
+                    let ids: Vec<_> = ids
+                        .iter()
+                        .map(|row| row["id"].as_str().unwrap().to_owned())
+                        .collect();
+                    assert!(
+                        ids.iter().all(|id| ["11", "42"].contains(&id.as_str())),
+                        "a local member must never become a catalog ID"
+                    );
+                    self.songs.lock().unwrap().push(ids.clone());
+                    let songs: Vec<_> = ids.iter().map(|id| json!({"id":id,"name":format!("Online {id}"),"dt":61000,"ar":[],"al":{"name":"Album"}})).collect();
+                    Ok(json!({"code":200,"songs":songs}))
+                }
+                _ => panic!("unexpected remote operation: {path}"),
+            }
         })
     }
 }
@@ -80,8 +105,13 @@ fn open(
             .unwrap();
     }
     let library = LocalLibrary::with_probe(registry.store(), Arc::new(Probe)).unwrap();
-    let client =
-        MusicClient::with_session(session.clone(), registry).with_local_probe(Arc::new(Probe));
+    let client = MusicClient::with_session(session.clone(), registry)
+        .with_local_probe(Arc::new(Probe))
+        .with_audio_factory(|| {
+            Ok(playback_support::audio_engine(Arc::new(
+                playback_support::Device::default(),
+            )))
+        });
     (client, session, library)
 }
 
@@ -337,4 +367,133 @@ async fn local_membership_is_scoped_and_never_adopts_an_unbound_server_local_row
             .is_err()
     );
     assert_eq!(server.reads.lock().unwrap().len(), before_guest);
+}
+
+#[tokio::test]
+async fn owned_mixed_pages_and_native_queue_keep_local_ids_out_of_remote_reads() {
+    use cumulus_core::membership::Quality;
+
+    let temp = tempfile::tempdir().unwrap();
+    let media = temp.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    let file = media.join("local-track.wav");
+    std::fs::write(&file, b"synthetic fixture audio").unwrap();
+    let server = Arc::new(Server::new());
+    let (client, _, library) = open(&temp.path().join("profile"), server.clone(), Some(9));
+    library.scan(&media).unwrap();
+    let reference = refs(&client).await.remove(0);
+
+    let req = |offset, revision| PageRequest {
+        offset,
+        limit: 2,
+        revision,
+    };
+    let initial = client
+        .playlist_page_at("73", req(0, None), None)
+        .await
+        .unwrap()
+        .value;
+    let baseline = initial.playlist_local.unwrap();
+    assert!(!baseline.has_members && baseline.rows.is_empty());
+    let added = client
+        .mutate_playlist_local(
+            "1",
+            "73",
+            &baseline.revision,
+            add(std::slice::from_ref(&reference)),
+        )
+        .await
+        .unwrap()
+        .value;
+    let revision = added.membership.revision.clone();
+    let first = client
+        .playlist_page_at("73", req(0, None), None)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(first.revision, initial.revision);
+    assert_eq!(first.total, 4);
+    assert_eq!(
+        first
+            .tracks
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        [reference.id.as_str(), "11"]
+    );
+    assert!(first.tracks[0].local && !first.tracks[0].missing);
+    assert_eq!(first.tracks[0].name, "local-track");
+    let local = first.playlist_local.unwrap();
+    assert_eq!(local.revision, revision);
+    assert!(local.has_members);
+    assert_eq!(local.rows.get(&reference.id), Some(&reference.revision));
+    let second = client
+        .playlist_page_at("73", req(2, first.revision.clone()), Some(revision.clone()))
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(
+        second
+            .tracks
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["77", "42"]
+    );
+    assert!(second.tracks[0].local && second.tracks[0].missing);
+    assert!(second.playlist_local.unwrap().rows.is_empty());
+
+    let selected = || PlaySelection::MixedPlaylist {
+        id: "73".into(),
+        revision: revision.clone(),
+        start: Some(MixedPlaylistStart {
+            id: reference.id.clone(),
+            local: true,
+        }),
+        double_click: false,
+        quality: Quality::Standard,
+    };
+    let playing = client.play_selection("1", selected()).await.unwrap();
+    assert_eq!(playing.resource_kind, Some(PlayerResourceKind::Local));
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|entry| entry.track.id.as_str())
+            .collect::<Vec<_>>(),
+        [reference.id.as_str(), "11", "42"]
+    );
+    assert!(
+        client
+            .mutate_playlist_local(
+                "1",
+                "73",
+                &revision,
+                remove(std::slice::from_ref(&reference))
+            )
+            .await
+            .unwrap()
+            .value
+            .changed
+    );
+    let after = client.player_snapshot("1").await.unwrap();
+    assert_eq!(after.play_id, playing.play_id);
+    assert_eq!(after.queue_revision, playing.queue_revision);
+    assert!(matches!(
+        client
+            .playlist_page_at("73", req(2, first.revision), Some(revision))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(std::fs::read(file).unwrap(), b"synthetic fixture audio");
+    assert_eq!(
+        *server.songs.lock().unwrap(),
+        [
+            vec!["11".to_owned()],
+            vec!["11".to_owned()],
+            vec!["42".to_owned()],
+            vec!["11".to_owned(), "42".to_owned()]
+        ],
+    );
 }

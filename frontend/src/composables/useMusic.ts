@@ -116,6 +116,17 @@ type Destination =
 
 export type Page = Destination & { choice?: true };
 
+function mergePlaylistPages(before: TrackPage, page: TrackPage, tracks: TrackView[]): TrackPage {
+  const incoming = page.playlistLocal;
+  return {
+    ...page,
+    tracks,
+    ...(incoming && before.playlistLocal?.revision === incoming.revision
+      ? { playlistLocal: { ...incoming, rows: { ...before.playlistLocal.rows, ...incoming.rows } } }
+      : {}),
+  };
+}
+
 export function useMusic(
   core: CoreClient = useCore(),
   beforeNavigate: (commit: () => void) => void = (commit) => commit(),
@@ -304,7 +315,13 @@ export function useMusic(
           : null;
       // Do not request a new style list after this Back navigation was replaced.
       if (current !== request) return;
-      const playlistPage = { offset, limit: 100, revision: more ? result.value?.revision : null };
+      const localRevision = more ? result.value?.playlistLocal?.revision : undefined;
+      const playlistPage = {
+        offset,
+        limit: 100,
+        revision: more ? result.value?.revision : null,
+        ...(localRevision ? { localRevision } : {}),
+      };
       const data =
         restored ??
         (target.kind === 'daily' || target.kind === 'daily_batch'
@@ -329,13 +346,16 @@ export function useMusic(
       }
       result.value =
         more && result.value
-          ? { ...value, tracks: [...result.value.tracks, ...value.tracks] }
+          ? mergePlaylistPages(result.value, value, [...result.value.tracks, ...value.tracks])
           : prefix?.revision &&
               prefix.revision === value.revision &&
+              prefix.playlistLocal?.revision === value.playlistLocal?.revision &&
               prefix.tracks.length > value.tracks.length
             ? {
-                ...value,
-                tracks: [...value.tracks, ...prefix.tracks.slice(value.tracks.length)],
+                ...mergePlaylistPages(prefix, value, [
+                  ...value.tracks,
+                  ...prefix.tracks.slice(value.tracks.length),
+                ]),
                 more: prefix.more,
               }
             : value;

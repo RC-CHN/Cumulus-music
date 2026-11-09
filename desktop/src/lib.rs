@@ -602,6 +602,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 external_import::external_playlist_import_auth_action,
                 playlists::playlist_order_view,
                 playlists::mutate_playlist,
+                playlists::mutate_playlist_local,
                 playlists::reconcile_playlist,
                 playlists::playlist_operations,
                 playlist_cover::playlist_cover_tasks,

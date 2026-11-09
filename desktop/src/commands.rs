@@ -323,8 +323,12 @@ pub async fn playlist_page(
     client: tauri::State<'_, MusicClient>,
     id: String,
     page: PageRequest,
+    local_revision: Option<String>,
 ) -> Result<AccountData<TrackPage>, ClientError> {
-    client.playlist_page(&id, page).await.map_err(Into::into)
+    client
+        .playlist_page_at(&id, page, local_revision)
+        .await
+        .map_err(Into::into)
 }
 #[tauri::command]
 pub async fn search_songs(

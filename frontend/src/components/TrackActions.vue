@@ -61,6 +61,16 @@ const items = computed<MenuItem[]>(() => {
   const input = request.value;
   const track = input?.track;
   if (!track || (input?.episode && !input.episode.live())) return [];
+  if (input.removeLocalMember)
+    return [
+      {
+        key: 'play',
+        label: '播放',
+        icon: 'play',
+        disabled: track.missing || !props.player.ready.value || props.player.busy.value,
+      },
+      { key: 'remove_local_member', label: '从歌单中移除', icon: 'trash' },
+    ];
   const selection = input.episode?.selection;
   const groupDownload = selection && input.episode?.downloadGroup;
   const available = !track.missing && !track.local;
@@ -116,7 +126,7 @@ const items = computed<MenuItem[]>(() => {
           { key: 'copy', label: '复制链接', icon: 'copy' },
         ]
       : []),
-    ...(playlist.value?.owned && !playlist.value.favorite
+    ...(playlist.value?.owned && !playlist.value.favorite && !track.local
       ? [
           { key: 'edit-divider', label: '', separator: true },
           { key: 'remove', label: '从歌单中删除', icon: 'trash' },
@@ -284,6 +294,7 @@ async function select(key: string) {
     return;
   const { track } = input;
   if (key === 'play') input.play();
+  else if (key === 'remove_local_member') input.removeLocalMember?.();
   else if (key === 'collect') {
     if (input.episode?.selection) input.episode.collectGroup?.();
     else emit('collect', track);

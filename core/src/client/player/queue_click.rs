@@ -192,6 +192,7 @@ impl MusicClient {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RetainedRow {
     Catalog,
+    Local,
     DailyRecommendation,
     SearchCatalog,
     SearchSong,
@@ -449,10 +450,10 @@ impl MusicClient {
             attempt,
             ..
         } = snapshot;
-        let identity = if policy == RetainedRow::SearchVoice {
-            "voice_id"
-        } else {
-            "id"
+        let identity = match policy {
+            RetainedRow::SearchVoice => "voice_id",
+            RetainedRow::Local => "local_id",
+            _ => "id",
         };
         let id = resource[identity]
             .as_str()
@@ -495,14 +496,16 @@ impl MusicClient {
         }
         let existing = queue.items.iter().position(|entry| {
             entry.visible_in_queue()
-                && if policy == RetainedRow::SearchVoice {
-                    super::identity::kind(&entry.resource) == super::PlayerResourceKind::Voice
-                        && entry.resource["voice_id"].as_str() == Some(id)
-                } else {
-                    online_song(&entry.resource, id)
+                && match policy {
+                    RetainedRow::SearchVoice => {
+                        super::identity::kind(&entry.resource) == super::PlayerResourceKind::Voice
+                            && entry.resource["voice_id"].as_str() == Some(id)
+                    }
+                    RetainedRow::Local => entry.resource["local_id"].as_str() == Some(id),
+                    _ => online_song(&entry.resource, id),
                 }
         });
-        let search = policy != RetainedRow::Catalog;
+        let search = !matches!(policy, RetainedRow::Catalog | RetainedRow::Local);
         let entry = if let Some(index) = existing {
             let entry = &mut queue.items[index];
             let rebind = search && entry.source != source;
@@ -514,7 +517,8 @@ impl MusicClient {
             let rebind_playlist = qualified_playlist
                 && queue.current.as_ref() != Some(&entry.entry_id)
                 && (entry.source != source || entry.resource["trial_mode"] != source["trial_mode"]);
-            if rebind || rebind_playlist || entry.resource["missing"] == true {
+            let rebind_local = policy == RetainedRow::Local && entry.resource != resource;
+            if rebind || rebind_playlist || rebind_local || entry.resource["missing"] == true {
                 entry.resource = resource;
                 entry.source = source;
             }
