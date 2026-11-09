@@ -11,7 +11,10 @@ song ID. The gate has no network constructor. Tests use only injected fakes.
 The gate reconstructs the exact current `build_request` wire for every permitted
 request. It compares the prepared headers, encrypted business fields, exact PC
 origin/path, account-scoped Cookie jar, saved native MConfig header, device and
-clientSign. Credential revision/identity is checked against the original scope.
+clientSign. Distinct Cookie names may appear in a different order after the
+production jar is rebuilt; each value, duplicate count, and same-name precedence
+must still match. Credential revision/identity is checked against the original
+scope.
 No batch, mutation, login, renewal, SDK token, cache URL or unrelated query is
 permitted. No request is retried. The caller must separately fence egress and
 disable redirects/retries in the injected transports, before dispatch; rejecting
@@ -120,7 +123,11 @@ checked natively. The paused clock is observed twice; continuing must advance
 that entry, and stopping must return the player to idle. Only one mode-0600
 `/proof/report.json` is produced, with native stage/clock counters and the
 embedded asset seal. No screenshots, raw errors, credentials, account/song
-identifiers or URLs are emitted by the proof reporter.
+identifiers or URLs are emitted by the proof reporter. A rejected run can retain
+bounded counters, the count of accepted checkpoints, and two allowlisted
+labels: the first local plan-rejection category and any dispatched read without
+a validated response. These labels never contain a Cookie, request path, or
+response body.
 
 Run offline shell admission checks with:
 

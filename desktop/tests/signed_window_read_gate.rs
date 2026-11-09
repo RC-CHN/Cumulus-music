@@ -146,6 +146,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_extra_cookies(&[])
+    }
+
+    fn with_extra_cookies(extra: &[&str]) -> Self {
         let root = tempfile::tempdir().unwrap();
         let credentials = Arc::new(
             Credentials::open(
@@ -156,13 +160,11 @@ impl Fixture {
         );
         let target = ApiOrigin::Pc.request_url(WireRoute::Eapi, ACCOUNT).unwrap();
         let revision = credentials.request_credentials(&target).unwrap().revision;
+        let mut cookies =
+            vec!["MUSIC_U=synthetic-window-read; Path=/eapi; Secure; HttpOnly".into()];
+        cookies.extend(extra.iter().map(|cookie| (*cookie).to_owned()));
         credentials
-            .record_response(
-                &target,
-                &["MUSIC_U=synthetic-window-read; Path=/eapi; Secure; HttpOnly".into()],
-                None,
-                &revision,
-            )
+            .record_response(&target, &cookies, None, &revision)
             .unwrap();
         let profile = ClientProfile {
             user_agent: OFFICIAL_WINDOWS_USER_AGENT.into(),
@@ -434,6 +436,57 @@ async fn actual_core_signs_both_search_branches_and_only_one_verified_media_can_
 }
 
 #[tokio::test]
+async fn distinct_cookie_names_can_reorder_but_same_name_precedence_and_values_are_exact() {
+    let f = Fixture::with_extra_cookies(&[
+        "window_a=alpha; Path=/eapi; Secure",
+        "window_b=beta=synthetic; Path=/eapi; Secure",
+        "window_scope=more-specific; Path=/eapi/w; Secure",
+        "window_scope=root; Path=/; Secure",
+    ]);
+    let mut plan = f.plan(ACCOUNT, json!({}), false);
+    let original = plan.headers.get("Cookie").unwrap().clone();
+    let mut pairs: Vec<_> = original.split("; ").collect();
+    let locate = |value| pairs.iter().position(|&pair| pair == value).unwrap();
+    let (a, b) = (locate("window_a=alpha"), locate("window_b=beta=synthetic"));
+    let (specific, root) = (
+        locate("window_scope=more-specific"),
+        locate("window_scope=root"),
+    );
+    assert!(specific < root, "scoped same-name cookie must come first");
+    pairs.swap(a, b);
+    let reordered = pairs.join("; ");
+    assert_ne!(reordered, original);
+    pairs.swap(specific, root);
+
+    let invalid = [
+        pairs.join("; "),
+        reordered.replace("window_b=beta=synthetic", "window_b=wrong=synthetic"),
+        format!("{reordered}; window_scope=root"),
+        reordered.replace("window_a=alpha; ", ""),
+    ];
+    for cookie in invalid {
+        plan.headers.insert("Cookie".into(), cookie);
+        assert!(f.gate.post(plan).await.is_err());
+        plan = f.plan(ACCOUNT, json!({}), false);
+    }
+    assert_eq!(f.script.calls.load(Ordering::Relaxed), 0);
+    let refused = f.gate.facts().await;
+    assert_eq!(refused.denied_before_dispatch, 4);
+    assert_eq!(refused.first_plan_rejection, Some("headers"));
+    assert_eq!(refused.unfinished_read, None);
+    assert!(!refused.closed_after_failure);
+
+    plan.headers.insert("Cookie".into(), reordered);
+    f.script.push(ACCOUNT, account(OWNER));
+    assert!(f.gate.post(plan).await.is_ok());
+    assert_eq!(f.script.calls.load(Ordering::Relaxed), 1);
+    let accepted = f.gate.facts().await;
+    assert!(accepted.expected_account_verified);
+    assert_eq!(accepted.first_plan_rejection, Some("headers"));
+    assert_eq!(accepted.unfinished_read, None);
+}
+
+#[tokio::test]
 async fn denied_wire_shapes_do_not_reach_the_transport() {
     let f = Fixture::new();
     assert!(f.send(LIKES, json!({"uid":OWNER})).await.is_err());
@@ -480,6 +533,8 @@ async fn denied_wire_shapes_do_not_reach_the_transport() {
     }
     let facts = f.gate.facts().await;
     assert_eq!(facts.denied_before_dispatch, 16);
+    assert_eq!(facts.first_plan_rejection, Some("allowlist"));
+    assert_eq!(facts.unfinished_read, None);
     assert_eq!(f.script.calls.load(Ordering::Relaxed), 1);
     assert!(!facts.closed_after_failure);
 }
@@ -505,6 +560,7 @@ async fn unexpected_owner_service_errors_redirects_and_rotation_close_the_gate()
         assert_eq!(f.script.calls.load(Ordering::Relaxed), 1);
         let facts = f.gate.facts().await;
         assert!(facts.closed_after_failure && !facts.expected_account_verified);
+        assert_eq!(facts.unfinished_read, Some("account"));
     }
 }
 
@@ -544,7 +600,10 @@ async fn cancellation_latches_a_dispatched_attempt_and_duplicate_pages_cannot_pa
             .await
             .is_err()
     );
-    assert!(f.gate.facts().await.closed_after_failure);
+    let facts = f.gate.facts().await;
+    assert!(facts.closed_after_failure);
+    assert_eq!(facts.unfinished_read, Some("account"));
+    assert_eq!(facts.first_plan_rejection, None);
     assert!(f.send(ACCOUNT, json!({})).await.is_err());
     assert_eq!(f.script.calls.load(Ordering::Relaxed), 1);
 

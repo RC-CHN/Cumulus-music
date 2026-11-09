@@ -24,7 +24,7 @@ use cumulus_core::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -98,6 +98,8 @@ struct Progress {
     receipt: Option<(MediaUrl, MediaReceipt, Instant)>,
     attempts: [u8; 10],
     denied: usize,
+    first_plan_rejection: Option<&'static str>,
+    unfinished_read: Option<Read>,
     closed: bool,
     media_consumed: bool,
 }
@@ -119,6 +121,8 @@ pub struct Facts {
     pub media_consumed: bool,
     pub attempted_reads: usize,
     pub denied_before_dispatch: usize,
+    pub first_plan_rejection: Option<&'static str>,
+    pub unfinished_read: Option<&'static str>,
     pub closed_after_failure: bool,
 }
 
@@ -148,6 +152,53 @@ fn unique_music_u(cookies: &[(String, String)]) -> Option<&str> {
         .filter_map(|(name, value)| name.eq_ignore_ascii_case("MUSIC_U").then_some(value));
     let token = tokens.next().filter(|value| !value.is_empty())?;
     tokens.next().is_none().then_some(token)
+}
+
+fn grouped_cookie_header(header: &str) -> Option<BTreeMap<&str, Vec<&str>>> {
+    let mut cookies = BTreeMap::<_, Vec<_>>::new();
+    for pair in header.split("; ") {
+        let (name, value) = pair.split_once('=')?;
+        if name.is_empty() {
+            return None;
+        }
+        cookies.entry(name).or_default().push(value);
+    }
+    Some(cookies)
+}
+
+fn same_headers(expected: &BTreeMap<String, String>, actual: &BTreeMap<String, String>) -> bool {
+    expected.len() == actual.len()
+        && expected.iter().all(|(name, value)| {
+            actual.get(name).is_some_and(|received| {
+                if name == "Cookie" {
+                    // CookieStore's hash iteration may reorder distinct
+                    // names at equal path length between independent reads.
+                    // Keep every value and same-name precedence exact.
+                    grouped_cookie_header(value)
+                        .zip(grouped_cookie_header(received))
+                        .is_some_and(|(left, right)| left == right)
+                } else {
+                    value == received
+                }
+            })
+        })
+}
+
+impl Read {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Account => "account",
+            Self::Playlists => "playlists",
+            Self::Likes => "likes",
+            Self::DefaultWord => "default_word",
+            Self::Assignment => "assignment",
+            Self::Tabs => "tabs",
+            Self::Comprehensive => "comprehensive",
+            Self::Songs => "songs",
+            Self::Detail => "detail",
+            Self::Source => "source",
+        }
+    }
 }
 
 impl Gate {
@@ -211,6 +262,8 @@ impl Gate {
             media_consumed: p.media_consumed,
             attempted_reads: p.attempts.iter().map(|&value| usize::from(value)).sum(),
             denied_before_dispatch: p.denied,
+            first_plan_rejection: p.first_plan_rejection,
+            unfinished_read: p.unfinished_read.map(Read::label),
             closed_after_failure: p.closed,
         }
     }
@@ -294,10 +347,14 @@ impl Gate {
             .ok_or_else(refused)
     }
 
-    fn check_plan(&self, p: &Progress, plan: &RequestPlan) -> Result<Read> {
-        let (path, body) = decode_plan(plan)?;
-        let (read, args) = self.permit(p, &path)?;
-        let scoped = self.scoped(&plan.url)?;
+    fn check_plan(
+        &self,
+        p: &Progress,
+        plan: &RequestPlan,
+    ) -> std::result::Result<Read, &'static str> {
+        let (path, body) = decode_plan(plan).map_err(|_| "envelope")?;
+        let (read, args) = self.permit(p, &path).map_err(|_| "allowlist")?;
+        let scoped = self.scoped(&plan.url).map_err(|_| "credential_scope")?;
         // Reconstruct the exact current production frontend wire. This checks
         // the full scoped jar, UA, native sign/device and official conversion,
         // and refuses any extra fields, path/cache overrides, or SDK headers.
@@ -313,12 +370,15 @@ impl Gate {
                 ..Default::default()
             },
         })
-        .map_err(|_| refused())?;
+        .map_err(|_| "reconstruction")?;
         expected
             .headers
             .insert("MConfig-Info".into(), self.mconfig_header.clone());
-        if expected.headers != plan.headers || decode_plan(&expected)?.1 != body {
-            return Err(refused());
+        if !same_headers(&expected.headers, &plan.headers) {
+            return Err("headers");
+        }
+        if decode_plan(&expected).map_err(|_| "reconstruction")?.1 != body {
+            return Err("payload");
         }
         Ok(read)
     }
@@ -531,14 +591,17 @@ impl HttpBackend for Gate {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
         Box::pin(async move {
             let mut p = self.progress.lock().await;
-            let read = self.check_plan(&p, &plan).inspect_err(|_| {
+            let read = self.check_plan(&p, &plan).map_err(|reason| {
                 p.denied = p.denied.saturating_add(1);
+                p.first_plan_rejection.get_or_insert(reason);
+                refused()
             })?;
             p.attempts[read as usize] += 1;
             let encrypted = plan.decrypt_response;
             // Keep the failure latch set across await. A cancelled or
             // incomplete attempt can never reopen the gate or retry.
             p.closed = true;
+            p.unfinished_read = Some(read);
             let mut reply = tokio::time::timeout(REQUEST_TIMEOUT, self.inner.post(plan))
                 .await
                 .map_err(|_| Error::Transport("signed window read timed out".into()))?
@@ -546,6 +609,7 @@ impl HttpBackend for Gate {
             let value = inspect_reply(&reply, encrypted)?;
             self.observe(&mut p, read, &value)?;
             p.closed = false;
+            p.unfinished_read = None;
             // Preserve the original body and encryption contract. Do not
             // apply response Cookie mutations or negotiate fresh PC config.
             reply.set_cookies.clear();

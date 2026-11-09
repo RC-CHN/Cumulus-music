@@ -18,6 +18,10 @@ DISCOVERY_STAGES = STAGES[:2]
 # Native profile preparation still expects this field; discovery never pins it.
 DISCOVERY_PROFILE_HOST = "m1.music.126.net"
 MAX_REPLY = 16384
+PLAN_REJECTIONS = frozenset(("envelope", "allowlist", "credential_scope",
+                             "reconstruction", "headers", "payload"))
+GATE_READS = frozenset(("account", "playlists", "likes", "default_word", "assignment",
+                       "tabs", "comprehensive", "songs", "detail", "source"))
 
 
 class Refused(ValueError):
@@ -109,6 +113,7 @@ def accepted_report(report, assets_sha, *, discover_cdn=False):
                    "songDetailRead", "mediaAuthorized", "mediaConsumed")
     require(isinstance(gate, dict) and all(gate.get(key) is True for key in gate_checks)
             and gate.get("closedAfterFailure") is False
+            and gate.get("unfinishedRead") is None
             and type(gate.get("searchV3")) is bool and type(gate.get("searchTabRead")) is bool
             and (not gate["searchV3"] or gate["searchTabRead"])
             and count(gate.get("playlistPages"), 1, 16)
@@ -129,7 +134,7 @@ def rejected_checkpoint(output):
     """Keep bounded facts from a failed window; never retain the child report."""
     try:
         report = read_private_json(output / "report.json", MAX_REPLY)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return {}
     if not isinstance(report, dict) or report.get("liveReadOnly") is not True:
         return {}
@@ -153,6 +158,10 @@ def rejected_checkpoint(output):
         facts["gate"] = {key: gate[key] for key in booleans if type(gate.get(key)) is bool}
         facts["gate"].update({key: gate[key] for key in bounded
                               if count(gate.get(key), 0, 1000000)})
+        for key, allowed in (("firstPlanRejection", PLAN_REJECTIONS), ("unfinishedRead", GATE_READS)):
+            value = gate.get(key)
+            if type(value) is str and value in allowed:
+                facts["gate"][key] = value
     return facts
 
 

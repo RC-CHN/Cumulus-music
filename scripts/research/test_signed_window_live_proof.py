@@ -78,7 +78,8 @@ class SignedWindowLauncherTests(unittest.TestCase):
             with self.assertRaises(proof.Refused):
                 proof.accepted_report(report, ASSETS)
         for field, replacement in (("expectedAccountVerified", False), ("searchTabRead", False),
-                                   ("playlistPages", 17), ("attemptedReads", 26)):
+                                   ("playlistPages", 17), ("attemptedReads", 26),
+                                   ("unfinishedRead", "source")):
             report = sample()
             report["gate"][field] = replacement
             with self.assertRaises(proof.Refused):
@@ -169,6 +170,8 @@ class SignedWindowLauncherTests(unittest.TestCase):
                 report = json.loads(destination.read_text())
                 report.update(ok=False, stages=proof.STAGES[:2], mediaReads=0)
                 report["gate"]["attemptedReads"] = "synthetic private sentinel"
+                report["gate"]["firstPlanRejection"] = "headers"
+                report["gate"]["unfinishedRead"] = "source"
                 destination.write_text(json.dumps(report))
                 raise RuntimeError("synthetic private exception")
 
@@ -184,6 +187,8 @@ class SignedWindowLauncherTests(unittest.TestCase):
             self.assertEqual(receipt["checkpoint"]["completedStages"], 2)
             self.assertEqual(receipt["checkpoint"]["mediaReads"], 0)
             self.assertNotIn("attemptedReads", receipt["checkpoint"]["gate"])
+            self.assertEqual(receipt["checkpoint"]["gate"]["firstPlanRejection"], "headers")
+            self.assertEqual(receipt["checkpoint"]["gate"]["unfinishedRead"], "source")
             self.assertNotIn("synthetic private", failed.read_text())
             self.assertFalse(scratch[-1].exists())
 
@@ -196,6 +201,22 @@ class SignedWindowLauncherTests(unittest.TestCase):
             verify.assert_not_called()
             self.assertEqual(proof.read_private_json(args.output / "result.json", proof.MAX_REPLY),
                              {"ok": False, "stage": "seal_binaries"})
+
+    def test_rejected_checkpoint_drops_unknown_or_structured_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory).resolve()
+            report = sample()
+            report.update(ok=False, stages=proof.STAGES[:1])
+            report["gate"].update(firstPlanRejection={"headers": "synthetic private sentinel"},
+                                  unfinishedRead="https://synthetic.invalid/secret")
+            path = output / "report.json"
+            path.write_text(json.dumps(report), encoding="utf-8")
+            path.chmod(0o600)
+            checkpoint = proof.rejected_checkpoint(output)
+            self.assertEqual(checkpoint["completedStages"], 1)
+            self.assertNotIn("firstPlanRejection", checkpoint["gate"])
+            self.assertNotIn("unfinishedRead", checkpoint["gate"])
+            self.assertNotIn("synthetic", json.dumps(checkpoint))
 
     def test_discovery_supervisor_pins_only_pc_and_refuses_any_cdn_dial(self):
         for media_dials in (0, 1):
