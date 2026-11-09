@@ -118,6 +118,11 @@ Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为�
 - [音效共用页头](effects-directory-desktop.txt)只在当前账号选中且确认配置
   本机均衡器时提供该开关。Linux 实窗 10 态验证跨页签开关、同一条目/暂停位置、
   一次解码和两次设置提交；独立 PEQ、权限和目录请求不走此开关。
+- 集成树 `3aa38cd320ed102915cfafe3e8b02e5ca53e6df1` 的搜索断网、音效页头与
+  [普通队列播客原文件定位](queue-voice-menu.txt)已在同一个
+  编译版本复验，各 10 个 Linux WebView 状态。选中文件使用合成 FileManager1，
+  不替换播放实例；无真实账号请求或写入。前端 1040 项、格式、类型及生产构建通过；
+  30 张截图及联合报告索引为 `.build/ui-proof/phase203-broad-ux/report.json`。
 - [播客和有声书分类](search-discovery-ui-contracts.txt)恢复官方评分；[播放最新](follow-new-song-contracts.txt)在首曲没有线上授权时仅使用当前账号同一歌曲已验证的下载。[进程内 FLAC](limiter-inprocess-decoder.txt)验证了专有前瞻限幅器前的解码和样本跳转，仍未切换正式播放器；网络授权与输入边界见[源契约](limiter-authorized-source-contract.txt)。
 - [本人排行删除](profile-play-record-contracts.txt)支持按时期删除并在不确定时只读核对；[外部歌单](external-playlist-import-contracts.txt)支持按官方规则预览分享链接，未提交外部导入任务。[冷离线 FLAC](cold-offline-flac-handoff.txt)通过合成凭据、真实解码、原路径替换与会话撤销的专项验证，正式播放器未切换。
 - [用户主页笔记](profile-notes-contracts.txt)独立读取作者列表，复用动态详情和评论，保留返回焦点；[社区编辑器](community-composer-contracts.txt)支持五类附件搜索及账号隔离的本机草稿。[排行卡](profile-play-record-contracts.txt)按作者播放周榜，同源暂停和恢复保留播放实例。三项已过 Linux 合并版 WebView，未执行真实发布。
