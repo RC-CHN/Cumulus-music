@@ -194,6 +194,10 @@ async fn checked_directories_require_confirm_preserve_overlaps_and_keep_loaded_p
         assert_eq!(std::fs::read(path).unwrap(), [index as u8]);
     }
     drop(music);
+    // An unchanged fingerprint lets a fresh scan reuse metadata without
+    // entering the probe. Change the hidden file so we can actually hold
+    // verification before the root is published again.
+    std::fs::write(&samples[0], [0, 1]).unwrap();
     let rescanning = Arc::new(Probe::default());
     rescanning.hold.store(true, Ordering::SeqCst);
     let (_, reopened, _) = client(&state, rescanning.clone());
@@ -210,10 +214,17 @@ async fn checked_directories_require_confirm_preserve_overlaps_and_keep_loaded_p
     let new_selection = reopened
         .apply_local_directories(saved.revision.clone(), choices(&saved, |_, _| true))
         .await;
+    let entered = tokio::time::timeout(Duration::from_secs(4), async {
+        while !rescanning.entered.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
     let before_ready = reopened.local_page(LocalQuery::default()).await;
     // The still-unverified old row must not flash back before a fresh scan.
     rescanning.hold.store(false, Ordering::SeqCst);
     let new_selection = new_selection.unwrap();
+    entered.expect("the changed file must reach the held metadata probe");
     assert_eq!(before_ready.unwrap().total, 2);
     index_ready(&reopened, 3).await;
     assert_eq!(
