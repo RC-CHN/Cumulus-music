@@ -1495,7 +1495,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, library-search, local-desktop, account-catalog]
+        shard: [playback, library-search, local-desktop, account-shell, catalog-community]
     defaults:
       run:
         shell: bash
@@ -1703,8 +1703,8 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-native-sidecar-lyrics-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-vinyl-lyric-credits-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
-      - name: Verify account, platform shell, catalog and community
-        if: matrix.shard == 'account-catalog'
+      - name: Verify account and platform shell
+        if: matrix.shard == 'account-shell'
         env:
           GDK_BACKEND: x11
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -1763,6 +1763,14 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
+      - name: Verify catalog and community
+        if: matrix.shard == 'catalog-community'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-rankings-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
