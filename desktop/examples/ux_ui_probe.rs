@@ -226,6 +226,24 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn request_copyright_notification<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::CopyrightNotificationRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        if let Some(signed) = self.signed_search.as_ref() {
+            signed
+                .client
+                .request_copyright_notification(read, revision, permission)
+        } else {
+            Box::pin(async {
+                Err(cumulus_core::Error::State(
+                    "sealed copyright context is unavailable",
+                ))
+            })
+        }
+    }
     fn download_system_liked_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(download_liked_fixture::enabled().then(|| download_liked_fixture::REVISION.into()))
     }
@@ -533,6 +551,11 @@ impl Api for Library {
             {
                 return signed.client.request(path, args, cached).await;
             }
+            assert!(
+                !daily_notification_fixture::copyright_case().is_some()
+                    || path != "/api/unique/playlist/create",
+                "readonly copyright proof must never dispatch unique playlist creation"
+            );
             if let Some(response) = daily_notification_fixture::response(path, &args, cached) {
                 return Ok(response);
             }
@@ -1262,6 +1285,7 @@ fn main() {
                 Ok(audio)
             });
         }
+        daily_notification_fixture::seed_playback(&client)?;
         if playback_cache_proof {
             client = cumulus_desktop::configure_streaming_cache(client);
             assert_eq!(client.streaming_media_cache_status()?.is_none(),
@@ -1900,7 +1924,7 @@ fn main() {
         let window=builder.build()?;
         if daily_notification_proof {
             window.set_focus()?;
-            if daily_notification_fixture::mode().as_deref()==Some("fullscreen") {
+            if matches!(daily_notification_fixture::mode().as_deref(), Some("fullscreen" | "copyright_fullscreen")) {
                 window.set_fullscreen(true)?;
             }
         }

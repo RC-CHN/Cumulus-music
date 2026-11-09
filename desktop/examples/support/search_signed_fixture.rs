@@ -245,7 +245,10 @@ impl HttpBackend for Backend {
                     .get("params")
                     .ok_or(Error::Response("missing sealed EAPI params"))?,
             )?;
-            if !matches!(path.as_str(), ACCOUNT | ASSIGNMENT_PATH)
+            use super::daily_notification_fixture as notice;
+            let copyright_path = notice::copyright_case().is_some()
+                && matches!(path.as_str(), notice::POPUP | notice::DETAILS);
+            if (!copyright_path && !matches!(path.as_str(), ACCOUNT | ASSIGNMENT_PATH))
                 || plan.url.path() != ApiOrigin::Pc.request_url(WireRoute::Eapi, &path)?.path()
             {
                 return Err(Error::State(
@@ -285,7 +288,14 @@ impl HttpBackend for Backend {
                     "signed search credentials/context do not match the restored account",
                 ));
             }
-            let response = if path == ACCOUNT {
+            let response = if copyright_path {
+                if !self.account_restored.load(Ordering::Acquire) {
+                    return Err(Error::State(
+                        "copyright requires the restored signed account",
+                    ));
+                }
+                notice::signed_reply(&path, &args)?
+            } else if path == ACCOUNT {
                 if args != json!({}) {
                     return Err(Error::Response("unexpected signed account arguments"));
                 }
