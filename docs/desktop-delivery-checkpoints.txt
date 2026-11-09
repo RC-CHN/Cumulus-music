@@ -53,6 +53,19 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     通知的周期与切号隔离由合成原生时钟验证。证据位于
     `.build/ui-proof/phase151-next-ready/integration-report.json`。这批
     核验未涉及正式安装、Windows 或真实账号。
+  - 本机集成树 `97708441` 用同一套生产前端资源实际验证歌手「添加所选至
+    播放列表」和普通队列声音菜单：前者 6 态，后者 10 态，均保留逐态 JSON
+    和 PNG。非空队列的批量添加保留暂停项和位置；空队列从所选首项起播。
+    声音菜单通过真实 X11 输入核对暂停、恢复、移除、退场和打开下载目录；
+    播放使用原生 libmpv 的合成媒体。该树 1035 项前端检查通过；Windows
+    持有文件与退出许可只有定向测试及 GNU 交叉 Clippy，不称实际 Windows 已通过。
+  - 独立源码 `cca461b9` 在封闭 Linux WebView 验证下载实时速率 7 态：
+    传输、停滞、暂停、精确 Range 续传和完成。最终 FLAC 和合成源逐字节一致，
+    速率不持久化。独立源码 `6fc4a22b` 在 3 次 GTK/WebView 启动中验证
+    主界面字体 11 态；本机保存、缺失时回退、恢复默认、暂停与队列不变，
+    桌面歌词设置独立。两批随后合入产品候选，分别可用
+    scripts/ci/download_speed_smoke.py 和 scripts/ci/interface_font_smoke.py
+    复验；这些独立报告不当作最终合并提交的 Windows 或实服证据。
 
 当前不能据此关闭的要件
   - 主线的完整托管 gate、Windows 实际 WebView/系统媒体以及发行附件必须
