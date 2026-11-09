@@ -2,6 +2,8 @@
 #[cfg(all(test, windows))]
 #[path = "../../../src/native_open/windows/effective.rs"]
 mod effective;
+#[cfg(all(test, windows))]
+mod effective_cross_process;
 #[cfg(windows)]
 #[path = "../../../src/native_open/windows/identity.rs"]
 mod identity;

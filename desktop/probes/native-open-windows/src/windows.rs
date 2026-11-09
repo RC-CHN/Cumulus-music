@@ -7,7 +7,7 @@ mod stable_probe;
 use crate::{
     identity::{Identity, local_path},
     security::{Descriptor, open_handle, wide, with_logon_security},
-    wire,
+    wire::{self, READY, receipt, receipt_code},
 };
 use std::{
     env,
@@ -38,7 +38,6 @@ use windows_sys::Win32::{
 
 const HANDSHAKE: Duration = Duration::from_secs(5);
 const CHILD: Duration = Duration::from_secs(10);
-const READY: u8 = 6;
 const ACCEPTED: u8 = 0;
 const UNAVAILABLE: u8 = 2;
 const INVALID: u8 = 3;
@@ -231,16 +230,6 @@ fn open(address: &str) -> io::Result<NamedPipeClient> {
     unsafe { NamedPipeClient::from_raw_handle(raw) }
 }
 
-fn receipt(code: u8) -> [u8; 5] {
-    [
-        wire::MAGIC[0],
-        wire::MAGIC[1],
-        wire::MAGIC[2],
-        wire::MAGIC[3],
-        code,
-    ]
-}
-
 async fn write_code(pipe: &mut NamedPipeServer, code: u8) -> io::Result<()> {
     timeout(HANDSHAKE, pipe.write_all(&receipt(code))).await??;
     Ok(())
@@ -249,8 +238,7 @@ async fn write_code(pipe: &mut NamedPipeServer, code: u8) -> io::Result<()> {
 async fn read_code(pipe: &mut NamedPipeClient) -> io::Result<u8> {
     let mut bytes = [0; 5];
     timeout(HANDSHAKE, pipe.read_exact(&mut bytes)).await??;
-    demand(&bytes[..4] == wire::MAGIC, "wrong lab receipt")?;
-    Ok(bytes[4])
+    at("check lab receipt", receipt_code(bytes))
 }
 
 async fn read_group(pipe: &mut NamedPipeServer, limit: Duration) -> io::Result<Vec<String>> {

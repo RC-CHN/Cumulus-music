@@ -161,3 +161,17 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/41916366610
 保留、仅当前登录会话的 DACL、单实例排他、超长头拒绝，以及等待超时、停止读取和
 停止接入后的重叠 I/O 排空。两份回执均无正式功能、真实文件打开或注册表写入；
 未验证跨登录/受限令牌拒绝，也未验证正式播放器接线。
+
+独立跨进程有效令牌复验
+----------------------
+在原生 Windows x64 上，只构建并执行此独立用例：
+
+  cargo test --locked --manifest-path desktop/probes/native-open-windows/Cargo.toml --target x86_64-pc-windows-msvc effective_cross_process::effective_cross_process_product_protocol -- --exact --nocapture
+
+同一个保留的 Win32 管道依次接收相同测试程序的独立子进程。两端核对真实管道对端
+属于预期的不同进程，并共享产品保护的登录 DACL、有效访问形状、HELLO、
+READY/回执编码、限长 Unicode 帧和回执消费。负例确认已认证但未就绪的进程
+不发送路径，以及同登录受限线程在其独立主进程令牌已通过的情况下仍无法取得
+READY。使用全新实验命名空间，不打开媒体或图形界面，不输出路径、PID、
+令牌内容或管道名。没有覆盖正式包的资料目录锁、播放器就绪、窗口恢复、
+媒体解码或音频输出；GNU 交叉链接不算已在 Windows 执行。

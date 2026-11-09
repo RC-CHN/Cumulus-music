@@ -377,7 +377,7 @@ fn privileges(token: HANDLE) -> io::Result<Vec<(i32, u32, u32)>> {
 }
 
 #[cfg(test)]
-fn restricted_same_logon_for_test() -> OwnedHandle {
+pub(super) fn restricted_same_logon_for_test() -> OwnedHandle {
     use windows_sys::Win32::{
         Security::{CreateRestrictedToken, DISABLE_MAX_PRIVILEGE, TOKEN_DUPLICATE, TokenLogonSid},
         System::Threading::OpenProcessToken,
@@ -428,7 +428,7 @@ fn restricted_same_logon_for_test() -> OwnedHandle {
 }
 
 #[cfg(test)]
-fn with_test_impersonation<T>(token: &OwnedHandle, action: impl FnOnce() -> T) -> T {
+pub(super) fn with_test_impersonation<T>(token: &OwnedHandle, action: impl FnOnce() -> T) -> T {
     use windows_sys::Win32::Security::ImpersonateLoggedOnUser;
     assert!(matches!(current_thread_token(), Ok(None)));
     // SAFETY: valid test-only restricted token; the scope restores it.

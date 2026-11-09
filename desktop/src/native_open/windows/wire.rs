@@ -3,6 +3,14 @@ use std::{fmt, io};
 
 pub const MAGIC: &[u8; 4] = b"CFW1";
 pub const MAX: usize = 32 * 1024;
+#[cfg(windows)]
+pub(super) const READY: u8 = 6;
+#[cfg(windows)]
+#[allow(
+    dead_code,
+    reason = "the older standalone lab does not consume product receipts"
+)]
+pub(super) const CONSUMED: u8 = 7;
 const MAX_PATH: usize = 4096;
 const MAX_COUNT: u8 = 8;
 
@@ -26,6 +34,19 @@ pub fn is_oversized(error: &io::Error) -> bool {
 
 fn invalid() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "malformed lab frame")
+}
+
+#[cfg(windows)]
+pub(super) fn receipt(code: u8) -> [u8; 5] {
+    [MAGIC[0], MAGIC[1], MAGIC[2], MAGIC[3], code]
+}
+
+#[cfg(windows)]
+pub(super) fn receipt_code(bytes: [u8; 5]) -> io::Result<u8> {
+    if bytes[..4] != MAGIC[..] {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    Ok(bytes[4])
 }
 
 fn checked(value: &[u8]) -> io::Result<&str> {

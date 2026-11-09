@@ -4,7 +4,7 @@ use super::{
     identity::{Identity, local_path},
     security::{open_handle, wide, with_logon_security},
     stable::{Server, Stop},
-    wire,
+    wire::{self, CONSUMED, READY, receipt, receipt_code},
 };
 use crate::native_open::warm::{Reply, dispatch_windows, ready_windows};
 use std::{
@@ -28,8 +28,6 @@ use windows_sys::Win32::Foundation::{ERROR_NO_DATA, ERROR_PIPE_BUSY};
 
 const IO_LIMIT: Duration = Duration::from_secs(2);
 const ACK_LIMIT: Duration = Duration::from_secs(20);
-const READY: u8 = 6;
-const CONSUMED: u8 = 7;
 
 pub(crate) struct Listener {
     pipe: Server,
@@ -196,23 +194,10 @@ fn receive(pipe: &mut Server) -> io::Result<Vec<PathBuf>> {
         .collect()
 }
 
-fn receipt(code: u8) -> [u8; 5] {
-    [
-        wire::MAGIC[0],
-        wire::MAGIC[1],
-        wire::MAGIC[2],
-        wire::MAGIC[3],
-        code,
-    ]
-}
-
 async fn read_code(pipe: &mut NamedPipeClient, limit: Duration) -> io::Result<u8> {
     let mut bytes = [0; 5];
     timeout(limit, pipe.read_exact(&mut bytes)).await??;
-    if bytes[..4] != wire::MAGIC[..] {
-        return Err(io::ErrorKind::InvalidData.into());
-    }
-    Ok(bytes[4])
+    receipt_code(bytes)
 }
 
 async fn send(address: &str, access: &AccessShape, frame: &[u8]) -> Reply {
