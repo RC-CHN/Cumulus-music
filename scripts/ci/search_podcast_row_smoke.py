@@ -40,7 +40,7 @@ def main():
 
     with closing(TrustedDrag()) as pointer, (root / 'host.log').open('x', encoding='utf-8') as log:
         def input_at_capture(path, payload, _pid):
-            if path.stem not in ('ux_01_single_armed', 'ux_03_double_armed'):
+            if path.stem not in ('ux_01_single_armed', 'ux_03_double_armed', 'ux_04_double_played'):
                 return
             pointer.move(payload['pointer'])
             for _ in range(2 if path.stem == 'ux_03_double_armed' else 1):
@@ -57,6 +57,7 @@ def main():
     rows = {p.stem.split('_', 2)[2]: read(p) for p in sorted(out.glob('ux_*.json'))}
     assert tuple(rows) == STAGES
     assert rows['single_detail']['gestures'] == [['click', 1]]
+    assert complete['trustedIndexClicks'] == 1
     assert complete['gestures'] == [['click', 1], ['click', 1], ['click', 2], ['dblclick', 2]]
     assert rows['single_detail']['nativePlayer']['state'] == 'idle'
     assert rows['single_detail']['queue']['tracks'] == []
@@ -92,7 +93,7 @@ def main():
     locale = read(out / 'locale.json')
     assert locale == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}
     assert len(list(out.glob('ux_*.png'))) == len(STAGES)
-    report = dict(ok=True, actualWebView=True, trustedX11BodyGestures=True, nullOutput=True,
+    report = dict(ok=True, actualWebView=True, trustedX11BodyGestures=True, trustedX11IndexPause=True, nullOutput=True,
                   states=STAGES, screenshots=len(STAGES), locale=locale, classifiedReceipt=True,
                   oldEntryRetained=True, singleDetailWithoutPlayback=True, sameNativePause=True,
                   failedReadPreservedClock=True, realAccountWrites=0, networkNamespaceWithoutRoutes=True,

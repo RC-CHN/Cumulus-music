@@ -25,10 +25,11 @@
   }
   let epoch, step = 'startup', count = 0, last;
   const gestures = [];
+  let trustedIndexClicks = 0;
   for (const type of ['click','dblclick']) document.addEventListener(type, (event) => {
-    if (event.isTrusted && event.target instanceof Element &&
-      event.target.closest('.search-podcast-row') && !event.target.closest('button, a'))
-      gestures.push([type, event.detail]);
+    if (!event.isTrusted || !(event.target instanceof Element) || !event.target.closest('.search-podcast-row')) return;
+    if (type === 'click' && event.target.closest('[data-result-action="play"]')) trustedIndexClicks++;
+    else if (!event.target.closest('button, a')) gestures.push([type, event.detail]);
   }, true);
   const snapshot = async () => (last = await invoke('player_snapshot', { epoch }));
   const queue = () => invoke('player_queue', { epoch });
@@ -38,14 +39,14 @@
     return value.state === state && value.track?.voiceId === id && value.playId &&
       bar()?.dataset.playId === value.playId && bar()?.dataset.state === state && value;
   };
-  const rowPoint = () => {
-    const target = row()?.querySelector('.search-podcast-score');
-    assert(target, 'noninteractive score cell exists');
+  const targetPoint = (target) => {
+    assert(target, 'pointer target exists');
     const rect = target.getBoundingClientRect();
     const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
-    assert(target.contains(document.elementFromPoint(x,y)), 'noninteractive row body is unobstructed');
+    assert(target.contains(document.elementFromPoint(x,y)), 'actual pointer target is unobstructed');
     return { x:Math.round((screenX+x)*devicePixelRatio), y:Math.round((screenY+y)*devicePixelRatio) };
   };
+  const rowPoint = () => targetPoint(row()?.querySelector('.search-podcast-score'));
   async function capture(label, extra = {}) {
     const stage = `ux_${String(++count).padStart(2,'0')}_${label}`;
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -90,12 +91,14 @@
     const list=await queue();
     assert(list.tracks[0].entryId===oldQueue.current && list.tracks[1].track.voiceId==='251' &&
       list.tracks.at(-1).track.voiceId==='1' && list.current===first.entryId,'native order is old then whole descending list');
-    await capture('double_played',{first,old});
+    const pauseIndex=await wait(()=>ready(index())?.getAttribute('aria-label')?.startsWith('暂停') && index(),'same-source index pause');
+    pauseIndex.focus({preventScroll:true});
+    await capture('double_played',{first,old,pointer:targetPoint(pauseIndex)});
     step='index-pause';
-    (await wait(()=>ready(index())?.getAttribute('aria-label')?.startsWith('暂停') && index(),'same-source index pause')).click();
     const paused=await wait(current('1','paused'),'same decoder pauses');
     assert(paused.playId===first.playId&&paused.entryId===first.entryId&&paused.queueRevision===first.queueRevision,'index pause did not select again');
-    await capture('index_paused',{paused});
+    assert(trustedIndexClicks===1,'physical index click is trusted');
+    await capture('index_paused',{paused,trustedIndexClicks});
     step='failed-index';
     (await wait(()=>ready(index('8')),'other index playable')).click();
     await wait(()=>one('.playback-message [data-retry-key]'),'other radio failure visible');
@@ -104,7 +107,7 @@
     await capture('failed_kept',{unchanged});
     await action({kind:'stop'});
     await wait(async()=>(await snapshot()).state==='idle','explicit native stop');
-    await emit('complete',{ok:true,stageCount:count,gestures});
+    await emit('complete',{ok:true,stageCount:count,gestures,trustedIndexClicks});
   } catch (error) {
     await emit('failed',{step,count,message:String(error),last,gestures,
       page:one('.main-content')?.textContent.trim().slice(0,500)});
