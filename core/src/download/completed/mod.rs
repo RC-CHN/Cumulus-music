@@ -5,6 +5,7 @@ mod execute;
 pub(crate) mod fs;
 mod lyrics;
 mod prepare;
+mod reveal;
 mod types;
 mod working;
 use crate::{
@@ -14,6 +15,7 @@ use crate::{
     protocol::api::identifier,
     storage::{OperationLock, StateStore},
 };
+pub use reveal::DownloadFileReveal;
 use std::sync::Arc;
 pub(crate) use types::DeleteSource;
 pub use types::{
