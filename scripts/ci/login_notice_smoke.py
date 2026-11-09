@@ -106,6 +106,7 @@ def main():
     assert complete['stageCount'] == len(states) == len(STAGES)
     assert [state['stage'].split('_', 2)[2] for state in states] == STAGES
     by_name = dict(zip(STAGES, states))
+    badge = '/api/user/friend/new/song/notice/web/get'
     for index, state in enumerate(states):
         assert not state['overflow'] and state['focused'] and state['focusValid']
         assert state['focusVisible'], f"focus outside visible content: {state['stage']}"
@@ -113,7 +114,12 @@ def main():
         assert state['realMusicRequests'] == 0 and state['nativeCaptchaProvider']
         assert state['syntheticDeviceContext'] and state['nativeClientSignPresent'] is False
         assert state['windowsDeclaration'] and isinstance(state['nativeClientSignPresent'], bool)
-        assert state['fixture']['unexpectedRequests'] == 0
+        assert state['fixture']['unexpectedRequests'] == 0, (state['stage'], state['fixture']['modePaths'])
+        badge_reads = {} if index == 0 else {'2': 1}
+        if index == len(states) - 1:
+            badge_reads['5'] = 1
+        assert state['fixture']['communityBadgeReads'] == badge_reads, state['stage']
+        assert state['fixture']['paths'].get(badge, 0) == sum(badge_reads.values()), state['stage']
         assert state['passwordLength'] == 0
         account = state['nativeAccount']
         saved = state['savedAccounts']['value']
@@ -175,6 +181,10 @@ def main():
     assert requests.get('/api/login/penalty/status') == 3
     assert requests.get('/api/login/token/refresh/v1') == 1
     assert fixture['modePaths']['qr_authorize'].get('/api/login/token/refresh/v1') == 1
+    assert fixture['communityBadgeReads'] == {'2': 1, '5': 1}
+    assert {mode: paths[badge] for mode, paths in fixture['modePaths'].items() if badge in paths} == {
+        'seed_old': 1, 'qr_authorize': 1,
+    }
     for state in states[:-1]:
         assert state['fixture']['paths'].get('/api/login/token/refresh/v1', 0) == 0
     for mode in ['seed_old', 'risk_8810', 'risk_10004', 'disabled', 'upgrade_8820', 'upgrade_8810',
@@ -210,6 +220,9 @@ def main():
                 'SELECT 1 FROM state WHERE owner=? AND kind=? LIMIT 1',
                 ('device', 'identity'),
             ).fetchone() is None, 'hardware identity must stay outside synthetic account proofs'
+            assert connection.execute(
+                'SELECT 1 FROM state WHERE kind=? LIMIT 1', ('community-new-song-visit-v1',),
+            ).fetchone() is None, 'account adoption must not consume the followed-song notice'
     report = dict(ok=True, states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, nativeCaptchaProvider=True, realMusicRequests=0,
                   realAccountWrites=0, oldAccountRetainedUntilIdentity=True, noPasswordReplay=True,

@@ -22,6 +22,7 @@ use tokio::sync::oneshot;
 
 const NATIVE_PROOF: &str = "synthetic-native-only-completed-proof";
 const SEED_KEY: &str = "synthetic-native-only-security-ticket";
+const COMMUNITY_BADGE: &str = "/api/user/friend/new/song/notice/web/get";
 
 struct Held {
     kind: &'static str,
@@ -35,6 +36,7 @@ pub struct Service {
     paths: Mutex<BTreeMap<String, u64>>,
     mode_paths: Mutex<BTreeMap<String, BTreeMap<String, u64>>>,
     login_codes: Mutex<Vec<i64>>,
+    community_badge_reads: Mutex<BTreeMap<u64, u64>>,
     held: Mutex<Option<Held>>,
     browser_documents: Mutex<Vec<LoginDocument>>,
     captcha_calls: AtomicU64,
@@ -113,6 +115,7 @@ impl Service {
             "paths": *self.paths.lock().unwrap(),
             "modePaths": *self.mode_paths.lock().unwrap(),
             "loginCodes": *self.login_codes.lock().unwrap(),
+            "communityBadgeReads": *self.community_badge_reads.lock().unwrap(),
             "pending": pending,
             "heldReceiverClosed": held_receiver_closed,
             "browserDocuments": *self.browser_documents.lock().unwrap(),
@@ -215,6 +218,41 @@ impl HttpBackend for Service {
             }
             if path == "/api/relay/setting/show" {
                 return Ok(auth::reply(json!({"code":200,"data":{"groups":[]}}), None));
+            }
+            if path == COMMUNITY_BADGE {
+                // Official M198 reads the passive followed-song badge after
+                // adoption. Only the two synthetic selected users and the
+                // uncached empty business body are valid in this probe.
+                let expected = match mode.as_str() {
+                    "seed_old" => Some(2),
+                    "qr_authorize" => Some(5),
+                    _ => None,
+                };
+                let empty_body = data.as_object().is_some_and(|fields| {
+                    fields.contains_key("header")
+                        && fields
+                            .keys()
+                            .all(|key| matches!(key.as_str(), "header" | "e_r"))
+                });
+                if let Some(uid) = uid.filter(|uid| Some(*uid) == expected)
+                    && plan.url.path() == "/eapi/user/friend/new/song/notice/web/get"
+                    && plan.url.query().is_none()
+                    && empty_body
+                {
+                    let mut reads = self.community_badge_reads.lock().unwrap();
+                    let count = reads.entry(uid).or_default();
+                    *count += 1;
+                    if *count == 1 {
+                        return Ok(auth::reply(
+                            json!({"code":200,"data":{"style":"musician-empty","time":0}}),
+                            None,
+                        ));
+                    }
+                }
+                self.unexpected.fetch_add(1, Ordering::SeqCst);
+                return Err(Error::Response(
+                    "unexpected synthetic followed-song badge request",
+                ));
             }
             if path == "/api/login/token/refresh/v1" {
                 // The inherited fixture enables both official login flags.

@@ -174,6 +174,8 @@
     await stage('guest_ready_light', { expectGuest: true });
     await submitCase('seed_old');
     await wait(() => ready() && !one('dialog') && one('.account-button').textContent.includes('邮箱验证账号'), 'old synthetic account established');
+    await nativeWait(snapshot => snapshot.communityBadgeReads['2'] === 1,
+      'one passive followed-song badge read after the first account adoption');
 
     await submitCase('risk_8810'); await notice('risk');
     assert(one('.login-notice-title').textContent === '合成账号风险说明', '8810 official toast title');
@@ -296,6 +298,8 @@
     await wait(() => ready() && !one('dialog') && one('.account-button').textContent.includes('短信验证账号'), 'verified candidate adopted after identity read');
     await nativeWait(snapshot => snapshot.paths['/api/login/token/refresh/v1'] === 1,
       'one official-policy renewal check after verified account adoption');
+    await nativeWait(snapshot => snapshot.communityBadgeReads['5'] === 1,
+      'one passive followed-song badge read after the verified QR account adoption');
     await stage('security_qr_adopted_light', { expectNickname: '短信验证账号', code: 803 });
     await emit('complete', { ok: true, stageCount: count, loginNotices: true,
       expectNickname: '短信验证账号', returnedToPhone: true, noPasswordReplay: true,
