@@ -1917,6 +1917,18 @@ function openMessageTarget(epoch: string, target: MessageTarget): Page | undefin
     case 'mv':
       openMv(target.id);
       break;
+    case 'podcast':
+      if (origin.kind === 'podcasts') {
+        const messageRadioVisit = podcasts.openMessageRadio(target.id);
+        if (messageRadioVisit !== undefined)
+          music.navigate({ kind: 'podcasts', messageRadioVisit });
+      } else {
+        // An attachment opens the radio directly; it is not a click on a
+        // subscribed library card and cannot clear a subscription badge.
+        podcasts.navigate({ kind: 'radio', id: target.id, ascending: true }, false);
+        music.navigate({ kind: 'podcasts' });
+      }
+      break;
     case 'comment':
       if (target.resource.kind === 'album') {
         music.navigate({
@@ -2903,12 +2915,17 @@ function backFromPage() {
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
   else if (cloudBatchTarget.value) cloudBatchPage.value?.requestLeave();
   else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
-  else if (
-    music.page.value.kind === 'podcasts' &&
-    (podcasts.recentReturn.value || podcasts.voiceRecommendationReturn.value)
-  )
-    podcasts.back();
-  else music.back();
+  else if (music.page.value.kind === 'podcasts') {
+    const visit = music.page.value.messageRadioVisit;
+    if (visit !== undefined && podcasts.isContextualRadioBack(visit)) {
+      // Restore the underlying radio first, then the exact main route
+      // object so the message drawer can restore its attachment focus.
+      podcasts.back();
+      music.back();
+    } else if (podcasts.recentReturn.value || podcasts.voiceRecommendationReturn.value) {
+      podcasts.back();
+    } else music.back();
+  } else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
 let settingsFocus: { epoch: string; route: Page; section: string } | undefined;

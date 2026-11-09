@@ -240,6 +240,39 @@ fn attachment_targets_require_exact_compatible_resource_and_comment_identity() {
     assert!(attachment::forwarded(2, &json!({"resourceType":0,"resource":{"id":7}})).is_none());
 }
 
+#[test]
+fn collected_podcast_notice_uses_only_the_canonical_radio_id() {
+    let item = |id: Value| {
+        json!({"id":64,"notice":{"type":8,"djRadio":{
+        "id":id,"name":"Synthetic radio","url":"https://private.invalid/radio"
+    },"program":{"id":901},"song":{"id":902}}})
+    };
+    for id in [json!(81), json!("9007199254740997")] {
+        let row = super::projection::project_row(MessageTab::Notices, &item(id.clone()), "2");
+        let wire = serde_json::to_value(row).unwrap();
+        let id = id
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| id.to_string());
+        assert_eq!(wire["target"], json!({"kind":"podcast","id":id}));
+        assert_eq!(wire["caption"], "收藏了你的播客");
+        assert!(!wire.to_string().contains("private.invalid"));
+    }
+    for id in [
+        json!(null),
+        json!(0),
+        json!("081"),
+        json!("81/redirect"),
+        json!(true),
+    ] {
+        let row = super::projection::project_row(MessageTab::Notices, &item(id), "2");
+        assert!(
+            row.target.is_none(),
+            "an invalid radio cannot fall back to the episode"
+        );
+    }
+}
+
 #[tokio::test]
 async fn private_deletion_is_observation_bound_persisted_before_write_and_readback_only_after_loss()
 {

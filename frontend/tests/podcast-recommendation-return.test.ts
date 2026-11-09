@@ -142,3 +142,25 @@ test('an account switch or unrelated podcast navigation retires contextual Back'
       .every(({ query }) => query.scope.kind === 'podcasts'),
   );
 });
+
+test('message radio Back owns only its exact contextual visit', async () => {
+  const { model, reads } = setup();
+  model.navigate(radio('80', false), false);
+  await tick();
+  const first = model.openMessageRadio('81')!;
+  assert.equal(model.isContextualRadioBack(first), true);
+  assert.equal(model.openMessageRadio('81'), undefined, 'same radio creates no visit');
+  const nested = model.openMessageRadio('82')!;
+  assert.notEqual(nested, first);
+  assert.equal(model.isContextualRadioBack(first), false);
+  assert.equal(model.isContextualRadioBack(nested), true);
+  model.back();
+  assert.equal(model.isContextualRadioBack(first), true);
+  model.back();
+  await tick();
+  assert.deepEqual(reads.at(-1)?.query.scope, radio('80', false));
+  assert.equal(model.isContextualRadioBack(first), false);
+  const priorAccount = model.openMessageRadio('81')!;
+  model.connect(account('2'));
+  assert.equal(model.isContextualRadioBack(priorAccount), false);
+});

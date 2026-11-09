@@ -20,6 +20,9 @@ pub enum MessageTarget {
     Playlist {
         id: String,
     },
+    Podcast {
+        id: String,
+    },
     Album {
         id: String,
     },
@@ -176,6 +179,10 @@ pub(in crate::client::messages) fn notice(value: &Value) -> Option<MessageTarget
     match number(&value["type"])? {
         2 | 3 => playlist(&value["playlist"]),
         4 | 5 | 7 => voice(&value["program"]),
+        // NoticeItem.jsx:279–281 uses the radio id, never an episode/song id.
+        8 => Some(MessageTarget::Podcast {
+            id: positive_id(&value["djRadio"]["id"])?,
+        }),
         6 => {
             let comment = &value["comment"];
             thread_target(

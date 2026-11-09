@@ -300,6 +300,7 @@ const attachmentLabels: Record<MessageTarget['kind'], string> = {
   play_track: '播放单曲',
   play_voice: '播放声音',
   playlist: '查看歌单',
+  podcast: '查看播客',
   album: '查看专辑',
   artist: '查看艺人',
   mv: '打开 MV',

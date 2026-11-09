@@ -50,7 +50,7 @@ type Destination =
       rankingState?: import('../services/rankings').RankingUiState;
     }
   | { kind: 'together' }
-  | { kind: 'podcasts' }
+  | { kind: 'podcasts'; messageRadioVisit?: number }
   | { kind: 'podcast_category'; id: string }
   | { kind: 'podcast_discovery' }
   | {

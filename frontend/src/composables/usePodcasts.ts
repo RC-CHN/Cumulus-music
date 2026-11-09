@@ -43,10 +43,11 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
   const canBack = ref(false);
   const recentSelected = ref(false);
   const recentReturn = ref(false);
-  const voiceRecommendationHistory = shallowRef<
-    { query: PodcastQuery; recent: boolean; recentBack: boolean; canBack: boolean }[]
+  const contextualRadioHistory = shallowRef<
+    { visit: number; query: PodcastQuery; recent: boolean; recentBack: boolean; canBack: boolean }[]
   >([]);
-  const voiceRecommendationReturn = computed(() => voiceRecommendationHistory.value.length > 0);
+  let contextualRadioVisit = 0;
+  const voiceRecommendationReturn = computed(() => contextualRadioHistory.value.length > 0);
   const recommendedCards = computed(() => {
     const snapshot = page.value;
     return !recentSelected.value &&
@@ -84,7 +85,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     loading.value = false;
     busy.value = false;
     history = [];
-    voiceRecommendationHistory.value = [];
+    contextualRadioHistory.value = [];
     canBack.value = false;
     recentSelected.value = false;
     recentReturn.value = false;
@@ -182,7 +183,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     if (!epoch.value) return;
     read++;
     history = [];
-    voiceRecommendationHistory.value = [];
+    contextualRadioHistory.value = [];
     canBack.value = false;
     loading.value = false;
     notice.value = '';
@@ -193,7 +194,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
   }
   function navigate(scope: PodcastScope, libraryBack = true) {
     if (voiceRecommendationReturn.value) {
-      voiceRecommendationHistory.value = [];
+      contextualRadioHistory.value = [];
       canBack.value = recentReturn.value || history.length > 0;
     }
     if (recentSelected.value) {
@@ -221,7 +222,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     error.value = '';
     if (visible) void load(true);
   }
-  function openVoiceRecommendation(id: string) {
+  function openContextualRadio(id: string) {
     const previous = query.value;
     if (
       !visible ||
@@ -231,11 +232,13 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       (!recentSelected.value && previous.scope.kind === 'radio' && previous.scope.id === id)
     )
       return;
-    // The app is already on the generic podcasts page. Only this transition
-    // owns the current radio (or Recent view) as a contextual Back destination.
-    voiceRecommendationHistory.value = [
-      ...voiceRecommendationHistory.value,
+    // The app is already on the generic podcasts page. This visit owns
+    // the current radio (or Recent view) as a contextual Back destination.
+    const visit = ++contextualRadioVisit;
+    contextualRadioHistory.value = [
+      ...contextualRadioHistory.value,
       {
+        visit,
         query: { ...previous, scope: { ...previous.scope } },
         recent: recentSelected.value,
         recentBack: recentReturn.value,
@@ -251,6 +254,10 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       keyword: '',
       offset: 0,
     });
+    return visit;
+  }
+  function isContextualRadioBack(visit: number) {
+    return contextualRadioHistory.value.at(-1)?.visit === visit;
   }
   function openCard(id: string) {
     const shown = page.value;
@@ -317,9 +324,9 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     navigate({ kind: 'radio', id, ascending: true });
   }
   function back() {
-    const contextual = voiceRecommendationHistory.value.at(-1);
+    const contextual = contextualRadioHistory.value.at(-1);
     if (contextual) {
-      voiceRecommendationHistory.value = voiceRecommendationHistory.value.slice(0, -1);
+      contextualRadioHistory.value = contextualRadioHistory.value.slice(0, -1);
       recentSelected.value = contextual.recent;
       recentReturn.value = contextual.recentBack;
       canBack.value = contextual.canBack;
@@ -479,7 +486,9 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     canCollectRecommendation,
     collectRecommended,
     openRecommended,
-    openVoiceRecommendation,
+    openVoiceRecommendation: openContextualRadio,
+    openMessageRadio: openContextualRadio,
+    isContextualRadioBack,
     open,
     back,
     search,

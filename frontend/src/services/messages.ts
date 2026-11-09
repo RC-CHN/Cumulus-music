@@ -24,7 +24,10 @@ export interface MessageCountStream {
   close(): void;
 }
 export type MessageTarget =
-  | { kind: 'play_track' | 'play_voice' | 'playlist' | 'album' | 'artist' | 'mv'; id: string }
+  | {
+      kind: 'play_track' | 'play_voice' | 'playlist' | 'podcast' | 'album' | 'artist' | 'mv';
+      id: string;
+    }
   | { kind: 'comment'; resource: CommentResource; commentId: string };
 
 export interface MessageRow {
