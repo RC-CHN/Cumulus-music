@@ -15,7 +15,7 @@
   /api/resource/commentInfo/list {resourceType:1,resourceIds:"[<字符串ID>]"};
   仅显示精确 A_DJ_1_<节目ID> 的非零有效数量。已下载声音的历史 type 4 分支不改变。
   菜单立即可操作，数量单独有界读取；无默认网络路由或失败留普通标签。
-  选中行、账户、播单顺序或 revision 变化后不展示迟到数据，原生不会对旧作用域读写。
+  选中行、账户、播单顺序或 revision 变化后不展示迟到数据；已失效的作用域不能发起新读取。
 - M/3085:1310–1389,1578–1603、M/198:1465–1479：声音分享不请求歌曲分享权限，
   官方声音路由 dj 区别于播单 djradio。分享预览/复制只生成 https://music.163.com/dj?id=<节目ID>；
   不附用户或签名参数、不发动态/私信，也不接专有分享平台。
@@ -28,3 +28,6 @@
 - Rust 定向测试见 client_podcast/program_menu.rs、podcast_download.rs；Linux 实际
   WebKitGTK 使用 podcast_recent_ui_probe 与 scripts/ci/podcast_program_menu_smoke.py，
   合成节目、账号、权限、音频，实际 null 输出；不访问真实账户或服务。
+  封闭验证：定向 Rust 40 个、前端 1011 个测试通过；Linux WebView 7 个阶段
+  覆盖 More/Escape、可见节目右键与过期数量、分享及两种复制、暂停状态下下一首、
+  下载弹窗取消、节目评论路由、按播单播放。已下载目录为原生临时文件测试，未启动真实文件管理器。

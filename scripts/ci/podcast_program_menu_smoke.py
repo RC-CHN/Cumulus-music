@@ -55,6 +55,7 @@ def main():
         'play': '播放', 'next': '下一首播放', 'comments': '查看评论(51)',
         'download': '下载', 'share': '分享...', 'copy': '复制链接',
     }, stages['more']
+    assert stages['right_click']['pointerHitVoice'] == '503'
     assert dict(stages['right_click']['menu'])['comments'] == '查看评论(53)'
     link = 'https://music.163.com/dj?id=503'
     assert stages['share']['link'] == link and stages['share']['copied'] == [link]
@@ -74,8 +75,17 @@ def main():
     assert played['origin'] == {'kind':'podcast','id':'8'} and played['state'] == 'playing', played
     calls = complete['calls']
     count_args = [row for path,row in calls if path == COUNT]
-    assert count_args == [{'resourceType':1,'resourceIds':json.dumps([id])}
-                          for id in ('501','501','503','503','503','503','503','504')], count_args
+    menu_ids = ('501','501','503','503','503','503','503','504')
+    receipts = stages['play']['countReceipts']
+    assert [receipt['target']['voiceId'] for receipt in receipts] == list(menu_ids), receipts
+    assert all(receipt['owner'] == receipt['result']['epoch'] and
+               receipt['target'] == {**target, 'voiceId': receipt['target']['voiceId']}
+               for receipt in receipts), receipts
+    assert [receipt['result']['value'] for receipt in receipts] == [51,51,53,53,53,53,53,54]
+    # Baseline playback and the final radio selection also invoke the existing
+    # player-bar observer for the current program (501 and then 504).
+    wire_ids = (*menu_ids[:4], '501', *menu_ids[4:], '504')
+    assert count_args == [{'resourceType':1,'resourceIds':json.dumps([id])} for id in wire_ids], count_args
     assert any(path == '/api/v1/resource/comments/A_DJ_1_503' for path,_ in calls), calls
     assert not any(path == '/api/song/enhance/privilege' for path,_ in calls), calls
     screenshots = len(list(output.glob('ux_*.png')))

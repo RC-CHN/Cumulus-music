@@ -22,9 +22,16 @@
     while (performance.now() < until) { const value = await fn(); if (value) return value; await sleep(50); }
     throw Error(label);
   }
+  const transitions = () => !one('.page-enter-active,.page-leave-active,.modal-enter-active,.modal-leave-active,.menu-enter-active,.menu-leave-active');
   async function click(find, label) {
-    const el = await wait(() => { const el = find(); return enabled(el) && el; }, label);
-    el.scrollIntoView({block:'nearest'});
+    const el = await wait(() => { const el = find(); return transitions() && enabled(el) && el; }, label);
+    el.scrollIntoView({block:'nearest',behavior:'instant'});
+    await frame();
+    await wait(() => {
+      if (find()!==el || !enabled(el) || !transitions()) return false;
+      const r=el.getBoundingClientRect();
+      return el.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));
+    }, label+' hit target after scroll');
     el.focus({preventScroll:true});
     el.click();
     return el;
@@ -40,6 +47,7 @@
       (count === undefined || item('comments')?.textContent.trim() === `查看评论(${count})`), `program menu ${id}`);
   }
   async function capture(label, extra = {}) {
+    await wait(transitions,'settled presentation '+label);
     await frame();
     const open = menu(), rect = open?.getBoundingClientRect();
     assert(!rect || (rect.left >= 7 && rect.top >= 7 && rect.right <= innerWidth-7 && rect.bottom <= innerHeight-7), 'menu fits viewport');
@@ -89,14 +97,20 @@
     hold=true;
     key(trigger('501'),'F10',true);
     await wait(() => release && menu()?.getAttribute('aria-label')?.endsWith('501'),'old menu count awaiting delivery');
-    const next = row('503'), rect = next.getBoundingClientRect();
-    next.dispatchEvent(new MouseEvent('contextmenu',{button:2,bubbles:true,cancelable:true,clientX:rect.right-8,clientY:rect.bottom-4}));
+    const next = row('503');
+    next.scrollIntoView({block:'center',behavior:'instant'});
+    await frame();
+    const rect = next.getBoundingClientRect();
+    const x = rect.left + Math.min(130,rect.width/2), y = rect.top + rect.height/2;
+    const hit = document.elementFromPoint(x,y);
+    assert(hit?.closest('.episode-row')===next,'context point hits the visible second program');
+    hit.dispatchEvent(new MouseEvent('contextmenu',{button:2,bubbles:true,cancelable:true,clientX:x,clientY:y}));
     await menuReady('503',53);
     hold=false;
     release();
     await frame();
     assert(item('comments')?.textContent.trim()==='查看评论(53)','late other count did not replace this menu');
-    await capture('right_click');
+    await capture('right_click',{pointerHitVoice:next.dataset.voiceId});
     await click(() => item('share'),'open program share');
     const sharing = await wait(() => dialog('track-share-dialog'),'program share dialog');
     const link='https://music.163.com/dj?id=503';
@@ -140,10 +154,12 @@
     await click(() => trigger('504'),'More for play');
     await menuReady('504',54);
     await click(() => item('play'),'play in surrounding radio');
-    await wait(async()=>{const v=await state();return v.state==='playing' && v.track?.voiceId==='504' && v.queueLen===3;},'full radio queue plays selected program');
+    await wait(async()=>{const v=await state();return v.state==='playing' && v.position>.2 && v.track?.voiceId==='504' && v.queueLen===3;},'full radio queue plays selected program');
     await capture('play');
     await emit('complete',{ok:true,stageCount,realMusicRequests:0,realAccountWrites:0,physicalAudioVerified:false});
   } catch(error) {
-    await emit('failed',{ok:false,last,error:String(error?.message ?? JSON.stringify(error)),countReceipts,copied,queueCalls});
+    await emit('failed',{ok:false,last,error:String(error?.message ?? JSON.stringify(error)),countReceipts,copied,queueCalls,
+      menu:menu()?.outerHTML, trigger504:trigger('504')?.outerHTML, motion:transitions(),
+      route:one('.main-content h1')?.textContent.trim()});
   }
 })();
