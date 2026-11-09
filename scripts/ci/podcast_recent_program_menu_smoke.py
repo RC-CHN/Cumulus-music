@@ -51,12 +51,16 @@ def verify(output, screenshots):
     assert stages['share']['link'] == link and stages['share']['copied'] == [link]
     step = stages['next']
     assert step['copied'] == [link, link] and len(step['queueCalls']) == 1
-    assert step['queueCalls'][0]['action'] == {
+    assert complete['queueCalls'] == step['queueCalls']
+    receipt = step['queueCalls'][0]
+    assert receipt['owner'] == valid['owner']
+    assert receipt['action'] == {
         'kind': 'queue_recent_program', 'target': target,
         'expected_queue_revision': step['previous']['revision'],
     }
     assert step['native']['revision'] != step['previous']['revision']
     assert step['native']['state'] == 'paused' and step['native']['rows'] == ['501', '503']
+    assert all(receipt[key] == step['native'][key] for key in ('revision', 'playId', 'entryId'))
     assert all(step['native'][key] == step['previous'][key] for key in ('playId', 'entryId', 'position'))
     assert stages['download']['dialog'] and stages['download']['native'] == step['native']
     assert stages['comments']['native'] == step['native']

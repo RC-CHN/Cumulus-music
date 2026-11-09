@@ -109,8 +109,10 @@
     observe('podcastRecentProgramMenu', ([owner, target], value) => menuReplies.push({ owner, target, value }),
       ([owner, target], error) => menuReplies.push({ owner, target, error: error?.code }));
     observe('playSelection', ([owner, selection]) => selections.push({ owner, selection }));
-    observe('playerAction', ([owner, action]) => {
-      if (action.kind === 'queue_recent_program') queueCalls.push({ owner, action });
+    observe('playerAction', ([owner, action], value) => {
+      if (action.kind === 'queue_recent_program') queueCalls.push({
+        owner, action, revision: value.queueRevision, playId: value.playId, entryId: value.entryId,
+      });
     });
     observe('copyText', ([value]) => copied.push(value));
 
@@ -178,8 +180,18 @@
     await click(() => trigger('503'), 'More for next');
     await menuReady('503', 53);
     await click(() => item('next'), 'queue the selected recent program');
-    await wait(async () => (await queue()).tracks.map((entry) => entry.track.voiceId).join(',') === '501,503',
-      'native queue contains exactly the retained and inserted program');
+    const queued = await wait(async () => {
+      const value = await queue();
+      return value.tracks.map((entry) => entry.track.voiceId).join(',') === '501,503' && value;
+    }, 'native queue contains exactly the retained and inserted program');
+    // The actor can publish its queue before WebView receives the command's
+    // acknowledgement. Require both independent observations before capture.
+    const receipt = await wait(() => queueCalls[0], 'native queue action acknowledgement');
+    assert(queueCalls.length === 1 && receipt.owner === epoch &&
+      receipt.action.expected_queue_revision === parked.queueRevision &&
+      receipt.action.target.revision === current && receipt.action.target.voiceId === '503' &&
+      receipt.revision === queued.revision && receipt.playId === parked.playId &&
+      receipt.entryId === parked.entryId, 'acknowledged the same queue edit and retained decoder');
     await capture('next', { copied: copied.slice(), queueCalls: queueCalls.slice(),
       previous: { playId: parked.playId, entryId: parked.entryId, position: parked.position,
         revision: parked.queueRevision } });
@@ -221,7 +233,8 @@
     }, 'same current program remains playing');
     await capture('current_play', { selections: selections.slice(),
       before: { playId: playing.playId, entryId: playing.entryId, position: playing.position } });
-    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, realAccountWrites: 0 });
+    await emit('complete', { ok: true, stageCount, queueCalls: queueCalls.slice(),
+      realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, last, error: String(error?.message ?? JSON.stringify(error)),
       pages, menuReplies, selections, queueCalls, menu: menu()?.outerHTML,
