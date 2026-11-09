@@ -13,12 +13,15 @@ import {
   playlistSelectionNeighbor,
 } from '../services/playlistDragSelection';
 import { useVirtualRows } from '../composables/useVirtualRows';
+import { expandedRows, rowExtent, rowTop } from '../services/virtualWindow';
 import type { TrackView } from '../services/contracts';
 import type { AlbumDurationOrder } from '../services/albumDurationSort';
+import type { SearchSongTableHint } from '../services/search';
 import TrackRow from './TrackRow.vue';
 const props = defineProps<{
   tracks: TrackView[];
   matchKeyword?: string;
+  searchTitleHints?: readonly (SearchSongTableHint | undefined)[];
   durationOrder?: AlbumDurationOrder;
   originalRecordings?: ReadonlySet<string>;
   liked: Set<string>;
@@ -54,6 +57,17 @@ const emit = defineEmits<{
   ];
 }>();
 const rowHeight = 56;
+const searchRows = computed(
+  () =>
+    props.searchTitleHints &&
+    expandedRows(
+      props.searchTitleHints.map(
+        (hint) => (hint?.aliasParts ? 15 : 0) + (hint?.lyricParts ? 15 : 0),
+      ),
+    ),
+);
+const rowOffset = (index: number) => rowTop(index, rowHeight, searchRows.value);
+const rowSize = (index: number) => rowExtent(index, rowHeight, searchRows.value);
 const {
   container: scroller,
   start,
@@ -62,7 +76,12 @@ const {
   reset,
   restore: restoreScroll,
   center,
-} = useVirtualRows(() => props.tracks.length, rowHeight);
+} = useVirtualRows(
+  () => props.tracks.length,
+  rowHeight,
+  8,
+  () => searchRows.value,
+);
 const rows = computed(() => props.tracks.slice(start.value, end.value));
 const selection = shallowRef(emptyPlaylistDragSelection());
 const selected = computed(() => selection.value.ids);
@@ -149,10 +168,10 @@ function plainRelease(event: MouseEvent) {
 async function focusRow(index: number) {
   const node = scroller.value;
   if (!node) return;
-  const top = index * rowHeight;
+  const top = rowOffset(index);
+  const bottom = rowOffset(index + 1);
   if (top < node.scrollTop) node.scrollTop = top;
-  else if (top + rowHeight > node.scrollTop + node.clientHeight)
-    node.scrollTop = top + rowHeight - node.clientHeight;
+  else if (bottom > node.scrollTop + node.clientHeight) node.scrollTop = bottom - node.clientHeight;
   const scope = props.playlistSelectionScope;
   const row = props.tracks[index]?.id;
   onScroll();
@@ -284,7 +303,7 @@ defineExpose({ locate, restoreScroll });
       @click="plainRelease"
       @dragstart="preventNativeDrag"
     >
-      <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
+      <div :style="{ height: `${rowOffset(start)}px` }" aria-hidden="true" />
       <TrackRow
         v-for="(track, index) in rows"
         :key="`${start + index}:${track.id}`"
@@ -301,6 +320,7 @@ defineExpose({ locate, restoreScroll });
           playableIds?.has(track.id),
           navigable,
           matchKeyword,
+          searchTitleHints?.[start + index],
           originalRecordings?.has(track.id),
           locateIndex !== undefined,
           !!playlistSelectionScope,
@@ -310,6 +330,10 @@ defineExpose({ locate, restoreScroll });
         :tabindex="playlistSelectionScope || locateIndex !== undefined ? -1 : undefined"
         :selection="playlistSelectionScope ? selected.has(track.id) : undefined"
         :match-keyword="matchKeyword"
+        :search-title-hint="searchTitleHints?.[start + index]"
+        :style="
+          searchTitleHints?.[start + index] ? { height: `${rowSize(start + index)}px` } : undefined
+        "
         :original-recording="originalRecordings?.has(track.id)"
         :index="start + index"
         :current-id="currentId"
@@ -342,7 +366,10 @@ defineExpose({ locate, restoreScroll });
         @artist="emit('artist', $event)"
         @album="emit('album', $event)"
       />
-      <div :style="{ height: `${(tracks.length - end) * rowHeight}px` }" aria-hidden="true" />
+      <div
+        :style="{ height: `${rowOffset(tracks.length) - rowOffset(end)}px` }"
+        aria-hidden="true"
+      />
     </div>
   </div>
 </template>

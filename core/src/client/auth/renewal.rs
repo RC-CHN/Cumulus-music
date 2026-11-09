@@ -243,10 +243,10 @@ impl MusicClient {
         let result = tokio::time::timeout(std::time::Duration::from_secs(45), async {
             if let Some(device) = device {
                 lifecycle
-                    .refresh_jsk(&device, native.provider.as_ref(), false)
+                    .refresh_jsk_for(&token, &device, native.provider.as_ref(), false)
                     .await
             } else {
-                lifecycle.reconcile_jsk().await
+                lifecycle.reconcile_jsk_for(&token).await
             }
         })
         .await

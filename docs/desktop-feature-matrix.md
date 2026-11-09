@@ -30,6 +30,22 @@
 
 以下继续保留基线和各专项的证据，不由本批覆盖其他业务。
 
+后续隔离集成源码 `8146a18d8f8e42c0a154e403fbe2bff2a6bf1d06`：独立 Linux
+应用用本地 FLAC 真实播放和暂停，进度由原生音频推进，输出接隔离的 PipeWire
+null sink。相同源码的 Tauri 探针重走 [HTTPS 主流程](desktop-main-flow-proof.txt)
+19 态；另有 [批量取消确认](desktop-download-contracts.txt) 4 态、
+[音量浮层滚轮](playback-volume-ui-contracts.txt) 40＋3 态及
+[当前播客断点续播](player-podcast-resume-contracts.txt) 7 态，合计保留 77 张截图
+（含正式程序窗口、本地导入、播放及暂停）。前端 1030 项、类型/构建及工作区严格
+Clippy 已通过。合成登录含持久化与重开恢复，未使用真实账号；本批未测实体声卡、
+Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为准。
+
+下一批的 [下载批量收藏](download-batch-ui-contracts.txt) 和
+[登录态播客搜索分页](search-results-ui-contracts.txt) 各有独立 Linux 实窗证据。
+前者核对下载原始顺序、普通本人歌单、提交前权限及回执缺失后只读核对；后者
+核对 0/10 与 10/10 的真实签名请求、失败保留与显式重试、空列表与 null 的差异，
+以及详情返回后的焦点。其独立证据不作为 Windows 或集成构建的运行结果。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
 | **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 默认兼容声明与 Linux 的本机派生不同，尚无 Windows 原生采集、完整官方引擎或全部风控分支的等价证据。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) |
@@ -55,6 +71,8 @@
 - 使用仓库固定的 Rust/Node 版本和锁文件。在工作区执行 `npm --prefix frontend ci`、`npm --prefix frontend run build` 和 `cargo build --locked -p cumulus-desktop --bin cumulus --features custom-protocol`；运行 `.build/target/debug/cumulus`。运行库、打包和精确提交 CI 规则见 [README](../README.txt)、[工作约定](../AGENTS.md) 与 [发行流程](releasing.txt)。
 - 本机普通 Linux 可执行文件证据：`0e136bd` 的 `.build/target-main-integration/debug/cumulus`；`.build/current-linux-product.DAbXMB/isolated-ordinary/report.json` 记录真实窗口、隔离无外网、合成音频播放进度、暂停、PipeWire 虚拟输出中的 PCM 与静音。它是已核对的开发构建记录，并非 `4c07fc7` 的发行附件；后续构建可能覆盖可执行文件。
 - `4c07fc7` 有 Linux 合成桌面增量证据：`.build/search-podcast-home-webview/audit.json`、`.build/queue-explicit-current-verified/audit.json`、`.build/lyric-two-way-proof.WwRw3Y/after/report.json`。主流程的最新报告版本及独立账号权限见 [桌面主流程](desktop-main-flow-proof.txt)。本机证据目录不随公开仓库分发，契约中保留复现入口。
+- `e856fbb8` 在同一份 Linux 桌面构建中验证了[副歌点队列复用](desktop-player-contracts.txt)、[搜索联想三种文案](search-discovery-ui-contracts.txt)和[搜索优先播放已下载 FLAC 的音效与回退](core-effects-local-equalizer.txt)。A→B→A 只读一批；联想的候选文案、顶栏和实际请求分别核对；可信解码库启用本地音效，摘要错误用原文件回退，暂停定位不改变曲目或队列。隔离 WebView 用合成数据和 libmpv null 输出，共 20 张截图；已核对实际运行库来自主线 CI `42582603562` 第 1 次。未验证 Windows 实窗或物理音频输出。
+- 本轮普通歌单播放补齐[红心与固定雷达的原生来源](core-playback-contracts.txt)，合成 Rust 授权回执核对 43／37、未知或其他账号的默认场景和队列条目保留；[FM 副歌](desktop-player-contracts.txt)使用各自补曲状态，不与普通队列或其他 FM 来源混用。[单曲搜索命中](search-results-ui-contracts.txt)和[听书进度显示](play-history-contracts.txt)各有隔离 Linux 实窗记录：前者检查同一行的别名和歌词、游标及播放队列，后者检查隐藏进度后真实章节仍可播放。当前批未验证真实账号、物理声卡或 Windows 实窗。
 - 后续开发主线的专项证据见 [播放、音效与搜索](playback-search-priority.txt)：暂停倒拖、耳机调音对比、音效故障时保留播放、声音和播客分类、播客行内收藏、跨分类的搜索纠正。音效恢复仅在原生确认拆除故障滤镜时继续，已验证耳机型号的独立 PEQ 不代表完整的官方效果图。各项证据仍按相应提交、平台和运行条件读取。
 - `e0099f1` 的合并版在 Linux 实际 WebView 验证 [歌手发现](artist-gallery-contracts.txt) 的官方筛选和跨批分页、[本地单曲菜单](local-resource-ui-contracts.txt) 的播放与下一首、[播放栏播客单集下载](desktop-player-contracts.txt) 的资源身份和显式确认。12 张截图及回执在 `.build/ui-proof/local-gallery-voice-e0099f1/`。歌手页跨过 200 条后仍按服务位置续读；本地菜单保持当前 CUE 条目的暂停位置；单集确认框打开和取消均未提交下载。它们分别使用只读合成服务或本地合成文件验证，不能替代实服权益或 Windows 实机验证。
 - 后续补齐[歌单广场](playlist-detail-ui-contracts.txt)的官方推荐首页、顶部动态标签和普通分类的 60px 自动续页，播客播放栏确认后实际下载，以及[评论作者主页和回程](comment-read-ui-contracts.txt)。Linux 隔离桌面验证有界渲染、原游标重试、个性化关闭、发布一份合成 MP3 并继续播放，以及作者跳转后保留原楼层及草稿。真实节目权益与嵌入评论的回程仍按各自证据验收。

@@ -160,7 +160,7 @@ fn play_count(voice: &Value) -> Option<PlayerVoicePlayCount> {
     }
 }
 
-fn radio_id(voice: &Value) -> Option<String> {
+pub(super) fn radio_id(voice: &Value) -> Option<String> {
     // M/21 W constructs audio from radio. The name-only belongPodcastName
     // fallback is not a route or subscription authority.
     let radio = voice["radio"].as_object()?;

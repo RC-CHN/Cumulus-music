@@ -101,6 +101,23 @@ function clickTrigger() {
   else if (opened.value) close(true);
   else show();
 }
+function wheel(event: WheelEvent) {
+  if (!opened.value || !props.player.ready.value) return;
+  event.preventDefault();
+  model.wheel(event.deltaY);
+}
+function wheelWhileOpen(event: WheelEvent) {
+  if (event.deltaY !== 0 && Number.isFinite(event.deltaY)) wheel(event);
+}
+watch(
+  [opened, () => props.mini],
+  ([visible, mini], _old, onCleanup) => {
+    if (!visible || mini) return;
+    document.addEventListener('wheel', wheelWhileOpen, { passive: false });
+    onCleanup(() => document.removeEventListener('wheel', wheelWhileOpen));
+  },
+  { flush: 'sync' },
+);
 function outside(event: PointerEvent) {
   if (!root.value?.contains(event.target as Node)) close();
 }
@@ -139,14 +156,7 @@ onUnmounted(() => {
     @focusin="focus"
     @focusout="leave"
     @keydown="keydown"
-    @wheel="
-      (event) => {
-        if (opened && player.ready.value) {
-          event.preventDefault();
-          model.wheel(event.deltaY);
-        }
-      }
-    "
+    @wheel="mini && wheel($event)"
   >
     <button
       ref="trigger"

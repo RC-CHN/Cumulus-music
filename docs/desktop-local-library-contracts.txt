@@ -303,3 +303,33 @@ curPlaying 缺失时没有落盘分支；Cumulus 保守地插到队首并保留
 在 Linux 真 WebView/libmpv null 输出验证暂停添加、空队列开始、
 重复的当前项、返回焦点及 105 个合成 WAV 文件哈希；--play 和默认
 移除模式是同一构建的独立回归。
+
+选择本地文件夹：先编辑目录勾选，再确认变更
+- PC 3.1.42.205594 的 LocalMusic.tsx:269–275,505–507,623 从「选择目录」打开
+  DirModal。恢复的 hybrid_66/3107.js:60–186 显示已登记目录及 checked；
+  「添加文件夹」调用 Storage.selectDir(type=local_dir)，把新路径登记为未勾选，
+  不启动扫描。复选框只改该窗口的临时选择；关闭丢弃勾选草稿，但新登记的
+  未勾选目录保留。M/2304:183–194 持久保存 localDirs。只有确认提交变化的
+  addPaths/delPaths；M/2304:198–245,465–504 对新增调用 Library.addObserver/
+  addLibrary，对移除调用 Library.delete，并重新读取列表、计数和本地映射。
+  这是取消目录索引关系，与 :719–791 单曲/批量物理删除不同。
+- Cumulus 的「选择目录」及空库入口打开同一对话框。设备级原生目录表保存
+  checked 和暂停（enabled）两个状态；旧已登记目录保持 checked，原有暂停状态
+  不变。主窗口 stage_local_directory 只接收当前目录表 revision，通过真实系统
+  选择器返回的原生路径追加一个未勾选候选；重复路径不会重置其勾选或顺序。
+  关闭后重新打开恢复已登记目录，确认前不扫描或隐藏音乐。已勾选但暂停的目录
+  在窗口内有说明；单独「暂停扫描」仍不移除列表行。
+- apply_local_directories 只接收同一原生 revision 的完整 ID/checked 集合，
+  不接收 renderer 路径；全量验证和目录修改在同一 SQLite 事务。迟到/跨实例
+  操作、缺失或重复 ID 拒绝；界面显式重读后才允许确认，不能自动提交旧草稿。
+  复选变更立即移出只属该目录的记录；重叠的仍勾选父/子目录和相似前缀邻居不受
+  影响。CUE 按索引所属的分轨表路径判断覆盖。保留底层已有观察用于现有队列；
+  重新勾选在新一轮成功扫描后才恢复原列表行。未勾选期间旧扫描 revision
+  不能重启观察。普通轮询仍是 Cumulus 原有的实现，不冒称原生实时通知。
+- 仅管理实际在本机登记的文件夹，不捏造官方 <mymusic>/<download> 等专有占位。
+  保持既有队列、解码器、暂停位置和所有文件字节，不调用任何业务 HTTP。
+- Rust client_local::directory_selection 覆盖取消草稿对应的未勾选状态、旧版本和
+  重复 ID 拒绝、重叠/相似前缀、暂停解码、重启、在途扫描失效及重新勾选前的
+  旧行保护。独立 Linux GTK 验收入口 scripts/ci/local_directory_selection_smoke.py
+  使用本机生成 WAV/CUE、实际 WebView/原生选择器/SQLite 与 null libmpv；Windows
+  原生选择器是独立验证边界。

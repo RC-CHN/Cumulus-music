@@ -636,9 +636,11 @@ def main():
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['voiceQueueVerified'] and complete['audioWaterfallVerified']
-        assert complete['voiceTableVerified'] and complete['podcastTableVerified'] and complete['stageCount'] == 8
+        assert complete['voiceTableVerified'] and complete['podcastTableVerified'] and complete['stageCount'] == 11
         assert complete['audioReads'] == [['voices', 0, 10], ['voices', 10, 10],
-                                          ['podcasts', 0, 10], ['podcasts', 10, 10]]
+                                          ['podcasts', 0, 10], ['podcasts', 10, 10],
+                                          ['podcasts', 10, 10]]
+        assert complete['emptyAudioReads'] == [['合成播客空值', 0, 10], ['合成播客空列表', 0, 10]]
         first = root / 'first'
         played = json.loads((first / 'ux_01_search_episode_joins_ordinary_queue.json').read_text(encoding='utf-8'))
         paused = json.loads((first / 'ux_02_search_episode_pauses_in_place.json').read_text(encoding='utf-8'))
@@ -649,19 +651,25 @@ def main():
             {'all': True, 'userId': '501'}, {'uid': '501', 'offset': 0, 'limit': 1000},
         ]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list((root / 'first').glob('ux_*.png'))) == (8 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (11 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, voiceQueueVerified=True,
                               voiceTableVerified=True, podcastTableVerified=True,
-                              audioWaterfallVerified=True, stageCount=8)))
+                              audioWaterfallVerified=True, stageCount=11)))
         return
     if args.song_waterfall:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['songWaterfallVerified'] and complete['stageCount'] == 5
         assert complete['songReads'] == [[0, 10], [10, 10], [0, 30], [10, 10], [20, 10]]
+        assert complete['songTitleHints'] == [
+            dict(alias='前缀合成连续单曲别名', lyric=f'🎵合成连续单曲歌词 {song_id}',
+                 aliasMark='合成连续单曲', lyricMark='合成连续单曲')
+            for song_id in [101, 130]
+        ]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (5 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, songWaterfallVerified=True,
-                              stageCount=5, songReads=complete['songReads'])))
+                              songTitleHintsVerified=True, stageCount=5,
+                              songReads=complete['songReads'])))
         return
     if args.artist_gallery:
         first = root / 'first'

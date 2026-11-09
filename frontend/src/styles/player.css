@@ -159,6 +159,57 @@
   width: 17px;
   height: 17px;
 }
+.recall-play-anchor {
+  position: relative;
+  flex: 0 0 auto;
+}
+.recall-play-guide {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 8%);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.recall-play-guide::after {
+  position: absolute;
+  top: 100%;
+  left: calc(50% - 5px);
+  border-top: 5px solid var(--surface-raised);
+  border-right: 5px solid transparent;
+  border-left: 5px solid transparent;
+  content: '';
+}
+.recall-play-guide-enter-active,
+.recall-play-guide-leave-active {
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  transform-origin: bottom center;
+}
+.recall-play-guide-enter-from,
+.recall-play-guide-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) scale(0.8);
+}
+:root[data-motion='reduced'] .recall-play-guide-enter-active,
+:root[data-motion='reduced'] .recall-play-guide-leave-active {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .recall-play-guide-enter-active,
+  .recall-play-guide-leave-active {
+    transition: none;
+  }
+}
 .play-toggle {
   display: grid;
   place-items: center;
@@ -209,6 +260,8 @@
 .seek-rail-layered input::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
+  position: relative;
+  z-index: 2;
   width: 10px;
   height: 10px;
   border: 0;
@@ -217,7 +270,7 @@
 }
 .seek-time-preview {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   bottom: calc(100% + 33px);
   left: clamp(min(54px, 50%), var(--seek-preview-position), max(50%, calc(100% - 54px)));
   width: min(108px, 100%);
@@ -247,6 +300,7 @@
 }
 .seek-load-rail {
   position: absolute;
+  z-index: 2;
   inset: 0 5px;
   pointer-events: none;
 }
@@ -304,6 +358,9 @@
   background: var(--accent);
 }
 .trial-seek-track .seek-chorus {
+  /* WebKitGTK can paint its range track above the separate rail. Keep
+     the dot above that track and below the input thumb and time preview. */
+  z-index: 1;
   top: 0;
   bottom: auto;
   width: 4px;

@@ -3,6 +3,13 @@ use super::*;
 use crate::playback::controller::FmRestore;
 use serde_json::json;
 
+enum SideEffect<'a> {
+    None,
+    Fm(FmCommit<'a>),
+    More(Option<bool>),
+    Recall(i64),
+}
+
 struct FmCommit<'a> {
     expected: &'a FmRestore,
     /// None means cleanup only; Some(None) removes the outgoing FM clock.
@@ -10,6 +17,47 @@ struct FmCommit<'a> {
 }
 
 impl PlaybackQueue {
+    pub(crate) fn install_recall(&mut self, resources: Vec<Value>, now: i64) -> Result<()> {
+        use rand::seq::SliceRandom;
+        if !self.state.items.is_empty()
+            || self.state.current.is_some()
+            || self.state.fm_source.is_some()
+            || self.state.intelligence.is_some()
+            || resources.is_empty()
+            || resources.len() > 12
+        {
+            return Err(Error::QueueChanged);
+        }
+        let store = self
+            .store
+            .as_ref()
+            .ok_or(Error::State("transition requires persistent queue"))?;
+        recall_due(store.get(&self.owner, RECALL_STATE, RECALL_LAST_TIME)?, now)?;
+        let source = json!({"kind":"recall_prefill","scene":"recallPrefill","label":"新召推荐预填",
+            "resourceType":"track","originalResourceType":"track"});
+        let items = Self::entries(resources, &source);
+        let mut order: Vec<_> = items.iter().map(|item| item.entry_id.clone()).collect();
+        let mode = self.state.mode;
+        if mode == PlaybackMode::Random {
+            order.shuffle(&mut self.rng);
+        }
+        // M/1384 chooses randomly when no explicit song ID was supplied.
+        let current = order.first().cloned();
+        self.commit_owned_with_side_effect(
+            QueueSnapshot {
+                items,
+                order,
+                current,
+                mode,
+                ..Default::default()
+            },
+            false,
+            None,
+            None,
+            SideEffect::Recall(now),
+        )
+    }
+
     /// Same durable queue snapshot as the task/ledger observation immediately
     /// before a catalog file is submitted to a native decoder.
     pub(crate) fn verify_search_file_target(
@@ -73,16 +121,15 @@ impl PlaybackQueue {
         } else {
             (self.state.clone(), None, None, self.intelligence.clone())
         };
-        self.commit_owned_with_fm(
+        self.commit_owned_with_side_effect(
             candidate,
             true,
             None,
             intelligence,
-            Some(FmCommit {
+            SideEffect::Fm(FmCommit {
                 expected: input,
                 position: checkpoint,
             }),
-            None,
         )?;
         Ok(if restore {
             FmRestoreOutcome::Restored(position)
@@ -129,7 +176,13 @@ impl PlaybackQueue {
         quality: Option<(&str, &QualityPreferences)>,
         intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
     ) -> Result<()> {
-        self.commit_owned_with_fm(candidate, release_fm, quality, intelligence, None, None)
+        self.commit_owned_with_side_effect(
+            candidate,
+            release_fm,
+            quality,
+            intelligence,
+            SideEffect::None,
+        )
     }
 
     pub(super) fn commit_more(
@@ -137,17 +190,22 @@ impl PlaybackQueue {
         candidate: QueueSnapshot,
         preference: Option<bool>,
     ) -> Result<()> {
-        self.commit_owned_with_fm(candidate, false, None, None, None, Some(preference))
+        self.commit_owned_with_side_effect(
+            candidate,
+            false,
+            None,
+            None,
+            SideEffect::More(preference),
+        )
     }
 
-    fn commit_owned_with_fm(
+    fn commit_owned_with_side_effect(
         &mut self,
         mut candidate: QueueSnapshot,
         release_fm: bool,
         quality: Option<(&str, &QualityPreferences)>,
         intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
-        fm: Option<FmCommit<'_>>,
-        more: Option<Option<bool>>,
+        side_effect: SideEffect<'_>,
     ) -> Result<()> {
         super::super::queue_more::normalize(&mut candidate);
         candidate.validate()?;
@@ -166,7 +224,7 @@ impl PlaybackQueue {
         } else if candidate.intelligence.is_some() {
             return Err(Error::State("missing intelligence state"));
         }
-        if (quality.is_some() || intelligence.is_some() || fm.is_some() || more.is_some())
+        if (quality.is_some() || intelligence.is_some() || !matches!(side_effect, SideEffect::None))
             && self.store.is_none()
         {
             return Err(Error::State("transition requires persistent queue"));
@@ -202,7 +260,7 @@ impl PlaybackQueue {
                 {
                     return Err(Error::QueueChanged);
                 }
-                if let Some(fm) = &fm {
+                if let SideEffect::Fm(fm) = &side_effect {
                     if tx.get(&self.owner, "playback", FM_BACKUP_QUEUE)? != fm.expected.backup_queue
                         || tx.get(&self.owner, "playback", FM_BACKUP_POSITION)?
                             != fm.expected.backup_position
@@ -219,7 +277,7 @@ impl PlaybackQueue {
                 if let Some((expected, preference)) = quality {
                     QualityPreferences::replace_in(tx, &self.owner, expected, preference)?;
                 }
-                if let Some(preference) = more {
+                if let SideEffect::More(preference) = side_effect {
                     use crate::playback::queue_more::{KIND, PREFERENCE, ROOM_BINDING};
                     if tx.get(&self.owner, ROOM_BINDING, "current")?.is_some() {
                         return Err(Error::State("room owns the playback queue"));
@@ -227,6 +285,20 @@ impl PlaybackQueue {
                     if let Some(preference) = preference {
                         tx.put(&self.owner, KIND, PREFERENCE, &json!(preference))?;
                     }
+                }
+                if let SideEffect::Recall(now) = side_effect {
+                    if tx
+                        .get(
+                            &self.owner,
+                            super::super::queue_more::ROOM_BINDING,
+                            "current",
+                        )?
+                        .is_some()
+                    {
+                        return Err(Error::QueueChanged);
+                    }
+                    recall_due(tx.get(&self.owner, RECALL_STATE, RECALL_LAST_TIME)?, now)?;
+                    tx.put(&self.owner, RECALL_STATE, RECALL_LAST_TIME, &json!(now))?;
                 }
                 tx.put(&self.owner, "playback", "queue", &snapshot)?;
                 if !unchanged_session {
@@ -282,4 +354,17 @@ impl PlaybackQueue {
         self.revision = revision;
         Ok(())
     }
+}
+
+fn recall_due(previous: Option<Value>, now: i64) -> Result<()> {
+    if let Some(previous) = previous {
+        let previous = previous
+            .as_i64()
+            .filter(|value| *value >= 0)
+            .ok_or(Error::State("invalid recall timestamp"))?;
+        if previous != 0 && now.saturating_sub(previous) < 86_400_000 {
+            return Err(Error::State("homepage recall is in its cooldown"));
+        }
+    }
+    Ok(())
 }

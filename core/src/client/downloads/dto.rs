@@ -185,6 +185,9 @@ pub enum DownloadCommand {
     All {
         action: TaskControl,
     },
+    ConfirmClear {
+        receipt: String,
+    },
     Preferences {
         revision: String,
         options: DownloadOptions,
@@ -221,6 +224,12 @@ pub enum DownloadCommand {
     StopOperation {
         operation_id: String,
     },
+}
+#[derive(Serialize)]
+pub struct DownloadClearPlan {
+    pub epoch: String,
+    pub receipt: Option<String>,
+    pub count: usize,
 }
 #[derive(Serialize)]
 pub struct DownloadFailure {

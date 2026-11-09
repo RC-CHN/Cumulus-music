@@ -17,6 +17,7 @@ mod next_play;
 pub(in crate::client) mod origin;
 mod output;
 mod playlist_batch;
+mod playlist_trial;
 mod podcast_browse;
 mod podcast_recommended;
 mod power;
@@ -30,7 +31,7 @@ mod queue_edit;
 mod queue_like;
 mod queue_menu;
 mod queue_more_playlist;
-mod queue_playlist;
+pub(super) mod queue_playlist;
 mod reports;
 mod search_artist;
 mod search_podcast;
@@ -47,10 +48,12 @@ mod vinyl_similar;
 pub use vinyl_similar::{
     VinylRecommendationPlacement, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
 };
+mod podcast_resume;
 mod vinyl_wiki;
 mod voice_detail;
 mod voice_recommendations;
 mod voice_scope;
+pub use podcast_resume::{PlayerPodcastResumeAction, PlayerPodcastResumeView};
 pub use voice_recommendations::{
     VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
 };
@@ -149,6 +152,8 @@ pub(super) struct PlayerHost {
     prepared_generation: Arc<AtomicU64>,
     focus: Arc<super::focus::MediaFocus>,
     lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
+    chorus: Arc<chorus::Host>,
+    room_detachment: super::together::RoomDetachment,
     vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
     streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
     vinyl_similar: Arc<vinyl_similar::Host>,
@@ -164,6 +169,7 @@ impl PlayerHost {
         output: Arc<crate::playback::output::OutputRuntime>,
         ordinary_skip: OrdinarySkipHost,
         song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
+        room_detachment: super::together::RoomDetachment,
     ) -> Self {
         Self {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
@@ -185,6 +191,8 @@ impl PlayerHost {
             prepared_selection: Mutex::new(None),
             prepared_generation: Arc::new(AtomicU64::new(0)),
             lyrics: Mutex::new(None),
+            chorus: Default::default(),
+            room_detachment,
             vinyl_draft: Mutex::new(None),
             streaming_cache: None,
             vinyl_similar: Default::default(),
@@ -210,7 +218,7 @@ impl PlayerHost {
                 let mut resolver = SourceResolver::new(self.session.clone(), Some(library));
                 resolver.streaming_cache = self.streaming_cache.clone();
                 let resolver = Arc::new(resolver);
-                Ok(Arc::new(PlaybackController::start_inner(
+                let controller = Arc::new(PlaybackController::start_inner(
                     self.session.clone(),
                     self.store.clone(),
                     resolver,
@@ -224,12 +232,18 @@ impl PlayerHost {
                         queue_more_enabled: self.queue_more_enabled,
                         power: self.power.clone(),
                         song_speed: Some(self.song_speed.clone()),
+                        chorus_triggers: Some(
+                            self.chorus
+                                .triggers(self.session.clone(), self.room_detachment.clone()),
+                        ),
                         ordinary_eof: Some(
                             self.ordinary_skip
                                 .eof(self.focus.clone(), self.selection.clone()),
                         ),
                     },
-                )?))
+                )?);
+                self.chorus.bind(&controller)?;
+                Ok(controller)
             })
             .await
     }

@@ -26,6 +26,9 @@ use std::{
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_DOWNLOAD_PAGE_UI_PROOF").is_some()
 }
+fn clear_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_DOWNLOAD_CLEAR_PROOF").is_some()
+}
 pub fn quality_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_QUALITY_UI_PROOF").is_some()
 }
@@ -330,6 +333,56 @@ impl Fixture {
         eprintln!("download UI fixture {mode}: started");
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
+            "clear_seed" | "clear_late" if clear_enabled() => {
+                use cumulus_core::{
+                    download::{directory::DownloadDirectory, service::DownloadAction},
+                    storage::OperationLock,
+                };
+                // New records pass through Queued before the fixture parks
+                // them. Do not let a background view drain that transient.
+                let mut scheduler = None;
+                for _ in 0..100 {
+                    match OperationLock::acquire(self.store.directory(), "download-scheduler", "2")
+                    {
+                        Ok(lock) => {
+                            scheduler = Some(lock);
+                            break;
+                        }
+                        Err(Error::MutationBusy) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+                let _scheduler = scheduler.ok_or(Error::MutationBusy)?;
+                if mode == "clear_seed" {
+                    DownloadDirectory::new(self.session.clone())?.configure(
+                        &self.root.join("media"),
+                        0,
+                        1,
+                    )?;
+                }
+                let service = DownloadService::with_backend(
+                    self.session.clone(),
+                    Arc::new(NoNetwork),
+                    64 * 1024 * 1024,
+                )?;
+                for id in if mode == "clear_seed" {
+                    &[701, 702][..]
+                } else {
+                    &[703][..]
+                } {
+                    let task = service.create_default(&json!(id), DownloadOptions::default())?;
+                    let mut task = service.request(&task.id, DownloadAction::Pause)?;
+                    task.song = Some(json!({"id":id,"name":format!("合成取消任务 {id}"),"ar":[]}));
+                    self.store.put(
+                        "2",
+                        "download_tasks_v1",
+                        &task.id,
+                        &serde_json::to_value(&task)?,
+                    )?;
+                }
+            }
             "menu_comment_hold" if menu_comments_enabled() => {
                 HOLD_MENU_COMMENT.store(true, Ordering::SeqCst);
             }
@@ -492,15 +545,13 @@ impl Fixture {
                     })?,
                 )?;
             }
-            "seed" | "seed_collection" if mode == "seed" || collection_enabled() => {
+            "seed" | "seed_collection" | "seed_collection_batch"
+                if mode == "seed" || collection_enabled() =>
+            {
                 // Only the dedicated collector requests the small inventory.
                 // Other proofs can share its authority flag and still need
                 // all 146 real fixture records and the five transfer states.
-                let limit = if mode == "seed_collection" {
-                    7_u64
-                } else {
-                    146
-                };
+                let limit = if mode != "seed" { 7_u64 } else { 146 };
                 assert!(self.records.lock().unwrap().is_empty());
                 let delay = std::env::var("CUMULUS_DOWNLOAD_SEED_DELAY_MS")
                     .ok()
@@ -616,6 +667,16 @@ impl Fixture {
                         task.song.as_mut().unwrap()["dt"] = json!(6000);
                         task.song.as_mut().unwrap()["ar"] =
                             json!([{"id":17,"name":"Artist 17"},{"name":"无标识艺人"}]);
+                    }
+                    if mode == "seed_collection_batch"
+                        && let Some(privilege) = match i {
+                            1 => Some(json!({"id":1,"subp":0})),
+                            2 => Some(json!({"id":2,"subp":-1})),
+                            4 => Some(json!({"id":4,"subp":2})),
+                            _ => None,
+                        }
+                    {
+                        task.song.as_mut().unwrap()["privilege"] = privilege;
                     }
                     task.created_ms = 1700000000000 + i * 1000;
                     if lyric_repair && i == 1 {

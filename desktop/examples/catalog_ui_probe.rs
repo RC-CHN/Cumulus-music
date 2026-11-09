@@ -13,6 +13,8 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 
 #[path = "support/artist_mv_fixture.rs"]
 mod artist_mv_fixture;
+#[path = "support/books_resume_assignment.rs"]
+mod books_resume_assignment;
 #[path = "support/collection_fixture.rs"]
 mod collection_fixture;
 #[path = "support/comment_read_fixture.rs"]
@@ -115,6 +117,9 @@ fn main() {
     );
     let ordinary_essential =
         std::env::var("CUMULUS_ORDINARY_ESSENTIAL_PROOF").as_deref() == Ok("1");
+    let listened_books_resume =
+        std::env::var("CUMULUS_LISTENED_BOOKS_RESUME_PROOF").as_deref() == Ok("1");
+    assert!(!listened_books_resume || ordinary_essential);
     assert!(
         !ordinary_essential || !is_live,
         "choice probe uses closed synthetic services"
@@ -162,7 +167,9 @@ fn main() {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let contention=Arc::new(relay_contention::Fixture::new(registry.store()));
         let catalog_fixture=Arc::new(fixture::Library::default());
-        let ordinary_essential_fixture=Arc::new(ordinary_essential_fixture::Library::new(catalog_fixture.clone()));
+        let mut essential=ordinary_essential_fixture::Library::new(catalog_fixture.clone());
+        if listened_books_resume {essential.books_resume=Some(books_resume_assignment::Authority::open(registry.store())?);}
+        let ordinary_essential_fixture=Arc::new(essential);
         let artist_mv_fixture=Arc::new(artist_mv_fixture::Library::new(catalog_fixture.clone()));
         if album_cards {catalog_fixture.album_cards();}
         if album_duration_sort {catalog_fixture.album_duration_sort();}
@@ -203,6 +210,18 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if listened_books_resume && stage=="books-resume-fixture" {
+                let id=value["id"].as_u64().expect("book fixture sequence");
+                ordinary_essential_fixture.set_resume_fixture(value["enabled"].as_bool().expect("book setting fixture"));
+                let group=value["group"].as_bool();
+                if let Some(treatment)=group {ordinary_essential_fixture.books_resume.as_ref().unwrap().set(treatment);}
+                let handle=handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let success=group.is_none() || handle.state::<MusicClient>().refresh_pc_presentation().await.is_ok();
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__booksResumeAck=[{id},{success}];")).unwrap();
+                });
+                return;
+            }
             if ordinary_essential && stage=="essential-fixture" {
                 let id=value["id"].as_u64().expect("fixture sequence");
                 ordinary_essential_fixture.set(value["owner"].as_u64().unwrap(),value["mode"].as_str().unwrap());
@@ -306,6 +325,7 @@ fn main() {
             let album_duration_sort_report=album_duration_sort.then(||catalog_fixture.report());
             let release_report=follow_new_song.then(||follow_new_song_fixture.report());
             let essential_report=ordinary_essential.then(||ordinary_essential_fixture.report());
+            let books_resume_assignment=ordinary_essential_fixture.books_resume.as_ref().map(|fixture| fixture.report());
             let artist_mv_report=artist_mv.then(||artist_mv_fixture.report());
             let follow_store=follow_store.clone();
             let comment_read_report=comment_reads.then(||comment_fixture.report());
@@ -326,6 +346,7 @@ fn main() {
                 if let Some(report)=album_duration_sort_report {value["albumDurationSortFixture"]=report;}
                 if let Some(report)=release_report {value["followNewSongFixture"]=report;}
                 if let Some(report)=essential_report {value["essentialReads"]=report;}
+                if let Some(report)=books_resume_assignment {value["booksResumeAssignment"]=report;}
                 if let Some(report)=artist_mv_report {value["artistMvCalls"]=serde_json::json!(report);value["nativeMvCalls"]=serde_json::json!(search_mv_fixture::calls());}
                 if let Some(report)=comment_read_report {value["commentReadFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}

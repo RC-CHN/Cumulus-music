@@ -343,6 +343,16 @@ impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
         // The pinned decoder also starts paused; pause(false) checks focus.
         self.inner.load_pinned_audio(file, authority, cancel)
     }
+    fn load_pinned_audio_with_local_equalizer(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.inner
+            .load_pinned_audio_with_local_equalizer(file, authority, settings, cancel)
+    }
     fn load_pinned_ncm(
         &mut self,
         file: std::fs::File,

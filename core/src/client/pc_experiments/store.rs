@@ -30,6 +30,7 @@ pub(super) fn load(store: &StateStore, owner: &str) -> Result<Flags> {
         search_dense: old.as_ref().is_some_and(|value| value["dense"] == true),
         search_footer: false,
         song_speed: None,
+        podcast_resume: false,
     })
 }
 

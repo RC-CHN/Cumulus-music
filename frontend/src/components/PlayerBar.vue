@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, nextTick, useId, watch, onUnmounted } from 'vue';
+import { computed, ref, shallowRef, nextTick, useId, watch, onMounted, onUnmounted } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
 import { currentCatalogTrack, currentPlaybackDownload, time } from '../services/player';
@@ -34,7 +34,9 @@ import { useQueueMoreTip } from '../composables/useQueueMoreTip';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 import PlayerTrackActions from './PlayerTrackActions.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
+import type { PlayerPodcastResumeTarget } from '../services/playerPodcastResume';
 import type { AudiobookSkipContext } from '../services/audiobookSkip';
+import type { HomeRecallGuide } from '../services/discoveryHome';
 const equalizerOpen = ref(false);
 const audioEffectsOpen = ref(false);
 const headphoneManagementOpen = ref(false);
@@ -54,10 +56,33 @@ const props = withDefaults(
     commentCount?: number;
     vinylComments?: boolean;
     vinylCommentsOpen?: boolean;
+    podcastResume?: boolean;
+    recallGuide?: HomeRecallGuide;
   }>(),
   { togetherActive: false },
 );
+const shownRecall = ref(false);
+const recallVisible = ref(false);
+const observeRecallVisibility = () => {
+  recallVisible.value = !document.hidden;
+};
+onMounted(() => {
+  observeRecallVisibility();
+  document.addEventListener('visibilitychange', observeRecallVisibility);
+});
+onUnmounted(() => document.removeEventListener('visibilitychange', observeRecallVisibility));
+let presentedRecall: string | undefined;
+let recallArrival: { receipt: string; at: number } | undefined;
+watch(
+  () => props.recallGuide,
+  (guide) => {
+    recallArrival = guide && { receipt: guide.receipt, at: performance.now() };
+  },
+  { flush: 'sync', immediate: true },
+);
 const emit = defineEmits<{
+  resumeConfirmed: [epoch: string, radioId: string, enabled: boolean];
+  recallGuideShown: [epoch: string, receipt: string];
   like: [track: TrackView];
   retry: [];
   comments: [track: TrackView];
@@ -174,6 +199,24 @@ const audiobookSkipContext = computed<AudiobookSkipContext | undefined>(() => {
   )
     return { kind: 'player', playId: current.playId, entryId: current.entryId };
   return undefined;
+});
+const podcastResumeTarget = computed<PlayerPodcastResumeTarget | undefined>((previous) => {
+  const current = view.value;
+  if (
+    !props.podcastResume ||
+    props.togetherActive ||
+    props.account.status !== 'authenticated' ||
+    current?.epoch !== props.account.epoch ||
+    !current.voiceDetail ||
+    (current.state !== 'playing' && current.state !== 'paused') ||
+    !current.playId ||
+    !current.entryId
+  )
+    return undefined;
+  const { epoch, playId, entryId } = current;
+  return previous?.epoch === epoch && previous.playId === playId && previous.entryId === entryId
+    ? previous
+    : { epoch, playId, entryId };
 });
 const currentDownload = computed<CurrentPlaybackDownload | undefined>((previous) => {
   if (!props.downloadsAllowed || view.value?.epoch !== props.account.epoch) return undefined;
@@ -483,6 +526,51 @@ async function seek(event: Event) {
     }
   }
 }
+watch(
+  () => {
+    const guide = props.recallGuide;
+    const playback = view.value;
+    return guide &&
+      recallVisible.value &&
+      ready.value &&
+      props.account.status === 'authenticated' &&
+      playback?.epoch === props.account.epoch &&
+      playback.queueRevision === guide.queueRevision
+      ? guide
+      : undefined;
+  },
+  (guide, _previous, cleanup) => {
+    if (
+      !guide ||
+      guide.receipt === presentedRecall ||
+      recallArrival?.receipt !== guide.receipt ||
+      performance.now() - recallArrival.at >= 27_000
+    )
+      return;
+    const epoch = props.account.epoch;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cancel = () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+      shownRecall.value = false;
+    };
+    let frame = requestAnimationFrame(() => {
+      shownRecall.value = true;
+      // Start the three seconds after the live footer can actually paint.
+      frame = requestAnimationFrame(() => {
+        timer = setTimeout(() => {
+          shownRecall.value = false;
+          if (recallVisible.value && props.account.epoch === epoch) {
+            presentedRecall = guide.receipt;
+            emit('recallGuideShown', epoch, guide.receipt);
+          }
+        }, 3000);
+      });
+    });
+    cleanup(cancel);
+  },
+  { flush: 'post' },
+);
 </script>
 <template>
   <footer
@@ -598,19 +686,28 @@ async function seek(event: Event) {
         >
           <Icon name="previous" />
         </button>
-        <button
-          class="play-toggle"
-          :aria-label="primaryTransportPauses ? '暂停' : '播放'"
-          :disabled="
-            !ready ||
-            (!view?.queueLen && !view?.track) ||
-            (pendingTransport ? togetherActive || pendingTransportBusy || loadingStepBusy : pending)
-          "
-          :data-primary-transport-key="player.primaryTransportKey.value"
-          @click="primaryTransport"
-        >
-          <Icon :name="primaryTransportPauses ? 'pause' : 'play'" />
-        </button>
+        <div class="recall-play-anchor">
+          <button
+            class="play-toggle"
+            :aria-label="primaryTransportPauses ? '暂停' : '播放'"
+            :disabled="
+              !ready ||
+              (!view?.queueLen && !view?.track) ||
+              (pendingTransport
+                ? togetherActive || pendingTransportBusy || loadingStepBusy
+                : pending)
+            "
+            :data-primary-transport-key="player.primaryTransportKey.value"
+            @click="primaryTransport"
+          >
+            <Icon :name="primaryTransportPauses ? 'pause' : 'play'" />
+          </button>
+          <Transition name="recall-play-guide">
+            <span v-if="shownRecall" class="recall-play-guide" data-home-recall-guide role="status">
+              为你专属推荐，一键听听看~
+            </span>
+          </Transition>
+        </div>
         <button
           class="icon-button"
           aria-label="下一首"
@@ -823,7 +920,15 @@ async function seek(event: Event) {
         @catalog="(resource) => emit('catalog', resource)"
         @effects="audioEffectsOpen = true"
       />
-      <AudiobookSkipMenu :epoch="account.epoch" :context="audiobookSkipContext" />
+      <AudiobookSkipMenu
+        :epoch="account.epoch"
+        :context="audiobookSkipContext"
+        :resume-target="podcastResumeTarget"
+        :fallback-focus="() => transportControls ?? null"
+        @resume-confirmed="
+          (epoch, radioId, enabled) => emit('resumeConfirmed', epoch, radioId, enabled)
+        "
+      />
     </div>
     <div class="player-feedback-stack">
       <TransitionGroup name="playback-feedback">

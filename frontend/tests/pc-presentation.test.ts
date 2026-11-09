@@ -250,3 +250,31 @@ test('guest readiness is native, ordered within its own epoch, and never enables
   assert.equal(memory.presentation('2')?.revision, '5');
   host.dispose();
 });
+
+test('current podcast resume presentation follows ordered signed events and clears across accounts', async () => {
+  let push!: (view: PcPresentationView) => void;
+  const host = usePcPresentation(
+    {
+      onPcPresentationChanged: async (listener) => {
+        push = listener;
+        return () => {};
+      },
+      pcPresentation: async (epoch) => appearance('1', epoch),
+    },
+    createSearchViewportMemory(),
+  );
+  host.connect(account);
+  await host.start();
+  push({ ...appearance('3'), podcastResume: true });
+  push(appearance('2'));
+  assert.equal(host.podcastResume.value, true);
+  push(appearance('4'));
+  assert.equal(host.podcastResume.value, false);
+  push({ ...appearance('5'), podcastResume: true });
+  assert.equal(host.podcastResume.value, true);
+  host.connect({ ...account, epoch: '2', status: 'signed_out' });
+  push({ ...appearance('8'), podcastResume: true });
+  push({ ...appearance('9', '2'), podcastResume: true });
+  assert.equal(host.podcastResume.value, false);
+  host.dispose();
+});

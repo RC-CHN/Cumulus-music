@@ -51,6 +51,7 @@ struct Backend {
     search_playback_missing_list_media: AtomicBool,
     search_playback_curated: AtomicBool,
     search_playback_hold: AtomicBool,
+    search_playback_list_hold: AtomicBool,
     search_playback_started: tokio::sync::Notify,
     search_playback_release: tokio::sync::Notify,
     progress_revision: AtomicUsize,
@@ -248,6 +249,10 @@ impl Api for Backend {
                     json!({"code":200,"data":value})
                 }
                 "/api/v6/dj/program/byradio" => {
+                    if self.search_playback_list_hold.swap(false, Ordering::SeqCst) {
+                        self.search_playback_started.notify_one();
+                        self.search_playback_release.notified().await;
+                    }
                     let count = self.count.load(Ordering::SeqCst);
                     let offset = p["offset"].as_u64().unwrap() as usize;
                     let limit = p["limit"].as_u64().unwrap() as usize;

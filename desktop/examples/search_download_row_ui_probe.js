@@ -2,6 +2,7 @@
 (async () => {
   const query = '合成下载优先';
   const track = '881';
+  const equalizerMode = window.__searchDownloadEqualizerProof;
   const invoke = (command, args) => window.__TAURI_INTERNALS__.invoke(command, args);
   const emit = (stage, extra = {}) =>
     invoke('plugin:event|emit', { event: 'ux-proof', payload: { stage, ...extra } });
@@ -21,6 +22,7 @@
   let epoch, step = 'startup', count = 0, last;
   const buttonReady = (node) => node?.isConnected && !node.disabled && node;
   const snapshot = async () => (last = await invoke('player_snapshot', { epoch }));
+  const action = (value) => invoke('player_action', { epoch, action: value });
   const visible = () => one('.search-results-page h1')?.textContent === query &&
     one('#search-result-panel')?.getAttribute('aria-busy') === 'false';
   const synced = (value) => bar()?.dataset.playId === value.playId &&
@@ -46,6 +48,10 @@
       first ??= { playId: state.playId, entryId: state.entryId, position: state.position };
       assert(first.playId === state.playId && first.entryId === state.entryId,
         'native clock must advance on the same play and entry');
+      if (quality === 'lossless' && equalizerMode === 'trusted' &&
+          state.equalizer?.spatial_status !== 'processing') return false;
+      if (quality === 'lossless' && equalizerMode === 'wrong_digest')
+        assert(state.equalizer?.spatial_status === 'unavailable', 'stock fallback cannot claim spatial processing');
       return state.position > first.position + .14 && { first, current: state };
     }, `actual ${quality} clock advances`);
   }
@@ -67,6 +73,15 @@
       return account.status === 'authenticated' && buttonReady(one('[aria-label="搜索音乐"]')) && account;
     }, 'synthetic account and actual desktop search ready'));
     await control('publish');
+    if (equalizerMode) {
+      const prior = await snapshot();
+      const saved = await action({ kind: 'equalizer', expected_revision: prior.equalizer.revision,
+        settings: { enabled: true, gains: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+          tone_enabled: true, bass_db: 2, presence: 3, stereoizer: 4 } });
+      assert(saved.equalizer.revision !== prior.equalizer.revision && saved.equalizer.settings.presence === 3,
+        'actual native EQ preference saved before selecting the row');
+      await action({ kind: 'mode', mode: 'sequential' });
+    }
     step = 'search';
     const field = one('[aria-label="搜索音乐"]');
     field.value = query;
@@ -87,7 +102,30 @@
     assert(paused.playId === local.current.playId && paused.entryId === local.current.entryId &&
       paused.queueRevision === local.current.queueRevision, 'same row paused without replacing local playback');
     await capture('same_local_paused', { current: paused });
-    (await wait(() => buttonReady(bar()?.querySelector('[aria-label="停止播放"]')), 'stop control ready')).click();
+    if (equalizerMode) {
+      const samePlay = (state) => state.playId === paused.playId && state.entryId === paused.entryId &&
+        state.queueRevision === paused.queueRevision;
+      step = 'held seek';
+      await action({ kind: 'seek', seconds: 1.2 });
+      const sought = await wait(async () => {
+        const state = await snapshot();
+        assert(!state.error && samePlay(state), 'paused seek must preserve the publication and queue');
+        return state.state === 'paused' && !state.nativeSeeking && Math.abs(state.position - 1.2) < .03 && state;
+      }, 'paused held seek settles to 1.2 seconds');
+      await capture('held_seek', { current: sought });
+      await wait(() => buttonReady(cover())?.getAttribute('aria-label') === '播放 合成下载歌曲', 'same row resume ready');
+      cover().click();
+      step = 'held eof';
+      const ended = await wait(async () => {
+        const state = await snapshot();
+        assert(!state.error && samePlay(state), 'natural EOF must belong to the same logical playback');
+        return state.state === 'ended' && state;
+      }, 'held source reaches natural EOF');
+      await capture('held_eof', { current: ended });
+      await action({ kind: 'stop' });
+    } else {
+      (await wait(() => buttonReady(bar()?.querySelector('[aria-label="停止播放"]')), 'stop control ready')).click();
+    }
     await wait(async () => (await snapshot()).state === 'idle', 'private local decoder stopped');
     await control('corrupt');
     await wait(() => visible() && cover() === row && buttonReady(cover())?.getAttribute('aria-label') === '播放 合成下载歌曲', 'same row fallback ready');

@@ -135,7 +135,8 @@ export type DownloadCommand =
   | { kind: 'start_cloud'; song_ids: string[]; revision: string; lyrics: boolean }
   | { kind: 'start'; song_ids: string[]; options: DownloadOptions }
   | { kind: 'control'; task_ids: string[]; action: DownloadControl }
-  | { kind: 'all'; action: Exclude<DownloadControl, 'repair'> }
+  | { kind: 'all'; action: 'pause' | 'resume' }
+  | { kind: 'confirm_clear'; receipt: string }
   | { kind: 'preferences'; revision: string; options: DownloadOptions }
   | { kind: 'configure'; root: string; path_type: number; file_type: number }
   | { kind: 'migrate'; root: string }
@@ -164,6 +165,11 @@ export interface DownloadCollectScope {
   epoch: string;
   receipt: string;
   canCreate: boolean;
+  ownedOnly?: boolean;
+}
+export interface DownloadBatchCollectPlan {
+  receipt: string;
+  acceptedTaskIds: string[];
 }
 export type DownloadCollectCreationCommand =
   | { kind: 'create'; name: string; privatePlaylist: boolean }
@@ -175,6 +181,11 @@ export interface DownloadCollectCreation {
   add: PlaylistMutationView | null;
   canAdd: boolean;
 }
+export interface DownloadClearPlan {
+  epoch: string;
+  receipt: string | null;
+  count: number;
+}
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
   downloadCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
@@ -183,6 +194,10 @@ export interface DownloadClient {
     epoch: string,
     taskId: string,
   ): Promise<AccountData<Pick<DownloadCollectScope, 'receipt' | 'canCreate'>>>;
+  downloadBatchCollectPrepare(
+    epoch: string,
+    taskIds: string[],
+  ): Promise<AccountData<DownloadBatchCollectPlan>>;
   downloadCollectDestinations(
     epoch: string,
     receipt: string,
@@ -211,6 +226,8 @@ export interface DownloadClient {
   ): Promise<AccountData<PlaylistMutationView>>;
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
+  downloadClearPrepare(epoch: string): Promise<DownloadClearPlan>;
+  downloadClearDiscard(epoch: string, receipt: string): Promise<void>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;
   pickDownloadDirectory(epoch: string): Promise<string | null>;

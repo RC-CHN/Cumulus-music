@@ -221,6 +221,7 @@ impl<E: AudioEngine + ?Sized> ManagedOutput<E> {
         authority: Cancellation,
         cancel: &Cancellation,
         encrypted: bool,
+        settings: Option<crate::effects::equalizer::EqualizerSettings>,
     ) -> Result<LoadedMedia> {
         let cancel = self.lease.cancellation(cancel);
         let authority = self.lease.cancellation(&authority);
@@ -232,6 +233,13 @@ impl<E: AudioEngine + ?Sized> ManagedOutput<E> {
         // This handle is one-shot. A device error cannot reopen its path.
         let result = if encrypted {
             self.inner.load_pinned_ncm(file, authority.clone(), &cancel)
+        } else if let Some(settings) = settings {
+            self.inner.load_pinned_audio_with_local_equalizer(
+                file,
+                authority.clone(),
+                settings,
+                &cancel,
+            )
         } else {
             self.inner
                 .load_pinned_audio(file, authority.clone(), &cancel)
@@ -301,7 +309,17 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
         authority: Cancellation,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
-        self.load_pinned_search(file, authority, cancel, false)
+        self.load_pinned_search(file, authority, cancel, false, None)
+    }
+
+    fn load_pinned_audio_with_local_equalizer(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.load_pinned_search(file, authority, cancel, false, Some(settings))
     }
 
     fn load_pinned_ncm(
@@ -310,7 +328,7 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
         authority: Cancellation,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
-        self.load_pinned_search(file, authority, cancel, true)
+        self.load_pinned_search(file, authority, cancel, true, None)
     }
 
     fn load_streaming_audio(

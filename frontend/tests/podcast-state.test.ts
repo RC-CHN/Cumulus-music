@@ -562,3 +562,39 @@ test('public podcast copy links keep exact string identity and omit attribution'
   assert.equal(podcastPublicLink('7&userid=42'), null);
   assert.equal(podcastPublicLink('0'), null);
 });
+
+test('player confirmation updates only its visible radio and a held old detail cannot undo it', async () => {
+  const held = deferred<PodcastPage>();
+  let reads = 0;
+  const m = usePodcasts(
+    client({
+      podcastPage: async (epoch, query) => {
+        if (query.scope.kind === 'radio') {
+          const snapshot = { ...detail(epoch, query), resumeEnabled: true };
+          if (++reads === 2) return held.promise;
+          return snapshot;
+        }
+        return page(epoch);
+      },
+    }),
+  );
+  m.connect(account());
+  m.show(true);
+  m.navigate({ kind: 'radio', id: '7', ascending: false });
+  await new Promise<void>((done) => setImmediate(done));
+  assert.equal(m.page.value?.resumeEnabled, true);
+  const old = m.load(true);
+  await new Promise<void>((done) => setImmediate(done));
+  assert.equal(reads, 2);
+  m.observePlayerResume('2', '7', false);
+  m.observePlayerResume('1', '8', false);
+  assert.equal(m.page.value?.resumeEnabled, true);
+  m.observePlayerResume('1', '7', false);
+  assert.equal(m.page.value?.resumeEnabled, false);
+  assert.equal(m.query.value.revision, null);
+  held.resolve({ ...detail('1', m.query.value), resumeEnabled: true });
+  await old;
+  assert.equal(m.page.value?.resumeEnabled, false);
+  assert.equal(m.loading.value, false);
+  assert.equal(reads, 2, 'passive shell synchronization does not reload the detail');
+});

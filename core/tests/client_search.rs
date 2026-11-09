@@ -84,6 +84,20 @@ impl Api for Backend {
                 "/api/hot/search/relate/song/get" => {
                     json!({"songs":[{"song":{"id":88,"url":"PRIVATE"}},{"song":{"id":"67"}},{"song":{"id":88}}]})
                 }
+                "/api/search/pc/suggest/keyword/get" if args["keyword"] == "A+B" => {
+                    json!({
+                        "recTitle":"猜你想搜",
+                        "recs":[{"searchWord":"真实推荐","keyword":"备用推荐","name":"推荐卡片"}],
+                        "suggests":[
+                            {"searchWord":"真实联想","keyword":"备用词","name":"候选 A+B",
+                             "toUserWord":"输入栏文案","realkeyword":"不要默认词",
+                             "showKeyword":"不要默认显示","cookie":"PRIVATE"},
+                            {"searchWord":"","keyword":"无专用展示词","name":"次条候选"},
+                            {"toUserWord":"唯一可选词"},
+                            {"searchWord":{"invalid":true},"keyword":"不降级到其他词"}
+                        ]
+                    })
+                }
                 "/api/search/pc/suggest/keyword/get" => {
                     json!({
                         "recTitle":"猜你想搜",
@@ -197,6 +211,60 @@ async fn official_pc_search_shapes_remain_typed_and_do_not_expose_tracking_or_ur
     );
     assert_eq!(calls[1].1, json!({"lastQuery":"上次输入"}));
 }
+#[tokio::test]
+async fn suggestion_projects_popup_submitted_query_and_input_text_independently() {
+    let (_r, api, session, client, _) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    let reply = client
+        .search_discovery(
+            &epoch,
+            Q::Suggestions {
+                keyword: "A+B".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let value = serde_json::to_value(reply).unwrap()["value"].clone();
+    let ordinary = value["suggestions"].as_array().unwrap();
+    let recommended = value["recommended"].as_array().unwrap();
+    assert_eq!(ordinary.len(), 3);
+    assert_eq!(recommended.len(), 1);
+    assert_eq!(ordinary[0]["label"], "候选 A+B");
+    assert_eq!(ordinary[0]["keyword"], "真实联想");
+    assert_eq!(ordinary[0]["inputLabel"], "输入栏文案");
+    assert_eq!(
+        ordinary[0]["labelParts"],
+        json!([{"text":"候选 ","match":false},{"text":"A+B","match":true}])
+    );
+    assert_eq!(ordinary[1]["keyword"], "无专用展示词");
+    assert_eq!(ordinary[1]["label"], "次条候选");
+    assert_eq!(ordinary[1]["inputLabel"], "无专用展示词");
+    assert_eq!(ordinary[2]["keyword"], "唯一可选词");
+    assert_eq!(ordinary[2]["label"], "唯一可选词");
+    assert!(ordinary[2].get("inputLabel").is_none());
+    assert_eq!(recommended[0]["keyword"], "真实推荐");
+    assert_eq!(recommended[0]["label"], "推荐卡片");
+    assert_eq!(recommended[0]["inputLabel"], "真实推荐");
+    let encoded = serde_json::to_string(&value).unwrap();
+    for private in ["PRIVATE", "不要默认词", "不要默认显示", "不降级到其他词"] {
+        assert!(!encoded.contains(private));
+    }
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        [(
+            "/api/search/pc/suggest/keyword/get".into(),
+            json!({"keyword":"A+B"})
+        )]
+    );
+    assert!(
+        client
+            .search_history(&epoch, H::Read)
+            .unwrap()
+            .value
+            .is_empty()
+    );
+}
+
 #[test]
 fn history_is_ordered_bounded_durable_and_account_isolated() {
     let (_r, api, session, client, store) = fixture();

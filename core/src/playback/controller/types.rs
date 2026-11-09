@@ -94,6 +94,7 @@ pub struct PlaybackSnapshot {
     pub can_change_quality: bool,
     /// A catalog search row is currently decoded from its verified publication.
     pub catalog_file_source: bool,
+    pub(crate) search_download_pending: bool,
     pub quality_preferences_apply: bool,
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,
@@ -164,6 +165,13 @@ pub struct LocalBatchUpdate {
     pub(crate) index: crate::storage::OperationLock,
     pub(crate) start: bool,
 }
+/// Native-only homepage metadata publication. It never supplies a media URL,
+/// claims the output device, or asks the actor to load its selected entry.
+pub struct RecallPrefill {
+    pub(crate) api: std::sync::Arc<dyn crate::protocol::api::Api>,
+    pub(crate) resources: Vec<Value>,
+    pub(crate) login_check: Box<dyn Fn() -> crate::Result<()> + Send + Sync>,
+}
 pub struct QueueTransport {
     pub position: Option<f64>,
     pub paused: bool,
@@ -225,6 +233,9 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    RecallPrefill(RecallPrefill),
+    /// Explicit next-play insertion; only this durable edit starts a chorus read.
+    InsertNext(QueueUpdate),
     /// M71 browse list insertion with the exact freshly authorized first episode.
     PlayPodcastBrowse {
         update: QueueUpdate,

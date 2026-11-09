@@ -1,0 +1,44 @@
+当前播放栏：当前播客断点续播
+
+官方桌面 3.1.42.205594（本地恢复材料）：
+- MoreNew.tsx:115–145 将当前 voice/downloadVoice/localVoice 投影为 voice，带 Scene.newMiniBar；
+  下载或本地声音的 menu resource 按 localTrack、track 合并。
+- hybrid_app.chunk.1482700000000.js/622.js:1450–1469 的 openAudioResumePlaySetting 只在
+  miniBar/newMiniBar、Podcast_ResumePlaySwitch.expGroupName === "t1" 且 resource.audio.id
+  存在时显示「当前播客断点续播 (开/关)」；这里读取现有 per-audio 设置，未观察到 Off 时为开。
+- openAudioResumePlaySettingModal.tsx:88–186 / hybrid_73.chunk.1482700000000.js/3085.js:2320–2405：
+  「断点续播」「开启后仅对本播客的所有声音生效」，两项分别为「开启 / 从上一次停止的地方继续播放」
+  和「关闭 / 每次从头开始播放」，初始使用对应播客当前选择；确认才提交，关闭不修改。
+- hybrid_105.chunk.1482700000000.js/3160.js:2301–2337 在普通播放读取/缓存原设置；
+  弹窗确认调用 updateAudioResumePlaySettingRemote，仅 code=200 更新本机模型。
+  M232:857–879 通过 /api/dj/user/setting/resumeplay/get 与
+  /api/dj/user/setting/resumeplay/update，逻辑参数为字符串 radioId 和数字 resumePlayValue 0/1；
+  EAPI 传输按既有 M402 规划将 resumePlayValue 字符串化。
+
+Cumulus：
+- 普通底部播放栏复用声音 More 入口。若同时有片头片尾，两项在同一菜单、片头片尾在前。账号、当前
+  play/entry 或实验资格变化会关闭旧编辑。只允许原生已激活的普通节目、已提交的 Scene FM 声音和有
+  类型化下载来源的声音；索引本地歌曲、无真实广播绑定、未加载选择以及一起听不会凭显示信息推导权限。
+  官方任意 localVoice 合并不等同于可从 Cumulus 普通本机文件恢复的账号来源。
+- 实验状态由现有已验证原生 PC 全量分组送达，不另做请求、不落盘恢复本入口资格；菜单本身只读现有
+  radio 观察和原生日志。到期刷新期间保留已确认的同凭据菜单，过期值不授予请求权限。默认开启只是
+  呈现，不能充当读取结果、媒体权限或立即 seek 的指令。
+- 只允许 typed IPC 的当前 play/entry；radioId 从原生 voice + audio.id 绑定得出，renderer 不提供。
+  复用既有 per-radio mutation journal：写前读取真实设置，已经等于目标时不发无效更新；变化后
+  只发送一次 signed EAPI update，并以原读接口确认。官方每次确认直接更新，本机保留现有读回与
+  未知结果保护。账户/凭据/节目/分组在写准备、native HTTP 派发前和读回时复核；之前请求若可能已
+  送达，仅可显式读回，不自动重发。确认后若同账号同播客详情也已显示，只同步这个勾选状态，既不重读
+  整页也不接受旧页面结果覆盖。当前 decoder、队列和时钟保持不动。
+- 合成 native PC EAPI 用例验证无打开请求、观察到的开关、控制组、当前播放保持、失效不发送、丢包
+  不重发、路径隔离。不涉及真实账号写入；其他来源以及宿主平台的视觉表现需单独验收。
+
+隔离桌面回归：
+- 用 cargo build -p cumulus-desktop --example podcast_recent_ui_probe --features custom-protocol --locked
+  构建本机探针，然后在无外网的 Linux X11/Xvfb + D-Bus 会话执行
+  scripts/ci/player_podcast_resume_smoke.py --binary <podcast_recent_ui_probe> --frontend-dist frontend/dist
+  --root <全新证据目录> --screenshots。使用系统 libmpv、null 输出和非 C locale；不依赖发行包。
+- 可在 Windows 使用同一探针和脚本、移除 --screenshots 并传 --runtime <包含 libmpv-2.dll 的已打包
+  native 目录>；本次没有实际运行 WebView2。不使用真实账号、设备会话、声卡或外部媒体。
+- 合成账号恢复、两次完整 PC 分组和设置 GET/UPDATE 均走封闭 MusicHttpClient 的真实签名与 EAPI
+  解包对照。真实 WebKitGTK 在七个画面检查了未分组、开启弹窗、取消归还焦点、已关闭菜单、回复丢失后
+  焦点保留在「确认设置结果」、仅 GET 核对、分组撤销及拒绝旧命令；各阶段同一个暂停实例、位置和两项队列。

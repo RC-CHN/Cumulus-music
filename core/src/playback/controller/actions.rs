@@ -42,9 +42,16 @@ impl Actor {
                 | PlaybackCommand::MoveDisplayed(_)
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
                 | PlaybackCommand::ApplyLocalBatch(_)
+                | PlaybackCommand::RecallPrefill(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
+            return;
+        }
+        if let PlaybackCommand::RecallPrefill(value) = request.command {
+            let authority = &request.guard.as_ref().expect("guarded recall prefill").1;
+            let result = self.recall_prefill(value, authority);
+            self.reply(request.reply, result);
             return;
         }
         if matches!(request.command, PlaybackCommand::Queue) {
@@ -136,6 +143,7 @@ impl Actor {
             return;
         }
         if let PlaybackCommand::UpdateQueue(value)
+        | PlaybackCommand::InsertNext(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
@@ -258,6 +266,10 @@ impl Actor {
             PlaybackCommand::RetryLoudness => self.loudness_retry().await,
             PlaybackCommand::RepairLoudness => self.loudness_repair().await,
             PlaybackCommand::RepairQuality => self.quality_repair(),
+            PlaybackCommand::InsertNext(value) => self
+                .insert_next(value, Some(&request.reply))
+                .await
+                .map(|value| options = value),
             PlaybackCommand::UpdateQueue(value)
             | PlaybackCommand::PlaySearchCatalog(Some(value)) => self
                 .update_queue(value, Some(&request.reply))
@@ -615,6 +627,7 @@ impl Actor {
                     Err(Error::StaleResponse)
                 }
             }
+            PlaybackCommand::RecallPrefill(_) => unreachable!("handled before transport intents"),
             PlaybackCommand::Snapshot | PlaybackCommand::SyncQueue => Ok(()),
             PlaybackCommand::Quality(_)
             | PlaybackCommand::TrialQuality { .. }
@@ -639,6 +652,15 @@ impl Actor {
             self.reply(request.reply, result);
         }
     }
+    pub(super) fn ordinary_chorus_trigger(&self, trigger: super::ChorusTrigger) {
+        if !self.queue.is_fm()
+            && self.queue.intelligence_context().is_none()
+            && let Some(triggers) = &self.chorus_triggers
+        {
+            triggers(&self.token, trigger);
+        }
+    }
+
     async fn retain_current_queue_and_play(
         &mut self,
         queue: crate::playback::QueueSnapshot,

@@ -22,6 +22,9 @@ pub(super) struct Flags {
     pub(super) search_dense: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) song_speed: Option<bool>,
+    // A previous profile cache is not evidence for this newly bound action.
+    #[serde(skip)]
+    pub(super) podcast_resume: bool,
 }
 
 impl Flags {
@@ -32,6 +35,7 @@ impl Flags {
             search_expanded: groups.group("PH-PC-searchMore2") == Some("t1"),
             search_dense: groups.group("PH-PC-searchPageEfficiency") == Some("t1"),
             song_speed: song_speed_cohort(groups),
+            podcast_resume: groups.group(crate::podcast::resume::EXPERIMENT) == Some("t1"),
         }
     }
 }
@@ -64,6 +68,8 @@ pub struct PcPresentationView {
     pub search_expanded: bool,
     pub search_dense: bool,
     pub guest_search_ready: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub podcast_resume: bool,
 }
 
 impl PcPresentationView {
@@ -80,6 +86,7 @@ impl PcPresentationView {
             search_expanded: flags.search_expanded,
             search_dense: flags.search_dense,
             guest_search_ready,
+            podcast_resume: token.uid.is_some() && flags.podcast_resume,
         }
     }
 }
@@ -142,6 +149,7 @@ impl Default for PresentationHost {
             search_expanded: false,
             search_dense: false,
             guest_search_ready: false,
+            podcast_resume: false,
         };
         Self {
             state: Mutex::new(None),

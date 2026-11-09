@@ -90,6 +90,8 @@ mod search_mv_fixture;
 mod search_podcast_playback_fixture;
 #[path = "support/search_privilege_fixture.rs"]
 mod search_privilege_fixture;
+#[path = "support/search_voice_menu_fixture.rs"]
+mod search_voice_menu_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
@@ -127,6 +129,11 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 
 #[path = "support/search_signed_fixture.rs"]
 mod search_signed_fixture;
+
+#[path = "support/chorus_queue_fixture.rs"]
+mod chorus_queue_fixture;
+#[path = "support/fm_chorus_fixture.rs"]
+mod fm_chorus_fixture;
 
 #[derive(Default)]
 struct Library {
@@ -226,6 +233,28 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        fm_chorus_fixture::revision()
+    }
+
+    fn playback_chorus_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(fm_chorus_fixture::revision().or_else(chorus_queue_fixture::revision))
+    }
+    fn request_playback_chorus<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::PlaybackChorusRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if fm_chorus_fixture::enabled() {
+                fm_chorus_fixture::batch(read, revision, permission).await
+            } else {
+                chorus_queue_fixture::batch(read, revision, permission)
+            }
+        })
+    }
+
     fn request_daily_notification<'a>(
         &'a self,
         read: cumulus_core::protocol::api::DailyNotificationRead,
@@ -660,6 +689,9 @@ impl Api for Library {
             if let Some(response) = effect_directory_fixture::response(path, &args) {
                 return response;
             }
+            if let Some(response) = fm_chorus_fixture::response(path, &args) {
+                return response;
+            }
             if let Some(response) = fm_feedback_fixture::response(path, &args).await {
                 return response;
             }
@@ -739,6 +771,9 @@ impl Api for Library {
                     .unwrap()
                     .push(args.clone());
                 return fixture::Library::default().request(path, args, false).await;
+            }
+            if let Some(result) = search_voice_menu_fixture::response(path, &args, cached).await {
+                return result;
             }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
@@ -846,7 +881,12 @@ impl Api for Library {
                     json!({"code":200,"ids":[3,7,10]})
                 }
                 "/api/v3/discovery/recommend/songs" => {
-                    json!({"code":200,"data":{"dailySongs":(1..=40).map(song).collect::<Vec<_>>()}})
+                    let count = if chorus_queue_fixture::enabled() {
+                        2
+                    } else {
+                        40
+                    };
+                    json!({"code":200,"data":{"dailySongs":(1..=count).map(song).collect::<Vec<_>>()}})
                 }
                 "/api/v6/playlist/detail" => {
                     let id = args["id"]
@@ -1027,6 +1067,9 @@ impl Api for Library {
                         };
                     json!({"code":200,"data":[{"threadId":format!("R_SO_4_{id}"),"commentCount":comment_count}]})
                 }
+                "/api/song/chorus" if chorus_queue_fixture::enabled() => {
+                    return chorus_queue_fixture::unexpected_single();
+                }
                 "/api/song/chorus" if std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() => {
                     match args["ids"].as_str() {
                         Some("[1]" | "[\"1\"]") => {
@@ -1171,7 +1214,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() {
+        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1198,6 +1241,15 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        if search_voice_menu_fixture::enabled() {
+            tauri::async_runtime::block_on(async {
+                assert_eq!(client.restore_account().await?.status,
+                    cumulus_core::account::SessionStatus::Authenticated);
+                search_voice_menu_fixture::seed(&root, fixture_session.clone(), &proof_store)
+            })?;
+            app.manage(cumulus_desktop::DefaultRouteObserver::new(||
+                cumulus_core::network_diagnostics::DefaultRoute::Present));
+        }
         if daily_notification_proof {
             let config=signed_search.as_ref().expect("sealed signed daily startup").daily_notification_config()?;
             client=client.with_native_daily_notification_config(config);
@@ -1300,7 +1352,7 @@ fn main() {
                 if let Some(directory)=download_directory.as_ref() { audio=audio.allow_download_directory(directory.clone()); }
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
                 count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
-                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if search_download_row_proof {Box::new(search_download_ui_fixture::Audio::new(audio))}else if audio_status_proof || queue_more_fixture::enabled() {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
+                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if search_download_row_proof {Box::new(search_download_ui_fixture::Audio::new(audio)?)}else if audio_status_proof || queue_more_fixture::enabled() {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
                 Ok(audio)
             });
         }
@@ -1440,6 +1492,7 @@ fn main() {
                 value["podcastAroundCalls"] = json!(search_fixture::podcast_around_calls());
                 if let Some(calls) = search_fixture::voice_queue_calls() { value["voiceQueueCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::voice_next_calls() { value["voiceNextCalls"] = json!(calls); }
+                if search_voice_menu_fixture::enabled() { value["voiceMenuCalls"] = json!(search_voice_menu_fixture::calls()); }
                 if let Some(calls) = search_fixture::podcast_follow_calls() { value["podcastFollowCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::artist_gallery_calls() { value["artistGalleryCalls"] = json!(calls); }
             }
@@ -1614,6 +1667,12 @@ fn main() {
                 search_fixture::control(&value);
                 handle.get_webview_window("main").unwrap().eval("window.__searchFixtureAck=true;").unwrap();return;
             }
+            if search_voice_menu_fixture::enabled() && stage=="search-voice-menu-fixture" {
+                let held=search_voice_menu_fixture::control(&value["action"]);
+                handle.get_webview_window("main").unwrap()
+                    .eval(format!("window.__searchVoiceMenuAck={{held:{held}}};")).unwrap();
+                return;
+            }
             if playlist_tag_browse_proof() && stage=="playlist-square-disable" {
                 playlist_square_fixture::disable();
                 handle.get_webview_window("main").unwrap().eval("window.__squareDisabledAck=true;").unwrap();return;
@@ -1688,6 +1747,10 @@ fn main() {
             if mode_fixture::enabled() && stage=="mode-fixture" {
                 let kind=value["kind"].as_str().unwrap();mode_fixture::control(&proof_store,kind);
                 handle.get_webview_window("main").unwrap().eval(format!("window.__modeFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();
+                return;
+            }
+            if fm_chorus_fixture::enabled() && stage=="fm-chorus-release" {
+                fm_chorus_fixture::release();
                 return;
             }
             if fm_feedback_fixture::enabled() && stage=="fm-feedback-fixture" {
@@ -1814,14 +1877,14 @@ fn main() {
                     // Queue proof stages await this actor barrier before the
                     // script releases an intentionally held clear/edit. A watch
                     // snapshot may still describe the previous queue revision.
-                    let player = if daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() {
+                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
                     };
                     if let Ok(snapshot)=player {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() {
+                        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                         if profile_play_record_fixture::play_card_enabled() {
@@ -1834,10 +1897,25 @@ fn main() {
                     if search_podcast_playback_proof {
                         value["searchPodcastCalls"]=search_podcast_playback_fixture::report();
                     }
+                    if chorus_queue_fixture::enabled() {
+                        value["chorusQueueFixture"]=chorus_queue_fixture::report();
+                    }
+                    if fm_chorus_fixture::enabled() {
+                        let source = client.fm_view(&epoch,cumulus_core::fm::FmSource::Personal,false)
+                            .await.ok().and_then(|view|view.value.active_source);
+                        value["nativeFmSource"]=serde_json::to_value(source).unwrap();
+                        value["fmChorusFixture"]=fm_chorus_fixture::report();
+                    }
                     if tone_geometry_proof { value["toneGeometry"]=tone_geometry::report(); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if queue_more_fixture::tip_enabled() { queue_more_fixture::capture_milestone(&stage); }
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    if chorus_queue_fixture::enabled() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__chorusQueueRecorded={};",json!(stage))).unwrap();
+                    }
+                    if fm_chorus_fixture::enabled() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__fmChorusRecorded={};",json!(stage))).unwrap();
+                    }
                     if tone_geometry_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__toneGeometryRecorded={};",json!(stage))).unwrap();
                     }
@@ -1966,7 +2044,10 @@ fn main() {
             queue_more_fixture::phase_milestone("main_page_loaded");
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             let default_script = if std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some() { include_str!("like_recovery_ui_probe.js") } else if std::env::var_os("CUMULUS_MOTION_PROOF").is_some() { include_str!("motion_ui_probe.js") } else { include_str!("ux_ui_probe.js") };
-            let source=script.as_deref().unwrap_or(default_script);
+            let batch_source = script.as_ref().filter(|_| download_page_fixture::collection_enabled()
+                && std::env::var_os("CUMULUS_DOWNLOAD_BATCH_COLLECT_PROOF").is_some())
+                .map(|source| format!("window.__downloadBatchCollectProof=true;\n{source}"));
+            let source=batch_source.as_deref().or(script.as_deref()).unwrap_or(default_script);
             if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {view.eval(capture_ack::script(source)).unwrap();}
             else {view.eval(source).unwrap();}
             queue_more_fixture::phase_milestone("script_queued");

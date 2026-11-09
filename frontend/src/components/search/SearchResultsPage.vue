@@ -78,7 +78,7 @@ const props = defineProps<{
   queueable: boolean;
   queueDropEnabled: boolean;
   voiceQueueable: boolean;
-  voiceQueueFeedback: string;
+  cardQueueFeedback: string;
   playlistActionBusy: boolean;
   knownPlaylistIds?: ReadonlySet<string>;
   observedAlbumMembership: ReadonlyMap<string, boolean>;
@@ -195,6 +195,8 @@ const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, c
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
+const songTableHints = (section: SearchSection) =>
+  section.items.flatMap((item) => (item.kind === 'song' ? [item.tableHint] : []));
 function startQueueDrop(
   event: PointerEvent,
   section: SearchSection,
@@ -767,8 +769,8 @@ onBeforeUnmount(() => {
                 : '综合结果'
         }}
       </p>
-      <p v-if="voiceQueueFeedback" class="search-voice-next-notice" role="status">
-        {{ voiceQueueFeedback }}
+      <p v-if="cardQueueFeedback" class="search-voice-next-notice" role="status">
+        {{ cardQueueFeedback }}
       </p>
       <p
         v-if="voiceLinkStatus"
@@ -1090,6 +1092,7 @@ onBeforeUnmount(() => {
               v-else-if="section.items.some((i) => i.kind === 'song')"
               ref="searchSongTables"
               :tracks="tracks(section)"
+              :search-title-hints="category === 'songs' ? songTableHints(section) : undefined"
               :queue-drop-enabled="category === 'songs' && queueDropEnabled"
               :playlist-selection-scope="
                 category === 'songs'
@@ -1136,6 +1139,12 @@ onBeforeUnmount(() => {
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"
+                :podcast-next-enabled="
+                  category === 'podcasts' &&
+                  voiceQueueable &&
+                  playbackState !== 'preparing' &&
+                  playbackState !== 'loading'
+                "
                 :voice-next="
                   category === 'voices' || (category === 'all' && section.category === 'voices')
                     ? voiceQueueable
@@ -1145,6 +1154,11 @@ onBeforeUnmount(() => {
                 "
                 :voice-links="
                   account.status === 'authenticated' && searchVoiceLinkSection(category, section)
+                "
+                :voice-menu-epoch="
+                  account.status === 'authenticated' && searchVoiceLinkSection(category, section)
+                    ? account.epoch
+                    : undefined
                 "
                 :playlist-action-busy="playlistActionBusy"
                 :playlist-known="
@@ -1182,6 +1196,7 @@ onBeforeUnmount(() => {
                 @queue="emit('queueCard', $event)"
                 @queue-voice="emit('queueVoice', $event)"
                 @voice-link="activateVoiceLink(section, $event)"
+                @voice-menu-error="voiceLinkStatus = $event"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
                 @playlist-subscribe="emit('playlistSubscribe', $event)"

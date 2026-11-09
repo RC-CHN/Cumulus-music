@@ -20,6 +20,9 @@ use uuid::Uuid;
 
 pub(crate) const FM_BACKUP_QUEUE: &str = "fm-backup-queue";
 pub(crate) const FM_BACKUP_POSITION: &str = "fm-backup-position";
+pub(crate) const RECALL_STATE: &str = "home-recall-v1";
+pub(crate) const RECALL_LAST_TIME: &str = "prefill";
+pub(crate) const RECALL_GUIDE_SHOWN: &str = "guide-shown";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

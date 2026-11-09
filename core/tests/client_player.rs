@@ -32,6 +32,7 @@ struct Backend {
     url_started: Notify,
     url_release: Notify,
     trial: Mutex<Option<Value>>,
+    playlist_trial: playlist_trial::Fixture,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
     album_privileges: Mutex<Vec<Value>>,
@@ -51,6 +52,7 @@ struct Backend {
     quality_release: Notify,
     vinyl_composer: vinyl_composer::Server,
     artist_cover: artist_search_cover::CoverFixture,
+    chorus: chorus::Backend,
     vinyl_comment_group: AtomicU64,
     vinyl_recommendation_group: AtomicU64,
     vinyl_similar: vinyl_similar::Server,
@@ -61,6 +63,21 @@ struct Backend {
     vinyl_comment_release: Notify,
 }
 impl Api for Backend {
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        self.chorus.revision()
+    }
+
+    fn playback_chorus_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self.chorus.revision())
+    }
+    fn request_playback_chorus<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::PlaybackChorusRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.chorus.batch(read, revision, permission))
+    }
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
         if self.artist_cover.is_enabled() {
             return Ok(self.artist_cover.revision());
@@ -237,8 +254,10 @@ impl Api for Backend {
                 "/api/album/v3/detail" => {
                     json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":self.album_tracks.lock().unwrap().clone().unwrap_or_else(||(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>())})
                 }
+                "/api/user/playlist" => self.playlist_trial.list(&payload),
                 "/api/v6/playlist/detail" => {
-                    json!({"code":200,"playlist":{"id":payload["id"],"name":"已核对的歌单","trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
+                    self.playlist_trial.detail(&payload).unwrap_or_else(||
+                        json!({"code":200,"playlist":{"id":payload["id"],"name":"已核对的歌单","trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}}))
                 }
                 "/api/homepage/category/daily/song/list" => {
                     let expected = if self.style_tag_after_ack.swap(false, Ordering::SeqCst) {
@@ -293,6 +312,7 @@ impl Api for Backend {
                         });
                     json!({"code":200,"data":{"dailySongs":tracks}})
                 }
+                "/api/song/chorus" => self.chorus.single(&payload),
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
@@ -311,6 +331,7 @@ impl Api for Backend {
                     *self.trial.lock().unwrap() = Some(payload["trialMode"].clone());
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
+                    self.playlist_trial.record_media(&ids, &payload["trialMode"]);
                     if ids[0].as_u64().or_else(|| ids[0].as_str()?.parse().ok())
                         == Some(self.hold_url_id.load(Ordering::SeqCst))
                     {
@@ -409,6 +430,12 @@ mod artist_search_cover;
 
 #[path = "client_player/prepared_selection.rs"]
 mod prepared_selection;
+
+#[path = "client_player/chorus.rs"]
+mod chorus;
+
+#[path = "client_player/playlist_trial.rs"]
+mod playlist_trial;
 
 #[path = "client_player/voice_selection.rs"]
 mod voice_selection;

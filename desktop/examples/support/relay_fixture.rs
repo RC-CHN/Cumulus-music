@@ -240,12 +240,37 @@ impl NativeAudio {
         &mut self,
         file: std::fs::File,
         authority: Cancellation,
+        settings: Option<cumulus_core::effects::equalizer::EqualizerSettings>,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
         if self.download_directory.is_none() {
             return Err(Error::State("search proof download scope unavailable"));
         }
-        self.inner.load_pinned_audio(file, authority, cancel)
+        match settings {
+            Some(settings) => self
+                .inner
+                .load_pinned_audio_with_local_equalizer(file, authority, settings, cancel),
+            None => self.inner.load_pinned_audio(file, authority, cancel),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn with_search_graph(
+        mut self,
+        runtime: cumulus_core::playback::engine::TrustedFlacRuntime,
+    ) -> Self {
+        self.inner = self.inner.with_local_equalizer_decoder(runtime);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn search_engine(&self) -> &MpvEngine {
+        &self.inner
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn search_engine_mut(&mut self) -> &mut MpvEngine {
+        &mut self.inner
     }
 
     #[allow(dead_code)]

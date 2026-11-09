@@ -11,12 +11,15 @@ use crate::{
     Error, Result,
     account::SessionToken,
     playback::engine::Cancellation,
-    podcast::{Episode, PodcastApi, Radio, progress::latest, radio_order},
+    podcast::{Episode, PodcastApi, Radio, progress::latest, radio_order, resume},
     protocol::api::{Api, identifier},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::sync::Mutex;
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 const PATH: &str = "/api/voice/book/recent";
 const PAGE: usize = 20;
@@ -167,7 +170,7 @@ struct Snapshot {
 }
 
 impl Snapshot {
-    fn page(&self, number: usize) -> Result<ListenedBooksPage> {
+    fn page(&self, number: usize, hidden_progress: &HashSet<String>) -> Result<ListenedBooksPage> {
         if number == 0 || number > self.rows.len().div_ceil(PAGE).max(1) {
             return Err(Error::InvalidInput("invalid listened books page"));
         }
@@ -180,13 +183,15 @@ impl Snapshot {
             .take(PAGE)
             .map(|(key, row)| {
                 let radio = podcast::view::card(&row.radio);
+                let show_progress = !hidden_progress.contains(&row.radio.id);
                 BookRow {
                     key,
                     subscribers: number_value(&row.radio.raw["subCount"]),
                     chapter: row.chapter.as_ref().map(|chapter| ChapterView {
                         name: chapter.name.clone(),
                         recent: chapter.recent,
-                        percent: if chapter.location > 0
+                        percent: if show_progress
+                            && chapter.location > 0
                             && chapter.duration > 0
                             && !chapter.completed
                         {
@@ -197,7 +202,7 @@ impl Snapshot {
                         } else {
                             None
                         },
-                        completed: chapter.completed,
+                        completed: show_progress && chapter.completed,
                         playable: chapter.playable && !unavailable(&row.radio.raw),
                     }),
                     radio,
@@ -237,12 +242,46 @@ impl ListenedBooksHost {
 }
 
 impl MusicClient {
+    fn listened_books_hidden_progress(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+    ) -> HashSet<String> {
+        let Some(credentials) = api.podcast_resume_observation_revision().ok().flatten() else {
+            return HashSet::new();
+        };
+        if self
+            .pc_experiments
+            .presented_group(token, api, &credentials, resume::EXPERIMENT)
+            .as_deref()
+            != Some("t1")
+        {
+            return HashSet::new();
+        }
+        let hidden = self
+            .session
+            .podcast_resume
+            .known_off(token, api, &credentials)
+            .unwrap_or_default();
+        if api
+            .podcast_resume_observation_revision()
+            .ok()
+            .flatten()
+            .as_deref()
+            != Some(&credentials)
+        {
+            return HashSet::new();
+        }
+        hidden
+    }
+
     pub async fn listened_books(
         &self,
         epoch: &str,
         query: ListenedBooksQuery,
     ) -> Result<AccountData<ListenedBooksPage>> {
         let token = self.player_token(epoch)?;
+        let api = self.session.native_api(&token)?;
         let value = match query {
             ListenedBooksQuery::Open => {
                 let _reading = self
@@ -256,40 +295,43 @@ impl MusicClient {
                         decode(&api.call(PATH, json!({}), false, &[200]).await?)
                     })
                     .await?;
-                self.session.with_token(&token, |owner| {
-                    let store = self.session.persistent_store()?;
-                    store.read_snapshot(|tx| {
-                        for row in &mut rows {
-                            if let Some(chapter) = row.chapter.as_mut()
-                                && let Some(local) = latest::read(tx, owner, &row.radio.id)?
-                            {
-                                local_chapter(chapter, local);
+                self.session
+                    .with_verified_profile(&token, &api, |owner, _| {
+                        let store = self.session.persistent_store()?;
+                        store.read_snapshot(|tx| {
+                            for row in &mut rows {
+                                if let Some(chapter) = row.chapter.as_mut()
+                                    && let Some(local) = latest::read(tx, owner, &row.radio.id)?
+                                {
+                                    local_chapter(chapter, local);
+                                }
                             }
+                            Ok(())
+                        })?;
+                        let snapshot = Snapshot {
+                            token: token.clone(),
+                            revision: uuid::Uuid::new_v4().simple().to_string(),
+                            rows,
+                            source: Cancellation::default(),
+                        };
+                        let hidden = self.listened_books_hidden_progress(&token, &api);
+                        let page = snapshot.page(1, &hidden)?;
+                        let mut slot = self
+                            .listened_books
+                            .slot
+                            .lock()
+                            .map_err(|_| Error::LockPoisoned)?;
+                        if let Some(old) = slot.replace(snapshot) {
+                            old.source.cancel();
                         }
-                        Ok(())
-                    })?;
-                    let snapshot = Snapshot {
-                        token: token.clone(),
-                        revision: uuid::Uuid::new_v4().simple().to_string(),
-                        rows,
-                        source: Cancellation::default(),
-                    };
-                    let page = snapshot.page(1)?;
-                    let mut slot = self
-                        .listened_books
-                        .slot
-                        .lock()
-                        .map_err(|_| Error::LockPoisoned)?;
-                    if let Some(old) = slot.replace(snapshot) {
-                        old.source.cancel();
-                    }
-                    Ok(page)
-                })?
+                        Ok(page)
+                    })?
             }
             ListenedBooksQuery::Page { revision, number } => {
-                self.session.with_token(&token, |_| {
+                self.session.with_verified_profile(&token, &api, |_, _| {
+                    let hidden = self.listened_books_hidden_progress(&token, &api);
                     self.listened_books
-                        .current(&token, &revision, |snapshot| snapshot.page(number))
+                        .current(&token, &revision, |snapshot| snapshot.page(number, &hidden))
                 })?
             }
         };

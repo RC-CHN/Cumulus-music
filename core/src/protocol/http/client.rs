@@ -9,11 +9,13 @@ use crate::{
         api::{
             Api, ApiFuture, CopyrightNotificationRead, DailyNotificationRead, GuardedPlaylistAdd,
             GuardedPlaylistCreate, GuardedSongLike, MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH,
-            MessageReadAllPermission, PlaylistAddPermission, SongCardLikedRead, SongLikePermission,
-            SystemLikedRead, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
-            VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
-            VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
-            VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
+            MessageReadAllPermission, PlaybackChorusPermission, PlaybackChorusRead,
+            PlayerPodcastResumeRead, PlayerPodcastResumeWrite, PlaylistAddPermission,
+            SongCardLikedRead, SongLikePermission, SystemLikedRead, VinylCommentRead,
+            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
+            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
+            VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead,
+            VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -75,6 +77,10 @@ enum RequestBinding<'a> {
     VinylDiscovery,
     VinylPlaybackRead(&'a VinylPlaybackReadPermission<'a>),
     DownloadLikedRead(&'a PlaylistAddPermission<'a>),
+    PlayerPodcastResumeWrite {
+        permission: &'a VinylPlaybackReadPermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     VinylPodcastSubscriptionWrite {
         permission: &'a VinylPlaybackReadPermission<'a>,
         dispatched: &'a AtomicBool,
@@ -84,9 +90,15 @@ enum RequestBinding<'a> {
         dispatched: &'a AtomicBool,
     },
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
+    PlaybackChorus(&'a PlaybackChorusPermission<'a>),
     PodcastBadge {
         permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
         dispatched: &'a AtomicBool,
+    },
+    JskRenewal {
+        music_u: &'a str,
+        permission: &'a (dyn Fn() -> Result<()> + Sync),
+        dispatched: Option<&'a AtomicBool>,
     },
     LegacyRenewal {
         permission: &'a (dyn Fn() -> Result<()> + Sync),
@@ -347,14 +359,83 @@ impl MusicHttpClient {
         PcExperimentGroups::refreshed(&response)
     }
 
-    pub(crate) async fn request_jsk_if_revision(
+    pub(crate) async fn request_jsk_renewal(
         &self,
-        path: &str,
         payload: Value,
-        expected: &str,
+        revision: &str,
+        music_u: &str,
+        permission: &(dyn Fn() -> Result<()> + Sync),
+        dispatched: &AtomicBool,
     ) -> Result<Value> {
-        self.execute(path, payload, false, Some(expected), Jsk::Lifecycle, None)
-            .await
+        let path = "/api/login/token/refresh/v1";
+        let result = self
+            .execute(
+                path,
+                payload,
+                false,
+                Some(revision),
+                Jsk::Lifecycle,
+                Some(RequestBinding::JskRenewal {
+                    music_u,
+                    permission,
+                    dispatched: Some(dispatched),
+                }),
+            )
+            .await;
+        match result {
+            Err(error) if !dispatched.load(Ordering::Relaxed) => {
+                if matches!(error.root(), Error::RequestNotSent(_)) {
+                    Err(error)
+                } else {
+                    Err(Error::RequestNotSent(Box::new(error)))
+                }
+            }
+            // A backend error cannot undo the dispatch boundary for this write.
+            Err(error) if matches!(error.root(), Error::RequestNotSent(_)) => {
+                Err(Error::MutationUncertain)
+            }
+            other => other,
+        }
+    }
+
+    pub(crate) async fn request_jsk_renewal_identity(
+        &self,
+        revision: &str,
+        music_u: &str,
+        permission: &(dyn Fn() -> Result<()> + Sync),
+    ) -> Result<Value> {
+        const PATH: &str = "/api/w/nuser/account/get";
+        let response = self
+            .execute(
+                PATH,
+                json!({}),
+                false,
+                Some(revision),
+                Jsk::None,
+                Some(RequestBinding::JskRenewal {
+                    music_u,
+                    permission,
+                    dispatched: None,
+                }),
+            )
+            .await?;
+        let response = crate::protocol::api::validate_response(PATH, response, &[200])?;
+        match response.get("profile") {
+            Some(profile) if crate::protocol::api::identifier(&profile["userId"]).is_ok() => {
+                Ok(response)
+            }
+            _ => Err(Error::service(PATH, json!(301), response)),
+        }
+    }
+
+    pub(crate) fn require_jsk_renewal_scope(&self, revision: &str, music_u: &str) -> Result<()> {
+        let origin = self.credentials.origin();
+        let target = origin.request_url(WireRoute::Eapi, "/api/login/token/refresh/v1")?;
+        let current = self.credentials.request_credentials(&target)?;
+        if current.revision != revision || current.unique_music_u() != Some(music_u) {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])
     }
 
     pub(crate) async fn request_legacy_periodic_refresh(
@@ -606,6 +687,18 @@ impl MusicHttpClient {
         {
             return Err(Error::CredentialChanged);
         }
+        if let Some(RequestBinding::JskRenewal {
+            music_u,
+            permission,
+            ..
+        }) = binding
+        {
+            if route != WireRoute::Eapi || snapshot.unique_music_u() != Some(music_u) {
+                return Err(Error::CredentialChanged);
+            }
+            self.require_jsk_renewal_scope(&snapshot.revision, music_u)?;
+            permission()?;
+        }
         if matches!(
             binding,
             Some(
@@ -791,6 +884,17 @@ impl MusicHttpClient {
                 }
                 permission()?;
             }
+            if let Some(RequestBinding::PlaybackChorus(permission)) = binding {
+                if origin != super::ApiOrigin::Pc || self.anonymous_store {
+                    return Err(Error::CredentialChanged);
+                }
+                let current = self.credentials.request_credentials(&target)?;
+                if current.revision != snapshot.revision {
+                    return Err(Error::CredentialChanged);
+                }
+                self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])?;
+                permission()?;
+            }
             if let Some(RequestBinding::VinylPodcastSubscriptionWrite {
                 permission,
                 dispatched,
@@ -804,6 +908,20 @@ impl MusicHttpClient {
                     return Err(Error::CredentialChanged);
                 }
                 self.check_vinyl_voice_action_scope(&current)?;
+                permission()?;
+                dispatched.store(true, Ordering::Release);
+            }
+            if let Some(RequestBinding::PlayerPodcastResumeWrite {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                if route != WireRoute::Eapi
+                    || self.player_podcast_resume_write_revision()?.as_deref()
+                        != Some(snapshot.revision.as_str())
+                {
+                    return Err(Error::CredentialChanged);
+                }
                 permission()?;
                 dispatched.store(true, Ordering::Release);
             }
@@ -871,6 +989,20 @@ impl MusicHttpClient {
                 }
                 permission()?;
                 dispatched.store(true, Ordering::Release);
+            }
+            if let Some(RequestBinding::JskRenewal {
+                music_u,
+                permission,
+                dispatched,
+            }) = binding
+            {
+                // M/402 preparation can wait for a provider while an account
+                // switches without changing the old profile's credential jar.
+                self.require_jsk_renewal_scope(&snapshot.revision, music_u)?;
+                permission()?;
+                if let Some(dispatched) = dispatched {
+                    dispatched.store(true, Ordering::Relaxed);
+                }
             }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
@@ -1048,6 +1180,52 @@ impl Api for MusicHttpClient {
         Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
     }
 
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        if self.credentials.origin() != super::ApiOrigin::Pc || self.anonymous_store {
+            return None;
+        }
+        Some(self.credentials.subscribe_commits().borrow().clone())
+    }
+
+    fn playback_chorus_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        if origin != super::ApiOrigin::Pc || self.anonymous_store {
+            return Ok(None);
+        }
+        let path = PlaybackChorusRead::PATH;
+        let route = select_route_with_policy(origin, path, &json!({}), self.options.routing)?;
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, path)?)?;
+        if current.unique_music_u().is_none() {
+            return Ok(None);
+        }
+        self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])?;
+        Ok(Some(current.revision))
+    }
+
+    fn request_playback_chorus<'a>(
+        &'a self,
+        read: PlaybackChorusRead,
+        revision: &'a str,
+        permission: &'a PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = read.into_request()?;
+            let response = self
+                .execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::PlaybackChorus(permission)),
+                )
+                .await?;
+            crate::protocol::api::validate_response(path, response, &[200])
+        })
+    }
+
     fn podcast_progress_revision(&self) -> Result<Option<String>> {
         use crate::podcast::progress::PLAYRECORD_PATH;
         let origin = self.credentials.origin();
@@ -1056,6 +1234,117 @@ impl Api for MusicHttpClient {
         let target = origin.request_url(route, PLAYRECORD_PATH)?;
         let snapshot = self.credentials.request_credentials(&target)?;
         Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
+    }
+
+    fn podcast_resume_observation_revision(&self) -> Result<Option<String>> {
+        use crate::protocol::{api::PODCAST_RESUME_READ_PATH, pc_experiments::ASSIGNMENT_PATH};
+        let revision = self.pc_experiment_revision()?;
+        let origin = self.credentials.origin();
+        let route = select_route_with_policy(
+            origin,
+            PODCAST_RESUME_READ_PATH,
+            &json!({}),
+            self.options.routing,
+        )?;
+        if route != WireRoute::Eapi {
+            return Ok(None);
+        }
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, PODCAST_RESUME_READ_PATH)?)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get", ASSIGNMENT_PATH])?;
+        Ok(Some(revision))
+    }
+
+    fn player_podcast_resume_write_revision(&self) -> Result<Option<String>> {
+        use crate::protocol::{
+            api::{PODCAST_RESUME_READ_PATH, PODCAST_RESUME_WRITE_PATH},
+            pc_experiments::ASSIGNMENT_PATH,
+        };
+        let Some(revision) = self.podcast_resume_observation_revision()? else {
+            return Ok(None);
+        };
+        let origin = self.credentials.origin();
+        let route = select_route_with_policy(
+            origin,
+            PODCAST_RESUME_WRITE_PATH,
+            &json!({}),
+            self.options.routing,
+        )?;
+        if route != WireRoute::Eapi {
+            return Ok(None);
+        }
+        let target = origin.request_url(route, PODCAST_RESUME_WRITE_PATH)?;
+        let current = self.credentials.request_credentials(&target)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/w/nuser/account/get",
+                ASSIGNMENT_PATH,
+                PODCAST_RESUME_READ_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
+    fn request_player_podcast_resume_read<'a>(
+        &'a self,
+        read: PlayerPodcastResumeRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.player_podcast_resume_write_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            self.vinyl_playback_read(read.into_request(), revision, permission)
+                .await
+        })
+    }
+
+    fn request_player_podcast_resume_write<'a>(
+        &'a self,
+        write: PlayerPodcastResumeWrite,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let dispatched = AtomicBool::new(false);
+            let result = async {
+                if self.player_podcast_resume_write_revision()?.as_deref() != Some(revision) {
+                    return Err(Error::CredentialChanged);
+                }
+                let (path, payload) = write.into_request();
+                self.execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::PlayerPodcastResumeWrite {
+                        permission,
+                        dispatched: &dispatched,
+                    }),
+                )
+                .await
+            }
+            .await;
+            result.map_err(|error| {
+                if !dispatched.load(Ordering::Acquire) {
+                    Error::RequestNotSent(Box::new(error))
+                } else if matches!(error.root(), Error::RequestNotSent(_)) {
+                    Error::MutationUncertain
+                } else {
+                    error
+                }
+            })
+        })
     }
 
     fn upload_podcast_progress<'a>(
@@ -1790,3 +2079,6 @@ impl Api for MusicHttpClient {
         })
     }
 }
+
+#[cfg(test)]
+mod chorus_tests;

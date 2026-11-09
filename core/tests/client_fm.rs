@@ -32,6 +32,9 @@ fn fixture() -> (
     (dir, api, session, Arc::new(client))
 }
 
+#[path = "client_fm/chorus.rs"]
+mod chorus;
+
 #[path = "support/fm_feedback_client.rs"]
 mod feedback_tests;
 #[path = "support/mini_fm_feedback.rs"]

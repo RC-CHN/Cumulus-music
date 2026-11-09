@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
+    protocol::api::Api,
     storage::{OperationLock, StateStore},
 };
 use serde_json::Value;
@@ -33,14 +34,17 @@ pub struct FmService {
     pub(super) store: Arc<StateStore>,
     pub(super) clock: Arc<dyn FmClock>,
     pub(super) zone_preview: zone_preview::ZonePreviewState,
+    chorus: Arc<chorus::Host>,
 }
 impl FmService {
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
         Self::with_clock(session, Arc::new(SystemFmClock))
     }
     pub fn with_clock(session: Arc<AccountSession>, clock: Arc<dyn FmClock>) -> Result<Self> {
+        let store = session.persistent_store()?;
         Ok(Self {
-            store: session.persistent_store()?,
+            chorus: chorus::Host::new(session.clone(), store.clone()),
+            store,
             session,
             clock,
             zone_preview: Default::default(),
@@ -97,11 +101,43 @@ impl FmService {
         queue: &FmQueue,
         skip: Option<&SkipReport>,
     ) -> Result<()> {
+        self.save_refill(token, expected, queue, skip, None)
+    }
+
+    fn save_refill(
+        &self,
+        token: &SessionToken,
+        expected: u64,
+        queue: &FmQueue,
+        skip: Option<&SkipReport>,
+        load: Option<chorus::Load>,
+    ) -> Result<()> {
         queue.validate()?;
         let key = Self::key(&queue.source)?;
         self.session.with_token(token, |uid| {
-            self.save_for_owner(uid, &key, expected, queue, skip)
-        })
+            self.save_for_owner(uid, &key, expected, queue, skip, load.is_some())
+        })?;
+        if let Some(load) = load {
+            self.chorus.schedule(key, queue, load);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn chorus_receipt(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        source: &FmSource,
+    ) -> Result<Option<Arc<chorus::ChorusReceipt>>> {
+        self.chorus.receipt(token, api, source)
+    }
+
+    pub(crate) fn chorus_point(
+        &self,
+        receipt: &Arc<chorus::ChorusReceipt>,
+        id: &str,
+    ) -> Result<Option<f64>> {
+        self.chorus.point(receipt, id)
     }
 
     fn save_for_owner(
@@ -111,6 +147,7 @@ impl FmService {
         expected: u64,
         queue: &FmQueue,
         skip: Option<&SkipReport>,
+        loaded: bool,
     ) -> Result<()> {
         self.store.transaction(|tx| {
             let revision = tx
@@ -122,6 +159,14 @@ impl FmService {
                 return Err(Error::QueueChanged);
             }
             tx.put(uid, QUEUES, key, &serde_json::to_value(queue)?)?;
+            if loaded {
+                tx.put(
+                    uid,
+                    chorus::LOAD_REVISION,
+                    key,
+                    &Value::from(queue.revision),
+                )?;
+            }
             if let Some(skip) = skip {
                 tx.put(uid, feedback::SKIPS, &skip.id, &serde_json::to_value(skip)?)?;
             }
@@ -155,7 +200,13 @@ impl FmService {
             Ok(value)
         })
     }
-    async fn fill(&self, token: &SessionToken, queue: &mut FmQueue, preload: bool) -> Result<()> {
+    async fn fill(
+        &self,
+        token: &SessionToken,
+        queue: &mut FmQueue,
+        preload: bool,
+    ) -> Result<chorus::Load> {
+        let load = chorus::Load::capture(&self.session, token);
         let tracks = self
             .session
             .run_for(token, |api, _| async {
@@ -169,8 +220,25 @@ impl FmService {
             .await?;
         queue.append(tracks);
         queue.fetched_at = self.clock.now_ms()?;
-        Ok(())
+        Ok(load)
     }
+    async fn refill(
+        &self,
+        token: &SessionToken,
+        queue: &mut FmQueue,
+    ) -> Result<(Option<chorus::Load>, bool)> {
+        match self.fill(token, queue, false).await {
+            Ok(load) => Ok((Some(load), false)),
+            Err(error)
+                if error.is_service_code(301)
+                    || matches!(error, Error::StaleResponse | Error::CredentialChanged) =>
+            {
+                Err(error)
+            }
+            Err(_) => Ok((None, true)),
+        }
+    }
+
     /// Native caller supplies the current server-derived membership identity.
     /// A fresh ordinary preload preserves cursor. Expired and alternate-mode
     /// preloads append to existing history, as M1384.loadMore does.
@@ -206,6 +274,7 @@ impl FmService {
             _ => None,
         };
         if let Some(seed) = seed {
+            let load = chorus::Load::capture(&self.session, token);
             let mut candidate = queue.clone();
             candidate.append(seed.tracks);
             candidate.fetched_at = now;
@@ -224,17 +293,20 @@ impl FmService {
                     {
                         return Err(Error::CredentialChanged);
                     }
-                    self.save_for_owner(uid, &key, revision, &candidate, None)
+                    self.save_for_owner(uid, &key, revision, &candidate, None, true)
                 });
             match saved {
-                Ok(()) => return Ok(candidate),
+                Ok(()) => {
+                    self.chorus.schedule(key, &candidate, load);
+                    return Ok(candidate);
+                }
                 Err(Error::CredentialChanged) => {}
                 Err(error) => return Err(error),
             }
         }
-        self.fill(token, &mut queue, true).await?;
+        let load = self.fill(token, &mut queue, true).await?;
         self.select_preloaded(token, &mut queue)?;
-        self.save(token, revision, &queue, None)?;
+        self.save_refill(token, revision, &queue, None, Some(load))?;
         Ok(queue)
     }
 
@@ -276,13 +348,16 @@ impl FmService {
             return Ok(queue);
         }
         let mut selected = queue.find(queue.index, false, &blacklist);
-        if selected.is_none() {
-            self.fill(token, &mut queue, false).await?;
+        let load = if selected.is_none() {
+            let load = self.fill(token, &mut queue, false).await?;
             selected = queue.find(queue.index, false, &blacklist);
-        }
+            Some(load)
+        } else {
+            None
+        };
         queue.select(selected.unwrap_or(queue.tracks.len()));
         queue.bump()?;
-        self.save(token, revision, &queue, None)?;
+        self.save_refill(token, revision, &queue, None, load)?;
         Ok(queue)
     }
     /// Returns a committed queue intent and an optional *prepared*, unsent skip
@@ -326,6 +401,7 @@ impl FmService {
             None
         };
         let mut refill_failed = false;
+        let mut load = None;
         let repeat = step == FmStep::Ended && queue.repeat == FmRepeat::One && previous.is_some();
         let blacklist = self.blacklist_for(token)?;
         let selected = if repeat {
@@ -336,15 +412,8 @@ impl FmService {
             }
             queue.find(queue.index - 1, true, &blacklist)
         } else {
-            if queue.needs_refill()
-                && let Err(error) = self.fill(token, &mut queue, false).await
-            {
-                if error.is_service_code(301)
-                    || matches!(error, Error::StaleResponse | Error::CredentialChanged)
-                {
-                    return Err(error);
-                }
-                refill_failed = true;
+            if queue.needs_refill() {
+                (load, refill_failed) = self.refill(token, &mut queue).await?;
             }
             queue.find(
                 queue.index + usize::from(previous.is_some()),
@@ -359,7 +428,7 @@ impl FmService {
         }
         queue.last_step_at = Some(now);
         queue.bump()?;
-        self.save(token, revision, &queue, report.as_ref())?;
+        self.save_refill(token, revision, &queue, report.as_ref(), load)?;
         Ok(FmTransition {
             queue,
             skip_report: report.map(|s| s.id),
@@ -392,21 +461,14 @@ impl FmService {
         let _gate = self.gate(token, source)?;
         let mut queue = self.required(token, source, revision)?;
         let current = queue.current().cloned();
-        let mut refill_failed = false;
         let removed_current = current
             .as_ref()
             .is_some_and(|t| record.song_ids.contains(&t.id));
-        if removed_current
-            && queue.needs_refill()
-            && let Err(error) = self.fill(token, &mut queue, false).await
-        {
-            if error.is_service_code(301)
-                || matches!(error, Error::StaleResponse | Error::CredentialChanged)
-            {
-                return Err(error);
-            }
-            refill_failed = true;
-        }
+        let (load, refill_failed) = if removed_current && queue.needs_refill() {
+            self.refill(token, &mut queue).await?
+        } else {
+            (None, false)
+        };
         let old_index = queue.index;
         let removed_before = queue
             .tracks
@@ -425,7 +487,7 @@ impl FmService {
         };
         queue.select(selected.unwrap_or(queue.tracks.len()));
         queue.bump()?;
-        self.save(token, revision, &queue, None)?;
+        self.save_refill(token, revision, &queue, None, load)?;
         Ok(FmTransition {
             queue,
             skip_report: None,

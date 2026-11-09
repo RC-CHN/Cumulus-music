@@ -120,7 +120,7 @@ impl MusicClient {
         let value = controller
             .command(
                 &token,
-                PlaybackCommand::UpdateQueue(QueueUpdate {
+                PlaybackCommand::InsertNext(QueueUpdate {
                     expected: before.fence(),
                     queue,
                     transport: start.then_some(QueueTransport {

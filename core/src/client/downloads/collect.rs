@@ -1,4 +1,5 @@
 //! Receipt-bound collection from completed downloads.
+mod batch;
 mod creation;
 mod liked;
 use super::{Context, MusicClient, resource::catalogue_track_id};
@@ -16,19 +17,21 @@ use crate::{
         wire::serialization::js_truthy,
     },
 };
+pub use batch::DownloadBatchCollectPlan;
 use creation::CreationAttempt;
 pub use creation::{DownloadCollectCreation, DownloadCollectCreationCommand};
 pub use liked::DownloadLikedDestination;
 use serde::Serialize;
+use serde_json::Value;
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
     time::{Duration, Instant},
 };
 
 const VISIT_LIMIT: Duration = Duration::from_secs(300);
 
-fn catalogued_song(task: &DownloadTask) -> Option<String> {
+fn collection_resource(task: &DownloadTask) -> Option<(String, &Value)> {
     let id = catalogue_track_id(task)?;
     let metadata = task.song.as_ref()?;
     if identifier(&metadata["id"]).ok()?.as_str() != task.song_id
@@ -46,6 +49,11 @@ fn catalogued_song(task: &DownloadTask) -> Option<String> {
     {
         return None;
     }
+    Some((id, p))
+}
+
+fn catalogued_song(task: &DownloadTask) -> Option<String> {
+    let (id, p) = collection_resource(task)?;
     // M3085:780–783 retains falsey single-row subPriv (including numeric
     // zero), but a truthy privilege must coerce to a positive number.
     // Only known numeric wire representations are admissible here.
@@ -66,26 +74,58 @@ pub(super) fn eligible(task: &DownloadTask) -> bool {
     catalogued_song(task).is_some()
 }
 
+enum Selection {
+    Single { task: String, songs: [String; 1] },
+    Batch(batch::Batch),
+}
 struct Source {
     context: Context,
     api: Arc<dyn Api>,
     credentials: String,
     receipt: String,
-    task: String,
-    song: String,
+    selection: Selection,
     created: Instant,
 }
 
 impl Source {
+    fn songs(&self) -> &[String] {
+        match &self.selection {
+            Selection::Single { songs, .. } => songs,
+            Selection::Batch(batch) => &batch.songs,
+        }
+    }
+
+    fn is_batch(&self) -> bool {
+        matches!(self.selection, Selection::Batch(_))
+    }
+
+    fn single_song(&self) -> Result<&String> {
+        match &self.selection {
+            Selection::Single { songs: [song], .. } => Ok(song),
+            Selection::Batch(_) => Err(Error::InvalidInput(
+                "batch collection requires an existing ordinary playlist",
+            )),
+        }
+    }
+
     fn require(&self) -> Result<()> {
         let ctx = &self.context;
         ctx.session.require_api(&ctx.token, &self.api)?;
         if self.created.elapsed() >= VISIT_LIMIT
             || self.api.download_collection_scope_revision()?.as_deref() != Some(&self.credentials)
-            || catalogued_song(&ctx.service.get_for(&ctx.token, &self.task)?).as_deref()
-                != Some(&self.song)
         {
             return Err(Error::StaleResponse);
+        }
+        match &self.selection {
+            Selection::Single {
+                task,
+                songs: [song],
+            } => {
+                if catalogued_song(&ctx.service.get_for(&ctx.token, task)?).as_ref() != Some(song) {
+                    return Err(Error::StaleResponse);
+                }
+            }
+            Selection::Batch(batch) => batch.require(ctx)?,
         }
         ctx.guard()
     }
@@ -171,6 +211,7 @@ impl MusicClient {
         task_id: &str,
     ) -> Result<AccountData<DownloadCollectPlan>> {
         let context = self.downloads.inner.context(epoch)?;
+        let ticket = self.begin_download_collection()?;
         let song = catalogued_song(&context.service.get_for(&context.token, task_id)?).ok_or(
             Error::InvalidInput("download has no eligible catalogue collection target"),
         )?;
@@ -184,8 +225,10 @@ impl MusicClient {
             api,
             credentials,
             receipt: receipt.clone(),
-            task: task_id.into(),
-            song,
+            selection: Selection::Single {
+                task: task_id.into(),
+                songs: [song],
+            },
             created: Instant::now(),
         });
         source.require()?;
@@ -196,6 +239,28 @@ impl MusicClient {
             .flatten()
             .as_deref()
             == Some(source.credentials.as_str());
+        self.install_download_collection(source, ticket)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value: DownloadCollectPlan {
+                receipt,
+                can_create,
+            },
+        })
+    }
+
+    fn begin_download_collection(&self) -> Result<u64> {
+        self.downloads
+            .inner
+            .collect_prepare
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |previous| {
+                previous.checked_add(1)
+            })
+            .map(|previous| previous + 1)
+            .map_err(|_| Error::State("download picker visits exhausted"))
+    }
+
+    fn install_download_collection(&self, source: Arc<Source>, ticket: u64) -> Result<()> {
         source.require()?;
         let mut slot = self
             .downloads
@@ -203,9 +268,11 @@ impl MusicClient {
             .collect
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
-        if slot.as_ref().is_some_and(|visit| {
-            visit.source.context.token.generation > source.context.token.generation
-        }) {
+        if self.downloads.inner.collect_prepare.load(Ordering::Acquire) != ticket
+            || slot.as_ref().is_some_and(|visit| {
+                visit.source.context.token.generation > source.context.token.generation
+            })
+        {
             return Err(Error::StaleResponse);
         }
         if slot
@@ -223,13 +290,7 @@ impl MusicClient {
             liked: None,
             busy: false,
         });
-        Ok(AccountData {
-            epoch: epoch.into(),
-            value: DownloadCollectPlan {
-                receipt,
-                can_create,
-            },
-        })
+        Ok(())
     }
 
     pub fn download_collect_cancel(&self, epoch: &str, receipt: &str) -> Result<()> {
@@ -278,7 +339,9 @@ impl MusicClient {
             );
             Ok(visit.ticket)
         })?;
-        let reply = self.playlist_collect_page(epoch, sort, page).await?;
+        let reply = self
+            .playlist_collect_page_scope(epoch, sort, page, source.is_batch())
+            .await?;
         source.require()?;
         with_visit(slot, &source, |visit| {
             let item = visit
@@ -350,7 +413,8 @@ impl MusicClient {
                 .guarded_collect_download(
                     &ctx.token,
                     playlist,
-                    &source.song,
+                    source.songs(),
+                    source.is_batch(),
                     &attempt.operation,
                     &check,
                 )
@@ -376,7 +440,7 @@ impl MusicClient {
         if record.operation_id != attempt.operation
             || record.system_liked_group
             || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
-                if id == playlist && ids.len() == 1 && ids[0] == source.song)
+                if id == playlist && ids.as_slice() == source.songs())
         {
             return Err(Error::State(
                 "download collection result belongs to another action",

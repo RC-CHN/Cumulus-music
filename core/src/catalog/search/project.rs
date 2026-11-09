@@ -1,5 +1,6 @@
 use super::*;
 use crate::protocol::api::identifier;
+use crate::protocol::wire::serialization::js_truthy;
 use serde_json::Value;
 
 // M/623 filters the server list to these recovered chart kinds.
@@ -54,15 +55,39 @@ fn words(rows: &[Value], limit: usize) -> Vec<SearchWord> {
     rows.iter().filter_map(word).take(limit).collect()
 }
 
+fn suggestion_text(row: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .map(|key| &row[*key])
+        .find(|value| js_truthy(value))
+        .and_then(text)
+}
+
 fn suggestion_words(
     rows: &[Value],
     limit: usize,
     matcher: &suggestion_marks::SuggestionMatcher,
 ) -> Vec<SearchSuggestionWord> {
     rows.iter()
-        .filter_map(word)
+        .filter_map(|row| {
+            // PC M/623 uses independent values for the visible row, the
+            // requested query, and the text left in the input after selection.
+            let keyword = suggestion_text(row, &["searchWord", "keyword", "toUserWord", "name"])?;
+            let input = suggestion_text(row, &["toUserWord", "searchWord", "keyword", "name"])
+                .unwrap_or_else(|| keyword.clone());
+            let label = suggestion_text(row, &["name", "keyword"]).unwrap_or_else(|| input.clone());
+            let input_label = (input != label).then_some(input);
+            let word = SearchWord {
+                keyword,
+                label,
+                tag: word_tag(row),
+                channel: None,
+                radio_id: None,
+                default_receipt: None,
+            };
+            Some((word, input_label))
+        })
         .take(limit)
-        .map(|word| {
+        .map(|(word, input_label)| {
             let label_parts = matcher
                 .parts(&word.label)
                 .into_iter()
@@ -71,7 +96,11 @@ fn suggestion_words(
                     marked: part.marked,
                 })
                 .collect();
-            SearchSuggestionWord { word, label_parts }
+            SearchSuggestionWord {
+                word,
+                input_label,
+                label_parts,
+            }
         })
         .collect()
 }

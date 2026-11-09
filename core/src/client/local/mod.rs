@@ -1,8 +1,10 @@
 mod collect;
+mod directories;
 mod dto;
 mod matching;
 pub(super) mod view;
 use super::MusicClient;
+pub use crate::library::monitor::{DirectoryChoice, DirectorySelection};
 use crate::{
     Error, Result,
     library::{
@@ -183,7 +185,7 @@ impl MusicClient {
                         .monitor
                         .roots()?
                         .into_iter()
-                        .find(|r| r.id == id)
+                        .find(|r| r.id == id && r.checked)
                         .ok_or(Error::InvalidInput("unknown library root"))?;
                     context.monitor.watch(root.path)?;
                 }

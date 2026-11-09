@@ -169,13 +169,7 @@ impl MusicClient {
             .map(|v| v.id.clone())
             .collect::<Vec<_>>();
         let resume = if let PodcastScope::Radio { id, .. } = &query.scope {
-            Some(
-                self.session
-                    .run_for(&token, |api, _| async {
-                        PodcastApi::new(api).resume_enabled(&json!(id)).await
-                    })
-                    .await?,
-            )
+            Some(crate::podcast::resume::read_for(&self.session, &token, &json!(id)).await?)
         } else {
             None
         };

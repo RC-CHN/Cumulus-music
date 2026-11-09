@@ -31,6 +31,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   expired: [];
+  collected: [result: PlaylistMutationView];
   downloadCreationChanged: [];
   downloadCreationComplete: [];
 }>();
@@ -108,7 +109,7 @@ onMounted(() => {
 });
 async function loadLikedDestination() {
   const scope = props.downloadCollection;
-  if (!scope) return;
+  if (!scope || scope.ownedOnly) return;
   try {
     const response = await client.downloadCollectLikedDestination(scope.epoch, scope.receipt);
     if (alive && props.downloadCollection === scope && response.epoch === props.epoch)
@@ -247,7 +248,10 @@ async function collected(value: PlaylistMutationView | undefined) {
     // create a second playlist when retrying the second half of this flow.
     created.value = value.playlistId;
     await collect(value.playlistId);
-  } else emit('close');
+  } else {
+    emit('collected', value);
+    emit('close');
+  }
 }
 async function collect(id: string) {
   if (!alive || busy.value || pending.value || fixedDestination.value) return;
@@ -352,7 +356,17 @@ async function reconcile() {
     <p class="sr-only">
       {{ tracks.length === 1 ? `收藏${tracks[0]?.name}` : `收藏${tracks.length}首歌曲` }}
     </p>
-    <p v-if="selectionSummary" class="collect-selection-summary" role="status">
+    <p
+      v-if="downloadCollection?.ownedOnly && selectionSummary"
+      class="collect-selection-summary"
+      role="status"
+    >
+      已选 {{ selectionSummary.total }} 项下载，将收藏 {{ tracks.length }} 首歌曲。<template
+        v-if="selectionSummary.unsupported"
+        >{{ selectionSummary.unsupported }} 项歌曲无法收藏，已略过。</template
+      >
+    </p>
+    <p v-else-if="selectionSummary" class="collect-selection-summary" role="status">
       播放列表共 {{ selectionSummary.total }} 项，将收藏 {{ tracks.length }} 首歌曲。<template
         v-if="selectionSummary.unsupported"
         >{{ selectionSummary.unsupported }} 项声音或未匹配音乐无法收藏到歌单。</template

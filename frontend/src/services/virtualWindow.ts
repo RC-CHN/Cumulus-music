@@ -9,17 +9,44 @@ export interface RowExpansion {
   extra: number;
 }
 
-export function rowTop(index: number, rowHeight: number, expansion?: RowExpansion) {
-  return index * rowHeight + (expansion && index > expansion.index ? expansion.extra : 0);
+export type RowLayout = RowExpansion | { extraBefore: readonly number[] };
+
+/** Prefix sums keep arbitrary expanded rows cheap to locate by scroll position. */
+export function expandedRows(extras: readonly number[]): RowLayout | undefined {
+  let total = 0;
+  const extraBefore = [0];
+  for (const extra of extras) extraBefore.push((total += extra));
+  return total > 0 ? { extraBefore } : undefined;
 }
 
-export function rowExtent(index: number, rowHeight: number, expansion?: RowExpansion) {
-  return rowHeight + (expansion?.index === index ? expansion.extra : 0);
+export function rowTop(index: number, rowHeight: number, expansion?: RowLayout) {
+  const extra = !expansion
+    ? 0
+    : 'extraBefore' in expansion
+      ? (expansion.extraBefore[index] ?? expansion.extraBefore.at(-1) ?? 0)
+      : index > expansion.index
+        ? expansion.extra
+        : 0;
+  return index * rowHeight + extra;
 }
 
-function rowPosition(offset: number, rowHeight: number, expansion?: RowExpansion) {
+export function rowExtent(index: number, rowHeight: number, expansion?: RowLayout) {
+  return rowTop(index + 1, rowHeight, expansion) - rowTop(index, rowHeight, expansion);
+}
+
+function rowPosition(offset: number, rowHeight: number, expansion?: RowLayout) {
   const position = Math.max(0, offset);
   if (!expansion) return position / rowHeight;
+  if ('extraBefore' in expansion) {
+    let lo = 0;
+    let hi = expansion.extraBefore.length;
+    while (lo + 1 < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (rowTop(mid, rowHeight, expansion) <= position) lo = mid;
+      else hi = mid;
+    }
+    return lo + (position - rowTop(lo, rowHeight, expansion)) / rowExtent(lo, rowHeight, expansion);
+  }
   const top = expansion.index * rowHeight;
   if (position <= top) return position / rowHeight;
   const height = rowHeight + expansion.extra;
@@ -32,7 +59,7 @@ export function rowBoundary(
   offset: number,
   count: number,
   rowHeight: number,
-  expansion?: RowExpansion,
+  expansion?: RowLayout,
 ) {
   return Math.min(count, Math.floor(rowPosition(offset, rowHeight, expansion) + 0.5));
 }
@@ -45,7 +72,7 @@ export function rowWindow(
   scrollTop: number,
   previous?: RowWindow,
   buffer = 8,
-  expansion?: RowExpansion,
+  expansion?: RowLayout,
 ): RowWindow {
   const first = Math.min(count, Math.floor(rowPosition(scrollTop, rowHeight, expansion)));
   const last = Math.min(
@@ -71,7 +98,7 @@ export function centeredRowTop(
   count: number,
   height: number,
   viewport: number,
-  expansion?: RowExpansion,
+  expansion?: RowLayout,
 ) {
   if (!Number.isInteger(index) || index < 0 || index >= count || height <= 0 || viewport <= 0)
     return null;

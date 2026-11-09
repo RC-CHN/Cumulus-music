@@ -1,5 +1,5 @@
 //! Whitelisted presentation models for recovered PC result pages.
-use super::track_hint::{self, TrackHint};
+use super::track_hint::{self, SongTableHint, TrackHint};
 use crate::{
     Error, Result,
     catalog::search::results::{self as api, reason},
@@ -31,6 +31,8 @@ pub enum SearchItem {
         quality_badge: Option<SearchQualityBadge>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hint: Option<TrackHint>,
+        #[serde(rename = "tableHint", skip_serializing_if = "Option::is_none")]
+        table_hint: Option<SongTableHint>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         explicit: bool,
         #[serde(
@@ -59,6 +61,8 @@ pub enum SearchItem {
     },
     Voice {
         voice: EpisodeView,
+        #[serde(rename = "menuReceipt", skip_serializing_if = "Option::is_none")]
+        menu_receipt: Option<String>,
         #[serde(rename = "creatorId", skip_serializing_if = "Option::is_none")]
         creator_id: Option<String>,
         #[serde(rename = "listenerCount", skip_serializing_if = "Option::is_none")]
@@ -288,6 +292,10 @@ impl MusicClient {
                 let mut footer_revision = None;
                 let mut presentation_credentials = None;
                 let mut podcast_credentials = None;
+                let voice_menu_credentials =
+                    matches!(query.category, SearchCategory::All | SearchCategory::Voices)
+                        .then(|| api.search_privilege_credential_revision().ok())
+                        .flatten();
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
@@ -481,6 +489,14 @@ impl MusicClient {
                         .podcast_playbacks
                         .capture(token, &api, credentials, &mut view)?;
                 }
+                if let Some(credentials) = voice_menu_credentials
+                    && !self.login_pending()?
+                {
+                    self.session.require_api(token, &api)?;
+                    self.search
+                        .voice_menu_pages
+                        .capture(token, &api, credentials, &mut view)?;
+                }
                 if view.query.category == SearchCategory::Songs {
                     self.session.with_token(token, |_| {
                         view.publish_drop_receipts(&self.search.queue_drops, token)
@@ -500,6 +516,29 @@ fn array<'a>(v: &'a Value, key: &str) -> Result<&'a [Value]> {
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .ok_or(Error::Response("missing search result list"))
+}
+
+fn podcast_page(data: &Value) -> Result<(&[Value], Option<u64>)> {
+    let resources = data
+        .as_object()
+        .ok_or(Error::Response("missing search result list"))?
+        .get("resources");
+    let rows = match resources {
+        None | Some(Value::Null) => &[],
+        Some(_) => array(data, "resources")?,
+    };
+    // M/15.Jn keeps the reported total for explicit null resources, but an
+    // empty mapped list with a truthy hasMore instead clears the total.
+    // M/21.D defaults undefined to [], and otherwise maps one item per row.
+    let reported = &data["totalCount"];
+    let total = if !js_truthy(reported)
+        || (rows.is_empty() && resources != Some(&Value::Null) && js_truthy(&data["hasMore"]))
+    {
+        Some(0)
+    } else {
+        reported.as_u64()
+    };
+    Ok((rows, total))
 }
 pub(super) fn clean(s: &str) -> String {
     s.replace("<em>", "")
@@ -553,6 +592,7 @@ fn voice_table_item(base: &Value) -> Result<Option<SearchItem>> {
         .filter(|id| id.len() <= 32);
     Ok(Some(SearchItem::Voice {
         voice,
+        menu_receipt: None,
         creator_id,
         listener_count: voice_listener_count(base),
     }))
@@ -729,6 +769,7 @@ fn item(
                 limited_free: false,
                 quality_badge: None,
                 hint,
+                table_hint: None,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
                 original_recording: v["originCoverType"].as_f64() == Some(1.0),
@@ -760,6 +801,7 @@ fn item(
         },
         "voice" => SearchItem::Voice {
             voice: view::episode(&Episode::from_official(v)?, &[]),
+            menu_receipt: None,
             creator_id: None,
             listener_count: voice_listener_count(v),
         },
@@ -1020,21 +1062,27 @@ pub(super) fn project(
         All => unreachable!(),
     };
     let lyrics = query.category == Lyrics;
-    // M/15.Wn treats an explicitly null resources list as an empty lyric
-    // result. A missing or malformed list is still a retryable response error.
-    let rows = if lyrics && container.get(list).is_some_and(Value::is_null) {
-        &[]
+    let podcasts = query.category == Podcasts && !uid.is_empty();
+    let (rows, reported_total) = if podcasts {
+        podcast_page(container)?
     } else {
-        array(container, list)?
+        // M/15.Wn treats explicitly null as empty. Other invalid lyric lists
+        // retain their existing retryable error.
+        let rows = if lyrics && container.get(list).is_some_and(Value::is_null) {
+            &[]
+        } else {
+            array(container, list)?
+        };
+        (rows, container[total].as_u64())
     };
     if rows.len() > 100 {
         return Err(Error::Response("oversized search result page"));
     }
-    result.total = container[total].as_u64();
+    result.total = reported_total;
     result.next_offset = query.offset + rows.len();
-    let remote_more = if lyrics {
-        // M/3001 uses the length of the lyric batch, not totalCount or
-        // hasMore. Advance by the raw count even if a row cannot be displayed.
+    let remote_more = if lyrics || podcasts {
+        // M/3001 uses the length of the mapped batch, not totalCount or
+        // hasMore. The native cursor still counts rows that IPC cannot expose.
         rows.len() == query.limit
     } else {
         container["hasMore"].as_bool().unwrap_or_else(|| {
@@ -1048,9 +1096,9 @@ pub(super) fn project(
         result.notice =
             Some("服务返回了结果数量，但本页没有可展示的内容。可重试或更换关键词。".into());
     }
-    if query.correct && !lyrics {
-        // M/15.Wn never supplies a category rewrite. The effective term
-        // selected before entering lyrics remains in the request query.
+    if query.correct && !lyrics && !podcasts {
+        // M/15.Wn and Jn do not supply a category rewrite; keep the effective
+        // term from before entering either classified flow.
         result.correction = [
             &container["queryRewriteInfo"],
             &raw["queryRewriteInfo"],
@@ -1103,16 +1151,20 @@ pub(super) fn project(
                     && let SearchItem::Song {
                         track,
                         queue_drop_receipt,
+                        table_hint,
                         ..
                     } = &mut item
-                    && !track.missing
-                    && !track.local
-                    && track.voice_id.is_none()
-                    && !js_truthy(&base["privilege"]["cs"])
-                    && super::queue_drop::bounded_track(track)
                 {
-                    // Only the song-tab projector may mark a row for issuance.
-                    *queue_drop_receipt = Some(String::new());
+                    *table_hint = track_hint::song_table(base, resource, &query.keyword);
+                    if !track.missing
+                        && !track.local
+                        && track.voice_id.is_none()
+                        && !js_truthy(&base["privilege"]["cs"])
+                        && super::queue_drop::bounded_track(track)
+                    {
+                        // Only the song-tab projector may mark a row for issuance.
+                        *queue_drop_receipt = Some(String::new());
+                    }
                 }
                 section.items.push(item);
             }

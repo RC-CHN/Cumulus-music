@@ -12,6 +12,7 @@ use cumulus_core::{
             OFFICIAL_WINDOWS_USER_AGENT, RequestOptions, RequestPlan, WireRoute,
         },
         mconfig::{ConfigBackend, ConfigUrl, PcConfig},
+        pc_experiments::{ASSIGNMENT_PATH, assignment_arguments},
         wire::eapi,
     },
     storage::StateStore,
@@ -23,6 +24,8 @@ pub const ACCOUNT: &str = "/api/w/nuser/account/get";
 const DETAIL: &str = "/api/dj/program/detail";
 const RADIO: &str = "/api/djradio/v3/get";
 const SUBSCRIBE: &str = "/api/djradio/sub";
+pub const RESUME_READ: &str = "/api/dj/user/setting/resumeplay/get";
+pub const RESUME_WRITE: &str = "/api/dj/user/setting/resumeplay/update";
 const VERSION: &str = "3.1.42.205594";
 const TOKEN: &str = "synthetic-voice-fresh-actions-session";
 const SIGN: &str = "synthetic-voice-fresh-actions-client-sign";
@@ -59,10 +62,21 @@ struct State {
     account_restored: bool,
     subscribed: bool,
     calls: Vec<Value>,
+    resume: Option<Resume>,
+}
+
+struct Resume {
+    enabled: bool,
+    writes: u8,
+    assignments: u8,
 }
 
 impl Fixture {
-    pub fn open(store: Arc<StateStore>, page: Arc<voice_page_fixture::Fixture>) -> Result<Self> {
+    pub fn open(
+        store: Arc<StateStore>,
+        page: Arc<voice_page_fixture::Fixture>,
+        resume_proof: bool,
+    ) -> Result<Self> {
         let origin = ApiOrigin::Pc;
         let previous = store.get("transport", "credentials", "session")?;
         let credentials = Arc::new(Credentials::open(store.clone(), origin)?);
@@ -88,7 +102,14 @@ impl Fixture {
             page,
             config,
             device: initial.device_id,
-            state: Mutex::default(),
+            state: Mutex::new(State {
+                resume: resume_proof.then_some(Resume {
+                    enabled: true,
+                    writes: 0,
+                    assignments: 0,
+                }),
+                ..State::default()
+            }),
         });
         let client = MusicHttpClient::with_backend(
             credentials,
@@ -110,9 +131,13 @@ impl Fixture {
 
     pub fn report(&self) -> Value {
         let state = self.backend.state.lock().unwrap();
-        json!({"transport":"MusicHttpClient", "syntheticOnly":true,
+        let mut report = json!({"transport":"MusicHttpClient", "syntheticOnly":true,
             "sameProfileAccountRestore":state.account_restored, "subscribed":state.subscribed,
-            "signedCalls":state.calls, "routeReads":self.routes.lock().unwrap().clone()})
+            "signedCalls":state.calls, "routeReads":self.routes.lock().unwrap().clone()});
+        if let Some(resume) = &state.resume {
+            report["resumeEnabled"] = json!(resume.enabled);
+        }
+        report
     }
 
     pub fn route(&self, path: &str, body: &Value) -> Option<Result<Value>> {
@@ -226,6 +251,54 @@ impl HttpBackend for Wire {
                     assert_eq!(body, json!({}));
                     self.state.lock().unwrap().account_restored = true;
                     json!({"code":200,"profile":{"userId":2,"nickname":"节目动作验证"}})
+                }
+                ASSIGNMENT_PATH => {
+                    assert_eq!(body, assignment_arguments());
+                    let mut state = self.state.lock().unwrap();
+                    let resume = state
+                        .resume
+                        .as_mut()
+                        .expect("signed resume assignment mode");
+                    resume.assignments += 1;
+                    let cohort = match resume.assignments {
+                        1 => "t1",
+                        2 => "c",
+                        _ => panic!("unexpected additional assignment"),
+                    };
+                    json!({"code":200,"data":[{"expName":"Podcast_ResumePlaySwitch","expGroupName":cohort}]})
+                }
+                RESUME_READ => {
+                    assert_eq!(body, json!({"radioId":"80"}));
+                    let state = self.state.lock().unwrap();
+                    let resume = state.resume.as_ref().expect("signed resume read mode");
+                    json!({"code":200,"data":{"resumePlayValue":u8::from(resume.enabled)}})
+                }
+                RESUME_WRITE => {
+                    let lost = {
+                        let mut state = self.state.lock().unwrap();
+                        let resume = state.resume.as_mut().expect("signed resume update mode");
+                        assert_eq!(resume.assignments, 1);
+                        resume.writes += 1;
+                        let expected = match resume.writes {
+                            1 => false,
+                            2 => true,
+                            _ => panic!("unexpected replay of the resume update"),
+                        };
+                        assert_eq!(
+                            body,
+                            json!({"radioId":"80","resumePlayValue":if expected {"1"} else {"0"}})
+                        );
+                        assert_ne!(resume.enabled, expected);
+                        resume.enabled = expected;
+                        expected
+                    };
+                    if lost {
+                        self.record(&path, &body, "lost_ack");
+                        return Err(Error::Transport(
+                            "lost synthetic resume acknowledgment".into(),
+                        ));
+                    }
+                    json!({"code":200})
                 }
                 DETAIL => {
                     let ticket = self

@@ -79,6 +79,7 @@ pub(crate) struct HeldSearchFile {
     publication: Arc<SearchPublication>,
     file: File,
     rights: Option<PlaybackWindow>,
+    plain_flac: bool,
 }
 
 #[derive(Clone)]
@@ -298,12 +299,13 @@ impl SearchPublication {
             return Err(Error::Media("published search download hash changed"));
         }
         file.seek(SeekFrom::Start(0))?;
-        if self.record.encrypted {
+        let plain_flac = if self.record.encrypted {
             let mut reader = NcmReader::new(&mut file, HeaderPolicy::Strict)?;
             pinned_ncm_format(&mut reader)?;
+            false
         } else {
-            pinned_audio_format(&mut file)?;
-        }
+            pinned_audio_format(&mut file)? == "flac"
+        };
         file.seek(SeekFrom::Start(0))?;
         self.revalidate_publication(None)?;
         let rights = self.rights()?;
@@ -312,11 +314,16 @@ impl SearchPublication {
             publication: self.clone(),
             file,
             rights,
+            plain_flac,
         })
     }
 }
 
 impl HeldSearchFile {
+    pub(crate) fn is_plain_flac(&self) -> bool {
+        self.plain_flac
+    }
+
     pub(crate) fn metadata_hint(&mut self) -> Result<crate::library::matching::MatchHint> {
         self.file.seek(SeekFrom::Start(0))?;
         crate::library::matching::opened_metadata_hint(
@@ -335,6 +342,7 @@ impl HeldSearchFile {
             publication,
             mut file,
             rights,
+            ..
         } = self;
         cancel.check()?;
         let latest = publication.playback_window(Some(entry))?;
@@ -457,6 +465,7 @@ mod tests {
             SearchPublication::bind(session.clone(), token.clone(), &task, "123").unwrap();
         let cancel = Cancellation::default();
         let prepared = receipt.open(&cancel).unwrap();
+        assert!(prepared.is_plain_flac());
         let next = QueueEntry {
             entry_id: "selected-by-another-host".into(),
             ..queue_entry.clone()
@@ -468,6 +477,18 @@ mod tests {
         ));
 
         put_queue(&queue_entry);
+        let playback_cancel = Cancellation::default();
+        let (mut file, encrypted, authority) = receipt
+            .open(&playback_cancel)
+            .unwrap()
+            .into_native(&queue_entry, &playback_cancel)
+            .unwrap();
+        assert!(!encrypted);
+        assert_eq!(pinned_audio_format(&mut file).unwrap(), "flac");
+        authority.check().unwrap();
+        playback_cancel.cancel();
+        assert!(matches!(authority.check(), Err(Error::Cancelled)));
+
         let prepared = receipt.open(&cancel).unwrap();
         session.adopt(api, json!({"userId":2}), &token).unwrap();
         assert!(matches!(

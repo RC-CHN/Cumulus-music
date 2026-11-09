@@ -20,8 +20,6 @@ use crate::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-const RESUME_EXPERIMENT: &str = "Podcast_ResumePlaySwitch";
-
 fn request_failure(error: &Error) -> bool {
     match error {
         Error::Transport(_)
@@ -263,20 +261,20 @@ impl MusicClient {
             .verified_pc_experiment_revision()?
             .as_deref()
             .map(|revision| {
-                self.pc_experiments
-                    .observed_group(token, api, revision, RESUME_EXPERIMENT)
+                self.pc_experiments.observed_group(
+                    token,
+                    api,
+                    revision,
+                    crate::podcast::resume::EXPERIMENT,
+                )
             })
             .transpose()?
             .flatten()
             .as_deref()
             == Some("t1");
         if treatment {
-            let enabled = self
-                .session
-                .run_for(token, |api, _| async move {
-                    PodcastApi::new(api).resume_enabled(&json!(radio.id)).await
-                })
-                .await;
+            let enabled =
+                crate::podcast::resume::read_for(&self.session, token, &json!(radio.id)).await;
             guard.check()?;
             match enabled {
                 Ok(false) => return Ok(None),

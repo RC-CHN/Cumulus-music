@@ -36,6 +36,10 @@ export interface SearchResultQuery {
   correct: boolean;
   channel?: SearchChannel;
 }
+export interface SearchSongTableHint {
+  aliasParts?: readonly SearchTextPart[];
+  lyricParts?: readonly { text: string; highlight: boolean }[];
+}
 export type SearchTrackHint =
   | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
   | { kind: 'alias'; text: string };
@@ -66,6 +70,7 @@ export type SearchItem =
       limitedFree?: boolean;
       qualityBadge?: SearchQualityBadge;
       hint?: SearchTrackHint;
+      tableHint?: SearchSongTableHint;
       explicit?: boolean;
       originalRecording?: boolean;
       reasons?: SearchReasonTag[];
@@ -73,7 +78,13 @@ export type SearchItem =
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string; knownEmpty?: boolean }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
-  | { kind: 'voice'; voice: EpisodeView; listenerCount?: number; creatorId?: string }
+  | {
+      kind: 'voice';
+      voice: EpisodeView;
+      listenerCount?: number;
+      creatorId?: string;
+      menuReceipt?: string;
+    }
   | { kind: 'podcast'; podcast: PodcastCard; table?: PodcastSearchTable; playbackReceipt?: string }
   | { kind: 'mv'; mv: CatalogVideoCard }
   | { kind: 'user'; user: FollowUser }
@@ -216,6 +227,8 @@ export interface SearchWord {
   defaultReceipt?: string;
 }
 export interface SearchSuggestionWord extends SearchWord {
+  /** Value written to the input after selection; defaults to the visible label. */
+  inputLabel?: string;
   labelParts: SearchTextPart[];
 }
 export type SearchChartDestination = 'podcasts' | 'audiobooks';
@@ -255,4 +268,17 @@ export interface SearchClient {
     query: SearchDiscoveryQuery,
   ): Promise<AccountData<SearchDiscovery>>;
   searchHistory(epoch: string, command: SearchHistoryCommand): Promise<AccountData<string[]>>;
+  searchVoiceMenu(
+    epoch: string,
+    target: SearchVoiceMenuTarget,
+  ): Promise<AccountData<SearchVoiceMenu>>;
+  searchOpenVoiceDirectory(epoch: string, target: SearchVoiceMenuTarget): Promise<void>;
+}
+export interface SearchVoiceMenuTarget {
+  receipt: string;
+  voiceId: string;
+}
+export interface SearchVoiceMenu {
+  commentCount: number | null;
+  downloadComplete: boolean | null;
 }

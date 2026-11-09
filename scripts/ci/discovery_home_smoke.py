@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--recall', action='store_true', help='verify native Home Recall prefill and guide')
     parser.add_argument('--screenshots', action='store_true', help='capture Linux GTK pixels')
     parser.add_argument('--frontend-dist', type=Path, help='local production snapshot for comparison')
     parser.add_argument('--probe-script', type=Path, help='local synthetic WebView script for comparison')
@@ -37,7 +38,13 @@ def main():
     if args.probe_script:
         env['CUMULUS_DISCOVERY_HOME_PROOF_SCRIPT'] = str(args.probe_script.resolve())
     captured = set()
-    stages = ('home', 'dark', 'seeded_style', 'ranking', 'recent_style', 'retry', 'privacy')
+    if args.recall:
+        env['CUMULUS_DISCOVERY_RECALL_PROOF'] = '1'
+        if args.screenshots:
+            env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
+        stages = ('ux_recall_ready', 'ux_recall_closed', 'ux_recall_playing')
+    else:
+        stages = ('home', 'dark', 'seeded_style', 'ranking', 'recent_style', 'retry', 'privacy')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
         try:
@@ -52,7 +59,11 @@ def main():
                         picture = Gdk.pixbuf_get_from_window(
                             capture_root, 0, 0, capture_root.get_width(), capture_root.get_height())
                         assert picture is not None, 'no GTK frame'
-                        picture.savev(str(output / f'{stage}.png'), 'png', [], [])
+                        png = output / f'{stage}.png'
+                        assert picture.savev(str(png), 'png', [], []), 'GTK screenshot save failed'
+                        if args.recall:
+                            assert png.stat().st_size > 0, 'empty GTK screenshot'
+                            (output / f'{stage}.captured').write_text('captured\n', encoding='utf-8')
                         captured.add(stage)
                 time.sleep(.08)
         finally:
@@ -67,6 +78,11 @@ def main():
     assert complete['ok'] and not complete['realAccount']
     assert all((output / f'{stage}.json').is_file() for stage in stages)
     assert not args.screenshots or len(captured) == len(stages)
+    if args.recall:
+        report = verify_recall(output, complete, len(captured))
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
+        return
     seeded = json.loads((output / 'seeded_style.json').read_text(encoding='utf-8'))
     assert seeded['styleCalls'] == [
         ['/api/homepage/category/daily/song/list',
@@ -89,6 +105,39 @@ def main():
     report = dict(ok=True, actualWebView=True, screenshots=len(captured), realAccount=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
+
+
+def verify_recall(output, complete, screenshots):
+    def read(stage):
+        return json.loads((output / f'{stage}.json').read_text(encoding='utf-8'))
+
+    ready, closed, playing = (read(stage) for stage in ('ux_recall_ready', 'ux_recall_closed', 'ux_recall_playing'))
+    assert ready['rows'] == [str(row) for row in range(911, 923)]
+    assert ready['prefillSaved'] is True and ready['guideShown'] is False
+    assert ready['ready']['state'] == closed['closed']['state'] == 'idle'
+    assert ready['ready']['playId'] is None and closed['closed']['playId'] is None
+    assert ready['mediaCalls'] == closed['mediaCalls'] == []
+    for key in ('state', 'entryId', 'playId', 'queueRevision', 'position'):
+        assert playing['beforePlay'][key] == closed['closed'][key], key
+    assert 2700 < closed['visibleMs'] < 3850 and complete['guideShown'] is True
+    assert playing['playing']['state'] == 'playing' and playing['playing']['position'] > .25
+    assert playing['playing']['entryId'] == ready['ready']['entryId']
+    assert str(playing['mediaCalls'][0][0]) == '911'
+    assert len(complete['homepageBatches']) == 1
+    blocks = json.loads(complete['homepageBatches'][0]['cursor'])['blockCodeOrderList']
+    assert blocks == [
+        'HOMPAGE_BLOCK_VIP_RCMD', 'HOMEPAGE_BLOCK_RED_SIMILAR_SONG',
+        'HOMEPAGE_BLOCK_STYLE_RCMD', 'HOMEPAGE_MUSIC_PODCAST_RCMD_BLOCK',
+        'HOMEPAGE_BLOCK_PLAYLIST_RCMD', 'HOMEPAGE_BLOCK_ALL_LISTEN', 'HOMEPAGE_BLOCK_HOT_RESOURCE',
+    ]
+    markers = sorted(path.stem for path in output.glob('ux_recall_*.captured'))
+    assert markers == (['ux_recall_closed', 'ux_recall_playing', 'ux_recall_ready'] if screenshots else [])
+    assert all(stage.get('captureHandshake', False) is bool(screenshots)
+               for stage in (ready, closed, playing))
+    return dict(ok=True, actualWebView=True, screenshots=screenshots, captureAcknowledgements=len(markers),
+                states=3, realAccount=False,
+                nativeNullPlaybackVerified=True, physicalAudioOutputVerified=False,
+                prefillRows=ready['rows'], guideVisibleMs=closed['visibleMs'], mediaBeforePlay=0)
 
 
 if __name__ == '__main__':

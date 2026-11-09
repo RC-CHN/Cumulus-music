@@ -27,7 +27,12 @@
    const queue=await invoke('player_queue',{epoch});if(queue.tracks.length!==4||!queue.tracks.every(t=>t.track.local))throw Error('persisted_local_queue');
    await stage('local_reopened',{guest:true,queue:queue.tracks.length,positionPreserved:true,paused:true,rootsRestored:(await invoke('local_page',{query})).roots.length===1});await click(localTab('歌手'));await wait(()=>el('.local-groups'),'restored_groups');await stage('local_groups',{group:'artist',restored:true});await click(localTab('歌曲'));
   } else {
-   step='picker';await click(button('选择目录'));await stage('local_picker',{nativeDialog:true});
+   step='picker';await click(button('选择目录'));
+   const addFolder=await wait(()=>{const add=button('添加文件夹');return add&&!add.disabled&&add;},'directory_modal');
+   await click(addFolder);await stage('local_picker',{nativeDialog:true});
+   const folder=await wait(()=>{const n=el('[data-local-directories] input[type="checkbox"]');return n&&!n.disabled&&n;},'staged_folder');
+   if(folder.checked)throw Error('new_folder_should_be_unchecked');
+   await click(folder);await click(button('确认'));
    await wait(()=>all('.local-tracks tbody tr').length===4,'scan_finished');
    const page=await invoke('local_page',{query});if(page.total!==4||page.tracks.filter(t=>t.cue).length!==2||!page.tracks.some(t=>t.encrypted))throw Error('native_index_facts');
    await stage('local_library',{total:page.total,cueTracks:2,ncmTracks:1,guest:true});

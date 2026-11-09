@@ -155,6 +155,7 @@ pub struct MusicClient {
     follow_latest: catalog::FollowLatestHost,
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_home: style_home::StyleHome,
+    home_recall: Arc<discovery_home::recall::Host>,
     seeded_style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     pc_experiments: Arc<pc_experiments::PcExperimentHost>,
@@ -285,6 +286,7 @@ impl MusicClient {
         let pc_experiments = Arc::new(pc_experiments::PcExperimentHost::default());
         let message_poll = Arc::new(messages::PcMessagePollHost::default());
         let together = together::TogetherHost::default();
+        let room_detachment = together.detachment();
         let skip = player::OrdinarySkipHost::new(
             session.clone(),
             message_poll.clone(),
@@ -329,6 +331,7 @@ impl MusicClient {
             follow_latest: Default::default(),
             daily_recommendations: Default::default(),
             style_home: Default::default(),
+            home_recall: Default::default(),
             seeded_style_recommendations: Default::default(),
             style_recommendations: Default::default(),
             pc_experiments: pc_experiments.clone(),
@@ -352,6 +355,7 @@ impl MusicClient {
                 output.clone(),
                 skip,
                 pc_experiments.song_speed(),
+                room_detachment,
             ),
             mv: mv::MvHost::new(session.clone(), focus.clone(), output.clone()),
             output,
