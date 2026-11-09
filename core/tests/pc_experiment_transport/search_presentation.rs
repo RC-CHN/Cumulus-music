@@ -12,11 +12,15 @@ use serde_json::json;
 use std::sync::Arc;
 
 fn groups(enabled: bool) -> HttpResponse {
+    groups_with_layout(enabled, enabled, enabled)
+}
+
+fn groups_with_layout(footer: bool, more: bool, dense: bool) -> HttpResponse {
     json!({"code":200,"data":[
         {"expName":"PH-PC-searchHot","expGroupName":"t1"},
-        {"expName":"PH-PC-search-result","expGroupName":if enabled {"t1"} else {"c"}},
-        {"expName":"PH-PC-searchMore2","expGroupName":if enabled {"t1"} else {"c"}},
-        {"expName":"PH-PC-searchPageEfficiency","expGroupName":if enabled {"t1"} else {"c"}}
+        {"expName":"PH-PC-search-result","expGroupName":if footer {"t1"} else {"c"}},
+        {"expName":"PH-PC-searchMore2","expGroupName":if more {"t1"} else {"c"}},
+        {"expName":"PH-PC-searchPageEfficiency","expGroupName":if dense {"t1"} else {"c"}}
     ]})
     .into()
 }
@@ -33,7 +37,10 @@ async fn current_and_cached_candidates_follow_live_cohorts_without_search_or_pri
             "extInfo":{"songAlias":"<em>合成</em>别名","algClickableTags":[{
                 "text":"原因","clickable":true,"reasonType":1,"reasonId":"reason","resourceId":1}]}
         }]}]}}).into(),
-        groups(false), groups(true),
+        groups(false),
+        groups_with_layout(false, false, true),
+        groups_with_layout(false, true, false),
+        groups(true),
     ]);
     let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -70,7 +77,10 @@ async fn current_and_cached_candidates_follow_live_cohorts_without_search_or_pri
         .unwrap()
         .value;
     assert!(first.sections[0].items[0].hint.is_some());
-    assert!(first.preview_layout.is_some());
+    assert_eq!(
+        serde_json::to_value(first).unwrap()["previewLayout"],
+        "compact_carousel"
+    );
     assert_eq!(http.calls().len(), 3);
 
     let disabled = client.refresh_pc_presentation().await.unwrap();
@@ -89,15 +99,34 @@ async fn current_and_cached_candidates_follow_live_cohorts_without_search_or_pri
     assert!(patch.sections[0].items[0].reasons.is_empty());
     assert_eq!(http.calls().len(), 4);
 
+    for (flags, layout, calls) in [
+        ((false, true), "compact_grid", 5),
+        ((true, false), "carousel", 6),
+    ] {
+        let assignment = client.refresh_pc_presentation().await.unwrap();
+        assert_eq!((assignment.search_expanded, assignment.search_dense), flags);
+        assert!(!assignment.search_footer);
+        let patch = client
+            .search_presentation(&epoch, receipt, &assignment.revision)
+            .unwrap()
+            .value;
+        assert!(patch.sections[0].items[0].hint.is_none());
+        assert_eq!(
+            serde_json::to_value(patch).unwrap()["previewLayout"],
+            layout
+        );
+        assert_eq!(http.calls().len(), calls, "no repeated search or tab read");
+    }
+
     let enabled = client.refresh_pc_presentation().await.unwrap();
     let restored = client
         .search_presentation(&epoch, receipt, &enabled.revision)
         .unwrap()
         .value;
     assert!(restored.sections[0].items[0].hint.is_some());
-    assert!(restored.preview_layout.is_some());
-    assert_eq!(http.calls().len(), 5);
+    assert_eq!(http.calls().len(), 7);
     let encoded = serde_json::to_value(restored).unwrap();
+    assert_eq!(encoded["previewLayout"], "compact_carousel");
     assert_eq!(encoded["sections"][0]["items"][0]["trackId"], "1");
     for key in ["track", "privilege", "playAllIds", "vipBadge", "coverUrl"] {
         assert!(encoded.get(key).is_none());
@@ -109,7 +138,7 @@ async fn current_and_cached_candidates_follow_live_cohorts_without_search_or_pri
             .search_presentation(&epoch, receipt, &enabled.revision)
             .is_err()
     );
-    assert_eq!(http.calls().len(), 5);
+    assert_eq!(http.calls().len(), 7);
 }
 
 #[tokio::test]

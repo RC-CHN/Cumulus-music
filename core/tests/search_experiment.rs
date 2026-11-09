@@ -139,7 +139,10 @@ async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_rec
     };
     assert!(client.search_results(&epoch, invalid).await.is_err());
     let first = client.search_results(&epoch, query()).await.unwrap().value;
-    assert!(first.preview_layout.is_none());
+    assert_eq!(
+        serde_json::to_value(&first).unwrap()["previewLayout"],
+        "compact_grid"
+    );
     assert_eq!(
         first.tabs,
         Some(vec![
@@ -150,6 +153,7 @@ async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_rec
     );
     let retry = client.search_results(&epoch, query()).await.unwrap().value;
     assert_eq!(retry.tabs, first.tabs);
+    assert_eq!(retry.preview_layout, first.preview_layout);
     assert_eq!(retry.empty_title.as_deref(), Some("综合说明"));
     session
         .adopt(api.clone(), json!({"userId":3}), &session.token().unwrap())

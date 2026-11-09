@@ -115,11 +115,13 @@ export interface SearchHotExplanation {
   action?: { label: string; target: SearchHotTarget };
   playTarget?: SearchHotPlaybackTarget;
 }
+export type SearchPreviewLayout = 'compact_grid' | 'carousel' | 'compact_carousel';
+
 export interface SearchResultView {
   query: SearchResultQuery;
   tabs?: SearchCategory[];
   hotExplanation?: SearchHotExplanation;
-  previewLayout?: 'carousel' | 'compact_carousel';
+  previewLayout?: SearchPreviewLayout;
   sections: SearchSection[];
   privilegeReceipt?: string;
   presentationReceipt?: string;
@@ -194,7 +196,7 @@ export interface SearchResultsClient {
 export interface SearchPresentationPatch {
   receipt: string;
   revision: string;
-  previewLayout: null | 'carousel' | 'compact_carousel';
+  previewLayout: SearchPreviewLayout | null;
   sections: {
     id: string;
     items: {

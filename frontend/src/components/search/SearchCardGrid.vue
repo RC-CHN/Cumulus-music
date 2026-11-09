@@ -16,6 +16,7 @@ const props = defineProps<{
   scroller?: HTMLElement;
   virtual?: boolean;
   preview?: boolean;
+  compactPreview?: boolean;
   carousel?: { label: string; compact: boolean; position: number };
   table?: SearchTableKind;
 }>();
@@ -217,7 +218,15 @@ function scroll() {
 }
 watch(
   () =>
-    [grid.value, heading.value, props.scroller, props.virtual, props.preview, props.table] as const,
+    [
+      grid.value,
+      heading.value,
+      props.scroller,
+      props.virtual,
+      props.preview,
+      props.compactPreview,
+      props.table,
+    ] as const,
   () => {
     scroller?.removeEventListener('scroll', scroll);
     observer?.disconnect();
@@ -368,6 +377,7 @@ defineExpose({ reconcileViewport: () => update() });
       :class="{
         'search-collection-grid': layout,
         'search-collection-virtual': positionedRows,
+        'search-preview-compact': preview && compactPreview,
         'search-person-grid': items.every((i) => i.kind === 'artist' || i.kind === 'user'),
         'search-related-grid': items.every((i) => i.kind === 'related'),
         'search-video-grid': items.every((i) => i.kind === 'mv'),

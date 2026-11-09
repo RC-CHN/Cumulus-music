@@ -828,6 +828,14 @@
 .search-video-grid {
   grid-template-columns: repeat(auto-fill, minmax(max(244px, calc((100% - 60px) / 4)), 1fr));
 }
+/* Official BaseGrid: 18 units, with a 64px base (66px for MV), 16px gap. */
+.search-result-grid.search-preview-compact {
+  grid-template-columns: repeat(auto-fill, minmax(max(112px, calc((100% - 128px) / 9)), 1fr));
+  gap: 16px;
+}
+.search-video-grid.search-preview-compact {
+  grid-template-columns: repeat(auto-fill, minmax(max(182px, calc((100% - 80px) / 6)), 1fr));
+}
 .search-cover-card {
   display: flex;
   flex-direction: column;
@@ -890,7 +898,7 @@
   .search-result-section:not(.search-best-section)
     .search-result-grid:not(.search-video-grid):not(.search-voice-grid):not(
       .search-collection-grid
-    ) {
+    ):not(.search-preview-compact) {
     grid-template-columns: repeat(auto-fill, minmax(max(148px, calc((100% - 100px) / 6)), 1fr));
   }
 }
@@ -1088,6 +1096,42 @@
 .search-person-card .search-card-play .icon {
   width: 42px;
   height: 42px;
+}
+.search-preview-compact .search-person-card {
+  gap: 0;
+  padding: 11px;
+  border-radius: 5px;
+}
+.search-preview-compact .search-person-card .search-result-name {
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.search-preview-compact .search-person-card .search-card-play {
+  width: 28px;
+  height: 28px;
+  top: calc(50% - 14px);
+  left: calc(50% - 14px);
+}
+.search-preview-compact .search-person-card .search-card-play .icon {
+  width: 28px;
+  height: 28px;
+}
+.search-preview-compact .search-cover-card:not(.search-video-card),
+.search-preview-compact .search-cover-card:not(.search-video-card) .search-result-art {
+  border-radius: 5px;
+}
+.search-preview-compact .search-cover-card:not(.search-video-card) .search-result-name,
+.search-preview-compact .search-cover-card:not(.search-video-card) .search-result-sub {
+  padding-inline: 4px;
+}
+.search-preview-compact .search-cover-card:not(.search-video-card) .search-result-name {
+  font-size: 13px;
+  line-height: 18px;
+}
+.search-preview-compact .search-playlist-count {
+  inset-block-start: 8px;
+  font-size: 12px;
 }
 .search-card-menu {
   position: absolute;

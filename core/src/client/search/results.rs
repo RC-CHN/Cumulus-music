@@ -180,8 +180,21 @@ pub enum SearchHotPlaybackTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchPreviewLayout {
+    CompactGrid,
     Carousel,
     CompactCarousel,
+}
+
+impl SearchPreviewLayout {
+    pub(super) fn from_experiments(expanded: bool, dense: bool) -> Option<Self> {
+        // Recommend reads More2 and Efficiency independently.
+        match (expanded, dense) {
+            (false, false) => None,
+            (false, true) => Some(Self::CompactGrid),
+            (true, false) => Some(Self::Carousel),
+            (true, true) => Some(Self::CompactCarousel),
+        }
+    }
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -320,11 +333,7 @@ impl MusicClient {
                     } else {
                         None
                     };
-                    let layout = flags.expanded.then_some(if flags.dense {
-                        SearchPreviewLayout::CompactCarousel
-                    } else {
-                        SearchPreviewLayout::Carousel
-                    });
+                    let layout = SearchPreviewLayout::from_experiments(flags.expanded, flags.dense);
                     if flags.v3 {
                         let context = default_context()?;
                         presentation_credentials =

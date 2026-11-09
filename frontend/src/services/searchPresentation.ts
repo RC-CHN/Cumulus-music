@@ -9,7 +9,7 @@ export function patchSearchPresentation(
   if (
     current.query.category !== 'all' ||
     current.presentationReceipt !== patch.receipt ||
-    ![null, 'carousel', 'compact_carousel'].includes(patch.previewLayout) ||
+    ![null, 'compact_grid', 'carousel', 'compact_carousel'].includes(patch.previewLayout) ||
     patch.sections.length > 50
   )
     return;

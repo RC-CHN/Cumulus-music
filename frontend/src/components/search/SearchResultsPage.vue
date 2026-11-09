@@ -239,8 +239,17 @@ function bestMatch(section: SearchSection) {
     section.id.startsWith(prefix),
   );
 }
+const expandedPreview = computed(
+  () =>
+    view.value?.previewLayout === 'carousel' || view.value?.previewLayout === 'compact_carousel',
+);
+const compactPreview = computed(
+  () =>
+    view.value?.previewLayout === 'compact_grid' ||
+    view.value?.previewLayout === 'compact_carousel',
+);
 function expandedBestMatch(section: SearchSection) {
-  return category.value === 'all' && !!view.value?.previewLayout && bestMatch(section);
+  return category.value === 'all' && expandedPreview.value && bestMatch(section);
 }
 function previewItems(section: SearchSection) {
   const items = section.items.filter((i) => i.kind !== 'song');
@@ -256,11 +265,10 @@ function previewItems(section: SearchSection) {
 }
 const previewPositions = ref<Record<string, number>>({});
 function carousel(section: SearchSection) {
-  const layout = view.value?.previewLayout;
-  if (!layout || !oneRowPreview(section)) return;
+  if (!expandedPreview.value || !oneRowPreview(section)) return;
   return {
     label: section.title,
-    compact: layout === 'compact_carousel',
+    compact: compactPreview.value,
     position: previewPositions.value[section.id] ?? 0,
   };
 }
@@ -1114,6 +1122,7 @@ onBeforeUnmount(() => {
               :scroller="panel"
               :virtual="gridWaterfall"
               :preview="oneRowPreview(section)"
+              :compact-preview="compactPreview && oneRowPreview(section)"
               :carousel="carousel(section)"
               :table="tableKind"
               @position="previewPosition(section, $event)"

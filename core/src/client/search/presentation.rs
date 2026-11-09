@@ -6,7 +6,7 @@ use crate::{
     Error, Result,
     account::SessionToken,
     catalog::search::results::reason::ReasonTag,
-    client::{MusicClient, dto::AccountData, pc_experiments::PcPresentationView},
+    client::{MusicClient, dto::AccountData},
     protocol::api::Api,
 };
 use serde::Serialize;
@@ -156,14 +156,6 @@ fn candidates(view: &SearchResultView) -> Vec<SearchPresentationSection> {
         .filter(|section| !section.items.is_empty())
         .collect()
 }
-fn layout(view: &PcPresentationView) -> Option<SearchPreviewLayout> {
-    view.search_expanded.then_some(if view.search_dense {
-        SearchPreviewLayout::CompactCarousel
-    } else {
-        SearchPreviewLayout::Carousel
-    })
-}
-
 impl MusicClient {
     pub(super) fn capture_search_presentation(
         &self,
@@ -206,7 +198,10 @@ impl MusicClient {
             Err(Error::StaleResponse | Error::CredentialChanged) => return Ok(false),
             Err(error) => return Err(error),
         };
-        view.preview_layout = layout(&snapshot.view);
+        view.preview_layout = SearchPreviewLayout::from_experiments(
+            snapshot.view.search_expanded,
+            snapshot.view.search_dense,
+        );
         if !snapshot.view.search_footer {
             for section in &mut view.sections {
                 for item in &mut section.items {
@@ -255,7 +250,10 @@ impl MusicClient {
         let value = SearchPresentationPatch {
             receipt: receipt.into(),
             revision: revision.into(),
-            preview_layout: layout(&snapshot.view),
+            preview_layout: SearchPreviewLayout::from_experiments(
+                snapshot.view.search_expanded,
+                snapshot.view.search_dense,
+            ),
             sections,
         };
         if !self.pc_presentation_is_current(&token, &api, revision)? {

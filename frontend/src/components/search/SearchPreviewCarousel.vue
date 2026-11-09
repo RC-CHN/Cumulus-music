@@ -79,6 +79,7 @@ onBeforeUnmount(() => observer?.disconnect());
 <template>
   <div
     class="search-carousel"
+    :class="{ 'search-preview-compact': compact }"
     role="group"
     :aria-label="`${label}预览`"
     :data-preview-start="start"
