@@ -254,6 +254,7 @@ export interface QueueTrack {
   track: TrackView;
   moreRecommendation?: boolean;
   origin?: QueueOrigin;
+  sourceLabel?: string;
   likeSongId?: string;
   catalogMenu?: boolean;
   voiceMenu?: boolean;

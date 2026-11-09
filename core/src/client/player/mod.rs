@@ -2050,12 +2050,18 @@ impl MusicClient {
                     } else {
                         (false, false)
                     };
+                    let origin = ordinary_queue.then(|| origin::queue(i)).flatten();
+                    let source_label = origin
+                        .as_ref()
+                        .and_then(|origin| origin::local_queue_source_name(i, origin))
+                        .map(str::to_owned);
                     Ok(QueueTrack {
                         entry_id: i.entry_id.clone(),
                         track: track(&i.resource)?,
                         more_recommendation: more_visible
                             && crate::playback::queue_more::active(&queue, i),
-                        origin: ordinary_queue.then(|| origin::queue(i)).flatten(),
+                        origin,
+                        source_label,
                         like_song_id,
                         catalog_menu,
                         voice_menu: ordinary_queue

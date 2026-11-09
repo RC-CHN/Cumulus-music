@@ -183,6 +183,9 @@ pub struct QueueTrack {
     pub more_recommendation: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<QueueOrigin>,
+    /// Verified mixed-playlist name for a local row's source menu.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub like_song_id: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]

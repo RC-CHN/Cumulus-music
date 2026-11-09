@@ -97,7 +97,15 @@ async fn typed_mixed_next_whole_and_drops_preserve_the_paused_native_source() {
     .await
     .unwrap();
     assert_eq!(playing.resource_kind, Some(PlayerResourceKind::Local));
-    assert_eq!(order(&client).await, [b.id.as_str()]);
+    let first = client.player_queue("1").await.unwrap();
+    assert_eq!(first.tracks.len(), 1);
+    assert_eq!(first.tracks[0].track.id, b.id);
+    assert!(first.tracks[0].track.local && first.tracks[0].local_menu);
+    assert_eq!(
+        serde_json::to_value(&first.tracks[0].origin).unwrap(),
+        json!({"kind": "playlist", "id": "73"})
+    );
+    assert_eq!(first.tracks[0].source_label.as_deref(), Some("Synthetic"));
     assert!(server.songs.lock().unwrap().is_empty());
     client
         .player_action("1", PlayerAction::Seek { seconds: 21.0 })

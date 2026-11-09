@@ -2618,7 +2618,11 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
       void reveal.catch((error) => {
         if (input.live()) input.report(failure(error).message);
       });
-    } else if (input.kind === 'local' && key === 'source' && origin?.kind === 'local') {
+    } else if (
+      input.kind === 'local' &&
+      key === 'source' &&
+      (origin?.kind === 'local' || origin?.kind === 'playlist')
+    ) {
       navigateFromQueue(origin);
     } else if (input.kind === 'downloaded') {
       if (key === 'source' && origin?.kind === 'downloads') {

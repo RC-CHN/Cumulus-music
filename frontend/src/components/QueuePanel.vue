@@ -624,6 +624,7 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent | KeyboardEvent)
         entryId: row.entryId,
         track: row.track,
         origin: row.origin,
+        sourceLabel: row.sourceLabel,
       },
       ...actions,
       collect: () => {
