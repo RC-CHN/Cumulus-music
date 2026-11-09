@@ -31,9 +31,13 @@ export function usePageEntryFocus(
     pending = false;
     if (!alive || !root.value?.isConnected || root.value.closest('.page-leave-active')) return;
     handled = true;
+    const active = document.activeElement;
     if (
       !eligible() ||
-      (document.activeElement !== document.body && document.activeElement !== origin)
+      (active !== document.body && active !== origin) ||
+      // The queue's source button opens a page behind its own still-open panel.
+      // Unlike an outgoing page control, that live button keeps keyboard focus.
+      (active === origin && active?.isConnected && active.hasAttribute('data-keep-page-focus'))
     )
       return;
     const target =

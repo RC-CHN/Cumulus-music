@@ -1008,6 +1008,7 @@ async function confirmClear(event: Event) {
             v-if="item.origin"
             type="button"
             class="icon-button queue-origin"
+            data-keep-page-focus
             :disabled="navigationLocked"
             title="来源"
             :aria-label="`来源：${item.track.name}`"
