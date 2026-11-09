@@ -1899,6 +1899,13 @@ async fn forgetting_a_download_keeps_suspended_ordinary_queues_playable() {
 async fn confirmed_clear_covers_its_full_snapshot_and_does_not_cancel_a_late_task() {
     use cumulus_core::download::service::{DownloadAction, DownloadService};
     let f = Fixture::new();
+    // Test setup controls each transient Queued → Paused transition directly.
+    let _scheduler = cumulus_core::storage::OperationLock::acquire(
+        f.store.directory(),
+        "download-scheduler",
+        "1",
+    )
+    .unwrap();
     f.configure().await;
     let service =
         DownloadService::with_backend(f.session.clone(), f.backend.clone(), 512 * 1024 * 1024)
@@ -1976,6 +1983,13 @@ async fn confirmed_clear_covers_its_full_snapshot_and_does_not_cancel_a_late_tas
 async fn clear_receipt_is_one_visit_and_skips_a_task_completed_before_confirmation() {
     use cumulus_core::download::service::{DownloadAction, DownloadRunOptions, DownloadService};
     let f = Fixture::new();
+    // Test setup controls each transient Queued → Paused transition directly.
+    let _scheduler = cumulus_core::storage::OperationLock::acquire(
+        f.store.directory(),
+        "download-scheduler",
+        "1",
+    )
+    .unwrap();
     f.configure().await;
     let service =
         DownloadService::with_backend(f.session.clone(), f.backend.clone(), 512 * 1024 * 1024)

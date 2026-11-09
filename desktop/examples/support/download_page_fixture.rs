@@ -334,19 +334,33 @@ impl Fixture {
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
             "clear_seed" | "clear_late" if clear_enabled() => {
-                use cumulus_core::download::service::DownloadAction;
-                let media = self.root.join("media");
+                use cumulus_core::{
+                    download::{directory::DownloadDirectory, service::DownloadAction},
+                    storage::OperationLock,
+                };
+                // New records pass through Queued before the fixture parks
+                // them. Do not let a background view drain that transient.
+                let mut scheduler = None;
+                for _ in 0..100 {
+                    match OperationLock::acquire(self.store.directory(), "download-scheduler", "2")
+                    {
+                        Ok(lock) => {
+                            scheduler = Some(lock);
+                            break;
+                        }
+                        Err(Error::MutationBusy) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+                let _scheduler = scheduler.ok_or(Error::MutationBusy)?;
                 if mode == "clear_seed" {
-                    client
-                        .download_command(
-                            &epoch,
-                            DownloadCommand::Configure {
-                                root: media.to_string_lossy().into_owned(),
-                                path_type: 0,
-                                file_type: 1,
-                            },
-                        )
-                        .await?;
+                    DownloadDirectory::new(self.session.clone())?.configure(
+                        &self.root.join("media"),
+                        0,
+                        1,
+                    )?;
                 }
                 let service = DownloadService::with_backend(
                     self.session.clone(),
