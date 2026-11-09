@@ -166,7 +166,7 @@ fn main() {
                     let handle=handle.clone();let task_id=value["taskId"].as_str().unwrap().to_owned();let epoch=value["epoch"].as_str().unwrap().to_owned();let root=root.clone();
                     tauri::async_runtime::spawn(async move {
                         let client=handle.state::<MusicClient>();
-                        let reply=match client.cloud_upload_directory_path(&epoch,&task_id).await{Ok(path)=>{assert!(path.canonicalize().unwrap().starts_with(root.join("upload-inputs").canonicalize().unwrap()));json!({"verified":true,"osLauncherInjected":true})},Err(error)=>json!({"error":cumulus_core::client::ClientError::from(error).message})};
+                        let reply=match client.cloud_upload_source_reveal(&epoch,&task_id).await{Ok(reveal)=>{let path=reveal.path();assert!(path.is_file()&&path.canonicalize().unwrap().starts_with(root.join("upload-inputs").canonicalize().unwrap()));reveal.check_current().unwrap();json!({"verified":true,"leafVerified":true,"osLauncherInjected":true})},Err(error)=>json!({"error":cumulus_core::client::ClientError::from(error).message})};
                         handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,reply)).unwrap();
                     });
                 }

@@ -220,20 +220,18 @@ fn require_revision(context: &Context, revision: &str) -> Result<()> {
 }
 
 impl MusicClient {
-    pub async fn cloud_upload_directory_path(&self, epoch: &str, id: &str) -> Result<PathBuf> {
+    /// The native shell selects the original audio file. No path crosses IPC.
+    pub async fn cloud_upload_source_reveal(
+        &self,
+        epoch: &str,
+        id: &str,
+    ) -> Result<CloudUploadSourceReveal> {
         let context = self.cloud.inner.context(epoch).await?;
         let id = id.to_owned();
         tokio::task::spawn_blocking(move || {
-            let file = context.uploads.verified_task_source_file(&id)?;
-            if !regular(&file, context.uploads.get(&id)?.total) {
-                return Err(Error::State("cloud upload source unavailable"));
-            }
-            let directory = file
-                .parent()
-                .ok_or(Error::State("cloud upload directory missing"))?
-                .to_owned();
+            let reveal = context.uploads.task_source_reveal(&id)?;
             context.guard()?;
-            Ok(directory)
+            Ok(reveal)
         })
         .await
         .map_err(|_| Error::State("cloud file worker stopped"))?

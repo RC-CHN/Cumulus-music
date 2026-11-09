@@ -236,16 +236,15 @@ pub async fn open_cloud_upload_directory<R: tauri::Runtime>(
     if window.label() != "main" {
         return Err(Error::InvalidInput("cloud file manager requires main window").into());
     }
-    let path = client
-        .cloud_upload_directory_path(&epoch, &id)
+    let reveal = client
+        .cloud_upload_source_reveal(&epoch, &id)
         .await
         .map_err(ClientError::from)?;
-    client
-        .validate_cloud_epoch(&epoch)
-        .map_err(ClientError::from)?;
-    crate::file_manager::open_directory(path)
-        .await
-        .map_err(Into::into)
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        reveal.check_current()
+    })
+    .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]

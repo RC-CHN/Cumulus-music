@@ -223,14 +223,6 @@ impl CloudUploads {
         self.guard()?;
         Ok((task.source.path, integrity, cue))
     }
-    pub fn verified_task_source_file(&self, id: &str) -> Result<std::path::PathBuf> {
-        let task = self.read(id)?;
-        task.source
-            .open()
-            .map_err(|_| Error::State("cloud upload source unavailable"))?;
-        self.guard()?;
-        Ok(task.source.path)
-    }
     pub fn list(&self) -> Result<Vec<CloudView>> {
         let keys = self.session.with_token(&self.token, |_| {
             Ok(self
