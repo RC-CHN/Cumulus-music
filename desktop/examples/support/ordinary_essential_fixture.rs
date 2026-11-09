@@ -1,6 +1,9 @@
 use cumulus_core::{
     Error,
-    protocol::api::{Api, ApiFuture},
+    protocol::{
+        api::{Api, ApiFuture},
+        pc_experiments::PcExperimentGroups,
+    },
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -23,6 +26,8 @@ fn voice_actions_enabled() -> bool {
 
 pub struct Library {
     base: Arc<dyn Api>,
+    pub books_resume: Option<super::books_resume_assignment::Authority>,
+    resume_enabled: std::sync::atomic::AtomicBool,
     settings: Mutex<(u64, String)>,
     reads: Mutex<Vec<Value>>,
 }
@@ -30,6 +35,8 @@ impl Library {
     pub fn new(base: Arc<dyn Api>) -> Self {
         Self {
             base,
+            books_resume: None,
+            resume_enabled: true.into(),
             settings: Mutex::new((2, "initial".into())),
             reads: Mutex::default(),
         }
@@ -50,6 +57,11 @@ impl Library {
     }
     pub fn report(&self) -> Value {
         json!(self.reads.lock().unwrap().clone())
+    }
+    pub fn set_resume_fixture(&self, enabled: bool) {
+        assert!(self.books_resume.is_some());
+        self.resume_enabled
+            .store(enabled, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -111,8 +123,36 @@ fn number(value: &Value) -> u64 {
 }
 
 impl Api for Library {
+    fn podcast_resume_observation_revision(&self) -> cumulus_core::Result<Option<String>> {
+        self.books_resume.as_ref().map_or(Ok(None), |fixture| {
+            fixture.client.podcast_resume_observation_revision()
+        })
+    }
+    fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
+        self.books_resume.as_ref().map_or(Ok(None), |fixture| {
+            fixture.client.verified_pc_experiment_revision()
+        })
+    }
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, PcExperimentGroups> {
+        match &self.books_resume {
+            Some(fixture) => fixture.client.verified_pc_experiment_groups(revision),
+            None => Box::pin(async { Err(Error::State("synthetic PC assignment unavailable")) }),
+        }
+    }
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(fixture) = &self.books_resume {
+                if path == super::books_resume_assignment::ACCOUNT {
+                    return fixture.client.request(path, args, cache).await;
+                }
+                assert_ne!(
+                    path, "/api/dj/user/setting/resumeplay/update",
+                    "book proof cannot write settings"
+                );
+            }
             let (owner, mode) = self.settings.lock().unwrap().clone();
             let selected = matches!(path, PLAYLISTS | SONGS | BOOKS | VOICES);
             if selected {
@@ -134,6 +174,12 @@ impl Api for Library {
                     .unwrap()
                     .push(json!({"owner":owner,"mode":mode,"path":path,"args":args}));
                 assert_ne!(owner, 0);
+            }
+            if self.books_resume.is_some() && path == "/api/dj/user/setting/resumeplay/get" {
+                self.reads
+                    .lock()
+                    .unwrap()
+                    .push(json!({"path":path,"args":args}));
             }
             let actions = actions_enabled();
             if actions && matches!(path, "/api/v6/playlist/detail" | "/api/v3/song/detail") {
@@ -263,7 +309,10 @@ impl Api for Library {
                     json!({"code":200,"data":{"programs":[voice(701, number(&args["radioId"])),voice(702, number(&args["radioId"]))],"count":2,"more":false,"asc":args["asc"]}})
                 }
                 "/api/dj/user/setting/resumeplay/get" => {
-                    json!({"code":200,"data":{"resumePlayValue":u8::from(args["radioId"] == "691")}})
+                    let enabled = self
+                        .resume_enabled
+                        .load(std::sync::atomic::Ordering::Acquire);
+                    json!({"code":200,"data":{"resumePlayValue":u8::from(args["radioId"] == "691" && enabled)}})
                 }
                 "/api/dj/program/detail" => {
                     let id = number(&args["id"]);
@@ -293,7 +342,10 @@ impl Api for Library {
                     chapter["djPlayRecordVo"] =
                         json!({"id":id.to_string(),"listenLocation":2500,"isListened":false});
                     chapter["url"] = json!("https://blocked.invalid/private");
-                    let group = (670..690).map(|id| voice(701, id)).collect::<Vec<_>>();
+                    let mut group = (670..690).map(|id| voice(701, id)).collect::<Vec<_>>();
+                    if self.books_resume.is_some() {
+                        group[0]["djPlayRecordVo"] = json!({"isListened":true});
+                    }
                     json!({"code":200,"data":{"currentList":[chapter],"yesterdayList":group[..19],"passingList":group[19..]}})
                 }
                 "/api/play-record/voice/book/timeline/list" => json!({"code":200,"data":{"data":{

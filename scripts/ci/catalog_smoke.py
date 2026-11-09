@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sqlite3
+import sys
 import time
 from motion_smoke import paint_checks
 from catalog_navigation import verify as verify_navigation
@@ -79,6 +80,7 @@ def main():
     mode.add_argument('--album', action='store_true', help='album-local tabs, draft retention, header actions and native null playback')
     mode.add_argument('--latest-releases', action='store_true')
     mode.add_argument('--ordinary-essential', action='store_true')
+    mode.add_argument('--listened-books-resume', action='store_true')
     mode.add_argument('--ordinary-essential-actions', action='store_true')
     mode.add_argument('--ordinary-essential-voice-actions', action='store_true')
     mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
@@ -119,9 +121,12 @@ def main():
         source = ('album_duration_sort_ui_probe.js' if args.album_duration_sort else
                   'album_batch_ui_probe.js' if args.album_batch else 'album_ui_probe.js')
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
-    if args.ordinary_essential or args.ordinary_essential_actions or args.ordinary_essential_voice_actions:
+    if args.ordinary_essential or args.ordinary_essential_actions or args.ordinary_essential_voice_actions or args.listened_books_resume:
         env['CUMULUS_ORDINARY_ESSENTIAL_PROOF'] = '1'
-        if args.ordinary_essential_voice_actions:
+        if args.listened_books_resume:
+            env['CUMULUS_LISTENED_BOOKS_RESUME_PROOF'] = '1'
+            source = 'listened_books_resume_ui_probe.js'
+        elif args.ordinary_essential_voice_actions:
             env['CUMULUS_ORDINARY_ESSENTIAL_VOICE_ACTIONS_PROOF'] = '1'
             source = 'ordinary_essential_voice_actions_ui_probe.js'
         elif args.ordinary_essential_actions:
@@ -172,6 +177,46 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.listened_books_resume:
+        names = ('unknown_setting_visible', 't1_off_hidden', 'same_snapshot_hidden',
+                 'chapter_plays', 'control_visible', 't1_on_visible')
+        assert complete['ok'] and complete['states'] == list(names)
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert captures == (len(names) if args.screenshots else 0)
+        stages = {name: json.loads((output / f'ux_{index:02d}_{name}.json').read_text(encoding='utf-8'))
+                  for index, name in enumerate(names, 1)}
+        for name, state in stages.items():
+            assert state['chapter'] == '目录章节 792' and '已播完' in state['second']
+            assert ('已播 10%' in state['first']) == (name in ('unknown_setting_visible', 'control_visible', 't1_on_visible'))
+        player = stages['chapter_plays']['nativePlayer']
+        assert player['state'] == 'playing' and player['track']['voiceId'] == '792' and player['track']['id'] == '1792'
+        assert .2 < stages['chapter_plays']['firstNativePosition'] < 2.5
+        assert [row['track']['voiceId'] for row in stages['chapter_plays']['nativeQueue']['tracks']] == ['791', '792']
+        reads = complete['essentialReads']
+        books = '/api/voice/book/recent'
+        resume = '/api/dj/user/setting/resumeplay/get'
+        assert [c['args'] for c in reads if c['path'] == books] == [{}, {}, {}]
+        assert [c['args'] for c in reads if c['path'] == resume] == [{'radioId': '691'}] * 3
+        assert not any(c['path'] == resume for c in stages['unknown_setting_visible']['essentialReads'])
+        assert stages['same_snapshot_hidden']['essentialReads'] == stages['t1_off_hidden']['essentialReads']
+        assert stages['control_visible']['essentialReads'] == stages['chapter_plays']['essentialReads']
+        assignment = '/api/rtrs/abt/front/expinfo/list'
+        # Native startup observes the initial control assignment. The three
+        # explicitly released fixture transitions then send t1, c and t1.
+        expected_assignments = [
+            {'path': '/api/w/nuser/account/get', 'group': None, 'sameCredential': True},
+            *({'path': assignment, 'group': group, 'sameCredential': True} for group in ('c', 't1', 'c', 't1')),
+        ]
+        assert complete['booksResumeAssignment'] == expected_assignments, complete['booksResumeAssignment']
+        if sys.platform == 'linux':
+            locale = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
+            assert locale['numeric'] == 'C' and locale['messages'] != 'C' and locale['characters'] != 'C'
+        result = dict(ok=True, actualWebView=True, states=len(names), screenshots=captures,
+                      actualNullAudio=True, sameCredentialPcAssignment=True,
+                      bookReads=3, resumeReads=3, realMusicRequests=0, realAccountWrites=0)
+        (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(result))
+        return
     if args.artist_mv:
         assert complete['ok'] and complete['stageCount'] == 9 and complete['nativeVideo']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
