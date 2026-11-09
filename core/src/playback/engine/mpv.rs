@@ -1012,6 +1012,20 @@ impl AudioEngine for MpvEngine {
         MpvEngine::load_pinned_audio(self, file, authority, cancel)
     }
 
+    fn load_pinned_audio_with_local_equalizer(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let result = self.load_publication_equalizer(file, authority, settings, cancel);
+        if result.is_err() {
+            let _ = self.stop();
+        }
+        result
+    }
+
     fn load_pinned_ncm(
         &mut self,
         file: std::fs::File,

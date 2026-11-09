@@ -232,6 +232,17 @@ pub trait AudioEngine: Send {
     ) -> Result<LoadedMedia> {
         Err(crate::Error::State("pinned audio playback is unavailable"))
     }
+    /// Try the recovered local graph on a checked plain publication. If the
+    /// backend does not support it, retain the same file and live authority.
+    fn load_pinned_audio_with_local_equalizer(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        _: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.load_pinned_audio(file, authority, cancel)
+    }
     /// Native transport for verified NCM. The caller must check publication
     /// integrity and cached rights and include expiry in the authority.
     fn load_pinned_ncm(

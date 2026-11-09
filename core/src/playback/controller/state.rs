@@ -532,6 +532,17 @@ impl Actor {
                             self.power_pending();
                         }
                     },
+                    Some(Message::SearchEqualizerHandoff { generation, accepted }) => {
+                        if generation == self.generation()
+                            && self.pending.is_some()
+                            && !self.cancel.is_cancelled()
+                        {
+                            // Mark the stock filter dirty before a checked
+                            // publication may displace it on the engine thread.
+                            self.local_equalizer_needs_sync = true;
+                            let _ = accepted.send(());
+                        }
+                    },
                     Some(Message::Loaded { generation, result }) => self.loaded(generation,result).await,
                     Some(Message::AudiobookSkipChanged { token, radio }) => self.refresh_audiobook_skip(token, radio),
                     Some(Message::AudiobookSkipRefreshed(value)) => self.refreshed_audiobook_skip(value),

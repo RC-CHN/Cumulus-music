@@ -157,6 +157,53 @@ library entries without the native-open receipt, CUE/preview/room audio,
 unsupported FLAC, independently owned PEQ or missing/wrong SDK remain
 on their prior route. This adds no downloads, rights checks or mutations.
 
+Search playback from an already published download
+--------------------------------------------------
+
+Official PC 3.1.42.205594 M/163:298–317 checks the exact song's completed
+download and offline privilege before preferring it; :330 and :372–384
+then use the same type=0 native path as ordinary local media. M/308:2118–
+2141 sends the selected source to ordinary AudioPlayer.play. The native
+type=0 branch starts at cloudmusic.dll 103B83C–103B86F; ordinary audio
+passes through AudioDeviceThread 1055EF0 (SDK input/output). The old M3091
+material uses the already recovered EFB760 mapping, and the SDK's
+1AA50 calls slot 50 before the final B0 limiter (1ACF3). This is distinct
+from an HTTP/cache type=4 source and does not establish its seek boundary.
+
+Cumulus now tries the same recovered local material for an existing
+SearchPublication only if the full, unconstrained selection already has
+a verified plain FLAC descriptor, saved active local controls and no
+per-track gain/invalid-gain or separate filter requirement. The header is
+read from the already checked File, not its name or requested quality.
+The actor must acknowledge the current preparation generation before a
+worker may displace a stock filter. That descriptor's existing queue,
+ledger and account checks, cancellation and output lease remain in
+force on both the PCM source and stock fallback. The audio reader does
+not read SQLite; the actor still rechecks durable publication rights.
+The graph retains its existing exact supported stereo s16 FLAC limits
+and trusted runtime checks. Decoder rejection or an unavailable SDK
+can keep the original authorized descriptor on stock; it does not
+request an online URL or reopen a path. A revoked descriptor is not a
+fallback. After graph playback starts, same-play seek reclaims and
+resets the held source, and EOF still waits for native drain.
+
+The initial selection's existing online fallback for a missing or
+corrupt publication is unchanged. Encrypted downloads, arbitrary
+download rows, cloud, CUE, trial/room playback, online streams and
+independent remote effects are not enabled by this route. Device
+recovery does not gain a new policy for reopening a retired native
+host. No change to the cold grant, installed loader or renderer API.
+
+Executable comparison: run scripts/ci/search_download_row_smoke.py
+with the custom-protocol ux_ui_probe, frontend/dist, --local-marker,
+--held-replacement, and --equalizer-flac-library /ABS/libcumulus_flac150.so.14
+--equalizer-flac-sha256 SHA in a no-route Xvfb/DBus Linux namespace.
+Repeat in a fresh proof root with --wrong-equalizer-digest to exercise
+stock fallback from the same verified bytes. The proof samples real
+GTK/libmpv null output, exact native entries for seek and EOF and no
+online authorization for the held play. It does not prove Windows
+execution or the physical speaker output.
+
 Held PCM WAV input
 ------------------
 

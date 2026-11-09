@@ -78,6 +78,10 @@ enum Message {
         timeline: super::Timeline,
         authorized_position: f64,
     },
+    SearchEqualizerHandoff {
+        generation: u64,
+        accepted: oneshot::Sender<()>,
+    },
     Loaded {
         generation: u64,
         result: Result<load::Prepared>,
