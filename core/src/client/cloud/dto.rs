@@ -120,6 +120,20 @@ impl From<DeleteOperation> for CloudDeleteView {
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudCapacityKind {
+    Full,
+    Permanent,
+    SvipActive,
+    SvipExpiring,
+    SvipOffer,
+}
+#[derive(Serialize)]
+pub struct CloudCapacityStatus {
+    pub kind: CloudCapacityKind,
+    pub text: String,
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudPageView {
@@ -128,6 +142,7 @@ pub struct CloudPageView {
     pub updated_ms: Option<u64>,
     pub size: Option<u64>,
     pub max_size: Option<u64>,
+    pub capacity_status: Option<CloudCapacityStatus>,
     pub uploaded_count: usize,
     pub uploading_count: usize,
     pub history_count: usize,

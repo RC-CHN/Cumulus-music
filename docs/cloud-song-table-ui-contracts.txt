@@ -14,8 +14,7 @@
   Delete/Backspace走removeFromCloudDisk，忽略按键重复，双击播放。
 - Capacity.tsx默认分支：200px进度、13px、间距20；binary G/TB和不同区间取整；
   使用量非零最小0.1%；有歌曲时才显示永久保存或空间已满提示，扩容默认打开
-  https://music.163.com/#/vip。useNewFeat=true的SVIP营销/倒计时/新扩容卡片依赖
-  官方远端配置，当前未冒充获取该配置或展示猜测价格/容量权益。
+  https://music.163.com/#/vip。新版只读状态见下方；新版扩容卡片及收银台仍不迁移。
 - 556.js viewFileLocation：已上传源关联→完成下载→扫描库localMap。恢复执行脚本
   references/recovered-client/scripts/netease_cloud_song_ui_oracle.cjs仅在研究目录。
   冻结无账号向量core/tests/fixtures/cloud-song-ui.json记录viewer/106/Capacity的
@@ -81,3 +80,29 @@
 - cloud_song_probe.js/cloud_song_smoke.py：production WebView/IPC/Rust/SQLite/实际
   ffprobe扫描与映射、实际null音频；服务及OS浏览器/目录启动器显式替换，原生
   目录核对仍执行。最终状态/截图/全测和CI以ui-ux-validation.txt实际记录为准。
+
+
+新版只读容量状态
+- 官方 hybrid app M/247:250–256 实际内置 preload#cloudDisk.useNewFeat=true，
+  有三个会员提示字符串；M/247:683–695 对整个配置键浅合并，M/92:88–105
+  只接 PC 配置，按版本下载后更新。并非只有实服返回新功能才有默认提示。
+  Capacity.tsx:33–49、71–99、124–198 和编译 M/3100 同源：hasTracks 取完整
+  已上传列表；容量来自既有 /api/v1/cloud/get 的 size/maxSize，筛选不改变它。
+- tip.tsx:96–100、137–185（M/3100:82–140）：有歌曲且容量已满，活跃 SVIP
+  显示清理提示，已知非 SVIP 显示另一条满容量提示；未满时活跃 SVIP 按
+  ceil((plusVipExpireTime-DateSync)/86400000) ≤ 7 区分即将到期和普通状态。
+  非 SVIP 未满只有在“正数有效期已过本机时间”不成立时显示配置营销文字；
+  已知正数已到期的分支反而无提示，未知会员不冒充此分支。
+- Rust 只使用当前账号由既有 /api/music-vip-membership/client/vip/info
+  {userId} 验证和保存的 redplus.expireTime、server now，以及原生系统时钟
+  用于官方独立的本机过期判断。CloudPageView.capacityStatus 只返回受控类型/
+  纯文本，不发会员刷新请求，不接受前端时间、会籍或提示字段。缺会员时只可
+  展示已知的通用满容量；缺容量、空云盘、损坏配置文字不编造状态。接受的
+  PC 配置为整个键替换；明确 useNewFeat=false 才走旧的永久保存提示。
+  内置“即将”本是搭配收银台按钮的前缀，只读显示补“到期”，不制造续费动作。
+- M/1384:4397–4408 调 M/15:1046 /api/pc/version {core,native,orpheus}
+  得到 cloudSetting.payUrl/payMsg/action；Capacity.tsx:182–197 的新按钮、
+  Enlarge.tsx:143–172 的 AppModal.openCashier/ossLink 均未接入。继续保留
+  既有用户点击的固定官方公开扩容入口，不读取支付配置、不打开收银台、
+  不展示旧价格为当前价格、不自动购买或改变容量；6TB 文案是恢复的版本提示，
+  不是对真实账号实际配额的保证，实际数值始终以云盘回包为准。

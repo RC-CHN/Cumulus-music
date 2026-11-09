@@ -28,6 +28,22 @@
 .cloud-capacity-tip {
   overflow-wrap: anywhere;
 }
+.cloud-capacity-svip,
+.cloud-capacity-offer {
+  padding: 4px 8px;
+  border-radius: 13px;
+}
+.cloud-capacity-svip {
+  color: #7d4a17;
+  background: rgb(255 214 141 / 30%);
+}
+:root[data-theme='dark'] .cloud-capacity-svip {
+  color: #ffad33;
+}
+.cloud-capacity-offer {
+  color: var(--muted);
+  background: var(--surface-hover);
+}
 
 /* Programmatic pending focus is internal; restore to a control on completion. */
 .cloud-page:focus {

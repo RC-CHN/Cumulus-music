@@ -26,8 +26,8 @@ watch(
   },
   { flush: 'sync' },
 );
-const full = computed(
-  () => !!props.view?.maxSize && props.view.size !== null && props.view.size >= props.view.maxSize,
+const status = computed(() =>
+  props.view?.epoch === props.epoch ? props.view.capacityStatus : null,
 );
 const percent = computed(() =>
   cloudCapacityPercent(props.view?.size ?? null, props.view?.maxSize ?? null),
@@ -76,12 +76,15 @@ async function expand() {
       >{{ cloudCapacityText(view?.size) }}/{{ cloudCapacityText(view?.maxSize) }}</span
     >
     <span
-      v-if="view?.revision && view.uploadedCount > 0 && percent != null"
+      v-if="status"
       class="cloud-capacity-tip"
-      :class="{ full }"
-      >{{
-        full ? '网盘已满，请清除部分文件，才能继续上传' : '歌曲永久保存，随时随地多端畅听'
-      }}</span
+      :data-cloud-capacity-status="status.kind"
+      :class="{
+        full: status.kind === 'full',
+        'cloud-capacity-svip': status.kind === 'svip_active' || status.kind === 'svip_expiring',
+        'cloud-capacity-offer': status.kind === 'svip_offer',
+      }"
+      >{{ status.text }}</span
     >
     <button
       ref="trigger"

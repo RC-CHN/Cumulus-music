@@ -1,3 +1,4 @@
+mod capacity;
 mod commands;
 mod dto;
 mod files;
@@ -307,8 +308,14 @@ impl MusicClient {
                 *error = None;
             }
         }
-        tokio::task::spawn_blocking(move || view::project(&context, query))
-            .await
-            .map_err(|_| Error::State("cloud view worker stopped"))?
+        let config = capacity::Config::read(self.auth.context.as_deref());
+        tokio::task::spawn_blocking(move || {
+            let mut page = view::project(&context, query)?;
+            capacity::apply(&mut page, &context, &config);
+            context.guard()?;
+            Ok(page)
+        })
+        .await
+        .map_err(|_| Error::State("cloud view worker stopped"))?
     }
 }

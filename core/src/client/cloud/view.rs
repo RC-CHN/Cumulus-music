@@ -78,6 +78,7 @@ pub(super) fn project(context: &Context, query: CloudQuery) -> Result<CloudPageV
         updated_ms: snapshot.as_ref().map(|s| s.updated_ms),
         size: snapshot.as_ref().and_then(|s| s.size),
         max_size: snapshot.as_ref().and_then(|s| s.max_size),
+        capacity_status: None,
         uploaded_count,
         uploading_count,
         history_count,

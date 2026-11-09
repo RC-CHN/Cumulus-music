@@ -344,10 +344,11 @@ pub use super::catalog::{
     LatestReleasePage, LatestReleaseQuery, ReleaseNotificationAction, ReleaseNotificationState,
 };
 pub use super::cloud::{
-    CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudRemovalFileState,
-    CloudRemovalFileView, CloudRemovalPhase, CloudRemovalView, CloudResourceView, CloudResult,
-    CloudSort, CloudTab, CloudTrackView, CloudUploadInput, CloudUploadRemovalItem,
-    CloudUploadRemovalView, CloudUploadView, PlannedCloudUploadInput,
+    CloudCapacityKind, CloudCapacityStatus, CloudCommand, CloudDeleteView, CloudFailure,
+    CloudPageView, CloudQuery, CloudRemovalFileState, CloudRemovalFileView, CloudRemovalPhase,
+    CloudRemovalView, CloudResourceView, CloudResult, CloudSort, CloudTab, CloudTrackView,
+    CloudUploadInput, CloudUploadRemovalItem, CloudUploadRemovalView, CloudUploadView,
+    PlannedCloudUploadInput,
 };
 pub use super::comments::{
     CommentAuthorView, CommentFloorQuery, CommentFloorView, CommentOperationView, CommentPageView,

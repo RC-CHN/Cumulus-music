@@ -130,12 +130,17 @@ export interface CloudRemoval {
   canContinue: boolean;
   error: string | null;
 }
+export interface CloudCapacityStatus {
+  kind: 'full' | 'permanent' | 'svip_active' | 'svip_expiring' | 'svip_offer';
+  text: string;
+}
 export interface CloudPage {
   epoch: string;
   revision: string | null;
   updatedMs: number | null;
   size: number | null;
   maxSize: number | null;
+  capacityStatus?: CloudCapacityStatus | null;
   uploadedCount: number;
   uploadingCount: number;
   historyCount?: number;
