@@ -16,6 +16,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -28,6 +29,8 @@ def main():
         directory = root/'os-profile'/name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve())+os.pathsep+env.get('PATH','')
     for phase, count in [('first',16), ('reopen',2)]:
@@ -58,6 +61,14 @@ def main():
         assert complete['audioFactoryCount'] == baseline, 'settings/reload must not recreate audio'
         if phase == 'first':
             assert len({snap['nativePlayer']['playId'] for snap in snapshots[1:]}) == 1
+            transport = json.loads((output/'ux_02_local_native_transport.json').read_text(encoding='utf-8'))
+            held = transport['heldF5']
+            assert held['code'] == 'F5' and held['prevented'] and held['submitted'] == 0
+            assert transport['shortcutSequence'] == [
+                {'keys': [17, 80], 'reply': 'ok', 'nativeState': 'paused'},
+                {'keys': [116], 'reply': 'ok', 'nativeState': 'playing'},
+                {'keys': [32], 'reply': 'ok', 'nativeState': 'paused'},
+            ]
     backups = []
     for path in (root/'state').rglob('core.sqlite3'):
         with sqlite3.connect(path) as connection:

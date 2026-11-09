@@ -242,3 +242,16 @@ Linux X11与Windows边界
   该窗销毁时撤销租约；主窗/迷你窗/歌词窗没有共享一个可任意伪造的前端target。
 - 独立XTest/SendInput驱动与真实WebView入口见scripts/ci/desktop_lyrics_smoke.py；
   本批Linux已验证OS全局按键和歌词窗DOM本地按键，Windows仍须其精确CI结果。
+
+快捷键 WebView：等待实际 IPC 回执再发下一键
+- Windows 8b2f5a7c 的 WebView Playback job 129172534892 在 Ctrl+P 暂停后等待
+  F5 播放超时。当时日志显示原生 F5 [116] 可用、设置标题已聚焦、播放器仍暂停；
+  未记录当次 F5 的事件和 IPC，不能仅凭失败快照推断系统按键未送达。
+- useLocalShortcuts 先阻止已匹配键的默认行为，再在上一 IPC 未结算时丢弃新键；
+  播放状态事件与 IPC 回执分别到达。真实 Linux WebView 探针特意保留一次已经
+  执行的 Ctrl+P 回执，观察到暂停后仍可复现 F5 被消费而没有第二个 IPC。释放
+  回执后，探针逐键检查确切 IPC 按键、成功回执和同一原生播放实例的
+  暂停→播放→暂停状态。只允许等候一个既未消费又未发出的 DOM 事件；不会重放
+  已提交的按键。失败报告保留有限的事件字段和实际调用状态。
+- 本次探针覆盖 Linux 真实 WebView 与合成音频，不声称已在 Windows 实测修正。
+  独立 shortcut_smoke.py 的 XTest/SendInput 和原生前台/后台键盘断言未改。

@@ -20,6 +20,79 @@
     const event=new KeyboardEvent('keydown',{code,key:code==='Escape'?'Escape':code==='Tab'?'Tab':code==='Space'?' ':code,keyCode:code==='Escape'?27:0,bubbles:true,cancelable:true,...options});
     target.dispatchEvent(event);return event;
   }
+  // Observe the actual injected adapter. A player state event and its DOM
+  // update are independent of the shortcut command's eventual reply.
+  const calls=[], keyEvents=[];
+  let holdNextReply=false, heldReply;
+  function observePresses() {
+    const provides=one('#app').__vue_app__._context.provides;
+    const client=provides[Reflect.ownKeys(provides).find((key)=>typeof key==='symbol'&&key.description==='core-client')];
+    const original=client.shortcutPress.bind(client);
+    client.shortcutPress=(input)=>{
+      const hold=holdNextReply;
+      holdNextReply=false;
+      const call={keys:[...input.keys],epoch:input.epoch,selection:{...input.selection},native:'pending',reply:'pending',settled:false};
+      calls.push(call);
+      return (async()=>{
+        try {
+          await original(input);
+          call.native='ok';
+          if(hold) await new Promise((release)=>{heldReply=release;});
+          call.reply='ok';
+        } catch(error) {
+          call.native='error';
+          call.reply=error?.code??'unknown';
+          throw error;
+        } finally {
+          // The app releases its renderer gate in the caller's .finally.
+          // Sample after the promise chain and microtasks have both drained.
+          setTimeout(()=>{call.settled=true;},0);
+        }
+      })();
+    };
+  }
+  function attempt(target,code,options) {
+    const before=calls.length;
+    const event=key(target,code,options);
+    const after=calls.length;
+    const receipt={code:event.code,key:event.key,keyCode:event.keyCode,ctrl:event.ctrlKey,
+      prevented:event.defaultPrevented,submitted:after-before};
+    keyEvents.push(receipt);
+    assert(after-before<=1,'one renderer key must issue at most one native command');
+    return {receipt,call:calls[before]};
+  }
+  async function submit(target,code,keys,options={}) {
+    let call, attempts=0;
+    await wait(()=>{
+      const node=target();
+      if(document.activeElement!==node||document.querySelector('dialog[open],[aria-modal="true"]'))return false;
+      attempts++;
+      const sample=attempt(node,code,options);
+      if(sample.call) {
+        assert(sample.receipt.prevented,'submitted key must be consumed');
+        assert(JSON.stringify(sample.call.keys)===JSON.stringify(keys),'exact native chord '+code);
+        call=sample.call;
+        return true;
+      }
+      // Retry only a DOM event that neither the listener consumed nor sent.
+      assert(!sample.receipt.prevented,'consumed key produced no command: '+code);
+      return false;
+    },'focused native shortcut: '+code);
+    return {call,attempts};
+  }
+  async function settle(call,expected) {
+    await wait(()=>{
+      assert(call.reply==='ok'||call.reply==='pending','native shortcut rejected: '+call.reply);
+      return call.settled&&state()===expected;
+    },'acknowledged shortcut '+call.keys.join('+')+' / '+expected);
+    const native=await invoke('player_snapshot',{epoch:call.epoch});
+    assert(native.state===expected&&native.playId===call.selection.audioPlayId&&
+      native.entryId===call.selection.audioEntryId,'shortcut must affect the same native play');
+    return {keys:call.keys,reply:call.reply,nativeState:native.state};
+  }
+  async function transport(target,code,keys,expected) {
+    return settle((await submit(target,code,keys)).call,expected);
+  }
   async function ready(changeable=true){await wait(()=>phase()==='ready'&&binding('play_pause')&&(!changeable||!binding('play_pause').disabled)&&one('[data-action="play_pause"] [data-scope="local"] .shortcut-result')?.dataset.state==='active','local listener ready');}
   async function settings(){click(one('[aria-label="打开设置"]'));await wait(()=>section()&&!refresh().disabled,'settings loaded');await ready();}
   async function play(){click(button('每日推荐'));await wait(()=>one('.track-row .track-play')&&!one('.track-row .track-play').disabled,'native player ready');one('.track-row').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(()=>state()==='playing'&&Number(one('.playerbar').dataset.position)>.15,'native PCM');}
@@ -41,6 +114,7 @@
   async function finish(reopened=false){await emit('complete',{ok:true,stageCount:count,reopened,realMusicRequests:0,domKeyboardInput:true,physicalAudioOutputVerified:false});}
   try{
     await wait(()=>one('.track-row .track-play')&&!one('.track-row .track-play').disabled,'initial UI');
+    observePresses();
     if(sessionStorage.getItem('cumulus.shortcut-reload-count')){
       await settings();assert(!box('global').checked&&!box('media').checked,'reload switches');
       assert(binding('play_pause').textContent.trim()==='O','reload binding');
@@ -51,22 +125,31 @@
     if(localStorage.getItem('cumulus.shortcut-finished')){
       await settings();assert(!box('global').checked&&!box('media').checked&&binding('play_pause').textContent.trim()==='O','restart persistence');
       assert(document.documentElement.dataset.theme==='dark','theme restart');await capture('reopened_preferences');
-      await play();await settings();key(focus(section().querySelector('h2')),'KeyO');await wait(()=>state()==='paused','reopened shortcut action');await capture('reopened_native_pause');await finish(true);return;
+      await play();await settings();
+      await transport(()=>focus(section().querySelector('h2')),'KeyO',[79],'paused');
+      await capture('reopened_native_pause');await finish(true);return;
     }
     await theme('浅色');await settings();await capture('default_light');
     await play();await settings();const header=()=>focus(section().querySelector('h2'));
-    // Native status can already say active while the renderer is still receiving
-    // the matching lease or leaving a modal. Stop at the first accepted chord:
-    // unhandled keys cannot start the command, and an accepted key is never replayed.
-    let ctrlPAttempts=0;
-    await wait(()=>{
-      const target=header();
-      if(document.activeElement!==target||document.querySelector('dialog[open],[aria-modal="true"]'))return false;
-      ctrlPAttempts++;
-      return key(target,'KeyP',{ctrlKey:true}).defaultPrevented;
-    },'Ctrl P routed by the focused local listener');
-    await wait(()=>state()==='paused','Ctrl P paused');
-    key(header(),'F5');await wait(()=>state()==='playing','F5 playback');key(header(),'Space');await wait(()=>state()==='paused','space playback');await capture('local_native_transport',refresh(),{ctrlPAttempts});
+    // Hold only the first *real* IPC result before returning it to the
+    // application. The native pause event already reached the player bar.
+    // This deterministically recreates the prior F5 timing without replaying
+    // any submitted command or replacing the native player's result.
+    holdNextReply=true;
+    const first=await submit(header,'KeyP',[17,80],{ctrlKey:true});
+    await wait(()=>heldReply&&first.call.native==='ok'&&state()==='paused','native pause arrived before renderer acknowledgement');
+    const heldF5=attempt(header(),'F5',{});
+    assert(heldF5.receipt.prevented&&heldF5.receipt.submitted===0&&!heldF5.call,
+      'busy renderer must consume F5 without a second IPC');
+    heldReply();heldReply=undefined;
+    const shortcutSequence=[
+      await settle(first.call,'paused'),
+      await transport(header,'F5',[116],'playing'),
+      await transport(header,'Space',[32],'paused'),
+    ];
+    await capture('local_native_transport',refresh(),{
+      ctrlPAttempts:first.attempts,heldF5:heldF5.receipt,shortcutSequence,
+    });
     const search=one('.search-box input')||one('header input');search.focus();assert(!key(search,'KeyP',{ctrlKey:true}).defaultPrevented,'typing consumed');
     click(one('[aria-label="均衡器"]'));await wait(()=>one('.equalizer-dialog[open]'),'modal opened');
     assert(!key(focus(one('.equalizer-dialog h2')),'KeyP',{ctrlKey:true}).defaultPrevented,'modal shortcut consumed');await sleep(250);assert(state()==='paused','protected UI changed playback');
@@ -74,7 +157,7 @@
     await record('play_pause');await chord('KeyO','O');await capture('record_local',recorder());await save();
     assert(binding('play_pause').textContent.trim()==='O','new binding');
     assert(!key(header(),'KeyP',{ctrlKey:true}).defaultPrevented,'old chord still captured');await sleep(200);assert(state()==='paused','old chord executed');
-    key(header(),'KeyO');await wait(()=>state()==='playing','new chord starts');key(header(),'KeyO');await wait(()=>state()==='paused','new chord pauses');await capture('rebound_native_transport');
+    await transport(header,'KeyO',[79],'playing');await transport(header,'KeyO',[79],'paused');await capture('rebound_native_transport');
     await record('play_pause','global');await chord('KeyQ','Ctrl + Alt + Q');await capture('global_normalized',recorder());await save();
     await record('play_pause');await chord('ArrowLeft','Ctrl + ←',{ctrlKey:true});click(button('保存'));
     await wait(()=>section().querySelector('.catalog-error')&&recorder()&&!recorder().disabled,'duplicate rejected');assert(state()==='paused','conflict changed playback');await capture('duplicate_rejected',recorder());
@@ -97,8 +180,13 @@
     await fixture('shortcut_damage');click(refresh());await wait(()=>phase()==='damaged'&&!box('global'),'malformed JSON');await capture('damaged');
     click(button('恢复默认快捷键设置'));await ready();await wait(()=>document.activeElement===refresh(),'repair focus');assert(binding('play_pause').textContent.trim()==='Ctrl + P','repair defaults');await capture('repaired');
     await record('play_pause');await chord('KeyO','O');await save();await toggle('global',false);await toggle('media',false);
-    key(header(),'KeyO');await wait(()=>state()==='playing','local independent switches');key(header(),'KeyO');await wait(()=>state()==='paused','local pause independent switches');await capture('saved_separate_switches');
+    await transport(header,'KeyO',[79],'playing');await transport(header,'KeyO',[79],'paused');await capture('saved_separate_switches');
     await record('play_pause');await chord('KeyQ','Q');await capture('record_before_reload',recorder());
     sessionStorage.setItem('cumulus.shortcut-reload-count',String(count));location.reload();
-  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount:count,phase:phase(),playerState:state(),focused:document.activeElement?.outerHTML?.slice(0,400)});}
+  }catch(error){
+    heldReply?.();
+    await emit('failed',{ok:false,error:String(error),stageCount:count,phase:phase(),playerState:state(),
+      focused:document.activeElement?.outerHTML?.slice(0,400),keyEvents:keyEvents.slice(-16),
+      shortcutCalls:calls.slice(-12).map(({keys,native,reply,settled})=>({keys,native,reply,settled}))});
+  }
 })();
