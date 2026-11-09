@@ -49,6 +49,7 @@ struct Backend {
     search_playback_revision: AtomicUsize,
     search_playback_deny: AtomicUsize,
     search_playback_missing_list_media: AtomicBool,
+    search_playback_curated: AtomicBool,
     search_playback_hold: AtomicBool,
     search_playback_started: tokio::sync::Notify,
     search_playback_release: tokio::sync::Notify,
@@ -347,6 +348,10 @@ impl Api for Backend {
 impl Backend {
     fn episode(&self, id: u64) -> Value {
         let mut value = program(id);
+        if self.search_playback_curated.load(Ordering::SeqCst) && (1..=3).contains(&id) {
+            value["radio"]["id"] = json!(29);
+            value["radio"]["name"] = json!("Original episode radio");
+        }
         if self.vinyl_fixture.load(Ordering::SeqCst) {
             value["dj"]["userId"] = json!(if id == 2 { 9 } else { 55 });
             value["radio"]["subCount"] = json!(331);

@@ -367,6 +367,30 @@ async fn classified_podcast_index_uses_the_row_lane_resume_and_exact_same_decode
             .count(),
         1
     );
+    api.calls.lock().unwrap().clear();
+    let resumed = prepared(
+        &client,
+        select_row(&row, SearchPodcastRowGesture::DoubleClick),
+    )
+    .await
+    .unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.play_id, paused.play_id);
+    assert_eq!(resumed.position, paused.position);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(p, _)| p.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/v6/dj/program/byradio",
+            "/api/dj/program/detail",
+            "/api/dj/play/url/check",
+        ]
+    );
 }
 
 #[tokio::test]
@@ -456,6 +480,7 @@ async fn missing_classified_podcast_checkpoint_never_guesses_another_episode() {
 async fn classified_podcast_no_checkpoint_chooses_the_batch_and_preserves_random_mode() {
     let (_dir, api, _session, client, _device) = fixture_with_device();
     api.count.store(3, Ordering::SeqCst);
+    api.search_playback_curated.store(true, Ordering::SeqCst);
     let row = row_receipt(&client).await;
     prepared(&client, PlaySelection::Voice { id: "5".into() })
         .await
@@ -477,6 +502,9 @@ async fn classified_podcast_no_checkpoint_chooses_the_batch_and_preserves_random
     .await
     .unwrap();
     assert_eq!(started.mode, PlaybackMode::Random);
+    assert!(matches!(started.origin, Some(PlayerOrigin::Podcast { ref id }) if id == "7"));
+    let view = serde_json::to_value(&started).unwrap();
+    assert_eq!(view["voiceDetail"]["radio"]["id"], "29");
     assert!(matches!(
         started.track.unwrap().voice_id.as_deref(),
         Some("1" | "2" | "3")

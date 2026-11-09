@@ -165,6 +165,60 @@ impl MusicClient {
                 "podcast checkpoint is not in the playback list",
             ));
         }
+        let source =
+            json!({"kind":"search_podcast_row","id":radio.id,"scene":"unknown","pldScene":"audio"});
+        if let Some(start) = &start
+            && before.play_id.is_some()
+            && matches!(
+                before.state,
+                PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+            )
+            && let Some(old) = before.selected.as_ref()
+            && matches!(super::origin::project(&old.source), Some(super::PlayerOrigin::Podcast {id: current}) if current == id)
+            && let Some((voice_id, media_id, voice)) =
+                super::voice_detail::bound_episode(&old.resource)
+            && resources[start.index]["voice_id"] == voice_id
+            && resources[start.index]["id"] == media_id
+            && resources[start.index]["voice"]["audio"]["id"] == voice["audio"]["id"]
+        {
+            // M308:setPlaying checks rights, then retains the already loaded
+            // identical episode or resumes it. No new media URL is required.
+            let requested = json!(voice_id);
+            let permission = self
+                .session
+                .run_for(token, |api, _| async move {
+                    crate::podcast::PodcastApi::new(api)
+                        .play_permission(&requested)
+                        .await
+                })
+                .await?;
+            preparing.check()?;
+            if !permission.can_play || permission.song_id.as_deref() != Some(media_id.as_str()) {
+                return Err(Error::State("program playback entitlement unavailable"));
+            }
+            let mut queue =
+                search_podcast_row_queue(queue, resources, source, replace, mode, Some(&voice_id))?;
+            let replacement = queue
+                .current
+                .replace(old.entry_id.clone())
+                .ok_or(Error::QueueChanged)?;
+            let entry = queue
+                .items
+                .iter_mut()
+                .find(|row| row.entry_id == replacement)
+                .ok_or(Error::QueueChanged)?;
+            *entry = old.clone();
+            let order = queue
+                .order
+                .iter_mut()
+                .find(|id| **id == replacement)
+                .ok_or(Error::QueueChanged)?;
+            *order = old.entry_id.clone();
+            return Ok((
+                SearchPodcastRowPlan::Play(PlaybackCommand::RetainCurrentQueueAndPlay(queue)),
+                guard,
+            ));
+        }
         let first_source = if let Some(start) = &start {
             Some(
                 controller
@@ -203,8 +257,6 @@ impl MusicClient {
             }
             _ => None,
         };
-        let source =
-            json!({"kind":"search_podcast_row","id":radio.id,"scene":"unknown","pldScene":"audio"});
         let queue = search_podcast_row_queue(
             queue,
             resources,

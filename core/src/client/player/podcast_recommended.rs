@@ -258,13 +258,6 @@ impl MusicClient {
             None
         };
         let table = matches!(policy, RadioPlaybackStart::Table { .. });
-        if table
-            && episodes
-                .iter()
-                .any(|voice| voice.radio.as_ref().is_some_and(|parent| parent.id != id))
-        {
-            return Err(Error::QueueChanged);
-        }
         if table {
             episodes.truncate(super::queue_playlist::QUEUE_LIMIT);
         }
@@ -305,25 +298,45 @@ impl MusicClient {
                 }
                 continue;
             }
-            let from_detail = voice.song_id.is_none();
-            if from_detail {
-                if Some(index) != selected {
-                    continue;
-                }
-                let expected = voice.id.clone();
-                let program_id = json!(expected);
-                voice = self
+            if voice.song_id.is_none() && Some(index) != selected {
+                continue;
+            }
+            let mut selected_detail = None;
+            if Some(index) == selected && (table || voice.song_id.is_none()) {
+                let program_id = json!(voice.id);
+                let detail = self
                     .session
                     .run_for(token, |api, _| async move {
                         PodcastApi::new(api).episode(&program_id).await
                     })
                     .await?;
+                guard.check()?;
                 if table
-                    && (voice.id != expected
-                        || voice.raw["grayDisplay"] == true
-                        || voice.radio.as_ref().is_some_and(|parent| parent.id != id))
+                    && (detail.id != voice.id
+                        || detail.raw["grayDisplay"] == true
+                        || voice
+                            .song_id
+                            .as_ref()
+                            .is_some_and(|id| detail.song_id.as_ref() != Some(id))
+                        || voice.radio.as_ref().is_some_and(|observed| {
+                            detail
+                                .radio
+                                .as_ref()
+                                .is_some_and(|fresh| fresh.id != observed.id)
+                        }))
                 {
                     return Err(Error::QueueChanged);
+                }
+                if voice.song_id.is_none() {
+                    voice = detail.clone();
+                }
+                if table {
+                    // M15.Et preserves the episode's own parent even in a
+                    // curated radio. The listing authority is the container.
+                    if voice.radio.is_none() {
+                        voice.radio = detail.radio.clone();
+                    }
+                    selected_detail = Some(detail);
                 }
             }
             if voice.radio.is_none() {
@@ -334,7 +347,7 @@ impl MusicClient {
             resource["level"] = json!("standard");
             if Some(index) == selected {
                 let position = if let Some(checkpoint) = &latest {
-                    if voice.radio.as_ref().is_none_or(|source| source.id != id)
+                    if (!table && voice.radio.as_ref().is_none_or(|source| source.id != id))
                         || voice.song_id.as_deref() != Some(checkpoint.main_track_id.as_str())
                     {
                         return Err(Error::QueueChanged);
@@ -364,7 +377,7 @@ impl MusicClient {
                 start = Some(RadioPlaybackTarget {
                     index: resources.len(),
                     position,
-                    detail: (table && from_detail).then_some(voice),
+                    detail: selected_detail,
                 });
             }
             resources.push(resource);
