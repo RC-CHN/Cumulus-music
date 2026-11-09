@@ -228,7 +228,7 @@ test('collection restore survives missing frames and an unfinished finite animat
   assert.equal(f.frames.size, 0);
 });
 
-function rankingFixture(t: TestContext) {
+function rankingFixture(t: TestContext, initiallyLoading = false) {
   const f = setup(t);
   const control = f.focusTarget({ rankAction: 'play' });
   const card = {
@@ -259,6 +259,7 @@ function rankingFixture(t: TestContext) {
           },
   } as unknown as HTMLElement);
   let owner = true;
+  const loading = ref(initiallyLoading);
   f.mount(() =>
     useRankingViewport(
       {
@@ -266,16 +267,20 @@ function rankingFixture(t: TestContext) {
         restoration: ref({ scrollTop: 180, focus: { kind: 'card', id: 'chart', action: 'play' } }),
         view: ref({}),
         error: ref(''),
+        loading,
       } as unknown as ReturnType<typeof useRankings>,
       root,
     ),
   );
-  return { ...f, control, scroll, finish, leave: () => (owner = false) };
+  return { ...f, control, scroll, finish, loading, leave: () => (owner = false) };
 }
 
-test('ranking viewport restores the saved action after a normal frame and animation', async (t) => {
+test('ranking viewport restores the saved action after layout frames and animation', async (t) => {
   const f = rankingFixture(t);
   await settle();
+  f.emitFrame();
+  await settle();
+  assert.equal(f.scroll.scrollTop, 0);
   f.emitFrame();
   await settle();
   assert.equal(f.scroll.scrollTop, 0);
@@ -284,6 +289,25 @@ test('ranking viewport restores the saved action after a normal frame and animat
   assert.equal(f.scroll.scrollTop, 180);
   assert.equal(f.doc.activeElement, f.control);
   assert.equal(f.frames.size, 0);
+});
+
+test('ranking viewport leaves the cached layout alone until the refresh settles', async (t) => {
+  const f = rankingFixture(t, true);
+  const initialFocus = f.doc.activeElement;
+  await settle();
+  t.mock.timers.tick(600);
+  await settle();
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.scroll.scrollTop, 0);
+  assert.equal(f.doc.activeElement, initialFocus);
+  f.loading.value = false;
+  await settle();
+  f.emitFrame();
+  f.emitFrame();
+  f.finish();
+  await settle();
+  assert.equal(f.scroll.scrollTop, 180);
+  assert.equal(f.doc.activeElement, f.control);
 });
 
 test('ranking viewport restores when neither the frame nor the animation completes', async (t) => {
