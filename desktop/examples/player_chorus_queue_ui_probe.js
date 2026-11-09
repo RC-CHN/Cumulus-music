@@ -29,7 +29,14 @@
       && Math.abs(parseFloat(mark()?.style.left) - ratio) < .01, `native track ${id}, distinct marker and clock`);
     const p = player().dataset;
     const markerPercent = parseFloat(mark().style.left);
-    await emit(stage, {trackId: p.trackId, playId: p.playId, markerPercent, markerVisible: mark().getBoundingClientRect().width > 0});
+    const rect = mark().getBoundingClientRect();
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    assert(document.elementFromPoint(x, y) === q('.seek-rail input'), 'ordinary marker keeps the seek target');
+    await emit(stage, {
+      trackId: p.trackId, playId: p.playId, markerPercent, markerVisible: rect.width > 0,
+      screenX, screenY, ratio: devicePixelRatio,
+      paintSamples: [{x, y, color: getComputedStyle(mark()).backgroundColor}],
+    });
     await wait(() => window.__chorusQueueRecorded === stage, `native stage receipt: ${stage}`);
     return p.playId;
   }

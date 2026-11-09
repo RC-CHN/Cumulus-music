@@ -290,6 +290,21 @@ Rust 在实际推荐补曲写入队列后读取相同列表：个人、熟悉（
 报告及二进制、前端哈希保存在本机 phase173-chorus-proof/。GTK 初始化后仅
 数字 locale 为 C，字符及消息为 en_US.UTF-8。未验证 Windows、真实账号或物理声卡。
 
+ChorusMark.tsx:22–30 和 PlayProgress.tsx:921–949 先绘制副歌点，再绘制独立
+滑块，原生输入隐藏在滑块中。社区版保留可交互原生 range：Linux WebKitGTK
+的 range 轨曾遮住副歌点中央，现将点置于轨道上方、滑块及加载指示下方，
+时间提示仍在最上层。点不接受指针事件，位置、主题和原生 seek 不变。
+
+`player_layout_smoke.py --fm-chorus --binary … --frontend-dist … --root … --screenshots`
+在 Linux WebKitGTK 实窗通过现有类型化 FM 命令切换个人→熟悉→个人，两来源
+播放同一合成歌曲；先扣住熟悉来源的副歌响应，等其本机播放时检查旧点消失，
+放行后同一 playId 显示新点。30 秒轴依次见 13.333%、无点、43.333%、13.333%；
+暂停定位至 4 秒重叠时采样显示原生滑块覆盖白色已达点，真实输入保留焦点、可命中
+且时间提示可见。普通队列 A→B→A 的三张截图也验证点中心像素、原有单次批读
+与零单曲回退。8 张原图逐张检查；报告与产物哈希留在本机 phase180-fm-chorus-proof/。
+验证仅含隔离回环网络、合成账号传输、libmpv null 和非 C 的 GTK locale；
+未验证 FM 页面入口手势、专区实窗、Windows、真实账号或物理声卡。
+
 进度滑块时间提示
 ----------------
 官方 PlayProgress.tsx 的新版默认播放条用 CurTime/TimeWarpper 在滑块旁显示
