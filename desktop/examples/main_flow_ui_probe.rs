@@ -22,7 +22,10 @@ use serde_json::{Value, json};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
@@ -192,11 +195,13 @@ fn main() {
     let loading_step = std::env::var("CUMULUS_MAIN_FLOW_LOADING_STEP").as_deref() == Ok("1");
     let missing_download =
         std::env::var("CUMULUS_MAIN_FLOW_MISSING_DOWNLOAD").as_deref() == Ok("1");
+    let synthetic_route = std::env::var("CUMULUS_MAIN_FLOW_SYNTHETIC_ROUTE").as_deref() == Ok("1");
     assert!(!(retry_https || eof_https) || ordinary_https);
     assert!(!(retry_https && eof_https));
     assert!(!retry_with_play || retry_https);
     assert!(!(loading_step && ordinary_https));
     assert!(!(missing_download && (ordinary_https || loading_step)));
+    assert!(!synthetic_route || missing_download);
     let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
     if reopen {
         let completed: Value = serde_json::from_slice(
@@ -237,6 +242,19 @@ fn main() {
         .setup(move |app| {
             let store = Arc::new(StateStore::open(root.join("state"))?);
             let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https, retry_https, eof_https, loading_step));
+            let route_reads = Arc::new(AtomicUsize::new(0));
+            if synthetic_route {
+                use cumulus_core::network_diagnostics::DefaultRoute;
+                let (fixture, route_reads) = (fixture.clone(), route_reads.clone());
+                app.manage(cumulus_desktop::DefaultRouteObserver::new(move || {
+                    route_reads.fetch_add(1, Ordering::Relaxed);
+                    if fixture.is_offline() {
+                        DefaultRoute::Missing
+                    } else {
+                        DefaultRoute::Present
+                    }
+                }));
+            }
             if artist_proof.is_some() {
                 fixture.release_loading_seek();
             }
@@ -333,6 +351,9 @@ fn main() {
                 value["authenticated"] = json!(account.status == SessionStatus::Authenticated);
                 value["nativeEpoch"] = json!(account.epoch);
                 value["wire"] = wire.facts();
+                if synthetic_route {
+                    value["syntheticRouteReads"] = json!(route_reads.load(Ordering::Relaxed));
+                }
                 if artist_proof.is_some() { value["artistCalls"] = json!(artist_onboarding_fixture::calls()); }
                 let audit = match stage.as_str() {
                     "ux_login_adopted" | "ux_reopened" => client.saved_accounts(&account.epoch).and_then(|records| {

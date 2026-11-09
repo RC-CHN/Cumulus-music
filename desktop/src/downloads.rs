@@ -155,7 +155,7 @@ pub async fn download_comment_count<R: tauri::Runtime>(
         .download_comment_count(
             &epoch,
             &task_id,
-            crate::network_diagnostics::default_route(),
+            crate::network_diagnostics::observed_default_route(&window),
         )
         .await
         .map_err(Into::into)

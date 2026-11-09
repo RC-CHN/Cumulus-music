@@ -54,6 +54,8 @@ def main():
     special.add_argument('--https-eof-next', action='store_true', help=argparse.SUPPRESS)
     special.add_argument('--loading-step', action='store_true')
     special.add_argument('--missing-download', action='store_true')
+    parser.add_argument('--synthetic-offline-route', action='store_true',
+                        help='simulate the native route observation without changing runner routes')
     parser.add_argument('--https-retry-with-play', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
     parser.add_argument('--loopback-cut-control', type=Path, help=argparse.SUPPRESS)
@@ -64,6 +66,8 @@ def main():
         parser.error('--https-retry-with-play requires --https-retry-once')
     if (args.loading_step or args.missing_download) and args.ordinary_https:
         parser.error('--loading-step and --missing-download use the synthetic decoder gate')
+    if args.synthetic_offline_route and not args.missing_download:
+        parser.error('--synthetic-offline-route requires --missing-download')
     if args.loopback_cut_control and (not args.ordinary_https or not args.screenshots
                                       or os.name != 'posix' or not args.loopback_cut_control.is_socket()):
         parser.error('the synthetic cutoff requires the isolated HTTPS controller and capture barrier')
@@ -97,6 +101,8 @@ def main():
         env['CUMULUS_MAIN_FLOW_LOADING_STEP'] = '1'
     if args.missing_download:
         env['CUMULUS_MAIN_FLOW_MISSING_DOWNLOAD'] = '1'
+    if args.synthetic_offline_route:
+        env['CUMULUS_MAIN_FLOW_SYNTHETIC_ROUTE'] = '1'
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
@@ -221,6 +227,9 @@ def main():
     assert offline['fixture']['calls']['/api/song/enhance/player/url/v1'] == authorization_stage['fixture']['calls']['/api/song/enhance/player/url/v1']
     disposal = stages['download_disposed']
     assert disposal['stoppedBeforeDelete']
+    if args.synthetic_offline_route:
+        assert offline['syntheticRouteReads'] == 0
+        assert disposal['syntheticRouteReads'] == stages['complete']['syntheticRouteReads'] == 1
     assert disposal['audit'] == {'id': proof['id'], 'fileAbsent': True, 'ledgerAbsent': True, 'sentinelUnchanged': True}
     for stage in (offline, disposal, stages['complete']):
         assert stage['fixture']['offline'] and not stage['fixture']['disposablePresent']
@@ -291,6 +300,8 @@ def main():
         report['mainPlayRecoveredFirstHttpsOpen'] = True
     if args.missing_download:
         report['missingDownloadPlayedOnlyAfterExplicitAction'] = True
+    if args.synthetic_offline_route:
+        report['syntheticOfflineRouteObservedByNativeMenu'] = True
     if args.loopback_cut_control:
         report['hardCutAfterStandardDownloadRequest'] = True
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')

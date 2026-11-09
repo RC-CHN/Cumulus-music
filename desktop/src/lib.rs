@@ -73,6 +73,8 @@ pub mod watchman;
 pub use effects::configure_native_audio;
 pub use graphics::prepare_process as prepare_graphics;
 #[doc(hidden)]
+pub use network_diagnostics::DefaultRouteObserver;
+#[doc(hidden)]
 pub use platform::queue_tip_window_foreground;
 pub use playback_cache::configure_streaming_cache;
 use tauri::Manager;

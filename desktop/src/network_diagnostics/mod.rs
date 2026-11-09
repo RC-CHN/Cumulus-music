@@ -7,9 +7,29 @@ pub(crate) fn default_route() -> cumulus_core::network_diagnostics::DefaultRoute
 use cumulus_core::{
     Error,
     client::ClientError,
-    network_diagnostics::{LocalNetworkReport, check_local_network},
+    network_diagnostics::{DefaultRoute, LocalNetworkReport, check_local_network},
 };
 use std::sync::Mutex;
+use tauri::Manager;
+
+/// Allows an embedding native host to supply its network route observation.
+/// The production application leaves it unset and reads the system table.
+#[doc(hidden)]
+pub struct DefaultRouteObserver(Box<dyn Fn() -> DefaultRoute + Send + Sync>);
+
+impl DefaultRouteObserver {
+    pub fn new(observe: impl Fn() -> DefaultRoute + Send + Sync + 'static) -> Self {
+        Self(Box::new(observe))
+    }
+}
+
+pub(crate) fn observed_default_route<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> DefaultRoute {
+    window
+        .try_state::<DefaultRouteObserver>()
+        .map_or_else(default_route, |observer| (observer.0)())
+}
 
 static CHECK: Mutex<()> = Mutex::new(());
 
