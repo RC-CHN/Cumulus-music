@@ -30,6 +30,22 @@
 
 以下继续保留基线和各专项的证据，不由本批覆盖其他业务。
 
+后续隔离集成源码 `8146a18d8f8e42c0a154e403fbe2bff2a6bf1d06`：独立 Linux
+应用用本地 FLAC 真实播放和暂停，进度由原生音频推进，输出接隔离的 PipeWire
+null sink。相同源码的 Tauri 探针重走 [HTTPS 主流程](desktop-main-flow-proof.txt)
+19 态；另有 [批量取消确认](desktop-download-contracts.txt) 4 态、
+[音量浮层滚轮](playback-volume-ui-contracts.txt) 40＋3 态及
+[当前播客断点续播](player-podcast-resume-contracts.txt) 7 态，合计保留 77 张截图
+（含正式程序窗口、本地导入、播放及暂停）。前端 1030 项、类型/构建及工作区严格
+Clippy 已通过。合成登录含持久化与重开恢复，未使用真实账号；本批未测实体声卡、
+Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为准。
+
+下一批的 [下载批量收藏](download-batch-ui-contracts.txt) 和
+[登录态播客搜索分页](search-results-ui-contracts.txt) 各有独立 Linux 实窗证据。
+前者核对下载原始顺序、普通本人歌单、提交前权限及回执缺失后只读核对；后者
+核对 0/10 与 10/10 的真实签名请求、失败保留与显式重试、空列表与 null 的差异，
+以及详情返回后的焦点。其独立证据不作为 Windows 或集成构建的运行结果。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
 | **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 默认兼容声明与 Linux 的本机派生不同，尚无 Windows 原生采集、完整官方引擎或全部风控分支的等价证据。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) |
