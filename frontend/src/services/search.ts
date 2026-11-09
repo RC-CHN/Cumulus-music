@@ -78,7 +78,13 @@ export type SearchItem =
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string; knownEmpty?: boolean }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
-  | { kind: 'voice'; voice: EpisodeView; listenerCount?: number; creatorId?: string }
+  | {
+      kind: 'voice';
+      voice: EpisodeView;
+      listenerCount?: number;
+      creatorId?: string;
+      menuReceipt?: string;
+    }
   | { kind: 'podcast'; podcast: PodcastCard; table?: PodcastSearchTable; playbackReceipt?: string }
   | { kind: 'mv'; mv: CatalogVideoCard }
   | { kind: 'user'; user: FollowUser }
@@ -262,4 +268,17 @@ export interface SearchClient {
     query: SearchDiscoveryQuery,
   ): Promise<AccountData<SearchDiscovery>>;
   searchHistory(epoch: string, command: SearchHistoryCommand): Promise<AccountData<string[]>>;
+  searchVoiceMenu(
+    epoch: string,
+    target: SearchVoiceMenuTarget,
+  ): Promise<AccountData<SearchVoiceMenu>>;
+  searchOpenVoiceDirectory(epoch: string, target: SearchVoiceMenuTarget): Promise<void>;
+}
+export interface SearchVoiceMenuTarget {
+  receipt: string;
+  voiceId: string;
+}
+export interface SearchVoiceMenu {
+  commentCount: number | null;
+  downloadComplete: boolean | null;
 }

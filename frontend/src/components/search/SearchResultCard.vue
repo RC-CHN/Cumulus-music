@@ -35,6 +35,9 @@ import {
   type SearchVoiceLinkRequest,
 } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
+import { useCore } from '../../services/core';
+import { failure } from '../../services/contracts';
+import type { SearchVoiceMenu, SearchVoiceMenuTarget } from '../../services/search';
 const props = defineProps<{
   item: SearchItem;
   category: SearchCategory;
@@ -45,6 +48,7 @@ const props = defineProps<{
   podcastNextEnabled?: boolean;
   voiceNext?: 'ready' | 'disabled';
   voiceLinks?: boolean;
+  voiceMenuEpoch?: string;
   playlistActionBusy: boolean;
   playlistKnown?: boolean;
   albumSubscribed?: boolean | null;
@@ -65,6 +69,7 @@ const emit = defineEmits<{
   queue: [request: SearchQueueRequest];
   queueVoice: [id: string];
   voiceLink: [request: SearchVoiceLinkRequest];
+  voiceMenuError: [message: string];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
   playlistSubscribe: [playlist: PlaylistView];
@@ -73,6 +78,61 @@ const emit = defineEmits<{
 }>();
 const menu = ref<InstanceType<typeof ActionMenu>>();
 const element = ref<HTMLElement>();
+const core = useCore();
+const voiceMenu = ref<SearchVoiceMenu>();
+const voiceMenuTarget = computed<SearchVoiceMenuTarget | undefined>(() =>
+  props.voiceMenuEpoch && props.item.kind === 'voice' && props.item.menuReceipt
+    ? { receipt: props.item.menuReceipt, voiceId: props.item.voice.id }
+    : undefined,
+);
+function voiceMenuLive(item: SearchItem, epoch: string, target: SearchVoiceMenuTarget) {
+  return (
+    item === props.item &&
+    epoch === props.voiceMenuEpoch &&
+    target.receipt === voiceMenuTarget.value?.receipt &&
+    element.value?.isConnected &&
+    !element.value.closest('[inert],.page-leave-active,.search-results-leave-active')
+  );
+}
+async function prepareVoiceMenu(signal: AbortSignal) {
+  const { item, voiceMenuEpoch: epoch } = props;
+  const target = voiceMenuTarget.value;
+  voiceMenu.value = undefined;
+  if (!target || !epoch || !voiceMenuLive(item, epoch, target)) return false;
+  try {
+    const response = await core.searchVoiceMenu(epoch, target);
+    if (signal.aborted || response.epoch !== epoch || !voiceMenuLive(item, epoch, target))
+      return false;
+    voiceMenu.value = response.value;
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function openVoiceFolder() {
+  const { item, voiceMenuEpoch: epoch } = props;
+  const target = voiceMenuTarget.value;
+  if (
+    !target ||
+    !epoch ||
+    voiceMenu.value?.downloadComplete !== true ||
+    !voiceMenuLive(item, epoch, target)
+  )
+    return;
+  try {
+    await core.searchOpenVoiceDirectory(epoch, target);
+  } catch (error) {
+    if (voiceMenuLive(item, epoch, target)) emit('voiceMenuError', failure(error).message);
+  }
+}
+watch(
+  [() => props.item, () => props.voiceMenuEpoch],
+  () => {
+    voiceMenu.value = undefined;
+    if (props.voiceMenuEpoch || voiceLinkMenuItem) menu.value?.close();
+  },
+  { flush: 'sync' },
+);
 let voiceLinkMenuItem: SearchItem | undefined;
 let podcastMenuItem: SearchItem | undefined;
 function captureActionMenu() {
@@ -288,19 +348,24 @@ const items = computed<MenuItem[]>(() => {
       ? [
           {
             key: 'comments',
-            label: '查看评论',
+            label:
+              props.item.kind === 'voice' && voiceMenu.value?.commentCount
+                ? `查看评论(${voiceMenu.value.commentCount})`
+                : '查看评论',
             icon: 'comment',
             disabled: props.item.kind === 'mv' && unavailable.value,
           },
         ]
       : []),
-    ...(props.item.kind === 'voice'
+    ...(props.item.kind === 'voice' && voiceMenu.value?.downloadComplete !== true
       ? [
           {
             key: 'download',
-            label: '下载声音',
+            label: voiceMenuTarget.value ? '下载' : '下载声音',
             icon: 'download',
-            disabled: props.item.voice.unavailable,
+            disabled:
+              props.item.voice.unavailable ||
+              (!!voiceMenuTarget.value && voiceMenu.value?.downloadComplete == null),
           },
         ]
       : []),
@@ -319,6 +384,9 @@ const items = computed<MenuItem[]>(() => {
             disabled: !podcastProgramPublicLink(props.item.voice.id),
           },
         ]
+      : []),
+    ...(props.item.kind === 'voice' && voiceMenu.value?.downloadComplete === true
+      ? [{ key: 'voice-folder', label: '打开文件所在目录', icon: 'folder' }]
       : []),
   ];
 });
@@ -342,7 +410,8 @@ function playButton(event: MouseEvent) {
 }
 function action(key: string, gesture: SearchPodcastRowGesture = 'menu') {
   cancelRowLink();
-  if (key === 'play' && canPlay.value && props.playable)
+  if (key === 'voice-folder') void openVoiceFolder();
+  else if (key === 'play' && canPlay.value && props.playable)
     playbackFocus.start(
       () =>
         emit(
@@ -781,6 +850,7 @@ watch(
             class="search-card-menu"
             :label="`更多操作：${card.name}`"
             :items="items"
+            :before-open="voiceMenuTarget ? prepareVoiceMenu : undefined"
             @opened="captureActionMenu"
             @select="action"
           />
@@ -1077,6 +1147,7 @@ watch(
         class="search-card-menu"
         :label="`更多操作：${card.name}`"
         :items="items"
+        :before-open="voiceMenuTarget ? prepareVoiceMenu : undefined"
         @opened="captureActionMenu"
         @select="action"
       />

@@ -61,6 +61,8 @@ pub enum SearchItem {
     },
     Voice {
         voice: EpisodeView,
+        #[serde(rename = "menuReceipt", skip_serializing_if = "Option::is_none")]
+        menu_receipt: Option<String>,
         #[serde(rename = "creatorId", skip_serializing_if = "Option::is_none")]
         creator_id: Option<String>,
         #[serde(rename = "listenerCount", skip_serializing_if = "Option::is_none")]
@@ -290,6 +292,10 @@ impl MusicClient {
                 let mut footer_revision = None;
                 let mut presentation_credentials = None;
                 let mut podcast_credentials = None;
+                let voice_menu_credentials =
+                    matches!(query.category, SearchCategory::All | SearchCategory::Voices)
+                        .then(|| api.search_privilege_credential_revision().ok())
+                        .flatten();
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
@@ -483,6 +489,14 @@ impl MusicClient {
                         .podcast_playbacks
                         .capture(token, &api, credentials, &mut view)?;
                 }
+                if let Some(credentials) = voice_menu_credentials
+                    && !self.login_pending()?
+                {
+                    self.session.require_api(token, &api)?;
+                    self.search
+                        .voice_menu_pages
+                        .capture(token, &api, credentials, &mut view)?;
+                }
                 if view.query.category == SearchCategory::Songs {
                     self.session.with_token(token, |_| {
                         view.publish_drop_receipts(&self.search.queue_drops, token)
@@ -578,6 +592,7 @@ fn voice_table_item(base: &Value) -> Result<Option<SearchItem>> {
         .filter(|id| id.len() <= 32);
     Ok(Some(SearchItem::Voice {
         voice,
+        menu_receipt: None,
         creator_id,
         listener_count: voice_listener_count(base),
     }))
@@ -786,6 +801,7 @@ fn item(
         },
         "voice" => SearchItem::Voice {
             voice: view::episode(&Episode::from_official(v)?, &[]),
+            menu_receipt: None,
             creator_id: None,
             listener_count: voice_listener_count(v),
         },

@@ -90,6 +90,8 @@ mod search_mv_fixture;
 mod search_podcast_playback_fixture;
 #[path = "support/search_privilege_fixture.rs"]
 mod search_privilege_fixture;
+#[path = "support/search_voice_menu_fixture.rs"]
+mod search_voice_menu_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
@@ -770,6 +772,9 @@ impl Api for Library {
                     .push(args.clone());
                 return fixture::Library::default().request(path, args, false).await;
             }
+            if let Some(result) = search_voice_menu_fixture::response(path, &args, cached).await {
+                return result;
+            }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
             }
@@ -1209,7 +1214,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() {
+        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1236,6 +1241,15 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        if search_voice_menu_fixture::enabled() {
+            tauri::async_runtime::block_on(async {
+                assert_eq!(client.restore_account().await?.status,
+                    cumulus_core::account::SessionStatus::Authenticated);
+                search_voice_menu_fixture::seed(&root, fixture_session.clone(), &proof_store)
+            })?;
+            app.manage(cumulus_desktop::DefaultRouteObserver::new(||
+                cumulus_core::network_diagnostics::DefaultRoute::Present));
+        }
         if daily_notification_proof {
             let config=signed_search.as_ref().expect("sealed signed daily startup").daily_notification_config()?;
             client=client.with_native_daily_notification_config(config);
@@ -1478,6 +1492,7 @@ fn main() {
                 value["podcastAroundCalls"] = json!(search_fixture::podcast_around_calls());
                 if let Some(calls) = search_fixture::voice_queue_calls() { value["voiceQueueCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::voice_next_calls() { value["voiceNextCalls"] = json!(calls); }
+                if search_voice_menu_fixture::enabled() { value["voiceMenuCalls"] = json!(search_voice_menu_fixture::calls()); }
                 if let Some(calls) = search_fixture::podcast_follow_calls() { value["podcastFollowCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::artist_gallery_calls() { value["artistGalleryCalls"] = json!(calls); }
             }
@@ -1651,6 +1666,12 @@ fn main() {
             if search_fixture::enabled() && stage=="search-fixture" {
                 search_fixture::control(&value);
                 handle.get_webview_window("main").unwrap().eval("window.__searchFixtureAck=true;").unwrap();return;
+            }
+            if search_voice_menu_fixture::enabled() && stage=="search-voice-menu-fixture" {
+                let held=search_voice_menu_fixture::control(&value["action"]);
+                handle.get_webview_window("main").unwrap()
+                    .eval(format!("window.__searchVoiceMenuAck={{held:{held}}};")).unwrap();
+                return;
             }
             if playlist_tag_browse_proof() && stage=="playlist-square-disable" {
                 playlist_square_fixture::disable();

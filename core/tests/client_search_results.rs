@@ -95,6 +95,126 @@ fn query(category: C) -> SearchResultQuery {
     }
 }
 
+#[tokio::test]
+async fn voice_menu_reads_the_observed_episode_count_and_rejects_retired_authority() {
+    use cumulus_core::{client::dto::SearchVoiceMenuTarget, network_diagnostics::DefaultRoute};
+    const COUNT: &str = "/api/resource/commentInfo/list";
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let payloads: Value =
+        serde_json::from_str(include_str!("fixtures/search-results.json")).unwrap();
+    let mut all = payloads["all"].clone();
+    let best = json!({"blockCode":"search_block_best_match","resources":[payloads["voices"]["data"]["resources"][0].clone()]});
+    all["data"]["blocks"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, best);
+    *api.reply.lock().unwrap() = all;
+    let comprehensive = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::All))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let sections = comprehensive["sections"].as_array().unwrap();
+    let best = sections
+        .iter()
+        .find(|section| {
+            section["id"]
+                .as_str()
+                .unwrap()
+                .starts_with("search_block_best_match:")
+        })
+        .unwrap();
+    assert_eq!(best["items"][0]["kind"], "voice");
+    assert!(best["items"][0].get("menuReceipt").is_none());
+    let ordinary = sections
+        .iter()
+        .find(|section| section["category"] == "voices")
+        .unwrap();
+    assert!(ordinary["items"][0]["menuReceipt"].is_string());
+
+    *api.reply.lock().unwrap() = payloads["voices"].clone();
+    let classified = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::Voices))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let receipt = classified["sections"][0]["items"][0]["menuReceipt"]
+        .as_str()
+        .unwrap();
+    let target = |id: &str| -> SearchVoiceMenuTarget {
+        serde_json::from_value(json!({"receipt":receipt,"voiceId":id})).unwrap()
+    };
+    api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        client
+            .search_voice_menu(&epoch, target("402"), DefaultRoute::Present)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        client
+            .search_voice_directory_path(&epoch, target("402"))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let offline = client
+        .search_voice_menu(&epoch, target("401"), DefaultRoute::Missing)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(offline.value).unwrap(),
+        json!({"commentCount":null,"downloadComplete":false})
+    );
+    assert!(api.calls.lock().unwrap().is_empty());
+
+    *api.reply.lock().unwrap() =
+        json!({"code":200,"data":[{"threadId":"A_DJ_1_401","commentCount":54}]});
+    let online = client
+        .search_voice_menu(&epoch, target("401"), DefaultRoute::Present)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(online.value).unwrap(),
+        json!({"commentCount":54,"downloadComplete":false})
+    );
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        [(
+            COUNT.into(),
+            json!({"resourceType":1,"resourceIds":"[\"401\"]"})
+        )]
+    );
+    *api.reply.lock().unwrap() = json!({"code":503});
+    let fallback = client
+        .search_voice_menu(&epoch, target("401"), DefaultRoute::Present)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(fallback.value).unwrap()["commentCount"],
+        Value::Null
+    );
+
+    api.hold.store(true, Ordering::SeqCst);
+    let opening = client.search_voice_menu(&epoch, target("401"), DefaultRoute::Present);
+    let rotate = async {
+        api.started.notified().await;
+        api.revision.store(2, Ordering::SeqCst);
+        api.release.notify_one();
+    };
+    let (result, ()) = tokio::join!(opening, rotate);
+    assert!(matches!(
+        result,
+        Err(Error::StaleResponse | Error::QueueChanged)
+    ));
+}
+
 #[path = "support/search_default_context.rs"]
 mod search_default_context;
 #[path = "support/search_privilege_refresh.rs"]

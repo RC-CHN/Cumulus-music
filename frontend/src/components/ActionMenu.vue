@@ -15,6 +15,7 @@ const props = withDefaults(
     disabled?: boolean;
     focusChecked?: boolean;
     contextOnly?: boolean;
+    beforeOpen?: (signal: AbortSignal) => Promise<boolean>;
     variant?: 'song' | 'speed' | 'quality' | 'mini' | 'year' | 'account';
     qualityPair?: readonly [string, string];
   }>(),
@@ -37,6 +38,7 @@ const childItem = computed(() => props.items.find((item) => item.key === child.v
 let stop: (() => void) | undefined;
 let returnTarget: HTMLElement | undefined;
 let displayRevision = 0;
+let pendingOpen: AbortController | undefined;
 let viewportBounds: { width: number; height: number } | undefined;
 let anchorBounds: { left: number; top: number; width: number; height: number } | undefined;
 let origin: { x: number; y: number } | undefined;
@@ -63,10 +65,25 @@ function anchorUnchanged() {
     Math.abs(current.height - anchorBounds.height) < 0.5
   );
 }
+function preparedAnchorCurrent() {
+  const node = returnTarget ?? trigger.value;
+  const rect = node?.getBoundingClientRect();
+  return (
+    !!rect &&
+    !node?.closest('[inert]') &&
+    rect.left < innerWidth &&
+    rect.right > 0 &&
+    rect.top < innerHeight &&
+    rect.bottom > 0 &&
+    anchorUnchanged()
+  );
+}
 const choices = () => [
   ...(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
 ];
 function close(restore = false) {
+  pendingOpen?.abort();
+  pendingOpen = undefined;
   child.value = undefined;
   displayRevision++;
   anchorBounds = undefined;
@@ -89,12 +106,44 @@ function close(restore = false) {
 }
 async function display(last = false, point?: { x: number; y: number }, target?: HTMLElement) {
   if (props.disabled) return;
+  const prepare = props.beforeOpen;
   close();
   const revision = displayRevision;
   origin = point;
   followFocus = true;
   returnTarget = target ?? trigger.value;
   rememberAnchor();
+  if (prepare) {
+    const pending = new AbortController();
+    pendingOpen = pending;
+    const options = { capture: true, signal: pending.signal };
+    const abandon = () => pending.abort();
+    document.addEventListener('pointerdown', abandon, options);
+    document.addEventListener('keydown', abandon, options);
+    document.addEventListener(
+      'focusin',
+      (event) => {
+        if (!(event.target instanceof Node) || !returnTarget?.contains(event.target)) abandon();
+      },
+      options,
+    );
+    window.addEventListener('scroll', abandon, options);
+    window.addEventListener('resize', abandon, options);
+    window.addEventListener('blur', abandon, options);
+    try {
+      if (
+        !(await prepare(pending.signal)) ||
+        pending.signal.aborted ||
+        revision !== displayRevision ||
+        props.disabled ||
+        !preparedAnchorCurrent()
+      )
+        return;
+    } finally {
+      if (pendingOpen === pending) pendingOpen = undefined;
+      pending.abort();
+    }
+  }
   if (returnTarget?.hasAttribute('aria-haspopup')) {
     returnTarget.setAttribute('aria-expanded', 'true');
     returnTarget.setAttribute('aria-controls', id);
@@ -105,10 +154,13 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   await nextTick();
   if (revision !== displayRevision || !open.value || (!point && !returnTarget) || !panel.value)
     return;
+  if (prepare && !preparedAnchorCurrent()) return close();
   place();
   await nextTick();
   if (revision !== displayRevision || !open.value) return;
-  rememberAnchor();
+  if (prepare) {
+    if (!preparedAnchorCurrent()) return close();
+  } else rememberAnchor();
   focusChoice(last);
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => {

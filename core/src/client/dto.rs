@@ -113,7 +113,7 @@ pub use super::search::{
     ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,
     SearchItem, SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
     SearchPrivilegePatch, SearchQualityBadge, SearchReasonPage, SearchResultQuery,
-    SearchResultView, SearchSection,
+    SearchResultView, SearchSection, SearchVoiceMenu, SearchVoiceMenuTarget,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

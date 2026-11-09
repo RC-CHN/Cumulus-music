@@ -1155,6 +1155,11 @@ onBeforeUnmount(() => {
                 :voice-links="
                   account.status === 'authenticated' && searchVoiceLinkSection(category, section)
                 "
+                :voice-menu-epoch="
+                  account.status === 'authenticated' && searchVoiceLinkSection(category, section)
+                    ? account.epoch
+                    : undefined
+                "
                 :playlist-action-busy="playlistActionBusy"
                 :playlist-known="
                   item.kind === 'playlist' ? knownPlaylistIds?.has(item.playlist.id) : undefined
@@ -1191,6 +1196,7 @@ onBeforeUnmount(() => {
                 @queue="emit('queueCard', $event)"
                 @queue-voice="emit('queueVoice', $event)"
                 @voice-link="activateVoiceLink(section, $event)"
+                @voice-menu-error="voiceLinkStatus = $event"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
                 @playlist-subscribe="emit('playlistSubscribe', $event)"

@@ -86,7 +86,7 @@ impl MusicClient {
         })
     }
 
-    async fn read_program_comment_count(
+    pub(in crate::client) async fn read_program_comment_count(
         &self,
         token: &SessionToken,
         id: &str,

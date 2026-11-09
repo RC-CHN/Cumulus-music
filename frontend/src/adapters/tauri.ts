@@ -148,6 +148,9 @@ export function createTauriClient(): CoreClient {
     copyText: (text) => invoke('copy_text', { text }),
     searchDiscovery: (epoch, query) => invoke('search_discovery', { epoch, query }),
     searchHistory: (epoch, command) => invoke('search_history', { epoch, command }),
+    searchVoiceMenu: (epoch, target) => invoke('search_voice_menu', { epoch, target }),
+    searchOpenVoiceDirectory: (epoch, target) =>
+      invoke('search_open_voice_directory', { epoch, target }),
     effectCatalogue: (epoch, kind) => invoke('effect_catalogue', { epoch, kind }),
     effectDetail: (epoch, id) => invoke('effect_detail', { epoch, id }),
     effectPeqPending: (epoch) => invoke('effect_peq_pending', { epoch }),
