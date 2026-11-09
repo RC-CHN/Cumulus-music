@@ -1084,30 +1084,30 @@ jobs:
         if: matrix.shard == 'package-runtime'
         timeout-minutes: 5
         run: python scripts/ci/windows_msys2_bootstrap.py
-      - name: Windows media dependencies
+      - name: Install the Windows proof tools
         id: msys2
         if: matrix.shard == 'package-runtime'
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: UCRT64
           update: true
-          install: >-
-            base-devel
-            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
-            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
-            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
-            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
-            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
-            mingw-w64-ucrt-x86_64-ladspa-sdk
-      - name: Install pinned toolchain
+          install: mingw-w64-ucrt-x86_64-binutils mingw-w64-ucrt-x86_64-ffmpeg
+      - name: Verify the synthetic FLAC encoder and PE inspection tool
         if: matrix.shard == 'package-runtime'
-        run: rustup show
-      - name: Build and verify Windows media runtime
-        if: matrix.shard == 'package-runtime'
-        uses: ./.github/actions/windows-media
-        with:
-          msys-root: ${{ steps.msys2.outputs.msys2-location }}
-          save-cache: 'false'
+        shell: pwsh
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $bin = (Resolve-Path -LiteralPath (Join-Path $env:CUMULUS_MSYS2_ROOT 'ucrt64/bin')).Path
+          $ffmpeg = (Resolve-Path -LiteralPath (Join-Path $bin 'ffmpeg.exe')).Path
+          $objdump = (Resolve-Path -LiteralPath (Join-Path $bin 'objdump.exe')).Path
+          $encoders = & $ffmpeg -hide_banner -encoders
+          if ($LASTEXITCODE -ne 0 -or -not ($encoders -match '^\s*A\S*\s+flac(?:\s|$)')) {
+            throw 'Windows proof encoder does not provide FLAC'
+          }
+          & $objdump --version
+          if ($LASTEXITCODE -ne 0) { throw 'Windows proof PE tool did not start' }
+          "CUMULUS_LOCAL_FIXTURE_FFMPEG=$ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: packages-windows-x64
