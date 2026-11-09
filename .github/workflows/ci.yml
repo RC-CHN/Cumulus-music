@@ -1036,15 +1036,19 @@ jobs:
           python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
-          # The transport cut alone leaves the host default route visible to the download menu.
-          offline_download_proof() {
+          # A bare namespace leaves loopback down and /proc/net/route empty.
+          # Bring up only loopback so proofs see an initialized, route-free table.
+          loopback_only() {
             sudo unshare --net --fork --kill-child sh -ec '
               target_user=$1
               shift
-              # Bring up only loopback so procfs exposes the empty IPv4 routing table header.
               ip link set lo up
               exec runuser -u "$target_user" -- "$@"
-            ' sh "$(id -un)" env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/main_flow_smoke.py --missing-download "$@"
+            ' sh "$(id -un)" "$@"
+          }
+          # The transport cut alone leaves the host default route visible to the download menu.
+          offline_download_proof() {
+            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/main_flow_smoke.py --missing-download "$@"
           }
           offline_download_proof --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode recall --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-recall-linux
@@ -1113,7 +1117,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-native-stop-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-quality-linux
           run_quality_cards() {
-            sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_quality_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist "$@"
+            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_quality_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist "$@"
           }
           run_quality_cards --root .build/ci-playback-quality-cards-layout_only-linux --case layout_only
           run_quality_cards --root .build/ci-playback-quality-cards-layout_vivid-linux --case layout_vivid
@@ -1146,8 +1150,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --podcast-top-classic --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-podcast-top-classic-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-results-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-v3-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v1-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v3-linux --v3
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v1-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v3-linux --v3
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-footer-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --vinyl-origin --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-vinyl-origin-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/pc_presentation_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-pc-presentation-linux
@@ -1236,7 +1240,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --correction-original --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-correction-original-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --people-categories --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-people-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_directory_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-directory-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/audio_effect_tabs_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-audio-effect-tabs-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/audio_effect_tabs_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-audio-effect-tabs-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_directory_smoke.py --source-bypass --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-headphone-source-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_peq_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-peq-native-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_peq_native_smoke.py --player-stop --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-peq-player-stop-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
