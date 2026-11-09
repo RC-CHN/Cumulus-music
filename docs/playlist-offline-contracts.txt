@@ -71,3 +71,18 @@ Rust 对应
 CUE 第二段时长 8000ms、原生时钟实际推进；只入队该本机曲目，未尝试
 在线音源或远端写入。在线操作在联网恢复后重新出现；403 清除快照，
 随后模拟断网也不会恢复旧内容。可用曲目按钮标签和图标边界在窗口中核对。
+
+目录下载的 Linux 实窗验收：4ef1ff67 的实际 WebKitGTK / libmpv null、生产入口
+index-CuErzjkh.js 和 App-0_Vcz2XR.js；九张截图和独立回执见
+.build/ui-proof/phase237-offline-download-playlist/receipt.json。使用 Rust
+DownloadService 发布两份合成 WAV 到不同账号的离线账本，再断开歌单详情读取。
+同账号 701 的目录行和 CUE 可播，另一个账号已发布的 702 与未绑定旧条目不可播。
+点 701 后原生下载时钟推进；同长度改动使原生播放拒绝且没有时钟，截短后重试使
+按钮不可用，恢复原文件后可播。播放可用曲目从 CUE 开始，「下一首」切换到原生
+目录下载；播放队列保持两条合格资源及歌单顺序。没有真实网络请求、播放／下载
+音源授权请求或远端写入；此前七阶段的缓存、CUE 与拒绝回归也在该版本通过。
+这个实窗夹具只使用合成无加密 WAV；加密下载权限分支另由 Rust 测试覆盖。
+  sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 \
+    xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_download_smoke.py \
+    --screenshots --binary .build/target/debug/examples/local_ui_probe \
+    --root .build/offline-playlist-download-webview
