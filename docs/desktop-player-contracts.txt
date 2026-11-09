@@ -248,7 +248,16 @@ Transport 在实际 dispatch 前重新核对账号 Cookie 与当前队列；原�
 原 player_layout_smoke 验证标记比例、播放经过后高亮及切歌清除；新增合成
 Rust 用例检查同队列 A→B→A、单曲回退、旧队列和 Cookie 代次、500 分包，
 Vue 用例核对原生队列刷新期间的标记及迟到回执。没有新增接口、真实账号操作或
-服务请求；原有 WebView 验收不是这次新缓存的实窗证据。
+服务请求。
+
+独立实窗入口为 `player_layout_smoke.py --chorus-queue --binary … --frontend-dist …
+--root … --screenshots`。源码 e7bd7149 的 Linux WebKitGTK 实测使用无默认路由且
+只有回环的独立网络命名空间、私有 XDG 与 libmpv null 输出。通过每日推荐两首合成歌
+的「播放全部」「下一首」「上一首」，得到三个原生播放标识、A 返回时保持相同队列项，
+30 秒轴上的可见标记依次为 13.333%、43.333%、13.333%。原生夹具只记录一次
+`ids=["1","2"]`，零单首读取；三张截图均逐张检查，选择与标记位置对应。
+报告及二进制、前端哈希保存在本机 phase173-chorus-proof/。GTK 初始化后仅
+数字 locale 为 C，字符及消息为 en_US.UTF-8。未验证 Windows、真实账号或物理声卡。
 
 进度滑块时间提示
 ----------------
