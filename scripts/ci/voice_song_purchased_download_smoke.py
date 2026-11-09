@@ -10,7 +10,7 @@ import sys
 from podcast_scene_home_smoke import read
 from queue_collection_smoke import isolated_profile
 from vinyl_lyric_copy_smoke import require_xvfb
-from voice_song_download_smoke import ADD, AUTH, COLLECT, DETAIL, META, MP3, TRACKS, persisted
+from voice_song_download_smoke import ADD, AUTH, COLLECT, DETAIL, META, MP3, TRACKS, persisted, published_mp3
 from window_manager import launch
 
 PREFS = {'quality': 'standard', 'tags': False, 'cover': False, 'lyrics': False, 'container': 'audio'}
@@ -206,9 +206,7 @@ def verify(case, root, stages, complete):
     assert task['encrypted'] is False and task['bytes'] == MP3.stat().st_size
     accepted = proof[-1]['result']['result']
     assert accepted['accepted'] == [task['id']] and accepted['failed'] == []
-    artifact = Path(task['path']).resolve(strict=True)
-    assert artifact.parent == (root / 'run/download-output').resolve(strict=True)
-    assert artifact.suffix == '.mp3'
+    artifact = published_mp3(task['path'], root / 'run/download-output')
     payload = artifact.read_bytes()
     assert payload == MP3.read_bytes()
     assert {key for (kind, key) in records if kind == 'playlist-mutations'} == journal_ids

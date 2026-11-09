@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import sys
 
 from podcast_scene_home_smoke import read
@@ -29,6 +30,26 @@ META = '/api/v3/song/detail'
 AUTH = '/api/song/enhance/download/url/v1'
 NAME = '合成私密下载歌单'
 MP3 = Path(__file__).resolve().parents[2] / 'core/tests/fixtures/tag_audio/seed.mp3'
+
+
+def published_mp3(path, directory):
+    """Require a plain MP3 file directly inside the fixture's real directory."""
+    raw, directory = Path(path), Path(directory)
+    root_info = directory.lstat()
+    assert stat.S_ISDIR(root_info.st_mode) and not (
+        getattr(root_info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    ), 'download destination is not an ordinary directory'
+    file_info = raw.lstat()
+    assert stat.S_ISREG(file_info.st_mode) and not (
+        getattr(file_info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    ) and file_info.st_size > 0, 'download is not a nonempty ordinary file'
+    target = raw.resolve(strict=True)
+    # Rust canonicalizes to an extended-length path on Windows. CPython
+    # retains that prefix on the input that already had it, so compare the
+    # direct parent by filesystem identity rather than by path spelling.
+    assert target.parent.samefile(directory), ('unexpected download parent', target.parent, directory)
+    assert target.suffix == '.mp3', ('unexpected download format', target.suffix)
+    return target
 
 
 def actions(stage, *names):
@@ -169,8 +190,7 @@ def verify(case, root, stages, complete, play_completed):
         assert task['trackId'] == '1710' and task['source'] == 'song' and task['status'] == 'complete'
         assert task['quality'] == 'standard' and task['encrypted'] is False
         assert task['bytes'] == MP3.stat().st_size
-        path = Path(task['path']).resolve(strict=True)
-        assert path.parent == Path(configure['root']).resolve(strict=True) and path.suffix == '.mp3'
+        path = published_mp3(task['path'], configure['root'])
         payload = path.read_bytes()
         assert payload == MP3.read_bytes()
         media_bytes = len(payload)
