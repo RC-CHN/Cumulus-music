@@ -409,6 +409,7 @@ impl Actor {
             next.resource.get("id").is_some()
                 && next.resource.get("local_id").is_none()
                 && next.resource.get("path").is_none()
+                && next.resource.get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD).is_none()
                 // In a one-row loop the next item can be the current entry.
                 // Its catalog identity does not make the loaded file a URL.
                 && !self.loaded.as_ref().is_some_and(|loaded| {

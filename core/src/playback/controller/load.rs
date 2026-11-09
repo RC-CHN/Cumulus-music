@@ -291,6 +291,16 @@ impl Actor {
                 })
                 .await?;
                 cancel.check()?;
+                if item
+                    .resource
+                    .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                    .is_some()
+                    && !pinned_search
+                {
+                    return Err(Error::State(
+                        "offline playlist download requires a pinned file decoder",
+                    ));
+                }
                 let (download, initial_file) = if prefer_search_download && pinned_search {
                     resolver
                         .search_catalog_download(&item.resource, &token, &cancel)

@@ -1,4 +1,4 @@
-//! A live authenticated search row may reuse one published download. The
+//! An authenticated catalogue selection can bind a published download. The
 //! checked descriptor is moved to the decoder; no path is supplied to mpv.
 use super::{
     OfflineRecord,
@@ -8,14 +8,16 @@ use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
     download::service::{DownloadOrigin, DownloadTask, TASKS},
+    media::integrity::FileIntegrity,
     media::ncm::{HeaderPolicy, NcmReader},
     membership::{MembershipManager, MembershipState, OfflineSource, offline_access},
     playback::{
         PlaybackQueue, QueueEntry,
         engine::{Cancellation, pinned_audio_format, pinned_ncm_format},
     },
-    storage::StateStore,
+    storage::{OperationLock, StateStore},
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
@@ -65,6 +67,18 @@ fn open_search_file(path: &Path) -> Result<File> {
 /// Native-only identity of a publication selected from the active account's
 /// journal. Kept separately from the one-shot descriptor to allow an explicit
 /// checked reopen after a native output reload.
+/// Native queue discriminator. It contains no filesystem path or grant.
+pub(crate) const OFFLINE_PLAYLIST_DOWNLOAD: &str = "offline_playlist_download";
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlaylistDownload {
+    pub task_id: String,
+    pub integrity: FileIntegrity,
+    pub encrypted: bool,
+    pub ledger_sha256: String,
+}
+
 pub struct SearchPublication {
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
@@ -73,6 +87,7 @@ pub struct SearchPublication {
     task_target: std::path::PathBuf,
     source_gain: Option<Value>,
     ledger_snapshot: Value,
+    playlist_download: Option<PlaylistDownload>,
 }
 
 pub(crate) struct HeldSearchFile {
@@ -80,6 +95,7 @@ pub(crate) struct HeldSearchFile {
     file: File,
     rights: Option<PlaybackWindow>,
     plain_flac: bool,
+    playback_lease: Option<OperationLock>,
 }
 
 #[derive(Clone)]
@@ -104,6 +120,26 @@ impl SearchPublication {
         token: SessionToken,
         task: &DownloadTask,
         song: &str,
+    ) -> Result<Arc<Self>> {
+        Self::bind_inner(session, token, task, song, None)
+    }
+
+    pub(crate) fn bind_playlist_download(
+        session: Arc<AccountSession>,
+        token: SessionToken,
+        task: &DownloadTask,
+        song: &str,
+        expected: PlaylistDownload,
+    ) -> Result<Arc<Self>> {
+        Self::bind_inner(session, token, task, song, Some(expected))
+    }
+
+    fn bind_inner(
+        session: Arc<AccountSession>,
+        token: SessionToken,
+        task: &DownloadTask,
+        song: &str,
+        playlist_download: Option<PlaylistDownload>,
     ) -> Result<Arc<Self>> {
         let store = session.persistent_store()?;
         let target = task.playback_target()?.canonicalize()?;
@@ -141,6 +177,11 @@ impl SearchPublication {
                 "published search download exceeds media bound",
             ));
         }
+        if let Some(expected) = &playlist_download
+            && Self::playlist_identity(&record, &ledger_snapshot)? != *expected
+        {
+            return Err(Error::State("offline playlist download binding changed"));
+        }
         Ok(Arc::new(Self {
             session,
             store,
@@ -153,7 +194,36 @@ impl SearchPublication {
                 .and_then(|v| v.get("gain"))
                 .cloned(),
             ledger_snapshot,
+            playlist_download,
         }))
+    }
+
+    fn playlist_identity(record: &OfflineRecord, ledger: &Value) -> Result<PlaylistDownload> {
+        Ok(PlaylistDownload {
+            task_id: record.task_id.clone(),
+            integrity: record.integrity.clone(),
+            encrypted: record.encrypted,
+            ledger_sha256: hex::encode(Sha256::digest(serde_json::to_vec(ledger)?)),
+        })
+    }
+
+    /// Candidate hint, not a file grant. Check current entitlement and bounded
+    /// leaf metadata; only the selected native source hashes/decodes bytes.
+    pub(crate) fn playlist_candidate(&self) -> Result<PlaylistDownload> {
+        self.revalidate_publication(None)?;
+        let _ = self.rights()?;
+        if !matches!(
+            crate::download::playback::state(&self.session, &self.token, &self.record.task_id)?,
+            crate::download::playback::SourceState::Ready(_)
+        ) {
+            return Err(Error::State("offline playlist download is moving"));
+        }
+        if self.record.path.canonicalize()? != self.record.path
+            || open_search_file(&self.record.path)?.metadata()?.len() != self.record.integrity.bytes
+        {
+            return Err(Error::State("offline playlist download file changed"));
+        }
+        Self::playlist_identity(&self.record, &self.ledger_snapshot)
     }
 
     pub(crate) fn quality(&self) -> &'static str {
@@ -238,7 +308,32 @@ impl SearchPublication {
                 {
                     return Err(Error::State("published search download changed"));
                 }
-                if let Some(entry) = entry {
+                if let Some(expected) = &self.playlist_download {
+                    if task.file_operation.is_some()
+                        || tx
+                            .get(owner, crate::download::directory::gate::SETTINGS, "active")?
+                            .is_some()
+                    {
+                        return Err(Error::State("offline playlist download is moving"));
+                    }
+                    if !tx
+                        .completed_song_publication(owner, &self.record.song_id)?
+                        .is_some_and(|(id, _)| id == expected.task_id)
+                    {
+                        return Err(Error::State(
+                            "offline playlist publication is no longer unique",
+                        ));
+                    }
+                    if let Some(entry) = entry {
+                        PlaybackQueue::verify_offline_playlist_file_target(
+                            tx,
+                            owner,
+                            entry,
+                            &self.record.song_id,
+                            expected,
+                        )?;
+                    }
+                } else if let Some(entry) = entry {
                     PlaybackQueue::verify_search_file_target(
                         tx,
                         owner,
@@ -264,6 +359,15 @@ impl SearchPublication {
 
     pub(crate) fn open(self: &Arc<Self>, cancel: &Cancellation) -> Result<HeldSearchFile> {
         cancel.check()?;
+        // Completed-file writers record durable intent before competing for
+        // this nonblocking lease; the actor observes intent and retires it.
+        let playback_lease = if self.playlist_download.is_some() {
+            Some(self.session.with_token(&self.token, |owner| {
+                crate::download::playback::lock(&self.store, owner, &self.record.task_id)
+            })?)
+        } else {
+            None
+        };
         self.revalidate_publication(None)?;
         let _ = self.rights()?;
         if self.record.path.canonicalize()? != self.record.path {
@@ -315,6 +419,7 @@ impl SearchPublication {
             file,
             rights,
             plain_flac,
+            playback_lease,
         })
     }
 }
@@ -342,6 +447,7 @@ impl HeldSearchFile {
             publication,
             mut file,
             rights,
+            playback_lease,
             ..
         } = self;
         cancel.check()?;
@@ -349,6 +455,8 @@ impl HeldSearchFile {
         file.seek(SeekFrom::Start(0))?;
         let lifetime = cancel.clone();
         let authority = Cancellation::new(move || {
+            // The engine retains this authority until it retires the file.
+            let _ = playback_lease.as_ref();
             !lifetime.is_cancelled()
                 && rights.as_ref().is_none_or(PlaybackWindow::valid)
                 && latest.as_ref().is_none_or(PlaybackWindow::valid)

@@ -222,6 +222,7 @@ async fn complete_owned_snapshot_reopens_offline_and_plays_only_verified_indexed
                 id: "73".into(),
                 revision: mixed_revision.clone(),
                 start_id: Some(reference.id.clone()),
+                start_local: true,
                 double_click: false,
             },
         )
@@ -257,6 +258,7 @@ async fn complete_owned_snapshot_reopens_offline_and_plays_only_verified_indexed
                     id: "73".into(),
                     revision: mixed_revision,
                     start_id: Some("11".into()),
+                    start_local: true,
                     double_click: false,
                 }
             )
@@ -313,6 +315,7 @@ async fn owned_cache_isolated_from_denials_other_accounts_and_changed_membership
                     id: "73".into(),
                     revision: revision.clone(),
                     start_id: None,
+                    start_local: true,
                     double_click: false,
                 }
             )
@@ -378,6 +381,7 @@ async fn owned_cache_isolated_from_denials_other_accounts_and_changed_membership
                     id: "73".into(),
                     revision,
                     start_id: None,
+                    start_local: true,
                     double_click: false,
                 }
             )
@@ -475,4 +479,282 @@ async fn confirmed_delete_tombstones_cached_playlist_in_direct_and_reconciled_pa
             1
         );
     }
+}
+
+const PUBLISHED_FLAC: &[u8] = include_bytes!("../fixtures/tag_audio/seed.flac");
+
+fn publish_fixture_song(
+    profile: &Path,
+    session: &Arc<AccountSession>,
+    path: &Path,
+    song_id: &str,
+    encrypted: bool,
+) -> String {
+    use cumulus_core::{
+        download::{
+            offline::{OfflineLibrary, PublishedDownload},
+            service::{DownloadDestination, DownloadOptions, DownloadService, DownloadStatus},
+        },
+        media::{
+            integrity::inspect_file,
+            ncm::{NcmWriteOptions, write_file},
+        },
+        membership::Quality,
+    };
+
+    let token = session.token().unwrap();
+    let uid = token.uid.as_deref().unwrap();
+    let registry = ProfileRegistry::open(profile, ApiOrigin::Pc).unwrap();
+    let mut task = DownloadService::new(session.clone())
+        .unwrap()
+        .create(
+            &json!(song_id),
+            DownloadDestination::Path {
+                path: path.to_path_buf(),
+            },
+            DownloadOptions::default(),
+        )
+        .unwrap();
+    if encrypted {
+        let source = path.with_extension("source.flac");
+        std::fs::write(&source, PUBLISHED_FLAC).unwrap();
+        write_file(source, path, NcmWriteOptions::default()).unwrap();
+    } else {
+        std::fs::write(path, PUBLISHED_FLAC).unwrap();
+    }
+    let integrity = inspect_file(path).unwrap();
+    let song = json!({"id":song_id,"name":"Synthetic publication","dt":1000,
+        "privilege":{"fee":1,"flag":4}});
+    let resource = json!({"id":song_id,"level":"lossless","fee":1,"flag":4,"payed":0});
+    let record = OfflineLibrary::new(session.clone())
+        .unwrap()
+        .register(
+            &token,
+            &PublishedDownload {
+                task_id: task.id.clone(),
+                song_id: song_id.into(),
+                requested_quality: Quality::Lossless,
+                target: path.to_path_buf(),
+                song: song.clone(),
+                resource: resource.clone(),
+                encrypted,
+                integrity: integrity.clone(),
+            },
+        )
+        .unwrap();
+    task.status = DownloadStatus::Complete;
+    task.target = Some(record.path);
+    task.output_integrity = Some(integrity);
+    task.song = Some(song);
+    task.resource = Some(resource);
+    task.encrypted = encrypted;
+    registry
+        .store()
+        .put(
+            uid,
+            "download_tasks_v1",
+            &task.id,
+            &serde_json::to_value(&task).unwrap(),
+        )
+        .unwrap();
+    task.id
+}
+
+fn cached_whole() -> PageRequest {
+    PageRequest {
+        offset: 0,
+        limit: 10,
+        revision: None,
+    }
+}
+
+#[tokio::test]
+async fn cached_catalog_row_plays_exact_same_account_publication_without_a_url() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile");
+    let network = Arc::new(Network::new());
+    let device = Arc::new(playback_support::Device::default());
+    device
+        .pinned_search_supported
+        .store(true, Ordering::Release);
+    let native = device.clone();
+    let (client, session, _) = open(&profile, network.clone(), Some(9));
+    let client =
+        client.with_audio_factory(move || Ok(playback_support::audio_engine(native.clone())));
+    let plain = temp.path().join("download11.flac");
+    let task = publish_fixture_song(&profile, &session, &plain, "11", false);
+    publish_fixture_song(
+        &profile,
+        &session,
+        &temp.path().join("locked42.ncm"),
+        "42",
+        true,
+    );
+    client
+        .playlist_page_at("73", cached_whole(), None)
+        .await
+        .unwrap();
+    network.set(1);
+    let page = client
+        .playlist_page_at("73", cached_whole(), None)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(page.playlist_offline.unwrap().download_ids, ["11"]);
+    assert_eq!(
+        page.tracks
+            .iter()
+            .map(|r| (&*r.id, r.local, r.missing))
+            .collect::<Vec<_>>(),
+        [
+            ("11", false, false),
+            ("77", true, true),
+            ("42", false, true)
+        ]
+    );
+    let revision = page.playlist_local.unwrap().revision;
+    let before = network.calls();
+    let play = |id: &str, local, double_click| PlaySelection::OfflinePlaylist {
+        id: "73".into(),
+        revision: revision.clone(),
+        start_id: Some(id.into()),
+        start_local: local,
+        double_click,
+    };
+    assert!(
+        client
+            .play_selection("1", play("11", true, false))
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .play_selection("1", play("42", false, false))
+            .await
+            .is_err()
+    );
+    client
+        .play_selection("1", play("11", false, false))
+        .await
+        .unwrap();
+    let playing = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            if view.state == PlaybackStatus::Playing {
+                break view;
+            }
+            assert_ne!(view.state, PlaybackStatus::Error);
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(playing.resource_kind, Some(PlayerResourceKind::Downloaded));
+    assert_eq!(playing.download_task_id.as_deref(), Some(task.as_str()));
+    assert_eq!(
+        device.state.lock().unwrap().last_pinned.as_ref(),
+        Some(&(false, PUBLISHED_FLAC.to_vec()))
+    );
+    let paused = client
+        .play_selection("1", play("11", false, true))
+        .await
+        .unwrap();
+    assert_eq!(paused.play_id, playing.play_id);
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    let store = ProfileRegistry::open(&profile, ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let queue = store.get("9", "playback", "queue").unwrap().unwrap();
+    let row = &queue["items"][0]["resource"];
+    assert_eq!(row["id"], "11");
+    assert_eq!(row["download_task_id"], task);
+    assert!(row["offline_playlist_download"].is_object() && row["path"].is_null());
+    assert!(!read_record(&profile).unwrap().to_string().contains(&task));
+    assert_eq!(network.calls(), before);
+}
+
+#[tokio::test]
+async fn cached_catalog_downloads_reject_foreign_ambiguous_and_damaged_publications() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile");
+    let network = Arc::new(Network::new());
+    let device = Arc::new(playback_support::Device::default());
+    device
+        .pinned_search_supported
+        .store(true, Ordering::Release);
+    let native = device.clone();
+    let (client, session, _) = open(&profile, network.clone(), Some(9));
+    let client =
+        client.with_audio_factory(move || Ok(playback_support::audio_engine(native.clone())));
+    let (_, other, _) = open(&profile, network.clone(), Some(8));
+    publish_fixture_song(
+        &profile,
+        &other,
+        &temp.path().join("foreign42.flac"),
+        "42",
+        false,
+    );
+    let plain = temp.path().join("main11.flac");
+    publish_fixture_song(&profile, &session, &plain, "11", false);
+    let duplicate = publish_fixture_song(
+        &profile,
+        &session,
+        &temp.path().join("extra11.flac"),
+        "11",
+        false,
+    );
+    client
+        .playlist_page_at("73", cached_whole(), None)
+        .await
+        .unwrap();
+    network.set(1);
+    let page = client
+        .playlist_page_at("73", cached_whole(), None)
+        .await
+        .unwrap()
+        .value;
+    assert!(page.playlist_offline.unwrap().download_ids.is_empty());
+    assert!(page.tracks.iter().all(|track| track.missing));
+    let revision = page.playlist_local.unwrap().revision;
+    let selection = |id: &str| PlaySelection::OfflinePlaylist {
+        id: "73".into(),
+        revision: revision.clone(),
+        start_id: Some(id.into()),
+        start_local: false,
+        double_click: false,
+    };
+    let before = network.calls();
+    assert!(client.play_selection("1", selection("11")).await.is_err());
+    assert!(client.play_selection("1", selection("42")).await.is_err());
+    let store = ProfileRegistry::open(&profile, ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    store.delete("9", "download_tasks_v1", &duplicate).unwrap();
+    let mut damaged = PUBLISHED_FLAC.to_vec();
+    *damaged.last_mut().unwrap() ^= 1;
+    std::fs::write(&plain, damaged).unwrap();
+    let _ = client.play_selection("1", selection("11")).await;
+    let failure = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            assert_ne!(view.state, PlaybackStatus::Playing);
+            if view.state == PlaybackStatus::Error {
+                break view;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(failure.error.is_some());
+    assert_eq!(
+        device.state.lock().unwrap().loads,
+        0,
+        "same-size damaged bytes must not reach a decoder"
+    );
+    assert_eq!(
+        network.calls(),
+        before,
+        "rejected publications must not authorize online"
+    );
 }

@@ -525,9 +525,15 @@ pub enum PlaySelection {
         id: String,
         revision: String,
         start_id: Option<String>,
+        #[serde(default = "offline_playlist_default_local")]
+        start_local: bool,
         #[serde(default)]
         double_click: bool,
     },
+}
+
+fn offline_playlist_default_local() -> bool {
+    true
 }
 
 #[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]

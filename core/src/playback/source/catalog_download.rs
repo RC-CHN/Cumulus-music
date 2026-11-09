@@ -4,7 +4,7 @@ use crate::{
     Error, Result,
     account::SessionToken,
     download::{
-        offline::{HeldSearchFile, SearchPublication},
+        offline::{HeldSearchFile, OFFLINE_PLAYLIST_DOWNLOAD, PlaylistDownload, SearchPublication},
         service::DownloadService,
     },
     library::matching::MatchHint,
@@ -14,6 +14,63 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 impl SourceResolver {
+    /// This queue entry can use only its exact sealed publication. Unlike
+    /// ordinary search, any lookup, rights, format or decoder failure is terminal.
+    pub(super) async fn offline_playlist_download(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+    ) -> Result<Arc<ResolvedSource>> {
+        let expected: PlaylistDownload =
+            serde_json::from_value(resource[OFFLINE_PLAYLIST_DOWNLOAD].clone())?;
+        let song = crate::protocol::api::identifier(&resource["id"])?;
+        if resource["download_task_id"].as_str() != Some(expected.task_id.as_str())
+            || resource["song"]["id"].as_str() != Some(song.as_str())
+            || [
+                "path",
+                "download_ledger",
+                "download_voice_id",
+                "cloud_song_id",
+                "voice_id",
+                "local_id",
+                "playback_constraint",
+                "trial_mode",
+            ]
+            .iter()
+            .any(|field| !resource[*field].is_null())
+        {
+            return Err(Error::InvalidInput(
+                "invalid offline playlist download identity",
+            ));
+        }
+        let session = self.session.clone();
+        let account = token.clone();
+        let result = tokio::task::spawn_blocking(move || -> Result<_> {
+            let task = DownloadService::published_catalog_song(&session, &account, &song)?.ok_or(
+                Error::State("offline playlist download is no longer available"),
+            )?;
+            if task.id != expected.task_id {
+                return Err(Error::State("offline playlist download task changed"));
+            }
+            let publication = SearchPublication::bind_playlist_download(
+                session, account, &task, &song, expected,
+            )?;
+            let info = loudness::with_gain(
+                json!({"kind":"local","resource_info":{"level":publication.quality()}}),
+                (publication.gain().cloned().unwrap_or(Value::Null), false),
+            );
+            Ok(Arc::new(ResolvedSource {
+                input: MediaInput::SearchPublication(publication),
+                info,
+                expires_at: None,
+            }))
+        })
+        .await
+        .map_err(|_| Error::State("offline playlist download worker stopped"))??;
+        self.session.check_generation(token)?;
+        Ok(result)
+    }
+
     pub(crate) async fn search_catalog_download(
         &self,
         resource: &Value,

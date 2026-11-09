@@ -254,6 +254,14 @@ impl SourceResolver {
         Ok(())
     }
     fn key(&self, resource: &Value, token: &SessionToken) -> Result<Key> {
+        if resource
+            .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+            .is_some()
+        {
+            return Err(Error::InvalidInput(
+                "offline playlist downloads cannot authorize online media",
+            ));
+        }
         self.session.with_token(token, |_| Ok(()))?;
         let level = Quality::parse(
             resource
@@ -525,6 +533,12 @@ impl SourceResolver {
         resource: &Value,
         token: &SessionToken,
     ) -> Result<Arc<ResolvedSource>> {
+        if resource
+            .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+            .is_some()
+        {
+            return self.offline_playlist_download(resource, token).await;
+        }
         #[cfg(windows)]
         if resource["native_open_file"].get("held_id").is_some() {
             return self.resolve_windows_native_file(resource, token);
@@ -539,7 +553,12 @@ impl SourceResolver {
         resource: &Value,
         token: &SessionToken,
     ) -> Result<Arc<ResolvedSource>> {
-        if resource.get("local_id").is_some() || resource.get("path").is_some() {
+        if resource.get("local_id").is_some()
+            || resource.get("path").is_some()
+            || resource
+                .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                .is_some()
+        {
             return Err(Error::InvalidInput(
                 "fresh authorization requires online media",
             ));

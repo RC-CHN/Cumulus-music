@@ -299,6 +299,9 @@ pub struct TrackPage {
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistOfflinePage {
     pub cached_at_ms: u64,
+    /// Page-scoped checked publication hints, not cached media grants.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub download_ids: Vec<String>,
 }
 
 /// Display-only local membership fence. TrackPage::revision continues to

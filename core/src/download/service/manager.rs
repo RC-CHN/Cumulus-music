@@ -200,18 +200,43 @@ impl DownloadService {
         let value = store.completed_song_publication(&owner, song)?;
         session.check_generation(token)?;
         value
-            .map(|(id, value)| {
-                let task: DownloadTask = serde_json::from_value(value)?;
-                if task.id != id
-                    || task.song_id != song
-                    || task.origin != DownloadOrigin::Song
-                    || task.status != DownloadStatus::Complete
-                {
-                    return Err(Error::State("download publication identity mismatch"));
-                }
-                Ok(task)
-            })
+            .map(|(id, raw)| Self::publication(song, &id, raw))
             .transpose()
+    }
+
+    /// At most two rows per requested ID, through the exact owner/song index.
+    /// Do not enumerate unrelated publications to check a playlist page.
+    pub(crate) fn published_catalog_songs(
+        session: &AccountSession,
+        token: &SessionToken,
+        wanted: &[String],
+    ) -> Result<std::collections::HashMap<String, DownloadTask>> {
+        let store = session.persistent_store()?;
+        session.with_token(token, |owner| {
+            store.read_snapshot(|tx| {
+                let mut found = std::collections::HashMap::new();
+                for song in wanted {
+                    if let Some((id, raw)) = tx.completed_song_publication(owner, song)?
+                        && let Ok(task) = Self::publication(song, &id, raw)
+                    {
+                        found.insert(song.clone(), task);
+                    }
+                }
+                Ok(found)
+            })
+        })
+    }
+
+    fn publication(song: &str, id: &str, raw: Value) -> Result<DownloadTask> {
+        let task: DownloadTask = serde_json::from_value(raw)?;
+        if task.id != id
+            || task.song_id != song
+            || task.origin != DownloadOrigin::Song
+            || task.status != DownloadStatus::Complete
+        {
+            return Err(Error::State("download publication identity mismatch"));
+        }
+        Ok(task)
     }
 
     /// A downloaded queue row already carries a task key. Check that key in
