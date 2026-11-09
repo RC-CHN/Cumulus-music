@@ -18,13 +18,19 @@ PLAY_STAGES = {
     'ux_05_batch_play_back',
 }
 
+ADD_STAGES = {
+    'ux_01_batch_menu', 'ux_02_batch_cross_page', 'ux_03_batch_added', 'ux_04_batch_empty_started',
+    'ux_05_batch_active_duplicate', 'ux_06_batch_add_back',
+}
 
-def run(binary, root, screenshots, play=False):
+
+def run(binary, root, screenshots, play=False, add=False):
     root.mkdir(parents=True, exist_ok=False)
     target = root / 'run'
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(target))
-    env['CUMULUS_LOCAL_BATCH_PLAY_PROOF' if play else 'CUMULUS_LOCAL_BATCH_HIDE_PROOF'] = '1'
+    mode = 'ADD' if add else 'PLAY' if play else 'HIDE'
+    env[f'CUMULUS_LOCAL_BATCH_{mode}_PROOF'] = '1'
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
         profile = root / 'os-profile' / key
         profile.mkdir(parents=True, mode=0o700)
@@ -37,7 +43,11 @@ def run(binary, root, screenshots, play=False):
     completed = json.loads((target / 'complete.json').read_text(encoding='utf-8'))
     assert completed['ok'] and len(set(completed['selected'])) == 2
     assert completed['retainedFilterOnBack']
-    if play:
+    if add:
+        assert completed['count'] == 105 and completed['selectedInReverse']
+        assert completed['nonemptyQueueVerified'] and completed['emptyStarts']
+        assert completed['activeDuplicateRetainsDecoder']
+    elif play:
         assert completed['count'] == 105 and completed['selectedInReverse']
         assert completed['insertionOrderVerified'] and completed['decoderAndClockRetained']
     else:
@@ -58,16 +68,19 @@ def run(binary, root, screenshots, play=False):
     short, long = expected_hash(16_000), expected_hash(16_000 * 12)
     files = sorted(media.glob('qx-local-selection *.wav'))
     assert [p.name for p in files] == [f'qx-local-selection {i:03d}.wav' for i in range(105)]
-    assert all(hashlib.sha256(path.read_bytes()).digest() == (long if play and i in (4, 104) else short)
+    assert all(hashlib.sha256(path.read_bytes()).digest() == (long if (play or add) and i in (4, 104) else short)
                for i, path in enumerate(files))
     stages = {path.stem for path in target.glob('ux_*.png')}
-    assert stages == ((PLAY_STAGES if play else STAGES) if screenshots else set())
+    assert stages == ((ADD_STAGES if add else PLAY_STAGES if play else STAGES) if screenshots else set())
     report = {
         'ok': True, 'actualWebView': True, 'nativeNullOutput': True,
         'sourceFilesIntact': len(files), 'retainedFilterOnBack': True, 'restoredMenuFocus': True,
         'realMusicRequests': 0, 'screenshots': len(stages), 'locale': locale,
     }
-    if play:
+    if add:
+        report.update(count=completed['count'], nonemptyQueueVerified=True, emptyStarts=True,
+                      activeDuplicateRetainsDecoder=True)
+    elif play:
         report.update(count=completed['count'], insertionOrderVerified=True, decoderAndClockRetained=True)
     else:
         report.update(counts=completed['counts'], pausedDecoderUnchanged=True)
@@ -80,8 +93,10 @@ if __name__ == '__main__':
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--screenshots', action='store_true')
-    parser.add_argument('--play', action='store_true', help='verify selected local playback instead of hiding')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--play', action='store_true', help='verify selected local playback instead of hiding')
+    mode.add_argument('--add', action='store_true', help='verify the selected local queue-only action')
     args = parser.parse_args()
     if sys.platform != 'linux':
         parser.error('this probe uses the Linux WebKit and X11 capture helper')
-    run(args.binary.resolve(strict=True), args.root.resolve(), args.screenshots, args.play)
+    run(args.binary.resolve(strict=True), args.root.resolve(), args.screenshots, args.play, args.add)

@@ -162,6 +162,8 @@ fn main() {
     assert!(!group_hide || !folder_reveal);
     let batch_hide = std::env::var("CUMULUS_LOCAL_BATCH_HIDE_PROOF").as_deref() == Ok("1");
     let batch_play = std::env::var("CUMULUS_LOCAL_BATCH_PLAY_PROOF").as_deref() == Ok("1");
+    let batch_add = std::env::var("CUMULUS_LOCAL_BATCH_ADD_PROOF").as_deref() == Ok("1");
+    assert!(!batch_add || (!batch_play && !batch_hide && !group_hide && !folder_reveal));
     assert!(
         !(batch_hide || batch_play)
             || (!group_hide && !folder_reveal && !(batch_hide && batch_play))
@@ -170,6 +172,7 @@ fn main() {
         || group_hide
         || batch_hide
         || batch_play
+        || batch_add
         || std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
     assert!(
         !queue || (!cold && !reopen),
@@ -202,7 +205,7 @@ fn main() {
                         .expect("synthetic group media");
                 }
             }
-            if batch_hide || batch_play {
+            if batch_hide || batch_play || batch_add {
                 let mut wav = fs::read(media.join("雨声.wav")).expect("synthetic audio bytes");
                 let size = 16_000u32;
                 wav.truncate(44 + size as usize);
@@ -212,7 +215,7 @@ fn main() {
                     // The two chosen rows need enough decoded clock for a real
                     // pause/resume proof, while the old hide fixture stays 1s.
                     let mut longer = Vec::new();
-                    let bytes = if batch_play && matches!(index, 104 | 4) {
+                    let bytes = if (batch_play || batch_add) && matches!(index, 104 | 4) {
                         let samples = fs::read(media.join("雨声.wav"))
                             .expect("synthetic batch playback samples");
                         let length = 16_000u32 * 12;
@@ -250,7 +253,8 @@ fn main() {
             let hide_capture = group_hide && ["ux_01_group_hide_menu", "ux_02_group_hidden", "ux_03_group_restored"].contains(&stage);
             let batch_capture = batch_hide && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_hidden", "ux_04_batch_restored"].contains(&stage);
             let batch_play_capture = batch_play && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_playing", "ux_04_batch_resumed", "ux_05_batch_play_back"].contains(&stage);
-            if folder_capture || hide_capture || batch_capture || batch_play_capture {
+            let batch_add_capture = batch_add && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_added", "ux_04_batch_empty_started", "ux_05_batch_active_duplicate", "ux_06_batch_add_back"].contains(&stage);
+            if folder_capture || hide_capture || batch_capture || batch_play_capture || batch_add_capture {
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -321,12 +325,12 @@ fn main() {
     }).on_page_load(move|webview,payload|{
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
-            webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play}))).unwrap();
+            webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
             webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if folder_reveal {
                 include_str!("local_folder_reveal_ui_probe.js")
             } else if group_hide {
                 include_str!("local_group_hide_ui_probe.js")
-            } else if batch_hide || batch_play {
+            } else if batch_hide || batch_play || batch_add {
                 include_str!("local_batch_hide_ui_probe.js")
             } else if queue {
                 include_str!("local_queue_ui_probe.js")
