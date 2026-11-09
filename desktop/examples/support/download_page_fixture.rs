@@ -365,7 +365,7 @@ impl Fixture {
                         "2",
                         "download_tasks_v1",
                         &task.id,
-                        &serde_json::to_value(task)?,
+                        &serde_json::to_value(&task)?,
                     )?;
                 }
             }
