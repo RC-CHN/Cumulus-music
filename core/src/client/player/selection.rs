@@ -88,6 +88,9 @@ impl MusicClient {
                     "search podcast playback requires a preparation ticket",
                 ))
             }
+            PlaySelection::SearchVoiceMenu { .. } => Err(Error::InvalidInput(
+                "search voice menu playback requires a preparation ticket",
+            )),
             input => self.play_selection_inner(epoch, input, None).await,
         }
     }
@@ -130,6 +133,15 @@ impl MusicClient {
         daily_origin: Option<super::super::daily_notification::PlaybackOrigin>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        if let PlaySelection::SearchVoiceMenu { target } = &input {
+            return self
+                .play_search_voice_menu(
+                    &token,
+                    target,
+                    prepared.as_ref().ok_or(Error::StaleResponse)?,
+                )
+                .await;
+        }
         let (input, zone_detail) = match input {
             PlaySelection::VerticalZonePlaylistDetail {
                 id,
@@ -967,6 +979,7 @@ impl MusicClient {
                     | PlaySelection::SearchArtistCard { .. }
                     | PlaySelection::SearchPodcastCard { .. }
                     | PlaySelection::SearchPodcastRow { .. }
+                    | PlaySelection::SearchVoiceMenu { .. }
                     | PlaySelection::PodcastBrowseVoice { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {

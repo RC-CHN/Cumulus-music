@@ -66,6 +66,136 @@ fn select(receipt: &str, id: &str) -> PlaySelection {
     }
 }
 
+#[tokio::test]
+async fn search_voice_menu_plays_or_resumes_the_bound_episode_without_toggling() {
+    let (_root, api, _session, client, device) = fixture_with_device();
+    api.search_playback_revision.store(1, Ordering::SeqCst);
+    let page = client
+        .search_results(
+            "1",
+            SearchResultQuery {
+                keyword: "synthetic voice menu".into(),
+                category: SearchCategory::Voices,
+                offset: 0,
+                limit: 10,
+                correct: true,
+                channel: None,
+            },
+        )
+        .await
+        .unwrap();
+    let page = serde_json::to_value(page.value).unwrap();
+    let rows = page["sections"][0]["items"].as_array().unwrap();
+    let select = |index: usize, id: &str| -> PlaySelection {
+        serde_json::from_value(json!({
+            "kind":"search_voice_menu",
+            "target":{"receipt":rows[index]["menuReceipt"],"voiceId":id}
+        }))
+        .unwrap()
+    };
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Sequential,
+            },
+        )
+        .await
+        .unwrap();
+    let old = prepared(&client, PlaySelection::Voice { id: "400".into() })
+        .await
+        .unwrap();
+    api.calls.lock().unwrap().clear();
+    assert!(client.play_selection("1", select(0, "601")).await.is_err());
+    for invalid in [select(0, "603"), select(1, "602")] {
+        assert!(matches!(
+            prepared(&client, invalid).await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    assert!(api.calls.lock().unwrap().is_empty());
+
+    let started = prepared(&client, select(0, "601")).await.unwrap();
+    assert_eq!(started.state, PlaybackStatus::Playing);
+    assert_eq!(
+        started.track.as_ref().unwrap().voice_id.as_deref(),
+        Some("601")
+    );
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(queue.tracks.len(), 2);
+    assert_eq!(Some(&queue.tracks[0].entry_id), old.entry_id.as_ref());
+    assert_eq!(Some(&queue.tracks[1].entry_id), started.entry_id.as_ref());
+    // The player can read the current radio's resume setting as it observes
+    // the new entry. This independent read does not reopen its media source.
+    let source_calls = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path != "/api/dj/user/setting/resumeplay/get")
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let calls = source_calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/dj/program/detail",
+            "/api/dj/play/url/check",
+            "/api/song/enhance/player/url/v1"
+        ]
+    );
+    assert_eq!(calls[0].1, json!({"id":"601"}));
+    assert_eq!(calls[1].1, json!({"voiceId":"601"}));
+    let same = |view: &PlayerView| {
+        assert_eq!(view.play_id, started.play_id);
+        assert_eq!(view.entry_id, started.entry_id);
+        assert_eq!(view.queue_revision, started.queue_revision);
+    };
+    let repeated = prepared(&client, select(0, "601")).await.unwrap();
+    assert_eq!(repeated.state, PlaybackStatus::Playing);
+    same(&repeated);
+
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let resumed = prepared(&client, select(0, "601")).await.unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.position, paused.position);
+    same(&resumed);
+    assert_eq!(source_calls(), calls);
+    assert_eq!(device.state.lock().unwrap().loads, 2);
+
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    api.search_playback_hold.store(true, Ordering::SeqCst);
+    let pending = prepared(&client, select(2, "603"));
+    let rotate = async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            api.search_playback_started.notified(),
+        )
+        .await
+        .unwrap();
+        api.search_playback_revision.store(2, Ordering::SeqCst);
+        api.search_playback_release.notify_one();
+    };
+    let (result, ()) = tokio::join!(pending, rotate);
+    assert!(result.is_err());
+    let unchanged = client.player_snapshot("1").await.unwrap();
+    same(&unchanged);
+    assert_eq!(unchanged.state, PlaybackStatus::Paused);
+    assert_eq!(unchanged.position, paused.position);
+    assert_eq!(device.state.lock().unwrap().loads, 2);
+    assert_eq!(source_calls().len(), calls.len() + 2);
+}
+
 fn store_checkpoint(root: &std::path::Path) {
     let registry = ProfileRegistry::open(root, ApiOrigin::Pc).unwrap();
     let store = registry.store();

@@ -217,6 +217,7 @@ impl MusicClient {
                 | PlaySelection::SearchArtistCard { .. }
                 | PlaySelection::SearchPodcastCard { .. }
                 | PlaySelection::SearchPodcastRow { .. }
+                | PlaySelection::SearchVoiceMenu { .. }
                 | PlaySelection::PodcastBrowseVoice { .. }
                 | PlaySelection::Songs { .. }
         ) {

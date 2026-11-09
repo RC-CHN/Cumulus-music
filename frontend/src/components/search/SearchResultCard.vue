@@ -70,6 +70,7 @@ const emit = defineEmits<{
   queueVoice: [id: string];
   voiceLink: [request: SearchVoiceLinkRequest];
   voiceMenuError: [message: string];
+  voiceMenuPlay: [target: SearchVoiceMenuTarget];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
   playlistSubscribe: [playlist: PlaylistView];
@@ -79,6 +80,7 @@ const emit = defineEmits<{
 const menu = ref<InstanceType<typeof ActionMenu>>();
 const element = ref<HTMLElement>();
 const core = useCore();
+const ordinaryVoiceMenu = computed(() => props.voiceLinks && props.item.kind === 'voice');
 const voiceMenu = ref<SearchVoiceMenu>();
 const voiceMenuTarget = computed<SearchVoiceMenuTarget | undefined>(() =>
   props.voiceMenuEpoch && props.item.kind === 'voice' && props.item.menuReceipt
@@ -280,9 +282,18 @@ const items = computed<MenuItem[]>(() => {
       ? [
           {
             key: 'play',
-            label: !podcastRow.value && props.current && props.playing ? '暂停' : '播放',
-            icon: !podcastRow.value && props.current && props.playing ? 'pause' : 'play',
-            disabled: !props.playable || !canPlay.value,
+            label:
+              !podcastRow.value && !ordinaryVoiceMenu.value && props.current && props.playing
+                ? '暂停'
+                : '播放',
+            icon:
+              !podcastRow.value && !ordinaryVoiceMenu.value && props.current && props.playing
+                ? 'pause'
+                : 'play',
+            disabled:
+              !props.playable ||
+              !canPlay.value ||
+              (ordinaryVoiceMenu.value && (!voiceMenuTarget.value || props.voiceNext !== 'ready')),
           },
         ]
       : []),
@@ -407,6 +418,26 @@ function playButton(event: MouseEvent) {
     return;
   }
   action('play', 'index');
+}
+function selectMenuAction(key: string) {
+  if (key !== 'play' || !ordinaryVoiceMenu.value) return action(key);
+  const { item, voiceMenuEpoch: epoch } = props;
+  const target = voiceMenuTarget.value;
+  if (
+    !target ||
+    !epoch ||
+    voiceLinkMenuItem !== item ||
+    !voiceMenu.value ||
+    !voiceMenuLive(item, epoch, target) ||
+    !canPlay.value ||
+    !props.playable ||
+    props.voiceNext !== 'ready'
+  )
+    return;
+  playbackFocus.start(
+    () => emit('voiceMenuPlay', target),
+    element.value?.querySelector<HTMLElement>('.menu-trigger'),
+  );
 }
 function action(key: string, gesture: SearchPodcastRowGesture = 'menu') {
   cancelRowLink();
@@ -852,7 +883,7 @@ watch(
             :items="items"
             :before-open="voiceMenuTarget ? prepareVoiceMenu : undefined"
             @opened="captureActionMenu"
-            @select="action"
+            @select="selectMenuAction"
           />
         </div>
         <div
@@ -1149,7 +1180,7 @@ watch(
         :items="items"
         :before-open="voiceMenuTarget ? prepareVoiceMenu : undefined"
         @opened="captureActionMenu"
-        @select="action"
+        @select="selectMenuAction"
       />
     </template>
   </component>

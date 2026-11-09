@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SearchPodcastRowGesture } from '../../services/player';
+import type { SearchVoiceMenuTarget } from '../../services/search';
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
@@ -126,6 +127,7 @@ const emit = defineEmits<{
   mv: [id: string];
   expired: [];
   playCard: [item: SearchItem, gesture?: SearchPodcastRowGesture];
+  voiceMenuPlay: [target: SearchVoiceMenuTarget];
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queueCard: [request: SearchQueueRequest];
   queueDrag: [
@@ -1197,6 +1199,7 @@ onBeforeUnmount(() => {
                 @queue-voice="emit('queueVoice', $event)"
                 @voice-link="activateVoiceLink(section, $event)"
                 @voice-menu-error="voiceLinkStatus = $event"
+                @voice-menu-play="emit('voiceMenuPlay', $event)"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
                 @playlist-subscribe="emit('playlistSubscribe', $event)"

@@ -157,6 +157,20 @@ impl Api for Backend {
                     assert_eq!(p["keyword"], "synthetic search podcast");
                     self.search_playback_response.lock().unwrap().clone()
                 }
+                "/api/search/voice/get" => {
+                    assert_eq!(
+                        p,
+                        json!({"keyword":"synthetic voice menu","scene":"normal","offset":0,"limit":10})
+                    );
+                    assert!(!cache);
+                    let mut unavailable = self.episode(602);
+                    unavailable["grayDisplay"] = json!(true);
+                    json!({"code":200,"data":{"totalCount":3,"resources":[
+                        {"type":"voice","baseInfo":self.episode(601)},
+                        {"type":"voice","baseInfo":unavailable},
+                        {"type":"voice","baseInfo":self.episode(603)}
+                    ]}})
+                }
                 "/api/djradio/my/radio/recommend" => {
                     assert!(!cache);
                     assert_eq!(p, json!({}));

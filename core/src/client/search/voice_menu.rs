@@ -6,6 +6,7 @@ use crate::{
     account::SessionToken,
     client::dto::{AccountData, SongDownloadState},
     network_diagnostics::DefaultRoute,
+    playback::engine::Cancellation,
     protocol::api::{Api, identifier},
 };
 use serde::{Deserialize, Serialize};
@@ -21,11 +22,11 @@ const PAGE_LIMIT: usize = 16;
 const ROW_LIMIT: usize = 128;
 const LIFETIME: Duration = Duration::from_secs(30 * 60);
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SearchVoiceMenuTarget {
     receipt: String,
-    voice_id: String,
+    pub(in crate::client) voice_id: String,
 }
 
 #[derive(Serialize)]
@@ -40,7 +41,11 @@ struct Page {
     api: Weak<dyn Api>,
     credentials: Option<String>,
     issued: Instant,
-    rows: BTreeMap<String, String>,
+    rows: BTreeMap<String, Row>,
+}
+struct Row {
+    id: String,
+    playable: bool,
 }
 impl Page {
     fn owns(&self, token: &SessionToken, api: &Arc<dyn Api>, credentials: Option<&str>) -> bool {
@@ -51,8 +56,8 @@ impl Page {
     }
 }
 
-#[derive(Default)]
-pub(super) struct SearchVoiceMenuPages(Mutex<VecDeque<Page>>);
+#[derive(Clone, Default)]
+pub(super) struct SearchVoiceMenuPages(Arc<Mutex<VecDeque<Page>>>);
 impl SearchVoiceMenuPages {
     pub(super) fn capture(
         &self,
@@ -84,7 +89,13 @@ impl SearchVoiceMenuPages {
                     && rows.len() < ROW_LIMIT
                 {
                     let receipt = uuid::Uuid::new_v4().simple().to_string();
-                    rows.insert(receipt.clone(), voice.id.clone());
+                    rows.insert(
+                        receipt.clone(),
+                        Row {
+                            id: voice.id.clone(),
+                            playable: !voice.unavailable,
+                        },
+                    );
                     *menu_receipt = Some(receipt);
                 }
             }
@@ -112,6 +123,7 @@ impl SearchVoiceMenuPages {
         api: &Arc<dyn Api>,
         credentials: Option<&str>,
         target: &SearchVoiceMenuTarget,
+        playable: bool,
     ) -> Result<()> {
         self.0
             .lock()
@@ -119,7 +131,10 @@ impl SearchVoiceMenuPages {
             .iter()
             .any(|page| {
                 page.owns(token, api, credentials)
-                    && page.rows.get(&target.receipt) == Some(&target.voice_id)
+                    && page
+                        .rows
+                        .get(&target.receipt)
+                        .is_some_and(|row| row.id == target.voice_id && (!playable || row.playable))
             })
             .then_some(())
             .ok_or(Error::QueueChanged)
@@ -133,6 +148,7 @@ impl MusicClient {
         api: &Arc<dyn Api>,
         credentials: Option<&str>,
         target: &SearchVoiceMenuTarget,
+        playable: bool,
     ) -> Result<()> {
         if self.login_pending()?
             || api.search_privilege_credential_revision()?.as_deref() != credentials
@@ -142,14 +158,15 @@ impl MusicClient {
         self.session.require_api(token, api)?;
         self.search
             .voice_menu_pages
-            .require(token, api, credentials, target)
+            .require(token, api, credentials, target, playable)
     }
 
     fn search_voice_menu_source(
         &self,
-        epoch: &str,
+        token: &SessionToken,
         target: &SearchVoiceMenuTarget,
-    ) -> Result<(SessionToken, Arc<dyn Api>, Option<String>)> {
+        playable: bool,
+    ) -> Result<(Arc<dyn Api>, Option<String>)> {
         if target.receipt.len() != 32
             || !target.receipt.bytes().all(|byte| byte.is_ascii_hexdigit())
             || target.voice_id.len() > 32
@@ -157,11 +174,35 @@ impl MusicClient {
             return Err(Error::InvalidInput("invalid search voice menu target"));
         }
         identifier(&json!(target.voice_id))?;
-        let token = self.player_token(epoch)?;
-        let api = self.session.native_api(&token)?;
+        let api = self.session.native_api(token)?;
         let credentials = api.search_privilege_credential_revision()?;
-        self.require_search_voice_menu(&token, &api, credentials.as_deref(), target)?;
-        Ok((token, api, credentials))
+        self.require_search_voice_menu(token, &api, credentials.as_deref(), target, playable)?;
+        Ok((api, credentials))
+    }
+
+    pub(in crate::client) fn search_voice_menu_playback_source(
+        &self,
+        token: &SessionToken,
+        target: &SearchVoiceMenuTarget,
+    ) -> Result<(Arc<dyn Api>, Cancellation)> {
+        let (api, credentials) = self.search_voice_menu_source(token, target, true)?;
+        let pages = self.search.voice_menu_pages.clone();
+        let (session, token, bound, target, pending) = (
+            self.session.clone(),
+            token.clone(),
+            api.clone(),
+            target.clone(),
+            self.auth.pending_guard(),
+        );
+        let guard = Cancellation::new(move || {
+            pending().is_ok()
+                && session.require_api(&token, &bound).is_ok()
+                && bound.search_privilege_credential_revision().ok().as_ref() == Some(&credentials)
+                && pages
+                    .require(&token, &bound, credentials.as_deref(), &target, true)
+                    .is_ok()
+        });
+        Ok((api, guard))
     }
 
     pub async fn search_voice_menu(
@@ -170,9 +211,10 @@ impl MusicClient {
         target: SearchVoiceMenuTarget,
         route: DefaultRoute,
     ) -> Result<AccountData<SearchVoiceMenu>> {
-        let (token, api, credentials) = self.search_voice_menu_source(epoch, &target)?;
+        let token = self.player_token(epoch)?;
+        let (api, credentials) = self.search_voice_menu_source(&token, &target, false)?;
         let current =
-            || self.require_search_voice_menu(&token, &api, credentials.as_deref(), &target);
+            || self.require_search_voice_menu(&token, &api, credentials.as_deref(), &target, false);
         let comment_count = self
             .read_program_comment_count(&token, &target.voice_id, route)
             .await;
@@ -198,11 +240,12 @@ impl MusicClient {
         epoch: &str,
         target: SearchVoiceMenuTarget,
     ) -> Result<PathBuf> {
-        let (token, api, credentials) = self.search_voice_menu_source(epoch, &target)?;
+        let token = self.player_token(epoch)?;
+        let (api, credentials) = self.search_voice_menu_source(&token, &target, false)?;
         let path = self
             .completed_voice_directory(epoch, &target.voice_id)
             .await?;
-        self.require_search_voice_menu(&token, &api, credentials.as_deref(), &target)?;
+        self.require_search_voice_menu(&token, &api, credentials.as_deref(), &target, false)?;
         Ok(path)
     }
 }

@@ -425,6 +425,9 @@ pub enum PlaySelection {
     SearchResultVoice {
         id: String,
     },
+    SearchVoiceMenu {
+        target: crate::client::dto::SearchVoiceMenuTarget,
+    },
     SearchHotTrack {
         id: String,
         quality: Quality,

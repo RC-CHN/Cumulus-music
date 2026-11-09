@@ -1536,6 +1536,16 @@ function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
   }
 }
+function playSearchVoiceMenu(target: import('./services/search').SearchVoiceMenuTarget) {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  if (route.kind !== 'search' || !ordinaryVoiceQueueable.value) return;
+  void player.prepareSelection(async (owner) => {
+    if (page.value !== route || owner !== epoch)
+      throw { code: 'stale', message: '搜索结果已更新', retryable: false };
+    return { kind: 'search_voice_menu', target };
+  });
+}
 const searchCollectionQueueable = computed(
   () =>
     signedIn.value &&
@@ -5551,6 +5561,7 @@ onUnmounted(() => {
                 @toggle-pending-track="toggleSearchPendingTrack"
                 @toggle-pending-voice="toggleSearchPendingVoice"
                 @play-card="playSearchCard"
+                @voice-menu-play="playSearchVoiceMenu"
                 @queue-card="queueSearchCard"
                 @queue-voice="queueSearchVoice"
                 @queue-drag="startSearchQueueDrop"
