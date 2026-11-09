@@ -5,7 +5,7 @@ mod assets;
 #[path = "support/capture_ack.rs"]
 mod capture_ack;
 #[allow(dead_code, unused_imports)]
-#[path = "../../core/tests/client_together.rs"]
+#[path = "../../core/tests/support/together_fixture.rs"]
 mod fixture;
 use cumulus_core::{
     client::MusicClient,

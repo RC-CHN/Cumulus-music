@@ -1,7 +1,7 @@
 //! Real production WebView/IPC/core; deterministic API, IM and audio fixtures.
 //! This is a local UI proof and must never be labeled a live peer/audio proof.
 #[allow(dead_code, unused_imports)]
-#[path = "../../core/tests/client_together.rs"]
+#[path = "../../core/tests/support/together_fixture.rs"]
 mod fixture;
 use cumulus_core::listen_together::{RoomMessage, native_im::ImEvent};
 use serde_json::{Value, json};
