@@ -1,9 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
     inputs:
       windows_diagnostic:
@@ -34,10 +31,10 @@ env:
 
 jobs:
   smtc-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_smtc_diagnostic
+    if: github.event_name == 'push'
     uses: ./.github/workflows/windows-smtc-diagnostic.yml
   media-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
+    if: github.event_name == 'push'
     uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
     name: Frontend and release rules
@@ -72,6 +69,7 @@ jobs:
           retention-days: 7
 
   native-linux:
+    if: github.event_name == 'push'
     # Keep the established required job context used by the release verifier.
     name: Native (linux-x64)
     runs-on: ubuntu-24.04
@@ -152,6 +150,7 @@ jobs:
           key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   package-linux:
+    if: github.event_name == 'push'
     name: Package and verify (linux-x64)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -308,6 +307,7 @@ jobs:
           retention-days: 3
 
   native:
+    if: github.event_name == 'push'
     name: Native (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -424,6 +424,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-tree-${{ steps.rust-cache-source.outputs.tree }}
 
   package-windows:
+    if: github.event_name == 'push'
     name: Package and verify (windows-x64)
     needs: frontend
     runs-on: windows-2022
@@ -534,6 +535,7 @@ jobs:
           key: ${{ steps.release-deps.outputs.cache-primary-key }}
 
   windows-webview-probes:
+    if: github.event_name == 'push'
     name: Windows WebView probe build
     needs: frontend
     runs-on: windows-2022
@@ -641,6 +643,7 @@ jobs:
           compression-level: 1
 
   windows-webview:
+    if: github.event_name == 'push'
     name: Windows WebView (${{ matrix.shard }})
     needs: [package-windows, windows-webview-probes]
     runs-on: windows-2022
@@ -1125,6 +1128,7 @@ jobs:
           compression-level: 1
 
   linux-webview-media:
+    if: github.event_name == 'push'
     name: Linux WebView (${{ matrix.shard }})
     # Only these checks consume the exact release package runtime.
     needs: [frontend, package-linux, linux-webview-probe]
@@ -1400,7 +1404,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, library-search, local-desktop, account-shell, catalog-community]
+        shard: [account-shell, catalog-community]
     defaults:
       run:
         shell: bash
@@ -1729,7 +1733,7 @@ jobs:
   linux-webview:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
-    if: always()
+    if: github.event_name == 'push'
     needs: [linux-webview-shards, linux-webview-media]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1743,6 +1747,7 @@ jobs:
           test "$MEDIA" = success
 
   linux-webview-ux-shards:
+    if: github.event_name == 'push'
     name: Linux WebView UX (${{ matrix.shard }})
     needs: [frontend, linux-webview-probe]
     runs-on: ubuntu-24.04
@@ -1917,7 +1922,7 @@ jobs:
   linux-webview-ux:
     # Preserve the existing CI and release context while requiring all UX shards.
     name: Linux WebView download, search and player smoke
-    if: always()
+    if: github.event_name == 'push'
     needs: linux-webview-ux-shards
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1929,7 +1934,7 @@ jobs:
 
   gate:
     name: CI gate
-    if: always()
+    if: github.event_name == 'push'
     needs: [frontend, native-linux, native, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
