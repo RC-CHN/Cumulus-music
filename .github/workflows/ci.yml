@@ -876,9 +876,62 @@ jobs:
           retention-days: 14
           compression-level: 0
 
+  linux-webview-probe:
+    name: Linux WebView probe build
+    needs: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
+          sudo locale-gen en_US.UTF-8
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned toolchain
+        run: rustup show
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        id: rust-cache
+        with:
+          # Linux reuses downloads only, never a target directory.
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-Linux-downloads-v2-
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - name: Build the shared WebView probe once
+        run: |
+          test -f frontend/dist/index.html
+          cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+          python3 scripts/ci/linux_webview_probe_artifact.py stage \
+            --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-webview-ux-probe/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+
   linux-webview:
     name: Linux WebView smoke
-    needs: [frontend, package-linux]
+    needs: [frontend, package-linux, linux-webview-probe]
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     defaults:
@@ -949,6 +1002,15 @@ jobs:
           printf 'CUMULUS_CI_PACKAGED_FLAC_SHA256=%s\n' "$flac_sha" >> "$GITHUB_ENV"
           test ! -d .build/target
           df -h .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-webview-ux-probe
+      - name: Verify and install the same-attempt Linux WebView probe
+        run: |
+          python3 scripts/ci/linux_webview_probe_artifact.py restore \
+            --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
       - name: Verify the packaged Linux FLAC decoder through ordinary local equalizer playback
         run: |
           cargo build -p cumulus-desktop --example native_local_equalizer_probe --features custom-protocol --locked
@@ -999,7 +1061,7 @@ jobs:
             --frontend-dist frontend/dist --root .build/ci-indexed-flac-linux
       - name: Verify isolated playback preferences and message actions on Linux
         run: |
-          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --features custom-protocol --locked
           outer_network=$(readlink /proc/self/ns/net)
           isolated_proof() {
             sudo unshare --net --fork --kill-child sh -ec '
@@ -1075,7 +1137,6 @@ jobs:
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
           cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
           xvfb-run -a dbus-run-session -- python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
-          cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_guide_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-power-guide-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/system_master_volume_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-master-volume-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/system_master_volume_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-master-volume-diagnosis-linux --diagnosis
@@ -1099,94 +1160,6 @@ jobs:
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/queue_row_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-row-collection-linux --screenshots --trusted-input
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-layout-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-page-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-table-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-batch-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --navigation --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-navigation-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_voice_podcast_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-voice-podcast-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --mv-replay --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-mv-replay-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --menu --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-menu-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-collection-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_collection_create_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-collection-create-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_system_liked_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-system-liked-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_lyric_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-lyric-copy-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_text_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-text-copy-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comment_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-comment-copy-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_title_alias_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-title-alias-linux
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_display_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-display-linux --screenshots --native-keys
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-comments-linux --screenshots
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --composer --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-composer-linux --screenshots
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --likes --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-likes-linux --screenshots
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --reports --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-report-linux --screenshots
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_similar_smoke.py --related --wiki --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-similar-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-speed-linux
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- python3 scripts/ci/song_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-song-speed-linux
-          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_cache_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-cache-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-native-stop-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-quality-linux
-          run_quality_cards() {
-            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_quality_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist "$@"
-          }
-          run_quality_cards --root .build/ci-playback-quality-cards-layout_only-linux --case layout_only
-          run_quality_cards --root .build/ci-playback-quality-cards-layout_vivid-linux --case layout_vivid
-          run_quality_cards --root .build/ci-playback-quality-cards-control-linux --case control
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_trial_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-trial-native-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/trial_seek_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-trial-seek-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_rights_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-rights-ui-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/volume_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-volume-ui-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-layout-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_subscribers_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-subscribers-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_comment_tab_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-comment-tab-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-editor-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_tags_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-tags-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_tag_browse_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-tag-browse-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-layout-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_feedback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-feedback-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-preview-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_audio_toplist_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-audio-toplist-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-detail-focus --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-detail-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-v6 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-v6-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-batch --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-batch-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-queue-menu --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-queue-menu-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_fm_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-fm-preview-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --exact-fallback --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-exact-fallback-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --default-recovery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-default-recovery-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --suggestion-matches --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-suggestion-matches-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --history-last --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-history-last-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --podcast-top-classic --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-podcast-top-classic-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-results-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-v3-linux
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v1-linux
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v3-linux --v3
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1360x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_row_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-row-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-footer-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --vinyl-origin --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-vinyl-origin-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/pc_presentation_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-pc-presentation-linux
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/pc_presentation_smoke.py --preview-density --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-preview-density-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --hot-card --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-hot-card-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --hot-playback --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-hot-playback-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --carousel --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-carousel-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --suggestion-focus --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-suggestion-focus-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --filtered-pagination --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-filtered-pagination-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/qr_captcha_focus_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-qr-captcha-focus-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-qr-identity-recovery-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-author --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-author-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-drawer-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-polling-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-deletion-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-reply-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-latest-releases-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-linux
-          env -u LIBGL_ALWAYS_SOFTWARE -u WEBKIT_FORCE_DMABUF_RENDERER -u WEBKIT_DMABUF_RENDERER_FORCE_SHM LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-software-linux --software-rendering --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-sidebar-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/bundled_themes_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-bundled-themes-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/remote_skin_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-remote-skins-linux --screenshots
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_welfare_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-welfare-linux
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
@@ -1437,10 +1410,166 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  linux-webview-ux:
+    name: Linux WebView download, search and player smoke
+    needs: [frontend, linux-webview-probe]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
+          sudo locale-gen en_US.UTF-8
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-webview-ux-probe
+      - name: Verify and install the same-attempt Linux WebView probe
+        run: |
+          python3 scripts/ci/linux_webview_probe_artifact.py restore \
+            --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
+      - name: Verify download, search and player workflows
+        # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
+          # A bare namespace leaves loopback down and /proc/net/route empty.
+          # Bring up only loopback so proofs see an initialized, route-free table.
+          loopback_only() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              target_user=$1
+              shift
+              ip link set lo up
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$(id -un)" "$@"
+          }
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-layout-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-page-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-table-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-batch-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --navigation --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-navigation-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_voice_podcast_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-voice-podcast-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --mv-replay --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-mv-replay-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --menu --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-menu-linux
+          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-collection-linux
+          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_collection_create_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-collection-create-linux
+          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_system_liked_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-system-liked-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_lyric_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-lyric-copy-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_text_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-text-copy-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comment_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-comment-copy-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_title_alias_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-title-alias-linux
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_display_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-display-linux --screenshots --native-keys
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-comments-linux --screenshots
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --composer --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-composer-linux --screenshots
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --likes --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-likes-linux --screenshots
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --reports --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-report-linux --screenshots
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_similar_smoke.py --related --wiki --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-similar-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-speed-linux
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- python3 scripts/ci/song_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-song-speed-linux
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_cache_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-cache-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-native-stop-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-quality-linux
+          run_quality_cards() {
+            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_quality_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist "$@"
+          }
+          run_quality_cards --root .build/ci-playback-quality-cards-layout_only-linux --case layout_only
+          run_quality_cards --root .build/ci-playback-quality-cards-layout_vivid-linux --case layout_vivid
+          run_quality_cards --root .build/ci-playback-quality-cards-control-linux --case control
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_trial_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-trial-native-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/trial_seek_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-trial-seek-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_rights_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-rights-ui-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/volume_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-volume-ui-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-layout-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_subscribers_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-subscribers-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_comment_tab_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-comment-tab-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-editor-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_tags_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-tags-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_tag_browse_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-tag-browse-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-layout-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_feedback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-feedback-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-preview-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_audio_toplist_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-audio-toplist-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-detail-focus --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-detail-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-v6 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-v6-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-batch --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-batch-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --case playlist-queue-menu --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-playlist-queue-menu-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_fm_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-fm-preview-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --exact-fallback --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-exact-fallback-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --default-recovery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-default-recovery-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --suggestion-matches --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-suggestion-matches-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --history-last --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-history-last-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --podcast-top-classic --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-podcast-top-classic-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-results-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-v3-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v1-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_playback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-playback-v3-linux --v3
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1360x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_podcast_row_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-podcast-row-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-footer-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --vinyl-origin --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-vinyl-origin-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/pc_presentation_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-pc-presentation-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/pc_presentation_smoke.py --preview-density --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-preview-density-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --hot-card --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-hot-card-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --hot-playback --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-hot-playback-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --carousel --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-carousel-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --suggestion-focus --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-suggestion-focus-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --filtered-pagination --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-filtered-pagination-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/qr_captcha_focus_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-qr-captcha-focus-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-qr-identity-recovery-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-author --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-author-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-drawer-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-polling-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-deletion-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-reply-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-latest-releases-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-linux
+          env -u LIBGL_ALWAYS_SOFTWARE -u WEBKIT_FORCE_DMABUF_RENDERER -u WEBKIT_DMABUF_RENDERER_FORCE_SHM LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-software-linux --software-rendering --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-sidebar-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/bundled_themes_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-bundled-themes-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/remote_skin_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-remote-skins-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_welfare_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-welfare-linux
+      - name: Measure Linux WebView disk after smoke
+        if: always()
+        run: df -h .
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Upload synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-linux-webview-ux
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native-linux, native, package-linux, package-windows, linux-webview, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, native, package-linux, package-windows, linux-webview-probe, linux-webview, linux-webview-ux, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -1451,7 +1580,9 @@ jobs:
           LINUX_NATIVE: ${{ needs.native-linux.result }}
           LINUX_PACKAGE: ${{ needs.package-linux.result }}
           WINDOWS_PACKAGE: ${{ needs.package-windows.result }}
+          LINUX_WEBVIEW_PROBE: ${{ needs.linux-webview-probe.result }}
           LINUX_WEBVIEW: ${{ needs.linux-webview.result }}
+          LINUX_WEBVIEW_UX: ${{ needs.linux-webview-ux.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
           SMTC: ${{ needs.smtc-diagnostic.result }}
@@ -1462,7 +1593,9 @@ jobs:
           test "$LINUX_NATIVE" = success
           test "$LINUX_PACKAGE" = success
           test "$WINDOWS_PACKAGE" = success
+          test "$LINUX_WEBVIEW_PROBE" = success
           test "$LINUX_WEBVIEW" = success
+          test "$LINUX_WEBVIEW_UX" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success
           else

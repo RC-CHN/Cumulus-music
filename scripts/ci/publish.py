@@ -12,6 +12,7 @@ from release_guard import VERSION, check_release, git, is_prerelease
 PLATFORMS = ("linux-x64", "windows-x64")
 REQUIRED_JOBS = {
     "Frontend and release rules", "Native (linux-x64)", "Native (windows-x64)", "Linux WebView smoke", "CI gate",
+    "Linux WebView probe build", "Linux WebView download, search and player smoke",
 }
 
 
