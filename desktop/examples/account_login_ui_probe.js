@@ -35,19 +35,39 @@
     }
     throw Error(label);
   };
-  async function settle() {
-    await wait(async () => {
-      await new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve)),
-      );
-      return !document
-        .getAnimations()
-        .some(
-          (a) =>
-            Number.isFinite(a.effect?.getComputedTiming().endTime) &&
-            (a.pending || a.playState === "running"),
+  const settleTimeoutMs = 24_000;
+  async function paintFrames(phase, remainingMs = settleTimeoutMs) {
+    let frame, timer;
+    try {
+      await new Promise((resolve, reject) => {
+        // A hidden or stalled WebView may stop delivering rAF while timers
+        // still run. Waiting for frames alone would bypass the polling limit.
+        timer = setTimeout(
+          () => reject(Error(`paint frames did not arrive: ${phase}`)),
+          Math.max(0, remainingMs),
         );
-    }, "finite animations");
+        frame = requestAnimationFrame(() => {
+          frame = requestAnimationFrame(resolve);
+        });
+      });
+    } finally {
+      clearTimeout(timer);
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    }
+  }
+  async function settle(phase = last) {
+    const deadline = performance.now() + settleTimeoutMs;
+    do {
+      await paintFrames(phase, deadline - performance.now());
+      const moving = document.getAnimations().some(
+        (a) =>
+          Number.isFinite(a.effect?.getComputedTiming().endTime) &&
+          (a.pending || a.playState === "running"),
+      );
+      if (!moving) return;
+      await sleep(40);
+    } while (performance.now() < deadline);
+    throw Error(`finite animations did not settle: ${phase}`);
   }
   function visible(node) {
     if (!node?.isConnected) return false;
@@ -105,7 +125,7 @@
       }),
     );
     await wait(() => document.documentElement.dataset.theme === value, "theme");
-    await settle();
+    await settle(`theme ${value}`);
   }
   async function resize(width, height) {
     await emit("resize", { width, height, scale: devicePixelRatio });
@@ -113,11 +133,11 @@
       () => innerWidth === width && innerHeight === height,
       "CSS viewport",
     );
-    await settle();
+    await settle(`viewport ${width}×${height}`);
   }
   async function stage(name, extra = {}) {
     last = name;
-    await settle();
+    await settle(name);
     const focus = document.activeElement,
       dialog = (window.__deviceRemovalProof && focus?.closest("dialog[open]")) || one("dialog[open]");
     const controls = dialog
@@ -205,17 +225,17 @@
             )),
       "login method ready",
     );
-    await settle();
+    await settle(`login method ${label}`);
   }
   async function open() {
     click(one(".account-button"));
     await wait(() => one(".login-methods"), "login dialog");
-    await settle();
+    await settle("open login dialog");
   }
   async function closeLogin() {
     click(button("关闭登录"));
     await wait(() => !one("dialog"), "login closed");
-    await settle();
+    await settle("close login dialog");
   }
   async function enrollQuickOffer() {
     await mode("quick_offer");
@@ -236,7 +256,7 @@
         one(".account-button").textContent.includes(name),
       "native account committed",
     );
-    await settle();
+    await settle("post-login account");
   }
   async function chooser() {
     click(one(".account-button"));
@@ -379,14 +399,14 @@
     const back = async (kind) => {
       click(one(".back-button"));
       await wait(() => settingsEntry(kind), "settings restored");
-      await settle();
+      await settle(`return from account ${kind} settings`);
     };
     await open();
     await email();
     await logged();
     click(button("打开设置"));
     await wait(() => settingsEntry("profile"), "profile entry");
-    await settle();
+    await settle("open account settings");
     click(settingsEntry("profile"));
     await wait(
       () => page(profile)?.textContent.includes("这是合成的账号资料"),
@@ -495,7 +515,7 @@
     click(toggle());
     await wait(() => signedIn().length === 8, "expanded in reduced motion");
     click(toggle());
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await paintFrames("reduced-motion device collapse");
     assert(signedIn().length === 6 && signedOut().length === 8 && scroller().scrollTop <= 1, "reduced-motion collapse is immediate");
     setMotion(savedMotion);
     assert(!page(devices).innerHTML.includes("fixture-private-"), "no server device identifiers");
