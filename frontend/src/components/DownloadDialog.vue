@@ -94,10 +94,12 @@ const stale = computed(
           ? !live.value.needsTransferRestart
           : live.value.status !== 'complete' || live.value.path !== original.path)),
 );
+const staleVoice = computed(() => props.target.kind === 'voice' && props.target.live?.() === false);
 const blocked = computed(
   () =>
     busy.value ||
     choosing.value ||
+    staleVoice.value ||
     (props.target.kind === 'voice_song' && (!props.target.live() || props.target.busy())) ||
     (props.target.kind === 'settings' &&
       (loadingQuality.value || !quality.value || !!qualityError.value)) ||
@@ -183,6 +185,7 @@ async function choose(kind: 'root' | 'file') {
 async function perform(command: DownloadCommand) {
   if (blocked.value) return;
   const result = await props.model.command(command);
+  if (staleVoice.value) return;
   if (result?.failed.length)
     localError.value = `已受理 ${result.accepted.length} 项，${result.failed.length} 项未完成：${result.failed[0]?.message}`;
   if (result && !result.failed.length) {
@@ -309,6 +312,7 @@ async function fileAction() {
       </button>
     </header>
     <div v-if="error || localError" class="error-state" role="alert">{{ localError || error }}</div>
+    <p v-if="staleVoice" class="form-warning" role="alert">所选节目已变化，请关闭后重新选择。</p>
     <p v-if="view?.migration" class="form-warning">目录迁移尚未完成，请在下载管理中继续或撤销。</p>
     <p v-if="stale" class="form-warning" role="alert">
       这条下载记录已改变或不在当前列表中，请关闭窗口后重新选择。

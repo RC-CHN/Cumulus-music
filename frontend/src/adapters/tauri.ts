@@ -580,6 +580,10 @@ export function createTauriClient(): CoreClient {
       invoke('player_queue_like', { epoch, revision, entryId, liked }),
     playerQueueCatalogMenu: (epoch, revision, entryId) =>
       invoke('player_queue_catalog_menu', { epoch, revision, entryId }),
+    playerQueueVoiceMenu: (epoch, revision, entryId) =>
+      invoke('player_queue_voice_menu', { epoch, revision, entryId }),
+    playerQueueOpenVoiceDirectory: (epoch, revision, entryId) =>
+      invoke('player_queue_open_voice_directory', { epoch, revision, entryId }),
     playerChorus: (epoch, playId) => invoke('player_chorus', { epoch, playId }),
     playerCommentCount: (epoch, playId) => invoke('player_comment_count', { epoch, playId }),
     playerVinylSimilarAvailable: (epoch) => invoke('player_vinyl_similar_available', { epoch }),

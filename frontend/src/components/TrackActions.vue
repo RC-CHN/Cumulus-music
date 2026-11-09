@@ -6,12 +6,14 @@ import type { PlayerModel } from '../composables/usePlayer';
 import type { MenuItem } from '../services/menu';
 import {
   queueSongMenuItems,
+  queueVoiceMenuItems,
   songLink,
   type QueueMenuAction,
-  type QueueTrackMenuRequest,
+  type QueueMenuRequest,
   type TrackMenuRequest,
 } from '../services/trackMenu';
 import { useCore } from '../services/core';
+import { podcastProgramPublicLink, type PodcastProgramShare } from '../services/podcast';
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
 import TrackShareDialog from './TrackShareDialog.vue';
@@ -22,13 +24,15 @@ const emit = defineEmits<{
   comments: [track: TrackView];
   remove: [track: TrackView, playlist: PlaylistView];
   manage: [track: TrackView, playlist: PlaylistView];
-  queueAction: [key: QueueMenuAction, input: QueueTrackMenuRequest];
+  queueAction: [key: QueueMenuAction, input: QueueMenuRequest];
 }>();
 const client = useCore(),
   menu = ref<InstanceType<typeof ActionMenu>>();
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
-const queueRequest = shallowRef<QueueTrackMenuRequest>();
+const queueRequest = shallowRef<QueueMenuRequest>();
+const sharedVoice = shallowRef<{ program: PodcastProgramShare; live: () => boolean }>();
+const voiceShareRestore = ref(false);
 const shared = shallowRef<TrackView>(),
   message = ref(''),
   failed = ref(false),
@@ -41,12 +45,13 @@ const items = computed<MenuItem[]>(() => {
   const queue = queueRequest.value;
   if (queue) {
     if (!queue.live()) return [];
-    return queueSongMenuItems(
-      queue.info,
-      queue.tracks.length > 1,
-      props.player.playing.value && props.player.view.value?.entryId === queue.info.entryId,
-      !props.player.ready.value || props.player.busy.value || props.player.queueBusy.value,
-    ).map((item) =>
+    const group = queue.tracks.length > 1;
+    const playing =
+      props.player.playing.value && props.player.view.value?.entryId === queue.info.entryId;
+    const locked =
+      !props.player.ready.value || props.player.busy.value || props.player.queueBusy.value;
+    if (queue.kind === 'voice') return queueVoiceMenuItems(queue.info, group, playing, locked);
+    return queueSongMenuItems(queue.info, group, playing, locked).map((item) =>
       item.key === 'collect' ? { ...item, disabled: queue.collectionLocked() } : item,
     );
   }
@@ -134,6 +139,7 @@ function close() {
   request.value = undefined;
   queueRequest.value = undefined;
   shared.value = undefined;
+  closeVoiceShare(false);
   clear();
 }
 watch(
@@ -179,7 +185,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
     trigger,
   );
 }
-async function showQueue(input: QueueTrackMenuRequest) {
+async function showQueue(input: QueueMenuRequest) {
   clear();
   menu.value?.close();
   request.value = undefined;
@@ -207,7 +213,10 @@ async function copy() {
   const episode = request.value?.episode;
   if (episode && (!episode.live() || episode.selection || episode.copyrightBlocked)) return;
   const track = queue?.info.track ?? request.value?.track;
-  const link = track && songLink(track);
+  const link =
+    queue?.kind === 'voice'
+      ? podcastProgramPublicLink(queue.info.voiceId)
+      : track && songLink(track);
   if (!link || copying.value) return;
   const attempt = sequence;
   retrying.value = !!document.activeElement?.closest('.track-action-feedback');
@@ -216,13 +225,13 @@ async function copy() {
   failed.value = false;
   try {
     await client.copyText(link);
-    if (attempt === sequence) {
+    if (attempt === sequence && (!queue || queue.live())) {
       const retryFocused = document.activeElement?.closest('.track-action-feedback');
       feedback('链接已复制');
       if (retryFocused && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
     }
   } catch {
-    if (attempt === sequence) feedback('复制链接失败，请重试', true);
+    if (attempt === sequence && (!queue || queue.live())) feedback('复制链接失败，请重试', true);
   } finally {
     if (attempt === sequence) {
       copying.value = false;
@@ -230,17 +239,34 @@ async function copy() {
     }
   }
 }
+function closeVoiceShare(restore: boolean) {
+  voiceShareRestore.value = restore;
+  sharedVoice.value = undefined;
+}
+function voiceShareReturn() {
+  return returnFocus ?? null;
+}
 async function select(key: string) {
   const queue = queueRequest.value;
   if (queue) {
     const action = items.value.find((item) => item.key === key);
     if (!queue.live() || !action || action.disabled || action.separator) return;
     if (key === 'play') queue.play();
-    else if (key === 'collect') queue.collect();
+    else if (key === 'collect' && queue.kind === 'catalog') queue.collect();
     else if (key === 'remove') queue.remove();
     else if (key === 'copy') await copy();
-    else if (key === 'share') shared.value = queue.info.track;
-    else emit('queueAction', key as QueueMenuAction, queue);
+    else if (key === 'share') {
+      if (queue.kind === 'voice') {
+        sharedVoice.value = {
+          program: {
+            id: queue.info.voiceId,
+            name: queue.info.track.name,
+            creator: queue.info.creator?.name || queue.info.track.artists.join(' / '),
+          },
+          live: () => queueRequest.value === queue && queue.live(),
+        };
+      } else shared.value = queue.info.track;
+    } else emit('queueAction', key as QueueMenuAction, queue);
     return;
   }
   const input = request.value;
@@ -304,13 +330,27 @@ defineExpose({ show, showQueue, close });
     ref="menu"
     context-only
     variant="song"
-    :label="queueRequest ? '播放列表歌曲操作' : '歌曲操作'"
+    :label="
+      queueRequest?.kind === 'voice'
+        ? '播放列表声音操作'
+        : queueRequest
+          ? '播放列表歌曲操作'
+          : '歌曲操作'
+    "
     :items="items"
     @select="select"
   />
   <ModalTransition
     ><TrackShareDialog v-if="shared" :track="shared" @close="shared = undefined"
   /></ModalTransition>
+  <ModalTransition :return-focus="voiceShareReturn" :restore-focus="voiceShareRestore">
+    <TrackShareDialog
+      v-if="sharedVoice"
+      :program="sharedVoice.program"
+      :can-copy="sharedVoice.live"
+      @close="closeVoiceShare(sharedVoice.live())"
+    />
+  </ModalTransition>
   <MenuTransition
     ><div v-if="message" class="track-action-feedback" :class="{ failed }" role="status">
       {{ message

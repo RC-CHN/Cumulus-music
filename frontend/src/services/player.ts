@@ -256,6 +256,7 @@ export interface QueueTrack {
   origin?: QueueOrigin;
   likeSongId?: string;
   catalogMenu?: boolean;
+  voiceMenu?: boolean;
   collectible?: boolean;
 }
 export interface QueueCatalogMenu {
@@ -268,6 +269,19 @@ export interface QueueCatalogMenu {
   commentCount: number | null;
   downloaded: boolean;
   downloadTaskId: string | null;
+}
+export interface QueueVoiceMenu {
+  epoch: string;
+  revision: string;
+  entryId: string;
+  track: TrackView;
+  voiceId: string;
+  sourceLabel: string;
+  radioId: string | null;
+  creator: { id: string | null; name: string } | null;
+  commentCount: number | null;
+  downloaded: boolean | null;
+  directoryAvailable: boolean;
 }
 export interface QueueLikeTarget {
   epoch: string;
@@ -857,6 +871,8 @@ export interface PlayerClient
     revision: string,
     entryId: string,
   ): Promise<QueueCatalogMenu>;
+  playerQueueVoiceMenu(epoch: string, revision: string, entryId: string): Promise<QueueVoiceMenu>;
+  playerQueueOpenVoiceDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
   playerVinylCommentsAvailable(epoch: string): Promise<boolean>;

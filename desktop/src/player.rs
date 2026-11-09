@@ -464,6 +464,46 @@ pub async fn player_queue_catalog_menu<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_queue_voice_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<QueueVoiceMenu, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue voice menu requires the main window").into());
+    }
+    client
+        .player_queue_voice_menu(
+            &epoch,
+            &revision,
+            &entry_id,
+            crate::network_diagnostics::observed_default_route(&window),
+        )
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_queue_open_voice_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue voice directory requires the main window").into());
+    }
+    let path = client
+        .player_queue_voice_directory(&epoch, &revision, &entry_id)
+        .await?;
+    client.validate_download_epoch(&epoch)?;
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_chorus(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

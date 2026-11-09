@@ -48,7 +48,7 @@ pub use super::player::{
     QualityDetailsView, QualityMenuPresentation, QualityTrialCommand, QualityTrialOutcome,
     QualityTrialView, QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand,
     QueueClickPreferencesView, QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack,
-    QueueView, SearchPodcastRowGesture, SearchResultPlayback, SongRowSelection,
+    QueueView, QueueVoiceMenu, SearchPodcastRowGesture, SearchResultPlayback, SongRowSelection,
     StartupPreferencesCommand, StartupPreferencesView, VoiceSongAction, VoiceSongCollectCreation,
     VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongDownloadCreation,
     VoiceSongDownloadDecision, VoiceSongDownloadPicker, VoiceSongDownloadPlan,

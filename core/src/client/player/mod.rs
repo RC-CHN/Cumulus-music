@@ -32,6 +32,7 @@ mod queue_like;
 mod queue_menu;
 mod queue_more_playlist;
 pub(super) mod queue_playlist;
+mod queue_voice_menu;
 mod reports;
 mod search_artist;
 mod search_podcast;
@@ -1968,6 +1969,10 @@ impl MusicClient {
                         origin: ordinary_queue.then(|| origin::queue(i)).flatten(),
                         like_song_id,
                         catalog_menu,
+                        voice_menu: ordinary_queue
+                            && token.uid.is_some()
+                            && queue.intelligence.is_none()
+                            && queue_voice_menu::eligible(&i.resource),
                         collectible,
                     })
                 })

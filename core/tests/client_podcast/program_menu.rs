@@ -2,6 +2,117 @@ use super::*;
 use cumulus_core::network_diagnostics::DefaultRoute;
 const COUNT: &str = "/api/resource/commentInfo/list";
 
+#[tokio::test]
+async fn queue_voice_menu_reads_the_selected_episode_and_discards_a_retired_row() {
+    let (_root, api, _, client) = fixture();
+    api.count.store(3, Ordering::SeqCst);
+    let page = client
+        .podcast_page("1", query(scope(), 0), true)
+        .await
+        .unwrap();
+    let active = client
+        .play_selection(
+            "1",
+            PlaySelection::Podcast {
+                scope: scope(),
+                revision: page.revision,
+                start_id: Some("1".into()),
+            },
+        )
+        .await
+        .unwrap();
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(queue.tracks.len(), 3);
+    assert!(
+        queue
+            .tracks
+            .iter()
+            .all(|row| row.voice_menu && !row.catalog_menu)
+    );
+    let second = &queue.tracks[1].entry_id;
+    let third = &queue.tracks[2].entry_id;
+    let read = |revision, entry, route| client.player_queue_voice_menu("1", revision, entry, route);
+    let count_calls = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path == COUNT)
+            .map(|(_, args)| args.clone())
+            .collect::<Vec<_>>()
+    };
+    assert!(matches!(
+        read("0", third, DefaultRoute::Present).await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        read(&queue.revision, "3", DefaultRoute::Present).await,
+        Err(Error::InvalidInput(_))
+    ));
+    let offline = read(&queue.revision, third, DefaultRoute::Missing)
+        .await
+        .unwrap();
+    assert_eq!(offline.comment_count, None);
+    assert!(count_calls().is_empty());
+    let menu = read(&queue.revision, third, DefaultRoute::Present)
+        .await
+        .unwrap();
+    assert_eq!(
+        (menu.track.id.as_str(), menu.voice_id.as_str()),
+        ("1003", "3")
+    );
+    assert_eq!(menu.comment_count, Some(54));
+    assert_eq!(menu.source_label, "Radio");
+    assert_eq!(menu.radio_id.as_deref(), Some("7"));
+    assert_eq!(menu.creator.as_ref().unwrap().name, "Host");
+    assert_eq!(menu.downloaded, Some(false));
+    assert!(!menu.directory_available);
+    assert!(!serde_json::to_string(&menu).unwrap().contains("SECRET"));
+    let plain = read(&queue.revision, second, DefaultRoute::Present)
+        .await
+        .unwrap();
+    assert_eq!(plain.comment_count, None);
+    assert!(matches!(
+        client
+            .player_queue_voice_directory("1", &queue.revision, third)
+            .await,
+        Err(Error::DownloadedFileMissing)
+    ));
+
+    api.menu_count_hold.store(true, Ordering::SeqCst);
+    let pending = read(&queue.revision, third, DefaultRoute::Present);
+    let edit = async {
+        api.menu_count_started.notified().await;
+        let current = client
+            .player_action(
+                "1",
+                PlayerAction::QueueFor {
+                    expected_queue_revision: queue.revision.clone(),
+                    expected_room_id: None,
+                    edit: QueueEdit::Remove {
+                        entry_ids: vec![third.clone()],
+                    },
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(current.play_id, active.play_id);
+        assert_eq!(current.entry_id, active.entry_id);
+        assert_eq!(current.queue_len, 2);
+        api.menu_count_release.notify_one();
+    };
+    let (retired, ()) = tokio::join!(pending, edit);
+    assert!(matches!(retired, Err(Error::QueueChanged)));
+    assert_eq!(
+        count_calls(),
+        [
+            json!({"resourceType":1,"resourceIds":"[\"3\"]"}),
+            json!({"resourceType":1,"resourceIds":"[\"2\"]"}),
+            json!({"resourceType":1,"resourceIds":"[\"3\"]"}),
+        ]
+    );
+}
+
 fn target(voice_id: &str, revision: &str) -> PodcastProgramTarget {
     PodcastProgramTarget {
         voice_id: voice_id.into(),
