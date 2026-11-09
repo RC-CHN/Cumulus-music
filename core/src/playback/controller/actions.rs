@@ -42,9 +42,16 @@ impl Actor {
                 | PlaybackCommand::MoveDisplayed(_)
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
                 | PlaybackCommand::ApplyLocalBatch(_)
+                | PlaybackCommand::RecallPrefill(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
+            return;
+        }
+        if let PlaybackCommand::RecallPrefill(value) = request.command {
+            let authority = &request.guard.as_ref().expect("guarded recall prefill").1;
+            let result = self.recall_prefill(value, authority);
+            self.reply(request.reply, result);
             return;
         }
         if matches!(request.command, PlaybackCommand::Queue) {
@@ -620,6 +627,7 @@ impl Actor {
                     Err(Error::StaleResponse)
                 }
             }
+            PlaybackCommand::RecallPrefill(_) => unreachable!("handled before transport intents"),
             PlaybackCommand::Snapshot | PlaybackCommand::SyncQueue => Ok(()),
             PlaybackCommand::Quality(_)
             | PlaybackCommand::TrialQuality { .. }

@@ -666,7 +666,7 @@ pub(super) fn catalog_queue_resource(song: &Value, quality: Quality) -> Result<V
     Ok(queue_resource_for_track(&v, quality))
 }
 
-pub(super) fn queue_resource_for_track(
+pub(in crate::client) fn queue_resource_for_track(
     v: &super::super::dto::TrackView,
     quality: Quality,
 ) -> Value {

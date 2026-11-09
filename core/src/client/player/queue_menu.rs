@@ -40,6 +40,7 @@ fn source_label(item: &QueueEntry) -> &str {
         Some("daily_recommendations") => "每日推荐",
         Some("style_recommendations") => "风格推荐",
         Some("queue_more_recommendation") => "更多推荐",
+        Some("recall_prefill") => "新召推荐预填",
         _ => "",
     }
 }

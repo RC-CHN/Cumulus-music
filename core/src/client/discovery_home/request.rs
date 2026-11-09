@@ -13,6 +13,7 @@ pub(super) const PLAYLISTS: &str = "HOMEPAGE_BLOCK_PLAYLIST_RCMD";
 pub(super) const HEARTBEAT: &str = "HOMEPAGE_BLOCK_RED_SIMILAR_SONG";
 pub(super) const ALL_LISTEN: &str = "HOMEPAGE_BLOCK_ALL_LISTEN";
 pub(super) const DAILY_VOICE: &str = "HOMEPAGE_MUSIC_PODCAST_RCMD_BLOCK";
+pub(super) const HOT_RESOURCE: &str = "HOMEPAGE_BLOCK_HOT_RESOURCE";
 const BLOCKS: &[&str] = &[VIP, HEARTBEAT, STYLE, DAILY_VOICE, PLAYLISTS, ALL_LISTEN];
 
 pub(super) struct HomeFeed {
@@ -20,7 +21,11 @@ pub(super) struct HomeFeed {
     pub mix: Option<Value>,
 }
 
-fn batch() -> Result<Value> {
+fn batch(hot: bool) -> Result<Value> {
+    let mut blocks = BLOCKS.to_vec();
+    if hot {
+        blocks.push(HOT_RESOURCE);
+    }
     let children = [
         ("/api/personalized/taste", json!({})),
         (CUSTOM, json!({"newStyle":true})),
@@ -28,7 +33,7 @@ fn batch() -> Result<Value> {
         (
             GENERAL,
             json!({
-                "cursor": serde_json::to_string(&json!({"offset":0,"blockCodeOrderList":BLOCKS}))?,
+                "cursor": serde_json::to_string(&json!({"offset":0,"blockCodeOrderList":blocks}))?,
                 "extInfo": r#"{"abInfo":{"hp-new-homepageV3.1":"t3"}}"#,
                 "newStyle":true
             }),
@@ -51,8 +56,8 @@ fn batch() -> Result<Value> {
     Ok(Value::Object(args))
 }
 
-pub(super) async fn feed(api: Arc<dyn Api>) -> Result<HomeFeed> {
-    let batch = api.call("/api/batch", batch()?, false, &[200]).await?;
+pub(super) async fn feed(api: Arc<dyn Api>, hot: bool) -> Result<HomeFeed> {
+    let batch = api.call("/api/batch", batch(hot)?, false, &[200]).await?;
     // M/244.T calls x after the batch. The official x treats failure as an
     // empty feature carousel rather than invalidating the other blocks.
     let local_time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();

@@ -19,12 +19,19 @@ export interface DiscoveryHomeSection {
   cards: DiscoveryHomeCard[];
 }
 
+export interface HomeRecallGuide {
+  receipt: string;
+  queueRevision: string;
+}
+
 export interface DiscoveryHomePage {
+  recallGuide?: HomeRecallGuide;
   recommendationEnabled: boolean;
   sections: DiscoveryHomeSection[];
 }
 
 export interface DiscoveryHomeClient {
   discoveryHome(epoch: string): Promise<AccountData<DiscoveryHomePage>>;
+  acknowledgeHomeRecallGuide(epoch: string, receipt: string): Promise<void>;
   discoveryHomeRankings(epoch: string): Promise<AccountData<RankingGroup | null>>;
 }

@@ -277,6 +277,8 @@ export function createTauriClient(): CoreClient {
     ordinaryEssentialBooks: (epoch, category) =>
       invoke('ordinary_essential_books', { epoch, category }),
     discoveryHome: (epoch) => invoke('discovery_home', { epoch }),
+    acknowledgeHomeRecallGuide: (epoch, receipt) =>
+      invoke('acknowledge_home_recall_guide', { epoch, receipt }),
     verticalZoneMenu: (epoch) => invoke('vertical_zone_menu', { epoch }),
     verticalZoneFmPreview: (epoch, viewId, cardKey) =>
       invoke('vertical_zone_fm_preview', { epoch, viewId, cardKey }),

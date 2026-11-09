@@ -2,8 +2,8 @@ use super::{
     DiscoveryHomeCard as Card, DiscoveryHomeSection as Section, DiscoveryHomeTarget as Target,
     DiscoveryStyleSeeds,
     request::{
-        ALL_LISTEN, BOOKS, CUSTOM, DAILY_VOICE, GENERAL, HEARTBEAT, HomeFeed, PLAYLISTS, STYLE,
-        VIP, VOICES,
+        ALL_LISTEN, BOOKS, CUSTOM, DAILY_VOICE, GENERAL, HEARTBEAT, HOT_RESOURCE, HomeFeed,
+        PLAYLISTS, STYLE, VIP, VOICES,
     },
 };
 use crate::{
@@ -272,6 +272,59 @@ fn child<'a>(batch: &'a Value, path: &str) -> Option<&'a Value> {
     let response = batch.get(path)?;
     (response["code"].as_i64() == Some(200) || response["code"].as_str() == Some("200"))
         .then_some(&response["data"])
+}
+
+/// M/21 flattens creative/resource groups once. M/2270 picks the HOT
+/// track list first when requested and populated, then caps the source at 12.
+/// Malformed or non-song rows cannot become a native playback selection.
+pub(super) fn recall_songs(feed: &HomeFeed, hot: bool) -> Vec<crate::client::dto::TrackView> {
+    let Some(general) = child(&feed.batch, GENERAL) else {
+        return Vec::new();
+    };
+    let block = |code| {
+        rows(&general["blocks"])
+            .take(32)
+            .find(|row| row["blockCode"] == code)
+    };
+    let extract = |code| {
+        let mut seen = HashSet::new();
+        block(code)
+            .into_iter()
+            .flat_map(resources)
+            .take(12)
+            .filter_map(|resource| {
+                let card = song(resource)?;
+                let Target::Song { id } = card.target else {
+                    return None;
+                };
+                let raw = &resource["resourceExtInfo"]["songData"];
+                let mut track = crate::client::mapping::track(raw).ok()?;
+                if track.voice_id.is_some() || !seen.insert(id) {
+                    return None;
+                }
+                track.name = card.title;
+                track.cover_url = card.cover_url;
+                track.artist_refs.retain_mut(|artist| {
+                    let Some(name) = label(&Value::String(std::mem::take(&mut artist.name))) else {
+                        return false;
+                    };
+                    artist.name = name;
+                    true
+                });
+                track.artist_refs.truncate(16);
+                track.album = label(&Value::String(track.album)).unwrap_or_default();
+                Some(track)
+            })
+            .collect::<Vec<_>>()
+    };
+    // M/21 returns one nested array per creative. M/2270 checks that
+    // outer length before flattening; a malformed populated HOT block is
+    // not authority to substitute a different list.
+    if hot && block(HOT_RESOURCE).is_some_and(|block| creatives(block).next().is_some()) {
+        extract(HOT_RESOURCE)
+    } else {
+        extract(ALL_LISTEN)
+    }
 }
 
 pub(super) fn home(

@@ -165,6 +165,13 @@ pub struct LocalBatchUpdate {
     pub(crate) index: crate::storage::OperationLock,
     pub(crate) start: bool,
 }
+/// Native-only homepage metadata publication. It never supplies a media URL,
+/// claims the output device, or asks the actor to load its selected entry.
+pub struct RecallPrefill {
+    pub(crate) api: std::sync::Arc<dyn crate::protocol::api::Api>,
+    pub(crate) resources: Vec<Value>,
+    pub(crate) login_check: Box<dyn Fn() -> crate::Result<()> + Send + Sync>,
+}
 pub struct QueueTransport {
     pub position: Option<f64>,
     pub paused: bool,
@@ -226,6 +233,7 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    RecallPrefill(RecallPrefill),
     /// Explicit next-play insertion; only this durable edit starts a chorus read.
     InsertNext(QueueUpdate),
     /// M71 browse list insertion with the exact freshly authorized first episode.

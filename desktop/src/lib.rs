@@ -394,6 +394,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 rankings::ranking_page,
                 catalog::catalog_page,
                 catalog::discovery_home,
+                catalog::acknowledge_home_recall_guide,
                 catalog::ordinary_essential,
                 catalog::vertical_zone_menu,
                 catalog::vertical_zone_page,

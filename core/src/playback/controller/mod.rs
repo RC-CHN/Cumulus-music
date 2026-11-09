@@ -53,7 +53,7 @@ use types::Reply;
 pub use types::{
     FmRestore, IntelligenceUpdate, LocalBatchUpdate, PlaybackCommand, PlaybackFence,
     PlaybackSnapshot, PlaybackSpeedScope, PlaybackStatus, PrefetchSnapshot, QueueTransport,
-    QueueUpdate, RemotePlayback, StartupRestore,
+    QueueUpdate, RecallPrefill, RemotePlayback, StartupRestore,
 };
 
 type Engine = Arc<Mutex<Box<dyn AudioEngine>>>;

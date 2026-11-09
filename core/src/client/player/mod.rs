@@ -31,7 +31,7 @@ mod queue_edit;
 mod queue_like;
 mod queue_menu;
 mod queue_more_playlist;
-mod queue_playlist;
+pub(super) mod queue_playlist;
 mod reports;
 mod search_artist;
 mod search_podcast;

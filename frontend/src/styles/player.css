@@ -159,6 +159,34 @@
   width: 17px;
   height: 17px;
 }
+.recall-play-anchor {
+  position: relative;
+  flex: 0 0 auto;
+}
+.recall-play-guide {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  padding: 7px 11px;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.recall-play-guide::after {
+  position: absolute;
+  top: 100%;
+  left: calc(50% - 5px);
+  border-top: 5px solid var(--accent-fill);
+  border-right: 5px solid transparent;
+  border-left: 5px solid transparent;
+  content: '';
+}
 .play-toggle {
   display: grid;
   place-items: center;

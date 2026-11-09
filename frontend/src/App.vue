@@ -6565,6 +6565,10 @@ onUnmounted(() => {
     <PlayerBar
       :account="account"
       :podcast-resume="pcPresentation.podcastResume.value"
+      :recall-guide="discoveryHome.recallGuide.value"
+      @recall-guide-shown="
+        (epoch, receipt) => void core.acknowledgeHomeRecallGuide(epoch, receipt).catch(() => {})
+      "
       @resume-confirmed="podcasts.observePlayerResume"
       :player="player"
       :intelligence="intelligence"
