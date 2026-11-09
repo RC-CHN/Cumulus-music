@@ -68,9 +68,9 @@ impl MusicClient {
                 )
                 .await
             }
-            PlaySelection::LocalBatch { .. } => Err(Error::InvalidInput(
-                "local batch playback requires a preparation ticket",
-            )),
+            PlaySelection::LocalBatch { .. } | PlaySelection::LocalBatchAdd { .. } => Err(
+                Error::InvalidInput("local batch requires a preparation ticket"),
+            ),
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
@@ -280,6 +280,7 @@ impl MusicClient {
             input,
             PlaySelection::Local { .. }
                 | PlaySelection::LocalBatch { .. }
+                | PlaySelection::LocalBatchAdd { .. }
                 | PlaySelection::History { .. }
                 | PlaySelection::Downloads { .. }
         ) {
@@ -636,25 +637,44 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
-            PlaySelection::LocalBatch {
-                query,
-                revision,
-                tracks,
-            } => {
+            input @ (PlaySelection::LocalBatch { .. } | PlaySelection::LocalBatchAdd { .. }) => {
+                use super::local_batch::LocalBatchAction;
+                let action = if matches!(input, PlaySelection::LocalBatch { .. }) {
+                    LocalBatchAction::Play
+                } else {
+                    LocalBatchAction::Add
+                };
+                let (query, revision, tracks) = match input {
+                    PlaySelection::LocalBatch {
+                        query,
+                        revision,
+                        tracks,
+                    }
+                    | PlaySelection::LocalBatchAdd {
+                        query,
+                        revision,
+                        tracks,
+                    } => (query, revision, tracks),
+                    _ => unreachable!("matched local batch"),
+                };
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
-                let (command, guard) = self
-                    .local_batch_selection(&token, query, revision, tracks)
+                let (update, guard) = self
+                    .local_batch_selection(&token, query, revision, tracks, action)
                     .await?;
-                let state = self
-                    .submit_selection_with_source(
+                let state = if update.start {
+                    self.submit_selection_with_source(
                         &token,
-                        command,
+                        PlaybackCommand::ApplyLocalBatch(update),
                         attempt,
                         lease,
                         Some(prepared),
                         Some(guard),
                     )
-                    .await?;
+                    .await?
+                } else {
+                    self.submit_prepared_local_queue_only(&token, prepared, update, guard)
+                        .await?
+                };
                 self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
@@ -907,6 +927,7 @@ impl MusicClient {
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::LocalBatch { .. }
+                    | PlaySelection::LocalBatchAdd { .. }
                     | PlaySelection::Podcast { .. }
                     | PlaySelection::PodcastRecent { .. }
                     | PlaySelection::PodcastSubscriptionRecommendation { .. }

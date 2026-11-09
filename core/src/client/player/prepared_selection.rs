@@ -4,7 +4,9 @@ use crate::{
     account::SessionToken,
     client::focus::{FocusSnapshot, Owner},
     playback::{
-        controller::{PlaybackCommand, PlaybackFence, PlaybackSnapshot, QueueUpdate},
+        controller::{
+            LocalBatchUpdate, PlaybackCommand, PlaybackFence, PlaybackSnapshot, QueueUpdate,
+        },
         engine::Cancellation,
     },
 };
@@ -72,7 +74,48 @@ impl MusicClient {
         update: QueueUpdate,
         source: Cancellation,
     ) -> Result<PlaybackSnapshot> {
-        if update.transport.is_some() || update.expected != prepared.fence {
+        if update.transport.is_some() {
+            return Err(Error::StaleResponse);
+        }
+        self.submit_prepared_queue_edit(
+            token,
+            prepared,
+            update.expected.clone(),
+            PlaybackCommand::UpdateQueue(update),
+            source,
+        )
+        .await
+    }
+
+    pub(super) async fn submit_prepared_local_queue_only(
+        &self,
+        token: &SessionToken,
+        prepared: &PreparedSelection,
+        update: LocalBatchUpdate,
+        source: Cancellation,
+    ) -> Result<PlaybackSnapshot> {
+        if update.start {
+            return Err(Error::StaleResponse);
+        }
+        self.submit_prepared_queue_edit(
+            token,
+            prepared,
+            update.expected.clone(),
+            PlaybackCommand::ApplyLocalBatch(update),
+            source,
+        )
+        .await
+    }
+
+    async fn submit_prepared_queue_edit(
+        &self,
+        token: &SessionToken,
+        prepared: &PreparedSelection,
+        expected: PlaybackFence,
+        command: PlaybackCommand,
+        source: Cancellation,
+    ) -> Result<PlaybackSnapshot> {
+        if expected != prepared.fence {
             return Err(Error::StaleResponse);
         }
         let controller = self.player.controller().await?;
@@ -91,7 +134,7 @@ impl MusicClient {
         controller
             .command_guarded(
                 token,
-                PlaybackCommand::UpdateQueue(update),
+                command,
                 prepared.fence.clone(),
                 Cancellation::new(move || {
                     !source.is_cancelled()
@@ -166,6 +209,7 @@ impl MusicClient {
                 | PlaySelection::StyleRecommendations { .. }
                 | PlaySelection::Podcast { .. }
                 | PlaySelection::LocalBatch { .. }
+                | PlaySelection::LocalBatchAdd { .. }
                 | PlaySelection::PodcastSubscriptionRecommendation { .. }
                 | PlaySelection::Voice { .. }
                 | PlaySelection::Playlist { .. }

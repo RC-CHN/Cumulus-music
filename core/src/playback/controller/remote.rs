@@ -153,7 +153,7 @@ impl Actor {
         Ok(None)
     }
 
-    pub(super) async fn play_local_batch(
+    pub(super) async fn apply_local_batch(
         &mut self,
         update: super::LocalBatchUpdate,
         authority: &crate::playback::engine::Cancellation,
@@ -166,6 +166,15 @@ impl Actor {
             || update.queue.intelligence.is_some()
         {
             return Err(Error::MutationBusy);
+        }
+        if !update.start {
+            if self.queue.is_empty() || self.queue.selected() != update.queue.selected() {
+                return Err(Error::QueueChanged);
+            }
+            authority.check()?;
+            self.session
+                .with_local_owner(&self.token, |_| self.queue.install(update.queue))?;
+            return Ok(None);
         }
         let selected = update
             .queue

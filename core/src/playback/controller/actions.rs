@@ -41,7 +41,7 @@ impl Actor {
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
-                | PlaybackCommand::PlayLocalBatch(_)
+                | PlaybackCommand::ApplyLocalBatch(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
@@ -102,7 +102,8 @@ impl Actor {
                 | PlaybackCommand::RetryLoudness
                 | PlaybackCommand::RepairLoudness
                 | PlaybackCommand::RepairQuality
-        ) {
+        ) && !matches!(&request.command, PlaybackCommand::ApplyLocalBatch(update) if !update.start)
+        {
             // A user/remote transport intent wins over a delayed UI connect.
             self.startup_pending = false;
             self.startup_autoplay = false;
@@ -143,7 +144,7 @@ impl Actor {
             self.reply(request.reply, Err(Error::QueueChanged));
             return;
         }
-        if let PlaybackCommand::PlayLocalBatch(value) = &request.command
+        if let PlaybackCommand::ApplyLocalBatch(value) = &request.command
             && value.expected != self.snapshot().fence()
         {
             self.reply(request.reply, Err(Error::QueueChanged));
@@ -229,8 +230,8 @@ impl Actor {
                 PlaybackCommand::Play
                 | PlaybackCommand::PlayFromStart
                 | PlaybackCommand::RefreshSource
-                | PlaybackCommand::PlayLocalBatch(_)
                 | PlaybackCommand::Select(_) => true,
+                PlaybackCommand::ApplyLocalBatch(update) => update.start,
                 _ => false,
             };
         let result = match request.command {
@@ -280,9 +281,9 @@ impl Actor {
                         .map(|value| options = value)
                 }
             }
-            PlaybackCommand::PlayLocalBatch(update) => {
+            PlaybackCommand::ApplyLocalBatch(update) => {
                 let authority = &request.guard.as_ref().expect("guarded local batch").1;
-                self.play_local_batch(update, authority)
+                self.apply_local_batch(update, authority)
                     .await
                     .map(|value| options = value)
             }

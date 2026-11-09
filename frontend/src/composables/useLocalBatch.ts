@@ -6,6 +6,7 @@ import {
   LOCAL_BATCH_PAGE_SIZE,
   localBatchQuery,
   type LocalBatchPlayback,
+  type LocalBatchTransport,
   type LocalClient,
   type LocalPage,
   type LocalQuery,
@@ -21,13 +22,16 @@ export function useLocalBatch(
   source: LocalQuery,
   core: Pick<LocalClient, 'localPage' | 'localCommand'> = useCore(),
   currentVisit = () => true,
-  playSelection?: (selection: LocalBatchPlayback) => Promise<void>,
+  playSelection?: (
+    selection: LocalBatchPlayback,
+    action: LocalBatchTransport,
+  ) => Promise<boolean | void>,
 ) {
   const query = localBatchQuery(source);
   const page = shallowRef<LocalPage>();
   const selected = shallowRef(new Map<string, Selected>());
   const loading = ref(false);
-  const busyAction = ref<'remove' | 'play'>();
+  const busyAction = ref<'remove' | LocalBatchTransport>();
   const busy = computed(() => !!busyAction.value);
   const readError = ref(''),
     commandError = ref(''),
@@ -123,20 +127,25 @@ export function useLocalBatch(
       .sort((left, right) => left.ordinal - right.ordinal)
       .map(({ id, revision }) => ({ id, revision }));
 
-  async function play() {
+  async function transport(action: LocalBatchTransport) {
     const current = page.value;
     if (!playSelection || !live() || locked.value || !current || !selected.value.size) return;
-    busyAction.value = 'play';
+    busyAction.value = action;
     commandError.value = notice.value = '';
     try {
-      await playSelection({ query, revision: current.revision, tracks: selectedReferences() });
+      const accepted = await playSelection(
+        { query, revision: current.revision, tracks: selectedReferences() },
+        action,
+      );
+      if (live() && action === 'add' && accepted === true) notice.value = '已添加到播放列表。';
     } catch (cause) {
       if (!live()) return;
       const issue = failure(cause);
       if (issue.code === 'snapshot_changed') {
         resetStale();
         await fetch(0, null);
-      } else commandError.value = `播放：${issue.message}`;
+      } else
+        commandError.value = `${action === 'play' ? '播放' : '添加到播放列表'}：${issue.message}`;
     } finally {
       if (live()) busyAction.value = undefined;
     }
@@ -180,7 +189,8 @@ export function useLocalBatch(
     load,
     move,
     toggle,
-    play,
+    play: () => transport('play'),
+    add: () => transport('add'),
     remove,
     retry: () => load(failedOffset),
     dispose: () => {

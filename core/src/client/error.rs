@@ -74,6 +74,11 @@ impl From<Error> for ClientError {
                     "所选曲目中没有可播放的普通本地音频",
                     false,
                 ),
+                Error::State("local batch would replace the current file revision") => (
+                    "local_batch_current_file_changed",
+                    "当前曲目仍使用旧文件版本，请先切换曲目再添加",
+                    false,
+                ),
                 Error::State("local batch requires an ordinary queue") => (
                     "local_batch_special_queue",
                     "请先退出当前播放模式，再批量播放本地音乐",

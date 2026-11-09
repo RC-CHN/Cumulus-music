@@ -284,3 +284,262 @@ async fn batch_encrypted_rows_need_entitlement_and_random_selects_only_inserted_
     let queue = client.player_queue("0").await.unwrap();
     assert_eq!(rows(&queue), ["B", "A"]);
 }
+
+async fn add(
+    client: &MusicClient,
+    query: LocalQuery,
+    revision: &str,
+    tracks: Vec<LocalTrackReference>,
+) -> Result<PlayerView> {
+    client
+        .commit_prepared_selection(
+            "0",
+            &prepare(client).await,
+            PlaySelection::LocalBatchAdd {
+                query,
+                revision: revision.into(),
+                tracks,
+            },
+        )
+        .await
+}
+
+#[tokio::test]
+async fn add_moves_exact_active_duplicate_without_resuming_or_rebinding() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    for name in ["Zulu", "Middle", "Delta", "Alpha"] {
+        std::fs::write(media.join(format!("{name}.wav")), b"plain local").unwrap();
+    }
+    let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let descending = LocalQuery::default();
+    let ascending = LocalQuery {
+        descending: false,
+        ..descending.clone()
+    };
+    let view = client.local_page(ascending.clone()).await.unwrap();
+    assert_eq!(view.tracks[2].track.name, "Middle");
+    client
+        .play_selection(
+            "0",
+            PlaySelection::Local {
+                query: descending,
+                revision: view.revision.clone(),
+                start_id: Some(view.tracks[2].track.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action("0", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("0", PlayerAction::Seek { seconds: 12.0 })
+        .await
+        .unwrap();
+    let updated = add(
+        &client,
+        ascending,
+        &view.revision,
+        vec![reference(&view.tracks[2]), reference(&view.tracks[0])],
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.play_id, paused.play_id);
+    assert_eq!(updated.entry_id, paused.entry_id);
+    assert_eq!(updated.position, paused.position);
+    assert_eq!(updated.state, PlaybackStatus::Paused);
+    assert_ne!(updated.queue_revision, paused.queue_revision);
+    let queue = client.player_queue("0").await.unwrap();
+    assert_eq!(rows(&queue), ["Zulu", "Alpha", "Middle", "Delta"]);
+    assert_eq!(queue.current, paused.entry_id);
+}
+
+#[tokio::test]
+async fn nonempty_random_queue_without_current_adds_at_head_but_empty_add_starts() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    for name in ["Existing", "Inserted"] {
+        std::fs::write(media.join(format!("{name}.wav")), b"plain local").unwrap();
+    }
+    let state = root.path().join("state");
+    let (_, client, library) = client(&state, Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let query = LocalQuery::default();
+    let view = client.local_page(query.clone()).await.unwrap();
+    let store = ProfileRegistry::open(&state, ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let existing = library.resource(&view.tracks[1].track.id).unwrap();
+    store
+        .put(
+            "local-guest",
+            "playback",
+            "queue",
+            &json!({
+                "items":[{"entry_id":"kept","resource":existing,"source":{"kind":"local"}}],
+                "order":["kept"],"current":null,"mode":"random"
+            }),
+        )
+        .unwrap();
+    let idle = add(
+        &client,
+        query.clone(),
+        &view.revision,
+        vec![reference(&view.tracks[0])],
+    )
+    .await
+    .unwrap();
+    assert_eq!(idle.state, PlaybackStatus::Idle);
+    assert!(idle.play_id.is_none() && idle.entry_id.is_none());
+    let queue = client.player_queue("0").await.unwrap();
+    assert_eq!(rows(&queue), ["Inserted", "Existing"]);
+    assert!(queue.current.is_none());
+    let clear = client
+        .player_action(
+            "0",
+            PlayerAction::QueueFor {
+                expected_queue_revision: idle.queue_revision,
+                expected_room_id: None,
+                edit: QueueEdit::Clear,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(clear.queue_len, 0);
+    let playing = add(
+        &client,
+        query,
+        &view.revision,
+        vec![reference(&view.tracks[0])],
+    )
+    .await
+    .unwrap();
+    assert_eq!(playing.state, PlaybackStatus::Playing);
+    assert!(playing.play_id.is_some());
+    assert_eq!(playing.track.unwrap().name, "Inserted");
+}
+
+#[tokio::test]
+async fn random_add_schedules_first_new_row_next_without_touching_current_decoder() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    for name in ["Keep", "Target Z", "Target A", "Other"] {
+        std::fs::write(media.join(format!("{name}.wav")), b"plain local").unwrap();
+    }
+    let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let view = client.local_page(LocalQuery::default()).await.unwrap();
+    let keep = view
+        .tracks
+        .iter()
+        .find(|row| row.track.name == "Keep")
+        .unwrap();
+    client
+        .play_selection(
+            "0",
+            PlaySelection::Local {
+                query: LocalQuery::default(),
+                revision: view.revision.clone(),
+                start_id: Some(keep.track.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action(
+            "0",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let before = client
+        .player_action("0", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let query = LocalQuery {
+        keyword: "Target".into(),
+        ..Default::default()
+    };
+    let targets = client.local_page(query.clone()).await.unwrap();
+    let after = add(
+        &client,
+        query,
+        &targets.revision,
+        targets.tracks.iter().rev().map(reference).collect(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        (after.play_id, after.entry_id, after.position, after.state),
+        (
+            before.play_id,
+            before.entry_id,
+            before.position,
+            PlaybackStatus::Paused
+        )
+    );
+    let next = client.player_action("0", PlayerAction::Next).await.unwrap();
+    assert_eq!(next.track.unwrap().name, "Target Z");
+}
+
+#[tokio::test]
+async fn add_does_not_rebind_current_to_a_replaced_local_file_revision() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    let file = media.join("Current.wav");
+    std::fs::write(&file, b"first local revision").unwrap();
+    let state = root.path().join("state");
+    let (_, client, library) = client(&state, Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let query = LocalQuery::default();
+    let old = client.local_page(query.clone()).await.unwrap();
+    let old_resource = library.resource(&old.tracks[0].track.id).unwrap();
+    std::fs::write(&file, b"different length in newly scanned local file").unwrap();
+    library.scan(&media).unwrap();
+    let fresh = client.local_page(query.clone()).await.unwrap();
+    assert_eq!(old.tracks[0].track.id, fresh.tracks[0].track.id);
+    assert_ne!(old.tracks[0].revision, fresh.tracks[0].revision);
+    let store = ProfileRegistry::open(&state, ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    store
+        .put(
+            "local-guest",
+            "playback",
+            "queue",
+            &json!({
+                "items":[{"entry_id":"kept","resource":old_resource,"source":{"kind":"local"}}],
+                "order":["kept"],"current":"kept"
+            }),
+        )
+        .unwrap();
+    let before = client.player_snapshot("0").await.unwrap();
+    assert!(matches!(
+        add(
+            &client,
+            query,
+            &fresh.revision,
+            vec![reference(&fresh.tracks[0])]
+        )
+        .await,
+        Err(Error::State(
+            "local batch would replace the current file revision"
+        ))
+    ));
+    let after = client.player_snapshot("0").await.unwrap();
+    assert_eq!(after.play_id, before.play_id);
+    assert_eq!(after.queue_revision, before.queue_revision);
+    assert_eq!(
+        client.player_queue("0").await.unwrap().current.as_deref(),
+        Some("kept")
+    );
+}

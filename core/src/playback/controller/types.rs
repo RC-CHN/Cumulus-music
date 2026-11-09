@@ -162,6 +162,7 @@ pub struct LocalBatchUpdate {
     pub(crate) expected: PlaybackFence,
     pub(crate) queue: QueueSnapshot,
     pub(crate) index: crate::storage::OperationLock,
+    pub(crate) start: bool,
 }
 pub struct QueueTransport {
     pub position: Option<f64>,
@@ -229,7 +230,7 @@ pub enum PlaybackCommand {
         update: QueueUpdate,
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
     },
-    PlayLocalBatch(LocalBatchUpdate),
+    ApplyLocalBatch(LocalBatchUpdate),
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.
     PlaySearchCatalog(Option<QueueUpdate>),

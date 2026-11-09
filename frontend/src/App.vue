@@ -277,6 +277,7 @@ import { useLocalMatching } from './composables/useLocalMatching';
 import {
   localBatchQuery,
   type LocalBatchPlayback,
+  type LocalBatchTransport,
   type LocalListCheckpoint,
   type LocalQuery,
 } from './services/local';
@@ -1882,13 +1883,18 @@ const localMatching = useLocalMatching(undefined, () => {
   void music.bootstrap(false);
 });
 watch(local.view, (value) => localMatching.setPage(value));
-async function playLocalBatch(source: LocalQuery, selection: LocalBatchPlayback) {
-  if (!currentLocalBatch(source)) return;
-  await player.prepareSelectionForPage(async () => {
+async function playLocalBatch(
+  source: LocalQuery,
+  selection: LocalBatchPlayback,
+  action: LocalBatchTransport,
+) {
+  if (!currentLocalBatch(source)) return false;
+  const accepted = await player.prepareSelectionForPage(async () => {
     if (!currentLocalBatch(source))
       throw { code: 'stale', message: '本地批量选择已离开', retryable: false };
-    return { kind: 'local_batch', ...selection };
+    return { kind: action === 'add' ? 'local_batch_add' : 'local_batch', ...selection };
   });
+  return !!accepted && currentLocalBatch(source);
 }
 function playLocal(query: LocalQuery, revision: string, startId: string | null) {
   void player.select({ kind: 'local', query, revision, start_id: startId });

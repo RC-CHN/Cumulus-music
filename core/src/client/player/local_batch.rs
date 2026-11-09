@@ -1,6 +1,6 @@
-//! LocalMusicBatch's explicit Play (M3085 -> M308 -> M1384).
+//! LocalMusicBatch Play and Add (M3085 -> M308 -> M1384).
 use super::{
-    MusicClient, PlaybackCommand, PlaybackStatus, PlayerResourceKind,
+    MusicClient, PlaybackStatus, PlayerResourceKind,
     identity::collection_key,
     queue_playlist::{QUEUE_LIMIT, insert_collection_bound},
 };
@@ -15,6 +15,12 @@ use rand::{Rng, seq::IndexedRandom};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum LocalBatchAction {
+    Play,
+    Add,
+}
+
 impl MusicClient {
     pub(super) async fn local_batch_selection(
         &self,
@@ -22,7 +28,8 @@ impl MusicClient {
         mut query: LocalQuery,
         revision: String,
         tracks: Vec<LocalTrackReference>,
-    ) -> Result<(PlaybackCommand, Cancellation)> {
+        action: LocalBatchAction,
+    ) -> Result<(LocalBatchUpdate, Cancellation)> {
         query.validate()?;
         if query.group != LocalGroup::List
             || query.offset != 0
@@ -65,18 +72,21 @@ impl MusicClient {
         .map_err(|_| Error::State("local batch worker stopped"))??;
         room.check()?;
         self.session.check_generation(token)?;
+        let start = action == LocalBatchAction::Play || queue.items.is_empty();
         let queue = insert_local_batch(
             queue,
             resources,
             json!({"kind":"local","revision":revision}),
+            start,
             &mut rand::rng(),
         )?;
         Ok((
-            PlaybackCommand::PlayLocalBatch(LocalBatchUpdate {
+            LocalBatchUpdate {
                 expected: before.fence(),
                 queue,
                 index,
-            }),
+                start,
+            },
             room,
         ))
     }
@@ -86,6 +96,7 @@ fn insert_local_batch(
     mut queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,
+    start: bool,
     rng: &mut impl Rng,
 ) -> Result<QueueSnapshot> {
     let inserted: Vec<_> = resources
@@ -98,21 +109,38 @@ fn insert_local_batch(
         })
         .collect::<Result<_>>()?;
     let random = queue.mode == PlaybackMode::Random;
-    let selected = if random {
-        inserted.choose(rng)
-    } else {
-        inserted.first()
+    let retained = (!start).then(|| queue.selected()).flatten();
+    if let Some(current) = &retained
+        && let Some((PlayerResourceKind::Local, id)) = collection_key(&current.resource, false)
+        && let Some(requested) = resources.iter().find(|row| row["local_id"] == id)
+        && requested["local_revision"] != current.resource["local_revision"]
+    {
+        return Err(Error::State(
+            "local batch would replace the current file revision",
+        ));
     }
-    .ok_or(Error::QueueChanged)?;
-    // The official limit applies to the new group before retaining the old
-    // list. At exactly 10,000, even an unrelated prior current is evicted.
-    if resources.len() == QUEUE_LIMIT {
+    // Play can discard the previous queue when the official cap is filled.
+    // Add reserves its current row when it is outside the incoming batch.
+    if start && resources.len() == QUEUE_LIMIT {
         queue.items.clear();
         queue.order.clear();
         queue.current = None;
         queue.more = None;
     }
     let mut queue = insert_collection_bound(queue, resources, source, false, true, true);
+    if !start {
+        queue.current = retained.as_ref().map(|entry| entry.entry_id.clone());
+        if let Some(current) = retained {
+            // Reposition an exact duplicate but never rebind the current
+            // decoder, source metadata or native playback entry.
+            let stored = queue
+                .items
+                .iter_mut()
+                .find(|row| row.entry_id == current.entry_id)
+                .ok_or(Error::QueueChanged)?;
+            *stored = current;
+        }
+    }
     let entries: HashMap<_, _> = queue
         .items
         .iter()
@@ -121,22 +149,24 @@ fn insert_local_batch(
             _ => None,
         })
         .collect();
-    let selected = entries.get(selected.as_str()).ok_or(Error::QueueChanged)?;
-    queue.current = Some((*selected).clone());
+    let first = entries
+        .get(inserted.first().ok_or(Error::QueueChanged)?.as_str())
+        .ok_or(Error::QueueChanged)?;
+    if start {
+        let selected = if random {
+            inserted.choose(rng)
+        } else {
+            inserted.first()
+        }
+        .ok_or(Error::QueueChanged)?;
+        queue.current = Some((*entries.get(selected.as_str()).ok_or(Error::QueueChanged)?).clone());
+    }
     if random {
-        let first = entries
-            .get(inserted[0].as_str())
-            .ok_or(Error::QueueChanged)?;
         let in_batch: HashSet<_> = inserted
             .iter()
-            .map(|id| {
-                entries
-                    .get(id.as_str())
-                    .map(|entry| entry.as_str())
-                    .ok_or(Error::QueueChanged)
-            })
-            .collect::<Result<_>>()?;
-        queue.order = random_order(&queue, &in_batch, first, rng);
+            .filter_map(|id| entries.get(id.as_str()).map(|entry| entry.as_str()))
+            .collect();
+        queue.order = random_order(&queue, &in_batch, first, !start, rng);
     }
     Ok(queue)
 }
@@ -145,6 +175,7 @@ fn random_order(
     queue: &QueueSnapshot,
     inserted: &HashSet<&str>,
     first_inserted: &str,
+    queue_only: bool,
     rng: &mut impl Rng,
 ) -> Vec<String> {
     let mut last_retained = None;
@@ -161,13 +192,27 @@ fn random_order(
             (&entry.entry_id, key)
         })
         .collect();
-    if let Some(last) = last_retained
-        && let Some((_, key)) = entries
-            .iter_mut()
-            .find(|(id, _)| id.as_str() == first_inserted)
+    let mut next_anchor = None;
+    if let Some(first) = entries
+        .iter()
+        .position(|(id, _)| id.as_str() == first_inserted)
     {
-        *key = last + 1;
+        if let Some(last) = last_retained {
+            entries[first].1 = last + 1;
+        }
+        // M1384 places the first new row immediately after its display
+        // predecessor in random traversal when there is a current row. Rust
+        // persists relative order, so use the predecessor's fresh random key
+        // in place of the desktop's old scalar. When current itself was moved
+        // within the batch the predecessor need not be the current row.
+        if queue_only && queue.current.is_some() && first > 0 {
+            let (anchor, key) = entries[first - 1];
+            next_anchor = Some(anchor.as_str());
+            entries[first].1 = key + 1;
+        }
     }
-    entries.sort_by_key(|(_, key)| *key);
+    // The official next lookup compares keys strictly. Put equal-key rows
+    // before the anchor so they cannot jump ahead of its explicit successor.
+    entries.sort_by_key(|(id, key)| (*key, next_anchor == Some(id.as_str())));
     entries.into_iter().map(|(id, _)| id.clone()).collect()
 }

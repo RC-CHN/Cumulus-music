@@ -238,3 +238,30 @@ test('play sends the canonical cross-page refs without changing selection; stale
   assert.equal(model.page.value?.revision, 'after');
   assert.match(model.notice.value, /列表已更新/);
 });
+
+test('Add uses the selected local refs with its own action and only acknowledges a committed update', async () => {
+  const actions: string[] = [];
+  let accept = false;
+  const model = useLocalBatch(
+    defaultLocalQuery(),
+    {
+      localPage: async (query) => page(query.offset, 'fixed'),
+      localCommand: async () => assert.fail('queue Add must not edit the local index'),
+    },
+    undefined,
+    async (selection, action) => {
+      assert.deepEqual(selection.tracks, [{ id: 'local-5', revision: 'row-5' }]);
+      actions.push(action);
+      return accept;
+    },
+  );
+  await model.load();
+  model.toggle('local-5');
+  await model.add();
+  assert.equal(model.notice.value, '');
+  accept = true;
+  await model.add();
+  assert.match(model.notice.value, /已添加到播放列表/);
+  assert.equal(model.selectionCount.value, 1);
+  assert.deepEqual(actions, ['add', 'add']);
+});
