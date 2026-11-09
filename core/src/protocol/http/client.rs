@@ -90,6 +90,11 @@ enum RequestBinding<'a> {
         permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
         dispatched: &'a AtomicBool,
     },
+    JskRenewal {
+        music_u: &'a str,
+        permission: &'a (dyn Fn() -> Result<()> + Sync),
+        dispatched: Option<&'a AtomicBool>,
+    },
     LegacyRenewal {
         permission: &'a (dyn Fn() -> Result<()> + Sync),
         dispatched: &'a AtomicBool,
@@ -349,14 +354,83 @@ impl MusicHttpClient {
         PcExperimentGroups::refreshed(&response)
     }
 
-    pub(crate) async fn request_jsk_if_revision(
+    pub(crate) async fn request_jsk_renewal(
         &self,
-        path: &str,
         payload: Value,
-        expected: &str,
+        revision: &str,
+        music_u: &str,
+        permission: &(dyn Fn() -> Result<()> + Sync),
+        dispatched: &AtomicBool,
     ) -> Result<Value> {
-        self.execute(path, payload, false, Some(expected), Jsk::Lifecycle, None)
-            .await
+        let path = "/api/login/token/refresh/v1";
+        let result = self
+            .execute(
+                path,
+                payload,
+                false,
+                Some(revision),
+                Jsk::Lifecycle,
+                Some(RequestBinding::JskRenewal {
+                    music_u,
+                    permission,
+                    dispatched: Some(dispatched),
+                }),
+            )
+            .await;
+        match result {
+            Err(error) if !dispatched.load(Ordering::Relaxed) => {
+                if matches!(error.root(), Error::RequestNotSent(_)) {
+                    Err(error)
+                } else {
+                    Err(Error::RequestNotSent(Box::new(error)))
+                }
+            }
+            // A backend error cannot undo the dispatch boundary for this write.
+            Err(error) if matches!(error.root(), Error::RequestNotSent(_)) => {
+                Err(Error::MutationUncertain)
+            }
+            other => other,
+        }
+    }
+
+    pub(crate) async fn request_jsk_renewal_identity(
+        &self,
+        revision: &str,
+        music_u: &str,
+        permission: &(dyn Fn() -> Result<()> + Sync),
+    ) -> Result<Value> {
+        const PATH: &str = "/api/w/nuser/account/get";
+        let response = self
+            .execute(
+                PATH,
+                json!({}),
+                false,
+                Some(revision),
+                Jsk::None,
+                Some(RequestBinding::JskRenewal {
+                    music_u,
+                    permission,
+                    dispatched: None,
+                }),
+            )
+            .await?;
+        let response = crate::protocol::api::validate_response(PATH, response, &[200])?;
+        match response.get("profile") {
+            Some(profile) if crate::protocol::api::identifier(&profile["userId"]).is_ok() => {
+                Ok(response)
+            }
+            _ => Err(Error::service(PATH, json!(301), response)),
+        }
+    }
+
+    pub(crate) fn require_jsk_renewal_scope(&self, revision: &str, music_u: &str) -> Result<()> {
+        let origin = self.credentials.origin();
+        let target = origin.request_url(WireRoute::Eapi, "/api/login/token/refresh/v1")?;
+        let current = self.credentials.request_credentials(&target)?;
+        if current.revision != revision || current.unique_music_u() != Some(music_u) {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])
     }
 
     pub(crate) async fn request_legacy_periodic_refresh(
@@ -607,6 +681,18 @@ impl MusicHttpClient {
             || (legacy_renewal && snapshot.unique_music_u().is_none())
         {
             return Err(Error::CredentialChanged);
+        }
+        if let Some(RequestBinding::JskRenewal {
+            music_u,
+            permission,
+            ..
+        }) = binding
+        {
+            if route != WireRoute::Eapi || snapshot.unique_music_u() != Some(music_u) {
+                return Err(Error::CredentialChanged);
+            }
+            self.require_jsk_renewal_scope(&snapshot.revision, music_u)?;
+            permission()?;
         }
         if matches!(
             binding,
@@ -884,6 +970,20 @@ impl MusicHttpClient {
                 }
                 permission()?;
                 dispatched.store(true, Ordering::Release);
+            }
+            if let Some(RequestBinding::JskRenewal {
+                music_u,
+                permission,
+                dispatched,
+            }) = binding
+            {
+                // M/402 preparation can wait for a provider while an account
+                // switches without changing the old profile's credential jar.
+                self.require_jsk_renewal_scope(&snapshot.revision, music_u)?;
+                permission()?;
+                if let Some(dispatched) = dispatched {
+                    dispatched.store(true, Ordering::Relaxed);
+                }
             }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
