@@ -99,6 +99,7 @@ test('download all traverses revision-bound pages and omits local, missing and d
       assert.equal(id, '2');
       assert.equal(request.limit, 100);
       assert.equal(request.revision, request.offset ? 'r1' : null);
+      assert.equal(request.localRevision, request.offset ? 'device-r1' : undefined);
       offsets.push(request.offset);
       return {
         epoch: '1',
@@ -107,6 +108,7 @@ test('download all traverses revision-bound pages and omits local, missing and d
           offset: request.offset,
           total: 5,
           revision: 'r1',
+          playlistLocal: { revision: 'device-r1', hasMembers: true, rows: { '2': 'revision' } },
           more: request.offset === 0,
           tracks: request.offset
             ? [track('3', { missing: true }), track('4')]

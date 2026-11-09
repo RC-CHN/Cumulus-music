@@ -427,6 +427,12 @@ async fn owned_mixed_pages_and_native_queue_keep_local_ids_out_of_remote_reads()
     assert_eq!(local.revision, revision);
     assert!(local.has_members);
     assert_eq!(local.rows.get(&reference.id), Some(&reference.revision));
+    assert!(matches!(
+        client
+            .playlist_page_at("73", req(2, first.revision.clone()), None)
+            .await,
+        Err(Error::QueueChanged)
+    ));
     let second = client
         .playlist_page_at("73", req(2, first.revision.clone()), Some(revision.clone()))
         .await
@@ -443,17 +449,28 @@ async fn owned_mixed_pages_and_native_queue_keep_local_ids_out_of_remote_reads()
     assert!(second.tracks[0].local && second.tracks[0].missing);
     assert!(second.playlist_local.unwrap().rows.is_empty());
 
-    let selected = || PlaySelection::MixedPlaylist {
+    let selected = |double_click| PlaySelection::MixedPlaylist {
         id: "73".into(),
         revision: revision.clone(),
         start: Some(MixedPlaylistStart {
             id: reference.id.clone(),
             local: true,
         }),
-        double_click: false,
+        double_click,
         quality: Quality::Standard,
     };
-    let playing = client.play_selection("1", selected()).await.unwrap();
+    client.play_selection("1", selected(false)).await.unwrap();
+    let playing = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            if view.state == cumulus_core::playback::controller::PlaybackStatus::Playing {
+                break view;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
     assert_eq!(playing.resource_kind, Some(PlayerResourceKind::Local));
     let queue = client.player_queue("1").await.unwrap();
     assert_eq!(
@@ -463,6 +480,13 @@ async fn owned_mixed_pages_and_native_queue_keep_local_ids_out_of_remote_reads()
             .map(|entry| entry.track.id.as_str())
             .collect::<Vec<_>>(),
         [reference.id.as_str(), "11", "42"]
+    );
+    let paused = client.play_selection("1", selected(true)).await.unwrap();
+    assert_eq!(paused.play_id, playing.play_id);
+    assert_eq!(paused.queue_revision, playing.queue_revision);
+    assert_eq!(
+        paused.state,
+        cumulus_core::playback::controller::PlaybackStatus::Paused
     );
     assert!(
         client
@@ -493,7 +517,8 @@ async fn owned_mixed_pages_and_native_queue_keep_local_ids_out_of_remote_reads()
             vec!["11".to_owned()],
             vec!["11".to_owned()],
             vec!["42".to_owned()],
-            vec!["11".to_owned(), "42".to_owned()]
+            vec!["11".to_owned(), "42".to_owned()],
+            vec!["11".to_owned(), "42".to_owned()],
         ],
     );
 }

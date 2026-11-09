@@ -122,15 +122,26 @@ export async function playlistDownloadTracks(
   const tracks: TrackView[] = [];
   let offset = 0,
     revision: string | null = null;
+  let localRevision: string | undefined;
   while (active()) {
-    const response = await client.playlistPage(id, { offset, limit: 100, revision });
+    const response = await client.playlistPage(id, {
+      offset,
+      limit: 100,
+      revision,
+      ...(localRevision ? { localRevision } : {}),
+    });
     if (!active() || response.epoch !== epoch) throw { code: 'stale', message: '读取已取消' };
     const page = response.value;
-    if (page.offset !== offset || (offset > 0 && (!revision || page.revision !== revision)))
+    if (
+      page.offset !== offset ||
+      (offset > 0 &&
+        (!revision || page.revision !== revision || page.playlistLocal?.revision !== localRevision))
+    )
       throw { code: 'stale', message: '歌单已改变，请重新读取' };
     if (page.total > 50000 || offset + page.tracks.length > 50000)
       throw { code: 'invalid_input', message: '歌单过大，无法一次读取' };
     revision = page.revision;
+    localRevision = page.playlistLocal?.revision;
     tracks.push(...page.tracks.filter((t) => !t.missing && !t.local));
     offset += page.tracks.length;
     progress(offset, page.total);

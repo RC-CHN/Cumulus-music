@@ -212,13 +212,23 @@ pub(super) struct AlbumTableRows {
     pub double_click: bool,
 }
 
-fn current_table_song(before: &PlaybackSnapshot, id: &str) -> bool {
+#[derive(Clone, Copy)]
+pub(super) enum TableSong<'a> {
+    Catalog(&'a str),
+    IndexedLocal(&'a Value),
+}
+
+fn current_table_song(before: &PlaybackSnapshot, song: TableSong<'_>) -> bool {
     !before.fm
         && before.play_id.is_some()
-        && before
-            .selected
-            .as_ref()
-            .is_some_and(|entry| online_song(&entry.resource, id))
+        && before.selected.as_ref().is_some_and(|entry| match song {
+            TableSong::Catalog(id) => online_song(&entry.resource, id),
+            TableSong::IndexedLocal(row) => {
+                entry.resource["local_id"] == row["local_id"]
+                    && entry.resource["local_revision"] == row["local_revision"]
+                    && entry.resource["local_id"].is_string()
+            }
+        })
         && matches!(
             before.state,
             PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
@@ -231,7 +241,7 @@ impl MusicClient {
     pub(super) async fn toggle_active_song_row(
         &self,
         token: &SessionToken,
-        id: &str,
+        song: TableSong<'_>,
         attempt: u64,
         lease: u64,
         source_guard: &Cancellation,
@@ -246,13 +256,13 @@ impl MusicClient {
             let Some(controller) = self.player.controller.get() else {
                 return Ok(None);
             };
-            if !current_table_song(&controller.snapshot(), id) {
+            if !current_table_song(&controller.snapshot(), song) {
                 return Ok(None);
             }
             let (before, queue) = controller.queue_with_state(token).await?;
             (before, queue.intelligence.is_some())
         };
-        if !current_table_song(&before, id) || intelligence {
+        if !current_table_song(&before, song) || intelligence {
             return Ok(None);
         }
         let _room = self

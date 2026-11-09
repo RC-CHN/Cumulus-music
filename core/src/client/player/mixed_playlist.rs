@@ -9,6 +9,7 @@ use crate::{
     playback::engine::Cancellation,
     playlist::{PlaylistApi, PlaylistLocalRow, PlaylistLocalStore},
     protocol::api::identifier,
+    storage::OperationLock,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
@@ -27,6 +28,8 @@ pub(super) struct MixedQueue {
     pub index: usize,
     pub source: Value,
     pub guard: Cancellation,
+    // Keep directory membership and hidden state stable until the actor commits.
+    pub _local_lease: Option<OperationLock>,
 }
 
 impl MusicClient {
@@ -146,13 +149,15 @@ impl MusicClient {
             }
         }
 
-        let mut items = if locals.is_empty() {
-            Default::default()
+        let (mut items, local_lease) = if locals.is_empty() {
+            (Default::default(), None)
         } else {
             let runtime = self.local.context().await?;
-            tokio::task::spawn_blocking(move || runtime.library.playlist_local_items(&locals))
-                .await
-                .map_err(|_| Error::State("local playlist worker stopped"))??
+            let (items, lease) =
+                tokio::task::spawn_blocking(move || runtime.library.hold_playlist_items(&locals))
+                    .await
+                    .map_err(|_| Error::State("local playlist worker stopped"))??;
+            (items, Some(lease))
         };
         let mut hydrated = hydrated.into_iter();
         let mut resources = Vec::new();
@@ -210,6 +215,7 @@ impl MusicClient {
             index,
             source,
             guard,
+            _local_lease: local_lease,
         })
     }
 }

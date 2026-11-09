@@ -28,7 +28,8 @@ export interface TrackMenuRequest {
   nextOrigin?: 'search';
   queueNext?: () => Promise<PlayerView | boolean | undefined>;
   playUnavailable?: boolean;
-  removeLocalMember?: () => void;
+  mixedLocal?: boolean;
+  removeLocalMember?: (anchor: HTMLElement | undefined) => void;
   episode?: {
     live: () => boolean;
     copyrightBlocked: boolean;

@@ -126,7 +126,7 @@ const items = computed<MenuItem[]>(() => {
           { key: 'copy', label: '复制链接', icon: 'copy' },
         ]
       : []),
-    ...(playlist.value?.owned && !playlist.value.favorite && !track.local
+    ...(playlist.value?.owned && !playlist.value.favorite && !track.local && !input.mixedLocal
       ? [
           { key: 'edit-divider', label: '', separator: true },
           { key: 'remove', label: '从歌单中删除', icon: 'trash' },
@@ -294,7 +294,7 @@ async function select(key: string) {
     return;
   const { track } = input;
   if (key === 'play') input.play();
-  else if (key === 'remove_local_member') input.removeLocalMember?.();
+  else if (key === 'remove_local_member') input.removeLocalMember?.(returnFocus);
   else if (key === 'collect') {
     if (input.episode?.selection) input.episode.collectGroup?.();
     else emit('collect', track);

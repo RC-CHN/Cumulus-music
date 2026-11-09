@@ -42,10 +42,17 @@ impl MusicClient {
             if local_revision.is_some() {
                 return Err(Error::QueueChanged);
             }
-            playlist_track_page(api, &uid, &id, &detail, &page, None, None).await?
+            self.session
+                .run_for(&token, |current, _| async {
+                    self.session.require_api(&token, &api)?;
+                    playlist_track_page(current, &uid, &id, &detail, &page, None, None).await
+                })
+                .await?
         } else {
             let revision = playlist_track_revision(&id, &detail)?;
-            if page.revision.as_ref().is_some_and(|r| r != &revision) {
+            if (page.offset > 0 && (page.revision.is_none() || local_revision.is_none()))
+                || page.revision.as_ref().is_some_and(|r| r != &revision)
+            {
                 return Err(Error::QueueChanged);
             }
             let store = PlaylistLocalStore::new(self.session.clone())?;
@@ -99,7 +106,13 @@ impl MusicClient {
                     }
                 })
                 .collect::<Result<Vec<_>>>()?;
-            let rows = playlist_rows(api, slots, page.offset, None, None).await?;
+            let rows = self
+                .session
+                .run_for(&token, |current, _| async {
+                    self.session.require_api(&token, &api)?;
+                    playlist_rows(current, slots, page.offset, None, None).await
+                })
+                .await?;
             // A concurrent local edit during song-detail lookup invalidates this page.
             if store.generation(&token, &id)? != generation {
                 return Err(Error::QueueChanged);

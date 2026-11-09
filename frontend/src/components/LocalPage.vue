@@ -230,7 +230,7 @@ const trackMenuItems = computed(() => [
     ? [
         {
           key: 'add_to_playlist',
-          label: '添加到歌单',
+          label: '添加本地曲目到歌单',
           icon: 'star' as const,
           disabled: !trackRow.value || trackRow.value.track.missing,
         },

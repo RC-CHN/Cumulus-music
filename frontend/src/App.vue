@@ -2467,10 +2467,15 @@ const localPlaylistMember = shallowRef<{
 }>();
 function localMemberLive() {
   const current = localPlaylistMember.value;
-  return !!current && current.epoch === account.value.epoch && current.page === page.value;
+  return (
+    !!current &&
+    signedIn.value &&
+    current.epoch === account.value.epoch &&
+    current.page === page.value
+  );
 }
 watch(
-  () => [account.value.epoch, page.value] as const,
+  () => [signedIn.value, account.value.epoch, page.value] as const,
   () => {
     if (!localMemberLive()) localPlaylistMember.value = undefined;
   },
@@ -4364,7 +4369,8 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
       page.value.zonePlaylistReceipt
     )
       playZonePlaylistDetail(null);
-    else playMemberPlaylist(list.id, null);
+    else if (page.value.kind !== 'playlist' || page.value.id !== list.id || !playMixedPlaylist())
+      playMemberPlaylist(list.id, null);
   } else if (key === 'edit') editPlaylist(list.id);
   else if (key === 'up' || key === 'down')
     void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
@@ -4961,13 +4967,13 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
   const epoch = account.value.epoch;
   const membership = result.value?.playlistLocal;
   const localRevision = request.track.local ? membership?.rows[request.track.id] : undefined;
-  const origin = request.event.currentTarget;
   trackActions.value?.show(
     {
       ...request,
+      mixedLocal: membership?.hasMembers,
       ...(membership && localRevision
         ? {
-            removeLocalMember: () => {
+            removeLocalMember: (anchor) => {
               if (
                 account.value.epoch !== epoch ||
                 page.value.kind !== 'playlist' ||
@@ -4983,7 +4989,7 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
                   row: { id: request.track.id, revision: localRevision },
                   revision: membership.revision,
                 },
-                origin instanceof HTMLElement ? origin : null,
+                anchor ?? null,
               );
             },
           }

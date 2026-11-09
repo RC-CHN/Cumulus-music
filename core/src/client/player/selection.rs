@@ -792,7 +792,7 @@ impl MusicClient {
                 revision,
                 start,
                 quality,
-                ..
+                double_click,
             } => {
                 let mixed = self
                     .mixed_playlist_selection(
@@ -807,6 +807,30 @@ impl MusicClient {
                         },
                     )
                     .await?;
+                if double_click && let Some(lease) = lease {
+                    let row = &mixed.resources[mixed.index];
+                    let song = if row["local_id"].is_string() {
+                        super::queue_click::TableSong::IndexedLocal(row)
+                    } else {
+                        super::queue_click::TableSong::Catalog(
+                            row["id"].as_str().ok_or(Error::QueueChanged)?,
+                        )
+                    };
+                    if let Some(state) = self
+                        .toggle_active_song_row(
+                            &token,
+                            song,
+                            attempt,
+                            lease,
+                            &mixed.guard,
+                            preserve.as_ref(),
+                        )
+                        .await?
+                    {
+                        self.session.check_generation(&token)?;
+                        return project(&state, &token);
+                    }
+                }
                 let state = if let Some(snapshot) = preserve {
                     let lease = lease.ok_or(Error::StaleResponse)?;
                     self.focus.check(lease, Owner::Audio)?;
@@ -1257,7 +1281,7 @@ impl MusicClient {
             if let Some(state) = self
                 .toggle_active_song_row(
                     &token,
-                    id,
+                    super::queue_click::TableSong::Catalog(id),
                     attempt,
                     lease.ok_or(Error::StaleResponse)?,
                     guard,

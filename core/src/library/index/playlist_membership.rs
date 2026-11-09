@@ -52,12 +52,20 @@ impl LocalLibrary {
         Ok(found)
     }
 
+    pub(crate) fn hold_playlist_items(
+        &self,
+        rows: &[PlaylistLocalRef],
+    ) -> Result<(BTreeMap<String, LibraryItem>, OperationLock)> {
+        let lock = self.lock()?;
+        Ok((self.playlist_local_items(rows)?, lock))
+    }
+
     pub(crate) fn hold_playlist_additions(
         &self,
         rows: &[PlaylistLocalRef],
     ) -> Result<OperationLock> {
-        let lock = self.lock()?;
-        if self.playlist_local_items(rows)?.len() != rows.len() {
+        let (items, lock) = self.hold_playlist_items(rows)?;
+        if items.len() != rows.len() {
             return Err(Error::QueueChanged);
         }
         Ok(lock)
