@@ -59,7 +59,7 @@ recovered-client/docs/product/models/page_searchResults.txt：页签、分类、
   歌词续页沿用进入分类时的生效词。
   “仍然搜索”打开原词的综合页并传 `needCorrect=false`，不显示服务端迟到或残留的
   纠正提示；返回恢复原分类和分页。纠正词通过与普通搜索词相同的长度/控制字符校验，
-  按纯文本展示。官方 `qcReminders` 的分段展示见下文；未复刻来源追踪和热搜实验分支。
+  按纯文本展示。官方 `qcReminders` 的分段和原词请求来源见下文；不移植统计上报。
 - TrackTable和搜索长标题使用应用内提示框，切页、滚动、失焦和Escape清理；替代这些
   位置的原生 title，解决已观察到的“合成专辑”GTK提示框跨页面/弹窗残留。
   其他页面仍有原生 title，不把本修复写成全应用提示框验收。
@@ -374,7 +374,7 @@ PH-PC-Singer-Top50.expGroupName === "t1" 时走 M/612:12–27：
 共享纠正提示分段
 恢复 M2245:510–516、632–637 的 queryRewriteDTO 及 M3001:578–590 的
 searchQcReminder.qcReminders，按 SearchResults/index.jsx:421–446 在标题处
-呈现有序分段。只传纯文本与高亮位，不传来源 channel、URL 或动作。有效的单一
+呈现有序分段。只传纯文本、高亮位和可选的不透明回执，不传来源 channel、URL 或动作。有效的单一
 高亮必须对应本次原词；长度、格式或关键词不可信时保留已有通用提示。点击仅走
 原词搜索及历史流程，不执行服务端动作。M/3001:527–590 将综合结果的提醒写入
 共享搜索状态，M/3095:3623–3645、4034–4064 在分类页签外读取并渲染。分类和
@@ -382,6 +382,30 @@ searchQcReminder.qcReminders，按 SearchResults/index.jsx:421–446 在标题�
 关闭纠正或更换账号不显示旧提醒。--correction-original 验证原生提示顺序、文本
 不可执行、分类切换及追加、纠正词变更、键盘可操作的原词按钮、关闭纠正和 Back
 恢复分类、已加载结果及提示。
+
+原词搜索的来源字段（PC 3.1.42.205594）
+-------------------------------------
+旧版 M/2245:321–362 和 V3 :467–515、634–637 分别从 baseInfo 或
+baseInfo.queryRewriteDTO 取得纠正项。M/3001:577–590 读取提示的
+searchQcReminder.qcReminderChannel。点击高亮原词时，SearchResults/index.jsx:82–105
+（M/3095:3671–3692）记入历史、禁用本次纠正并把该 channel 写进新路由。Recommend
+与 M/3001:537–575 将其传给 /api/search/pc/complex/page 或 /v3 变体；不增加读请求。
+分类页签转发同一路由 channel（components/tab.jsx:65–104），单曲和 MV 的读取会消耗它
+（M/3095:2490–2524,3481–3525；M/2245:216–260），其他分类请求没有这一参数。
+
+Cumulus 只从带单一有效原词高亮的提示接收不超过 64 个 ASCII 字母、数字、下划线
+或连字符的来源标记。Rust 绑定当前账号/游客会话、原生 API、凭据代次和原词，内存
+最多 64 张回执，最长 20 分钟；显示层仅持有随机回执。分类改用其他纠正词时保留
+通用“仍然搜索”，但不会带旧提示的来源。原词路由沿用本客户端关闭纠正的分类行为；
+这里只还原 channel，不把官方模型随后重开纠正的所有时机视为同态。来源匹配时只换
+channel；不混用默认词上下文或额外端点。缺失、过期、非法、换账号或换凭据时保持
+原词、现有 suggest 回落。官方的原始序列化对空、null 和 undefined 可保留不同字面值
+（M/402:337–393，M/48:30–44，M/32:60–68）；本客户端仅保存有效非空标记。
+
+Linux `search_results_smoke.py --correction-original` 在密闭 WebView 驱动显示标签、分类
+分页、原词历史和返回后失配提示回落；四个检查点。有效提示的点击实际经过合成签名
+EAPI，核对原词、needCorrect=false、来源标记和空 bizQueryInfo；通用回落仍使用 suggest。
+Rust 另核对 V1/V3、单曲续页及不匹配、非法和换会话回执。无真实账号写入或服务访问。
 
 过滤页仍可继续搜索
 search_results_smoke.py --filtered-pagination 复用真实 Tauri WebView 和合成

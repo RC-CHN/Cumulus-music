@@ -1042,6 +1042,19 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async { Err(Error::State("search default context authority unavailable")) })
     }
 
+    fn request_search_with_correction_channel<'a>(
+        &'a self,
+        _path: &'a str,
+        _payload: Value,
+        _revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "search correction context authority unavailable",
+            ))
+        })
+    }
+
     fn playback_power_experiment(
         &self,
     ) -> ApiFuture<'_, Option<super::pc_experiments::PcExperimentGroups>> {

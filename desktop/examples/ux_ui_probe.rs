@@ -543,6 +543,33 @@ impl Api for Library {
         })
     }
 
+    fn request_search_with_correction_channel<'a>(
+        &'a self,
+        path: &'a str,
+        args: Value,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.search_default_context_revision()?.as_deref() != Some(revision)
+                || !search_fixture::correction_proof_enabled()
+            {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            let signed = self
+                .signed_search
+                .as_ref()
+                .expect("sealed correction transport");
+            let revision = signed
+                .client
+                .search_default_context_revision()?
+                .expect("sealed correction revision");
+            signed
+                .client
+                .request_search_with_correction_channel(path, args, &revision)
+                .await
+        })
+    }
+
     fn observed_server_time_ms(&self) -> Option<u64> {
         member_sign_fixture::observed_server_time_ms()
     }
@@ -1504,6 +1531,7 @@ fn main() {
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
                 if let Some(calls) = search_fixture::offline_result_calls() { value["offlineResultCalls"] = json!(calls); }
+                if let Some(calls) = search_fixture::correction_result_calls() { value["correctionResultCalls"] = json!(calls); }
                 if let Some((_,wire))=guest_search.as_ref() {value["guestSearchCalls"]=json!(wire.report());}
                 if std::env::var_os("CUMULUS_SEARCH_CARDS_PROOF").is_some() {
                     value["searchCardArtistSongCalls"] =

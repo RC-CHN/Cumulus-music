@@ -105,6 +105,7 @@ type Destination =
       keyword: string;
       displayKeyword?: string;
       defaultReceipt?: string;
+      correctionReceipt?: string;
       category?: import('../services/search').SearchCategory;
       channel?: import('../services/search').SearchChannel;
       pagination?: import('../services/searchPagination').SearchPageStep;

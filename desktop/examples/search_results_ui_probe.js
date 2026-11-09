@@ -1924,6 +1924,17 @@
       const provides=one('#app').__vue_app__._context.provides;
       const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
       const discovery=core.searchDiscovery;
+      const read=core.searchResults;
+      let reminderReceipt;
+      core.searchResults=async(...args)=>{
+        const result=await read(...args);
+        if(args[1].category==='all'&&args[1].correct){
+          reminderReceipt=result.value.correctionReceipt;
+          assert(/^[a-f0-9]{32}$/.test(reminderReceipt)&&
+            !JSON.stringify(result.value).includes('synthetic_qc_reminder'),'only opaque correction receipt reaches Vue');
+        }
+        return result;
+      };
       const input=one('[aria-label="搜索音乐"]');
       const label='显示标签 · 合成错词';
       const reminder=()=>one('.search-heading-copy .search-correction-fragments');
@@ -1942,12 +1953,12 @@
         await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词'),'corrected results');
         assert(input.value===label,'suggestion display text differs from canonical query');
         const fragments=reminder();
-        assert(exactReminder(),'native correction fragments retain their order and literal text');
+        assert(exactReminder()&&reminderReceipt,'native correction fragments and opaque receipt');
         assert(!fragments.querySelector('b')&&fragments.querySelectorAll('button').length===1&&
           fragments.children[1].tagName==='BUTTON'&&one('.search-heading-copy h1').classList.contains('sr-only'),
           'only the original word is interactive; plain text replaces the visible heading');
         await capture('correction_suggestion_label');
-      }finally{core.searchDiscovery=discovery;}
+      }finally{core.searchDiscovery=discovery;core.searchResults=read;}
       await choose('playlists');
       assert(exactReminder()&&reminder().contains(originalButton()),
         'playlist category shares the comprehensive reminder and original action');
@@ -1977,7 +1988,6 @@
         one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true'&&
         one('.search-result-grid')?.dataset.loadedCount==='20',
         'Back restores the playlist category, loaded results, reminder and display label');
-      const read=core.searchResults;
       core.searchResults=async(...args)=>{
         const result=await read(...args);
         return args[1].category==='songs'
@@ -1989,6 +1999,10 @@
         assert(!reminder()&&one('.search-correction')?.textContent.includes('不同的纠正词')&&
           button('仍然搜索“合成错词”'),'a changed effective rewrite cannot display old reminder fragments');
       }finally{core.searchResults=read;}
+      click(button('仍然搜索“合成错词”'));
+      await wait(()=>ready()&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),
+        'generic original-term action remains usable without the stale reminder channel');
+      await capture('correction_stale_fallback');
       await emit('complete',{ok:true,originalCorrectionVerified:true,correctionPartsVerified:true,
         categoryCorrectionPartsVerified:true,staleCorrectionPartsSuppressed:true,
         stageCount:count,realMusicRequests:0,realAccountWrites:0});

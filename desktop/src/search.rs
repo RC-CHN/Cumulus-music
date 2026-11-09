@@ -41,11 +41,17 @@ pub async fn search_results<R: tauri::Runtime>(
     epoch: String,
     query: SearchResultQuery,
     default_receipt: Option<String>,
+    correction_receipt: Option<String>,
 ) -> Result<AccountData<SearchResultView>, ClientError> {
     search_window(&window)?;
     observe(window.app_handle(), &client);
     client
-        .search_results_with_default(&epoch, query, default_receipt.as_deref())
+        .search_results_with_context(
+            &epoch,
+            query,
+            default_receipt.as_deref(),
+            correction_receipt.as_deref(),
+        )
         .await
         .map_err(Into::into)
 }

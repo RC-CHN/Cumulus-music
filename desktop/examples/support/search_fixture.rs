@@ -8,6 +8,8 @@ use std::sync::{
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static OFFLINE_RESULT_CALLS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+static CORRECTION_RESULT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
+pub const CORRECTION_CHANNEL: &str = "synthetic_qc_reminder";
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static PRESENTATION_QUERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static SUGGESTION_MATCH_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -38,6 +40,12 @@ pub fn offline_proof_enabled() -> bool {
 }
 pub fn offline_result_calls() -> Option<Vec<(String, String)>> {
     offline_proof_enabled().then(|| OFFLINE_RESULT_CALLS.lock().unwrap().clone())
+}
+pub fn correction_proof_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_CORRECTION_PROOF").is_some()
+}
+pub fn correction_result_calls() -> Option<Vec<(String, Value)>> {
+    correction_proof_enabled().then(|| CORRECTION_RESULT_CALLS.lock().unwrap().clone())
 }
 fn default_recovery_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_DEFAULT_RECOVERY_PROOF").is_some()
@@ -1546,6 +1554,12 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
     }
     if matches!(mode.as_str(), "correction" | "correction_parts") {
+        if correction_proof_enabled() {
+            CORRECTION_RESULT_CALLS
+                .lock()
+                .unwrap()
+                .push((path.into(), args.clone()));
+        }
         let valid = match category {
             "all" => args["keyword"] == "合成错词",
             "songs" => args["keyword"] == "合成正词" && args["needCorrect"] == true,
@@ -1558,7 +1572,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         // Even a stale upstream reminder after opting out must not re-enable correction.
         if category == "all" {
             let rewrite = if mode == "correction_parts" {
-                json!({"queryRewriteDTO":{"keyword":"合成错词","rewriteQuery":"合成正词","searchQcReminder":{"qcReminders":[
+                json!({"queryRewriteDTO":{"keyword":"合成错词","rewriteQuery":"合成正词","searchQcReminder":{"qcReminderChannel":CORRECTION_CHANNEL,"qcReminders":[
                     {"qcReminderPart":"正在显示合成正词。<b>仍查</b> "},
                     {"qcReminderPart":"合成错词","highLight":true},
                     {"qcReminderPart":"。","highLight":false}

@@ -1396,7 +1396,7 @@ function openPlaybackSource(
   }
 }
 const searchBox = ref<InstanceType<typeof SearchBox>>();
-function searchOriginal(keyword: string) {
+function searchOriginal(keyword: string, correctionReceipt?: string) {
   if (
     page.value.kind !== 'search' ||
     page.value.correct === false ||
@@ -1404,7 +1404,7 @@ function searchOriginal(keyword: string) {
   )
     return;
   if (searchBox.value?.commitOriginal(keyword) !== keyword) return;
-  music.navigate({ kind: 'search', keyword, correct: false });
+  music.navigate({ kind: 'search', keyword, correct: false, correctionReceipt });
 }
 function openSearchItem(item: SearchItem) {
   if (item.kind === 'artist') openCatalog({ kind: 'artist', id: item.artist.id });
@@ -5607,6 +5607,7 @@ onUnmounted(() => {
                 :category="page.category"
                 :channel="page.channel"
                 :default-receipt="page.defaultReceipt"
+                :correction-receipt="page.correctionReceipt"
                 :pagination="page.pagination"
                 :correct="page.correct"
                 :rewritten-keyword="page.rewrittenKeyword"

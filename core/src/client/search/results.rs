@@ -217,6 +217,8 @@ pub struct SearchResultView {
     pub correction: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correction_parts: Option<Vec<SearchCorrectionPart>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correction_receipt: Option<String>,
     pub unavailable_count: usize,
     pub notice: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -271,12 +273,23 @@ impl MusicClient {
         query: SearchResultQuery,
         default_receipt: Option<&str>,
     ) -> Result<AccountData<SearchResultView>> {
+        self.search_results_with_context(epoch, query, default_receipt, None)
+            .await
+    }
+
+    pub async fn search_results_with_context(
+        &self,
+        epoch: &str,
+        query: SearchResultQuery,
+        default_receipt: Option<&str>,
+        correction_receipt: Option<&str>,
+    ) -> Result<AccountData<SearchResultView>> {
         let token = self.player_token(epoch)?;
         if token.uid.is_none() {
             return Ok(AccountData {
                 epoch: epoch.into(),
                 value: self
-                    .guest_search_results(&token, query, default_receipt)
+                    .guest_search_results(&token, query, default_receipt, correction_receipt)
                     .await?,
             });
         }
@@ -284,6 +297,18 @@ impl MusicClient {
         let value = self
             .session
             .run_for(token, |api, uid| async move {
+                let correction_revision = (query.category == SearchCategory::All && query.correct)
+                    .then(|| api.search_default_context_revision().ok().flatten())
+                    .flatten();
+                let correction_context = || {
+                    self.search.correction_channels.resolve(
+                        &self.session,
+                        token,
+                        &api,
+                        &query,
+                        correction_receipt,
+                    )
+                };
                 let credentials = if query.category == SearchCategory::All {
                     api.search_privilege_credential_revision().ok()
                 } else {
@@ -300,17 +325,14 @@ impl MusicClient {
                 {
                     // Validate before any optional experiment or tab request.
                     let keyword = api::validate_query(&query)?;
-                    let default_context = || {
+                    let search_context = || {
                         if query.channel != Some(api::SearchChannel::Defaultquery) {
-                            return Ok(None);
+                            return correction_context();
                         }
-                        self.search.default_contexts.resolve(
-                            &self.session,
-                            token,
-                            &api,
-                            &keyword,
-                            default_receipt,
-                        )
+                        self.search
+                            .default_contexts
+                            .resolve(&self.session, token, &api, &keyword, default_receipt)
+                            .map(|context| context.map(api::ResultContext::Default))
                     };
                     let assignment = self.search_assignment_for(token, &api).await?;
                     let mut flags = assignment.flags;
@@ -343,7 +365,7 @@ impl MusicClient {
                     };
                     let layout = SearchPreviewLayout::from_experiments(flags.expanded, flags.dense);
                     if flags.v3 {
-                        let context = default_context()?;
+                        let context = search_context()?;
                         presentation_credentials =
                             api.pc_presentation_credential_revision().ok().flatten();
                         podcast_credentials = api.search_privilege_credential_revision().ok();
@@ -382,7 +404,7 @@ impl MusicClient {
                         };
                         (api::v3::PATH, tabs, layout, projected)
                     } else {
-                        let context = default_context()?;
+                        let context = search_context()?;
                         presentation_credentials =
                             api.pc_presentation_credential_revision().ok().flatten();
                         podcast_credentials = api.search_privilege_credential_revision().ok();
@@ -390,14 +412,20 @@ impl MusicClient {
                             api::COMPREHENSIVE_PATH,
                             None,
                             layout,
-                            api::request_with_default(api.as_ref(), &query, context).await,
+                            api::request_with_context(api.as_ref(), &query, context).await,
                         )
                     }
                 } else {
                     if query.category == SearchCategory::Podcasts {
                         podcast_credentials = api.search_privilege_credential_revision().ok();
                     }
-                    ("", None, None, api::request(api.as_ref(), &query).await)
+                    (
+                        "",
+                        None,
+                        None,
+                        api::request_with_context(api.as_ref(), &query, correction_context()?)
+                            .await,
+                    )
                 };
                 let mut view = match raw {
                     Ok(raw) => {
@@ -410,7 +438,16 @@ impl MusicClient {
                         };
                         let replacement_mv =
                             endpoint == api::v3::PATH && self.search_replacement_mv_enabled();
-                        let (mut view, preview) = project(raw, query, &uid, replacement_mv)?;
+                        let (mut view, preview, correction_channel) =
+                            project(raw, query, &uid, replacement_mv)?;
+                        view.correction_receipt = self.search.correction_channels.capture(
+                            &self.session,
+                            token,
+                            &api,
+                            correction_revision.as_deref(),
+                            view.query.keyword.trim(),
+                            correction_channel,
+                        )?;
                         if let (Some(preview), Some(credentials)) = (preview, credentials) {
                             self.session.require_api(token, &api)?;
                             if api.search_privilege_credential_revision().ok()
@@ -892,6 +929,7 @@ impl SearchResultView {
             more: false,
             correction: None,
             correction_parts: None,
+            correction_receipt: None,
             unavailable_count: 0,
             notice: None,
             empty_title: None,
@@ -923,9 +961,14 @@ pub(super) fn project(
     query: SearchResultQuery,
     uid: &str,
     allow_replacement_mv: bool,
-) -> Result<(SearchResultView, Option<super::privilege::Preview>)> {
+) -> Result<(
+    SearchResultView,
+    Option<super::privilege::Preview>,
+    Option<String>,
+)> {
     use SearchCategory::*;
     let mut privilege_preview = None;
+    let mut correction_channel = None;
     let mut result = SearchResultView::empty(query.clone());
     if query.category == All {
         for (index, block) in array(&raw["data"], "blocks")?.iter().take(50).enumerate() {
@@ -948,6 +991,9 @@ pub(super) fn project(
                                 part.highlight && part.text.trim() == query.keyword.trim()
                             })
                         });
+                        if result.correction_parts.is_some() {
+                            correction_channel = api::correction_channel(dto).map(str::to_owned);
+                        }
                     }
                 }
                 continue;
@@ -1047,7 +1093,7 @@ pub(super) fn project(
         if raw["data"]["hasMore"] == true {
             result.notice = Some("综合结果为分类预览，可通过区块标题入口查看完整分类。".into());
         }
-        return Ok((result, privilege_preview));
+        return Ok((result, privilege_preview, correction_channel));
     }
     let (container, list, total, kind) = match query.category {
         Playlists => (&raw["result"], "playlists", "playlistCount", "playlist"),
@@ -1172,5 +1218,5 @@ pub(super) fn project(
         }
     }
     result.sections.push(section);
-    Ok((result, None))
+    Ok((result, None, None))
 }

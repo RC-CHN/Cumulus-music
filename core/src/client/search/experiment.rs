@@ -31,6 +31,7 @@ pub(crate) struct SearchHost {
     pub(super) queue_drops: super::queue_drop::SearchDropPages,
     pub(super) audio_toplist: super::audio_toplist::AudioToplist,
     pub(super) privilege_pages: super::privilege::SearchPrivilegePages,
+    pub(super) correction_channels: super::correction_channel::CorrectionChannels,
     pub(super) default_contexts: super::default_context::DefaultContexts,
     pub(super) guest_default_contexts: super::default_context::DefaultContexts,
     pub(super) preview_config: Option<Arc<crate::protocol::mconfig::PcConfig>>,

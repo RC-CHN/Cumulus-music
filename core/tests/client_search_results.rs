@@ -59,6 +59,15 @@ impl Api for Backend {
             self.request(path, args, false).await
         })
     }
+
+    fn request_search_with_correction_channel<'a>(
+        &'a self,
+        path: &'a str,
+        args: Value,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        self.request_search_with_default_context(path, args, revision)
+    }
 }
 fn fixture() -> (
     tempfile::TempDir,
@@ -215,6 +224,8 @@ async fn voice_menu_reads_the_observed_episode_count_and_rejects_retired_authori
     ));
 }
 
+#[path = "support/search_correction_channel.rs"]
+mod search_correction_channel;
 #[path = "support/search_default_context.rs"]
 mod search_default_context;
 #[path = "support/search_privilege_refresh.rs"]

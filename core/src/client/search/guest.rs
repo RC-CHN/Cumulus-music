@@ -88,6 +88,23 @@ impl Api for GuestSearch {
             self.request(path, payload, false).await
         })
     }
+
+    fn request_search_with_correction_channel<'a>(
+        &'a self,
+        path: &'a str,
+        payload: Value,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if revision != self.authority.revision
+                || path == catalog::v3::PATH
+                || !catalog::correction_request(path, &payload)
+            {
+                return Err(Error::StaleResponse);
+            }
+            self.request(path, payload, false).await
+        })
+    }
 }
 
 impl MusicClient {
@@ -161,24 +178,40 @@ impl MusicClient {
         token: &SessionToken,
         query: catalog::SearchResultQuery,
         default_receipt: Option<&str>,
+        correction_receipt: Option<&str>,
     ) -> Result<SearchResultView> {
         let keyword = catalog::validate_query(&query)?;
         let guest = self.guest_search(token)?;
         let context = if query.category == catalog::SearchCategory::All
             && query.channel == Some(catalog::SearchChannel::Defaultquery)
         {
-            self.search.guest_default_contexts.resolve(
+            self.search
+                .guest_default_contexts
+                .resolve(&self.session, token, &guest.api, &keyword, default_receipt)?
+                .map(catalog::ResultContext::Default)
+        } else {
+            self.search.correction_channels.resolve(
                 &self.session,
                 token,
                 &guest.api,
-                &keyword,
-                default_receipt,
+                &query,
+                correction_receipt,
             )?
-        } else {
-            None
         };
-        let mut view = match catalog::request_with_default(&guest, &query, context).await {
-            Ok(raw) => project(raw, query, "", false)?.0,
+        let mut view = match catalog::request_with_context(&guest, &query, context).await {
+            Ok(raw) => {
+                guest.check()?;
+                let (mut view, _, correction_channel) = project(raw, query, "", false)?;
+                view.correction_receipt = self.search.correction_channels.capture(
+                    &self.session,
+                    token,
+                    &guest.api,
+                    Some(&guest.authority.revision),
+                    view.query.keyword.trim(),
+                    correction_channel,
+                )?;
+                view
+            }
             Err(error) => match error.root() {
                 Error::Service { endpoint, body, .. }
                     if query.category == catalog::SearchCategory::All

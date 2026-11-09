@@ -142,6 +142,7 @@ export interface SearchResultView {
   nextOffset: number;
   correction: string | null;
   correctionParts?: { text: string; highlight: boolean }[];
+  correctionReceipt?: string;
   unavailableCount: number;
   emptyTitle?: string;
   notice: string | null;
@@ -202,6 +203,7 @@ export interface SearchResultsClient {
     epoch: string,
     query: SearchResultQuery,
     defaultReceipt?: string,
+    correctionReceipt?: string,
   ): Promise<AccountData<SearchResultView>>;
 }
 export interface SearchPresentationPatch {

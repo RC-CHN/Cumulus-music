@@ -327,6 +327,7 @@ mod tests {
             next_offset: 0,
             correction: None,
             correction_parts: None,
+            correction_receipt: None,
             unavailable_count: 0,
             notice: None,
             empty_title: None,

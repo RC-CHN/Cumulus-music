@@ -58,6 +58,33 @@ pub(crate) fn correction_parts(data: &Value) -> Option<Vec<SearchCorrectionPart>
     (parts.iter().filter(|part| part.highlight).count() == 1).then_some(parts)
 }
 
+/// The official reminder supplies a channel label, not a navigation target.
+pub(crate) fn correction_channel(data: &Value) -> Option<&str> {
+    let value = data["searchQcReminder"]["qcReminderChannel"].as_str()?;
+    valid_correction_channel(value).then_some(value)
+}
+
+pub(crate) fn valid_correction_channel(value: &str) -> bool {
+    (1..=64).contains(&value.len())
+        && value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+}
+
+pub(crate) fn correction_request(path: &str, args: &Value) -> bool {
+    args["channel"]
+        .as_str()
+        .is_some_and(valid_correction_channel)
+        && (args["bizQueryInfo"].is_null() || args["bizQueryInfo"] == "")
+        && match path {
+            COMPREHENSIVE_PATH | v3::PATH | "/api/search/song/list/page" => {
+                args["needCorrect"] == false
+            }
+            "/api/search/mlog/get" => true,
+            _ => false,
+        }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchCategory {
@@ -146,21 +173,45 @@ pub(crate) struct DefaultContext {
     pub revision: String,
 }
 
+#[derive(Clone)]
+pub(crate) struct CorrectionContext {
+    pub channel: String,
+    pub revision: String,
+}
+
+pub(crate) enum ResultContext {
+    Default(DefaultContext),
+    Correction(CorrectionContext),
+}
+
+impl ResultContext {
+    fn channel(&self) -> Option<&str> {
+        match self {
+            Self::Correction(context) => Some(&context.channel),
+            Self::Default(_) => None,
+        }
+    }
+}
+
 async fn result_call(
     api: &dyn Api,
     path: &str,
     mut args: Value,
-    context: Option<DefaultContext>,
+    context: Option<ResultContext>,
 ) -> Result<Value> {
-    if let Some(context) = context {
-        args["bizQueryInfo"] = context.value;
-        let raw = api
-            .request_search_with_default_context(path, args, &context.revision)
-            .await?;
-        crate::protocol::api::validate_response(path, raw, &[200])
-    } else {
-        api.call(path, args, false, &[200]).await
-    }
+    let raw = match context {
+        Some(ResultContext::Default(context)) => {
+            args["bizQueryInfo"] = context.value;
+            api.request_search_with_default_context(path, args, &context.revision)
+                .await?
+        }
+        Some(ResultContext::Correction(context)) => {
+            api.request_search_with_correction_channel(path, args, &context.revision)
+                .await?
+        }
+        None => return api.call(path, args, false, &[200]).await,
+    };
+    crate::protocol::api::validate_response(path, raw, &[200])
 }
 pub const READ_PATHS: &[&str] = &[
     "/api/search/pc/result/tab",
@@ -196,13 +247,13 @@ pub(crate) fn validate_query(q: &SearchResultQuery) -> Result<String> {
     Ok(keyword)
 }
 pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
-    request_with_default(api, q, None).await
+    request_with_context(api, q, None).await
 }
 
-pub(crate) async fn request_with_default(
+pub(crate) async fn request_with_context(
     api: &dyn Api,
     q: &SearchResultQuery,
-    context: Option<DefaultContext>,
+    context: Option<ResultContext>,
 ) -> Result<Value> {
     let keyword = validate_query(q)?;
     use SearchCategory::*;
@@ -214,7 +265,10 @@ pub(crate) async fn request_with_default(
     };
     args["limit"] = json!(q.limit);
     args["offset"] = json!(q.offset);
-    let channel = SearchChannel::wire(q.channel);
+    let channel = context
+        .as_ref()
+        .and_then(ResultContext::channel)
+        .unwrap_or_else(|| SearchChannel::wire(q.channel));
     let path = match q.category {
         All => {
             args = json!({"keyword":keyword,"scene":"normal","needCorrect":q.correct,"channel":channel,"cursor":"{\"page\":0,\"ignoreBlocks\":[],\"traceId\":\"\"}","bizQueryInfo":""});
@@ -239,11 +293,9 @@ pub(crate) async fn request_with_default(
             READ_PATHS[10]
         }
     };
-    result_call(
-        api,
-        path,
-        args,
-        context.filter(|_| path == COMPREHENSIVE_PATH),
-    )
-    .await
+    let context = context.filter(|context| match context {
+        ResultContext::Default(_) => path == COMPREHENSIVE_PATH,
+        ResultContext::Correction(_) => matches!(q.category, All | Songs | Mvs),
+    });
+    result_call(api, path, args, context).await
 }

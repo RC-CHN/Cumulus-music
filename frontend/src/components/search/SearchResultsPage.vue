@@ -70,6 +70,7 @@ const props = defineProps<{
   category?: SearchCategory;
   channel?: SearchChannel;
   defaultReceipt?: string;
+  correctionReceipt?: string;
   pagination?: SearchPageStep;
   correct?: boolean;
   rewrittenKeyword?: string;
@@ -104,7 +105,7 @@ const emit = defineEmits<{
     rewrittenKeyword?: string,
   ];
   search: [keyword: string];
-  searchOriginal: [keyword: string];
+  searchOriginal: [keyword: string, receipt?: string];
   login: [];
   open: [item: SearchItem];
   hotTarget: [target: SearchHotTarget, anchor: HTMLButtonElement];
@@ -166,10 +167,11 @@ const rewrite = computed(() =>
     ? undefined
     : (view.value?.correction ?? (category.value !== 'all' ? props.rewrittenKeyword : undefined)),
 );
-const correctionParts = computed(() => {
+const matchingReminder = computed(() => {
   const reminder = model.correctionReminder.value;
-  return reminder && reminder.rewrite === rewrite.value ? reminder.parts : undefined;
+  return reminder && reminder.rewrite === rewrite.value ? reminder : undefined;
 });
+const correctionParts = computed(() => matchingReminder.value?.parts);
 const requestKeyword = computed(() =>
   category.value !== 'all' && props.correct !== false
     ? (props.rewrittenKeyword ?? props.keyword)
@@ -670,6 +672,7 @@ async function load(reuse = false) {
     props.searchId ?? 0,
     props.keyword,
     props.defaultReceipt,
+    props.correctionReceipt,
   );
   if (generation === loadGeneration) void restore();
 }
@@ -737,6 +740,7 @@ watch(
     props.correct,
     props.channel,
     props.defaultReceipt,
+    props.correctionReceipt,
     props.searchId,
   ],
   () => {
@@ -774,7 +778,7 @@ onBeforeUnmount(() => {
             type="button"
             class="text-button"
             :aria-label="`仍然搜索“${keyword}”`"
-            @click="emit('searchOriginal', keyword)"
+            @click="emit('searchOriginal', keyword, matchingReminder?.receipt)"
           >
             {{ part.text }}
           </button>

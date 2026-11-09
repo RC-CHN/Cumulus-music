@@ -1732,6 +1732,21 @@ impl Api for MusicHttpClient {
         })
     }
 
+    fn request_search_with_correction_channel<'a>(
+        &'a self,
+        path: &'a str,
+        payload: Value,
+        revision: &'a str,
+    ) -> crate::protocol::api::ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if !crate::catalog::search::results::correction_request(path, &payload) {
+                return Err(Error::InvalidInput("invalid correction context request"));
+            }
+            self.execute(path, payload, false, Some(revision), Jsk::None, None)
+                .await
+        })
+    }
+
     fn playback_power_experiment(
         &self,
     ) -> crate::protocol::api::ApiFuture<

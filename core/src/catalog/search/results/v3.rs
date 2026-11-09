@@ -1,6 +1,6 @@
 //! The recovered PC v3 comprehensive search returns a single block preview.
 mod hot;
-use super::{DefaultContext, SearchCategory, SearchChannel, SearchResultQuery, result_call};
+use super::{ResultContext, SearchCategory, SearchChannel, SearchResultQuery, result_call};
 use crate::{Error, Result, error::code_matches, protocol::api::Api};
 pub(crate) use hot::HotZoneContext;
 pub use hot::{SearchHotZoneSource, SearchHotZoneTarget};
@@ -40,13 +40,16 @@ async fn request(api: &dyn Api, q: &SearchResultQuery, zones: HotZoneContext<'_>
 pub(crate) async fn fetch(
     api: &dyn Api,
     q: &SearchResultQuery,
-    context: Option<DefaultContext>,
+    context: Option<ResultContext>,
 ) -> Result<RawComprehensive> {
     if q.category != SearchCategory::All || q.offset != 0 || !(1..=100).contains(&q.limit) {
         return Err(Error::InvalidInput("invalid comprehensive search page"));
     }
     let keyword = super::super::keyword(&q.keyword)?;
-    let channel = SearchChannel::wire(q.channel);
+    let channel = context
+        .as_ref()
+        .and_then(ResultContext::channel)
+        .unwrap_or_else(|| SearchChannel::wire(q.channel));
     let payload = json!({
         "keyword": keyword, "scene": "normal", "needCorrect": q.correct,
         "channel": channel, "bizQueryInfo": "",
@@ -603,6 +606,9 @@ fn rewrite(resource: &Value) -> Option<Value> {
         base["searchQcReminder"] = json!({"qcReminders":parts.into_iter().map(|part|
             json!({"qcReminderPart":part.text,"highLight":part.highlight})
         ).collect::<Vec<_>>()});
+        if let Some(channel) = super::correction_channel(data) {
+            base["searchQcReminder"]["qcReminderChannel"] = json!(channel);
+        }
     }
     Some(json!({"baseInfo":base}))
 }

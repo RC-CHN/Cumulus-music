@@ -305,6 +305,7 @@ def main():
         prefix = 'window.__cumulusSearchAlbumArtistProof = true;\n'
     if args.correction_original:
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
+        env['CUMULUS_SEARCH_CORRECTION_PROOF'] = '1'
     if args.artist_gallery:
         prefix = 'window.__cumulusArtistGalleryProof = true;\n'
     if args.artist_top50:
@@ -791,7 +792,7 @@ def main():
                 'peopleCategoriesVerified' if args.people_categories else
                 'originalCorrectionVerified' if args.correction_original else
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
-        stages = 8 if args.voice_direct else 4 if args.people_categories else 3 if args.correction_original or args.card_matches else 2
+        stages = 8 if args.voice_direct else 4 if args.people_categories or args.correction_original else 3 if args.card_matches else 2
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
         if args.people_categories:
             assert complete['searchArtistMenuVerified']
@@ -800,6 +801,14 @@ def main():
         if args.correction_original:
             assert complete['correctionPartsVerified']
             assert complete['categoryCorrectionPartsVerified'] and complete['staleCorrectionPartsSuppressed']
+            path = '/api/search/pc/complex/page'
+            originals = [payload for name, payload in complete['correctionResultCalls']
+                         if name == path and payload['needCorrect'] is False]
+            assert [payload['channel'] for payload in originals] == ['synthetic_qc_reminder', 'suggest']
+            assert all(payload['keyword'] == '合成错词' and payload['bizQueryInfo'] == '' for payload in originals)
+            signed = [call for call in complete['signedSearch']['calls'] if call['path'] == path]
+            assert len(signed) == 1 and signed[0]['args'] == dict(originals[0], needCorrect='false')
+            assert signed[0]['signedPcContextVerified'] and signed[0]['sameAccountCredential']
         if args.voice_direct:
             assert complete['preparedTicketFenceVerified'] and complete['searchSongNamespaceVerified']
             assert complete['voiceDownloadVerified'] and complete['voicePendingTransportVerified']

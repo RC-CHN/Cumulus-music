@@ -109,8 +109,13 @@ export function createTauriClient(): CoreClient {
       listen<SearchPrivilegeObservation>('cumulus:search-privilege-changed', (event) =>
         handler(event.payload),
       ),
-    searchResults: (epoch, query, defaultReceipt) =>
-      invoke('search_results', { epoch, query, ...(defaultReceipt ? { defaultReceipt } : {}) }),
+    searchResults: (epoch, query, defaultReceipt, correctionReceipt) =>
+      invoke('search_results', {
+        epoch,
+        query,
+        ...(defaultReceipt ? { defaultReceipt } : {}),
+        ...(correctionReceipt ? { correctionReceipt } : {}),
+      }),
     searchReasonPage: (epoch, target) => invoke('search_reason_page', { epoch, target }),
     communityComposerSearch: (epoch, kind, keyword, offset) =>
       invoke('community_composer_search', { epoch, kind, keyword, offset }),

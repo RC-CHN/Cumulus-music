@@ -1,4 +1,5 @@
 mod audio_toplist;
+mod correction_channel;
 mod default_context;
 pub(crate) mod experiment;
 mod guest;

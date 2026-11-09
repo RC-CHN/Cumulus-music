@@ -275,8 +275,11 @@ impl HttpBackend for Backend {
                 && matches!(path.as_str(), notice::POPUP | notice::DETAILS);
             let daily_path =
                 notice::enabled() && matches!(path.as_str(), notice::SETTINGS | notice::DAILY_V3);
+            let correction_path = super::search_fixture::correction_proof_enabled()
+                && path == "/api/search/pc/complex/page";
             if (!copyright_path
                 && !daily_path
+                && !correction_path
                 && !matches!(path.as_str(), ACCOUNT | ASSIGNMENT_PATH))
                 || plan.url.path() != ApiOrigin::Pc.request_url(WireRoute::Eapi, &path)?.path()
             {
@@ -317,7 +320,22 @@ impl HttpBackend for Backend {
                     "signed search credentials/context do not match the restored account",
                 ));
             }
-            let response = if copyright_path {
+            let response = if correction_path {
+                if !self.account_restored.load(Ordering::Acquire)
+                    || args
+                        != json!({"keyword":"合成错词","scene":"normal","needCorrect":"false",
+                        "channel":super::search_fixture::CORRECTION_CHANNEL,
+                        "cursor":"{\"page\":0,\"ignoreBlocks\":[],\"traceId\":\"\"}","bizQueryInfo":""})
+                {
+                    return Err(Error::Response("invalid signed correction arguments"));
+                }
+                // The official frontend serializer converts scalar values to
+                // strings. The shared unsigned fixture uses the typed body.
+                let mut typed = args.clone();
+                typed["needCorrect"] = json!(false);
+                super::search_fixture::response(&path, &typed)
+                    .ok_or(Error::State("missing correction response"))??
+            } else if copyright_path {
                 if !self.account_restored.load(Ordering::Acquire) {
                     return Err(Error::State(
                         "copyright requires the restored signed account",
@@ -418,7 +436,7 @@ impl HttpBackend for Backend {
             };
             // No cookie, signature, raw device identifier, credential revision or
             // encrypted body enters the WebView report or public test evidence.
-            if path == ACCOUNT {
+            if path == ACCOUNT || correction_path {
                 self.calls.lock().unwrap().push(json!({"path":path,"args":args,
                     "signedPcContextVerified":true,"sameAccountCredential":true,"responseCode":200}));
             }
