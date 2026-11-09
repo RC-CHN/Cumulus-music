@@ -5,7 +5,7 @@ use cumulus_core::{
         ClientError, MusicClient,
         daily_notification::{
             DailyNotificationCommand, DailyNotificationKind, DailyNotificationOutcome,
-            DailyNotificationView,
+            DailyNotificationTimer, DailyNotificationView,
         },
     },
 };
@@ -96,10 +96,27 @@ fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
             return;
         };
         if let Ok(Some(view)) = client
-            .prepare_daily_notification(schedule, || foreground(&window))
+            .prepare_daily_notification(&schedule, || foreground(&window))
             .await
         {
             let _ = window.emit_to("main", EVENT, Some(view));
+        }
+        // Official installs this even if startup could not present anything.
+        // A tick never impersonates a focus or system-resume event.
+        let Some(mut timer) = DailyNotificationTimer::start() else {
+            return;
+        };
+        loop {
+            timer.tick().await;
+            let Some(window) = app.get_webview_window("main") else {
+                break;
+            };
+            if let Ok(Some(view)) = client
+                .prepare_recurring_daily_notification(&schedule, || foreground(&window))
+                .await
+            {
+                let _ = window.emit_to("main", EVENT, Some(view));
+            }
         }
     }));
     Ok(())

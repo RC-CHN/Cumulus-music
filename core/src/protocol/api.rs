@@ -329,6 +329,28 @@ impl VinylVoiceRecommendationsRead {
     }
 }
 
+/// Fixed optional account reads for a trusted native Daily presentation.
+pub struct DailyNotificationRead(Option<crate::catalog::DailyRecommendationEndpoint>);
+
+impl DailyNotificationRead {
+    pub(crate) const SETTINGS: &'static str = "/api/user/setting";
+
+    pub(crate) fn settings() -> Self {
+        Self(None)
+    }
+
+    pub(crate) fn recommendations(endpoint: crate::catalog::DailyRecommendationEndpoint) -> Self {
+        Self(Some(endpoint))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        match self.0 {
+            None => (Self::SETTINGS, json!({})),
+            Some(endpoint) => (endpoint.path(), json!({"limit":30})),
+        }
+    }
+}
+
 /// One fixed PC read for the current copyright notification candidate.
 pub struct CopyrightNotificationRead(Option<Vec<String>>);
 
@@ -798,6 +820,20 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async {
             Err(Error::State(
                 "vinyl episode songs dispatch authority unavailable",
+            ))
+        })
+    }
+
+    /// Fixed same-credential reads with a late native presentation fence.
+    fn request_daily_notification<'a>(
+        &'a self,
+        _read: DailyNotificationRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "signed daily notification read is unavailable",
             ))
         })
     }

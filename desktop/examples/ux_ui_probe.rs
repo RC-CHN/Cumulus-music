@@ -226,6 +226,25 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn request_daily_notification<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::DailyNotificationRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        if let Some(signed) = self.signed_search.as_ref() {
+            signed
+                .client
+                .request_daily_notification(read, revision, permission)
+        } else {
+            Box::pin(async {
+                Err(cumulus_core::Error::State(
+                    "sealed daily context is unavailable",
+                ))
+            })
+        }
+    }
+
     fn request_copyright_notification<'a>(
         &'a self,
         read: cumulus_core::protocol::api::CopyrightNotificationRead,

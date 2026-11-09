@@ -6,7 +6,8 @@ use std::sync::Mutex;
 pub const POPUP: &str = "/api/pc/popup/copyright";
 pub const DETAILS: &str = "/api/v3/song/detail";
 pub const CONFIG_URL: &str = "https://d5.music.126.net/obj/fixture/daily-notification.data";
-const DAILY_V3: &str = "/api/v3/discovery/recommend/songs";
+pub const DAILY_V3: &str = "/api/v3/discovery/recommend/songs";
+pub const SETTINGS: &str = "/api/user/setting";
 const MEDIA: &str = "/api/song/enhance/player/url/v1";
 const COPYRIGHT_PLAYLIST: u64 = 81;
 static COPYRIGHT_WIRE: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -106,7 +107,7 @@ pub fn seed_playback(client: &MusicClient) -> Result<()> {
 pub fn response(path: &str, args: &Value, cached: bool) -> Option<Value> {
     let mode = mode()?;
     let result = match path {
-        "/api/user/setting" => {
+        SETTINGS => {
             assert_eq!(args, &json!({}));
             assert!(!cached);
             let privacy = if matches!(

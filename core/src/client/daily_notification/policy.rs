@@ -1,12 +1,30 @@
-//! M/247 and M/128: the first traditional Daily exposure from startup.
+//! M/247 and M/128: shared startup and half-hour exposure policy.
 use crate::protocol::pc_experiments::PcExperimentGroups;
-use chrono::{DateTime, Local, NaiveDate, TimeZone};
+use chrono::{DateTime, Local, NaiveDate, TimeZone, Timelike};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 
 pub(super) const MAX_DAYS: usize = 366;
 const DAY_MS: u64 = 86_400_000;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Trigger {
+    Startup,
+    HalfHour,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct Attempt {
+    pub trigger: Trigger,
+    pub local_ms: i64,
+}
+
+impl Attempt {
+    pub fn still_today(self, current_local_ms: i64) -> bool {
+        local_date(self.local_ms).is_some_and(|day| local_date(current_local_ms) == Some(day))
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Policy {
@@ -17,6 +35,30 @@ pub(super) struct Policy {
     pub daily_v3: bool,
     pub daily: bool,
     pub copyright: bool,
+    first_hour: Option<u32>,
+    second_hour: Option<u32>,
+    duration_limit_ms: Option<u64>,
+}
+
+fn tested_value(groups: &PcExperimentGroups, name: &str, config: &Value) -> Option<f64> {
+    let group = groups.group(name)?;
+    matches!(group, "t1" | "t2" | "t3")
+        .then(|| number_or_zero(&config[group]))
+        .flatten()
+}
+
+fn number_or_zero(value: &Value) -> Option<f64> {
+    // M/128 uses config value || 0; do not coerce unexpected types into
+    // permission. A verified experiment with a missing value is still valid.
+    if value.is_null() {
+        Some(0.0)
+    } else {
+        value.as_f64()
+    }
+}
+
+fn hour(value: f64) -> Option<u32> {
+    ((0.0..=23.0).contains(&value) && value.fract() == 0.0).then_some(value as u32)
 }
 
 impl Policy {
@@ -61,34 +103,77 @@ impl Policy {
             daily_v3: groups.group("PH-PC-Blacklist") == Some("t1"),
             daily,
             copyright,
+            first_hour: tested_value(groups, "PH-PC-push-firstTime", &push["firstTime"])
+                .and_then(hour),
+            second_hour: number_or_zero(&push["secondPushTime"]).and_then(hour),
+            duration_limit_ms: tested_value(
+                groups,
+                "PH-PC-push-durationLimit",
+                &push["durationLimit"],
+            )
+            .filter(|minutes| (0.0..=1440.0).contains(minutes))
+            .map(|minutes| (minutes * 60_000.0) as u64),
         })
     }
 
-    pub fn first_exposure(
+    pub fn eligible(
         &self,
         history: &History,
         sibling: &History,
-        local_ms: i64,
+        attempt: Attempt,
+        current_local_ms: i64,
         server_ms: i64,
     ) -> bool {
-        if !history.enabled || history.shown.len() > MAX_DAYS + 1 {
+        if !history.enabled
+            || history.shown.len() > MAX_DAYS + 1
+            || sibling.shown.len() > MAX_DAYS + 1
+        {
             return false;
         }
-        let Some((local_date, server_date)) = local_date(local_ms).zip(local_date(server_ms))
+        let Some(local) =
+            DateTime::from_timestamp_millis(attempt.local_ms).map(|dt| dt.with_timezone(&Local))
         else {
             return false;
         };
-        // M/128 first checks the machine's current day, then the synchronized
-        // date for the per-type frequency. This lane never displays a second
-        // exposure that would depend on the copyright/duration experiments.
-        if sibling.shown.len() > MAX_DAYS + 1
-            || sibling
+        let day = local.date_naive();
+        let Some(server_date) = local_date(server_ms) else {
+            return false;
+        };
+        // Keep the admitted wall minute through asynchronous reads and Shown,
+        // but never carry that permission across the device's local midnight.
+        if !attempt.still_today(current_local_ms) {
+            return false;
+        }
+        let mut latest = None;
+        for at in history.shown.iter().chain(&sibling.shown) {
+            let Some(date) = local_date(*at) else {
+                return false;
+            };
+            if date == day && latest.replace(*at).is_some() {
+                return false;
+            }
+        }
+        let shared = match latest {
+            None => {
+                attempt.trigger == Trigger::Startup
+                    || (Some(local.hour()) == self.first_hour && local.minute() == 0)
+            }
+            Some(last) => {
+                self.second_hour
+                    .zip(self.duration_limit_ms)
+                    .is_some_and(|(hour, duration)| {
+                        local.hour() >= hour
+                            && attempt.local_ms.checked_sub(last).is_some_and(|elapsed| {
+                                u64::try_from(elapsed).is_ok_and(|elapsed| elapsed > duration)
+                            })
+                    })
+            }
+        };
+        if !shared
+            || history
                 .shown
                 .iter()
-                .any(|t| self::local_date(*t).is_none_or(|day| day == local_date))
-            || history.shown.iter().any(|t| {
-                self::local_date(*t).is_none_or(|day| day == local_date || day == server_date)
-            })
+                .any(|at| local_date(*at).is_none_or(|date| date == server_date))
         {
             return false;
         }
@@ -194,6 +279,109 @@ mod tests {
         );
     }
 
+    fn eligible(
+        policy: &Policy,
+        history: &History,
+        sibling: &History,
+        at: i64,
+        server: i64,
+    ) -> bool {
+        policy.eligible(
+            history,
+            sibling,
+            Attempt {
+                trigger: Trigger::Startup,
+                local_ms: at,
+            },
+            at,
+            server,
+        )
+    }
+
+    #[test]
+    fn second_exposure_strictly_exceeds_delay_for_either_trigger() {
+        let mut p = Policy::read(
+            &groups("t1", "t1", "c"),
+            &json!({"preload#push":{"day":3,"count":1,"t1":1}}),
+        )
+        .unwrap();
+        assert_eq!(p.duration_limit_ms, None);
+        p.first_hour = Some(9);
+        p.second_hour = Some(17);
+        p.duration_limit_ms = Some(1_800_000);
+        let at = |h, m| {
+            Local
+                .with_ymd_and_hms(2026, 2, 2, h, m, 0)
+                .unwrap()
+                .timestamp_millis()
+        };
+        let empty = History::default();
+        let sibling = History {
+            shown: vec![at(16, 30)],
+            ..History::default()
+        };
+        let check = |trigger, own: &History, other: &History, sampled, now| {
+            p.eligible(
+                own,
+                other,
+                Attempt {
+                    trigger,
+                    local_ms: sampled,
+                },
+                now,
+                now,
+            )
+        };
+        assert!(check(
+            Trigger::HalfHour,
+            &empty,
+            &empty,
+            at(9, 0) + 59_999,
+            at(9, 1)
+        ));
+        assert!(!check(
+            Trigger::HalfHour,
+            &empty,
+            &empty,
+            at(9, 1),
+            at(9, 1)
+        ));
+        assert!(!check(
+            Trigger::HalfHour,
+            &empty,
+            &empty,
+            at(9, 30),
+            at(9, 30)
+        ));
+        assert!(!check(
+            Trigger::HalfHour,
+            &empty,
+            &empty,
+            at(9, 0),
+            at(9, 0) + 86_400_000
+        ));
+        for trigger in [Trigger::Startup, Trigger::HalfHour] {
+            for time in [at(16, 59) + 59_999, at(17, 0)] {
+                assert!(!check(trigger, &empty, &sibling, time, time));
+            }
+            let later = at(17, 0) + 1;
+            assert!(check(trigger, &empty, &sibling, later, later));
+            assert!(!check(trigger, &sibling, &empty, later, later));
+        }
+        p.duration_limit_ms = None;
+        let later = at(17, 0) + 1;
+        assert!(!p.eligible(
+            &empty,
+            &sibling,
+            Attempt {
+                trigger: Trigger::Startup,
+                local_ms: later
+            },
+            later,
+            later
+        ));
+    }
+
     fn at_date(day: u32) -> i64 {
         Local
             .with_ymd_and_hms(2026, 2, day, 13, 0, 0)
@@ -209,17 +397,53 @@ mod tests {
         )
         .unwrap();
         let mut h = History::default();
-        assert!(p.first_exposure(&h, &History::default(), at_date(2), at_date(2)));
+        assert!(eligible(
+            &p,
+            &h,
+            &History::default(),
+            at_date(2),
+            at_date(2)
+        ));
         h.shown.push(at_date(2));
         for (local, server) in [(2, 3), (3, 2), (3, 3), (4, 4)] {
-            assert!(!p.first_exposure(&h, &History::default(), at_date(local), at_date(server)));
+            assert!(!eligible(
+                &p,
+                &h,
+                &History::default(),
+                at_date(local),
+                at_date(server)
+            ));
         }
-        assert!(p.first_exposure(&h, &History::default(), at_date(5), at_date(5)));
+        assert!(eligible(
+            &p,
+            &h,
+            &History::default(),
+            at_date(5),
+            at_date(5)
+        ));
         h.snoozed_at = Some(at_date(2));
-        assert!(!p.first_exposure(&h, &History::default(), at_date(8), at_date(8)));
-        assert!(p.first_exposure(&h, &History::default(), at_date(9), at_date(9)));
+        assert!(!eligible(
+            &p,
+            &h,
+            &History::default(),
+            at_date(8),
+            at_date(8)
+        ));
+        assert!(eligible(
+            &p,
+            &h,
+            &History::default(),
+            at_date(9),
+            at_date(9)
+        ));
         h.enabled = false;
-        assert!(!p.first_exposure(&h, &History::default(), at_date(10), at_date(10)));
+        assert!(!eligible(
+            &p,
+            &h,
+            &History::default(),
+            at_date(10),
+            at_date(10)
+        ));
     }
     #[test]
     fn shares_local_day_across_types_without_sharing_snooze_or_frequency() {
@@ -234,8 +458,8 @@ mod tests {
             snoozed_at: Some(at_date(2)),
             shown: vec![at_date(2)],
         };
-        assert!(!p.first_exposure(&daily, &other, at_date(2), at_date(3)));
-        assert!(p.first_exposure(&daily, &other, at_date(3), at_date(2)));
-        assert!(p.first_exposure(&daily, &other, at_date(3), at_date(3)));
+        assert!(!eligible(&p, &daily, &other, at_date(2), at_date(3)));
+        assert!(eligible(&p, &daily, &other, at_date(3), at_date(2)));
+        assert!(eligible(&p, &daily, &other, at_date(3), at_date(3)));
     }
 }

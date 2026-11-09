@@ -1,29 +1,30 @@
-//! Shared native startup arbitration and receipt-bound actions for PC notifications.
+//! Shared native startup and half-hour arbitration and receipt-bound actions for PC notifications.
 mod copyright;
 mod policy;
+mod runtime;
+mod timing;
 
-use super::{
-    MusicClient,
-    dto::TrackView,
-    recommendations::{can_use_daily_cache, daily_source, track_page},
-};
+pub use timing::DailyNotificationTimer;
+
+#[cfg(test)]
+mod tests;
+
+use super::{MusicClient, dto::TrackView, recommendations::daily_source};
 use crate::{
     Error, Result,
-    account::{AccountApi, SessionStatus, SessionToken},
-    catalog::{CatalogApi, DailyRecommendationEndpoint},
-    playback::controller::PlaybackStatus,
+    account::SessionToken,
     protocol::{api::Api, mconfig::PcConfig},
     storage::{StateStore, StateTransaction},
 };
 use chrono::{SecondsFormat, Utc};
-use policy::{History, MAX_DAYS, Policy};
-use rand::prelude::IndexedRandom;
+use policy::{Attempt, History, MAX_DAYS, Policy};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use tokio::time::Instant;
 
 const OWNER: &str = "@device";
 const KIND: &str = "daily-notification-v1";
@@ -35,8 +36,11 @@ const READ_LIMIT: Duration = Duration::from_secs(4);
 pub(super) struct Host {
     config: Option<Arc<PcConfig>>,
     offer: Mutex<Option<Offer>>,
+    #[cfg(test)]
+    clock: Option<Arc<dyn Fn() -> i64 + Send + Sync>>,
 }
 
+#[derive(Clone)]
 pub struct DailyNotificationSchedule {
     owner: SessionToken,
     api: Arc<dyn Api>,
@@ -52,6 +56,7 @@ impl DailyNotificationSchedule {
 }
 
 struct Offer {
+    attempt: Attempt,
     schedule: DailyNotificationSchedule,
     view: DailyNotificationView,
     issued: Instant,
@@ -148,6 +153,15 @@ fn now_ms() -> i64 {
     Utc::now().timestamp_millis()
 }
 
+fn notification_credential_revision(api: &dyn Api) -> Result<Option<String>> {
+    match api.verified_pc_experiment_revision() {
+        // The native adapter reports a withdrawn/absent signed PC context
+        // as State. It is no longer authority, not an occupied receipt.
+        Err(error) if matches!(error.root(), Error::State(_)) => Ok(None),
+        revision => revision,
+    }
+}
+
 fn server_ms(api: &dyn Api, local_ms: i64) -> i64 {
     api.observed_server_time_ms()
         .and_then(|ms| ms.try_into().ok())
@@ -222,217 +236,14 @@ impl MusicClient {
         Ok(groups.and_then(|groups| Policy::read(&groups, &data)))
     }
 
-    /// At app startup only. Does not fetch/refresh experiments or begin playback.
-    pub fn daily_notification_startup_plan(&self) -> Result<Option<DailyNotificationSchedule>> {
-        let account = self.session.snapshot()?;
-        if account.status != SessionStatus::Authenticated || self.login_pending()? {
-            return Ok(None);
-        }
-        let owner = account.token;
-        let api = self.session.native_api(&owner)?;
-        let Some(credentials) = api.verified_pc_experiment_revision()? else {
-            return Ok(None);
-        };
-        let Some(policy) = self.notification_policy(&owner, &api, &credentials)? else {
-            return Ok(None);
-        };
-        self.session.require_api(&owner, &api)?;
-        Ok(Some(DailyNotificationSchedule {
-            owner,
-            api,
-            credentials,
-            policy,
-            started: Instant::now(),
-        }))
-    }
-
-    fn notification_scope(&self, schedule: &DailyNotificationSchedule) -> Result<()> {
-        self.session.require_api(&schedule.owner, &schedule.api)?;
-        if self.login_pending()?
-            || schedule.api.verified_pc_experiment_revision()?.as_deref()
-                != Some(&schedule.credentials)
-            || self
-                .notification_policy(&schedule.owner, &schedule.api, &schedule.credentials)?
-                .as_ref()
-                != Some(&schedule.policy)
-        {
-            return Err(Error::StaleResponse);
-        }
-        Ok(())
-    }
-
-    fn can_offer_notification(
-        &self,
-        schedule: &DailyNotificationSchedule,
-        kind: DailyNotificationKind,
-        foreground: &impl Fn() -> bool,
-    ) -> Result<bool> {
-        self.notification_scope(schedule)?;
-        if !foreground() {
-            return Ok(false);
-        }
-        let eligible = match kind {
-            DailyNotificationKind::Copyright => schedule.policy.copyright,
-            DailyNotificationKind::Daily => {
-                schedule.policy.daily
-                    && !self.player.controller.get().is_some_and(|controller| {
-                        let current = controller.snapshot();
-                        current.startup_played || current.state == PlaybackStatus::Playing
-                    })
-            }
-        };
-        if !eligible {
-            return Ok(false);
-        }
-        let now = now_ms();
-        let synchronized = server_ms(schedule.api.as_ref(), now);
-        self.registry.store().transaction(|tx| {
-            let state = history(tx.get(OWNER, KIND, kind.key())?)?;
-            let sibling = history(tx.get(OWNER, KIND, kind.other().key())?)?;
-            Ok(schedule
-                .policy
-                .first_exposure(&state, &sibling, now, synchronized))
-        })
-    }
-
-    /// The desktop supplies live, trusted main-window foreground/fullscreen
-    /// facts. This is not a renderer-authorized timer or generic notification IPC.
-    pub async fn prepare_daily_notification(
-        &self,
-        schedule: DailyNotificationSchedule,
-        foreground: impl Fn() -> bool + Sync,
-    ) -> Result<Option<DailyNotificationView>> {
-        use DailyNotificationKind::{Copyright, Daily};
-        use copyright::Candidate;
-        if schedule.started.elapsed() < schedule.policy.delay {
-            return Ok(None);
-        }
-        if self.can_offer_notification(&schedule, Copyright, &foreground)? {
-            match self.copyright_candidate(&schedule, &foreground).await {
-                Ok(Candidate::Available(copyright)) => {
-                    if !self.can_offer_notification(&schedule, Copyright, &foreground)? {
-                        return Ok(None);
-                    }
-                    let rows = copyright
-                        .rows
-                        .iter()
-                        .take(3)
-                        .map(|row| row.track.clone())
-                        .collect();
-                    let description = copyright.description.clone();
-                    return self.publish_notification(
-                        schedule,
-                        Content::Copyright(copyright),
-                        rows,
-                        description,
-                    );
-                }
-                Err(error)
-                    if matches!(
-                        error.root(),
-                        Error::StaleResponse | Error::CredentialChanged | Error::Cancelled
-                    ) =>
-                {
-                    return Err(error);
-                }
-                // Startup M/128 continues to Daily on an empty result or a
-                // failed read. The half-hour branch has different semantics.
-                Ok(Candidate::Empty) | Err(_) => (),
-            }
-        }
-        if !self.can_offer_notification(&schedule, Daily, &foreground)? {
-            return Ok(None);
-        }
-        let settings =
-            tokio::time::timeout(READ_LIMIT, AccountApi::new(schedule.api.clone()).settings())
-                .await
-                .map_err(|_| Error::State("daily notification settings read timed out"))??;
-        // The recovered branch rejects 2; a missing/unknown field cannot
-        // positively authorize optional personalized work in this host.
-        if settings["personalServiceSetting"].as_i64() != Some(0)
-            || !self.can_offer_notification(&schedule, Daily, &foreground)?
-        {
-            return Ok(None);
-        }
-        let rows = self.daily_notification_cached_preview(&schedule.owner)?;
-        let rows = if rows.is_empty() {
-            let endpoint = if schedule.policy.daily_v3 {
-                DailyRecommendationEndpoint::V3
-            } else {
-                DailyRecommendationEndpoint::V1
-            };
-            let api = CatalogApi::new(schedule.api.clone());
-            match tokio::time::timeout(READ_LIMIT, api.daily_for(endpoint)).await {
-                Ok(Ok(reply)) => track_page(&reply.songs)?.tracks,
-                Ok(Err(error)) if can_use_daily_cache(&error) => {
-                    self.daily_notification_persisted_preview(&schedule.owner)?
-                }
-                Ok(Err(error)) => return Err(error),
-                Err(_) => return Ok(None),
-            }
-        } else {
-            rows
-        };
-        if rows.is_empty() || !self.can_offer_notification(&schedule, Daily, &foreground)? {
-            return Ok(None);
-        }
-        let description = schedule
-            .policy
-            .descriptions
-            .choose(&mut rand::rng())
-            .cloned()
-            .unwrap_or_default();
-        self.publish_notification(schedule, Content::Daily, rows, description)
-    }
-
-    fn publish_notification(
-        &self,
-        schedule: DailyNotificationSchedule,
-        content: Content,
-        rows: Vec<TrackView>,
-        description: String,
-    ) -> Result<Option<DailyNotificationView>> {
-        use chrono::Datelike;
-        let (kind, playlist_id) = match &content {
-            Content::Daily => (DailyNotificationKind::Daily, None),
-            Content::Copyright(value) => (DailyNotificationKind::Copyright, value.playlist.clone()),
-        };
-        let view = DailyNotificationView {
-            epoch: schedule.owner.generation.to_string(),
-            receipt: uuid::Uuid::new_v4().simple().to_string(),
-            kind,
-            playlist_id,
-            day: chrono::Local::now().day(),
-            description,
-            songs: songs(rows),
-            remaining_ms: PRESENTATION_LIMIT.as_millis() as u32,
-            shown: false,
-        };
+    pub fn current_daily_notification(&self, epoch: &str) -> Result<Option<DailyNotificationView>> {
+        let token = self.player_token(epoch)?;
         let mut slot = self
             .daily_notification
             .offer
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
-        if slot.is_some() {
-            return Ok(None);
-        }
-        *slot = Some(Offer {
-            schedule,
-            view: view.clone(),
-            issued: Instant::now(),
-            shown: false,
-            content,
-        });
-        Ok(Some(view))
-    }
-
-    pub fn current_daily_notification(&self, epoch: &str) -> Result<Option<DailyNotificationView>> {
-        let token = self.player_token(epoch)?;
-        let slot = self
-            .daily_notification
-            .offer
-            .lock()
-            .map_err(|_| Error::LockPoisoned)?;
+        self.retire_notification(&mut slot)?;
         let Some(offer) = slot.as_ref().filter(|offer| offer.schedule.owner == token) else {
             return Ok(None);
         };
@@ -529,37 +340,41 @@ impl MusicClient {
                 .offer
                 .lock()
                 .map_err(|_| Error::LockPoisoned)?;
+            self.retire_notification(&mut slot)?;
             let offer = slot
                 .as_mut()
-                .filter(|offer| {
-                    offer.schedule.owner == owner
-                        && offer.view.receipt == receipt
-                        && offer.issued.elapsed() < PRESENTATION_LIMIT
-                })
+                .filter(|offer| offer.schedule.owner == owner && offer.view.receipt == receipt)
                 .ok_or(Error::StaleResponse)?;
             self.notification_scope(&offer.schedule)?;
             if matches!(action, Command::Shown) {
                 if offer.shown {
                     return Ok(Outcome::Shown);
                 }
-                if !self.can_offer_notification(&offer.schedule, offer.view.kind, &foreground)? {
+                if !self.can_offer_notification(
+                    &offer.schedule,
+                    offer.view.kind,
+                    offer.attempt,
+                    &foreground,
+                )? {
                     *slot = None;
                     return Err(Error::StaleResponse);
                 }
-                let now = now_ms();
+                let now = self.notification_wall_ms();
                 let synchronized = server_ms(offer.schedule.api.as_ref(), now);
                 let policy = &offer.schedule.policy;
-                self.session.with_token(&owner, |_| {
-                    edit_history(&self.registry.store(), offer.view.kind, |state, sibling| {
-                        if !policy.first_exposure(state, sibling, now, synchronized) {
-                            return Err(Error::StaleResponse);
-                        }
-                        state.shown.push(synchronized);
-                        let excess = state.shown.len().saturating_sub(MAX_DAYS);
-                        state.shown.drain(..excess);
-                        Ok(())
-                    })
-                })?;
+                self.session
+                    .with_verified_profile(&owner, &offer.schedule.api, |_, _| {
+                        self.require_notification_policy(&offer.schedule)?;
+                        edit_history(&self.registry.store(), offer.view.kind, |state, sibling| {
+                            if !policy.eligible(state, sibling, offer.attempt, now, synchronized) {
+                                return Err(Error::StaleResponse);
+                            }
+                            state.shown.push(synchronized);
+                            let excess = state.shown.len().saturating_sub(MAX_DAYS);
+                            state.shown.drain(..excess);
+                            Ok(())
+                        })
+                    })?;
                 offer.shown = true;
                 return Ok(Outcome::Shown);
             }
@@ -581,7 +396,7 @@ impl MusicClient {
                         if matches!(action, Command::Disable) {
                             state.enabled = false;
                         } else {
-                            state.snoozed_at = Some(now_ms());
+                            state.snoozed_at = Some(self.notification_wall_ms());
                         }
                         Ok(())
                     })

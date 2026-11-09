@@ -59,7 +59,7 @@ pub enum DailyRecommendationEndpoint {
 }
 
 impl DailyRecommendationEndpoint {
-    fn path(self) -> &'static str {
+    pub(crate) fn path(self) -> &'static str {
         match self {
             Self::V1 => "/api/v1/discovery/recommend/songs",
             Self::V3 => "/api/v3/discovery/recommend/songs",
@@ -154,7 +154,13 @@ impl CatalogApi {
         &self,
         endpoint: DailyRecommendationEndpoint,
     ) -> Result<DailyRecommendationReply> {
-        let mut response = self.daily_response(endpoint).await?;
+        Self::parse_daily_reply(self.daily_response(endpoint).await?, endpoint)
+    }
+
+    pub(crate) fn parse_daily_reply(
+        mut response: Value,
+        endpoint: DailyRecommendationEndpoint,
+    ) -> Result<DailyRecommendationReply> {
         let show_free_tag = response["data"]["showFreeTag"].as_bool().unwrap_or(false);
         let value = match endpoint {
             DailyRecommendationEndpoint::V1 => response.get_mut("recommend"),

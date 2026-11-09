@@ -7,10 +7,10 @@ use crate::{
     account::credentials::{Credentials, RequestCredentials},
     protocol::{
         api::{
-            Api, ApiFuture, CopyrightNotificationRead, GuardedPlaylistAdd, GuardedPlaylistCreate,
-            GuardedSongLike, MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH, MessageReadAllPermission,
-            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
-            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            Api, ApiFuture, CopyrightNotificationRead, DailyNotificationRead, GuardedPlaylistAdd,
+            GuardedPlaylistCreate, GuardedSongLike, MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH,
+            MessageReadAllPermission, PlaylistAddPermission, SongCardLikedRead, SongLikePermission,
+            SystemLikedRead, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
             VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
             VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
             VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
@@ -470,6 +470,29 @@ impl MusicHttpClient {
             Some(RequestBinding::VinylDiscovery),
         )
         .await
+    }
+
+    async fn notification_read(
+        &self,
+        (path, payload): (&str, Value),
+        revision: &str,
+        permission: &VinylPlaybackReadPermission<'_>,
+    ) -> Result<Value> {
+        let current = self
+            .credentials
+            .request_credentials(&super::ApiOrigin::Pc.request_url(WireRoute::Eapi, path)?)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/w/nuser/account/get",
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        self.vinyl_playback_read((path, payload), revision, permission)
+            .await
     }
 
     async fn vinyl_playback_read(
@@ -1279,30 +1302,22 @@ impl Api for MusicHttpClient {
         })
     }
 
+    fn request_daily_notification<'a>(
+        &'a self,
+        read: DailyNotificationRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.notification_read(read.into_request(), revision, permission))
+    }
+
     fn request_copyright_notification<'a>(
         &'a self,
         read: CopyrightNotificationRead,
         revision: &'a str,
         permission: &'a VinylPlaybackReadPermission<'a>,
     ) -> ApiFuture<'a, Value> {
-        Box::pin(async move {
-            let (path, payload) = read.into_request();
-            let current = self
-                .credentials
-                .request_credentials(&super::ApiOrigin::Pc.request_url(WireRoute::Eapi, path)?)?;
-            if current.revision != revision {
-                return Err(Error::CredentialChanged);
-            }
-            self.check_account_cookie_scope(
-                &current,
-                [
-                    "/api/w/nuser/account/get",
-                    crate::protocol::pc_experiments::ASSIGNMENT_PATH,
-                ],
-            )?;
-            self.vinyl_playback_read((path, payload), revision, permission)
-                .await
-        })
+        Box::pin(self.notification_read(read.into_request(), revision, permission))
     }
 
     fn request_vinyl_wiki<'a>(

@@ -1,5 +1,7 @@
-//! Copyright-first startup candidate: native read/normalization and no unique create.
-use super::{DailyNotificationKind, DailyNotificationSchedule, MusicClient, READ_LIMIT};
+//! Copyright-first notification candidate: native read/normalization and no unique create.
+use super::{
+    DailyNotificationKind, DailyNotificationSchedule, MusicClient, READ_LIMIT, policy::Attempt,
+};
 use crate::{
     Error, Result,
     catalog::merge_song_privileges,
@@ -21,7 +23,8 @@ pub(super) struct CopyrightOffer {
 }
 
 pub(super) enum Candidate {
-    Empty,
+    NoPopupIds,
+    NoRenderableRows,
     Available(CopyrightOffer),
 }
 
@@ -65,7 +68,7 @@ fn normalized(reply: &Value, requested: &HashSet<String>) -> Result<Vec<Returnin
 
 fn classify(data: &Value, rows: Vec<ReturningSong>) -> Candidate {
     if rows.is_empty() {
-        return Candidate::Empty;
+        return Candidate::NoRenderableRows;
     }
     // M/3085 btn_2 plays the frozen rows independently of the btn_1
     // playlist action. A missing/invalid ID never grants create authority.
@@ -88,12 +91,14 @@ impl MusicClient {
     pub(super) async fn copyright_candidate(
         &self,
         schedule: &DailyNotificationSchedule,
+        attempt: Attempt,
         foreground: &(impl Fn() -> bool + Sync),
     ) -> Result<Candidate> {
         let permission = || {
             if self.can_offer_notification(
                 schedule,
                 DailyNotificationKind::Copyright,
+                attempt,
                 foreground,
             )? {
                 Ok(())
@@ -117,8 +122,16 @@ impl MusicClient {
         permission()?;
         let reply = validate_response(CopyrightNotificationRead::POPUP, reply, &[200])?;
         let data = &reply["data"];
-        let Some(ids) = data["songIdList"].as_array().filter(|ids| !ids.is_empty()) else {
-            return Ok(Candidate::Empty);
+        let ids = match data.get("songIdList") {
+            None | Some(Value::Null) => return Ok(Candidate::NoPopupIds),
+            Some(Value::Array(ids)) if ids.is_empty() => return Ok(Candidate::NoPopupIds),
+            Some(Value::Bool(false)) => return Ok(Candidate::NoPopupIds),
+            Some(Value::String(text)) if text.is_empty() => return Ok(Candidate::NoPopupIds),
+            Some(Value::Number(number)) if number.as_f64() == Some(0.0) => {
+                return Ok(Candidate::NoPopupIds);
+            }
+            Some(Value::Array(ids)) => ids,
+            Some(_) => return Err(Error::Response("invalid copyright popup song IDs")),
         };
         let read = CopyrightNotificationRead::details(ids)?;
         let requested = ids.iter().map(identifier).collect::<Result<_>>()?;
@@ -192,7 +205,10 @@ mod tests {
             assert_eq!(no_playlist.rows[0].track.id, "2");
             assert!(no_playlist.rows[0].playable);
         }
-        assert!(matches!(classify(&Value::Null, vec![]), Candidate::Empty));
+        assert!(matches!(
+            classify(&Value::Null, vec![]),
+            Candidate::NoRenderableRows
+        ));
     }
 
     #[test]

@@ -248,7 +248,11 @@ impl HttpBackend for Backend {
             use super::daily_notification_fixture as notice;
             let copyright_path = notice::copyright_case().is_some()
                 && matches!(path.as_str(), notice::POPUP | notice::DETAILS);
-            if (!copyright_path && !matches!(path.as_str(), ACCOUNT | ASSIGNMENT_PATH))
+            let daily_path =
+                notice::enabled() && matches!(path.as_str(), notice::SETTINGS | notice::DAILY_V3);
+            if (!copyright_path
+                && !daily_path
+                && !matches!(path.as_str(), ACCOUNT | ASSIGNMENT_PATH))
                 || plan.url.path() != ApiOrigin::Pc.request_url(WireRoute::Eapi, &path)?.path()
             {
                 return Err(Error::State(
@@ -295,6 +299,12 @@ impl HttpBackend for Backend {
                     ));
                 }
                 notice::signed_reply(&path, &args)?
+            } else if daily_path {
+                if !self.account_restored.load(Ordering::Acquire) {
+                    return Err(Error::State("daily requires the restored signed account"));
+                }
+                notice::response(&path, &args, false)
+                    .ok_or(Error::State("missing daily notification fixture response"))?
             } else if path == ACCOUNT {
                 if args != json!({}) {
                     return Err(Error::Response("unexpected signed account arguments"));
