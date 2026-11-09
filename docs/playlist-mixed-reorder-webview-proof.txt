@@ -30,3 +30,8 @@
 代数 2、位置 1；点击核对后发生一次完整读回与一次页面重读，代数为 3、位置 2，
 持久证据为 changed_readback。只有两次合成 update，未发其它写入；原文件、
 实际暂停时钟、播放标识和队列修订均保持。数字 locale 为 C，界面消息仍为 en_US.UTF-8。
+
+归档：.build/ui-proof/phase231-mixed-playlist-reorder/receipt.json。验收前端
+来自 4d76e96f，原生探针构建自 fad29232；最终运行时脚本与 df6d83bf
+文件逐字节相同，集成提交 5d0f58a3 和 df6d83bf 的内容树相同。
+11 个检查点和截图都来自真实 X11/WebKitGTK；未使用真实账号或网络。
