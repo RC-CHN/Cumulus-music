@@ -28,7 +28,7 @@ pub(super) fn eligible(entry: &QueueEntry) -> bool {
 }
 
 impl MusicClient {
-    async fn indexed_queue_entry(
+    pub(super) async fn ordinary_file_queue_entry(
         &self,
         token: &SessionToken,
         revision: u64,
@@ -47,16 +47,14 @@ impl MusicClient {
             || queue.intelligence.is_some()
             || self.queue_clear_context(token)?.room_id.is_some()
         {
-            return Err(Error::State(
-                "local file reveal requires the ordinary queue",
-            ));
+            return Err(Error::State("file reveal requires the ordinary queue"));
         }
         let entry = queue
             .items
             .into_iter()
-            .find(|entry| entry.entry_id == entry_id && entry.visible_in_queue() && eligible(entry))
+            .find(|entry| entry.entry_id == entry_id && entry.visible_in_queue())
             .ok_or(Error::InvalidInput(
-                "queue file reveal requires an indexed local track",
+                "queue file reveal requires a visible row",
             ))?;
         self.session.check_generation(token)?;
         Ok(entry)
@@ -96,7 +94,14 @@ impl MusicClient {
         let version = revision
             .parse()
             .map_err(|_| Error::InvalidInput("invalid queue file revision"))?;
-        let entry = self.indexed_queue_entry(&token, version, entry_id).await?;
+        let entry = self
+            .ordinary_file_queue_entry(&token, version, entry_id)
+            .await?;
+        if !eligible(&entry) {
+            return Err(Error::InvalidInput(
+                "queue file reveal requires an indexed local track",
+            ));
+        }
         let id = entry.resource["local_id"]
             .as_str()
             .expect("indexed local identity")
@@ -107,7 +112,11 @@ impl MusicClient {
         let path = self
             .indexed_queue_path(id.clone(), revision.clone())
             .await?;
-        if self.indexed_queue_entry(&token, version, entry_id).await? != entry {
+        if self
+            .ordinary_file_queue_entry(&token, version, entry_id)
+            .await?
+            != entry
+        {
             return Err(Error::QueueChanged);
         }
         Ok(QueueLocalFileReveal {
@@ -143,7 +152,7 @@ impl QueueLocalFileReveal {
             .await?
             != self.path
             || client
-                .indexed_queue_entry(&self.token, self.version, &self.entry.entry_id)
+                .ordinary_file_queue_entry(&self.token, self.version, &self.entry.entry_id)
                 .await?
                 != self.entry
         {

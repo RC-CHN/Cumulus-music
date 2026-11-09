@@ -71,8 +71,7 @@ export interface QueueVoiceMenuRequest extends QueueRowMenuRequest {
   info: QueueVoiceMenu;
   report(message: string): void;
 }
-export interface QueueLocalMenuRequest extends QueueRowMenuRequest {
-  kind: 'local';
+interface QueueFileMenuRequest extends QueueRowMenuRequest {
   info: {
     epoch: string;
     revision: string;
@@ -84,18 +83,27 @@ export interface QueueLocalMenuRequest extends QueueRowMenuRequest {
   collectionLocked(): boolean;
   report(message: string): void;
 }
+type QueueLocalMenuRequest = QueueFileMenuRequest & { kind: 'local' };
+type QueueDownloadMenuRequest = QueueFileMenuRequest & {
+  kind: 'downloaded';
+  downloadKind: 'song' | 'voice';
+};
 export type QueueMenuRequest =
   | QueueTrackMenuRequest
   | QueueVoiceMenuRequest
-  | QueueLocalMenuRequest;
+  | QueueLocalMenuRequest
+  | QueueDownloadMenuRequest;
 
-export function queueLocalMenuItems(
-  input: QueueLocalMenuRequest,
+export function queueFileMenuItems(
+  input: QueueLocalMenuRequest | QueueDownloadMenuRequest,
   playing: boolean,
   transportLocked: boolean,
 ): MenuItem[] {
   const { track, origin } = input.info;
   const artist = track.artists[0];
+  const songDownload = input.kind === 'downloaded' && input.downloadKind === 'song';
+  const artistTarget = songDownload && track.artistRefs?.[0]?.id;
+  const voiceDownload = input.kind === 'downloaded' && input.downloadKind === 'voice';
   return [
     {
       key: 'play',
@@ -103,12 +111,34 @@ export function queueLocalMenuItems(
       icon: playing ? 'pause' : 'play',
       disabled: transportLocked || track.missing,
     },
-    { key: 'collect', label: '收藏', icon: 'star', disabled: input.collectionLocked() },
-    { key: 'artist', label: `歌手: ${artist || '未知'}`, icon: 'user', disabled: true },
-    { key: 'album', label: `专辑: ${track.album || '未知'}`, icon: 'album', disabled: true },
+    ...(!voiceDownload
+      ? [
+          { key: 'collect', label: '收藏', icon: 'star', disabled: input.collectionLocked() },
+          {
+            key: 'artist',
+            label: artistTarget ? `歌手：${artist}` : `歌手: ${artist || '未知'}`,
+            icon: 'user',
+            disabled: !artistTarget,
+          },
+          {
+            key: 'album',
+            label: `专辑: ${track.album || '未知'}`,
+            icon: 'album',
+            disabled: !songDownload || !track.albumId,
+          },
+        ]
+      : []),
     ...(origin?.kind === 'local'
       ? [{ key: 'source', label: '来自：本地音乐', icon: 'source' }]
-      : []),
+      : origin?.kind === 'downloads'
+        ? [
+            {
+              key: 'source',
+              label: voiceDownload ? '来自：下载的声音' : '来自：下载的单曲',
+              icon: 'source',
+            },
+          ]
+        : []),
     { key: 'directory', label: '打开文件所在目录', icon: 'folder' },
     { key: 'remove-divider', label: '', separator: true },
     { key: 'remove', label: '从列表中删除', icon: 'trash', disabled: transportLocked },

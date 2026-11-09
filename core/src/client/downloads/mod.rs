@@ -489,6 +489,21 @@ impl MusicClient {
         .map_err(|_| Error::State("download reveal worker stopped"))?
     }
 
+    pub(super) async fn download_file_reveal_at(
+        &self,
+        epoch: &str,
+        task_id: String,
+        path: std::path::PathBuf,
+    ) -> Result<DownloadFileReveal> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            context.files.verify_reveal_at(&task_id, Some(&path))
+        })
+        .await
+        .map_err(|_| Error::State("download reveal worker stopped"))?
+    }
+
     pub async fn download_directory_path(&self, epoch: &str) -> Result<std::path::PathBuf> {
         let context = self.downloads.inner.context(epoch)?;
         tokio::task::spawn_blocking(move || {

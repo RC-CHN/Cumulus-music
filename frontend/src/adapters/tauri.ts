@@ -588,6 +588,8 @@ export function createTauriClient(): CoreClient {
       invoke('player_queue_open_voice_directory', { epoch, revision, entryId }),
     playerQueueOpenLocalDirectory: (epoch, revision, entryId) =>
       invoke('player_queue_open_local_directory', { epoch, revision, entryId }),
+    playerQueueOpenDownloadDirectory: (epoch, revision, entryId) =>
+      invoke('player_queue_open_download_directory', { epoch, revision, entryId }),
     playerChorus: (epoch, playId) => invoke('player_chorus', { epoch, playId }),
     playerCommentCount: (epoch, playId) => invoke('player_comment_count', { epoch, playId }),
     playerVinylSimilarAvailable: (epoch) => invoke('player_vinyl_similar_available', { epoch }),

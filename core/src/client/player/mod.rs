@@ -26,6 +26,8 @@ mod prepared_selection;
 mod quality;
 mod queue_click;
 mod queue_collection;
+mod queue_download_menu;
+pub use queue_download_menu::QueueDownloadFileReveal;
 mod queue_drop;
 mod queue_edit;
 mod queue_like;
@@ -2008,6 +2010,11 @@ impl MusicClient {
                         local_menu: ordinary_queue
                             && queue.intelligence.is_none()
                             && queue_local_menu::eligible(i),
+                        download_menu: (ordinary_queue
+                            && token.uid.is_some()
+                            && queue.intelligence.is_none())
+                        .then(|| queue_download_menu::kind(i))
+                        .flatten(),
                         collectible,
                     })
                 })

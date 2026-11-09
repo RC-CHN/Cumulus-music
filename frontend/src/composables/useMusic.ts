@@ -64,7 +64,12 @@ type Destination =
   | { kind: 'daily_batch' }
   | { kind: 'style_recommendations'; seed?: StyleSeedHandle; origin?: 'home_recent' }
   | { kind: 'library' }
-  | { kind: 'downloads'; downloadVisit?: number; initialTab?: DownloadTab }
+  | {
+      kind: 'downloads';
+      downloadVisit?: number;
+      initialTab?: DownloadTab;
+      initialCategory?: 'song' | 'voice';
+    }
   | { kind: 'cloud' }
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }

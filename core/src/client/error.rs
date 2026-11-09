@@ -456,6 +456,11 @@ impl From<Error> for ClientError {
                     "该账号的登录身份已变化，请重新登录",
                     false,
                 ),
+                Error::State("queued download file is unavailable") => (
+                    "queue_download_file_unavailable",
+                    "原下载文件已移动、变化或无法读取，请到「下载管理」检查原文件",
+                    false,
+                ),
                 Error::State("queued local file is unavailable") => (
                     "queue_local_file_unavailable",
                     "原文件已移动、变化或无法读取。请在「本地音乐」重新扫描后再试",

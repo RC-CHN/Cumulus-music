@@ -550,7 +550,11 @@ function likeRecoveryFocus() {
   return closeButton.value ?? null;
 }
 async function openQueueMenu(row: QueueTrack, event: MouseEvent | KeyboardEvent) {
-  if ((!row.catalogMenu && !row.voiceMenu && !row.localMenu) || !liveNavigationRow(row)) return;
+  if (
+    (!row.catalogMenu && !row.voiceMenu && !row.localMenu && !row.downloadMenu) ||
+    !liveNavigationRow(row)
+  )
+    return;
   event.preventDefault();
   event.stopPropagation();
   const shown = queue.value!;
@@ -605,10 +609,12 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent | KeyboardEvent)
         );
     },
   };
-  if (row.localMenu) {
+  if (row.localMenu || row.downloadMenu) {
     menuPending.value = undefined;
     emit('more', {
-      kind: 'local',
+      ...(row.downloadMenu
+        ? ({ kind: 'downloaded', downloadKind: row.downloadMenu } as const)
+        : ({ kind: 'local' } as const)),
       info: {
         epoch: shown.epoch,
         revision: shown.revision,
@@ -990,7 +996,9 @@ async function confirmClear(event: Event) {
           }"
           :aria-current="item.entryId === currentEntry ? 'true' : undefined"
           @contextmenu="openQueueMenu(item, $event)"
-          @keydown.shift.f10="(item.voiceMenu || item.localMenu) && openQueueMenu(item, $event)"
+          @keydown.shift.f10="
+            (item.voiceMenu || item.localMenu || item.downloadMenu) && openQueueMenu(item, $event)
+          "
         >
           <span
             v-if="expansion?.index === start + index"
@@ -1093,7 +1101,7 @@ async function confirmClear(event: Event) {
             <Icon name="collect" />
           </button>
           <button
-            v-if="item.catalogMenu || item.voiceMenu || item.localMenu"
+            v-if="item.catalogMenu || item.voiceMenu || item.localMenu || item.downloadMenu"
             type="button"
             class="icon-button queue-row-more"
             :disabled="navigationLocked"

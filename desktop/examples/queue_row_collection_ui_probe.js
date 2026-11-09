@@ -199,7 +199,10 @@
     await pauseNewSource(client, epoch, { kind: 'downloads', query: downloads, start_id: published[0].id }, 'downloaded');
     await openQueue(1);
     const offlineButton = collect(0);
-    assert(offlineButton && !one('.queue-row-more', rows()[0]), 'download only uses the proven inline action');
+    const downloadedQueue = await client.playerQueue(epoch);
+    assert(offlineButton && one('.queue-row-more', rows()[0]) &&
+      downloadedQueue.tracks[0].downloadMenu === 'song' && !downloadedQueue.tracks[0].catalogMenu,
+      'completed song exposes the separate downloaded menu and retains inline collection');
     click(offlineButton);
     await showPicker(['7']);
     await capture('download_picker');

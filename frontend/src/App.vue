@@ -2554,13 +2554,34 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
     }
     return;
   }
-  if (input.kind === 'local') {
+  if (input.kind === 'local' || input.kind === 'downloaded') {
     const { epoch, revision, entryId, origin } = input.info;
-    if (key === 'source' && origin?.kind === 'local') navigateFromQueue(origin);
-    else if (key === 'directory')
-      void core.playerQueueOpenLocalDirectory(epoch, revision, entryId).catch((error) => {
+    if (key === 'directory') {
+      const reveal =
+        input.kind === 'local'
+          ? core.playerQueueOpenLocalDirectory(epoch, revision, entryId)
+          : core.playerQueueOpenDownloadDirectory(epoch, revision, entryId);
+      void reveal.catch((error) => {
         if (input.live()) input.report(failure(error).message);
       });
+    } else if (input.kind === 'local' && key === 'source' && origin?.kind === 'local') {
+      navigateFromQueue(origin);
+    } else if (input.kind === 'downloaded') {
+      if (key === 'source' && origin?.kind === 'downloads') {
+        const category = input.downloadKind;
+        if (
+          page.value.kind !== 'downloads' ||
+          downloads.query.value.tab !== 'completed' ||
+          downloads.query.value.category !== category
+        )
+          music.navigate({ kind: 'downloads', initialTab: 'completed', initialCategory: category });
+      } else if (input.downloadKind === 'song') {
+        const artistId = track.artistRefs?.[0]?.id;
+        if (key === 'artist' && artistId) navigateFromQueue({ kind: 'artist', id: artistId });
+        if (key === 'album' && track.albumId)
+          navigateFromQueue({ kind: 'album', id: track.albumId });
+      }
+    }
     return;
   }
   if (key === 'comments') trackComments(track);
@@ -3201,7 +3222,9 @@ watch(
       downloads.enterVisit(
         next,
         next.initialTab
-          ? downloadSectionQuery(next.initialTab === 'active' ? 'active' : 'song')
+          ? downloadSectionQuery(
+              next.initialTab === 'active' ? 'active' : (next.initialCategory ?? 'song'),
+            )
           : undefined,
       );
   },

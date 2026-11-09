@@ -1667,6 +1667,127 @@ async fn completed_file_reveal_checks_the_published_bytes_and_exact_leaf() {
 }
 
 #[tokio::test]
+async fn queued_download_reveals_its_own_publication_without_a_same_song_fallback() {
+    use cumulus_core::download::service::{
+        DownloadDestination, DownloadRunOptions, DownloadService,
+    };
+
+    let f = Fixture::new();
+    let (first, view) = f.completed().await;
+    let first_path = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let second_path = first_path
+        .parent()
+        .unwrap()
+        .join("alternate same song.flac");
+    let service =
+        DownloadService::with_backend(f.session.clone(), f.backend.clone(), 1 << 24).unwrap();
+    let second = service
+        .create(
+            &json!("123"),
+            DownloadDestination::Path {
+                path: second_path.clone(),
+            },
+            options(),
+        )
+        .unwrap();
+    let completed = service
+        .run(&second.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(completed.status, DownloadStatus::Complete);
+
+    let started = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Downloads {
+                query: DownloadQuery {
+                    tab: DownloadTab::Completed,
+                    category: DownloadCategory::Song,
+                    ..Default::default()
+                },
+                start_id: Some(first),
+            },
+        )
+        .await
+        .unwrap();
+    let queue = f.client.player_queue("1").await.unwrap();
+    let first_entry = queue.current.as_deref().unwrap();
+    let second_entry = &queue
+        .tracks
+        .iter()
+        .find(|entry| entry.entry_id != first_entry)
+        .unwrap()
+        .entry_id;
+    assert!(queue.tracks.iter().all(|row| matches!(
+        row.download_menu,
+        Some(QueueDownloadMenuKind::Song)
+    ) && !row.local_menu
+        && !row.catalog_menu));
+    let first_file = f
+        .client
+        .player_queue_download_file_reveal("1", &queue.revision, first_entry)
+        .await
+        .unwrap();
+    let second_file = f
+        .client
+        .player_queue_download_file_reveal("1", &queue.revision, second_entry)
+        .await
+        .unwrap();
+    assert_eq!(first_file.path(), first_path);
+    assert_eq!(second_file.path(), second_path);
+    first_file.check_current(&f.client).await.unwrap();
+    second_file.check_current(&f.client).await.unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_download_file_reveal("1", &queue.revision, &second.id)
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+
+    let updated = f
+        .client
+        .player_action(
+            "1",
+            PlayerAction::QueueFor {
+                expected_queue_revision: queue.revision,
+                expected_room_id: None,
+                edit: QueueEdit::Remove {
+                    entry_ids: vec![second_entry.clone()],
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.play_id, started.play_id);
+    assert!(matches!(
+        first_file.check_current(&f.client).await,
+        Err(Error::QueueChanged)
+    ));
+    let mut changed = fs::read(&first_path).unwrap();
+    changed[0] ^= 1;
+    fs::write(&first_path, changed).unwrap();
+    let request_count = f.backend.audio.calls().len();
+    assert!(matches!(
+        f.client
+            .player_queue_download_file_reveal("1", &updated.queue_revision, first_entry)
+            .await,
+        Err(Error::State("queued download file is unavailable"))
+    ));
+    assert_eq!(fs::read(second_path).unwrap(), FLAC);
+    assert_eq!(f.backend.audio.calls().len(), request_count);
+
+    let old = f.session.token().unwrap();
+    f.session
+        .adopt(f.api.clone(), json!({"userId":2}), &old)
+        .unwrap();
+    assert!(matches!(
+        second_file.check_current(&f.client).await,
+        Err(Error::StaleResponse)
+    ));
+}
+
+#[tokio::test]
 async fn completed_file_reveal_refuses_a_stale_account_and_a_missing_ledger() {
     use cumulus_core::download::offline::OfflineLibrary;
 

@@ -5,7 +5,7 @@ import { failure, type TrackView, type PlaylistView } from '../services/contract
 import type { PlayerModel } from '../composables/usePlayer';
 import type { MenuItem } from '../services/menu';
 import {
-  queueLocalMenuItems,
+  queueFileMenuItems,
   queueSongMenuItems,
   queueVoiceMenuItems,
   songLink,
@@ -52,7 +52,8 @@ const items = computed<MenuItem[]>(() => {
     const locked =
       !props.player.ready.value || props.player.busy.value || props.player.queueBusy.value;
     if (queue.kind === 'voice') return queueVoiceMenuItems(queue.info, group, playing, locked);
-    if (queue.kind === 'local') return queueLocalMenuItems(queue, playing, locked);
+    if (queue.kind === 'local' || queue.kind === 'downloaded')
+      return queueFileMenuItems(queue, playing, locked);
     return queueSongMenuItems(queue.info, group, playing, locked).map((item) =>
       item.key === 'collect' ? { ...item, disabled: queue.collectionLocked() } : item,
     );
@@ -333,7 +334,8 @@ defineExpose({ show, showQueue, close });
     context-only
     variant="song"
     :label="
-      queueRequest?.kind === 'voice'
+      queueRequest?.kind === 'voice' ||
+      (queueRequest?.kind === 'downloaded' && queueRequest.downloadKind === 'voice')
         ? '播放列表声音操作'
         : queueRequest
           ? '播放列表歌曲操作'

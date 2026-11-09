@@ -44,6 +44,10 @@ impl DownloadFileReveal {
         }
     }
 
+    pub(crate) fn matches_song_association(&self, media_id: &str) -> bool {
+        self.record.song_id == media_id && matches!(&self.origin, DownloadOrigin::Song)
+    }
+
     pub(crate) fn matches_voice_association(&self, voice_id: &str, media_id: &str) -> bool {
         self.record.song_id == media_id
             && matches!(&self.origin, DownloadOrigin::Voice { voice_id: id } if id == voice_id)
@@ -118,8 +122,19 @@ impl CompletedDownloads {
     }
 
     pub(crate) fn verify_reveal(&self, id: &str) -> Result<DownloadFileReveal> {
+        self.verify_reveal_at(id, None)
+    }
+
+    pub(crate) fn verify_reveal_at(
+        &self,
+        id: &str,
+        path: Option<&Path>,
+    ) -> Result<DownloadFileReveal> {
         let token = self.token()?.ok_or(Error::StaleResponse)?;
         let (record, origin) = self.reveal_publication(&token, id)?;
+        if path.is_some_and(|expected| record.path != expected) {
+            return Err(Error::QueueChanged);
+        }
         let facts = fs::recorded_facts(&record.path, record.integrity.clone())?;
         verify_reveal_bytes(&record.path, &record.integrity, &facts)?;
         let reveal = DownloadFileReveal {

@@ -169,6 +169,12 @@ pub enum QueueOrigin {
     Downloads,
 }
 #[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueDownloadMenuKind {
+    Song,
+    Voice,
+}
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueTrack {
     pub entry_id: String,
@@ -184,6 +190,8 @@ pub struct QueueTrack {
     pub voice_menu: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub local_menu: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_menu: Option<QueueDownloadMenuKind>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub collectible: bool,
 }

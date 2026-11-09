@@ -58,6 +58,7 @@ impl MusicClient {
                         catalog_menu: false,
                         voice_menu: false,
                         local_menu: false,
+                        download_menu: None,
                         collectible: false,
                         entry_id: i.entry_id.clone(),
                         track: super::super::player::track(&i.resource)?,
