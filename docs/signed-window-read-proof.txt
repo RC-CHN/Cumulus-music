@@ -51,10 +51,13 @@ The suite uses the actual current Rust request context and both search cohorts
 against fake API and media transports. It is not evidence of a real account or
 GUI playback. The next stage needs an isolated HTTPS broker and a current
 production Vue/Tauri window consuming the anonymous file through the real
-MpvEngine pinned-descriptor path. Historical real decode 8771a8fc happened in a
-second brokerless process; historical same-window ordinary libmpv URL testing
-at c8ceda86 used synthetic audio. A pinned file handoff in the current window
-would prove same-window native decode, not direct upstream URL playback.
+MpvEngine pinned-descriptor path. The previous research launcher had separate
+receipts for a brokerless second decoder and, after 671d287, a real-account
+single-window pinned AAC playback run (8771a8f/97eef999). The retained
+`.build/main-flow-live-same-window-playback-summary.json` records one verified
+transfer and same-window pause/stop. Historical ordinary libmpv URL testing at
+c8ceda86 used synthetic audio. None of those runs exercised this later signed
+profile, full native search experiment and corresponding current window.
 
 Closed synthetic desktop shell
 ------------------------------
