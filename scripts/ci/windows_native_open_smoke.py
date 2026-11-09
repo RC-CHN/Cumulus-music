@@ -32,6 +32,23 @@ def require_hosted_windows(env):
 
 
 NULL_OUTPUT_MARKER = 'Cumulus native-open proof audio: null'
+RETAINED_TRACE = dict(
+    commit='5453e0ad4f7111647f3d79d269b9190f294cfb44',
+    ciRun='42682251677', ciAttempt='1',
+)
+RETAINED_ARTIFACT = '13705703308'
+RETAINED_ZIP = 'Cumulus-0.2.0-rc.1-windows-x64.zip'
+RETAINED_ZIP_SHA = '3285c6087291431198c65eae177bdf48ec02d6b15634a61d844afe0b5403a6c7'
+RETAINED_BINARY_SHA = 'eef558b13ccc48137da1115e1963a0a369864f917bcae491f656701823d1891d'
+FROZEN_WARM_AUDIO = {
+    'warm.flac': 'bd5851da20d6730b70d915b85107c05b184c1cc988dce784df3f6e97004615d6',
+    'warm.mp3': '810641d982c600a4dd37ed5b6bb841393d04e571b2e3e68870b11a5aaaebc6bc',
+}
+
+
+def file_sha(path):
+    with path.open('rb') as source:
+        return hashlib.file_digest(source, 'sha256').hexdigest()
 
 
 def scratch_environment(root, system, app_dir, audio_output):
@@ -116,8 +133,16 @@ def media_fixtures(root, encoder, env):
     source = root / '热转交 输入.wav'
     invalid = root / '0 无效音频.flac'
     create_wave(cold, 44100, 440)
-    create_wave(source, 48000, 880)
     invalid.write_text('https://example.invalid/not-a-media-file\n', encoding='ascii')
+    if encoder is None:
+        fixture_root = Path(__file__).resolve().parent / 'fixtures/windows_native_open'
+        for name, output in (('warm.flac', warm), ('warm.mp3', mp3)):
+            data = (fixture_root / name).read_bytes()
+            assert hashlib.sha256(data).hexdigest() == FROZEN_WARM_AUDIO[name], f'changed frozen audio: {name}'
+            with output.open('xb') as destination:
+                destination.write(data)
+        return cold, warm, mp3, invalid
+    create_wave(source, 48000, 880)
     for output, codec, extra, title in (
         (warm, 'flac', (), 'Warm retained FLAC'),
         (mp3, 'libmp3lame', ('-b:a', '192k', '-id3v2_version', '3'), 'Warm retained MP3'),
@@ -313,14 +338,26 @@ def verify_app(root, evidence, binary, encoder, env, audio_output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('packages', 'root', 'fixture-encoder', 'endpoint-probe'):
+    for name in ('packages', 'root', 'endpoint-probe'):
         parser.add_argument('--' + name, required=True, type=Path)
+    fixture = parser.add_mutually_exclusive_group(required=True)
+    fixture.add_argument('--fixture-encoder', type=Path)
+    fixture.add_argument('--retained-trace-package', action='store_true')
     parser.add_argument('--audio-output', choices=('default', 'null'), default='default')
     args = parser.parse_args()
-    identity = require_hosted_windows(os.environ)
+    proof_identity = require_hosted_windows(os.environ)
+    identity = proof_identity
     system = Path(os.environ['SystemRoot']).resolve(strict=True)
-    encoder = args.fixture_encoder.resolve(strict=True)
-    assert encoder.is_file() and encoder.name.casefold() == 'ffmpeg.exe'
+    packages = args.packages.resolve(strict=True)
+    if args.retained_trace_package:
+        if args.audio_output != 'null':
+            parser.error('the retained trace package is only a null-output diagnostic')
+        assert file_sha(packages / RETAINED_ZIP) == RETAINED_ZIP_SHA, 'wrong retained trace ZIP'
+        identity = RETAINED_TRACE
+        encoder = None
+    else:
+        encoder = args.fixture_encoder.resolve(strict=True)
+        assert encoder.is_file() and encoder.name.casefold() == 'ffmpeg.exe'
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     # CI's generic failure collector automatically archives this literal
@@ -329,17 +366,20 @@ def main():
         scratch = Path(directory) / 'profile'
         scratch.mkdir()
         portable = portable_runtime(
-            args.packages.resolve(strict=True), identity['commit'], Path(directory),
+            packages, identity['commit'], Path(directory),
             ci_run=identity['ciRun'], ci_attempt=identity['ciAttempt'], require_package_flac=True,
         )
         binary = (portable / 'cumulus.exe').resolve(strict=True)
-        with binary.open('rb') as source:
-            binary_sha = hashlib.file_digest(source, 'sha256').hexdigest()
+        binary_sha = file_sha(binary)
         report = dict(ok=False, **identity, binarySha256=binary_sha,
                       proofAudioOutput=args.audio_output,
                       ordinaryWindowsPortableApp=args.audio_output == 'default',
                       appOutboundBlocked=False, defaultOutputClockVerified=False,
                       physicalAudioOutputVerified=False)
+        if args.retained_trace_package:
+            assert binary_sha == RETAINED_BINARY_SHA, 'wrong retained trace executable'
+            report.update(retainedPackageArtifact=RETAINED_ARTIFACT, proofCi=proof_identity,
+                          fixtureSource='frozen-synthetic', prerequisiteProofsRepeated=False)
         try:
             report['failureStage'] = 'default_render_endpoint_probe'
             endpoint = collect_sample(args.endpoint_probe.resolve(strict=True))

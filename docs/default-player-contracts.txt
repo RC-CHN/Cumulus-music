@@ -188,6 +188,12 @@ Windows 原生复验入口
   和可选 Win32 数字错误。不会打印管道名、路径、PID、令牌内容或文件帧；
   无法恢复线程原身份时仍直接退役且不写日志。普通发行包不编译该功能。
   原生 proof 所在 job 失败即失败，不作为 RC 已通过的依据。
+  5453e0ad 的诊断包（42682251677 attempt 1，artifact 13705703308）打包验证成功；
+  后续 runner 安装到 MSYS2 FFmpeg 9.0.2-3，与包的锁定版本 9.0.2-2 不同，
+  所以诊断在启动应用前终止。手动 retained-null 只复验这个已构建的包，
+  固定验证包和 exe 摘要，保留无效文件、文件挑选顺序、原窗口和全部时钟断言，
+  并用源码库里的合成 FLAC/MP3 替代运行时编码。它不复跑前置 Rust 用例，
+  报告同时记录原包和实际复验的 CI 身份，不计入发行门禁。
   Windows API 依据：
   https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule
   https://learn.microsoft.com/windows/win32/winmsg/about-windows

@@ -17,7 +17,7 @@ on:
       windows_native_file_output:
         description: Run only the portable Windows file handoff diagnostic (off runs full CI)
         type: choice
-        options: ['off', 'default', 'null']
+        options: ['off', 'default', 'null', 'retained-null']
         default: 'off'
 
 permissions:
@@ -39,12 +39,13 @@ env:
 
 jobs:
   smtc-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_smtc_diagnostic
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output != 'retained-null' && inputs.windows_smtc_diagnostic
     uses: ./.github/workflows/windows-smtc-diagnostic.yml
   media-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output != 'retained-null' && inputs.windows_diagnostic
     uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output != 'retained-null'
     name: Frontend and release rules
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -1144,6 +1145,81 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-packaged-native-open-${{ inputs.windows_native_file_output }}-attempt-${{ github.run_attempt }}
+          path: |
+            .build/ci-native-open-windows/report.json
+            .build/ci-native-open-windows/owner.log
+            .build/ci-native-open-windows/sender.log
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-native-open-retained:
+    # The original job did not launch the app. This diagnostic launches its
+    # unchanged package, with no new package, release gate or MSYS2 install.
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output == 'retained-null' && github.repository_id == '1432308824'
+    name: Windows retained native open trace
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify retained producer attempt and artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $api = "repos/$env:GITHUB_REPOSITORY/actions"
+          $producer = gh api "$api/runs/42682251677/attempts/1" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $producer.id -ne 42682251677 -or $producer.run_attempt -ne 1 -or
+              $producer.workflow_id -ne 398042187 -or $producer.repository.id -ne 1432308824 -or
+              $producer.event -ne 'workflow_dispatch' -or $producer.status -ne 'completed' -or
+              $producer.path -ne '.github/workflows/ci.yml' -or
+              $producer.head_sha -ne '5453e0ad4f7111647f3d79d269b9190f294cfb44') {
+            throw 'Unexpected retained producer'
+          }
+          $packaging = gh api "$api/jobs/129380443826" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $packaging.run_id -ne $producer.id -or $packaging.run_attempt -ne 1 -or
+              $packaging.head_sha -ne $producer.head_sha -or $packaging.name -ne 'Package and verify (windows-x64)' -or
+              $packaging.conclusion -ne 'success') {
+            throw 'Retained Windows package job did not pass'
+          }
+          $artifact = gh api "$api/artifacts/13705703308" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $artifact.id -ne 13705703308 -or $artifact.expired -ne $false -or
+              $artifact.name -ne 'diagnostic-packages-windows-x64' -or $artifact.size_in_bytes -ne 209952281 -or
+              $artifact.workflow_run.id -ne $producer.id -or $artifact.workflow_run.head_sha -ne $producer.head_sha -or
+              $artifact.workflow_run.repository_id -ne $producer.repository.id -or
+              $artifact.workflow_run.head_repository_id -ne $producer.repository.id -or
+              $artifact.digest -ne 'sha256:76a692ae41e6b3d4aff6e12b1eec15c8ec67b572f7d7b3f92735f84b52dc183b') {
+            throw 'Unexpected or expired retained artifact'
+          }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          run-id: '42682251677'
+          artifact-ids: '13705703308'
+          github-token: ${{ github.token }}
+          path: .build/packages/windows-x64
+      - name: Launch the exact retained package with frozen synthetic media
+        timeout-minutes: 10
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'cumulus-retained-open-endpoint'
+          cargo build --locked --manifest-path desktop/probes/windows-system-master-volume/Cargo.toml --target-dir $target
+          if ($LASTEXITCODE -ne 0) { throw 'Default render endpoint probe build failed' }
+          $probe = (Resolve-Path -LiteralPath (Join-Path $target 'debug/cumulus-windows-system-master-volume.exe')).Path
+          python scripts/ci/windows_native_open_smoke.py --packages .build/packages/windows-x64 --root .build/ci-native-open-windows --audio-output null --retained-trace-package --endpoint-probe "$probe"
+          if ($LASTEXITCODE -ne 0) { throw 'Retained Windows packaged file activation proof failed' }
+      - name: Preserve retained packaged native open evidence
+        if: always() && !cancelled() && hashFiles('.build/ci-native-open-windows/report.json', '.build/ci-native-open-windows/owner.log') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-retained-native-open-null-attempt-${{ github.run_attempt }}
           path: |
             .build/ci-native-open-windows/report.json
             .build/ci-native-open-windows/owner.log
