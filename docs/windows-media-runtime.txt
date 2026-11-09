@@ -19,7 +19,7 @@ The verification status below distinguishes completed runtime checks from whole-
 Sources and build
 -----------------
 Primary upstream recipe (original configuration and dependency list):
-https://github.com/msys2/MINGW-packages/blob/d468dd4568d3c2e6f07deee83cfbffebe79ac033/mingw-w64-ffmpeg/PKGBUILD
+https://github.com/msys2/MINGW-packages/blob/6164dd1c9700f175e2b34aadf1bd956c866dd6f8/mingw-w64-ffmpeg/PKGBUILD
 FFmpeg implementation:
 https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavfilter/af_ladspa.c
 https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavutil/wchar_filename.h
@@ -46,8 +46,16 @@ path helper and LoadLibraryExW/GetProcAddress/FreeLibrary, avoiding the ANSI
 dlfcn shim. Dependency lookup uses the loaded DLL directory and Windows's
 default trusted directories. Linux filter loading is unchanged. All original codec, network, hardware and format configuration
 is retained. Only the shared runtime variant is built; no static development
-archive is needed by the application. The custom package release is 2.2.
-Any stock package version drift requires reviewing/updating the lock.
+archive is needed by the application. The current stock release is 9.0.2-3
+and the custom release is 9.0.2-3.2. The upstream packaging change from -2
+renamed the SDL2 dependency to sdl2; the upstream FFmpeg source archive and
+recipe helper hashes are unchanged. See the reviewed change:
+https://github.com/msys2/MINGW-packages/commit/6164dd1c9700f175e2b34aadf1bd956c866dd6f8
+Run 42682251677 attempt 1 reached the Windows package proof, then a later
+diagnostic runner stopped at the stock-version guard before launching the
+product. It did not exercise the packaged process. The new lock and patch
+were checked against the upstream bytes; the Windows build, actual DSP
+execution, and packaging checks are still required.
 
 The upstream recipe's ignored `make check || true` is replaced by a strict
 filter-availability check against the newly built shared libraries. This is
