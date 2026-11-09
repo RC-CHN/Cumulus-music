@@ -1,5 +1,9 @@
 //! Real WebView, FFprobe and libmpv proof using generated, caller-owned media.
-//! No credentials or remote requests. The API adapter only represents signed out.
+//! No credentials or remote requests. Mixed playlist mode uses a sealed account.
+#[path = "support/mixed_playlist_fixture.rs"]
+mod mixed_playlist_fixture;
+#[path = "../../core/tests/support/native_lyric_wave.rs"]
+mod native_lyric_wave;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -200,7 +204,13 @@ fn main() {
         !directory_selection || (!queue && !cold && !reopen),
         "directory selection needs a fresh dedicated profile"
     );
-    if !reopen {
+    let mixed = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
+    assert!(!mixed || !(reopen || queue || cold || directory_selection));
+    let mixed_fixture = mixed.then(|| {
+        fs::create_dir(&root).expect("new synthetic mixed playlist root");
+        Arc::new(mixed_playlist_fixture::Fixture::new(&root).expect("mixed playlist audio"))
+    });
+    if !reopen && !mixed {
         fs::create_dir(&root).expect("new proof root");
         fixtures(&root, cold || directory_selection, queue).expect("generated local fixtures");
         if queue {
@@ -258,14 +268,47 @@ fn main() {
         verify_locale(&setup,reopen);
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
         let offline=Arc::new(Offline { hold:cold, started:AtomicBool::new(false), release:tokio::sync::Notify::new() });
-        let session=Arc::new(AccountSession::new(offline.clone(),Some(registry.store())));
+        let store=registry.store();
+        let api: Arc<dyn Api>=match &mixed_fixture {
+            Some(fixture)=>fixture.clone(),
+            None=>offline.clone(),
+        };
+        let session=Arc::new(AccountSession::new(api,Some(store.clone())));
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
         tauri::async_runtime::block_on(client.start_local_library())?;
+        if mixed {
+            let path=setup.join("media").to_string_lossy().into_owned();
+            tauri::async_runtime::block_on(client.local_command(cumulus_core::client::dto::LocalCommand::Watch{path}))?;
+        }
         app.manage(client);
         if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
-            let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
+            let mut value:Value=serde_json::from_str(event.payload()).expect("proof JSON");
+            let stage=value["stage"].as_str().unwrap_or("").to_owned();
+            let stage=stage.as_str();
+            if let Some(fixture)=&mixed_fixture {
+                if !["ux_01_add_dialog","ux_02_add_cancelled","ux_03_mixed_read","ux_04_local_playing",
+                     "ux_05_remove_dialog","ux_06_remove_cancelled","ux_07_removed","complete","failed"].contains(&stage) {return;}
+                value["nativeReceipt"]=fixture.receipt(&store).expect("mixed playlist receipt");
+                let pending=output.join(format!("{stage}.pending"));
+                fs::write(&pending,serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                fs::rename(pending,output.join(format!("{stage}.json"))).unwrap();
+                if stage=="complete"||stage=="failed" {
+                    handle.exit(if stage=="complete"{0}else{1});
+                } else if std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
+                    let marker=output.join(format!("{stage}.captured"));
+                    let stage=stage.to_owned();let handle=handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if tokio::time::timeout(std::time::Duration::from_secs(8),async {
+                            while !marker.is_file() {tokio::time::sleep(std::time::Duration::from_millis(40)).await;}
+                        }).await.is_ok() {
+                            handle.get_webview_window("main").unwrap().eval(format!("window.__mixedCapture={};",json!(stage))).unwrap();
+                        }
+                    });
+                }
+                return;
+            }
             if queue_reveal && stage=="await_queue_file_call" {
                 let expected=value["count"].as_u64().filter(|count| (1..=2).contains(count)).unwrap() as usize;
                 let calls=output.parent().unwrap().join("show-items.jsonl");
@@ -377,7 +420,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
-            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
+            webview.eval(if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
             } else if queue_reveal {
                 include_str!("local_queue_file_reveal_ui_probe.js")
