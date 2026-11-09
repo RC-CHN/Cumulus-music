@@ -44,6 +44,7 @@ def main():
         prefix = 'window.__cumulusSearchHistoryLastProof = true;\n'
     if args.podcast_browse_around:
         prefix = 'window.__cumulusPodcastBrowseAroundProof = true;\n'
+        env['CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF'] = '1'
     if args.podcast_top_classic:
         prefix = 'window.__cumulusPodcastTopClassicProof = true;\n'
     if args.default_recovery:
@@ -95,8 +96,14 @@ def verify_podcast_browse_around(root, capture):
         {'programId': episode, 'roundNum': 250} for episode in ('407', '404', '407', '408')
     ]
     assert len(list(directory.glob('ux_*.png'))) == (4 if capture else 0)
+    locale = None
+    if os.name != 'nt':
+        locale = json.loads((directory / 'locale.json').read_text(encoding='utf-8'))
+        assert locale['numeric'] == 'C'
+        assert all(locale[key] not in ('C', 'POSIX') for key in ('messages', 'characters'))
     report = dict(ok=True, actualWebView=True, nativeAudio=True, captures=4 if capture else 0,
-                  around=complete['podcastAroundCalls'], realMusicRequests=0, realAccountWrites=0)
+                  around=complete['podcastAroundCalls'], locale=locale,
+                  realMusicRequests=0, realAccountWrites=0)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
