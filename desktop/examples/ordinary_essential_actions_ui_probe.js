@@ -44,9 +44,16 @@
       node.getAnimations().every((animation) => !animation.pending && animation.playState !== 'running')),
     'settled card/menu/dialog animation');
     await sleep(170);
-    if (name === 'download_confirmation')
-      assert(!one('.playlist-download-read') && dialog('download-dialog')?.querySelector('h2')?.textContent.trim() === '下载 105 首歌曲',
-        'only the finished confirmation is visible');
+    if (name === 'download_confirmation') {
+      // The inert reader may still be leaving after the confirmation mounts.
+      // Animation snapshots can be empty before the transition's next frame.
+      await wait(() => {
+        const confirmation = dialog('download-dialog');
+        return !one('.playlist-download-read') && confirmation?.getClientRects().length &&
+          !confirmation.classList.contains('modal-enter-active') &&
+          confirmation.querySelector('h2')?.textContent.trim() === '下载 105 首歌曲';
+      }, 'only the finished confirmation is visible');
+    }
     await emit(stage, { ...extra });
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'capture ' + stage);
     state.push(name);
