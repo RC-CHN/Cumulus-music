@@ -1,0 +1,199 @@
+//! Explicit, native-verified system liked destination for a downloaded song.
+use super::*;
+
+pub(super) struct Choice {
+    receipt: String,
+    target: Option<(String, String)>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadLikedDestination {
+    pub receipt: String,
+}
+
+fn verify_origin(source: &Source, revision: &str) -> Result<()> {
+    source.require()?;
+    if source
+        .api
+        .download_system_liked_scope_revision()?
+        .as_deref()
+        != Some(revision)
+    {
+        return Err(Error::CredentialChanged);
+    }
+    Ok(())
+}
+
+impl MusicClient {
+    pub async fn download_collect_liked_destination(
+        &self,
+        epoch: &str,
+        receipt: &str,
+    ) -> Result<AccountData<Option<DownloadLikedDestination>>> {
+        let source = self.download_collection(epoch, receipt)?;
+        let ctx = &source.context;
+        let slot = &self.downloads.inner.collect;
+        let target_receipt = uuid::Uuid::new_v4().simple().to_string();
+        with_visit(slot, &source, |visit| {
+            if visit.busy || visit.attempt.is_some() {
+                return Err(Error::MutationBusy);
+            }
+            visit.liked = Some(Choice {
+                receipt: target_receipt.clone(),
+                target: None,
+            });
+            Ok(())
+        })?;
+        let Some(revision) = source.api.download_system_liked_scope_revision()? else {
+            return Ok(AccountData {
+                epoch: epoch.into(),
+                value: None,
+            });
+        };
+        let current = |ready: bool| {
+            verify_origin(&source, &revision)?;
+            with_visit(slot, &source, |visit| {
+                if visit
+                    .liked
+                    .as_ref()
+                    .is_none_or(|c| c.receipt != target_receipt)
+                    || ready && (visit.busy || visit.attempt.is_some())
+                {
+                    return Err(Error::StaleResponse);
+                }
+                Ok(())
+            })
+        };
+        let service = PlaylistService::new(ctx.session.clone())?;
+        let id = service
+            .download_system_liked_destination(&ctx.token, &|| current(true))
+            .await?;
+        current(true)?;
+        let value = with_visit(slot, &source, |visit| {
+            let choice = visit
+                .liked
+                .as_mut()
+                .filter(|c| c.receipt == target_receipt)
+                .ok_or(Error::StaleResponse)?;
+            if visit.busy || visit.attempt.is_some() {
+                return Err(Error::StaleResponse);
+            }
+            Ok(id.map(|id| {
+                choice.target = Some((id, revision));
+                DownloadLikedDestination {
+                    receipt: target_receipt,
+                }
+            }))
+        })?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+
+    pub async fn download_collect_liked(
+        &self,
+        epoch: &str,
+        receipt: &str,
+        destination_receipt: &str,
+        reconcile: bool,
+    ) -> Result<AccountData<PlaylistMutationView>> {
+        let source = self.download_collection(epoch, receipt)?;
+        let ctx = &source.context;
+        let slot = &self.downloads.inner.collect;
+        let (attempt, revision) = with_visit(slot, &source, |visit| {
+            if visit.busy {
+                return Err(Error::MutationBusy);
+            }
+            let (playlist, revision) = visit
+                .liked
+                .as_ref()
+                .filter(|c| c.receipt == destination_receipt)
+                .and_then(|c| c.target.clone())
+                .ok_or(Error::StaleResponse)?;
+            if let Some(attempt) = &visit.attempt {
+                if !attempt.system_liked || attempt.playlist != playlist {
+                    return Err(Error::StaleResponse);
+                }
+            } else if reconcile {
+                return Err(Error::StaleResponse);
+            } else {
+                visit.attempt = Some(Attempt {
+                    playlist,
+                    operation: uuid::Uuid::new_v4().simple().to_string(),
+                    system_liked: true,
+                });
+            }
+            visit.busy = true;
+            Ok((
+                visit.attempt.clone().expect("system liked attempt"),
+                revision,
+            ))
+        })?;
+        let _lease = Lease {
+            slot,
+            source: source.clone(),
+        };
+        let check = || {
+            verify_origin(&source, &revision)?;
+            with_visit(slot, &source, |_| Ok(()))
+        };
+        let service = PlaylistService::new(ctx.session.clone())?;
+        let previous = service.operation_for(&ctx.token, &attempt.operation)?;
+        let record = match previous {
+            Some(previous) if reconcile && previous.phase.pending() => {
+                service
+                    .reconcile_guarded_collect(
+                        &ctx.token,
+                        &attempt.operation,
+                        &attempt.playlist,
+                        std::slice::from_ref(&source.song),
+                        true,
+                        &check,
+                    )
+                    .await?
+            }
+            Some(previous) => previous,
+            None if reconcile => return Err(Error::StaleResponse),
+            None => match service
+                .guarded_collect_download_liked(
+                    &ctx.token,
+                    &attempt.playlist,
+                    &source.song,
+                    &attempt.operation,
+                    &check,
+                )
+                .await
+            {
+                Ok(record) => record,
+                Err(error) => {
+                    if let Some(record) = service.operation_for(&ctx.token, &attempt.operation)? {
+                        record
+                    } else {
+                        with_visit(slot, &source, |visit| {
+                            visit.attempt = None;
+                            Ok(())
+                        })?;
+                        return Err(error);
+                    }
+                }
+            },
+        };
+        check()?;
+        if record.operation_id != attempt.operation
+            || !record.system_liked_group
+            || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
+                if id == &attempt.playlist && ids.as_slice() == std::slice::from_ref(&source.song))
+        {
+            return Err(Error::StaleResponse);
+        }
+        let value = ctx
+            .session
+            .with_token(&ctx.token, |uid| playlists::view(record, uid))?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+}

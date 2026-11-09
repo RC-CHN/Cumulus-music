@@ -3031,9 +3031,11 @@ function cloudBatchLeft() {
 
 const playlistManager = usePlaylists(
   undefined,
-  async (change) => {
+  async (change, epoch) => {
     music.notice.value = change.message;
-    await music.resources();
+    if (change.verifiedLikedTrackIds) {
+      music.mergeVerifiedPlaylistLikes(epoch, change.verifiedLikedTrackIds);
+    } else await music.resources();
     if (
       playlistSaved(change.phase) &&
       change.kind === 'create' &&

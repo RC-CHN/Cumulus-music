@@ -92,6 +92,36 @@ pub async fn download_collect_creation<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn download_collect_liked_destination<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<AccountData<Option<DownloadLikedDestination>>, ClientError> {
+    require_collect_window(&window)?;
+    client
+        .download_collect_liked_destination(&epoch, &receipt)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn download_collect_liked<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    destination_receipt: String,
+    reconcile: bool,
+) -> Result<AccountData<PlaylistMutationView>, ClientError> {
+    require_collect_window(&window)?;
+    client
+        .download_collect_liked(&epoch, &receipt, &destination_receipt, reconcile)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn download_collect_cancel<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

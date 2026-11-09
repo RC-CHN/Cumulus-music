@@ -468,6 +468,10 @@ export function createTauriClient(): CoreClient {
               : { kind },
       });
     },
+    downloadCollectLikedDestination: (epoch, receipt) =>
+      invoke('download_collect_liked_destination', { epoch, receipt }),
+    downloadCollectLiked: (epoch, receipt, destinationReceipt, reconcile) =>
+      invoke('download_collect_liked', { epoch, receipt, destinationReceipt, reconcile }),
     downloadCollectCancel: (epoch, receipt) =>
       invoke('download_collect_cancel', { epoch, receipt }),
     downloadQualityPreferences: (epoch, refresh) =>

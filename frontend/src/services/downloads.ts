@@ -198,6 +198,16 @@ export interface DownloadClient {
     receipt: string,
     command: DownloadCollectCreationCommand,
   ): Promise<AccountData<DownloadCollectCreation>>;
+  downloadCollectLikedDestination(
+    epoch: string,
+    receipt: string,
+  ): Promise<AccountData<{ receipt: string } | null>>;
+  downloadCollectLiked(
+    epoch: string,
+    receipt: string,
+    destinationReceipt: string,
+    reconcile: boolean,
+  ): Promise<AccountData<PlaylistMutationView>>;
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;

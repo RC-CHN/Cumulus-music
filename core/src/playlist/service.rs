@@ -79,6 +79,7 @@ enum AddDestination<'a> {
     DownloadCreated(&'a str),
     Created(&'a str),
     SystemLiked(&'a str),
+    DownloadSystemLiked(&'a str),
 }
 
 struct WriteGuard<'a> {
@@ -411,6 +412,25 @@ impl PlaylistService {
         .await
     }
 
+    pub(crate) async fn guarded_collect_download_liked(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        song: &str,
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(
+            token,
+            AddDestination::DownloadSystemLiked(playlist),
+            &[song.into()],
+            operation_id,
+            permission,
+            |api| api.download_system_liked_scope_revision(),
+        )
+        .await
+    }
+
     async fn guarded_add_songs(
         &self,
         token: &SessionToken,
@@ -421,7 +441,10 @@ impl PlaylistService {
         scope: fn(&dyn Api) -> Result<Option<String>>,
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
-        let system_liked_group = matches!(destination, AddDestination::SystemLiked(_));
+        let system_liked_group = matches!(
+            destination,
+            AddDestination::SystemLiked(_) | AddDestination::DownloadSystemLiked(_)
+        );
         if !(1..=GuardedPlaylistAdd::MAX_SONGS).contains(&songs.len()) {
             return Err(Error::InvalidInput("invalid guarded add selection"));
         }
@@ -478,7 +501,9 @@ impl PlaylistService {
                             .ok_or(Error::StaleResponse)?;
                         (identifier(&json!(playlist))?, Some((name, private)))
                     }
-                    AddDestination::SystemLiked(_) => unreachable!(),
+                    AddDestination::SystemLiked(_) | AddDestination::DownloadSystemLiked(_) => {
+                        unreachable!()
+                    }
                 };
                 if conflict(&playlist) {
                     return Err(Error::MutationUncertain);
@@ -512,8 +537,16 @@ impl PlaylistService {
                     serde_json::to_value(detail)?,
                 )
             }
-            AddDestination::SystemLiked(expected) => {
-                let liked = self.observe_system_liked(token, expected, &check).await?;
+            AddDestination::SystemLiked(expected)
+            | AddDestination::DownloadSystemLiked(expected) => {
+                let origin = if matches!(destination, AddDestination::DownloadSystemLiked(_)) {
+                    liked::Origin::Download
+                } else {
+                    liked::Origin::Voice
+                };
+                let liked = self
+                    .observe_system_liked(token, expected, &check, origin)
+                    .await?;
                 liked.check_selected_membership(songs)?;
                 let playlist = liked.playlist.summary.id.clone();
                 if conflict(&playlist) {

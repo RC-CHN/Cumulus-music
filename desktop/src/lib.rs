@@ -571,6 +571,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 downloads::download_collect_destinations,
                 downloads::download_collect_existing,
                 downloads::download_collect_creation,
+                downloads::download_collect_liked_destination,
+                downloads::download_collect_liked,
                 downloads::download_collect_cancel,
                 downloads::download_command,
                 downloads::download_quality_preferences,

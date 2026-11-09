@@ -17,15 +17,16 @@ pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
 pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
 
 /// Fixed native reads needed to identify and confirm the system-liked playlist.
-pub struct SongCardLikedRead(SongCardLikedQuery);
+pub struct SystemLikedRead(SystemLikedQuery);
+pub type SongCardLikedRead = SystemLikedRead;
 
-enum SongCardLikedQuery {
+enum SystemLikedQuery {
     StarList { owner: String, page: usize },
     Detail(String),
     Membership(String),
 }
 
-impl SongCardLikedRead {
+impl SystemLikedRead {
     pub(crate) const LIST: &str = "/api/user/playlist";
     pub(crate) const DETAIL: &str = "/api/v6/playlist/detail";
     pub(crate) const MEMBERSHIP: &str = "/api/song/like/get";
@@ -33,28 +34,28 @@ impl SongCardLikedRead {
     pub(crate) const MAX_PAGES: usize = 10;
 
     pub(crate) fn list(owner: &str, page: usize) -> Self {
-        Self(SongCardLikedQuery::StarList {
+        Self(SystemLikedQuery::StarList {
             owner: owner.into(),
             page,
         })
     }
 
     pub(crate) fn detail(id: &str) -> Self {
-        Self(SongCardLikedQuery::Detail(id.into()))
+        Self(SystemLikedQuery::Detail(id.into()))
     }
 
     pub(crate) fn membership(owner: &str) -> Self {
-        Self(SongCardLikedQuery::Membership(owner.into()))
+        Self(SystemLikedQuery::Membership(owner.into()))
     }
 
     pub fn into_request(self) -> (&'static str, Value) {
         match self.0 {
-            SongCardLikedQuery::StarList { owner, page } => (
+            SystemLikedQuery::StarList { owner, page } => (
                 Self::LIST,
                 json!({"uid":owner,"offset":page * Self::LIST_LIMIT,"limit":Self::LIST_LIMIT}),
             ),
-            SongCardLikedQuery::Detail(id) => (Self::DETAIL, json!({"id":id,"n":100000,"s":0})),
-            SongCardLikedQuery::Membership(owner) => (Self::MEMBERSHIP, json!({"uid":owner})),
+            SystemLikedQuery::Detail(id) => (Self::DETAIL, json!({"id":id,"n":100000,"s":0})),
+            SystemLikedQuery::Membership(owner) => (Self::MEMBERSHIP, json!({"uid":owner})),
         }
     }
 }
@@ -516,6 +517,19 @@ pub trait Api: Send + Sync + std::any::Any {
     /// Creation must share the current download picker account and cookie scope.
     fn download_collection_create_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    fn download_system_liked_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_download_system_liked<'a>(
+        &'a self,
+        _read: SystemLikedRead,
+        _revision: &'a str,
+        _permission: &'a PlaylistAddPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("download system-liked read is unavailable")) })
     }
 
     fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {

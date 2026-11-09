@@ -357,3 +357,6 @@ async fn downloaded_collection_rechecks_owner_and_rejects_retired_or_changed_tas
         assert!(api.writes.lock().unwrap().is_empty());
     }
 }
+
+#[path = "download_collection/liked.rs"]
+mod liked;

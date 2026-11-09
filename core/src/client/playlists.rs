@@ -41,6 +41,8 @@ pub struct PlaylistMutationView {
     pub service_codes: BTreeMap<String, i64>,
     pub message: &'static str,
     pub observed: Option<PlaylistEditor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified_liked_track_ids: Option<Vec<String>>,
 }
 pub(super) fn editor(p: PlaylistSnapshot, uid: &str) -> PlaylistEditor {
     PlaylistEditor {
@@ -58,12 +60,21 @@ pub(super) fn editor(p: PlaylistSnapshot, uid: &str) -> PlaylistEditor {
     }
 }
 pub(super) fn view(r: PlaylistMutation, uid: &str) -> Result<PlaylistMutationView> {
-    let observed = r
-        .observed
-        .as_ref()
-        .filter(|v| v.get("playlists").is_none())
-        .map(|v| serde_json::from_value::<PlaylistSnapshot>(v.clone()).map(|p| editor(p, uid)))
-        .transpose()?;
+    let (observed, verified_liked_track_ids) = if r.system_liked_group {
+        let (observed, ids) = r.verified_system_liked(uid)?;
+        (observed.map(|p| editor(p, uid)), Some(ids))
+    } else {
+        (
+            r.observed
+                .as_ref()
+                .filter(|v| v.get("playlists").is_none())
+                .map(|v| {
+                    serde_json::from_value::<PlaylistSnapshot>(v.clone()).map(|p| editor(p, uid))
+                })
+                .transpose()?,
+            None,
+        )
+    };
     let label = match &r.command {
         PlaylistCommand::Create { name, .. } | PlaylistCommand::Metadata { name, .. } => {
             name.clone()
@@ -95,6 +106,7 @@ pub(super) fn view(r: PlaylistMutation, uid: &str) -> Result<PlaylistMutationVie
         service_codes: r.codes,
         message,
         observed,
+        verified_liked_track_ids,
     })
 }
 impl MusicClient {

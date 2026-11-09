@@ -18,7 +18,7 @@ import {
 /** View coordination only. Core journals/compares/writes/reconciles resources. */
 export function usePlaylists(
   core: CoreClient = useCore(),
-  changed: (result: PlaylistMutationView) => Promise<void> = async () => {},
+  changed: (result: PlaylistMutationView, epoch: string) => Promise<void> = async () => {},
   expired: () => void = () => {},
 ) {
   const editor = shallowRef<PlaylistEditor>();
@@ -170,7 +170,7 @@ export function usePlaylists(
       if (r !== revision || e !== epoch || v.epoch !== epoch) return;
       result.value = v.value;
       if (v.value.observed) editor.value = v.value.observed;
-      await changed(v.value);
+      await changed(v.value, e);
       if (r !== revision || e !== epoch) return;
       await refreshOperations();
       return v.value;
@@ -190,6 +190,15 @@ export function usePlaylists(
     run((e) => {
       if (scope.epoch !== e) throw { code: 'stale', message: '账号已切换' };
       return core.downloadCollectExisting(e, scope.receipt, id);
+    });
+  const collectDownloadedLiked = (
+    scope: { epoch: string; receipt: string },
+    destination: string,
+    reconcile: boolean,
+  ) =>
+    run((e) => {
+      if (scope.epoch !== e) throw { code: 'stale', message: '账号已切换' };
+      return core.downloadCollectLiked(e, scope.receipt, destination, reconcile);
     });
   async function addTracks(id: string, ids: string[]) {
     return run(async (e) => {
@@ -288,6 +297,7 @@ export function usePlaylists(
     tracks,
     addTracks,
     addDownloadedTrack,
+    collectDownloadedLiked,
     move,
     reorderSidebar,
     saved: playlistSaved,

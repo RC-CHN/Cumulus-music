@@ -2,15 +2,37 @@
 use super::*;
 use crate::{
     account::resources::ResourceKind,
-    protocol::api::{SongCardLikedRead as Read, validate_response},
+    protocol::api::{SystemLikedRead as Read, validate_response},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum Origin {
+    #[default]
+    Voice,
+    Download,
+}
+
+impl Origin {
+    fn voice(&self) -> bool {
+        *self == Self::Voice
+    }
+    fn revision(self, api: &dyn Api) -> Result<Option<String>> {
+        match self {
+            Self::Voice => api.song_card_system_liked_scope_revision(),
+            Self::Download => api.download_system_liked_scope_revision(),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub(super) struct Observation {
     pub(super) playlist: PlaylistSnapshot,
     liked_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Origin::voice")]
+    origin: Origin,
 }
 
 impl Observation {
@@ -71,6 +93,7 @@ struct Scope<'a> {
     api: Arc<dyn Api>,
     revision: String,
     outer: Option<&'a PlaylistAddPermission<'a>>,
+    origin: Origin,
 }
 
 impl<'a> Scope<'a> {
@@ -78,11 +101,12 @@ impl<'a> Scope<'a> {
         service: &'a PlaylistService,
         token: &'a SessionToken,
         outer: Option<&'a PlaylistAddPermission<'a>>,
+        origin: Origin,
     ) -> Result<Self> {
         let owner = service.owner(token)?;
         let api = service.session.native_api(token)?;
-        let revision = api
-            .song_card_system_liked_scope_revision()?
+        let revision = origin
+            .revision(api.as_ref())?
             .ok_or(Error::State("signed system liked playlist is unavailable"))?;
         let scope = Self {
             service,
@@ -91,15 +115,14 @@ impl<'a> Scope<'a> {
             api,
             revision,
             outer,
+            origin,
         };
         scope.check()?;
         Ok(scope)
     }
 
     fn check_revision(&self) -> Result<()> {
-        if self.api.song_card_system_liked_scope_revision()?.as_deref()
-            != Some(self.revision.as_str())
-        {
+        if self.origin.revision(self.api.as_ref())?.as_deref() != Some(self.revision.as_str()) {
             return Err(Error::CredentialChanged);
         }
         Ok(())
@@ -118,14 +141,20 @@ impl<'a> Scope<'a> {
         let check = || self.check();
         check()?;
         let revision = self.revision.as_str();
+        let origin = self.origin;
         let response = self
             .service
             .session
             .run_for(self.token, |api, _| async move {
                 validate_response(
                     path,
-                    api.request_song_card_system_liked(read, revision, &check)
-                        .await?,
+                    match origin {
+                        Origin::Voice => api.request_song_card_system_liked(read, revision, &check),
+                        Origin::Download => {
+                            api.request_download_system_liked(read, revision, &check)
+                        }
+                    }
+                    .await?,
                     &[200],
                 )
             })
@@ -205,6 +234,7 @@ impl<'a> Scope<'a> {
         Ok(Observation {
             playlist,
             liked_ids,
+            origin: self.origin,
         })
     }
 }
@@ -215,7 +245,19 @@ impl PlaylistService {
         token: &SessionToken,
         check: &PlaylistAddPermission<'_>,
     ) -> Result<Option<String>> {
-        let scope = Scope::new(self, token, Some(check))?;
+        let scope = Scope::new(self, token, Some(check), Origin::Voice)?;
+        Ok(scope
+            .playlist(None)
+            .await?
+            .map(|playlist| playlist.summary.id))
+    }
+
+    pub(crate) async fn download_system_liked_destination(
+        &self,
+        token: &SessionToken,
+        check: &PlaylistAddPermission<'_>,
+    ) -> Result<Option<String>> {
+        let scope = Scope::new(self, token, Some(check), Origin::Download)?;
         Ok(scope
             .playlist(None)
             .await?
@@ -227,8 +269,9 @@ impl PlaylistService {
         token: &SessionToken,
         expected: &str,
         check: &PlaylistAddPermission<'_>,
+        origin: Origin,
     ) -> Result<Observation> {
-        Scope::new(self, token, Some(check))?
+        Scope::new(self, token, Some(check), origin)?
             .observe(expected)
             .await
     }
@@ -239,7 +282,8 @@ impl PlaylistService {
         mut record: PlaylistMutation,
         guard: Option<&PlaylistAddPermission<'_>>,
     ) -> Result<PlaylistMutation> {
-        let scope = Scope::new(self, token, guard)?;
+        let before: Observation = serde_json::from_value(record.before.clone())?;
+        let scope = Scope::new(self, token, guard, before.origin)?;
         let PlaylistCommand::Tracks {
             id,
             change: TrackChange::Add,
@@ -294,6 +338,29 @@ impl PlaylistService {
     }
 }
 
+impl PlaylistMutation {
+    pub(crate) fn verified_system_liked(
+        &self,
+        uid: &str,
+    ) -> Result<(Option<PlaylistSnapshot>, Vec<String>)> {
+        let PlaylistCommand::Tracks { ids, .. } = &self.command else {
+            return Err(Error::State("invalid system liked journal command"));
+        };
+        if !matches!(
+            self.phase,
+            PlaylistPhase::Confirmed | PlaylistPhase::Unchanged
+        ) {
+            return Ok((None, vec![]));
+        }
+        let value = self.observed.as_ref().ok_or(Error::StaleResponse)?;
+        if !matches(self, value, uid)? {
+            return Err(Error::StaleResponse);
+        }
+        let observation: Observation = serde_json::from_value(value.clone())?;
+        Ok((Some(observation.playlist), ids.clone()))
+    }
+}
+
 pub(super) fn matches(record: &PlaylistMutation, observed: &Value, uid: &str) -> Result<bool> {
     let PlaylistCommand::Tracks {
         id,
@@ -314,6 +381,9 @@ pub(super) fn matches(record: &PlaylistMutation, observed: &Value, uid: &str) ->
     for obs in [&before, &after] {
         obs.validate(id, uid)?;
     }
+    if before.origin != after.origin {
+        return Err(Error::Response("system liked journal source differs"));
+    }
     let liked = after.liked_ids.iter().collect::<HashSet<_>>();
     Ok(ids.iter().all(|id| liked.contains(id))
         && reconcile::tracks_added(&before.playlist, &after.playlist, ids))
@@ -329,6 +399,9 @@ pub(super) fn verify_download_readback(
 ) -> Result<()> {
     let before: Observation = serde_json::from_value(record.before.clone())?;
     before.validate(id, owner)?;
+    if before.origin != Origin::Voice {
+        return Err(Error::StaleResponse);
+    }
     before.check_selected_membership(songs)?;
     if record.phase == PlaylistPhase::Unchanged {
         let liked = before.liked_ids.iter().collect::<HashSet<_>>();

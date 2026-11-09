@@ -9,11 +9,11 @@ use crate::{
         api::{
             Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
             MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH, MessageReadAllPermission,
-            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, VinylCommentRead,
-            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
-            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
-            VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead,
-            VinylWikiReadPermission,
+            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
+            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
+            VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
+            VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -74,6 +74,7 @@ enum RequestBinding<'a> {
     VinylComment,
     VinylDiscovery,
     VinylPlaybackRead(&'a VinylPlaybackReadPermission<'a>),
+    DownloadLikedRead(&'a PlaylistAddPermission<'a>),
     VinylPodcastSubscriptionWrite {
         permission: &'a VinylPlaybackReadPermission<'a>,
         dispatched: &'a AtomicBool,
@@ -554,7 +555,11 @@ impl MusicHttpClient {
         if expected.is_some_and(|revision| revision != snapshot.revision)
             || (matches!(
                 binding,
-                Some(RequestBinding::PodcastProgress(_) | RequestBinding::PodcastBadge { .. })
+                Some(
+                    RequestBinding::PodcastProgress(_)
+                        | RequestBinding::PodcastBadge { .. }
+                        | RequestBinding::DownloadLikedRead(_)
+                )
             ) && snapshot.unique_music_u().is_none())
             || (legacy_renewal && snapshot.unique_music_u().is_none())
         {
@@ -729,7 +734,11 @@ impl MusicHttpClient {
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
             }
-            if let Some(RequestBinding::VinylPlaybackRead(permission)) = binding {
+            if let Some(
+                RequestBinding::VinylPlaybackRead(permission)
+                | RequestBinding::DownloadLikedRead(permission),
+            ) = binding
+            {
                 // Request-context preparation may await a provider. Recheck
                 // the exact target scope before handing this read to HTTP.
                 let current = self.credentials.request_credentials(&target)?;
@@ -1543,6 +1552,48 @@ impl Api for MusicHttpClient {
             }
             self.vinyl_playback_read(read.into_request(), revision, permission)
                 .await
+        })
+    }
+
+    fn download_system_liked_scope_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        let path = GuardedPlaylistAdd::PATH;
+        let route = select_route_with_policy(origin, path, &json!({}), self.options.routing)?;
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, path)?)?;
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/w/nuser/account/get",
+                SystemLikedRead::LIST,
+                SystemLikedRead::DETAIL,
+                SystemLikedRead::MEMBERSHIP,
+            ],
+        )?;
+        Ok(Some(current.revision))
+    }
+
+    fn request_download_system_liked<'a>(
+        &'a self,
+        read: SystemLikedRead,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.download_system_liked_scope_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            let (path, args) = read.into_request();
+            self.execute(
+                path,
+                args,
+                false,
+                Some(revision),
+                Jsk::None,
+                Some(RequestBinding::DownloadLikedRead(permission)),
+            )
+            .await
         })
     }
 

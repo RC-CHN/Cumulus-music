@@ -59,6 +59,7 @@ watch(creationPhase, async (phase) => {
 });
 
 const interrupted = shallowRef<PlaylistMutationView>();
+const likedDestination = ref('');
 const receipt = computed(() => result.value ?? interrupted.value);
 type Sort = 'default' | 'recently';
 const sortOptions = [
@@ -103,7 +104,20 @@ onMounted(() => {
   props.manager.reset();
   dialog.value?.showModal();
   void reload();
+  void loadLikedDestination();
 });
+async function loadLikedDestination() {
+  const scope = props.downloadCollection;
+  if (!scope) return;
+  try {
+    const response = await client.downloadCollectLikedDestination(scope.epoch, scope.receipt);
+    if (alive && props.downloadCollection === scope && response.epoch === props.epoch)
+      likedDestination.value = response.value?.receipt ?? '';
+  } catch (error) {
+    if (!alive || props.downloadCollection !== scope) return;
+    if (['session_expired', 'profile_changed'].includes(failure(error).code)) emit('expired');
+  }
+}
 async function reload(automatic = false) {
   const order = sort.value;
   const state = bySort[order];
@@ -253,6 +267,13 @@ async function collect(id: string) {
     ),
   );
 }
+async function collectLiked() {
+  const scope = props.downloadCollection;
+  const destination = likedDestination.value;
+  if (!scope || !destination || busy.value || pending.value || fixedDestination.value) return;
+  selected.value = 'system-liked';
+  await collected(await props.manager.collectDownloadedLiked(scope, destination, false));
+}
 async function submit() {
   if (busy.value || pending.value || (!created.value && invalid.value)) return;
   if (props.downloadCollection) {
@@ -288,7 +309,12 @@ async function resolveDownloadCreation(continueAdd: boolean) {
 }
 async function reconcile() {
   if (!receipt.value || busy.value) return;
-  await collected(await props.manager.reconcile(receipt.value.operationId));
+  const scope = props.downloadCollection;
+  if (scope && receipt.value.verifiedLikedTrackIds && likedDestination.value) {
+    await collected(
+      await props.manager.collectDownloadedLiked(scope, likedDestination.value, true),
+    );
+  } else await collected(await props.manager.reconcile(receipt.value.operationId));
 }
 </script>
 <template>
@@ -459,6 +485,7 @@ async function reconcile() {
           :playlists="current.rows"
           :disabled="busy || pending || fixedDestination"
           :include-create="!downloadCollection || downloadCollection.canCreate"
+          :system-liked="!!likedDestination"
           :show-working="!downloadCollection || busy"
           :selected-id="selected"
           :scroll-top="current.top"
@@ -466,6 +493,7 @@ async function reconcile() {
           @scroll="current.top = $event"
           @near-end="reload(true)"
           @select="collect"
+          @liked="collectLiked"
           @create="startCreate"
         />
         <button

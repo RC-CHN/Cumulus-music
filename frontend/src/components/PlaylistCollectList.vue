@@ -115,7 +115,10 @@ async function move(event: KeyboardEvent) {
       v-for="(row, offset) in entries.slice(start, end)"
       :key="row === 'liked' ? 'system-liked' : (row?.id ?? 'create')"
       class="collect-row"
-      :class="{ 'collect-selected': playlistRow(row)?.id === selectedId }"
+      :class="{
+        'collect-selected':
+          (row === 'liked' ? 'system-liked' : playlistRow(row)?.id) === selectedId,
+      }"
       :data-playlist-id="playlistRow(row)?.id"
       :data-index="start + offset"
       :data-voice-group-destination-liked="row === 'liked' ? '' : undefined"

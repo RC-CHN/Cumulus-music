@@ -1,5 +1,6 @@
 //! Receipt-bound collection from completed downloads.
 mod creation;
+mod liked;
 use super::{Context, MusicClient, resource::catalogue_track_id};
 use crate::{
     Error, Result,
@@ -17,6 +18,7 @@ use crate::{
 };
 use creation::CreationAttempt;
 pub use creation::{DownloadCollectCreation, DownloadCollectCreationCommand};
+pub use liked::DownloadLikedDestination;
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -98,6 +100,7 @@ struct Destinations {
 struct Attempt {
     playlist: String,
     operation: String,
+    system_liked: bool,
 }
 
 pub(super) struct Visit {
@@ -106,6 +109,7 @@ pub(super) struct Visit {
     ticket: u64,
     attempt: Option<Attempt>,
     creation: Option<CreationAttempt>,
+    liked: Option<liked::Choice>,
     busy: bool,
 }
 
@@ -216,6 +220,7 @@ impl MusicClient {
             ticket: 0,
             attempt: None,
             creation: None,
+            liked: None,
             busy: false,
         });
         Ok(AccountData {
@@ -304,7 +309,7 @@ impl MusicClient {
                 return Err(Error::StaleResponse);
             }
             if let Some(attempt) = &visit.attempt {
-                if attempt.playlist != playlist {
+                if attempt.playlist != playlist || attempt.system_liked {
                     return Err(Error::StaleResponse);
                 }
             } else {
@@ -318,6 +323,7 @@ impl MusicClient {
                 visit.attempt = Some(Attempt {
                     playlist: playlist.into(),
                     operation: uuid::Uuid::new_v4().simple().to_string(),
+                    system_liked: false,
                 });
             }
             visit.busy = true;

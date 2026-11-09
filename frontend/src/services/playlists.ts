@@ -65,6 +65,7 @@ export interface PlaylistMutationView {
   serviceCodes: Record<string, number>;
   message: string;
   observed: PlaylistEditor | null;
+  verifiedLikedTrackIds?: string[];
 }
 export type ExternalPlaylistSource = 'qq' | 'kugou' | 'kuwo' | 'xiaomi';
 export type ExternalPlaylistInput =

@@ -19,7 +19,10 @@ use crate::{
     },
     storage::StateStore,
 };
-pub use collect::{DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan};
+pub use collect::{
+    DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan,
+    DownloadLikedDestination,
+};
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;
 pub use song_status::SongDownloadState;
