@@ -3,11 +3,11 @@ use cumulus_core::protocol::api::SystemLikedRead;
 use std::sync::atomic::AtomicU8;
 
 #[derive(Default)]
-struct Liked {
-    state: AtomicU8,
+pub(super) struct Liked {
+    pub(super) state: AtomicU8,
     changed_credentials: AtomicBool,
-    reads: Mutex<Vec<(String, Value)>>,
-    writes: Mutex<Vec<Value>>,
+    pub(super) reads: Mutex<Vec<(String, Value)>>,
+    pub(super) writes: Mutex<Vec<Value>>,
 }
 
 fn star(id: &str, tracks: Value) -> Value {
@@ -106,10 +106,16 @@ impl Api for Liked {
             assert_eq!(path, WRITE);
             permission()?;
             dispatched.store(true, Ordering::Release);
-            self.writes.lock().unwrap().push(args);
-            assert_eq!(self.state.swap(1, Ordering::AcqRel), 0);
-            Err(Error::Transport("synthetic add response lost".into()))
+            self.apply(args)
         })
+    }
+}
+
+impl Liked {
+    pub(super) fn apply(&self, args: Value) -> Result<Value> {
+        self.writes.lock().unwrap().push(args);
+        assert_eq!(self.state.swap(1, Ordering::AcqRel), 0);
+        Err(Error::Transport("synthetic add response lost".into()))
     }
 }
 

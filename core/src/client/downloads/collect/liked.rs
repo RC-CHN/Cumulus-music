@@ -36,7 +36,7 @@ impl MusicClient {
         let slot = &self.downloads.inner.collect;
         let target_receipt = uuid::Uuid::new_v4().simple().to_string();
         with_visit(slot, &source, |visit| {
-            if visit.busy || visit.attempt.is_some() {
+            if visit.busy || visit.attempt.is_some() || visit.creation.is_some() {
                 return Err(Error::MutationBusy);
             }
             visit.liked = Some(Choice {
@@ -51,14 +51,16 @@ impl MusicClient {
                 value: None,
             });
         };
-        let current = |ready: bool| {
+        let current = || {
             verify_origin(&source, &revision)?;
             with_visit(slot, &source, |visit| {
                 if visit
                     .liked
                     .as_ref()
                     .is_none_or(|c| c.receipt != target_receipt)
-                    || ready && (visit.busy || visit.attempt.is_some())
+                    || visit.busy
+                    || visit.attempt.is_some()
+                    || visit.creation.is_some()
                 {
                     return Err(Error::StaleResponse);
                 }
@@ -67,16 +69,16 @@ impl MusicClient {
         };
         let service = PlaylistService::new(ctx.session.clone())?;
         let id = service
-            .download_system_liked_destination(&ctx.token, &|| current(true))
+            .download_system_liked_destination(&ctx.token, &current)
             .await?;
-        current(true)?;
+        current()?;
         let value = with_visit(slot, &source, |visit| {
             let choice = visit
                 .liked
                 .as_mut()
                 .filter(|c| c.receipt == target_receipt)
                 .ok_or(Error::StaleResponse)?;
-            if visit.busy || visit.attempt.is_some() {
+            if visit.busy || visit.attempt.is_some() || visit.creation.is_some() {
                 return Err(Error::StaleResponse);
             }
             Ok(id.map(|id| {
@@ -105,6 +107,9 @@ impl MusicClient {
         let (attempt, revision) = with_visit(slot, &source, |visit| {
             if visit.busy {
                 return Err(Error::MutationBusy);
+            }
+            if visit.creation.is_some() {
+                return Err(Error::StaleResponse);
             }
             let (playlist, revision) = visit
                 .liked

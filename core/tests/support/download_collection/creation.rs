@@ -1,7 +1,7 @@
 use super::*;
 use cumulus_core::{
     client::dto::{DownloadCollectCreation, DownloadCollectCreationCommand as Action},
-    protocol::api::GuardedPlaylistCreate,
+    protocol::api::{GuardedPlaylistCreate, SystemLikedRead},
 };
 
 const OWNED: &str = "/api/user/playlist";
@@ -27,6 +27,8 @@ struct Native {
     show_created: AtomicBool,
     show_added: AtomicBool,
     credential_rotated: AtomicBool,
+    liked: super::liked::Liked,
+    hold_liked_read: AtomicBool,
     entered: Notify,
     release: Notify,
 }
@@ -40,6 +42,8 @@ impl Native {
             show_created: AtomicBool::new(!matches!(case, Case::LostCreate | Case::LateList)),
             show_added: AtomicBool::new(false),
             credential_rotated: AtomicBool::new(false),
+            liked: Default::default(),
+            hold_liked_read: AtomicBool::new(false),
             entered: Notify::new(),
             release: Notify::new(),
         }
@@ -105,6 +109,29 @@ impl Api for Native {
         ))
     }
 
+    fn download_system_liked_scope_revision(&self) -> Result<Option<String>> {
+        self.liked.download_system_liked_scope_revision()
+    }
+
+    fn request_download_system_liked<'a>(
+        &'a self,
+        read: SystemLikedRead,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let result = self
+                .liked
+                .request_download_system_liked(read, revision, permission)
+                .await?;
+            if self.hold_liked_read.swap(false, Ordering::AcqRel) {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+            Ok(result)
+        })
+    }
+
     fn request_guarded_playlist_create<'a>(
         &'a self,
         write: GuardedPlaylistCreate,
@@ -140,6 +167,11 @@ impl Api for Native {
         Box::pin(async move {
             let (path, body) = write.into_request()?;
             assert_eq!(path, WRITE);
+            if body["pid"] == "83" {
+                permission()?;
+                dispatched.store(true, Ordering::Release);
+                return self.liked.apply(body);
+            }
             assert_eq!(body, json!({"pid":"91","trackIds":"[\"123\"]","op":"add"}));
             if self.case == Case::CancelBeforeAdd {
                 self.entered.notify_one();
@@ -478,4 +510,128 @@ fn http_create_requires_the_same_url_scoped_cookie_as_download_add_and_account()
             Err(Error::CredentialChanged)
         ));
     }
+}
+
+#[tokio::test]
+async fn pending_creation_rejects_previously_resolved_liked_destination_without_a_second_write() {
+    let (f, api, epoch, visit, _) = fixture(Case::LostCreate).await;
+    let liked = f
+        .client
+        .download_collect_liked_destination(&epoch, &visit)
+        .await
+        .unwrap()
+        .value
+        .unwrap()
+        .receipt;
+    let pending = f
+        .client
+        .download_collect_creation(&epoch, &visit, create())
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(pending.create.phase, PlaylistPhase::Uncertain);
+    assert!(pending.add.is_none());
+    let discovery_reads = api.liked.reads.lock().unwrap().len();
+    assert!(matches!(
+        f.client
+            .download_collect_liked_destination(&epoch, &visit)
+            .await,
+        Err(Error::MutationBusy)
+    ));
+    for reconcile in [false, true] {
+        assert!(matches!(
+            f.client
+                .download_collect_liked(&epoch, &visit, &liked, reconcile)
+                .await,
+            Err(Error::StaleResponse)
+        ));
+    }
+    assert_eq!(api.liked.reads.lock().unwrap().len(), discovery_reads);
+    assert!(api.liked.writes.lock().unwrap().is_empty());
+    let original = f
+        .client
+        .download_collect_creation(&epoch, &visit, status(false))
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(original.create.operation_id, pending.create.operation_id);
+    assert_eq!(api.writes.lock().unwrap().len(), 1);
+    assert_eq!(f.client.playlist_operations(&epoch).unwrap().value.len(), 1);
+}
+
+#[tokio::test]
+async fn pending_liked_attempt_rejects_creation_and_keeps_its_read_only_reconciliation() {
+    let (f, api, epoch, visit, _) = fixture(Case::Success).await;
+    let liked = f
+        .client
+        .download_collect_liked_destination(&epoch, &visit)
+        .await
+        .unwrap()
+        .value
+        .unwrap()
+        .receipt;
+    let pending = f
+        .client
+        .download_collect_liked(&epoch, &visit, &liked, false)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(pending.phase, PlaylistPhase::Uncertain);
+    assert_eq!(pending.verified_liked_track_ids, Some(vec![]));
+    for command in [create(), status(true), Action::AddCreated {}] {
+        assert!(matches!(
+            f.client
+                .download_collect_creation(&epoch, &visit, command)
+                .await,
+            Err(Error::StaleResponse)
+        ));
+    }
+    assert!(api.reads.lock().unwrap().is_empty());
+    assert!(api.writes.lock().unwrap().is_empty());
+    let operations = f.client.playlist_operations(&epoch).unwrap().value;
+    assert_eq!(operations.len(), 1);
+    assert_eq!(operations[0].operation_id, pending.operation_id);
+    api.liked.state.store(2, Ordering::Release);
+    let confirmed = f
+        .client
+        .download_collect_liked(&epoch, &visit, &liked, true)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(confirmed.operation_id, pending.operation_id);
+    assert_eq!(confirmed.phase, PlaylistPhase::Confirmed);
+    assert_eq!(confirmed.verified_liked_track_ids, Some(vec!["123".into()]));
+    assert_eq!(api.liked.writes.lock().unwrap().len(), 1);
+    assert!(
+        f.client
+            .playlist_operations(&epoch)
+            .unwrap()
+            .value
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn liked_discovery_returning_after_creation_cannot_publish_a_destination() {
+    let (f, api, epoch, visit, _) = fixture(Case::LostCreate).await;
+    api.hold_liked_read.store(true, Ordering::Release);
+    let (discovery, pending) = tokio::join!(
+        f.client.download_collect_liked_destination(&epoch, &visit),
+        async {
+            tokio::time::timeout(std::time::Duration::from_secs(2), api.entered.notified())
+                .await
+                .unwrap();
+            let pending = f
+                .client
+                .download_collect_creation(&epoch, &visit, create())
+                .await;
+            api.release.notify_one();
+            pending.unwrap().value
+        }
+    );
+    assert_eq!(pending.create.phase, PlaylistPhase::Uncertain);
+    assert!(matches!(discovery, Err(Error::StaleResponse)));
+    assert_eq!(api.liked.reads.lock().unwrap().len(), 1);
+    assert!(api.liked.writes.lock().unwrap().is_empty());
+    assert_eq!(api.writes.lock().unwrap().len(), 1);
 }
