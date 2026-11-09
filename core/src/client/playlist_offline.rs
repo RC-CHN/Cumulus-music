@@ -209,7 +209,7 @@ pub(super) fn may_fallback(error: &Error) -> bool {
         Error::Transport(_) => true,
         Error::RequestNotSent(cause) => matches!(cause.root(), Error::Transport(_)),
         Error::HttpStatus {
-            status: 502 | 503 | 504,
+            status: 502..=504,
             body,
             ..
         } => body.as_ref().is_none_or(|body| {
