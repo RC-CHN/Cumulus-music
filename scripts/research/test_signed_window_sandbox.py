@@ -12,20 +12,24 @@ import threading
 import unittest
 from unittest.mock import patch
 
+from signed_window_cdn_admission import ACK, REQUEST, publish_ack
 from signed_window_sandbox import RECEIPT, SandboxError, _prepared_tree, _receipt, run
 
 
 FIXTURE = r'''
+#define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
-    if (argc != 2 || strcmp(argv[1], "--live") != 0) return 1;
+    int dynamic = argc == 3 && strcmp(argv[2], "--arm-cdn") == 0;
+    if (!(argc == 2 || dynamic) || strcmp(argv[1], "--live") != 0) return 1;
     const char *proxy = getenv("CUMULUS_SIGNED_WINDOW_PROXY");
     if (!proxy || strcmp(proxy, "127.0.0.1:41389") != 0 || getenv("HTTPS_PROXY") ||
         getenv("CUMULUS_SANDBOX_HOST_SECRET") || getenv("CUMULUS_SANDBOX_OUTER_NETNS")) return 2;
@@ -36,6 +40,23 @@ int main(int argc, char **argv) {
     if (fd < 0 || read(fd, buffer, 7) != 7 || memcmp(buffer, "fixture", 7)) return 4;
     close(fd);
     if (open("/prepared/parameters.json", O_WRONLY) >= 0 || errno != EROFS) return 5;
+    if (dynamic) {
+        const char *message = "{\"authority\":\"m7.music.126.net\"}\n";
+        const char *temporary = "/proof/.fixture-request";
+        fd = open(temporary, O_CREAT | O_WRONLY | O_EXCL, 0600);
+        if (fd < 0 || write(fd, message, strlen(message)) != strlen(message)) return 11;
+        close(fd);
+        if (renameat2(AT_FDCWD, temporary, AT_FDCWD, "/proof/cdn-authority-request.json",
+                      RENAME_NOREPLACE) != 0) return 12;
+        for (int i = 0; i < 100; ++i) {
+            fd = open("/proof/cdn-authority-armed.json", O_RDONLY | O_NOFOLLOW);
+            if (fd >= 0) break;
+            usleep(30000);
+        }
+        char ack[64] = {0};
+        if (fd < 0 || read(fd, ack, sizeof(ack)) != strlen(message) || strcmp(ack, message)) return 13;
+        close(fd);
+    }
     struct sockaddr_in address = {.sin_family = AF_INET, .sin_port = htons(9)};
     if (inet_pton(AF_INET, "192.0.2.1", &address.sin_addr) != 1) return 6;
     fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -164,6 +185,50 @@ class SandboxTests(unittest.TestCase):
             self.assertTrue(summary["loopbackOnly"] and summary["privateDisplay"] and summary["privateSessionBus"])
             self.assertEqual((work / "marker").read_bytes(), b"ready")
             self.assertEqual((prepared / "parameters.json").read_bytes(), b"fixture")
+
+    @unittest.skipUnless(HAS_TOOLS, "requires local Linux sandbox, display and compiler tools")
+    def test_dynamic_worker_waits_for_private_host_ack_before_using_bridge(self):
+        with tempfile.TemporaryDirectory(prefix="cumulus-sandbox-dynamic-", dir="/tmp") as tmp:
+            paths = fixture(Path(tmp), FIXTURE)
+            output, broker = paths[-2:]
+            seen = []
+
+            def observe(_deadline):
+                if (output / REQUEST).is_file() and not seen:
+                    self.assertEqual(json.loads((output / REQUEST).read_bytes()),
+                                     {"authority": "m7.music.126.net"})
+                    directory = os.open(output, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        publish_ack(directory, "m7.music.126.net")
+                    finally:
+                        os.close(directory)
+                    seen.append("ack")
+
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(str(broker))
+                broker.chmod(0o600)
+                listener.listen(1)
+                listener.settimeout(3)
+
+                def serve():
+                    try:
+                        with listener.accept()[0] as conn:
+                            conn.settimeout(2)
+                            with conn.makefile("rb") as stream:
+                                seen.append(stream.read(8))
+                            conn.sendall(b"accepted")
+                    except OSError:
+                        pass
+
+                worker = threading.Thread(target=serve)
+                worker.start()
+                try:
+                    summary = run(*paths, timeout=10, arm_cdn=observe)
+                finally:
+                    worker.join()
+            self.assertTrue(summary["loopbackOnly"] and summary["privateSessionBus"])
+            self.assertEqual(summary["bridgeConnections"], 1)
+            self.assertEqual(seen, ["ack", b"fixture"])
 
     @unittest.skipUnless(HAS_TOOLS, "requires local Linux sandbox, display and compiler tools")
     def test_timeout_closes_running_bridge_without_writing_a_pass_receipt(self):

@@ -172,7 +172,7 @@ def _display(root, deadline):
             os.close(write_fd)
 
 
-def _command(binary, prepared, work, output, broker, config, display, netns, discover_cdn=False):
+def _command(binary, prepared, work, output, broker, config, display, netns, mode=None):
     name, display_socket, authority = display
     return [
         "/usr/bin/bwrap", "--unshare-user", "--unshare-net", "--unshare-ipc", "--unshare-pid",
@@ -194,7 +194,7 @@ def _command(binary, prepared, work, output, broker, config, display, netns, dis
         "--setenv", "CUMULUS_SANDBOX_OUTER_NETNS", netns, "--chdir", "/work",
         "--", "/usr/bin/dbus-run-session", "--dbus-daemon=/usr/bin/dbus-daemon", "--config-file=/session.conf",
         "--", "/usr/bin/python3", "-I", "/sandbox.py", "--worker",
-        *(["--discover-cdn"] if discover_cdn else []),
+        *([mode] if mode else []),
     ]
 
 
@@ -251,7 +251,7 @@ class _Forward(socketserver.BaseRequestHandler):
             pass
 
 
-def _worker(discover_cdn=False):
+def _worker(mode=None):
     outer = os.environ.pop("CUMULUS_SANDBOX_OUTER_NETNS", "")
     _require(re.fullmatch(r"net:\[[0-9]+\]", outer) and os.readlink("/proc/self/ns/net") != outer,
              "proof does not have a fresh network namespace")
@@ -274,7 +274,7 @@ def _worker(discover_cdn=False):
         server.start()
         try:
             env = dict(os.environ, CUMULUS_SIGNED_WINDOW_PROXY=PROXY)
-            command = ["/probe", "--live"] + (["--discover-cdn"] if discover_cdn else [])
+            command = ["/probe", "--live"] + ([mode] if mode else [])
             status = subprocess.run(command, env=env, stdin=subprocess.DEVNULL,
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         finally:
@@ -308,18 +308,35 @@ def _receipt(output):
     return result
 
 
-def run(binary, prepared, work, output, broker, *, timeout=55, discover_cdn=False):
+def _wait(child, deadline, observe):
+    if observe is None:
+        return child.wait(timeout=max(0, deadline - time.monotonic()))
+    while (status := child.poll()) is None:
+        remaining = deadline - time.monotonic()
+        _require(remaining > 0, "signed proof sandbox timed out")
+        observe(deadline)
+        time.sleep(max(0, min(.05, deadline - time.monotonic())))
+    return status
+
+
+def run(binary, prepared, work, output, broker, *, timeout=55, discover_cdn=False,
+        arm_cdn=None):
     """Run the exact live or discovery probe in an isolated scratch namespace.
 
     `prepared` contains the closed input tree and `parameters.json`; it is
     mounted read-only. `work` and `output` start empty, owner-only, and writable.
     `broker` is the caller's already running owner-only AF_UNIX listener.
+    The optional host observer admits one native CDN request while the child
+    waits. It is mutually exclusive with the no-media discovery mode.
     Only the fixed, verified isolation receipt is returned.
     """
     try:
         _require(sys.platform == "linux" and type(timeout) in (int, float)
                  and math.isfinite(timeout) and 5 <= timeout <= 60
-                 and type(discover_cdn) is bool, "unsupported sandbox timeout, mode or platform")
+                 and type(discover_cdn) is bool
+                 and (arm_cdn is None or callable(arm_cdn) and not discover_cdn),
+                 "unsupported sandbox timeout, mode or platform")
+        mode = "--discover-cdn" if discover_cdn else "--arm-cdn" if arm_cdn is not None else None
         binary, prepared, work, output, broker = _paths(binary, prepared, work, output, broker)
         deadline = time.monotonic() + timeout
         with tempfile.TemporaryDirectory(prefix="cumulus-signed-window-", dir="/tmp") as raw_config:
@@ -330,12 +347,12 @@ def run(binary, prepared, work, output, broker, *, timeout=55, discover_cdn=Fals
             _private_write(config / "session.conf", SESSION_BUS)
             with _display(config, deadline) as display:
                 command = _command(binary, prepared, work, output, broker, config, display,
-                                   os.readlink("/proc/self/ns/net"), discover_cdn)
+                                   os.readlink("/proc/self/ns/net"), mode)
                 with subprocess.Popen(command, env={"PATH": PATH}, start_new_session=True,
                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                       stderr=subprocess.DEVNULL) as child:
                     try:
-                        status = child.wait(timeout=max(0, deadline - time.monotonic()))
+                        status = _wait(child, deadline, arm_cdn)
                     except subprocess.TimeoutExpired:
                         raise SandboxError("signed proof sandbox timed out") from None
                     finally:
@@ -347,9 +364,9 @@ def run(binary, prepared, work, output, broker, *, timeout=55, discover_cdn=Fals
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] not in (["--worker"], ["--worker", "--discover-cdn"]):
+    if sys.argv[1:] not in (["--worker"], ["--worker", "--discover-cdn"], ["--worker", "--arm-cdn"]):
         raise SystemExit(2)
     try:
-        _worker(discover_cdn=len(sys.argv) == 3)
+        _worker(sys.argv[2] if len(sys.argv) == 3 else None)
     except (SandboxError, OSError, ValueError, subprocess.SubprocessError):
         raise SystemExit(1) from None

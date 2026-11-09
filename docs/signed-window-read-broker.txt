@@ -9,10 +9,12 @@ Cookie, API authorization or Range when the single full-body proof calls it.
 Production builds do not enable this feature.
 
 The host Unix broker accepts only same-UID local connections in a private
-directory and has an immutable table: interfacepc.music.163.com:443 plus at
-most one exact, independently reviewed CDN authority. Both map to supplied
-literal public IPv4 pins; the broker does not perform DNS or switch IPs. A
-separate optional preflight checks each reviewed certificate without HTTP.
+directory. It maps interfacepc.music.163.com:443 and at most one exact CDN
+authority to literal public IPv4 pins. Fixed-pin playback supplies both pins
+before launch. In one-shot mode the broker starts PC-only; the host supervisor
+can install the one verified CDN pin under the broker lock. The broker itself
+never resolves names or changes an admitted pin. A separate certificate
+preflight makes no HTTP request.
 The broker checks the CONNECT authority and ClientHello's exact visible SNI
 before dialing. ECH, TLS early data, malformed TLS, alternate authority and
 proxy authorization are rejected. It does not decrypt or log the requests;
@@ -37,15 +39,43 @@ host/one CDN admission, no dial for a wrong SNI or authority, refusal of
 alternate proxy authorization, truncated-handshake timeout and disarming.
 This does not constitute a real service or media result.
 
+One-shot CDN admission
+----------------------
+The opt-in `--arm-cdn` mode takes only `keyword` and `songId` in the private
+intent. It prohibits a supplied CDN hostname, `--cdn-ipv4`, and discovery mode.
+It is for a sealed native executable that implements the same one-shot
+handshake. The native gate must validate and consume the selected nontrial
+source receipt before publishing a private, atomic request containing only the
+exact CDN hostname. The renderer has no input or IPC for this operation.
+
+The host watches the fresh proof directory while the sandbox is running.
+It rejects links, nonprivate or oversized files, extra or duplicate JSON
+fields, and noncanonical names. It resolves the exact absolute hostname
+once (at most three seconds), refuses private or mixed DNS answers, selects
+one literal public IPv4, and verifies the normal TLS certificate with exact
+SNI (one connection, at most five seconds). Both operations share the
+existing sandbox and broker deadlines. The broker admits the exact host and
+pin once; a suffix alone never authorizes CONNECT. The host atomically
+acknowledges the same hostname only after arming the broker. There is no
+redirect, retry, alternate-IP attempt or upstream HTTP from the preflight.
+
+The broker counts its single media tunnel separately from the host's one DNS
+lookup and one certificate connection attempt. On success the supervisor
+compares the private native report with the exact admitted authority and
+retains only counters and status. Failure can record a fixed phase label
+without hostname, address, URL, header or error text. The request,
+acknowledgement and native report are removed with scratch state.
+
 Supervisor and retained evidence
 --------------------------------
 `scripts/research/signed_window_live_proof.py` requires an explicit read-only
 opt-in and confirmation that the source snapshots are closed. Supply the exact
 probe, profile helper and embedded asset digests; the independent UID file;
-an intent file with public keyword, song ID and exact CDN host; and one
-reviewed IPv4 pin for each authority. The checked executables are copied into
-a new private directory. Certificate preflight runs before any credential
-copy. The source path is never mounted into the child.
+an intent file with public keyword and song ID; and one reviewed PC IPv4 pin.
+Fixed-pin playback additionally requires the exact CDN hostname in the intent
+and a reviewed CDN IPv4 pin. The checked executables are copied into a new
+private directory. The fixed pins are preflighted before any credential copy.
+The source path is never mounted into the child.
 
 The sandbox must report only loopback, a private display and D-Bus, and zero
 external routes. Each bridge connection must match one broker dial. The

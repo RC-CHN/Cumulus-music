@@ -1,4 +1,4 @@
-"""Two pinned TLS authorities for the signed desktop proof; no command-line egress."""
+"""Exact pinned TLS authorities for the signed desktop proof; no command-line egress."""
 
 from dataclasses import dataclass
 import ipaddress
@@ -41,6 +41,14 @@ def public_ipv4(text):
     return address
 
 
+def cdn_authority(host):
+    require(isinstance(host, str) and host.isascii() and len(host) <= 253)
+    name = host.encode("ascii")
+    require(name != PC_HOST and HOST.fullmatch(name) and name.endswith(CDN_SUFFIXES)
+            and all(0 < len(label) <= 63 for label in name.split(b".")))
+    return name
+
+
 @dataclass(frozen=True, repr=False)
 class Pin:
     host: bytes
@@ -52,11 +60,7 @@ class Pin:
 
     @classmethod
     def cdn(cls, host, address):
-        require(isinstance(host, str) and host.isascii() and len(host) <= 253)
-        name = host.encode("ascii")
-        require(name != PC_HOST and HOST.fullmatch(name) and name.endswith(CDN_SUFFIXES)
-                and all(0 < len(label) <= 63 for label in name.split(b".")))
-        return cls(name, public_ipv4(address))
+        return cls(cdn_authority(host), public_ipv4(address))
 
 
 def numeric_dial(address, seconds):
@@ -71,10 +75,17 @@ def numeric_dial(address, seconds):
         raise
 
 
-def verify_certificate(pin):
-    """Optional host-side pin preflight: TLS certificate and SNI, no HTTP."""
+def verify_certificate(pin, seconds=6):
+    """Host-side pin preflight: one bounded TCP/TLS connection, no HTTP."""
+    require(0 < seconds <= 6)
+    deadline = time.monotonic() + seconds
     context = ssl.create_default_context(cafile="/etc/ssl/certs/ca-certificates.crt")
-    with numeric_dial(pin.address, 3) as raw:
+    available = deadline - time.monotonic()
+    require(available > 0)
+    with numeric_dial(pin.address, min(3, available)) as raw:
+        available = deadline - time.monotonic()
+        require(available > 0)
+        raw.settimeout(available)
         with context.wrap_socket(raw, server_hostname=pin.host.decode("ascii")):
             pass
 
@@ -126,18 +137,21 @@ class _Handler(socketserver.BaseRequestHandler):
 
 
 class Broker:
-    def __init__(self, directory, pc, cdn=None, *, seconds=MAX_SESSION_SECONDS, dial=numeric_dial):
+    def __init__(self, directory, pc, cdn=None, *, dynamic_cdn=False,
+                 seconds=MAX_SESSION_SECONDS, dial=numeric_dial):
         path = Path(directory).absolute()
         info = path.lstat()
         require(path.resolve(strict=True) == path and stat.S_ISDIR(info.st_mode)
                 and info.st_uid == os.geteuid() and info.st_mode & 0o077 == 0)
-        require(pc == Pin.pc(str(pc.address)) and 0 < seconds <= MAX_SESSION_SECONDS)
+        require(pc == Pin.pc(str(pc.address)) and 0 < seconds <= MAX_SESSION_SECONDS
+                and type(dynamic_cdn) is bool and (cdn is None or not dynamic_cdn))
         if cdn is not None:
             require(cdn == Pin.cdn(cdn.host.decode("ascii"), str(cdn.address)))
         self.path = path / "broker.sock"
         self._pins = MappingProxyType({pin.host: pin.address for pin in (pc, cdn) if pin})
         self._authorities = frozenset(host + b":443" for host in self._pins)
         self._seconds = seconds
+        self._dynamic_cdn = dynamic_cdn
         self._dial = dial
         self._lock = threading.Lock()
         self._stopped = threading.Event()
@@ -173,6 +187,25 @@ class Broker:
         with self._lock:
             self._stopped.set()
 
+    def media_admission_seconds(self):
+        with self._lock:
+            require(self._dynamic_cdn and self._server is not None
+                    and not self._stopped.is_set() and len(self._pins) == 1)
+            return self.remaining()
+
+    def arm_media(self, pin, *, deadline=None):
+        """Install the one supervisor-verified exact media pin."""
+        require(pin == Pin.cdn(pin.host.decode("ascii"), str(pin.address)))
+        with self._lock:
+            require(self._dynamic_cdn and self._server is not None
+                    and not self._stopped.is_set() and len(self._pins) == 1
+                    and (deadline is None or time.monotonic() < deadline))
+            self.remaining()
+            self._attempts[pin.host] = 0
+            self._relayed_bytes[pin.host] = 0
+            self._pins = MappingProxyType({**self._pins, pin.host: pin.address})
+            self._authorities = self._authorities | {pin.host + b":443"}
+
     def note_denial(self):
         with self._lock:
             self._denied += 1
@@ -202,7 +235,10 @@ class Broker:
             self._account_bytes(host, size)
 
     def tunnel(self, peer):
-        host = read_connect(peer, self._authorities, min(4, self.remaining()))
+        with self._lock:
+            authorities = self._authorities
+            remaining = self.remaining()
+        host = read_connect(peer, authorities, min(4, remaining))
         peer.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
         hello = read_client_hello(peer, host, min(5, self.remaining()))
         with self._lock:

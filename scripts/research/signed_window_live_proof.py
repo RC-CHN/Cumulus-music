@@ -12,10 +12,12 @@ import subprocess
 import tempfile
 
 from signed_window_broker import Broker, PC_DIALS, Pin, verify_certificate
+from signed_window_cdn_admission import CdnAdmission, resolve_ipv4
 
 STAGES = ["ux_account_resources", "ux_search_song", "ux_playing", "ux_paused", "ux_resumed", "ux_stopped"]
 DISCOVERY_STAGES = STAGES[:2]
-# Native profile preparation still expects this field; discovery never pins it.
+# Native profile preparation still expects this field. Dynamic and discovery
+# probes never use this placeholder to authorize egress.
 DISCOVERY_PROFILE_HOST = "m1.music.126.net"
 MAX_REPLY = 16384
 PLAN_REJECTIONS = frozenset(("envelope", "allowlist", "credential_scope",
@@ -74,9 +76,10 @@ def count(value, minimum, maximum):
     return type(value) is int and minimum <= value <= maximum
 
 
-def accepted_report(report, assets_sha, *, discover_cdn=False):
+def accepted_report(report, assets_sha, *, discover_cdn=False, armed_authority=None):
     """Rebuild evidence from a fixed set of primitive facts, never raw fields."""
-    require(isinstance(report, dict))
+    require(isinstance(report, dict) and (not discover_cdn or armed_authority is None))
+    require(report.get("dynamicCdn", False) is (armed_authority is not None))
     positives = ("ok", "liveReadOnly", "productionWebView", "isolatedNetwork",
                  "searchAfterResources")
     stages = DISCOVERY_STAGES if discover_cdn else STAGES
@@ -98,6 +101,9 @@ def accepted_report(report, assets_sha, *, discover_cdn=False):
                 and all(count(clock, 100, 120000) for clock in clocks.values())
                 and clocks["resumed"] > clocks["paused"] >= clocks["playing"])
         mode_facts = {"playbackClocksMs": clocks.copy()}
+        if armed_authority is not None:
+            require(report.get("mediaAuthority") == armed_authority)
+            positives += ("dynamicCdn",)
     require(all(report.get(key) is True for key in positives)
             and report.get("physicalAudioOutput") is False
             and report.get("stages") == stages
@@ -185,8 +191,10 @@ def run(args):
     failure = {}
     try:
         intent = read_private_json(args.intent, 4096)
-        require((args.cdn_ipv4 is None) == args.discover_cdn)
-        fields = {"keyword", "songId"} if args.discover_cdn else {"keyword", "songId", "mediaHost"}
+        require(not (args.discover_cdn and args.arm_cdn))
+        no_fixed_cdn = args.discover_cdn or args.arm_cdn
+        require((args.cdn_ipv4 is None) == no_fixed_cdn)
+        fields = {"keyword", "songId"} if no_fixed_cdn else {"keyword", "songId", "mediaHost"}
         require(isinstance(intent, dict) and set(intent) == fields)
         keyword, song = intent["keyword"], intent["songId"]
         require(isinstance(keyword, str) and 1 <= len(keyword) <= 64 and keyword.strip() == keyword
@@ -197,7 +205,7 @@ def run(args):
         require(args.source.is_absolute() and args.source.resolve(strict=True) == args.source
                 and args.source.is_dir())
         pc = Pin.pc(args.pc_ipv4)
-        cdn = None if args.discover_cdn else Pin.cdn(intent["mediaHost"], args.cdn_ipv4)
+        cdn = None if no_fixed_cdn else Pin.cdn(intent["mediaHost"], args.cdn_ipv4)
         with tempfile.TemporaryDirectory(prefix="csw-") as directory:
             scratch = Path(directory).resolve(strict=True)
             stage = "seal_binaries"
@@ -212,11 +220,11 @@ def run(args):
                 verify_certificate(cdn)
             stage = "prepare_profile"
             prepared = scratch / "prepared"
-            # Snapshot the reviewed intent. The helper's discovery placeholder is inert.
+            # Snapshot the reviewed intent. The helper's media placeholder is inert.
             intent_copy = scratch / "intent.json"
             fd = os.open(intent_copy, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                json.dump({**intent, "mediaHost": DISCOVERY_PROFILE_HOST} if args.discover_cdn else intent,
+                json.dump({**intent, "mediaHost": DISCOVERY_PROFILE_HOST} if no_fixed_cdn else intent,
                           stream, ensure_ascii=True)
             command = [helper, "--prepare", args.source, args.expected_uid_file, intent_copy, prepared]
             if args.derive_if_missing:
@@ -234,15 +242,25 @@ def run(args):
             for path in (work, output, relay):
                 path.mkdir(mode=0o700)
             stage = "isolated_window"
-            broker = Broker(relay, pc, cdn)
+            broker = Broker(relay, pc, cdn, dynamic_cdn=args.arm_cdn)
+            admission = None
             try:
                 with broker:
-                    if args.discover_cdn:
+                    if args.arm_cdn:
+                        admission = CdnAdmission(output, broker, resolve=resolve_ipv4,
+                                                 verify=verify_certificate)
+                        with admission:
+                            sandbox = isolated_window(probe, prepared, work, output, broker.path,
+                                                      arm_cdn=admission.observe)
+                            admission.check_unchanged()
+                    elif args.discover_cdn:
                         sandbox = isolated_window(probe, prepared, work, output, broker.path, discover_cdn=True)
                     else:
                         sandbox = isolated_window(probe, prepared, work, output, broker.path)
             finally:
                 failure["broker"] = broker.summary()
+                if admission is not None:
+                    failure["cdnAdmission"] = admission.summary()
                 checkpoint = rejected_checkpoint(output)
                 if checkpoint:
                     failure["checkpoint"] = checkpoint
@@ -257,8 +275,17 @@ def run(args):
             require(isinstance(sandbox, dict) and all(sandbox.get(key) is True for key in isolation_flags)
                     and count(sandbox.get("mainRoutes"), 0, 0) and count(sandbox.get("probeExit"), 0, 0)
                     and count(sandbox.get("bridgeConnections"), expected_bridges, expected_bridges))
+            if args.arm_cdn:
+                require(admission is not None and admission.authority is not None
+                        and admission.summary() == {
+                            "requestAccepted": True, "dnsLookups": 1,
+                            "certificatePreflightAttempts": 1, "pinArmed": True, "ackPublished": True,
+                        })
             evidence = accepted_report(read_private_json(output / "report.json", MAX_REPLY), args.assets_sha256,
-                                       discover_cdn=args.discover_cdn)
+                                       discover_cdn=args.discover_cdn,
+                                       armed_authority=admission.authority if admission is not None else None)
+            if admission is not None:
+                evidence["cdnAdmission"] = admission.summary()
             evidence["sandbox"] = {**{key: True for key in isolation_flags}, "mainRoutes": 0,
                                    "probeExit": 0, "bridgeConnections": expected_bridges}
             evidence["broker"] = network
@@ -280,8 +307,10 @@ def main():
         parser.add_argument("--" + path, type=Path, required=True)
     for value in ("probe-sha256", "profile-helper-sha256", "assets-sha256", "pc-ipv4"):
         parser.add_argument("--" + value, required=True)
-    parser.add_argument("--cdn-ipv4", help="reviewed CDN pin, required for playback and prohibited for discovery")
-    parser.add_argument("--discover-cdn", action="store_true", help="read one authorized media hostname without fetching audio")
+    parser.add_argument("--cdn-ipv4", help="reviewed CDN pin for fixed-pin playback only")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--discover-cdn", action="store_true", help="read one authorized media hostname without fetching audio")
+    modes.add_argument("--arm-cdn", action="store_true", help="admit one exact source authority requested by the sealed native probe")
     for option in ("authorize-readonly", "source-stopped", "derive-if-missing"):
         parser.add_argument("--" + option, action="store_true")
     try:

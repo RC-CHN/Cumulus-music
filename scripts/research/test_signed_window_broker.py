@@ -99,6 +99,34 @@ class SignedWindowBrokerTests(unittest.TestCase):
         self.assertEqual(broker.summary(), {"pcDialAttempts": 1, "mediaDialAttempts": 1,
                                            "deniedConnections": 1, "disarmed": True})
 
+    def test_dynamic_media_pin_is_one_shot_and_never_admits_a_suffix(self):
+        allowed = Pin.cdn(CDN.decode(), CDN_IP)
+        alternate = Pin.cdn("m2.music.126.net", "9.9.9.9")
+        with Broker(self.root, Pin.pc(PC_IP), dynamic_cdn=True, dial=self.dial) as broker:
+            with self.connect(broker, CDN) as before:
+                self.assertEqual(before.recv(1), b"")
+            self.assertTrue(self.dials.empty())
+            broker.arm_media(allowed)
+            with self.assertRaises(Denied):
+                broker.arm_media(alternate)
+            with self.connect(broker, alternate.host) as wrong_host:
+                self.assertEqual(wrong_host.recv(1), b"")
+            with self.connect(broker, CDN) as wrong_sni:
+                self.send_hello(wrong_sni, alternate.host)
+                self.assertEqual(wrong_sni.recv(1), b"")
+            self.assertTrue(self.dials.empty())
+            with self.connect(broker, CDN) as media:
+                sent = self.send_hello(media, CDN)
+                address, server = self.dials.get(timeout=2)
+                self.assertEqual(address, allowed.address)
+                self.assertEqual(read_exact(server, len(sent)), sent)
+            with self.connect(broker, CDN) as repeated:
+                self.send_hello(repeated, CDN)
+                self.assertEqual(repeated.recv(1), b"")
+        self.assertTrue(self.dials.empty())
+        self.assertEqual(broker.summary(), {"pcDialAttempts": 0, "mediaDialAttempts": 1,
+                                           "deniedConnections": 4, "disarmed": True})
+
     def test_other_authority_wrong_sni_and_proxy_header_never_dial(self):
         with self.broker() as broker:
             with self.connect(broker, b"m2.music.126.net") as wrong:
