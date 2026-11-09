@@ -121,8 +121,17 @@
     anchorId = (await wait(() => libraryRow(anchorName), 'indexed independent playback anchor')).dataset.localId;
     require(localId && anchorId && localId !== anchorId, 'independent indexed local references');
     step = 'add the local member through the production library menu';
-    await wait(() => one('.local-page')?.dataset.localLoading === 'false' &&
-      libraryRow(audioName) === local, 'local index scan and read are settled');
+    // The table can already display rows while the native scan still holds
+    // the index lease. Only a native ready receipt proves it was released.
+    await wait(async () => {
+      if (one('.local-page')?.dataset.localLoading !== 'false' || libraryRow(audioName) !== local) return;
+      const page = await invoke('local_page', { query: {
+        keyword: '', sort: 'title', descending: true, group: 'list', groupKey: null,
+        includeMissing: true, offset: 0, limit: 10, revision: null,
+      } });
+      return page.roots.length === 1 && page.roots[0].status === 'ready' &&
+        page.total === 2 && page.tracks.some(({ track }) => track.id === localId);
+    }, 'native root scan and local index lease are settled');
     const providers = one('#app').__vue_app__._context.provides;
     const core = providers[Reflect.ownKeys(providers)
       .find((key) => typeof key === 'symbol' && key.description === 'core-client')];
