@@ -163,6 +163,8 @@ fn main() {
     let batch_hide = std::env::var("CUMULUS_LOCAL_BATCH_HIDE_PROOF").as_deref() == Ok("1");
     let batch_play = std::env::var("CUMULUS_LOCAL_BATCH_PLAY_PROOF").as_deref() == Ok("1");
     let batch_add = std::env::var("CUMULUS_LOCAL_BATCH_ADD_PROOF").as_deref() == Ok("1");
+    let directory_selection =
+        std::env::var("CUMULUS_LOCAL_DIRECTORY_SELECTION_PROOF").as_deref() == Ok("1");
     assert!(!batch_add || (!batch_play && !batch_hide && !group_hide && !folder_reveal));
     assert!(
         !(batch_hide || batch_play) || !(group_hide || folder_reveal || (batch_hide && batch_play))
@@ -182,9 +184,13 @@ fn main() {
         !cold || !reopen,
         "cold-start proof requires a fresh directory"
     );
+    assert!(
+        !directory_selection || (!queue && !cold && !reopen),
+        "directory selection needs a fresh dedicated profile"
+    );
     if !reopen {
         fs::create_dir(&root).expect("new proof root");
-        fixtures(&root, cold, queue).expect("generated local fixtures");
+        fixtures(&root, cold || directory_selection, queue).expect("generated local fixtures");
         if queue {
             let media = root.join("media");
             fs::create_dir(media.join("Bonus")).expect("synthetic nested directory");
@@ -253,7 +259,11 @@ fn main() {
             let batch_capture = batch_hide && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_hidden", "ux_04_batch_restored"].contains(&stage);
             let batch_play_capture = batch_play && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_playing", "ux_04_batch_resumed", "ux_05_batch_play_back"].contains(&stage);
             let batch_add_capture = batch_add && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_added", "ux_04_batch_empty_started", "ux_05_batch_active_duplicate", "ux_06_batch_add_back"].contains(&stage);
-            if folder_capture || hide_capture || batch_capture || batch_play_capture || batch_add_capture {
+            let directory_capture = directory_selection && [
+                "ux_01_picker_requested", "ux_02_unchecked_after_cancel", "ux_03_checked",
+                "ux_04_paused_root", "ux_05_deselected", "ux_06_rechecked",
+            ].contains(&stage);
+            if folder_capture || hide_capture || batch_capture || batch_play_capture || batch_add_capture || directory_capture {
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -263,6 +273,13 @@ fn main() {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__folderCaptureAck={};",json!(stage))).unwrap();
                     }
                 });
+                return;
+            }
+            if directory_selection {
+                if stage=="complete"||stage=="failed" {
+                    fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                    handle.exit(if stage=="complete"{0}else{1});
+                }
                 return;
             }
             if queue {
@@ -325,7 +342,9 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
-            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if folder_reveal {
+            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
+                include_str!("local_directory_selection_ui_probe.js")
+            } else if folder_reveal {
                 include_str!("local_folder_reveal_ui_probe.js")
             } else if group_hide {
                 include_str!("local_group_hide_ui_probe.js")
