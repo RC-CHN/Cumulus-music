@@ -82,7 +82,7 @@
   };
   try {
     await wait(() => one('.track-row'), 'authenticated initial inventory');
-    await seed('seed');
+    await seed('seed_collection');
     await seed('cloud_comment_targets');
     click(button('下载管理'));
     await wait(ready, 'completed Downloads');
@@ -95,6 +95,13 @@
       tab: 'completed', category: 'song', keyword: '', sort: 'none',
       descending: false, offset: 0, limit: 20,
     });
+    const nativeInventory = inventory.tasks.map((task) => ({
+      id: task.track.id, source: task.source,
+    })).sort((left, right) => Number(left.id) - Number(right.id));
+    assert(inventory.total === 7 && nativeInventory.length === 7 &&
+      nativeInventory.every(({ id, source }, index) =>
+        id === String(index + 1) && source === (index < 4 ? 'song' : 'cloud')),
+      'only the seven exact completed native fixture rows are present');
     const [ordinary, matched, privateCloud, legacyCloud] = ['1', '5', '6', '7']
       .map((id) => inventory.tasks.find((task) => task.track.id === id));
     assert(ordinary.collectionAvailable && matched.collectionAvailable &&
@@ -134,7 +141,9 @@
     click(retry);
     await wait(() => !dialog(), 'explicit read-only confirmation closes');
     await capture('matched_reconciled');
-    await emit('complete', { ok: true, stageCount: count, realMusicRequests: 0, realAccountWrites: 0 });
+    await emit('complete', {
+      ok: true, stageCount: count, nativeInventory, realMusicRequests: 0, realAccountWrites: 0,
+    });
   } catch (error) {
     await emit('failed', {
       ok: false, stageCount: count, lastStage: current,

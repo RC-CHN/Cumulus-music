@@ -484,7 +484,15 @@ impl Fixture {
                     })?,
                 )?;
             }
-            "seed" => {
+            "seed" | "seed_collection" if mode == "seed" || collection_enabled() => {
+                // Only the dedicated collector requests the small inventory.
+                // Other proofs can share its authority flag and still need
+                // all 146 real fixture records and the five transfer states.
+                let limit = if mode == "seed_collection" {
+                    7_u64
+                } else {
+                    146
+                };
                 assert!(self.records.lock().unwrap().is_empty());
                 let delay = std::env::var("CUMULUS_DOWNLOAD_SEED_DELAY_MS")
                     .ok()
@@ -519,7 +527,7 @@ impl Fixture {
                 let mut saved = vec![];
                 let lyric_repair =
                     std::env::var_os("CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF").is_some();
-                for i in 1..=146_u64 {
+                for i in 1..=limit {
                     let path = media.join(format!(
                         "synthetic-{i}.{}",
                         if i == 133 { "mp4" } else { "wav" }
@@ -675,9 +683,9 @@ impl Fixture {
                     }
                     self.store.put("2", "download_tasks_v1", &task.id, &value)?;
                     saved.push((task.id, value));
-                    if i % 25 == 0 || i == 146 {
+                    if i % 25 == 0 || i == limit {
                         eprintln!(
-                            "download UI fixture seed: {i}/146 records in {:?}",
+                            "download UI fixture {mode}: {i}/{limit} records in {:?}",
                             started.elapsed()
                         );
                     }

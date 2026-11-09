@@ -21,6 +21,10 @@ def verify(output, screenshots):
     result = read('complete.json')
     assert result['ok'] and result['stageCount'] == len(STAGES)
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
+    assert result['nativeInventory'] == [
+        {'id': str(id_), 'source': 'song' if id_ <= 4 else 'cloud'}
+        for id_ in range(1, 8)
+    ]
     assert len(list(output.glob('ux_*.json'))) == len(STAGES)
     if screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(STAGES)
