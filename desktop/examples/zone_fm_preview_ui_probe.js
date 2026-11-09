@@ -43,7 +43,11 @@
           getComputedStyle(panel).opacity === '1'));
     }, `painted page for ${stage}`);
     await sleep(100);
+    // Windows does not save screenshots, so the capture handshake alone
+    // does not wait for the native JSON snapshot to be written.
+    window.__zoneFmPreviewRecorded = null;
     await emit(stage, { ...data, captureHandshake: true });
+    await wait(() => window.__zoneFmPreviewRecorded === stage, `native snapshot for ${stage}`);
   }
   try {
     const curated = () => all('.sidebar button:not(:disabled)').find((node) => node.textContent.trim() === '精选');

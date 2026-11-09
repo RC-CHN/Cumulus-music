@@ -24,7 +24,11 @@ PROBES = {
         'main_flow_ui_probe', 'native_audio_probe', 'playback_power_ui_probe',
         'queue_room_ui_probe', 'scroll_ui_probe', 'search_playback_read',
     ),
-    'library': (
+    # These two shards only use the shared UX executable. Their empty
+    # inventories still get an exact-attempt manifest like the other shards.
+    'library': (),
+    'search': (),
+    'library-local': (
         'desktop_lyrics_ui_probe', 'local_ui_probe', 'mini_ui_probe', 'output_ui_probe',
         'startup_ui_probe',
     ),
@@ -38,10 +42,11 @@ PROBES = {
         'question_login_ui_probe', 'renewal_ui_probe', 'reuse_login_ui_probe',
         'saved_accounts_ui_probe', 'shortcut_probe', 'sms_login_ui_probe',
     ),
-    'catalog': (
-        'catalog_ui_probe', 'comment_edit_ui_probe', 'comment_report_ui_probe', 'community_ui_probe',
-        'discovery_home_ui_probe', 'manual_update_ui_probe', 'network_diagnostics_ui_probe',
-        'podcast_recent_ui_probe', 'profile_report_ui_probe', 'user_blacklist_ui_probe',
+    'catalog': ('catalog_ui_probe', 'comment_edit_ui_probe', 'community_ui_probe', 'discovery_home_ui_probe'),
+    'catalog-discovery': (
+        'catalog_ui_probe', 'comment_report_ui_probe', 'manual_update_ui_probe',
+        'network_diagnostics_ui_probe', 'podcast_recent_ui_probe', 'profile_report_ui_probe',
+        'user_blacklist_ui_probe',
     ),
 }
 

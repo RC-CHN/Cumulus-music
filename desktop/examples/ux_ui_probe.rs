@@ -1915,7 +1915,7 @@ fn main() {
                     // Queue proof stages await this actor barrier before the
                     // script releases an intentionally held clear/edit. A watch
                     // snapshot may still describe the previous queue revision.
-                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() {
+                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() || zone_fm_preview_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
@@ -1965,6 +1965,9 @@ fn main() {
                     }
                     if vertical_zone_fixture::playlist_stage_ack() && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__zonePlaylistStageRecorded={};",json!(stage))).unwrap();
+                    }
+                    if zone_fm_preview_fixture::enabled() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__zoneFmPreviewRecorded={};",json!(stage))).unwrap();
                     }
                     // An emit reply does not wait for this spawned snapshot.
                     // Do not let Stop on completion overtake the JSON sample.

@@ -113,13 +113,37 @@ impl StateStore {
         Self::initialize(connection, None)
     }
 
-    fn initialize(connection: Connection, directory: Option<PathBuf>) -> Result<Self> {
-        connection.execute_batch(
+    fn initialize(mut connection: Connection, directory: Option<PathBuf>) -> Result<Self> {
+        match Self::initialize_schema(&mut connection, TransactionBehavior::Deferred) {
+            Err(error) if error.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy) => {
+                // A legacy database may need to upgrade a read transaction to
+                // write. Retry with the writer lock first so SQLite can wait
+                // for a competing opener instead of failing the lock upgrade.
+                Self::initialize_schema(&mut connection, TransactionBehavior::Immediate)?;
+            }
+            result => result?,
+        }
+        Ok(Self {
+            directory,
+            connection: Mutex::new(connection),
+            _qr_candidate_lease: None,
+            after_close: AfterClose::default(),
+        })
+    }
+
+    fn initialize_schema(
+        connection: &mut Connection,
+        behavior: TransactionBehavior,
+    ) -> rusqlite::Result<()> {
+        // The table and indexes become visible together, with one durable
+        // commit on a fresh store. A complete schema needs no writer lock.
+        let schema = connection.transaction_with_behavior(behavior)?;
+        schema.execute_batch(
             "CREATE TABLE IF NOT EXISTS state (
                owner TEXT NOT NULL, kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
                PRIMARY KEY(owner,kind,key));",
         )?;
-        connection.execute_batch(&format!(
+        schema.execute_batch(&format!(
             "CREATE INDEX IF NOT EXISTS style_tag_unresolved_v1 ON state(owner,key)
              WHERE {STYLE_TAG_UNRESOLVED};
              CREATE INDEX IF NOT EXISTS download_song_v1 ON state(owner,({DOWNLOAD_SONG_ID}))
@@ -131,12 +155,7 @@ impl StateStore {
              CREATE INDEX IF NOT EXISTS cloud_upload_source_path_v1 ON state(owner,({CLOUD_UPLOAD_SOURCE_PATH}))
              WHERE kind='cloud_uploads_v1';"
         ))?;
-        Ok(Self {
-            directory,
-            connection: Mutex::new(connection),
-            _qr_candidate_lease: None,
-            after_close: AfterClose::default(),
-        })
+        schema.commit()
     }
 
     pub(crate) fn on_qr_candidate_close(

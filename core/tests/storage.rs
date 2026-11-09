@@ -37,6 +37,64 @@ fn account_isolation_reopen_and_legacy_schema() {
 }
 
 #[test]
+fn failed_schema_upgrade_leaves_the_previous_schema_and_data_intact() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("core.sqlite3");
+    let store = StateStore::open(root.path()).unwrap();
+    store.put("owner", "kind", "key", &json!(42)).unwrap();
+    drop(store);
+    let legacy = rusqlite::Connection::open(&path).unwrap();
+    legacy
+        .execute_batch(
+            "DROP INDEX download_song_v1;
+             DROP INDEX download_voice_v1;
+             DROP INDEX indexed_flac_download_claims_v1;
+             DROP INDEX cloud_upload_source_path_v1;
+             CREATE TABLE cloud_upload_source_path_v1 (key TEXT);",
+        )
+        .unwrap();
+    let indexes = || -> i64 {
+        legacy
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type='index' AND
+                 tbl_name='state' AND sql IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+    assert!(matches!(
+        StateStore::open(root.path()),
+        Err(Error::Storage(_))
+    ));
+    assert_eq!(indexes(), 1);
+    legacy
+        .execute("DROP TABLE cloud_upload_source_path_v1", [])
+        .unwrap();
+    let repaired = StateStore::open(root.path()).unwrap();
+    assert_eq!(indexes(), 5);
+    assert_eq!(
+        repaired.get("owner", "kind", "key").unwrap(),
+        Some(json!(42))
+    );
+}
+
+#[test]
+fn reopening_complete_schema_does_not_require_the_writer_lock() {
+    let root = tempfile::tempdir().unwrap();
+    let store = StateStore::open(root.path()).unwrap();
+    store.put("owner", "kind", "key", &json!(42)).unwrap();
+    let writer = rusqlite::Connection::open(root.path().join("core.sqlite3")).unwrap();
+    writer.execute_batch("BEGIN IMMEDIATE;").unwrap();
+    let reopened = StateStore::open(root.path()).unwrap();
+    assert_eq!(
+        reopened.get("owner", "kind", "key").unwrap(),
+        Some(json!(42))
+    );
+    writer.execute_batch("ROLLBACK;").unwrap();
+}
+
+#[test]
 fn multi_record_failure_rolls_back_and_connection_remains_usable() {
     let tmp = tempfile::tempdir().unwrap();
     let store = StateStore::open(tmp.path()).unwrap();

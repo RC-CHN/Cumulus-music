@@ -95,11 +95,8 @@ def verify(artifact, identity):
     assert stored == receipt(artifact, identity), 'WebView input provenance or checksum mismatch'
 
 
-def restore(repo, identity):
-    artifact = repo / ARTIFACT
-    verify(artifact, identity)
-    dist, ux, native = (repo / path for path in (FRONTEND, UX, NATIVE))
-    assert not dist.exists() and not dist.is_symlink(), 'expected a clean frontend dist destination'
+def restore_runtime(repo, identity):
+    native = repo / NATIVE
     assert not native.exists() and not native.is_symlink(), 'expected a clean native runtime destination'
     native.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='webview-runtime-', dir=native.parent) as temporary:
@@ -108,6 +105,15 @@ def restore(repo, identity):
             ci_attempt=identity['ciAttempt'], require_package_flac=True,
         )
         portable.rename(native)
+    return native
+
+
+def restore(repo, identity):
+    artifact = repo / ARTIFACT
+    verify(artifact, identity)
+    dist, ux = (repo / path for path in (FRONTEND, UX))
+    assert not dist.exists() and not dist.is_symlink(), 'expected a clean frontend dist destination'
+    native = restore_runtime(repo, identity)
     shutil.copytree(artifact / DIST, dist)
     ux.parent.mkdir(parents=True, exist_ok=True)
     # Use the verified shared executable, replacing any stale entry without following it.
@@ -117,13 +123,13 @@ def restore(repo, identity):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=('stage', 'restore'))
+    parser.add_argument('operation', choices=('stage', 'restore', 'restore-runtime'))
     args = parser.parse_args()
     repo, identity = Path.cwd(), ci_identity(os.environ)
     if args.operation == 'stage':
         stage(repo, identity)
     else:
-        native = restore(repo, identity)
+        native = (restore_runtime if args.operation == 'restore-runtime' else restore)(repo, identity)
         with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as stream:
             stream.write(f'MPV_DLL_DIR_CUMULUS={native}\n')
     print(json.dumps(dict(operation=args.operation, **identity)))

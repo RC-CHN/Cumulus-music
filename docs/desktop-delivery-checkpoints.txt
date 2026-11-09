@@ -94,6 +94,12 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     进程到私有输出的连接、SQLite 状态和 D-Bus PlaybackStatus 分别读取。
     证据见 `.build/ui-proof/phase203-stock-mpris-c1c75375/`，不涉及物理媒体键、
     实体音频设备或真实账号。
+  - 合入主线前的产品树 `f14374cc` 使用同一套原生探针和生产前端验证搜索
+    断网/恢复、原生 GTK 目录确认、均衡器页签、云盘普通歌曲。隔离 Linux
+    共保存 58 张截图；无实服和真实账号写入。169 项定向 Rust、1028 项
+    前端、类型与生产构建、Rust 格式及定向严格 Clippy 通过。
+    证据索引见 `.build/ui-proof/phase203-main-ready/report.json`；
+    目录测试夹具修正在独立 28 态复验，Windows 门禁仍须后续完整运行。
 
 当前不能据此关闭的要件
   - 主线的完整托管 gate、Windows 实际 WebView/系统媒体以及发行附件必须

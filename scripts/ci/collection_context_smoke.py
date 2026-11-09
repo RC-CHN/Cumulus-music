@@ -55,6 +55,9 @@ def main():
     assert states['saved_more_error_dark']['loaded'] == states['saved_error_return_light']['loaded'] == 100
     assert states['saved_refresh_error_dark']['loaded'] == states['saved_refresh_error_return_dark']['loaded'] == 123
     assert states['saved_refresh_recovered_light']['loaded'] == 50
+    compact = states['followed_small_dark']
+    assert compact['loaded'] == 20 and compact['focus'] == 'control:refresh'
+    assert (compact['width'], compact['height']) == (760, 540)
     assert states['expired_light']['loaded'] is None and states['expired_light']['cards'] == 0
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == 44
