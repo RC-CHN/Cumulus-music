@@ -84,12 +84,12 @@ impl Api for Backend {
                 "/api/hot/search/relate/song/get" => {
                     json!({"songs":[{"song":{"id":88,"url":"PRIVATE"}},{"song":{"id":"67"}},{"song":{"id":88}}]})
                 }
-                "/api/search/pc/suggest/keyword/get" if args["keyword"] == "三种文案" => {
+                "/api/search/pc/suggest/keyword/get" if args["keyword"] == "A+B" => {
                     json!({
                         "recTitle":"猜你想搜",
                         "recs":[{"searchWord":"真实推荐","keyword":"备用推荐","name":"推荐卡片"}],
                         "suggests":[
-                            {"searchWord":"真实联想","keyword":"备用词","name":"候选三种文案",
+                            {"searchWord":"真实联想","keyword":"备用词","name":"候选 A+B",
                              "toUserWord":"输入栏文案","realkeyword":"不要默认词",
                              "showKeyword":"不要默认显示","cookie":"PRIVATE"},
                             {"searchWord":"","keyword":"无专用展示词","name":"次条候选"},
@@ -219,7 +219,7 @@ async fn suggestion_projects_popup_submitted_query_and_input_text_independently(
         .search_discovery(
             &epoch,
             Q::Suggestions {
-                keyword: "三种文案".into(),
+                keyword: "A+B".into(),
             },
         )
         .await
@@ -229,12 +229,12 @@ async fn suggestion_projects_popup_submitted_query_and_input_text_independently(
     let recommended = value["recommended"].as_array().unwrap();
     assert_eq!(ordinary.len(), 3);
     assert_eq!(recommended.len(), 1);
-    assert_eq!(ordinary[0]["label"], "候选三种文案");
+    assert_eq!(ordinary[0]["label"], "候选 A+B");
     assert_eq!(ordinary[0]["keyword"], "真实联想");
     assert_eq!(ordinary[0]["inputLabel"], "输入栏文案");
     assert_eq!(
         ordinary[0]["labelParts"],
-        json!([{"text":"候选","match":false},{"text":"三种文案","match":true}])
+        json!([{"text":"候选 ","match":false},{"text":"A+B","match":true}])
     );
     assert_eq!(ordinary[1]["keyword"], "无专用展示词");
     assert_eq!(ordinary[1]["label"], "次条候选");
@@ -253,7 +253,7 @@ async fn suggestion_projects_popup_submitted_query_and_input_text_independently(
         *api.calls.lock().unwrap(),
         [(
             "/api/search/pc/suggest/keyword/get".into(),
-            json!({"keyword":"三种文案"})
+            json!({"keyword":"A+B"})
         )]
     );
     assert!(
