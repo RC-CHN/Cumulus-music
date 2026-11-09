@@ -8,10 +8,35 @@ import traceback
 import unittest
 from unittest.mock import patch
 
-from diagnostics import archive
+from diagnostics import FailureCheckpoints, archive
 
 
 class ProofArchive(unittest.TestCase):
+    def test_failure_index_lists_last_checkpoint_without_reading_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            root = 'ci-local-group-hide-linux/run'
+            names = (
+                f'{root}/ux_02_group_hidden.png', f'{root}/ux_01_group_hide_menu.png',
+                f'{root}/failed.json', f'{root}/ux_999_private:fixture.png',
+                'ci-local-group-hide-linux/unusual:fixture/failed.json',
+                'ci-local-folder-reveal-linux/run/ux_09_other_proof.png',
+                'private-session/failed.json',
+            )
+            for name in names:
+                path = build / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'synthetic content not part of the index')
+            result = build / 'diagnostics/proofs.tar.gz'
+            checkpoints = FailureCheckpoints()
+            self.assertEqual(archive(build, result, checkpoints=checkpoints), 2)
+            self.assertEqual(list(checkpoints.lines()), [
+                f'Failed proof: {root}/failed.json; last recorded checkpoint: ux_02_group_hidden',
+            ])
+            with tarfile.open(result) as saved:
+                self.assertEqual(set(names[:-1]) - set(saved.getnames()), set())
+                self.assertNotIn(names[-1], saved.getnames())
+
     def core_database(self, build, relative, entries):
         path = build / relative
         path.parent.mkdir(parents=True, exist_ok=True)

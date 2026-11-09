@@ -9,6 +9,7 @@ records. Refuse the archive instead of silently removing leaked proof data.
 """
 from contextlib import closing
 from pathlib import Path, PurePosixPath
+import re
 import shlex
 import sqlite3
 import stat
@@ -124,16 +125,64 @@ def archive_member(member):
     return member
 
 
-def archive(build: Path, destination: Path):
+class FailureCheckpoints:
+    """Index ordinary receipt names as tar visits the already allowed files."""
+
+    _part = re.compile(r'[A-Za-z0-9_-]{1,96}')
+    _checkpoint = re.compile(r'(ux_[0-9]{2,4}_[A-Za-z0-9_-]{1,80})\.(?:json|png)')
+    _limit = 12
+
+    def __init__(self):
+        self.failures = set()
+        self.latest = {}
+
+    def visit(self, member):
+        if not member.isfile():
+            return
+        path = PurePosixPath(member.name)
+        # Display only regular proof receipts in named CI directories. Never
+        # print arbitrary fixture names, receipt contents or platform paths.
+        if (not 2 <= len(path.parts) <= 5 or not path.parts[0].startswith('ci-')
+                or not all(self._part.fullmatch(part) for part in path.parts[:-1])):
+            return
+        if path.name == 'failed.json':
+            self.failures.add(path.parent)
+        elif match := self._checkpoint.fullmatch(path.name):
+            label = match[1]
+            rank = (int(label.split('_', 2)[1]), label)
+            if rank > self.latest.get(path.parent, (0, '')):
+                self.latest[path.parent] = rank
+
+    def lines(self):
+        for root in sorted(self.failures)[:self._limit]:
+            previous = self.latest.get(root, (0, 'none'))[1]
+            yield f'Failed proof: {root}/failed.json; last recorded checkpoint: {previous}'
+        remaining = len(self.failures) - self._limit
+        if remaining > 0:
+            yield f'Additional failed proof receipts in the archive: {remaining}'
+
+
+def archive(build: Path, destination: Path, *, checkpoints=None):
     paths = proof_paths(build)
     verify_proof_databases(paths)
     destination.parent.mkdir(parents=True, exist_ok=True)
+
+    def include(member):
+        member = archive_member(member)
+        if member is not None and checkpoints is not None:
+            checkpoints.visit(member)
+        return member
+
     with tarfile.open(destination, 'w:gz', dereference=False) as output:
         for path in paths:
-            output.add(path, arcname=path.relative_to(build).as_posix(), filter=archive_member)
+            output.add(path, arcname=path.relative_to(build).as_posix(), filter=include)
     return len(paths)
 
 
 if __name__ == '__main__':
-    count = archive(Path('.build'), Path('.build/diagnostics/synthetic-proofs.tar.gz'))
+    checkpoints = FailureCheckpoints()
+    count = archive(Path('.build'), Path('.build/diagnostics/synthetic-proofs.tar.gz'),
+                    checkpoints=checkpoints)
     print(f'Archived {count} synthetic CI proof roots (no private research paths).')
+    for line in checkpoints.lines():
+        print(line)
