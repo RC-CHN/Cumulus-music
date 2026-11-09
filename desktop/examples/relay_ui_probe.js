@@ -23,7 +23,18 @@
     const value=window.__relayContentionAck[id];assert(!value.error,value.error);return value;
   }
   // Bounded synthetic-only event trace for cross-WebView focus failures.
-  const focusTrace=[];
+  const focusTrace=[],windowFocusReceipts=[];
+  window.__relayWindowFocusAck={};
+  async function focusWindow(outside,label){
+    const id=windowFocusReceipts.length+1;
+    await emit('window_focus',{outside,id});
+    await wait(()=>window.__relayWindowFocusAck[id],'native relay focus receipt');
+    const receipt=window.__relayWindowFocusAck[id];
+    windowFocusReceipts.push(receipt);
+    assert(receipt.id===id&&receipt.outside===outside&&!receipt.error,receipt.error||'stale native relay focus receipt');
+    assert(receipt.mainForeground===!outside&&(!outside||receipt.helperForeground===true),'native relay foreground mismatch');
+    await wait(()=>document.hasFocus()===!outside,label);
+  }
   // A fading prompt is still connected, but must already reject keyboard and
   // pointer interaction. Test the real WebView behavior during that interval.
   const leavingFocusChecks=[],seenLeaving=new WeakSet();
@@ -86,9 +97,9 @@
     // focused control. Exercise that event boundary independently of the OS.
     one('.relay-continue').dispatchEvent(new FocusEvent('focusout',{bubbles:true,relatedTarget:null}));
     await sleep(8500);assert(one('.relay-prompt')?.contains(document.activeElement),'keyboard focus must prevent auto-dismiss after pointer leaves');
-    await emit('window_focus',{outside:true});await wait(()=>!document.hasFocus(),'native window lost focus');
+    await focusWindow(true,'native window lost focus');
     await sleep(8500);assert(one('.relay-prompt')?.contains(document.activeElement),'window blur must preserve the focused prompt');
-    await emit('window_focus',{outside:false});await wait(()=>document.hasFocus(),'native window regained focus');
+    await focusWindow(false,'native window regained focus');
     assert(one('.relay-prompt')?.contains(document.activeElement),'window activation lost the focused prompt');
     await emit('pointer',{x:rect.left+10,y:rect.top+10});await wait(()=>one('.relay-prompt')?.matches(':hover'),'pointer reentered prompt');
     one('[aria-label="打开设置"]').focus({preventScroll:true});
@@ -127,7 +138,7 @@
     await refresh('song');click(one('input[name="personalServiceSetting"][value="2"]'));await wait(()=>one('dialog[open]')&&!one('.relay-prompt'),'modal suppression');await capture('modal_suppression');click(all('dialog[open] button').find(n=>n.textContent.trim()==='取消'));await wait(()=>!one('dialog[open]')&&one('.relay-prompt'),'prompt restored');await capture('modal_restored');
     click(one('[aria-label="关闭接续提示"]'));await wait(()=>!one('.relay-prompt'),'close prompt');assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');await capture('closed_focus');
     assert(leavingFocusChecks.every(v=>v.inert&&v.focusBlocked),'leaving prompt later accepted focus');
-    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,publicationLockContention:contentionVerified,unsentTimeout:unsentVerified,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,freshOfferBeforeFocusHold:true,leavingFocusChecks,focusTrace});
-  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,geometry:geometry(),focusState:focusState(),focusTrace,leavingFocusChecks});}
+    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,publicationLockContention:contentionVerified,unsentTimeout:unsentVerified,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,freshOfferBeforeFocusHold:true,leavingFocusChecks,focusTrace,windowFocusReceipts});
+  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,geometry:geometry(),focusState:focusState(),focusTrace,leavingFocusChecks,windowFocusReceipts});}
   finally{leavingObserver.disconnect();}
 })();

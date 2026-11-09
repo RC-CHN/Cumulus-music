@@ -31,6 +31,8 @@ mod ordinary_essential_fixture;
 mod relay_contention;
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
+#[path = "support/relay_focus_fixture.rs"]
+mod relay_focus_fixture;
 #[path = "support/search_mv_fixture.rs"]
 mod search_mv_fixture;
 #[path = "support/settings_fixture.rs"]
@@ -284,19 +286,13 @@ fn main() {
                 handle.get_webview_window("main").unwrap().set_cursor_position(tauri::LogicalPosition::new(value["x"].as_f64().unwrap(),value["y"].as_f64().unwrap())).unwrap();return;
             }
             if stage=="window_focus" && relays && !is_live {
-                let outside=value["outside"]==true;
-                let app=handle.clone();
-                let directory=focus_directory.clone();
-                // WebView2 creation must be outside the synchronous event handler.
-                tauri::async_runtime::spawn(async move {
-                    if outside {
-                        let other=tauri::WebviewWindowBuilder::new(&app,"focus-proof",tauri::WebviewUrl::External("about:blank".parse().unwrap())).title("Synthetic focus check").data_directory(directory).inner_size(180.0,80.0).position(8.0,8.0).build().unwrap();
-                        other.set_focus().unwrap();
-                    } else {
-                        app.get_webview_window("main").unwrap().set_focus().unwrap();
-                        if let Some(other)=app.get_webview_window("focus-proof"){other.close().unwrap();}
-                    }
-                });return;
+                relay_focus_fixture::request(
+                    handle.clone(),
+                    focus_directory.clone(),
+                    value["outside"]==true,
+                    value["id"].as_u64().expect("relay focus sequence"),
+                );
+                return;
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();

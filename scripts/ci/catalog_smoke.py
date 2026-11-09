@@ -739,6 +739,10 @@ def main():
         assert complete['autoDismiss']
         assert complete['focusHoldAfterPointerLeave'] and complete['hoverHoldAfterFocusLeave']
         assert complete['nativeWindowFocusHold'] and complete['nullRelatedFocusOutInjected']
+        receipts = complete['windowFocusReceipts']
+        assert [(row['id'], row['outside'], row['mainForeground'], row['error']) for row in receipts] == [
+            (1, True, False, None), (2, False, True, None),
+        ] and receipts[0]['helperForeground'] is True, receipts
         assert complete['freshOfferBeforeFocusHold']
         assert complete['leavingFocusChecks'] and all(v['inert'] and v['focusBlocked'] for v in complete['leavingFocusChecks'])
         if args.relay_publication:
