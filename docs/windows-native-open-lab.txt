@@ -54,6 +54,12 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
   直接传入 TOKEN_ELEVATION 结构成功且返回 4 字节。生产只将此固定长度类别改为
   单次类型化读取，失败或长度不精确均拒绝。原有提升态、完整性、登录及访问形状
   比较保持不变。该诊断回执没有完成管道握手，修复仍需单独的 Windows 实测。
+- 精确 99fe003e 的 Windows run 42649797739 已通过进程身份和受限令牌准备，
+  但创建完整访问形状仍失败。该形状的六个 DWORD 字段及一项 TOKEN_MANDATORY_POLICY
+  改用成功且返回长度精确的类型化读取。AppContainer SID、限制 SID、声明与其他
+  可变记录仍按原规则读取；未知类别、声明、限制和比较结果不降级。失败实验额外
+  区分 Win32 查询/结构错误与不支持的 AppContainer、限制或声明。仅在模拟身份
+  已成功还原后报告比较失败的字段名，不报告字段值，也不增加模拟身份操作。
 - 管道名用规范化本地目录的 FileIdInfo（卷 ID + 文件 ID）和当前 logon SID
   作进程间寻址，同一目录的别名得到同一地址，其他目录不能错投。不是授权
   凭据。仅 Windows 磁盘绝对路径；UNC、设备或 URL 不作为本地文件。
@@ -148,6 +154,7 @@ https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-acce
 https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-createrestrictedtoken
 https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-impersonateloggedonuser
 https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-token_information_class
+https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_mandatory_policy
 https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_groups
 https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw
 https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo

@@ -1,4 +1,8 @@
 //! Attest the process token and the security context actually attached to the pipe.
+#[cfg(test)]
+#[path = "effective/diagnostics.rs"]
+mod diagnostics;
+
 use super::{
     identity::{Identity, TokenBuffer, process_token, token_statistics},
     stable::Server,
@@ -13,13 +17,14 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{ERROR_NO_TOKEN, HANDLE},
     Security::{
-        LUID_AND_ATTRIBUTES, RevertToSelf, SID_AND_ATTRIBUTES, SecurityIdentification,
-        TOKEN_APPCONTAINER_INFORMATION, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_OWNER,
-        TOKEN_PRIMARY_GROUP, TOKEN_PRIVILEGES, TOKEN_QUERY, TokenAppContainerSid,
-        TokenDeviceClaimAttributes, TokenDeviceGroups, TokenGroups, TokenHasRestrictions,
-        TokenIsAppContainer, TokenMandatoryPolicy, TokenOwner, TokenPrimaryGroup, TokenPrivileges,
-        TokenRestrictedSids, TokenSessionId, TokenUIAccess, TokenUserClaimAttributes,
-        TokenVirtualizationAllowed, TokenVirtualizationEnabled,
+        GetTokenInformation, LUID_AND_ATTRIBUTES, RevertToSelf, SID_AND_ATTRIBUTES,
+        SecurityIdentification, TOKEN_APPCONTAINER_INFORMATION, TOKEN_GROUPS,
+        TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_POLICY, TOKEN_OWNER, TOKEN_PRIMARY_GROUP,
+        TOKEN_PRIVILEGES, TOKEN_QUERY, TokenAppContainerSid, TokenDeviceClaimAttributes,
+        TokenDeviceGroups, TokenGroups, TokenHasRestrictions, TokenIsAppContainer,
+        TokenMandatoryPolicy, TokenOwner, TokenPrimaryGroup, TokenPrivileges, TokenRestrictedSids,
+        TokenSessionId, TokenUIAccess, TokenUserClaimAttributes, TokenVirtualizationAllowed,
+        TokenVirtualizationEnabled,
     },
     System::{
         Pipes::ImpersonateNamedPipeClient,
@@ -149,6 +154,12 @@ impl AccessShape {
             // on a thread whose original context cannot be established.
             return Connector::RetireWorker;
         }
+        #[cfg(test)]
+        if let Ok(shape) = &result
+            && shape != self
+        {
+            diagnostics::connector_mismatch(self, shape);
+        }
         if result.is_ok_and(|shape| shape == *self) {
             Connector::Verified
         } else {
@@ -233,10 +244,58 @@ unsafe fn read<T: Copy>(buffer: &TokenBuffer, offset: usize) -> io::Result<T> {
     })
 }
 
+// `value` must be the documented fixed-size Win32 POD output for `class`.
+unsafe fn query_fixed<T>(
+    token: HANDLE,
+    class: TOKEN_INFORMATION_CLASS,
+    value: &mut T,
+) -> (bool, u32) {
+    let mut actual = 0;
+    // SAFETY: caller selects the exact POD type and this call writes at most its size.
+    let success = unsafe {
+        GetTokenInformation(
+            token,
+            class,
+            ptr::from_mut(value).cast(),
+            size_of::<T>() as u32,
+            &mut actual,
+        )
+    } != 0;
+    (success, actual)
+}
+
 fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {
-    let buffer = TokenBuffer::query(token, class)?;
-    // SAFETY: each caller uses a DWORD or one-DWORD Win32 structure.
-    unsafe { read(&buffer, 0) }
+    if class == TokenMandatoryPolicy {
+        let mut value = TOKEN_MANDATORY_POLICY::default();
+        // SAFETY: this fixed class returns exactly TOKEN_MANDATORY_POLICY.
+        let (success, actual) = unsafe { query_fixed(token, class, &mut value) };
+        return if success && actual as usize == size_of::<TOKEN_MANDATORY_POLICY>() {
+            Ok(value.Policy)
+        } else {
+            Err(denied())
+        };
+    }
+    if ![
+        TokenIsAppContainer,
+        TokenHasRestrictions,
+        TokenSessionId,
+        TokenUIAccess,
+        TokenVirtualizationAllowed,
+        TokenVirtualizationEnabled,
+    ]
+    .contains(&class)
+    {
+        return Err(denied());
+    }
+    // A zero-length sizing probe is not required for these fixed DWORD outputs.
+    let mut value = 0u32;
+    // SAFETY: every class admitted above documents a DWORD output.
+    let (success, actual) = unsafe { query_fixed(token, class, &mut value) };
+    if success && actual as usize == size_of::<u32>() {
+        Ok(value)
+    } else {
+        Err(denied())
+    }
 }
 
 fn claims_empty(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<bool> {
@@ -395,7 +454,14 @@ mod tests {
             .build()
             .unwrap();
         let restricted = restricted_same_logon_for_test();
-        let owner = AccessShape::current().unwrap();
+        let owner = AccessShape::current().unwrap_or_else(|error| {
+            panic!(
+                "full process access shape unavailable: kind={:?} win32={:?}; {}",
+                error.kind(),
+                error.raw_os_error(),
+                diagnostics::current_process()
+            )
+        });
         assert!(owner.matches_identity(&identity));
 
         thread::scope(|scope| {

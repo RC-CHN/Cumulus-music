@@ -42,7 +42,7 @@ pub(crate) fn current_process() -> String {
     )
 }
 
-fn observe(
+pub(crate) fn observe(
     token: HANDLE,
     class: TOKEN_INFORMATION_CLASS,
     inspect: impl FnOnce(&TokenBuffer) -> &'static str,
@@ -87,7 +87,7 @@ fn observe(
     )
 }
 
-fn status_error(success: bool) -> Option<u32> {
+pub(crate) fn status_error(success: bool) -> Option<u32> {
     // SAFETY: no intervening Windows call; use this only immediately after a
     // failing Win32 API so a stale success-side error is not printed.
     (!success).then(|| unsafe { GetLastError() })
