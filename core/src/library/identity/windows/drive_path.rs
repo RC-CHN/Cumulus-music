@@ -27,6 +27,15 @@ fn ineligible_component(component: &str) -> bool {
         })
 }
 
+// A mapping is only a name from the DOS device namespace. Do not open a
+// redirector, alias, or subdirectory as if it were a verified local root.
+pub(super) fn is_local_disk_device(path: &str) -> bool {
+    path.strip_prefix(r"\Device\HarddiskVolume")
+        .is_some_and(|unit| {
+            !unit.is_empty() && unit.len() <= 10 && unit.bytes().all(|b| b.is_ascii_digit())
+        })
+}
+
 pub(super) fn is_volume_guid_root(path: &str) -> bool {
     let Some(guid) = path
         .strip_prefix(r"\\?\Volume{")
@@ -83,6 +92,21 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\\");
         assert!(relative_drive_path(&format!("C:\\{long}")).is_none());
+    }
+
+    #[test]
+    fn accepts_only_direct_disk_device_mappings() {
+        assert!(is_local_disk_device(r"\Device\HarddiskVolume12"));
+        for path in [
+            r"\Device\Mup\host\music",
+            r"\Device\LanmanRedirector\;Y:00000000001\host\music",
+            r"\??\C:\dir",
+            r"\Device\HarddiskVolume12\directory",
+            r"\Device\HarddiskVolumeShadowCopy1",
+            r"\Device\HarddiskVolume",
+        ] {
+            assert!(!is_local_disk_device(path), "{path:?}");
+        }
     }
 
     #[test]

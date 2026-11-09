@@ -1,12 +1,12 @@
 use super::{
     WindowsFileIdentity,
-    drive_path::{is_volume_guid_root, relative_drive_path},
+    drive_path::{is_local_disk_device, is_volume_guid_root, relative_drive_path},
 };
 use std::{
-    fs::{File, OpenOptions},
+    fs::File,
     io,
     os::windows::{
-        fs::{MetadataExt, OpenOptionsExt},
+        fs::MetadataExt,
         io::{AsRawHandle, FromRawHandle},
     },
     path::Path,
@@ -16,25 +16,27 @@ use windows_sys::{
     Wdk::{
         Foundation::OBJECT_ATTRIBUTES,
         Storage::FileSystem::{
-            FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
-            FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+            FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_NO_RECALL,
+            FILE_OPEN_REPARSE_POINT, FILE_SYNCHRONOUS_IO_NONALERT, FileFsDeviceInformation,
+            NtCreateFile, NtQueryVolumeInformationFile,
         },
     },
     Win32::{
         Foundation::{
-            INVALID_HANDLE_VALUE, OBJ_CASE_INSENSITIVE, OBJ_DONT_REPARSE, RtlNtStatusToDosError,
-            STATUS_FILE_IS_A_DIRECTORY, STATUS_REPARSE_POINT_ENCOUNTERED,
+            HANDLE, INVALID_HANDLE_VALUE, OBJ_CASE_INSENSITIVE, OBJ_DONT_REPARSE,
+            RtlNtStatusToDosError, STATUS_FILE_IS_A_DIRECTORY, STATUS_REPARSE_POINT_ENCOUNTERED,
             STATUS_STOPPED_ON_SYMLINK, STATUS_SUCCESS, UNICODE_STRING,
         },
         Storage::FileSystem::{
-            FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
-            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_NAME_NORMALIZED,
+            FILE_ATTRIBUTE_DEVICE, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_OFFLINE,
+            FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS, FILE_ATTRIBUTE_RECALL_ON_OPEN,
+            FILE_ATTRIBUTE_REPARSE_POINT, FILE_DEVICE_DISK, FILE_NAME_NORMALIZED,
             FILE_READ_ATTRIBUTES, FILE_READ_DATA, FILE_SHARE_DELETE, FILE_SHARE_READ,
             FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_TRAVERSE, FILE_TYPE_DISK, FileStandardInfo,
-            GetDriveTypeW, GetFileInformationByHandleEx, GetFileType, GetFinalPathNameByHandleW,
-            GetVolumeInformationByHandleW, SYNCHRONIZE, VOLUME_NAME_GUID,
+            GetFileInformationByHandleEx, GetFileType, GetFinalPathNameByHandleW,
+            GetVolumeInformationByHandleW, QueryDosDeviceW, SYNCHRONIZE, VOLUME_NAME_GUID,
         },
-        System::{IO::IO_STATUS_BLOCK, WindowsProgramming::DRIVE_FIXED},
+        System::IO::IO_STATUS_BLOCK,
     },
 };
 
@@ -60,21 +62,47 @@ impl WindowsFileIdentity {
         let Some(identity) = Self::from_nofollow_file(&file)? else {
             return Ok(None);
         };
-        Ok(is_single_live_link(&file)?.then_some((file, identity)))
+        let offline = file.metadata()?.file_attributes()
+            & (FILE_ATTRIBUTE_OFFLINE
+                | FILE_ATTRIBUTE_RECALL_ON_OPEN
+                | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)
+            != 0;
+        Ok((!offline && is_single_live_link(&file)?).then_some((file, identity)))
     }
 }
 
 fn fixed_ntfs_root(drive: u8) -> io::Result<Option<File>> {
-    let drive_name = [u16::from(drive), b':' as u16, b'\\' as u16, 0];
-    // SAFETY: drive_name is a live, terminated UTF-16 root path.
-    if unsafe { GetDriveTypeW(drive_name.as_ptr()) } != DRIVE_FIXED {
+    let drive_name = [u16::from(drive), b':' as u16, 0];
+    let mut mappings = [0u16; 512];
+    // SAFETY: the drive name is NUL-terminated and the output capacity is
+    // in UTF-16 units. QueryDosDeviceW only queries the namespace mapping.
+    let length = unsafe {
+        QueryDosDeviceW(
+            drive_name.as_ptr(),
+            mappings.as_mut_ptr(),
+            mappings.len() as u32,
+        )
+    } as usize;
+    if length == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let Some(end) = mappings
+        .get(..length)
+        .and_then(|names| names.iter().position(|&unit| unit == 0))
+    else {
+        return Ok(None);
+    };
+    let Ok(device) = String::from_utf16(&mappings[..end]) else {
+        return Ok(None);
+    };
+    if !is_local_disk_device(&device) {
         return Ok(None);
     }
-    let root = OpenOptions::new()
-        .access_mode(FILE_READ_ATTRIBUTES | FILE_TRAVERSE | SYNCHRONIZE)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
-        .open(format!(r"\\?\{}:\", char::from(drive)))?;
+    // Use the accepted native device name, never the mutable DOS mapping
+    // again. The trailing separator opens its filesystem root directory.
+    let Some(root) = open_nt(null_mut(), &format!("{device}\\"), true)? else {
+        return Ok(None);
+    };
     let handle = root.as_raw_handle();
     // SAFETY: root owns handle for the remainder of these queries.
     if unsafe { GetFileType(handle) } != FILE_TYPE_DISK {
@@ -84,6 +112,10 @@ fn fixed_ntfs_root(drive: u8) -> io::Result<Option<File>> {
     if !metadata.is_dir()
         || metadata.file_attributes() & (FILE_ATTRIBUTE_DEVICE | FILE_ATTRIBUTE_REPARSE_POINT) != 0
     {
+        return Ok(None);
+    }
+
+    if !is_fixed_disk(&root)? {
         return Ok(None);
     }
 
@@ -108,11 +140,6 @@ fn fixed_ntfs_root(drive: u8) -> io::Result<Option<File>> {
     {
         return Ok(None);
     }
-    // SAFETY: the GUID result was bounded and verified NUL-terminated.
-    if unsafe { GetDriveTypeW(guid.as_ptr()) } != DRIVE_FIXED {
-        return Ok(None);
-    }
-
     let mut fs_name = [0u16; 16];
     // SAFETY: root still owns handle; optional unused outputs are null and
     // fs_name has the declared capacity for the filesystem name.
@@ -135,8 +162,48 @@ fn fixed_ntfs_root(drive: u8) -> io::Result<Option<File>> {
     Ok(is_ntfs.then_some(root))
 }
 
+// FILE_FS_DEVICE_INFORMATION (MS-FSCC 2.5.10). The output is a pair of
+// ULONGs, with no Rust bool, pointer, or implicit enum discriminant.
+#[repr(C)]
+#[derive(Default)]
+struct VolumeDeviceInfo {
+    device_type: u32,
+    characteristics: u32,
+}
+
+fn is_fixed_disk(root: &File) -> io::Result<bool> {
+    const FILE_REMOVABLE_MEDIA: u32 = 0x0000_0001;
+    const FILE_REMOTE_DEVICE: u32 = 0x0000_0010;
+    const FILE_REMOTE_DEVICE_VSMB: u32 = 0x0008_0000;
+    let mut info = VolumeDeviceInfo::default();
+    let mut status_block = IO_STATUS_BLOCK::default();
+    // SAFETY: a live synchronous filesystem root handle and initialized
+    // storage of the two documented ULONGs and IO_STATUS_BLOCK.
+    let status = unsafe {
+        NtQueryVolumeInformationFile(
+            root.as_raw_handle(),
+            &mut status_block,
+            (&raw mut info).cast(),
+            size_of::<VolumeDeviceInfo>() as u32,
+            FileFsDeviceInformation,
+        )
+    };
+    if status != STATUS_SUCCESS {
+        return Err(nt_error(status));
+    }
+    Ok(status_block.Information == size_of::<VolumeDeviceInfo>()
+        && info.device_type == FILE_DEVICE_DISK
+        && info.characteristics
+            & (FILE_REMOVABLE_MEDIA | FILE_REMOTE_DEVICE | FILE_REMOTE_DEVICE_VSMB)
+            == 0)
+}
+
 fn open_relative(root: &File, relative: &str) -> io::Result<Option<File>> {
-    let mut wide: Vec<_> = relative.encode_utf16().collect();
+    open_nt(root.as_raw_handle(), relative, false)
+}
+
+fn open_nt(root: HANDLE, path: &str, directory: bool) -> io::Result<Option<File>> {
+    let mut wide: Vec<_> = path.encode_utf16().collect();
     let length = u16::try_from(wide.len() * size_of::<u16>())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NT filename is too long"))?;
     let name = UNICODE_STRING {
@@ -146,7 +213,7 @@ fn open_relative(root: &File, relative: &str) -> io::Result<Option<File>> {
     };
     let attrs = OBJECT_ATTRIBUTES {
         Length: size_of::<OBJECT_ATTRIBUTES>() as u32,
-        RootDirectory: root.as_raw_handle(),
+        RootDirectory: root,
         ObjectName: &name,
         Attributes: OBJ_CASE_INSENSITIVE | OBJ_DONT_REPARSE,
         SecurityDescriptor: null(),
@@ -154,7 +221,20 @@ fn open_relative(root: &File, relative: &str) -> io::Result<Option<File>> {
     };
     let mut result = null_mut();
     let mut io_status = IO_STATUS_BLOCK::default();
-    // SAFETY: the borrowed root and the counted UTF-16 buffer outlive this
+    let (access, share, kind) = if directory {
+        (
+            FILE_READ_ATTRIBUTES | FILE_TRAVERSE | SYNCHRONIZE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            FILE_DIRECTORY_FILE,
+        )
+    } else {
+        (
+            FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            FILE_SHARE_READ | FILE_SHARE_DELETE,
+            FILE_NON_DIRECTORY_FILE,
+        )
+    };
+    // SAFETY: the optional borrowed root and the counted UTF-16 buffer outlive this
     // synchronous call. All written outputs are initialized storage of the
     // exact WDK types; optional allocation/EA inputs are absent. FILE_OPEN
     // cannot create or overwrite. OBJ_DONT_REPARSE covers the relative
@@ -163,14 +243,14 @@ fn open_relative(root: &File, relative: &str) -> io::Result<Option<File>> {
     let status = unsafe {
         NtCreateFile(
             &mut result,
-            FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            access,
             &attrs,
             &mut io_status,
             null(),
             FILE_ATTRIBUTE_NORMAL,
-            FILE_SHARE_READ | FILE_SHARE_DELETE,
+            share,
             FILE_OPEN,
-            FILE_NON_DIRECTORY_FILE | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            kind | FILE_OPEN_NO_RECALL | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
             null(),
             0,
         )
@@ -185,11 +265,13 @@ fn open_relative(root: &File, relative: &str) -> io::Result<Option<File>> {
         // SAFETY: the successful call transferred one valid, owned file
         // handle; nothing else wraps or closes it.
         STATUS_SUCCESS => Ok(Some(unsafe { File::from_raw_handle(result) })),
-        // SAFETY: this routine accepts the returned scalar NTSTATUS.
-        status => Err(io::Error::from_raw_os_error(
-            unsafe { RtlNtStatusToDosError(status) } as i32,
-        )),
+        status => Err(nt_error(status)),
     }
+}
+
+fn nt_error(status: i32) -> io::Error {
+    // SAFETY: this routine accepts the returned scalar NTSTATUS.
+    io::Error::from_raw_os_error(unsafe { RtlNtStatusToDosError(status) } as i32)
 }
 
 // Win32 writes two BOOLEAN bytes. Decode as integers to avoid interpreting
@@ -242,7 +324,7 @@ fn is_single_live_link(file: &File) -> io::Result<bool> {
 mod tests {
     use super::*;
     use std::{
-        fs::{self, FileTimes},
+        fs::{self, FileTimes, OpenOptions},
         io::Read,
         os::windows::fs::FileTimesExt,
     };
