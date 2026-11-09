@@ -4,7 +4,7 @@ use super::{
     vinyl_http,
 };
 use cumulus_core::{
-    account::{AccountSession, profiles::ProfileRegistry},
+    account::AccountSession,
     client::{
         MusicClient,
         dto::{PlayerAction, PlayerView},
@@ -15,7 +15,7 @@ use cumulus_core::{
         controller::PlaybackStatus,
         engine::{EndReason, EngineEvent},
     },
-    protocol::{api::identifier, http::ApiOrigin},
+    protocol::api::identifier,
     storage::StateStore,
 };
 use serde_json::{Value, json};
@@ -80,7 +80,7 @@ impl Fixture {
             .into_iter()
             .chain(replies),
         );
-        let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+        let registry = super::fixture_registry(&root.path().join("host"));
         let store = registry.store();
         let mut queue = PlaybackQueue::new(Some(store.clone()), "71").unwrap();
         queue.set_mode(mode).unwrap();

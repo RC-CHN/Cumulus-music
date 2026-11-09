@@ -15,7 +15,7 @@ mod purchased;
 mod selection;
 use cumulus_core::{
     Error,
-    account::{AccountSession, credentials::Credentials, profiles::ProfileRegistry},
+    account::{AccountSession, credentials::Credentials},
     client::{
         MusicClient,
         dto::{
@@ -88,7 +88,7 @@ impl Fixture {
         let root = tempfile::tempdir().unwrap();
         let (native, http, credentials) =
             vinyl_http_with_credentials(root.path(), cookies, replies);
-        let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+        let registry = super::fixture_registry(&root.path().join("host"));
         let store = registry.store();
         let session = Arc::new(AccountSession::new(native.clone(), Some(store.clone())));
         session

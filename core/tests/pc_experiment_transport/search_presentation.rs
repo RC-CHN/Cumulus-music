@@ -1,7 +1,7 @@
 //! Re-project safe candidates against live native cohorts without re-searching.
 use super::{HttpResponse, reply, vinyl_http, vinyl_http_with_credentials};
 use cumulus_core::{
-    account::{AccountSession, profiles::ProfileRegistry},
+    account::AccountSession,
     client::{
         MusicClient,
         dto::{SearchCategory, SearchItem, SearchResultQuery},
@@ -42,7 +42,7 @@ async fn current_and_cached_candidates_follow_live_cohorts_without_search_or_pri
         groups_with_layout(false, true, false),
         groups(true),
     ]);
-    let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+    let registry = super::fixture_registry(&root.path().join("host"));
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     session
         .adopt(api.clone(), json!({"userId":71}), &session.token().unwrap())
@@ -158,7 +158,7 @@ async fn rotated_credentials_retire_old_candidates_even_after_fresh_treatment_wi
             groups(true),
         ],
     );
-    let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+    let registry = super::fixture_registry(&root.path().join("host"));
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     session
         .adopt(api.clone(), json!({"userId":71}), &session.token().unwrap())
@@ -270,7 +270,7 @@ async fn cookie_rotating_search_response_cannot_issue_candidates_for_the_new_coh
             result(2).into(),
         ],
     );
-    let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+    let registry = super::fixture_registry(&root.path().join("host"));
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     session
         .adopt(api, json!({"userId":71}), &session.token().unwrap())
