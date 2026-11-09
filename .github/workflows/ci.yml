@@ -481,6 +481,8 @@ jobs:
       - run: npm --prefix frontend run build
       - name: Build release packages and verify native media
         env:
+          # Scope the concurrency trial to Release; debug and GUI keep the default.
+          CARGO_BUILD_JOBS: '3'
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: python scripts/ci/package.py --platform 'windows-x64'
       - name: Verify cold FLAC seeks and held-file fallback on native Windows
