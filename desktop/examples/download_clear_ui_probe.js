@@ -37,10 +37,14 @@
       (el) => el.getAnimations().every((animation) => !animation.pending && animation.playState !== 'running'),
     ), 'animations settled');
     assert(document.documentElement.scrollWidth <= innerWidth + 1, 'window width');
+    const modal = dialog();
+    if (modal) assert(modal.scrollWidth <= modal.clientWidth + 1, 'confirmation does not overflow');
     await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, data);
   }
   try {
     await wait(() => one('.track-row'), 'authenticated initial view');
+    await emit('resize', { width: 760, height: 540 });
+    await wait(() => innerWidth === 760 && innerHeight === 540, 'compact window');
     await fixture('clear_seed');
     const { epoch } = await invoke('account_snapshot');
     const read = () => invoke('downloads', { epoch, query: {
