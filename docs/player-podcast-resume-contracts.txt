@@ -31,3 +31,14 @@ Cumulus：
   整页也不接受旧页面结果覆盖。当前 decoder、队列和时钟保持不动。
 - 合成 native PC EAPI 用例验证无打开请求、观察到的开关、控制组、当前播放保持、失效不发送、丢包
   不重发、路径隔离。不涉及真实账号写入；其他来源以及宿主平台的视觉表现需单独验收。
+
+隔离桌面回归：
+- 用 cargo build -p cumulus-desktop --example podcast_recent_ui_probe --features custom-protocol --locked
+  构建本机探针，然后在无外网的 Linux X11/Xvfb + D-Bus 会话执行
+  scripts/ci/player_podcast_resume_smoke.py --binary <podcast_recent_ui_probe> --frontend-dist frontend/dist
+  --root <全新证据目录> --screenshots。使用系统 libmpv、null 输出和非 C locale；不依赖发行包。
+- 可在 Windows 使用同一探针和脚本、移除 --screenshots 并传 --runtime <包含 libmpv-2.dll 的已打包
+  native 目录>；本次没有实际运行 WebView2。不使用真实账号、设备会话、声卡或外部媒体。
+- 合成账号恢复、两次完整 PC 分组和设置 GET/UPDATE 均走封闭 MusicHttpClient 的真实签名与 EAPI
+  解包对照。真实 WebKitGTK 在七个画面检查了未分组、开启弹窗、取消归还焦点、已关闭菜单、回复丢失后
+  焦点保留在「确认设置结果」、仅 GET 核对、分组撤销及拒绝旧命令；各阶段同一个暂停实例、位置和两项队列。
