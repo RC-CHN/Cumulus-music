@@ -127,6 +127,11 @@ impl From<Error> for ClientError {
                 Error::State("CAPTCHA is already pending") => {
                     ("captcha_pending", "请先完成或关闭已打开的验证码", false)
                 }
+                Error::State("download collection create not sent") => (
+                    "download_create_not_started",
+                    "无法读取歌单，创建尚未发送，可以重试",
+                    true,
+                ),
                 Error::RequestNotSent(_) => (
                     "request_not_sent",
                     "请求准备未完成，修改尚未提交，请稍后重试",

@@ -85,6 +85,16 @@ export function useDownloadCollectCreation(
       try {
         result = await core.downloadCollectCreation(owner.epoch, owner.receipt, command);
       } catch (error) {
+        if (
+          command.kind === 'create' &&
+          live() &&
+          failure(error).code === 'download_create_not_started'
+        ) {
+          // The native visit was released before dispatch. Do not poll a
+          // nonexistent journal or resubmit until the user confirms again.
+          notice.value = failure(error).message;
+          return;
+        }
         if (!live() || command.kind === 'status') throw error;
         // Recover a lost IPC response from the same receipt's local journal.
         // Only a later explicit reconcile may ask the service to read back.

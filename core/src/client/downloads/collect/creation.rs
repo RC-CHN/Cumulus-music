@@ -156,9 +156,26 @@ impl MusicClient {
                 .await;
             match result {
                 Ok(record) => record,
-                Err(error) => service
-                    .operation_for(&ctx.token, &attempt.create_id)?
-                    .ok_or(error)?,
+                Err(error) => match service.operation_for(&ctx.token, &attempt.create_id)? {
+                    Some(record) => record,
+                    None if matches!(error.root(), Error::Transport(_)) => {
+                        // A guarded create saves its Sending record before
+                        // dispatch. A transport error during preflight with no
+                        // record is definitely unsent, so this visit can retry.
+                        check()?;
+                        with_visit(slot, &source, |visit| {
+                            if visit.creation.as_ref().map(|v| &v.create_id)
+                                != Some(&attempt.create_id)
+                            {
+                                return Err(Error::StaleResponse);
+                            }
+                            visit.creation = None;
+                            Ok(())
+                        })?;
+                        return Err(Error::State("download collection create not sent"));
+                    }
+                    None => return Err(error),
+                },
             }
         } else {
             service
