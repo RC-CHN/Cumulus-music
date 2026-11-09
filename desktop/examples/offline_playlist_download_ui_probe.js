@@ -108,7 +108,7 @@
         check(seeded.epoch === epoch && seeded.value.changed, 'exact CUE inserted once');
         break;
       } catch (error) {
-        if (error?.kind !== 'busy' || setupAttempts >= 4) throw error;
+        if (error?.code !== 'busy' || setupAttempts >= 4) throw error;
         await delay(200 * setupAttempts);
       }
     }
@@ -163,7 +163,8 @@
     const rejected = await wait(async () => {
       const v = await player();
       check(v.state !== 'playing', 'tampered file began playback');
-      return v.state === 'error' && v.error && v.position <= .10 && v.track?.id === own && {
+      const noClock = v.position == null || (Number.isFinite(v.position) && v.position >= 0 && v.position <= .10);
+      return v.state === 'error' && v.error && noClock && v.track?.id === own && {
         id: v.track.id, resourceKind: v.resourceKind, state: v.state, position: v.position, error: true,
       };
     }, 'native digest rejection without advancing the clock');
@@ -197,6 +198,7 @@
     const frontendEntry = new URL(one('script[type="module"][src]').src).pathname.split('/').pop();
     await event('complete', { ok: true, local, setupAttempts, frontendEntry });
   } catch (error) {
-    await event('failed', { step, message: String(error), kind: error?.kind, rows: rows(), enabled: enabled() });
+    await event('failed', { step, message: error?.message ?? String(error), code: error?.code,
+      rows: rows(), enabled: enabled() });
   }
 })();

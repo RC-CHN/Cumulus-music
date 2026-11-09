@@ -73,7 +73,8 @@ def main():
     assert all(7900 <= v['durationMs'] <= 8100 for v in (started[1], started[2]))
     rejected = states[4]['rejected']
     assert rejected['id'] == '701' and rejected['resourceKind'] == 'downloaded'
-    assert rejected['state'] == 'error' and rejected['error'] and rejected['position'] <= .10
+    assert rejected['state'] == 'error' and rejected['error']
+    assert rejected['position'] is None or 0 <= rejected['position'] <= .10
 
     receipts = [state['nativeReceipt'] for state in states]
     assert [r['unavailable'] for r in receipts] == [0, 1, 1, 1, 1, 2, 3, 3, 3]
