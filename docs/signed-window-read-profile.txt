@@ -2,10 +2,10 @@ Private profile preparation for the signed desktop read proof
 =============================================================
 
 This Linux-only native helper supports the opt-in acceptance driver described
-in signed-window-read-proof.txt. It is not a Tauri command, application login
-route, credential exporter, or general storage migration. It makes no HTTP
-request and exposes no serializable profile, credentials, or hardware facts.
-The normal client keeps its existing account lifecycle.
+in signed-window-read-proof.txt. It is neither a Tauri command nor an
+application login route. The normal client keeps its existing account
+lifecycle. The helper makes no HTTP request. The only serialized handoff is
+the private, minimized native child input described below.
 
 Caller contract
 ---------------
@@ -81,6 +81,46 @@ locally; the guard is still required to stop renewal, mutation, and out-of-scope
 calls. Existing authorization is read-only for this proof, regardless of token
 fields present in the native credential record.
 
+One-shot host handoff
+---------------------
+Build and run the Linux example before starting the isolated window:
+
+  cargo build --locked -p cumulus-desktop --example signed_window_read_prepare
+  .build/target/debug/examples/signed_window_read_prepare --prepare \
+      SOURCE PRIVATE_UID_FILE INTENT_FILE NEW_PREPARED_DIR
+
+`--derive-if-missing` is optional and must be explicit. All inputs are paths;
+no UID, signature, query, or song is accepted in argv. `PRIVATE_UID_FILE`
+contains the independent canonical decimal UID and an optional single LF.
+`INTENT_FILE` is a separate private JSON file with exactly `keyword`, `songId`
+and `mediaHost`, all strings. The public search word and song ID must agree
+with the separately supervised bounded request. The host is a single exact
+lowercase approved media DNS name without a scheme, port or path; API origins
+are rejected. DNS/TLS pin checks and request authorization stay in the broker.
+Both input files are bounded, caller-owned, private, singly linked regular
+files, read with pinned parent handles and no symlink traversal.
+
+`NEW_PREPARED_DIR` is one new direct child of a distinct private parent; the
+basename starts with an ASCII alphanumeric and contains at most 64 ASCII
+alphanumerics, hyphens or underscores. The exporter writes and flushes a
+temporary sibling, cleans its source preparation, then publishes the complete
+directory with no-replace atomic rename. A failed check removes unfinished
+stages and leaves any preexisting target untouched. The published directory
+contains only:
+
+  credentials/core.sqlite3
+  config/core.sqlite3
+  parameters.json
+
+The parameters contain exactly `expectedUid`, `keyword`, `songId`,
+`clientSign`, `osVersion`, and `mediaHost`; only native code reads this file.
+The directories are private (0700) and files are private (0600). The CLI
+prints only success and whether the identity was derived, or a fixed failure
+message. The launcher mounts just this input read-only, lets the native child
+copy the permitted files into its private working state, and removes the
+published directory after the isolated process exits. Do not archive it or
+include it in reports. The original source is never mounted.
+
 Validation (all synthetic)
 --------------------------
 `cargo test --locked -p cumulus-desktop --test signed_window_read_profile`
@@ -88,5 +128,8 @@ constructs production-format registries and verifies exact source file bytes
 are unchanged, a separate closed WAL-header snapshot works, only one credential
 row and one config survive, auxiliary requests are refused, output mode and
 cleanup are enforced, original Cookie scope is unchanged, and unsafe source
-paths or account bindings fail before use. No test opens real credentials,
-performs live requests, or proves the same-window GUI and CDN stage by itself.
+paths or account bindings fail before use. The staged host export is checked
+against the actual synthetic fixture, including no-replace publication,
+sidecar refusal, and exact child input names and modes. No test opens real
+credentials, performs live requests, or proves the same-window GUI and CDN
+stage by itself.

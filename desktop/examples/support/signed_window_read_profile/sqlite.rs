@@ -123,6 +123,62 @@ fn no_sidecars(directory: &File) -> Result<()> {
     Ok(())
 }
 
+fn private_bytes_at(directory: &File, name: &CStr, bound: u64) -> Result<(Vec<u8>, Metadata)> {
+    let open = || {
+        safe(
+            open_at(
+                directory.as_raw_fd(),
+                name,
+                libc::O_RDONLY | libc::O_NONBLOCK,
+            ),
+            "private input file is unavailable",
+        )
+    };
+    let mut file = open()?;
+    let before = safe(file.metadata(), "private input file is unavailable")?;
+    require_private(&before)?;
+    if !before.is_file() || before.nlink() != 1 || !(1..=bound).contains(&before.len()) {
+        return Err(refused("private input is not a bounded regular file"));
+    }
+    let mut bytes = Vec::with_capacity(before.len() as usize);
+    safe(
+        (&mut file).take(bound + 1).read_to_end(&mut bytes),
+        "private input file could not be read",
+    )?;
+    let after = safe(file.metadata(), "private input file is unavailable")?;
+    let current = safe(open()?.metadata(), "private input file is unavailable")?;
+    if bytes.len() as u64 != before.len() || !stable(&before, &after) || !stable(&before, &current)
+    {
+        return Err(refused("private input file changed during preparation"));
+    }
+    Ok((bytes, before))
+}
+
+pub(super) fn private_input(path: &Path, bound: u64) -> Result<(Vec<u8>, Metadata)> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| refused("invalid private input path"))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| refused("invalid private input path"))?;
+    private_bytes_at(&open_absolute(parent)?, &name_cstr(name)?, bound)
+}
+
+pub(super) fn stopped_database_bytes(directory: &File) -> Result<(Vec<u8>, Metadata)> {
+    no_sidecars(directory)?;
+    let (bytes, file) = private_bytes_at(directory, DATABASE, SOURCE_BOUNDS)?;
+    if bytes.len() < 100
+        || !bytes.starts_with(SQLITE_HEADER)
+        || !matches!(bytes.get(18..20), Some([1, 1] | [2, 2]))
+    {
+        return Err(refused(
+            "source must be a stable standalone SQLite database",
+        ));
+    }
+    no_sidecars(directory)?;
+    Ok((bytes, file))
+}
+
 pub(super) struct Snapshot {
     pub(super) database: Connection,
     file: Metadata,
@@ -130,37 +186,7 @@ pub(super) struct Snapshot {
 
 impl Snapshot {
     pub(super) fn read(directory: &File) -> Result<Self> {
-        no_sidecars(directory)?;
-        let mut source = safe(
-            open_at(
-                directory.as_raw_fd(),
-                DATABASE,
-                libc::O_RDONLY | libc::O_NONBLOCK,
-            ),
-            "source database is unavailable",
-        )?;
-        let file = safe(source.metadata(), "source database is unavailable")?;
-        require_private(&file)?;
-        if !file.is_file() || file.nlink() != 1 || !(100..=SOURCE_BOUNDS).contains(&file.len()) {
-            return Err(refused("source database is not a bounded standalone file"));
-        }
-        let mut bytes = Vec::with_capacity(file.len() as usize);
-        safe(
-            (&mut source)
-                .take(SOURCE_BOUNDS + 1)
-                .read_to_end(&mut bytes),
-            "source database could not be read",
-        )?;
-        let after = safe(source.metadata(), "source database is unavailable")?;
-        if !stable(&file, &after)
-            || bytes.len() as u64 != file.len()
-            || !bytes.starts_with(SQLITE_HEADER)
-            || !matches!(bytes.get(18..20), Some([1, 1] | [2, 2]))
-        {
-            return Err(refused(
-                "source must be a stable standalone SQLite database",
-            ));
-        }
+        let (mut bytes, file) = stopped_database_bytes(directory)?;
         // sqlite3_deserialize requires rollback mode. A closed WAL-mode
         // database may retain [2,2] in its header after the final checkpoint.
         // Normalize only our memory copy after excluding all live sidecars.

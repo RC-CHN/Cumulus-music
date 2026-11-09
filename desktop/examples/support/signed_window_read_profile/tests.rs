@@ -29,7 +29,7 @@ fn facts() -> Result<HardwareFacts> {
 }
 
 struct Fixture {
-    _outer: TempDir,
+    outer: TempDir,
     source: PathBuf,
     private: PathBuf,
     selected: PathBuf,
@@ -103,7 +103,7 @@ impl Fixture {
             .unwrap();
         drop((transport, credentials));
         Self {
-            _outer: outer,
+            outer,
             source,
             private,
             selected,
@@ -336,4 +336,203 @@ fn closed_checkpointed_wal_header_is_normalized_only_in_memory() {
     let proof = fixture.prepare(IdentityMode::RequireSaved).unwrap();
     proof.close().unwrap();
     assert_eq!(before, fixture.bytes());
+}
+
+const VALID_INTENT: &[u8] =
+    br#"{"keyword":"synthetic search","songId":"23","mediaHost":"m1.music.126.net"}"#;
+
+fn export_inputs(fixture: &Fixture) -> (PathBuf, PathBuf) {
+    use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt};
+    let uid = fixture.outer.path().join("independent-uid");
+    let intent = fixture.outer.path().join("intent.json");
+    for (path, bytes) in [(&uid, b"42\n".as_slice()), (&intent, VALID_INTENT)] {
+        OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o600)
+            .open(path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+    }
+    (uid, intent)
+}
+
+fn export_fixture(fixture: &Fixture, uid: &Path, intent: &Path, output: &Path) -> Result<bool> {
+    export::export_with(
+        &fixture.source,
+        uid,
+        intent,
+        output,
+        IdentityMode::RequireSaved,
+        |source, parent, expected, mode| prepare_with(source, parent, expected, mode, facts),
+    )
+}
+
+#[test]
+fn publishes_only_the_childs_three_private_inputs_and_cleans_temporary_state() {
+    let fixture = Fixture::new(true);
+    let (uid, intent) = export_inputs(&fixture);
+    let output = fixture.private.join("prepared");
+    let before = fixture.bytes();
+    assert!(!export_fixture(&fixture, &uid, &intent, &output).unwrap());
+    assert_eq!(fixture.private.read_dir().unwrap().count(), 1);
+    let mut entries: Vec<_> = output
+        .read_dir()
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    entries.sort();
+    assert_eq!(entries, ["config", "credentials", "parameters.json"]);
+    for dir in [&output, &output.join("config"), &output.join("credentials")] {
+        assert_eq!(dir.metadata().unwrap().mode() & 0o777, 0o700);
+    }
+    for file in [
+        "credentials/core.sqlite3",
+        "config/core.sqlite3",
+        "parameters.json",
+    ] {
+        assert_eq!(output.join(file).metadata().unwrap().mode() & 0o777, 0o600);
+    }
+    for (dir, kind) in [("credentials", CREDENTIAL), ("config", PC_CONFIG)] {
+        let directory = output.join(dir);
+        assert_eq!(directory.read_dir().unwrap().count(), 1);
+        let database = Connection::open_with_flags(
+            directory.join("core.sqlite3"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        let only: (i64, String) = database
+            .query_row("SELECT count(*),kind FROM state", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(only, (1, kind.into()));
+    }
+    let params: Value =
+        serde_json::from_slice(&fs::read(output.join("parameters.json")).unwrap()).unwrap();
+    assert_eq!(params.as_object().unwrap().len(), 6);
+    assert_eq!(params["expectedUid"], "42");
+    assert_eq!(params["keyword"], "synthetic search");
+    assert_eq!(params["songId"], "23");
+    assert_eq!(params["mediaHost"], "m1.music.126.net");
+    assert!(
+        params["clientSign"]
+            .as_str()
+            .is_some_and(|sign| !sign.is_empty())
+    );
+    assert!(
+        params["osVersion"]
+            .as_str()
+            .is_some_and(|os| !os.is_empty())
+    );
+    assert_eq!(before, fixture.bytes());
+}
+
+#[test]
+fn refuses_preexisting_or_redirected_outputs_and_removes_failed_stages() {
+    let fixture = Fixture::new(true);
+    let (uid, intent) = export_inputs(&fixture);
+    let output = fixture.private.join("prepared");
+    let occupied = fixture.private.join("occupied");
+    fs::create_dir(&occupied).unwrap();
+    fs::write(occupied.join("sentinel"), b"keep").unwrap();
+    symlink(&occupied, &output).unwrap();
+    assert!(export_fixture(&fixture, &uid, &intent, &output).is_err());
+    assert_eq!(fs::read(occupied.join("sentinel")).unwrap(), b"keep");
+    assert!(fs::symlink_metadata(&output).unwrap().is_symlink());
+    assert_eq!(fixture.private.read_dir().unwrap().count(), 2);
+    fs::remove_file(&output).unwrap();
+    assert!(
+        export::export_with(
+            &fixture.source,
+            &uid,
+            &intent,
+            &output,
+            IdentityMode::RequireSaved,
+            |source, parent, expected, mode| {
+                let prepared = prepare_with(source, parent, expected, mode, facts)?;
+                fs::write(
+                    prepared.credential_dir().join("core.sqlite3-wal"),
+                    b"fixture rejection",
+                )
+                .unwrap();
+                Ok(prepared)
+            }
+        )
+        .is_err()
+    );
+    assert!(!output.exists());
+    assert_eq!(fixture.private.read_dir().unwrap().count(), 1);
+}
+
+#[test]
+fn checks_private_independent_uid_and_bounds_the_intent_before_profile_preparation() {
+    let fixture = Fixture::new(true);
+    let (uid, intent) = export_inputs(&fixture);
+    let output = fixture.private.join("prepared");
+    let invalid_intents = [
+        json!({"keyword":"synthetic search","songId":"23","mediaHost":"interfacepc.music.163.com"}),
+        json!({"keyword":"synthetic search","songId":"23","mediaHost":"m1.music.126.net:443"}),
+        json!({"keyword":"synthetic search","songId":"23","mediaHost":"m1.music.126.net/"}),
+        json!({"keyword":"synthetic search","songId":"23","mediaHost":"m1.music.126.net.evil.test"}),
+        json!({"keyword":"synthetic search","songId":23,"mediaHost":"m1.music.126.net"}),
+        json!({"keyword":"synthetic search","songId":"23","mediaHost":"m1.music.126.net","expectedUid":"42"}),
+        json!({"keyword":"synthetic search ","songId":"23","mediaHost":"m1.music.126.net"}),
+    ];
+    let untouched = |_: &Path, _: &Path, _: &str, _: IdentityMode| {
+        panic!("invalid input reached profile preparation")
+    };
+    for invalid in invalid_intents {
+        fs::write(&intent, serde_json::to_vec(&invalid).unwrap()).unwrap();
+        assert!(
+            export::export_with(
+                &fixture.source,
+                &uid,
+                &intent,
+                &output,
+                IdentityMode::RequireSaved,
+                untouched
+            )
+            .is_err()
+        );
+    }
+    fs::write(&intent, b"x".repeat(1025)).unwrap();
+    assert!(
+        export::export_with(
+            &fixture.source,
+            &uid,
+            &intent,
+            &output,
+            IdentityMode::RequireSaved,
+            untouched
+        )
+        .is_err()
+    );
+    fs::write(&intent, VALID_INTENT).unwrap();
+    let alias = fixture.outer.path().join("redirected-uid");
+    symlink(&uid, &alias).unwrap();
+    assert!(
+        export::export_stopped(
+            &fixture.source,
+            &alias,
+            &intent,
+            &output,
+            IdentityMode::RequireSaved
+        )
+        .is_err()
+    );
+    fs::set_permissions(&uid, Permissions::from_mode(0o644)).unwrap();
+    assert!(
+        export::export_with(
+            &fixture.source,
+            &uid,
+            &intent,
+            &output,
+            IdentityMode::RequireSaved,
+            untouched
+        )
+        .is_err()
+    );
+    assert!(fixture.empty_scratch());
 }

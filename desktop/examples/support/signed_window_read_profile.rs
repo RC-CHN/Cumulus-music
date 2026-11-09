@@ -1,5 +1,7 @@
 //! Native-only profile preparation for the bounded signed desktop research proof.
 //! No network client, source path, or printable credential is returned.
+#[path = "signed_window_read_profile/export.rs"]
+pub mod export;
 #[path = "signed_window_read_profile/sqlite.rs"]
 mod sqlite;
 
