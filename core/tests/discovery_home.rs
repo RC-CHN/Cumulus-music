@@ -359,21 +359,22 @@ async fn recall_caps_hot_rows_persists_cooldown_and_only_explicit_play_opens_med
     assert_eq!(ready.track.unwrap().id, "911");
     assert!(ready.play_id.is_none() && ready.position.is_none());
     assert_eq!(device.state.lock().unwrap().loads, 0);
-    let batch = api.calls.lock().unwrap();
-    let args = &batch.iter().find(|(path, _, _)| path == BATCH).unwrap().1;
-    let body: Value = serde_json::from_str(args[GENERAL].as_str().unwrap()).unwrap();
-    let cursor: Value = serde_json::from_str(body["cursor"].as_str().unwrap()).unwrap();
-    assert_eq!(
-        cursor["blockCodeOrderList"]
-            .as_array()
-            .unwrap()
-            .last()
-            .unwrap(),
-        "HOMEPAGE_BLOCK_HOT_RESOURCE"
-    );
-    assert_eq!(cursor["blockCodeOrderList"].as_array().unwrap().len(), 7);
-    assert!(!batch.iter().any(|(path, _, _)| path == TEST_MEDIA));
-    drop(batch);
+    {
+        let batch = api.calls.lock().unwrap();
+        let args = &batch.iter().find(|(path, _, _)| path == BATCH).unwrap().1;
+        let body: Value = serde_json::from_str(args[GENERAL].as_str().unwrap()).unwrap();
+        let cursor: Value = serde_json::from_str(body["cursor"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            cursor["blockCodeOrderList"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap(),
+            "HOMEPAGE_BLOCK_HOT_RESOURCE"
+        );
+        assert_eq!(cursor["blockCodeOrderList"].as_array().unwrap().len(), 7);
+        assert!(!batch.iter().any(|(path, _, _)| path == TEST_MEDIA));
+    }
 
     assert!(client.acknowledge_home_recall_guide(&epoch, guide).is_err());
     tokio::time::advance(std::time::Duration::from_secs(3)).await;

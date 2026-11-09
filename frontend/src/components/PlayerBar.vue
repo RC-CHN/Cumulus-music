@@ -37,25 +37,6 @@ import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import type { PlayerPodcastResumeTarget } from '../services/playerPodcastResume';
 import type { AudiobookSkipContext } from '../services/audiobookSkip';
 import type { HomeRecallGuide } from '../services/discoveryHome';
-const shownRecall = ref(false);
-const recallVisible = ref(false);
-const observeRecallVisibility = () => {
-  recallVisible.value = !document.hidden;
-};
-onMounted(() => {
-  observeRecallVisibility();
-  document.addEventListener('visibilitychange', observeRecallVisibility);
-});
-onUnmounted(() => document.removeEventListener('visibilitychange', observeRecallVisibility));
-let presentedRecall: string | undefined;
-let recallArrival: { receipt: string; at: number } | undefined;
-watch(
-  () => props.recallGuide,
-  (guide) => {
-    recallArrival = guide && { receipt: guide.receipt, at: performance.now() };
-  },
-  { flush: 'sync' },
-);
 const equalizerOpen = ref(false);
 const audioEffectsOpen = ref(false);
 const headphoneManagementOpen = ref(false);
@@ -79,6 +60,25 @@ const props = withDefaults(
     recallGuide?: HomeRecallGuide;
   }>(),
   { togetherActive: false },
+);
+const shownRecall = ref(false);
+const recallVisible = ref(false);
+const observeRecallVisibility = () => {
+  recallVisible.value = !document.hidden;
+};
+onMounted(() => {
+  observeRecallVisibility();
+  document.addEventListener('visibilitychange', observeRecallVisibility);
+});
+onUnmounted(() => document.removeEventListener('visibilitychange', observeRecallVisibility));
+let presentedRecall: string | undefined;
+let recallArrival: { receipt: string; at: number } | undefined;
+watch(
+  () => props.recallGuide,
+  (guide) => {
+    recallArrival = guide && { receipt: guide.receipt, at: performance.now() };
+  },
+  { flush: 'sync', immediate: true },
 );
 const emit = defineEmits<{
   resumeConfirmed: [epoch: string, radioId: string, enabled: boolean];
