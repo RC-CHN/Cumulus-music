@@ -91,7 +91,7 @@ impl Api for Fixture {
     }
 }
 
-pub fn listen(app: &tauri::App, fixture: Arc<Fixture>, store: StateStore, output: &Path) {
+pub fn listen(app: &tauri::App, fixture: Arc<Fixture>, store: Arc<StateStore>, output: &Path) {
     let output = output.to_path_buf();
     let handle = app.handle().clone();
     app.listen("local-proof", move |event| {
