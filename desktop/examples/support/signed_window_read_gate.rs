@@ -4,6 +4,8 @@
 
 #[path = "signed_window_read_gate/media.rs"]
 mod media;
+#[cfg(feature = "signed-window-read-proof")]
+pub use media::MediaArm;
 
 use cumulus_core::{
     Error, Result,
@@ -45,6 +47,7 @@ const PAGE_SIZE: usize = 200;
 const PAGE_LIMIT: usize = 16;
 const SONG_PAGE_SIZE: usize = 10;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
+const MEDIA_ARM_TIMEOUT: Duration = Duration::from_secs(12);
 pub const MAX_MEDIA_BYTES: u64 = 16 * 1024 * 1024;
 
 fn refused() -> Error {
@@ -132,6 +135,7 @@ pub struct Facts {
 pub struct MediaReceipt {
     pub bytes: u64,
     pub md5: String,
+    expires: Instant,
 }
 
 pub struct Gate {
@@ -556,11 +560,19 @@ impl Gate {
                 let expiry = match row.get("expi") {
                     Some(value) => Duration::from_secs(
                         value.as_u64().filter(|&v| v > 0).ok_or_else(bad_reply)?,
-                    )
-                    .min(REQUEST_TIMEOUT),
+                    ),
                     None => REQUEST_TIMEOUT,
                 };
-                p.receipt = Some((url, MediaReceipt { bytes, md5 }, Instant::now() + expiry));
+                let now = Instant::now();
+                p.receipt = Some((
+                    url,
+                    MediaReceipt {
+                        bytes,
+                        md5,
+                        expires: now + expiry.min(REQUEST_TIMEOUT + MEDIA_ARM_TIMEOUT),
+                    },
+                    now + expiry.min(REQUEST_TIMEOUT),
+                ));
             }
         }
         Ok(())

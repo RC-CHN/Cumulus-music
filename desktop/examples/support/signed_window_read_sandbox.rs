@@ -1,4 +1,8 @@
 //! Native admission for the host launcher's strictly isolated live mode.
+#[path = "signed_window_read_sandbox/cdn.rs"]
+mod cdn;
+pub(super) use cdn::CdnArm;
+
 use cumulus_core::{
     download::transfer::MediaUrl,
     protocol::http::{ApiOrigin, ClientProfile, OFFICIAL_WINDOWS_USER_AGENT},
@@ -250,7 +254,7 @@ fn loopback_routes(ipv4: &str, ipv6: &str) -> bool {
         })
 }
 
-fn valid_media_host(host: &str) -> bool {
+pub(super) fn valid_media_host(host: &str) -> bool {
     (1..=253).contains(&host.len())
         && host.split('.').all(|label| {
             (1..=63).contains(&label.len()) && !label.starts_with('-') && !label.ends_with('-')

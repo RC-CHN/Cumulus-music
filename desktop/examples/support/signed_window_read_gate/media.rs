@@ -1,17 +1,23 @@
 //! A bounded, credential-free fetch after the read gate authorizes one URL.
-use super::Gate;
+use super::{Gate, MEDIA_ARM_TIMEOUT};
 use cumulus_core::{
     Error, Result,
     download::transfer::{MediaBackend, MediaRequest, MediaUrl},
     playback::engine::Cancellation,
-    protocol::wire::eapi,
+    protocol::{api::ApiFuture, wire::eapi},
 };
 use std::{
     fs::File,
     io::{Seek, Write},
     path::Path,
-    time::Duration,
+    time::{Duration, Instant},
 };
+
+/// Native-only approval for a consumed signed receipt. The proof renderer has
+/// no command for this interface and cannot supply a media URL or an ACK.
+pub trait MediaArm: Send + Sync {
+    fn arm<'a>(&'a self, url: &'a MediaUrl, cancel: &'a Cancellation) -> ApiFuture<'a, ()>;
+}
 
 impl Gate {
     /// Bind the one-use receipt to the exact normalized URL, fetch one
@@ -24,8 +30,35 @@ impl Gate {
         private_dir: &Path,
         cancel: &Cancellation,
     ) -> Result<File> {
+        self.fetch_verified_armed(backend, url, private_dir, cancel, None)
+            .await
+    }
+
+    pub async fn fetch_verified_armed(
+        &self,
+        backend: &dyn MediaBackend,
+        url: &MediaUrl,
+        private_dir: &Path,
+        cancel: &Cancellation,
+        arm: Option<&dyn MediaArm>,
+    ) -> Result<File> {
         cancel.check()?;
         let receipt = self.take_media(url).await?;
+        if let Some(arm) = arm {
+            let deadline = receipt.expires.min(Instant::now() + MEDIA_ARM_TIMEOUT);
+            let expired = || Error::State("signed window media authorization expired");
+            if Instant::now() >= deadline {
+                return Err(expired());
+            }
+            tokio::time::timeout_at(deadline.into(), arm.arm(url, cancel))
+                .await
+                .map_err(|_| expired())??;
+            cancel.check()?;
+            self.require_original_account()?;
+            if Instant::now() >= deadline {
+                return Err(expired());
+            }
+        }
         tokio::time::timeout(Duration::from_secs(12), async {
             cancel.check()?;
             let mut response = backend

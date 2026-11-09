@@ -116,6 +116,7 @@ impl HttpBackend for ApiScope {
 struct MediaScope {
     backend: Option<ReqwestMediaBackend>,
     host: String,
+    arm: Option<Arc<sandbox::CdnArm>>,
     reads: AtomicUsize,
     discovered: Mutex<Option<String>>,
 }
@@ -144,14 +145,38 @@ impl MediaBackend for MediaScope {
                 }
                 return Err(Error::State("proof CDN discovery stops before media"));
             };
-            if host != self.host || self.reads.fetch_add(1, Ordering::AcqRel) != 0 {
+            if let Some(arm) = &self.arm {
+                arm.consume(&request.url)?;
+            } else if host != self.host {
                 return Err(Error::State(
                     "proof media escaped the one approved authority",
                 ));
             }
+            if self.reads.fetch_add(1, Ordering::AcqRel) != 0 {
+                return Err(Error::State("proof media GET was already used"));
+            }
             backend.get(request).await
         })
     }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LiveEvent {
+    stage: String,
+    #[serde(rename = "playerState")]
+    _player_state: Option<String>,
+}
+
+// These are view checkpoints only. Media authority arrives through the
+// signed-response gate and host supervisor, never through this event.
+fn live_event_stage(payload: &str) -> Option<String> {
+    if payload.len() > 256 {
+        return None;
+    }
+    let LiveEvent { stage, .. } = serde_json::from_str(payload).ok()?;
+    (STAGES.contains(&stage.as_str()) || ["complete", "failed"].contains(&stage.as_str()))
+        .then_some(stage)
 }
 
 #[cfg(test)]
@@ -160,10 +185,31 @@ mod tests {
     use cumulus_core::download::transfer::MediaUrl;
 
     #[test]
+    fn renderer_events_cannot_supply_a_cdn_authority_or_create_an_arm_stage() {
+        assert_eq!(
+            live_event_stage(r#"{"stage":"ux_playing","playerState":"playing"}"#).as_deref(),
+            Some("ux_playing")
+        );
+        assert_eq!(
+            live_event_stage(r#"{"stage":"failed"}"#).as_deref(),
+            Some("failed")
+        );
+        for forged in [
+            r#"{"stage":"ux_playing","authority":"m1.music.126.net"}"#,
+            r#"{"stage":"complete","url":"https://m1.music.126.net/synthetic.m4a"}"#,
+            r#"{"stage":"cdn-authority-armed"}"#,
+            r#"{"stage":"ux_playing","stage":"complete"}"#,
+        ] {
+            assert!(live_event_stage(forged).is_none());
+        }
+    }
+
+    #[test]
     fn discovery_records_only_one_host_without_a_media_transport() {
         let media = MediaScope {
             backend: None,
             host: "m1.music.126.net".into(),
+            arm: None,
             reads: AtomicUsize::new(0),
             discovered: Mutex::default(),
         };
@@ -319,7 +365,7 @@ fn report(
         services,
     } = counters;
     let [playing, paused, resumed] = stages.clocks.map(|value| (value * 1000.0).round() as u64);
-    json!({
+    let mut report = json!({
         "ok":ok,"liveReadOnly":true,"productionWebView":true,"isolatedNetwork":true,
         "physicalAudioOutput":false,"assets":assets,"gate":gate,
         "stages":STAGES[..stages.count.min(STAGES.len())],
@@ -332,20 +378,35 @@ fn report(
         "observedLibmpvNullClock":native.null_clock.load(Ordering::Acquire) > 0,
         "auxiliaryAttempts":services.auxiliary.load(Ordering::Acquire),
         "otherMediaAttempts":services.other_media.load(Ordering::Acquire),
-    })
+    });
+    if let Some(arm) = &media.arm {
+        report["dynamicCdn"] = json!(true);
+        if let Some(authority) = arm.consumed_authority() {
+            report["mediaAuthority"] = json!(authority);
+        }
+    }
+    report
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Fixed,
+    Discover,
+    Arm,
 }
 
 pub fn run() -> i32 {
     std::panic::set_hook(Box::new(|_| {}));
     let args = std::env::args_os().skip(1).take(3).collect::<Vec<_>>();
-    let discover = match args.as_slice() {
-        [live] if live == "--live" => false,
-        [live, discover] if live == "--live" && discover == "--discover-cdn" => true,
+    let mode = match args.as_slice() {
+        [live] if live == "--live" => Mode::Fixed,
+        [live, discover] if live == "--live" && discover == "--discover-cdn" => Mode::Discover,
+        [live, arm] if live == "--live" && arm == "--arm-cdn" => Mode::Arm,
         _ => return 2,
     };
     match sandbox::admit() {
         Ok(prepared) => {
-            if start(prepared, discover).is_ok() {
+            if start(prepared, mode).is_ok() {
                 0
             } else {
                 let _ = sandbox::write_report(
@@ -360,7 +421,7 @@ pub fn run() -> i32 {
 
 fn start(
     prepared: sandbox::Prepared,
-    discover: bool,
+    mode: Mode,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let ProofContext {
         context,
@@ -368,7 +429,9 @@ fn start(
         window,
     } = prepare_context()?;
     let params = Arc::new(prepared.params);
-    let renderer = json!({"live":true,"keyword":params.keyword,"songId":params.song_id});
+    let renderer = json!({
+        "live":true,"keyword":params.keyword,"songId":params.song_id,"dynamicCdn":mode == Mode::Arm,
+    });
     let script = format!(
         "window.__signedWindowInput={renderer};\n{}",
         capture_ack::script(include_str!("../signed_window_read_ui_probe.js"))
@@ -377,13 +440,15 @@ fn start(
         backend: ReqwestBackend::for_signed_read_proof(Duration::from_secs(8), prepared.broker)?,
         reads: Mutex::default(),
     });
+    let arm = (mode == Mode::Arm).then(|| Arc::new(sandbox::CdnArm::new()));
     let media = Arc::new(MediaScope {
-        backend: (!discover)
+        backend: (mode != Mode::Discover)
             .then(|| {
                 ReqwestMediaBackend::for_signed_read_proof(Duration::from_secs(12), prepared.broker)
             })
             .transpose()?,
         host: params.media_host.clone(),
+        arm: arm.clone(),
         reads: AtomicUsize::new(0),
         discovered: Mutex::default(),
     });
@@ -422,17 +487,20 @@ fn start(
             )?
             .with_official_search_experiment()
             .with_download_backend(services.clone())
-            .with_audio_factory(move || Ok(Box::new(audio::Audio::open(audio_gate.clone(), audio_media.clone(),
-                audio_facts.clone(), audio_root.clone(), audio::Expectation::Live)?)));
+            .with_audio_factory(move || {
+                let mut engine = audio::Audio::open(audio_gate.clone(), audio_media.clone(),
+                    audio_facts.clone(), audio_root.clone(), audio::Expectation::Live)?;
+                if let Some(arm) = &arm {
+                    engine = engine.with_media_arm(arm.clone());
+                }
+                Ok(Box::new(engine))
+            });
             app.manage(client);
             app.add_capability(r#"{"identifier":"signed-live-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
             let app_handle = app.handle().clone();
             let progress = Arc::new(tokio::sync::Mutex::new(Stages::default()));
             app.listen("ux-proof", move |event| {
-                let Ok(value) = serde_json::from_str::<Value>(event.payload()) else { return; };
-                let Some(stage) = value["stage"].as_str() else { return; };
-                if !STAGES.contains(&stage) && !["complete", "failed"].contains(&stage) { return; }
-                let stage = stage.to_owned();
+                let Some(stage) = live_event_stage(event.payload()) else { return; };
                 let (app, progress, params, api, media, gate, native, services, config, assets) = (
                     app_handle.clone(), progress.clone(), params.clone(), api.clone(), media.clone(), gate.clone(), native.clone(), services.clone(), config.clone(), assets.clone(),
                 );
@@ -442,7 +510,7 @@ fn start(
                     let resources_first = api.account_resources_first();
                     let observed = gate.facts().await;
                     let expected = STAGES.get(progress.count).copied().unwrap_or("complete");
-                    if discover && stage == "failed" && progress.count == 2
+                    if mode == Mode::Discover && stage == "failed" && progress.count == 2
                         && resources_first && observed.expected_account_verified
                         && observed.comprehensive_read && observed.selected_from_preview
                         && observed.song_detail_read && observed.media_authorized
@@ -474,6 +542,7 @@ fn start(
                     if progress.count >= 2 {
                         ok &= observed.song_detail_read && observed.media_consumed
                             && media.reads.load(Ordering::Acquire) == 1
+                            && media.arm.as_ref().is_none_or(|arm| arm.consumed_authority().is_some())
                             && native.pinned_loads.load(Ordering::Acquire) == 1
                             && native.null_clock.load(Ordering::Acquire) > 0;
                     }

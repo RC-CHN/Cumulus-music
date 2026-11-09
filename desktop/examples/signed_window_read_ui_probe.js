@@ -14,8 +14,8 @@
     node.getClientRects().length && !node.closest('[inert],.page-leave-active,.menu-leave-active'));
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const assert = (ok, label) => { if (!ok) throw new Error(label); };
-  const wait = async (test, label) => {
-    for (let n = 0; n < 300; n++) {
+  const wait = async (test, label, samples = 300) => {
+    for (let n = 0; n < samples; n++) {
       const result = await test();
       if (result) return result;
       await sleep(50);
@@ -76,7 +76,7 @@
       if (live && result.error) throw new Error('native source stopped before playback');
       return result.track?.id === song && result.state === 'playing' && result.position > 0.25 &&
         result.queueLen === 1 && result.playId && bar()?.dataset.state === 'playing' && result;
-    }, 'verified AAC did not advance on native clock');
+    }, 'verified AAC did not advance on native clock', live && options.dynamicCdn === true ? 560 : 300);
     await stage('playing');
 
     await click('.playerbar [aria-label="暂停"]', 'pause missing');

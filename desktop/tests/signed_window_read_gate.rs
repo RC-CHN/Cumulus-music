@@ -378,6 +378,75 @@ impl MediaBackend for Source {
     }
 }
 
+#[cfg(feature = "signed-window-read-proof")]
+struct TestArm<'a> {
+    fixture: &'a Fixture,
+    media: &'a Source,
+    calls: AtomicUsize,
+    mode: &'a str,
+}
+
+#[cfg(feature = "signed-window-read-proof")]
+impl signed_window_read_gate::MediaArm for TestArm<'_> {
+    fn arm<'a>(&'a self, url: &'a MediaUrl, _: &'a Cancellation) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            assert!(self.fixture.gate.facts().await.media_consumed);
+            assert_eq!(self.media.calls.load(Ordering::Relaxed), 0);
+            assert_eq!(url.as_str(), MEDIA);
+            match self.mode {
+                "acknowledged" => Ok(()),
+                "expired" => std::future::pending().await,
+                "rotated" => self.fixture.credentials.clear(),
+                "refused" => Err(Error::State("synthetic host refused")),
+                _ => unreachable!(),
+            }
+        })
+    }
+}
+
+#[cfg(feature = "signed-window-read-proof")]
+#[tokio::test]
+async fn dynamic_cdn_arms_only_a_consumed_signed_receipt_and_fails_closed() {
+    let url = MediaUrl::parse(MEDIA).unwrap();
+    let forged = MediaUrl::parse("https://m1.music.126.net/synthetic-audio.m4a?only=2").unwrap();
+    let cancel = Cancellation::default();
+    for mode in ["acknowledged", "expired", "rotated", "refused"] {
+        let f = Fixture::new();
+        let media = Source::new(200, BYTES);
+        let arm = TestArm {
+            fixture: &f,
+            media: &media,
+            calls: AtomicUsize::new(0),
+            mode,
+        };
+        let fetch = |requested| {
+            f.gate
+                .fetch_verified_armed(&media, requested, f.root.path(), &cancel, Some(&arm))
+        };
+        // A forged UI stage cannot mint an upstream signed response.
+        assert!(fetch(&url).await.is_err());
+        assert_eq!(arm.calls.load(Ordering::Relaxed), 0);
+        f.script.push(ACCOUNT, account(OWNER));
+        let client = f.client();
+        let identity = client.restore_account().await.unwrap();
+        f.search(&client, &identity.epoch, false).await;
+        let mut row = source();
+        if mode == "expired" {
+            row["expi"] = json!(1);
+        }
+        f.authorize(row).await.unwrap();
+        assert!(fetch(&forged).await.is_err());
+        assert_eq!(arm.calls.load(Ordering::Relaxed), 0);
+        let result = fetch(&url).await;
+        let admitted = mode == "acknowledged";
+        assert_eq!(result.is_ok(), admitted);
+        assert!(fetch(&url).await.is_err());
+        assert_eq!(arm.calls.load(Ordering::Relaxed), 1);
+        assert_eq!(media.calls.load(Ordering::Relaxed), usize::from(admitted));
+    }
+}
+
 #[tokio::test]
 async fn scoped_comprehensive_preview_only_authorizes_the_exact_song_without_songs_tab() {
     for v3 in [false, true] {

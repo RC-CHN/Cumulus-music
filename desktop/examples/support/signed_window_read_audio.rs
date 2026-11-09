@@ -1,5 +1,7 @@
 //! Reuse the production worker, libmpv pinned transport and native clock.
 use super::signed_window_read_gate::Gate;
+#[cfg(feature = "signed-window-read-proof")]
+use super::signed_window_read_gate::MediaArm;
 use cumulus_core::{
     Error, Result,
     download::transfer::{MediaBackend, MediaUrl},
@@ -48,6 +50,8 @@ pub struct Audio {
     media: Arc<dyn MediaBackend>,
     directory: PathBuf,
     expectation: Expectation,
+    #[cfg(feature = "signed-window-read-proof")]
+    arm: Option<Arc<dyn MediaArm>>,
 }
 
 impl Audio {
@@ -68,7 +72,28 @@ impl Audio {
             media,
             directory,
             expectation,
+            #[cfg(feature = "signed-window-read-proof")]
+            arm: None,
         })
+    }
+
+    #[cfg(feature = "signed-window-read-proof")]
+    pub fn with_media_arm(mut self, arm: Arc<dyn MediaArm>) -> Self {
+        self.arm = Some(arm);
+        self
+    }
+
+    async fn fetch(&self, url: &MediaUrl, cancel: &Cancellation) -> Result<std::fs::File> {
+        #[cfg(feature = "signed-window-read-proof")]
+        if let Some(arm) = &self.arm {
+            return self
+                .gate
+                .fetch_verified_armed(&*self.media, url, &self.directory, cancel, Some(&**arm))
+                .await;
+        }
+        self.gate
+            .fetch_verified(&*self.media, url, &self.directory, cancel)
+            .await
     }
 }
 
@@ -82,12 +107,7 @@ impl AudioEngine for Audio {
         }
         let url = MediaUrl::parse(url.as_str())?;
         // The production controller calls AudioEngine on spawn_blocking.
-        let file = tauri::async_runtime::block_on(self.gate.fetch_verified(
-            &*self.media,
-            &url,
-            &self.directory,
-            cancel,
-        ))?;
+        let file = tauri::async_runtime::block_on(self.fetch(&url, cancel))?;
         let metadata = file.metadata()?;
         if metadata.nlink() != 0
             || metadata.mode() & 0o777 != 0o600
