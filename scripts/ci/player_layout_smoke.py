@@ -6,6 +6,31 @@ from pathlib import Path
 from motion_smoke import launch
 
 
+def verify_chorus_queue(root, complete, screenshots):
+    stages = sorted((root / 'first').glob('ux_*.json'))
+    assert len(stages) == complete['stageCount'] == 3 and complete['ok']
+    assert complete['realMusicRequests'] == complete['accountWrites'] == 0
+    entries, plays = [], []
+    for stage, track, seconds in zip(stages, ('1', '2', '1'), (4, 13, 4), strict=True):
+        row = json.loads(stage.read_text(encoding='utf-8'))
+        player, queue = row['nativePlayer'], row['nativeQueue']
+        assert row['chorusQueueFixture'] == {'batches': [['1', '2']], 'singles': 0}
+        assert player['track']['id'] == row['trackId'] == track
+        assert player['playId'] == row['playId'] and player['state'] == 'playing' and player['position'] > .12
+        assert player['timeline']['total'] == 30 and row['markerVisible']
+        assert abs(row['markerPercent'] - 100 * seconds / 30) < .01
+        assert [item['track']['id'] for item in queue['tracks']] == ['1', '2']
+        assert player['entryId'] == queue['current'] and player['queueRevision'] == queue['revision']
+        entries.append(player['entryId'])
+        plays.append(player['playId'])
+    assert entries[0] == entries[2] != entries[1] and len(set(plays)) == 3
+    assert complete['chorusQueueFixture'] == {'batches': [['1', '2']], 'singles': 0}
+    if screenshots:
+        assert all(stage.with_suffix('.png').is_file() for stage in stages)
+    return dict(complete, actualWebView=True, nativeQueueCache=True, screenshots=len(stages) if screenshots else 0,
+                physicalDisplayVerified=False, physicalAudioOutputVerified=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -13,13 +38,17 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    parser.add_argument('--baseline', action='store_true')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--baseline', action='store_true')
+    modes.add_argument('--chorus-queue', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_PLAYER_LAYOUT_PROOF='1')
-    if not args.baseline:
+    if args.chorus_queue:
+        env['CUMULUS_PLAYER_CHORUS_QUEUE_PROOF'] = '1'
+    elif not args.baseline:
         env['CUMULUS_PLAYER_WAIT_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
@@ -31,7 +60,8 @@ def main():
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    source = Path(__file__).resolve().parents[2] / 'desktop/examples/player_layout_ui_probe.js'
+    name = 'player_chorus_queue_ui_probe.js' if args.chorus_queue else 'player_layout_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples' / name
     script = root / 'player-layout.js'
     script.write_text('window.__playerLayoutBaseline=' + json.dumps(args.baseline) + ';\n'
                       + source.read_text(encoding='utf-8'), encoding='utf-8')
@@ -42,6 +72,11 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+    if args.chorus_queue:
+        report = verify_chorus_queue(root, complete, args.screenshots)
+        (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps({k: report[k] for k in ['ok', 'nativeQueueCache', 'stageCount', 'screenshots']}))
+        return
     expected = 20 if args.baseline else 30
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
