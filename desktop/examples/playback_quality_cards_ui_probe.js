@@ -58,7 +58,15 @@
     const stage = `ux_${String(++stageCount).padStart(2, '0')}_${label}`;
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await sleep(120);
+    const panel = menu();
+    const popup = panel ? {
+      height: panel.getBoundingClientRect().height,
+      limit: parseFloat(getComputedStyle(panel).maxHeight),
+      viewport: innerHeight,
+      layout: panel.querySelector('.quality-menu-heading').dataset.qualityLayout ?? null,
+    } : null;
     await emit(stage, {
+      popup,
       keys: keys(), focus: focusKey() ?? null, observedPosition: state.position,
       paired: !!menu()?.querySelector('.quality-card-grid'),
       geometry: Object.fromEntries(['sky','jymaster','vivid'].filter((id) => row(id)).map((id) => [id, rect(row(id))])),

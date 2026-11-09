@@ -112,3 +112,11 @@ PC 音质卡片（3.1.42.205594）
   播放与偏好版本保持，真实试用确认的取消没有写入。无真实账号、声卡或
   Windows 实机结果；在无出站路由的 X11/DBus 会话传 `--case --binary
   --frontend-dist --root` 执行。
+
+
+新版音质浮层高度遵循恢复 TrackNewSoundQualityContainer.tsx:153–158 的
+windowHeight × 0.638，另受客户端播放条的现有可见空间约束。真实 WebView 探针
+同时测量 760×540 窗口中的并排与单行两态；控制组/未观察到分组继续使用旧版上限。
+试用弹窗仍替换菜单，不把关闭菜单的几何记作新版证据。
+Linux 760×540 隔离实测：新版 344.52px，控制组 436px；9 个检查点和原图在
+.build/ui-proof/phase132-quality-height/{layout_only,layout_vivid,control}/。

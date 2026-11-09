@@ -296,6 +296,10 @@
   max-height: calc(100vh - 104px);
   overflow: hidden;
 }
+/* TrackNewSoundQualityContainer uses 0.638 of the window height. */
+.quality-action-menu:has(.quality-menu-heading[data-quality-layout='cards']) {
+  max-height: min(63.8vh, calc(100vh - 104px));
+}
 .quality-menu-heading {
   padding: 0 16px 10px;
   border-bottom: 1px solid var(--line);

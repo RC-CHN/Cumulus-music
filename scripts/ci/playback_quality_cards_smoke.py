@@ -80,6 +80,16 @@ def main():
         assert player['position'] > .25 and not player['nativeSeeking']
         if name != 'complete':
             assert player['position'] == row['observedPosition']
+            popup = row['popup']
+            if name == 'trial_consent':
+                assert popup is None
+            else:
+                modern = name not in ('unobserved_legacy', 'signed_control')
+                assert popup['layout'] == ('cards' if modern else None)
+                assert popup['viewport'] == 540
+                expected_limit = 540 * .638 if modern else 540 - 104
+                assert abs(popup['limit'] - expected_limit) < 1
+                assert 0 < popup['height'] <= popup['limit'] + 1
         positions.add(player['position'])
         identities.add((player['epoch'], player['playId'], player['entryId'], player['queueRevision']))
         preferences.add(player['qualityPreferences']['revision'])

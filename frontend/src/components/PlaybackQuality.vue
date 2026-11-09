@@ -166,7 +166,10 @@ watch(
       @select="choose"
     >
       <template #header
-        ><div class="quality-menu-heading">
+        ><div
+          class="quality-menu-heading"
+          :data-quality-layout="!damaged ? model.details.value?.presentation?.kind : undefined"
+        >
           <strong>歌曲音质</strong>
           <p v-if="damaged" class="quality-warning">音质偏好无法读取，重置后可重新选择。</p>
           <template v-else
