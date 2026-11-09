@@ -57,6 +57,7 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         | "/api/djradio/v3/get"
         | "/api/dj/around/program/v1"
         | "/api/dj/user/setting/resumeplay/get" => {}
+        "/api/content/my/liked/voice" if row_mode() => {}
         _ => return None,
     }
     CALLS
@@ -107,7 +108,19 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         "/api/v6/dj/program/byradio"
             if row_mode() && args["radioId"] == "7" && args["limit"] != 250 =>
         {
-            json!({"code":200,"data":{"programs":[episode(1)],"count":1,"more":false}})
+            assert_eq!(
+                *args,
+                json!({"radioId":"7","limit":200,"offset":0,"asc":false})
+            );
+            json!({"code":200,"data":{"programs":[episode(1)],"count":1,"more":false,"asc":false}})
+        }
+        "/api/content/my/liked/voice" if row_mode() => {
+            assert_eq!(*args, json!({"limit":100,"likeTime":0}));
+            json!({"code":200,"data":{"data":[],"hasMore":false}})
+        }
+        "/api/dj/user/setting/resumeplay/get" if row_mode() => {
+            assert_eq!(*args, json!({"radioId":"7"}));
+            json!({"code":200,"data":{"resumePlayValue":1}})
         }
         "/api/v6/dj/program/byradio" if args["radioId"] == "8" => {
             assert_eq!(*args, json!({"radioId":"8","offset":0,"limit":250}));

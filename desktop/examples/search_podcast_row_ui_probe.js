@@ -104,7 +104,16 @@
     await wait(()=>one('.playback-message [data-retry-key]'),'other radio failure visible');
     const unchanged=await wait(current('1','paused'),'failed radio leaves old decoder paused');
     assert(unchanged.playId===paused.playId&&unchanged.position===paused.position&&unchanged.queueRevision===paused.queueRevision,'failed radio preserved paused clock');
-    await capture('failed_kept',{unchanged});
+    await capture('failed_kept',{unchanged,pointer:rowPoint()});
+    step='same-episode-body-resume';
+    const resumed=await wait(current('1','playing'),'same retained episode resumes from row body');
+    assert(resumed.playId===paused.playId && resumed.entryId===paused.entryId &&
+      resumed.position>=paused.position && visible(),'body replay keeps the same decoder and does not navigate');
+    const advanced=await wait(async()=>{
+      const state=await current('1','playing')();
+      return state && state.position>paused.position+.12 && state;
+    },'retained real decoder advances its existing clock');
+    await capture('same_episode_resumed',{resumed,advanced});
     await action({kind:'stop'});
     await wait(async()=>(await snapshot()).state==='idle','explicit native stop');
     await emit('complete',{ok:true,stageCount:count,gestures,trustedIndexClicks});

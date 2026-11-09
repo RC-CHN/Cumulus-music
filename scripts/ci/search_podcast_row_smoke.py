@@ -11,7 +11,8 @@ from search_podcast_playback_smoke import BYRADIO, CHECK, DETAIL, URL, read
 from search_queue_drop_smoke import TrustedDrag
 from window_manager import launch
 
-STAGES = ('single_armed', 'single_detail', 'double_armed', 'double_played', 'index_paused', 'failed_kept')
+STAGES = ('single_armed', 'single_detail', 'double_armed', 'double_played', 'index_paused', 'failed_kept',
+          'same_episode_resumed')
 
 
 def main():
@@ -40,10 +41,10 @@ def main():
 
     with closing(TrustedDrag()) as pointer, (root / 'host.log').open('x', encoding='utf-8') as log:
         def input_at_capture(path, payload, _pid):
-            if path.stem not in ('ux_01_single_armed', 'ux_03_double_armed', 'ux_04_double_played'):
+            if path.stem not in ('ux_01_single_armed', 'ux_03_double_armed', 'ux_04_double_played', 'ux_06_failed_kept'):
                 return
             pointer.move(payload['pointer'])
-            for _ in range(2 if path.stem == 'ux_03_double_armed' else 1):
+            for _ in range(2 if path.stem in ('ux_03_double_armed', 'ux_06_failed_kept') else 1):
                 pointer.button(True)
                 time.sleep(.04)
                 pointer.button(False)
@@ -58,7 +59,7 @@ def main():
     assert tuple(rows) == STAGES
     assert rows['single_detail']['gestures'] == [['click', 1]]
     assert complete['trustedIndexClicks'] == 1
-    assert complete['gestures'] == [['click', 1], ['click', 1], ['click', 2], ['dblclick', 2]]
+    assert complete['gestures'] == [['click', 1]] + [['click', 1], ['click', 2], ['dblclick', 2]] * 2
     assert rows['single_detail']['nativePlayer']['state'] == 'idle'
     assert rows['single_detail']['queue']['tracks'] == []
     old = rows['double_armed']['nativePlayer']
@@ -79,16 +80,21 @@ def main():
         assert first[field] == paused[field] == kept[field]
     assert paused['position'] == kept['position']
     assert rows['index_paused']['searchPodcastCalls'] == rows['double_played']['searchPodcastCalls']
+    resumed = rows['same_episode_resumed']['nativePlayer']
+    assert resumed['state'] == 'playing' and resumed['position'] > paused['position'] + .12
+    assert resumed['playId'] == paused['playId'] and resumed['entryId'] == paused['entryId']
+    assert [r['entryId'] for r in rows['same_episode_resumed']['queue']['tracks']] == [
+        r['entryId'] for r in new_queue['tracks']]
     wire = complete['searchPodcastCalls']
-    for path in (DETAIL, CHECK, URL):
+    for path, expected in ((DETAIL, 3), (CHECK, 3), (URL, 2)):
         calls = [call for call in wire if call['path'] == path]
-        assert len(calls) == 2 and all(not call['cached'] for call in calls), (path, calls)
-    assert [call['args']['id'] for call in wire if call['path'] == DETAIL] == ['400', '1']
-    assert [call['args']['voiceId'] for call in wire if call['path'] == CHECK] == ['400', '1']
+        assert len(calls) == expected and all(not call['cached'] for call in calls), (path, calls)
+    assert [call['args']['id'] for call in wire if call['path'] == DETAIL] == ['400', '1', '1']
+    assert [call['args']['voiceId'] for call in wire if call['path'] == CHECK] == ['400', '1', '1']
     assert [call['args']['ids'] for call in wire if call['path'] == URL] == ['["1400"]', '["1001"]']
-    assert [call['args'] for call in wire if call['path'] == BYRADIO and call['args']['limit'] == 250] == [
-        {'radioId': '7', 'offset': offset, 'limit': 250, 'asc': False} for offset in (0, 250)
-    ] + [{'radioId': '8', 'offset': 0, 'limit': 250}]
+    pagination = [{'radioId': '7', 'offset': offset, 'limit': 250, 'asc': False} for offset in (0, 250)]
+    assert [call['args'] for call in wire if call['path'] == BYRADIO and call['args']['limit'] == 250] == (
+        pagination + [{'radioId': '8', 'offset': 0, 'limit': 250}] + pagination)
     assert all(call['path'] != '/api/dj/around/program/v1' for call in wire)
     locale = read(out / 'locale.json')
     assert locale == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}
@@ -96,7 +102,7 @@ def main():
     report = dict(ok=True, actualWebView=True, trustedX11BodyGestures=True, trustedX11IndexPause=True, nullOutput=True,
                   states=STAGES, screenshots=len(STAGES), locale=locale, classifiedReceipt=True,
                   oldEntryRetained=True, singleDetailWithoutPlayback=True, sameNativePause=True,
-                  failedReadPreservedClock=True, realAccountWrites=0, networkNamespaceWithoutRoutes=True,
+                  failedReadPreservedClock=True, sameEpisodeBodyResumed=True, realAccountWrites=0, networkNamespaceWithoutRoutes=True,
                   wire=wire)
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
