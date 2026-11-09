@@ -95,6 +95,14 @@
     check(['701', opaque, '702'].every(id => row(id).querySelector('[data-result-action="play"]').disabled) &&
       !row(local).querySelector('[data-result-action="play"]').disabled &&
       !row(local).querySelector('[data-result-action="more"]'), 'only the indexed CUE is playable');
+    const cachedPlay = one('.playlist-actions .offline-playlist-play');
+    check(cachedPlay?.textContent.includes('播放可用曲目'), 'cached play action label');
+    const content = document.createRange();
+    content.selectNodeContents(cachedPlay);
+    const ink = content.getBoundingClientRect();
+    const control = cachedPlay.getBoundingClientRect();
+    check(ink.left >= control.left + 4 && ink.right <= control.right - 4,
+      'cached play label and icon fit the button');
     await capture('ux_02_cached');
 
     step = 'play cached CUE through native decoder';

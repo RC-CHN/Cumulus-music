@@ -132,7 +132,12 @@ function play(event: MouseEvent) {
           <span class="playlist-total">{{ total }} 首歌曲</span>
         </div>
         <div class="playlist-actions" :aria-busy="preparing">
-          <button class="primary" :disabled="!playable || preparing" @click="play">
+          <button
+            class="primary"
+            :class="{ 'offline-playlist-play': offline }"
+            :disabled="!playable || preparing"
+            @click="play"
+          >
             <Icon name="play" />{{ preparing ? '准备中…' : offline ? '播放可用曲目' : '播放全部' }}
           </button>
           <button
