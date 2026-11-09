@@ -1,5 +1,6 @@
 mod dto;
 mod radio_chapter;
+mod radio_collection;
 pub(super) use radio_chapter::RadioChaptersHost;
 mod listened_books;
 pub(super) use listened_books::ListenedBooksHost;
@@ -92,6 +93,7 @@ impl MusicClient {
             HashSet::new()
         };
         self.session.with_local_owner(&token, |owner| {
+            let viewer = token.uid.as_deref();
             let (entries, chapter_revision) = if chapters {
                 let store = self.session.persistent_store()?;
                 let (entries, selectable) = store.read_snapshot(|tx| {
@@ -103,7 +105,7 @@ impl MusicClient {
                         if let Some(selected) = selected {
                             selectable.insert(row.id.clone(), selected);
                         }
-                        entries.push(view::entry(kind, row, false, chapter)?);
+                        entries.push(view::entry(kind, row, false, chapter, viewer)?);
                     }
                     Ok((entries, selectable))
                 })?;
@@ -120,7 +122,7 @@ impl MusicClient {
                     .into_iter()
                     .map(|row| {
                         let usable = available.contains(&row.id);
-                        view::entry(kind, row, usable, None)
+                        view::entry(kind, row, usable, None, viewer)
                     })
                     .collect::<Result<_>>()?;
                 (entries, None)

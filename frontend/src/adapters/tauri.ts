@@ -339,6 +339,8 @@ export function createTauriClient(): CoreClient {
     accountSettingsCommand: (epoch, command) =>
       invoke('account_settings_command', { epoch, command }),
     historyCommand: (epoch, kind, command) => invoke('history_command', { epoch, kind, command }),
+    historyRadioCollection: (epoch, kind, revision, id, action) =>
+      invoke('history_radio_collection', { epoch, kind, revision, id, action }),
     catalogMembership: (epoch, resource, action) =>
       invoke('catalog_membership', { epoch, resource, action }),
     onNativeLikeChanged: (handler) =>

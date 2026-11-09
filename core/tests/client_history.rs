@@ -16,7 +16,7 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use tokio::sync::Notify;
 #[derive(Default)]
@@ -29,6 +29,13 @@ struct Backend {
     around_missing: AtomicBool,
     started: Notify,
     release: Notify,
+    collect_hold: AtomicBool,
+    collect_lost: AtomicBool,
+    collect_credentials: AtomicUsize,
+    collect_started: Notify,
+    collect_release: Notify,
+    collect_calls: Mutex<Vec<Value>>,
+    collected: Mutex<std::collections::BTreeSet<String>>,
 }
 fn song(id: &Value) -> Value {
     json!({"id":id,"name":"歌曲","dt":120000,"ar":[{"id":12,"name":"创作者"}],"al":{"id":7,"name":"专辑","picUrl":"https://p1.music.126.net/image.jpg?token=PRIVATE"},"url":"https://example.invalid/PRIVATE","cookie":"PRIVATE"})
@@ -40,6 +47,12 @@ fn voice(id: u64, radio_id: &Value) -> Value {
     json!({"id":id,"name":"声音","mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":radio(radio_id),"url":"https://example.invalid/PRIVATE"})
 }
 impl Api for Backend {
+    fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(Some(
+            self.collect_credentials.load(Ordering::SeqCst).to_string(),
+        ))
+    }
+
     fn request<'a>(&'a self, path: &'a str, p: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
@@ -71,7 +84,42 @@ impl Api for Backend {
                 "/api/v6/playlist/detail" => {
                     json!({"code":200,"playlist":{"trackIds":[{"id":1},{"id":3,"v":-1},{"id":2}]}})
                 }
+                "/api/djradio/v3/get" if matches!(p["id"].as_str(), Some("80" | "82")) => {
+                    let id = p["id"].as_str().unwrap();
+                    assert_eq!(p, json!({"id":id}));
+                    self.collect_calls.lock().unwrap().push(json!([path, p]));
+                    if self.collect_hold.load(Ordering::SeqCst) {
+                        self.collect_started.notify_one();
+                        self.collect_release.notified().await;
+                    }
+                    json!({"code":200,"data":{
+                        "id":id,"name":"合成节目集合","creator":{"userId":7},
+                        "subed":self.collected.lock().unwrap().contains(id)
+                    }})
+                }
                 "/api/djradio/v3/get" => json!({"code":200,"data":radio(&p["id"])}),
+                "/api/djradio/get/subed" => {
+                    assert_eq!(p, json!({"targetUserId":"9","limit":1000}));
+                    self.collect_calls.lock().unwrap().push(json!([path, p]));
+                    let ids = self.collected.lock().unwrap();
+                    json!({"code":200,"hasMore":false,"count":ids.len(),
+                        "djRadios":ids.iter().map(|id|json!({"id":id})).collect::<Vec<_>>()})
+                }
+                "/api/djradio/sub" | "/api/djradio/unsub" => {
+                    let id = p["id"].as_str().unwrap();
+                    assert!(matches!(id, "80" | "82"));
+                    assert_eq!(p, json!({"id":id}));
+                    self.collect_calls.lock().unwrap().push(json!([path, p]));
+                    if path.ends_with("/sub") {
+                        self.collected.lock().unwrap().insert(id.into());
+                    } else {
+                        self.collected.lock().unwrap().remove(id);
+                    }
+                    if self.collect_lost.swap(false, Ordering::SeqCst) {
+                        return Err(Error::Transport("synthetic acknowledgement lost".into()));
+                    }
+                    json!({"code":200})
+                }
                 "/api/voice/book/recent" => {
                     assert_eq!(p, json!({}));
                     let mut chapter = voice(6, &json!(22));
@@ -216,6 +264,157 @@ impl Fixture {
         }
     }
 }
+
+#[tokio::test]
+async fn history_radio_collection_uses_the_visible_row_and_never_replays_a_lost_write() {
+    let f = fixture(true);
+    let podcast = HistoryKind::Podcast;
+    let book = HistoryKind::Audiobook;
+    let epoch = f.epoch();
+    let seed = |kind, id, creator, at| {
+        let row = HistoryRecord::local(
+            kind,
+            json!({"id":id,"name":"合成历史","dj":{"userId":creator}}),
+            at,
+        )
+        .unwrap();
+        f.history
+            .record_for(&f.session.token().unwrap(), kind, row)
+            .unwrap();
+    };
+    seed(podcast, 80, 7, 100);
+    seed(podcast, 81, 9, 110);
+    seed(book, 82, 7, 120);
+    let page = |kind| f.client.history_page(&epoch, kind, false);
+    let podcasts = page(podcast).await.unwrap().value;
+    let books = page(book).await.unwrap().value;
+    assert_eq!(
+        podcasts
+            .entries
+            .iter()
+            .map(|r| (&*r.id, r.can_collect_radio))
+            .collect::<Vec<_>>(),
+        [("81", false), ("80", true)]
+    );
+    assert!(books.entries[0].can_collect_radio);
+    let toggle = async |kind, revision: &str, id: &str, expected| {
+        f.client
+            .history_radio_collection(
+                &epoch,
+                kind,
+                revision,
+                id,
+                HistoryRadioCollection::Toggle { expected },
+            )
+            .await
+    };
+    for (kind, revision, id) in [
+        (HistoryKind::Voice, podcasts.revision.as_str(), "80"),
+        (podcast, books.revision.as_str(), "80"),
+        (podcast, podcasts.revision.as_str(), "81"),
+        (podcast, podcasts.revision.as_str(), "82"),
+    ] {
+        assert!(toggle(kind, revision, id, false).await.is_err());
+    }
+    assert!(f.api.collect_calls.lock().unwrap().is_empty());
+    let member = f.client.podcast_search_membership(&epoch).await.unwrap();
+    assert_eq!(member.value.subscribed_ids, Some(Vec::new()));
+
+    // A delayed preflight must not send a write after either the published
+    // history identity or the verified API credential changes.
+    for rotate_credentials in [false, true] {
+        let revision = page(podcast).await.unwrap().value.revision;
+        f.api.collect_hold.store(true, Ordering::SeqCst);
+        let (result, ()) = tokio::join!(toggle(podcast, &revision, "80", false), async {
+            f.api.collect_started.notified().await;
+            if rotate_credentials {
+                f.api.collect_credentials.fetch_add(1, Ordering::SeqCst);
+            } else {
+                seed(podcast, 80, 7, 130);
+            }
+            f.api.collect_hold.store(false, Ordering::SeqCst);
+            f.api.collect_release.notify_one();
+        });
+        assert!(matches!(
+            result,
+            Err(Error::QueueChanged | Error::CredentialChanged)
+        ));
+    }
+    let revision = page(podcast).await.unwrap().value.revision;
+    assert!(f.api.collected.lock().unwrap().is_empty());
+    let collected = toggle(podcast, &revision, "80", false).await.unwrap().value;
+    assert_eq!(collected.observed, Some(true));
+    assert_eq!(
+        collected.phase,
+        cumulus_core::account::resources::MutationPhase::Confirmed
+    );
+    f.api.collect_lost.store(true, Ordering::SeqCst);
+    assert!(toggle(podcast, &revision, "80", true).await.is_err());
+    assert!(matches!(
+        toggle(podcast, &revision, "80", true).await,
+        Err(Error::MutationUncertain)
+    ));
+    assert_eq!(
+        f.client
+            .podcast_search_membership(&epoch)
+            .await
+            .unwrap()
+            .value
+            .pending_ids,
+        ["80"]
+    );
+    let observed = f
+        .client
+        .history_radio_collection(
+            &epoch,
+            podcast,
+            &revision,
+            "80",
+            HistoryRadioCollection::Reconcile,
+        )
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(observed.observed, Some(false));
+    assert_eq!(
+        observed.phase,
+        cumulus_core::account::resources::MutationPhase::Confirmed
+    );
+    assert_eq!(
+        toggle(book, &books.revision, "82", false)
+            .await
+            .unwrap()
+            .value
+            .observed,
+        Some(true)
+    );
+    assert_eq!(page(podcast).await.unwrap().value.revision, revision);
+    assert_eq!(page(book).await.unwrap().value.revision, books.revision);
+    let calls = f.api.collect_calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| matches!(
+                call[0].as_str(),
+                Some("/api/djradio/sub" | "/api/djradio/unsub")
+            ))
+            .cloned()
+            .collect::<Vec<_>>(),
+        [
+            json!(["/api/djradio/sub",{"id":"80"}]),
+            json!(["/api/djradio/unsub",{"id":"80"}]),
+            json!(["/api/djradio/sub",{"id":"82"}]),
+        ]
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call[0] == "/api/djradio/v3/get")
+            .count(),
+        11
+    );
+}
+
 #[tokio::test]
 async fn six_typed_pages_redact_native_secrets_preserve_large_ids_and_isolate_accounts() {
     let f = fixture(true);

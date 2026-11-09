@@ -3,9 +3,14 @@ import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, ref, shallowRef, watch } from 'vue';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
+import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
 import HistoryConfirm from './history/HistoryConfirm.vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
+import { usePodcastFollow } from '../composables/usePodcastFollow';
 import type { HistoryModel } from '../composables/useHistory';
+import type { AccountView } from '../services/contracts';
+import { useCore } from '../services/core';
+import type { PodcastSearchFollow } from '../services/podcast';
 import {
   historyLabel,
   historyOutcome,
@@ -22,6 +27,7 @@ import {
 import { normalizeKeyword } from '../services/keyword';
 const props = defineProps<{
   model: HistoryModel;
+  account: AccountView;
   playable: boolean;
   currentId?: string;
   currentVoiceId?: string;
@@ -31,6 +37,8 @@ const emit = defineEmits<{
   play: [kind: HistoryKind, revision: string, ids: string[], index: number];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   open: [resource: HistoryResource];
+  login: [];
+  expired: [];
 }>();
 const { page, kind, loading, busy, error, uncertain, pending, canMutate } = props.model;
 const keyword = ref('');
@@ -43,7 +51,6 @@ const entries = computed(() => {
   });
 });
 const { container, start, end, onScroll, reset } = useVirtualRows(() => entries.value.length, 68);
-const shown = computed(() => entries.value.slice(start.value, end.value));
 const allSelected = computed(
   () => entries.value.length > 0 && entries.value.every((e) => selected.value.has(e.id)),
 );
@@ -57,6 +64,94 @@ const label = computed(() => historyTabs.find((t) => t.kind === kind.value)?.lab
 const activeOperations = computed(() => page.value?.operations.filter(historyPending) ?? []);
 const latest = computed(() => page.value?.operations.find((op) => !historyPending(op)));
 const confirm = shallowRef<{ title: string; description: string; command: HistoryCommand }>();
+const core = useCore();
+const radioKind = computed(() =>
+  kind.value === 'podcast' || kind.value === 'audiobook' ? kind.value : undefined,
+);
+const collectionScope = () =>
+  page.value && page.value.kind === radioKind.value
+    ? `${page.value.kind}:${page.value.revision}`
+    : '';
+const collection = usePodcastFollow(
+  core,
+  () => props.account,
+  () => radioKind.value !== undefined,
+  () => emit('expired'),
+  {
+    scope: collectionScope,
+    receipt: collectionScope,
+    success: (subscribed) => (subscribed ? '收藏成功' : '取消收藏成功'),
+    action: (owner, id, state) => {
+      const snapshot = page.value;
+      const category = radioKind.value;
+      if (
+        !category ||
+        snapshot?.kind !== category ||
+        props.account.epoch !== owner ||
+        loading.value ||
+        busy.value ||
+        !entries.value.some((row) => row.id === id && row.canCollectRadio)
+      )
+        return;
+      return () =>
+        core.historyRadioCollection(
+          owner,
+          category,
+          snapshot.revision,
+          id,
+          state.kind === 'toggle'
+            ? { kind: 'toggle', expected: state.subscribed }
+            : { kind: 'reconcile' },
+        );
+    },
+  },
+);
+const shown = computed(() =>
+  entries.value.slice(start.value, end.value).map((entry) => ({
+    entry,
+    follow:
+      entry.canCollectRadio && collectionScope()
+        ? props.account.status === 'authenticated'
+          ? collection.control(entry.id)
+          : props.account.status !== 'unknown'
+            ? ({ kind: 'toggle', subscribed: false, busy: false } as const)
+            : undefined
+        : undefined,
+  })),
+);
+const historyPage = ref<HTMLElement>();
+const uncollect = shallowRef<{
+  id: string;
+  scope: string;
+  epoch: string;
+  state: PodcastSearchFollow;
+}>();
+let uncollectOpener: HTMLElement | null = null;
+const collectionFallback = () =>
+  historyPage.value?.querySelector<HTMLElement>('[aria-current="page"]') ?? null;
+watch([collectionScope, () => props.account.epoch], () => (uncollect.value = undefined), {
+  flush: 'sync',
+});
+function collectionLabel(state: PodcastSearchFollow) {
+  return state.kind === 'reconcile' ? '核对收藏' : state.subscribed ? '取消收藏' : '收藏';
+}
+function collect(id: string, state: PodcastSearchFollow, event: MouseEvent) {
+  if (loading.value || busy.value || state.busy || !collectionScope()) return;
+  if (props.account.status !== 'authenticated') {
+    emit('login');
+    return;
+  }
+  if (state.kind === 'toggle' && state.subscribed) {
+    uncollectOpener = event.currentTarget as HTMLElement;
+    uncollect.value = { id, scope: collectionScope(), epoch: props.account.epoch, state };
+  } else void collection.activate(id, state);
+}
+function confirmUncollect() {
+  const saved = uncollect.value;
+  uncollect.value = undefined;
+  if (saved?.scope === collectionScope() && saved.epoch === props.account.epoch)
+    void collection.activate(saved.id, saved.state);
+}
 watch(kind, () => {
   keyword.value = '';
   selected.value = new Set();
@@ -173,7 +268,13 @@ function keyboard(event: KeyboardEvent) {
 }
 </script>
 <template>
-  <section class="history-page" aria-label="最近播放" :aria-busy="loading" @keydown="keyboard">
+  <section
+    ref="historyPage"
+    class="history-page"
+    aria-label="最近播放"
+    :aria-busy="loading"
+    @keydown="keyboard"
+  >
     <header class="history-heading">
       <div>
         <h1>最近播放</h1>
@@ -256,6 +357,22 @@ function keyboard(event: KeyboardEvent) {
         />多端记录</label
       >
     </div>
+    <p v-if="collection.status.value" class="history-outcome" role="status">
+      {{ collection.status.value }}
+    </p>
+    <button
+      v-if="
+        collectionScope() &&
+        account.status === 'authenticated' &&
+        collection.membershipUnknown.value &&
+        entries.some((entry) => entry.canCollectRadio)
+      "
+      class="text-button history-collection-retry"
+      type="button"
+      @click="collection.retry"
+    >
+      重新读取收藏
+    </button>
     <div v-if="error || uncertain || activeOperations.length || latest" class="history-notices">
       <div v-if="error" class="catalog-error" role="alert">
         {{ error }}<span v-if="page"> · 保留上次读取的内容</span
@@ -320,7 +437,7 @@ function keyboard(event: KeyboardEvent) {
             <div class="history-spacer" :style="{ height: `${entries.length * 68}px` }">
               <div class="history-window" :style="{ transform: `translateY(${start * 68}px)` }">
                 <div
-                  v-for="(entry, offset) in shown"
+                  v-for="({ entry, follow }, offset) in shown"
                   :key="entry.id"
                   class="history-row"
                   :class="{ 'is-playing': playing(entry), 'is-selected': selected.has(entry.id) }"
@@ -386,6 +503,28 @@ function keyboard(event: KeyboardEvent) {
                         }}<span v-if="!historyLabel(entry).available"> · 暂不可播放</span>
                       </p>
                     </div>
+                    <button
+                      v-if="follow"
+                      class="icon-button history-radio-collect"
+                      type="button"
+                      :data-history-radio-collect="entry.id"
+                      :title="collectionLabel(follow)"
+                      :aria-label="`${collectionLabel(follow)} ${historyLabel(entry).name}`"
+                      :aria-pressed="follow.kind === 'toggle' ? follow.subscribed : undefined"
+                      :aria-disabled="loading || busy || follow.busy"
+                      @click.stop="collect(entry.id, follow, $event)"
+                      @dblclick.stop
+                    >
+                      <Icon
+                        :name="
+                          follow.kind === 'reconcile'
+                            ? 'refresh'
+                            : follow.subscribed
+                              ? 'check'
+                              : 'collect'
+                        "
+                      />
+                    </button>
                   </div>
                   <div class="history-time" role="cell" :title="historyTime(entry.playedAt).full">
                     <span>{{ historyTime(entry.playedAt).short }}</span
@@ -429,6 +568,15 @@ function keyboard(event: KeyboardEvent) {
         </p>
       </div>
     </BoundedPanelTransition>
+    <Teleport to="body">
+      <ModalTransition :return-focus="() => uncollectOpener" :fallback-focus="collectionFallback">
+        <VoicePodcastUncollectDialog
+          v-if="uncollect"
+          @close="uncollect = undefined"
+          @confirm="confirmUncollect"
+        />
+      </ModalTransition>
+    </Teleport>
     <p class="history-note muted">
       {{ page?.remoteIncluded ? '本机与多端记录已合并，按最近播放排序' : '显示本机播放记录'
       }}<template v-if="page?.remoteIncluded && page.remoteFetchedAt">

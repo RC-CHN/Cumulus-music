@@ -5365,6 +5365,7 @@ onUnmounted(() => {
               <HistoryPage
                 v-else-if="page.kind === 'history'"
                 :model="recent"
+                :account="account"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
@@ -5372,6 +5373,8 @@ onUnmounted(() => {
                 @play="playHistory"
                 @chapter="playHistoryChapter"
                 @open="openHistory"
+                @login="loginOpen = true"
+                @expired="music.bootstrap(false)"
               />
               <SettingsPage
                 :player="player"
