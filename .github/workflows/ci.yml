@@ -15,9 +15,9 @@ on:
         type: boolean
         default: false
       windows_native_file_output:
-        description: Run only the portable Windows file handoff diagnostic (off runs full CI)
+        description: Run a portable Windows file handoff diagnostic (off runs full CI)
         type: choice
-        options: ['off', 'default', 'null']
+        options: ['off', 'default', 'null', 'retained-null']
         default: 'off'
 
 permissions:
@@ -45,6 +45,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
     uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output != 'retained-null'
     name: Frontend and release rules
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -1144,6 +1145,65 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-packaged-native-open-${{ inputs.windows_native_file_output }}-attempt-${{ github.run_attempt }}
+          path: |
+            .build/ci-native-open-windows/report.json
+            .build/ci-native-open-windows/owner.log
+            .build/ci-native-open-windows/sender.log
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-retained-null:
+    # A one-off read of a pinned earlier diagnostic artifact. This is not a
+    # current build and cannot supply packages or success to the release gate.
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output == 'retained-null' && github.ref == 'refs/heads/validation/phase203-retained-windows-native-open'
+    name: Windows retained native-open diagnostic
+    runs-on: windows-2022
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify the pinned MSYS2 installer for the fixture encoder
+        shell: bash
+        timeout-minutes: 5
+        run: python scripts/ci/windows_msys2_bootstrap.py
+      - name: Install the synthetic fixture encoder
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-ffmpeg
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: diagnostic-packages-windows-x64
+          run-id: '42667945952'
+          github-token: ${{ github.token }}
+          path: .build/packages/windows-x64
+      - name: Run cold and warm file open against the retained diagnostic executable
+        shell: pwsh
+        env:
+          CUMULUS_RETAINED_MSYS_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'cumulus-native-open-retained-endpoint'
+          cargo build --locked --manifest-path desktop/probes/windows-system-master-volume/Cargo.toml --target-dir $target
+          if ($LASTEXITCODE -ne 0) { throw 'Default render endpoint probe build failed' }
+          $probe = (Resolve-Path -LiteralPath (Join-Path $target 'debug/cumulus-windows-system-master-volume.exe')).Path
+          $ffmpeg = (Resolve-Path -LiteralPath (Join-Path $env:CUMULUS_RETAINED_MSYS_ROOT 'ucrt64/bin/ffmpeg.exe')).Path
+          python scripts/ci/windows_native_open_smoke.py --retained-null --audio-output null --packages .build/packages/windows-x64 --fixture-encoder "$ffmpeg" --root .build/ci-native-open-windows --endpoint-probe "$probe"
+          if ($LASTEXITCODE -ne 0) { throw 'Retained Windows portable application proof failed' }
+      - name: Preserve retained diagnostic evidence
+        if: always() && !cancelled() && hashFiles('.build/ci-native-open-windows/report.json', '.build/ci-native-open-windows/owner.log') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-retained-native-open-null-attempt-${{ github.run_attempt }}
           path: |
             .build/ci-native-open-windows/report.json
             .build/ci-native-open-windows/owner.log

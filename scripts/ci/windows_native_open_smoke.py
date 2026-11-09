@@ -18,6 +18,7 @@ import uuid
 import wave
 
 from diagnostics import verify_proof_databases
+from windows_native_open_retained import ARTIFACT_ID, BINARY_SHA256, REPOSITORY, verified_producer
 from windows_system_master_volume_runtime import collect_sample
 from windows_webview_inputs import ci_identity
 from windows_zip_smoke import portable_runtime
@@ -315,8 +316,16 @@ def main():
     for name in ('packages', 'root', 'fixture-encoder', 'endpoint-probe'):
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--audio-output', choices=('default', 'null'), default='default')
+    parser.add_argument('--retained-null', action='store_true',
+                        help='Use only the fixed, earlier diagnostic package; never a release.')
     args = parser.parse_args()
-    identity = require_hosted_windows(os.environ)
+    runner = require_hosted_windows(os.environ)
+    identity = runner
+    if args.retained_null:
+        assert args.audio_output == 'null' and os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+        assert os.environ['GITHUB_REPOSITORY'] == REPOSITORY
+        assert os.environ['GITHUB_REF'] == 'refs/heads/validation/phase203-retained-windows-native-open'
+        identity = verified_producer()
     system = Path(os.environ['SystemRoot']).resolve(strict=True)
     encoder = args.fixture_encoder.resolve(strict=True)
     assert encoder.is_file() and encoder.name.casefold() == 'ffmpeg.exe'
@@ -334,11 +343,15 @@ def main():
         binary = (portable / 'cumulus.exe').resolve(strict=True)
         with binary.open('rb') as source:
             binary_sha = hashlib.file_digest(source, 'sha256').hexdigest()
+        if args.retained_null:
+            assert binary_sha == BINARY_SHA256, 'retained portable executable digest mismatch'
         report = dict(ok=False, **identity, binarySha256=binary_sha,
                       proofAudioOutput=args.audio_output,
                       ordinaryWindowsPortableApp=args.audio_output == 'default',
                       appOutboundBlocked=False, defaultOutputClockVerified=False,
                       physicalAudioOutputVerified=False)
+        if args.retained_null:
+            report.update(retainedDiagnosticArtifact=ARTIFACT_ID, diagnosticRunner=runner)
         try:
             report['failureStage'] = 'default_render_endpoint_probe'
             endpoint = collect_sample(args.endpoint_probe.resolve(strict=True))
