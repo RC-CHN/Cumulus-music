@@ -78,6 +78,7 @@ export interface LocalTrack {
 export interface LocalRoot {
   id: string;
   path: string;
+  checked?: boolean;
   enabled: boolean;
   status: 'pending' | 'scanning' | 'ready' | 'error' | 'disabled';
   progress: {
@@ -120,6 +121,23 @@ export interface LocalTrackReference {
   id: string;
   revision: string;
 }
+export interface LocalDirectoryChoice {
+  id: string;
+  checked: boolean;
+}
+export interface LocalDirectorySelection {
+  revision: string;
+  entries: (LocalDirectoryChoice & { path: string; paused: boolean })[];
+}
+export interface LocalDirectoryClient {
+  localDirectorySelection(): Promise<LocalDirectorySelection>;
+  stageLocalDirectory(revision: string): Promise<LocalDirectorySelection | null>;
+  applyLocalDirectories(
+    revision: string,
+    choices: LocalDirectoryChoice[],
+  ): Promise<LocalDirectorySelection>;
+}
+
 export interface LocalClient {
   localPage(query: LocalQuery): Promise<LocalPage>;
   localCommand(command: LocalCommand): Promise<void>;

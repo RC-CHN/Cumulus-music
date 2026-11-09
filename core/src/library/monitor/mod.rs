@@ -2,9 +2,12 @@
 //! correctness, and stopping/removing a root never deletes user media.
 mod reconcile;
 mod registry;
+mod selection;
 mod types;
 use super::LocalLibrary;
 use crate::{Error, Result, storage::StateStore};
+pub(crate) use selection::DirectoryScope;
+pub use selection::{DirectoryChoice, DirectoryEntry, DirectorySelection};
 use std::{
     collections::BTreeMap,
     path::Path,
@@ -69,6 +72,23 @@ impl LibraryMonitor {
     }
     pub fn unwatch(&self, id: &str) -> Result<Option<WatchRoot>> {
         self.inner.unwatch(id)
+    }
+    pub(crate) fn directory_selection(&self) -> Result<DirectorySelection> {
+        self.inner.directory_selection()
+    }
+    pub(crate) fn stage_directory(
+        &self,
+        path: &Path,
+        expected: &str,
+    ) -> Result<DirectorySelection> {
+        self.inner.stage_directory(path, expected)
+    }
+    pub(crate) fn apply_directories(
+        &self,
+        expected: &str,
+        choices: Vec<DirectoryChoice>,
+    ) -> Result<DirectorySelection> {
+        self.inner.apply_directories(expected, choices)
     }
     pub fn run_once(&self) -> Result<Vec<WatchRoot>> {
         Ok(self.inner.run_once()?.unwrap_or_default())

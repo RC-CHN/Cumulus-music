@@ -4,6 +4,8 @@ mod batch_collection;
 mod batch_playback;
 #[path = "client_local/batch_removal.rs"]
 mod batch_removal;
+#[path = "client_local/directory_selection.rs"]
+mod directory_selection;
 #[path = "client_local/lyric_reports.rs"]
 mod lyric_reports;
 #[path = "support/lyric_wave.rs"]

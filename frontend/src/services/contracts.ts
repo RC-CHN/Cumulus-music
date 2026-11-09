@@ -30,7 +30,7 @@ import type {
 import type { CommentResourceClient } from './commentResource';
 import type { CommentWriteClient, VinylCommentWriteClient } from './commentWrites';
 import type { CommentFloorClient } from './commentFloor';
-import type { LocalClient, LocalCollectClient } from './local';
+import type { LocalClient, LocalCollectClient, LocalDirectoryClient } from './local';
 import type { LocalMatchClient } from './localMatching';
 import type {
   PodcastCatalogueClient,
@@ -155,6 +155,7 @@ export interface CoreClient
     CommentFloorClient,
     LocalClient,
     LocalCollectClient,
+    LocalDirectoryClient,
     LocalMatchClient,
     PodcastClient,
     AudiobookSkipClient,

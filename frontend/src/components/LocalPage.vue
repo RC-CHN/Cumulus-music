@@ -4,6 +4,8 @@ import Icon from './Icon.vue';
 import ActionMenu from './ActionMenu.vue';
 import { failure } from '../services/contracts';
 import LocalMatchDialog from './LocalMatchDialog.vue';
+import LocalDirectoriesDialog from './LocalDirectoriesDialog.vue';
+import ModalTransition from './ModalTransition.vue';
 import LocalFolderGroups from './LocalFolderGroups.vue';
 import type { LocalMatchingModel } from '../composables/useLocalMatching';
 import type { LocalModel } from '../composables/useLocal';
@@ -63,6 +65,21 @@ const {
   start: resizeGroupsStart,
 } = useLocalGroupWidth(browser, () => query.value.group !== 'list');
 const ownsVisit = props.model.captureVisit();
+const directoryTrigger = ref<HTMLButtonElement>();
+const directoryOrigin = shallowRef<HTMLElement>();
+const directoriesOpen = ref(false);
+const activeRoots = computed(() =>
+  (view.value?.roots ?? []).filter((root) => root.checked !== false),
+);
+function openDirectories(event: MouseEvent) {
+  if (!ownsVisit() || busy.value || !(event.currentTarget instanceof HTMLElement)) return;
+  directoryOrigin.value = event.currentTarget;
+  directoriesOpen.value = true;
+}
+function applyDirectories() {
+  if (ownsVisit()) props.model.filter({ offset: 0, revision: null });
+}
+
 watch(canResizeGroups, async (enabled) => {
   const separator = groupSeparator.value;
   if (enabled || !separator || document.activeElement !== separator) return;
@@ -643,7 +660,7 @@ function status(root: LocalRoot) {
       <h1>本地音乐</h1>
       <span>共 {{ view?.total ?? 0 }} 首</span
       ><span role="status">{{ scanning ? '正在更新列表' : '' }}</span
-      ><button class="text-button" :disabled="busy" @click="runAction(model.choose)">
+      ><button ref="directoryTrigger" class="text-button" :disabled="busy" @click="openDirectories">
         选择目录
       </button>
     </header>
@@ -778,9 +795,9 @@ function status(root: LocalRoot) {
       >
     </div>
     <details class="local-roots">
-      <summary>管理音乐目录（{{ view?.roots.length ?? 0 }}）</summary>
+      <summary>管理音乐目录（{{ activeRoots.length }}）</summary>
       <p>自动扫描每 30 秒检查一次。暂停扫描保留列表和原文件。</p>
-      <div v-for="root in view?.roots" :key="root.id" class="local-root">
+      <div v-for="root in activeRoots" :key="root.id" class="local-root">
         <div>
           <strong :title="root.path">{{ root.path }}</strong
           ><small>{{ status(root) }}</small
@@ -823,7 +840,7 @@ function status(root: LocalRoot) {
       <Icon name="music" />
       <h2>让收藏的音乐回到播放列表</h2>
       <p>选择音乐目录，支持 CUE 分轨和 NCM 文件。</p>
-      <button class="primary" :disabled="busy" @click="model.choose">选择音乐目录</button>
+      <button class="primary" :disabled="busy" @click="openDirectories">选择音乐目录</button>
     </div>
     <div v-else ref="browser" class="local-browser">
       <aside
@@ -1036,5 +1053,16 @@ function status(root: LocalRoot) {
       </button>
     </footer>
   </section>
+  <ModalTransition
+    :return-focus="() => directoryOrigin ?? null"
+    :fallback-focus="() => directoryTrigger ?? null"
+  >
+    <LocalDirectoriesDialog
+      v-if="directoriesOpen"
+      :current="ownsVisit"
+      @close="directoriesOpen = false"
+      @applied="applyDirectories"
+    />
+  </ModalTransition>
   <LocalMatchDialog v-if="matching.target.value" :model="matching" />
 </template>
