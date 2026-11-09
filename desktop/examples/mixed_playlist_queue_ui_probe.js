@@ -33,6 +33,8 @@
   const selected = () => all('.track-scroll .track-row[aria-selected="true"]').map((row) => row.dataset.trackId);
   const item = (key) => all('.action-menu:not([inert]) [data-menu-key="' + key + '"]')
     .find((button) => !button.disabled && button.getClientRects().length);
+  const libraryEntry = () => all('button').find((button) => !button.disabled &&
+    (button.textContent.trim() === '本地音乐' || button.getAttribute('aria-label') === '本地音乐'));
   const libraryRow = (name) => all('.local-tracks tbody tr')
     .find((candidate) => candidate.querySelector('.local-title')?.textContent.trim() === name);
   let step = 'initialize', epoch, baseline, localId, anchorId, setupIssue;
@@ -113,10 +115,7 @@
       const value = await invoke('account_snapshot');
       return value.status === 'authenticated' && one('.playerbar') && value;
     }, 'synthetic signed in account'));
-    const library = await wait(() => all('button').find((button) => !button.disabled &&
-      (button.textContent.trim() === '本地音乐' || button.getAttribute('aria-label') === '本地音乐')),
-      'local library navigation');
-    click(library);
+    click(await wait(libraryEntry, 'local library navigation'));
     const local = await wait(() => libraryRow(audioName), 'indexed mixed audio file');
     localId = local.dataset.localId;
     anchorId = (await wait(() => libraryRow(anchorName), 'indexed independent playback anchor')).dataset.localId;
@@ -239,9 +238,9 @@
 
     require(!originMismatches.length, 'mixed source missing from queue checkpoints: ' + originMismatches.join(', '));
     step = 'follow mixed local source through the queue menu';
-    click(one('[aria-label="关闭播放队列"]'));
+    click(await wait(() => one('[aria-label="关闭播放队列"]'), 'close the existing queue drawer'));
     await wait(() => !one('.queue-panel'), 'queue drawer closed');
-    click(library);
+    click(await wait(libraryEntry, 'fresh local library navigation'));
     await wait(() => libraryRow(anchorName)?.dataset.localId === anchorId &&
       !one('.page-enter-active,.page-leave-active'), 'same anchor file remains indexed on a different page');
     click(one('.playerbar [aria-label="播放队列"]'));
@@ -252,7 +251,7 @@
     click(queueRow?.querySelector('.queue-row-more'));
     const sourceItem = await wait(() => item('source'), 'mixed local queue row has an enabled playlist source');
     const sourceLabel = sourceItem.textContent.trim();
-    require(sourceLabel.startsWith('来自：'), 'the native file menu labels the playlist source');
+    require(sourceLabel === '来自：合成自建混排歌单', 'the native file menu names the verified playlist source');
     await checkpoint('ux_09_local_queue_source', dropped, { sourceLabel });
     click(sourceItem);
     await wait(() => same(visibleRows(), [localId, '701', legacy, '702']) &&

@@ -79,7 +79,7 @@ def main():
     local, anchor = done['localId'], done['anchorId']
     assert local != anchor and local not in {'701', '702', LEGACY} and anchor not in {'701', '702', LEGACY}
     assert states[5]['selected'] == [local, '702']
-    assert states[8]['sourceLabel'].startswith('来自：') and states[8]['playlist'] == []
+    assert states[8]['sourceLabel'] == '来自：合成自建混排歌单' and states[8]['playlist'] == []
     before = states[0]['player']
     assert before['state'] == 'paused' and before['id'] == anchor and before['position'] > .10
     assert before['resourceKind'] == 'local'
