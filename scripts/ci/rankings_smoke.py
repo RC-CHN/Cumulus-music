@@ -63,13 +63,15 @@ def main():
     assert len(states['home_light']['cardIds']) == 8
     assert {item['id'] for item in states['home_light']['cardControls']} == {'19723756', '19723757', '101', '102', '103', '104'}
     assert states['global_dark']['sameAccountRefreshVerified'] and complete['sameAccountRefreshVerified']
+    assert states['global_dark']['focusedCard'] == '101' and states['global_dark']['focusedAction'] == 'open'
+    assert states['global_dark']['expectedScrollTop'] > 0
     card = states['home_light']['topCard']
     assert card['rowFont'] == '15px' and [image['width'] for image in card['images']] == [78, 58, 38]
     assert max(image['bottom'] for image in card['images'])-min(image['bottom'] for image in card['images']) < .1
     assert abs((card['heading']['top']+card['heading']['height']/2)-(card['frequency']['top']+card['frequency']['height']/2)) < 1
     assert states['home_return_light']['focusedCard'] == '101'
     assert states['home_return_light']['expectedScrollTop'] > 0
-    for name in ['home_return_light', 'weekly_return_light']:
+    for name in ['global_dark', 'home_return_light', 'weekly_return_light']:
         assert abs(states[name]['expectedScrollTop']-states[name]['scrollTop']) < 1
     for label in ['weekly_singles_dark', 'weekly_return_light', 'historical_week_light', 'period_recovered_light']:
         assert states[label]['period'] == '周榜' and states[label]['singles'] == '数字单曲'

@@ -102,6 +102,8 @@
     await wait(() => ready() && rank()?.querySelector(".ranking-card"), "home");
     await settle();
   }
+  const globalRankOpen = (root = rank()) =>
+    root?.querySelector('[data-rank-id="101"] [data-rank-action="open"]');
   async function accountRefresh() {
     const provides =
       document.querySelector("#app").__vue_app__._context.provides;
@@ -111,13 +113,36 @@
           (key) => typeof key === "symbol" && key.description === "core-client",
         )
       ];
-    const original = core.accountSnapshot.bind(core);
-    const before = rank(),
-      position = main().scrollTop;
+    const original = core.accountSnapshot;
+    const before = rank();
+    const opener = globalRankOpen(before);
+    assert(opener && !opener.disabled, "same-account ranking opener");
+    opener.scrollIntoView({ block: "center", behavior: "instant" });
+    opener.focus({ preventScroll: true });
+    await settle();
+    const viewport = () => ({
+      top: main().scrollTop,
+      max: main().scrollHeight - main().clientHeight,
+      card: document.activeElement?.closest("[data-rank-id]")?.dataset.rankId,
+      action: document.activeElement?.dataset.rankAction,
+      ready: ready(),
+      oldRankConnected: before.isConnected,
+    });
+    const baseline = viewport();
+    assert(
+      baseline.top > 0 && baseline.max > 0 && document.activeElement === opener,
+      `same-account scrolled and focused baseline: ${JSON.stringify(baseline)}`,
+    );
+    const restored = () => {
+      const current = rank();
+      return current && current !== before && !before.isConnected && ready() &&
+        document.activeElement === globalRankOpen(current) &&
+        Math.abs(main().scrollTop - baseline.top) < 1;
+    };
     let reads = 0;
     core.accountSnapshot = async () => {
       reads++;
-      return original();
+      return original.call(core);
     };
     try {
       const account = await invoke("account_snapshot");
@@ -126,19 +151,15 @@
         payload: { ...account, canSignOut: !account.canSignOut },
       });
       await wait(
-        () =>
-          reads > 0 &&
-          ready() &&
-          rank() !== before &&
-          document.activeElement.closest("[data-rank-id]")?.dataset.rankId ===
-            "101",
-        "same-account restoration",
-      );
-      assert(
-        Math.abs(main().scrollTop - position) < 1,
-        "same-account reading position",
+        () => reads > 0 && restored(),
+        "same-account reading position and focus",
       );
       await settle();
+      assert(restored(), "same-account viewport remains restored after paint");
+      return baseline.top;
+    } catch (error) {
+      throw Error(`${error.message}: baseline=${JSON.stringify(baseline)}, ` +
+        `observed=${JSON.stringify(viewport())}, accountReads=${reads}`);
     } finally {
       core.accountSnapshot = original;
     }
@@ -548,14 +569,11 @@
       sourceControl: await sourceState(),
     });
     await pause();
-    let global = rank().querySelector('[data-rank-id="101"] .rank-open');
-    global.scrollIntoView({ block: "center" });
-    global.focus({ preventScroll: true });
     await theme("dark");
-    await accountRefresh();
-    global = rank().querySelector('[data-rank-id="101"] .rank-open');
+    const refreshScroll = await accountRefresh();
+    const global = globalRankOpen();
     sameAccountRefreshVerified = true;
-    await capture("global_dark", { sameAccountRefreshVerified });
+    await capture("global_dark", { sameAccountRefreshVerified, expectedScrollTop: refreshScroll });
     const globalPlay = rank().querySelector('[data-rank-id="101"] .rank-play');
     click(globalPlay);
     native = await nativePlaying("101");
