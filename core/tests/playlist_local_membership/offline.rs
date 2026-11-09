@@ -1,10 +1,12 @@
 use super::*;
 use cumulus_core::{playback::controller::PlaybackStatus, storage::StateStore};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 struct Network {
     upstream: Server,
     state: AtomicU8,
+    deleted: AtomicBool,
+    defer_delete_readback: AtomicBool,
     calls: Mutex<Vec<String>>,
 }
 impl Network {
@@ -21,6 +23,8 @@ impl Network {
         Self {
             upstream,
             state: AtomicU8::new(0),
+            deleted: AtomicBool::new(false),
+            defer_delete_readback: AtomicBool::new(false),
             calls: Mutex::default(),
         }
     }
@@ -36,6 +40,22 @@ impl Api for Network {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.to_owned());
+            if path == "/api/playlist/delete" {
+                assert_eq!(payload, json!({"pid":"73"}));
+                assert!(!self.deleted.swap(true, Ordering::AcqRel));
+                return Ok(json!({"code":200}));
+            }
+            if path == "/api/user/playlist" {
+                if self.defer_delete_readback.load(Ordering::Acquire) {
+                    return Err(Error::Transport("readback interrupted".into()));
+                }
+                let playlists = if self.deleted.load(Ordering::Acquire) {
+                    Vec::new()
+                } else {
+                    vec![self.upstream.detail.lock().unwrap().clone()]
+                };
+                return Ok(json!({"code":200, "playlist":playlists, "more":false}));
+            }
             match self.state.load(Ordering::Acquire) {
                 1 => Err(Error::Transport("synthetic offline".into())),
                 2 => Ok(json!({"code":403, "msg":"synthetic permission changed"})),
@@ -364,4 +384,95 @@ async fn owned_cache_isolated_from_denials_other_accounts_and_changed_membership
             .await,
         Err(Error::QueueChanged)
     ));
+}
+
+#[tokio::test]
+async fn confirmed_delete_tombstones_cached_playlist_in_direct_and_reconciled_paths() {
+    for deferred in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("profile");
+        let network = Arc::new(Network::new());
+        let (client, _, _) = open(&profile, network.clone(), Some(9));
+        let whole = || PageRequest {
+            offset: 0,
+            limit: 10,
+            revision: None,
+        };
+        client.playlist_page_at("73", whole(), None).await.unwrap();
+        assert!(read_record(&profile).is_some());
+        let editor = client.playlist_editor("1", "73").await.unwrap().value;
+        network
+            .defer_delete_readback
+            .store(deferred, Ordering::Release);
+        let deletion = client
+            .mutate_playlist(
+                "1",
+                PlaylistCommand::Delete {
+                    id: "73".into(),
+                    revision: editor.revision,
+                },
+            )
+            .await;
+        let operation = if deferred {
+            assert!(matches!(deletion, Err(Error::Transport(_))));
+            assert!(
+                read_record(&profile).is_some(),
+                "uncertain write is not deletion proof"
+            );
+            let operations = client.playlist_operations("1").unwrap().value;
+            assert_eq!(operations.len(), 1);
+            let op = operations.into_iter().next().unwrap().operation_id;
+            network
+                .defer_delete_readback
+                .store(false, Ordering::Release);
+            client.reconcile_playlist("1", &op).await.unwrap().value
+        } else {
+            deletion.unwrap().value
+        };
+        assert_eq!(
+            operation.phase,
+            cumulus_core::playlist::PlaylistPhase::Confirmed
+        );
+        let registry = ProfileRegistry::open(&profile, ApiOrigin::Pc).unwrap();
+        let store = registry.store();
+        assert_eq!(
+            store.get("9", "playlist-offline-deleted-v1", "73").unwrap(),
+            Some(json!(true))
+        );
+        assert!(read_record(&profile).is_none());
+        assert_eq!(
+            store
+                .get("9", "playlist-mutations", &operation.operation_id)
+                .unwrap()
+                .unwrap()["phase"],
+            "confirmed"
+        );
+
+        // Simulate a stale authoritative detail already in flight at the
+        // time of confirmation: no cached row can be republished.
+        assert!(
+            client
+                .playlist_page_at("73", whole(), None)
+                .await
+                .unwrap()
+                .value
+                .playlist_offline
+                .is_none()
+        );
+        assert!(read_record(&profile).is_none());
+        network.set(1);
+        let (reopened, _, _) = open(&profile, network.clone(), Some(9));
+        assert!(matches!(
+            reopened.playlist_page_at("73", whole(), None).await,
+            Err(Error::Transport(_))
+        ));
+        assert_eq!(
+            network
+                .calls()
+                .iter()
+                .filter(|route| *route == "/api/playlist/delete")
+                .count(),
+            1
+        );
+    }
 }

@@ -9,10 +9,10 @@ use super::{
 };
 use crate::{
     Error, Result,
-    account::SessionToken,
+    account::{AccountSession, SessionToken},
     library::LocalResource,
     playback::engine::Cancellation,
-    playlist::{PlaylistLocalRef, PlaylistLocalStore},
+    playlist::{OFFLINE_DELETED_KIND, OFFLINE_SNAPSHOT_KIND, PlaylistLocalRef, PlaylistLocalStore},
     protocol::api::identifier,
     storage::OperationLock,
 };
@@ -20,11 +20,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, VecDeque},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const KIND: &str = "playlist-offline-snapshot-v1";
 const MAX_ROWS: usize = 50_000;
 const MAX_PENDING: usize = 4;
 
@@ -236,6 +235,21 @@ pub(super) fn invalidates_cache(error: &Error) -> bool {
         .any(|code| error.is_service_code(*code))
 }
 
+fn snapshot_is_current(
+    session: &Arc<AccountSession>,
+    token: &SessionToken,
+    id: &str,
+    local_generation: Option<u64>,
+) -> Result<bool> {
+    if PlaylistLocalStore::new(session.clone())?.generation(token, id)? != local_generation {
+        return Ok(false);
+    }
+    let store = session.persistent_store()?;
+    session.with_token(token, |owner| {
+        Ok(store.get(owner, OFFLINE_DELETED_KIND, id)?.is_none())
+    })
+}
+
 pub(super) struct OfflineQueue {
     pub resources: Vec<Value>,
     pub index: usize,
@@ -277,7 +291,10 @@ impl MusicClient {
         let id = &snapshot.playlist.id;
         self.session.with_token(token, |owner| {
             store.transaction(|tx| {
-                if let Some(previous) = tx.get(owner, KIND, id)?
+                if tx.get(owner, OFFLINE_DELETED_KIND, id)?.is_some() {
+                    return Ok(());
+                }
+                if let Some(previous) = tx.get(owner, OFFLINE_SNAPSHOT_KIND, id)?
                     && let Ok(previous) = Snapshot::parse(previous, id)
                     && previous
                         .remote_updated_at
@@ -286,7 +303,12 @@ impl MusicClient {
                 {
                     return Ok(());
                 }
-                tx.put(owner, KIND, id, &serde_json::to_value(&snapshot)?)
+                tx.put(
+                    owner,
+                    OFFLINE_SNAPSHOT_KIND,
+                    id,
+                    &serde_json::to_value(&snapshot)?,
+                )
             })
         })
     }
@@ -295,8 +317,8 @@ impl MusicClient {
         let store = self.session.persistent_store()?;
         self.session.with_token(token, |owner| {
             self.playlist_offline.forget(token, id)?;
-            if store.get(owner, KIND, id)?.is_some() {
-                store.delete(owner, KIND, id)?;
+            if store.get(owner, OFFLINE_SNAPSHOT_KIND, id)?.is_some() {
+                store.delete(owner, OFFLINE_SNAPSHOT_KIND, id)?;
             }
             Ok(())
         })
@@ -306,17 +328,19 @@ impl MusicClient {
         identifier(&json!(id))?;
         let store = self.session.persistent_store()?;
         let snapshot = self.session.with_token(token, |owner| {
-            store
-                .get(owner, KIND, id)?
-                .map(|raw| Snapshot::parse(raw, id))
-                .transpose()
+            store.read_snapshot(|tx| {
+                if tx.get(owner, OFFLINE_DELETED_KIND, id)?.is_some() {
+                    return Ok(None);
+                }
+                tx.get(owner, OFFLINE_SNAPSHOT_KIND, id)?
+                    .map(|raw| Snapshot::parse(raw, id))
+                    .transpose()
+            })
         })?;
         let Some(snapshot) = snapshot else {
             return Ok(None);
         };
-        if PlaylistLocalStore::new(self.session.clone())?.generation(token, id)?
-            != snapshot.local_generation
-        {
+        if !snapshot_is_current(&self.session, token, id, snapshot.local_generation)? {
             return Ok(None);
         }
         Ok(Some(snapshot))
@@ -383,9 +407,7 @@ impl MusicClient {
             })
             .collect::<Vec<_>>();
         let total = snapshot.rows.len();
-        if PlaylistLocalStore::new(self.session.clone())?.generation(token, id)?
-            != snapshot.local_generation
-        {
+        if !snapshot_is_current(&self.session, token, id, snapshot.local_generation)? {
             return Err(Error::QueueChanged);
         }
         Ok(Some(TrackPage {
@@ -464,7 +486,7 @@ impl MusicClient {
             })?);
         }
         let index = index.ok_or(Error::State("cached playlist song is unavailable"))?;
-        let local = PlaylistLocalStore::new(self.session.clone())?;
+        let session = self.session.clone();
         let (token, id) = (token.clone(), id.to_owned());
         let source = json!({
             "kind":"playlist", "id":id, "name":snapshot.playlist.name,
@@ -472,9 +494,7 @@ impl MusicClient {
         });
         let generation = snapshot.local_generation;
         let guard = Cancellation::new(move || {
-            local
-                .generation(&token, &id)
-                .is_ok_and(|current| current == generation)
+            snapshot_is_current(&session, &token, &id, generation).unwrap_or(false)
         });
         if guard.is_cancelled() {
             return Err(Error::QueueChanged);

@@ -1183,12 +1183,21 @@ impl PlaylistService {
         };
         record.observed = Some(observed);
         record.checked_at = Some(now()?);
-        self.session.save_result(
-            token,
-            JOURNAL,
-            &record.operation_id,
-            &serde_json::to_value(&record)?,
-        )?;
+        let persisted = serde_json::to_value(&record)?;
+        if record.phase == PlaylistPhase::Confirmed
+            && let PlaylistCommand::Delete { id, .. } = &record.command
+        {
+            self.session.with_token(token, |owner| {
+                self.store.transaction(|tx| {
+                    tx.delete(owner, OFFLINE_SNAPSHOT_KIND, id)?;
+                    tx.put(owner, OFFLINE_DELETED_KIND, id, &Value::Bool(true))?;
+                    tx.put(owner, JOURNAL, &record.operation_id, &persisted)
+                })
+            })?;
+        } else {
+            self.session
+                .save_result(token, JOURNAL, &record.operation_id, &persisted)?;
+        }
         // Return the actual readback even for a partial/rejected/uncertain
         // result, so hosts cannot accidentally paint an optimistic success.
         Ok(record)
