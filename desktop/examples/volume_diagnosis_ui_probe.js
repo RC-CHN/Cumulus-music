@@ -113,7 +113,7 @@
       await adjust(79, 80);
       await capture('unsupported_after_increase', false, 80);
     } else {
-      await endpoint('muted');
+      await endpoint('muted_spatial_off');
       await adjust(79, 80);
       await capture('muted', false, 80);
       await endpoint('thirty');
@@ -130,13 +130,19 @@
       assert(performance.now() - presented >= 3800, 'diagnosis is not prematurely closed');
       await capture('automatic_close', false, 85);
 
-      await adjust(85, 90);
-      await wait(alert, 'default auto-close does not persist the cooldown');
-      await capture('offered_again', true, 90);
+      await endpoint('spatial_unavailable');
+      await adjust(85, 87);
+      await capture('spatial_unavailable', false, 87);
+
+      await endpoint('recovered');
+      await adjust(87, 90);
+      await wait(alert, 'active spatial sound offers diagnosis with normal master volume');
+      await capture('spatial_active', true, 90);
       await click(() => alert()?.querySelector('.volume-diagnosis-action'), 'explicit open audio output');
       await wait(() => !alert() && document.activeElement === heading() &&
-        one('[data-system-master-percent]')?.textContent.trim() === '30%',
-        'output settings heading focused, rounded 30 percent displayed');
+        one('[data-system-master-percent]')?.textContent.trim() === '84%' &&
+        one('[data-system-spatial-sound] [role=status]')?.textContent.trim() === '已开启（可能影响声音效果）',
+        'output settings heading focused, normal master volume and active spatial sound displayed');
       await capture('settings', false, 90);
 
       await click(daily, 'return from Settings');

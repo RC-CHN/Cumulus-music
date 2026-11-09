@@ -23,6 +23,15 @@ pub enum VolumeDiagnosisDismissal {
     JumpSettings,
 }
 
+/// Trusted output endpoint evidence. An unsupported platform and a failed
+/// read are both distinct from a successful reading that reports zero or off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputDiagnosticRead<T> {
+    Unsupported,
+    Unavailable,
+    Ready(T),
+}
+
 #[derive(Clone, Copy)]
 struct Policy {
     cooldown_ms: f64,
@@ -142,6 +151,11 @@ fn low_master(value: f32) -> bool {
     value > 0.0 && f64::from(value) < 0.3
 }
 
+fn should_offer(master: OutputDiagnosticRead<f32>, spatial: OutputDiagnosticRead<bool>) -> bool {
+    matches!(master, OutputDiagnosticRead::Ready(value) if low_master(value))
+        || matches!(spatial, OutputDiagnosticRead::Ready(true))
+}
+
 fn wall_ms() -> Result<u64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -166,15 +180,16 @@ impl MusicClient {
         )
     }
 
-    /// Trusted platform callback only. The renderer receives an optional
-    /// one-use prompt receipt, never the native scalar. No playback command,
-    /// token fetch, or configuration refresh is performed here.
+    /// Trusted platform reads only. Poll the default master endpoint before
+    /// the spatial endpoint, as M/83 does around its enhancement check. The
+    /// renderer receives only an optional one-use receipt.
     pub async fn check_volume_diagnosis(
         &self,
         epoch: &str,
         before: f64,
         after: f64,
-        read_effective_master: impl Future<Output = Option<f32>>,
+        read_effective_master: impl Future<Output = OutputDiagnosticRead<f32>>,
+        read_spatial: impl Future<Output = OutputDiagnosticRead<bool>>,
     ) -> Result<Option<String>> {
         if !eligible(before, after) {
             return Ok(None);
@@ -187,7 +202,18 @@ impl MusicClient {
             let current = controller.snapshot();
             current.account == owner && current.volume == after
         };
-        if !matches_player() || !read_effective_master.await.is_some_and(low_master) {
+        if !matches_player() {
+            return Ok(None);
+        }
+        let master = read_effective_master.await;
+        if !self
+            .session
+            .with_local_owner(&owner, |_| Ok(matches_player()))?
+        {
+            return Ok(None);
+        }
+        let spatial = read_spatial.await;
+        if !should_offer(master, spatial) {
             return Ok(None);
         }
         let policy = self.volume_diagnosis_policy();
@@ -242,6 +268,22 @@ mod tests {
         for value in [0.0, 0.3, 1.0, f32::NAN, -0.01, f32::INFINITY] {
             assert!(!low_master(value));
         }
+    }
+
+    #[test]
+    fn active_spatial_sound_can_independently_offer_a_diagnosis() {
+        use OutputDiagnosticRead::{Ready, Unavailable, Unsupported};
+
+        for master in [Ready(0.84), Ready(0.0), Unavailable] {
+            assert!(should_offer(master, Ready(true)));
+        }
+        for spatial in [Ready(false), Unavailable, Unsupported] {
+            assert!(!should_offer(Ready(0.84), spatial));
+            assert!(should_offer(Ready(0.2999), spatial));
+        }
+        assert!(!should_offer(Unsupported, Unsupported));
+        assert!(!should_offer(Unavailable, Unavailable));
+        assert!(!should_offer(Ready(0.0), Ready(false)));
     }
 
     #[test]

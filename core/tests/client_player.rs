@@ -419,6 +419,9 @@ mod vinyl_comments;
 #[path = "client_player/vinyl_related_playlists.rs"]
 mod vinyl_related_playlists;
 
+#[path = "client_player/volume_diagnosis.rs"]
+mod volume_diagnosis;
+
 #[path = "client_player/vinyl_similar.rs"]
 mod vinyl_similar;
 

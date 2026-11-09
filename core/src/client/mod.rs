@@ -80,7 +80,7 @@ pub mod style_tags;
 mod together;
 mod window;
 pub use player::{
-    PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView,
+    OutputDiagnosticRead, PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView,
     VinylRecommendationPlacement, VinylRelatedPlaylistView, VinylRelatedPlaylistsView,
     VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView, VinylWikiCardView,
     VinylWikiMetaView, VinylWikiView, VolumeDiagnosisDismissal,

@@ -32,9 +32,10 @@ DIAGNOSIS_CASES = {
         "decrease": (False, 82, 2, None),
         "low_system_volume": (True, 85, 3, None),
         "automatic_close": (False, 85, 3, None),
-        "offered_again": (True, 90, 4, None),
-        "settings": (False, 90, 5, "30%"),
-        "remembered_cooldown": (False, 92, 6, None),
+        "spatial_unavailable": (False, 87, 4, None),
+        "spatial_active": (True, 90, 5, None),
+        "settings": (False, 90, 6, "84%"),
+        "remembered_cooldown": (False, 92, 7, None),
     },
     "unsupported": {
         "below_threshold": (False, 79, 0, None),
@@ -126,7 +127,8 @@ def main():
             if args.diagnosis:
                 visible, volume, reads, percent = observation
                 assert (row["visible"], row["volume"], row["outputPercent"]) == (visible, volume, percent), (label, row)
-                assert row.get("systemMasterVolumeReads", 0) == reads, (label, row)
+                for key in ("systemMasterVolumeReads", "systemSpatialSoundReads", "volumeReadsBeforeSpatial"):
+                    assert row.get(key, 0) == reads, (label, key, row)
                 assert player["volume"] == volume, (label, row)
                 current = tuple(row[key] for key in ("playId", "entryId", "queueRevision", "position"))
                 assert all(value is not None for value in current)
@@ -153,7 +155,7 @@ def main():
     result = dict(ok=True, actualWebView=True, webViewRuntime="WebView2" if windows else "GTK/WebKit",
                   nativeIpc=True, nativeLibmpvNull=True, windowsMediaRuntime=windows_media,
                   playerVolumeDiagnosis=args.diagnosis,
-                  readOnlySpatialSound=not args.diagnosis,
+                  readOnlySpatialSound=True,
                   stateCount=count, screenshots=count if args.screenshots else 0,
                   syntheticWindowsEndpoint=True, nativeLinuxUnsupported=not windows,
                   physicalWindowsReadVerified=False, realOsWrites=0, realMusicRequests=0,
