@@ -6,6 +6,8 @@
 
 “实服”指表中注明的具体授权样本；“桌面”指实际 Tauri WebView；“合成”可能包含真实 libmpv、SQLite、回环 HTTP 或虚拟音频设备，但没有访问真实账号资源。不同时间、平台或分支的证据不能合并成整项通过。
 
+[交付证据索引](desktop-delivery-checkpoints.txt)按正式程序、合成实窗、实服和发行附件分别核对精确源码、可检查报告及尚缺的证据。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。
