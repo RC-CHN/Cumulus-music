@@ -63,8 +63,10 @@
     if (!entry) {
       const group = await wait(() => one('[data-sidebar-group="created"] .sidebar-group-toggle'),
         'created playlists navigation');
-      group.scrollIntoView({ block: 'nearest', behavior: 'instant' });
       if (group.getAttribute('aria-expanded') === 'false') click(group);
+      // Reveal the list below its header so viewport virtualization can mount
+      // the playlist row (scrolling the header merely to the bottom cannot).
+      group.closest('header').scrollIntoView({ block: 'start', behavior: 'instant' });
       entry = await wait(() => one('[data-sidebar-id="11"]'), 'owned playlist sidebar row');
     }
     click(entry);
