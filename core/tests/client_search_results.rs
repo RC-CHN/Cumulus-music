@@ -911,3 +911,93 @@ async fn comprehensive_voice_card_does_not_get_dedicated_table_author_action() {
     assert_eq!(voice["voice"]["creator"], "作者");
     assert!(voice.get("creatorId").is_none());
 }
+
+#[tokio::test]
+async fn dedicated_song_titles_keep_exact_row_alias_and_utf16_lyric_evidence() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"resources":[
+        {
+            "alia":["wrong outer alias"],
+            "extInfo":{
+                "songAlias":true,
+                "lyrics":{"txt":"🎵合成歌词","range":[{"first":2,"second":4}]}
+            },
+            "baseInfo":{"simpleSongData":{
+                "id":42,"name":"合成歌名","alia":["首选不是命中","别名合成段"],
+                "tns":["不应显示的翻译合成"],"extInfo":{"songAlias":"仅是标记"},
+                "lyrics":{"txt":"错误的内层歌词","range":[]}
+            }}
+        },
+        {
+            "extInfo":{"songAlias":false,"lyrics":{"txt":"另一行","range":[]}},
+            "baseInfo":{"simpleSongData":{
+                "id":42,"name":"同 ID 另一行","alia":["别名合成段"],"newSongExt":{"songAlias":true}
+            }}
+        },
+        {
+            "extInfo":{"songAlias":true,"lyrics":{"txt":"🎵合成","range":[{"first":1,"second":3}]}},
+            "baseInfo":{"simpleSongData":{"id":43,"name":"不完整范围","alia":[],"ala":["不能回退"]}}
+        },
+        {
+            "newSongExt":{"songAlias":true},
+            "lyric":{"txt":"旧字段歌词","range":[]},
+            "baseInfo":{"simpleSongData":{"id":44,"name":"旧别名键","ala":["第一普通别名","第二普通别名"]}}
+        },
+        {
+            "extInfo":{"songAlias":true},
+            "baseInfo":{"simpleSongData":{"id":45,"name":"不替换空别名","alia":["","第二合成别名"]}}
+        },
+        {
+            "extInfo":{"songAlias":true},
+            "baseInfo":{"simpleSongData":{"id":46,"name":"没有合并外层标签","extInfo":{},"alia":["合成别名"]}}
+        }
+    ]}});
+    let page = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::Songs))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let items = page["sections"][0]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 6);
+    assert_eq!(items[0]["track"]["id"], "42");
+    assert_eq!(items[1]["track"]["id"], "42");
+    assert_eq!(
+        items[0]["tableHint"],
+        json!({
+            "aliasParts":[{"text":"别名","match":false},{"text":"合成","match":true},{"text":"段","match":false}],
+            "lyricParts":[{"text":"🎵","highlight":false},{"text":"合成","highlight":true},{"text":"歌词","highlight":false}]
+        })
+    );
+    assert_eq!(
+        items[1]["tableHint"],
+        json!({"lyricParts":[{"text":"另一行","highlight":false}]})
+    );
+    assert_eq!(
+        items[3]["tableHint"],
+        json!({
+            "aliasParts":[{"text":"第一普通别名","match":false}],
+            "lyricParts":[{"text":"旧字段歌词","highlight":false}]
+        })
+    );
+    for index in [2, 4, 5] {
+        assert!(items[index].get("tableHint").is_none());
+    }
+    for row in items {
+        assert!(
+            row.get("hint").is_none(),
+            "the comprehensive hint is separate"
+        );
+        assert!(row.get("reasons").is_none());
+    }
+    assert_eq!(
+        api.calls.lock().unwrap().as_slice(),
+        [(
+            "/api/search/song/list/page".into(),
+            json!({"keyword":"合成","offset":0,"limit":30,"scene":"normal","needCorrect":true,"channel":"suggest"})
+        )]
+    );
+}

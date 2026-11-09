@@ -54,6 +54,16 @@ pub struct SearchSuggestionPart {
     pub marked: bool,
 }
 
+pub(crate) fn song_table_alias_parts(aliases: &[&str], query: &str) -> Vec<SearchSuggestionPart> {
+    suggestion_marks::first_alias(aliases, query)
+        .into_iter()
+        .map(|part| SearchSuggestionPart {
+            text: part.text.into(),
+            marked: part.marked,
+        })
+        .collect()
+}
+
 pub(crate) struct DefaultWord {
     pub word: SearchWord,
     pub context: Option<Value>,

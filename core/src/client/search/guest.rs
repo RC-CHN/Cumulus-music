@@ -199,11 +199,13 @@ impl MusicClient {
                     SearchItem::Song {
                         queue_drop_receipt,
                         hint,
+                        table_hint,
                         reasons,
                         ..
                     } => {
                         *queue_drop_receipt = None;
                         *hint = None;
+                        *table_hint = None;
                         reasons.clear();
                     }
                     SearchItem::Playlist { playlist, .. } if playlist.private => return false,

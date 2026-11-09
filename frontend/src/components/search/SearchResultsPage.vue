@@ -195,6 +195,8 @@ const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, c
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
+const songTableHints = (section: SearchSection) =>
+  section.items.flatMap((item) => (item.kind === 'song' ? [item.tableHint] : []));
 function startQueueDrop(
   event: PointerEvent,
   section: SearchSection,
@@ -1090,6 +1092,7 @@ onBeforeUnmount(() => {
               v-else-if="section.items.some((i) => i.kind === 'song')"
               ref="searchSongTables"
               :tracks="tracks(section)"
+              :search-title-hints="category === 'songs' ? songTableHints(section) : undefined"
               :queue-drop-enabled="category === 'songs' && queueDropEnabled"
               :playlist-selection-scope="
                 category === 'songs'

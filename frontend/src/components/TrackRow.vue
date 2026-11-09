@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue';
 import { usePlaybackTriggerFocus } from '../composables/usePlaybackTriggerFocus';
 import SearchMatchText from './search/SearchMatchText.vue';
+import SearchSongTitleHint from './search/SearchSongTitleHint.vue';
+import type { SearchSongTableHint } from '../services/search';
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
@@ -14,6 +16,7 @@ import Icon from './Icon.vue';
 const props = defineProps<{
   track: TrackView;
   matchKeyword?: string;
+  searchTitleHint?: SearchSongTableHint;
   originalRecording?: boolean;
   index: number;
   liked: boolean;
@@ -168,6 +171,7 @@ function duration(ms: number) {
             track.artists.join(' / ') || (track.local ? '本地文件' : '未知歌手')
           }}</template>
         </small>
+        <SearchSongTitleHint v-if="searchTitleHint" :hint="searchTitleHint" />
       </div>
     </div>
     <span class="track-album ellipsis" :role="cellRole" :data-tooltip="track.album"

@@ -1,5 +1,5 @@
 //! Whitelisted presentation models for recovered PC result pages.
-use super::track_hint::{self, TrackHint};
+use super::track_hint::{self, SongTableHint, TrackHint};
 use crate::{
     Error, Result,
     catalog::search::results::{self as api, reason},
@@ -31,6 +31,8 @@ pub enum SearchItem {
         quality_badge: Option<SearchQualityBadge>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hint: Option<TrackHint>,
+        #[serde(rename = "tableHint", skip_serializing_if = "Option::is_none")]
+        table_hint: Option<SongTableHint>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         explicit: bool,
         #[serde(
@@ -729,6 +731,7 @@ fn item(
                 limited_free: false,
                 quality_badge: None,
                 hint,
+                table_hint: None,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
                 original_recording: v["originCoverType"].as_f64() == Some(1.0),
@@ -1103,16 +1106,20 @@ pub(super) fn project(
                     && let SearchItem::Song {
                         track,
                         queue_drop_receipt,
+                        table_hint,
                         ..
                     } = &mut item
-                    && !track.missing
-                    && !track.local
-                    && track.voice_id.is_none()
-                    && !js_truthy(&base["privilege"]["cs"])
-                    && super::queue_drop::bounded_track(track)
                 {
-                    // Only the song-tab projector may mark a row for issuance.
-                    *queue_drop_receipt = Some(String::new());
+                    *table_hint = track_hint::song_table(base, resource, &query.keyword);
+                    if !track.missing
+                        && !track.local
+                        && track.voice_id.is_none()
+                        && !js_truthy(&base["privilege"]["cs"])
+                        && super::queue_drop::bounded_track(track)
+                    {
+                        // Only the song-tab projector may mark a row for issuance.
+                        *queue_drop_receipt = Some(String::new());
+                    }
                 }
                 section.items.push(item);
             }

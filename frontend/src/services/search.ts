@@ -36,6 +36,10 @@ export interface SearchResultQuery {
   correct: boolean;
   channel?: SearchChannel;
 }
+export interface SearchSongTableHint {
+  aliasParts?: readonly SearchTextPart[];
+  lyricParts?: readonly { text: string; highlight: boolean }[];
+}
 export type SearchTrackHint =
   | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
   | { kind: 'alias'; text: string };
@@ -66,6 +70,7 @@ export type SearchItem =
       limitedFree?: boolean;
       qualityBadge?: SearchQualityBadge;
       hint?: SearchTrackHint;
+      tableHint?: SearchSongTableHint;
       explicit?: boolean;
       originalRecording?: boolean;
       reasons?: SearchReasonTag[];

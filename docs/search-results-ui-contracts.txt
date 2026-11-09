@@ -630,3 +630,31 @@ Cumulus 仅在已登录的声音分类及综合页 search_block_voice 的当前�
 所选队列项和队列修订在六个状态均不变。搜索读取只在进入/切换结果时增长，未发
 单集详情或播放授权请求；没有真实账号、外网或远端写入。Linux 初始化后数字 locale
 为 C，字符和消息 locale 保留 en_US.UTF-8。未在 Windows WebView2 执行这组探针。
+
+Dedicated song title matches (PC 3.1.42.205594)
+------------------------------------------------
+M/15.Un:2183–2216 requests /api/search/song/list/page and spreads each
+resource, then baseInfo.simpleSongData, then explicitly assigns lyrics from
+the original resource.extInfo.lyrics. M/21:537–602 merges newSongExt and
+extInfo with extInfo winning per field, selects alia || ala for alias, and
+keeps lyrics || lyric. M/352:862–945 uses M/607 for the dedicated song table.
+M/607:69–114 renders a truthy songTag.songAlias + a nonempty alias array via
+M/87:32–54 (no parentheses); M/123.f picks the first matching alias, or
+displays the first alias without highlights on a miss. The tag itself and
+transNames are not the displayed alias. M/555:14–40 and M/123.c use the
+server's lyric range offsets in UTF-16. Alias and lyric can appear together
+in the same title cell, in that order. Neither depends on search-result t1;
+only the alternative algorithm tag branch does.
+
+The existing signed Songs request now returns optional plain tableHint spans
+for each exact result row, separate from the comprehensive hint, queue
+metadata and the 歌词 category. Cumulus does not pass raw tag or lyric
+objects into the WebView. Bounded aliases and lyric ranges are validated
+independently; malformed spans, including split surrogate pairs, are not
+rendered. The existing bounded virtual table adds space only to rows with
+hints; Cumulus calculates those heights from the number of displayed
+lines while official M/352 uses dynamic row measurement. The guest projection and
+comprehensive algorithm tags are unchanged. No extra request is required.
+The synthetic `--song-waterfall` desktop proof checks initial/late-row
+highlighting, malformed input, compact layout and unchanged cursor/queue
+behavior across retry and numbered fallback.
