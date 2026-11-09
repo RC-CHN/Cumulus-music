@@ -127,12 +127,7 @@ pub(crate) async fn read_for(
                 .podcast_resume_observation_revision()
                 .ok()
                 .flatten()
-                .and_then(|credentials| {
-                    session
-                        .podcast_resume
-                        .issue()
-                        .map(|sequence| (credentials, sequence))
-                });
+                .zip(session.podcast_resume.issue());
             let enabled = PodcastApi::new(api.clone())
                 .resume_enabled(&json!(id))
                 .await?;

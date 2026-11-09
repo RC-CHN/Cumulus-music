@@ -348,11 +348,13 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
 - 原生收集已有详情、实际续播和变更核对读取的同账号/同 API/同凭据结果；只存内存
   且有界，旧请求和旧凭据不能覆盖新结果。分组取同身份上次已证实的 PC 结果，
   不因列表进入或翻页请求分组、不逐书读设置、不写账号。进入或翻页时只屏蔽呈现
-  DTO 的百分比/已完读，原始快照、章节位置、权利和队列不变。已挂载的列表不会
-  为后台变化额外轮询；下次读本地分页或重新进入时重新投影。
+  DTO 的百分比/已完读，原始快照、章节位置、权利和队列不变。既有详情/播放在非 t1
+  也可能读设置，本批不修改这些请求或续播行为，只在 t1 消费明确的 Off。已挂载的
+  列表不会为后台变化额外轮询；下次读本地分页或重新进入时重新投影。
 - 核对：core/tests/pc_experiment_transport/listened_books_resume.rs 使用真实原生
-  MusicHttpClient 签名和密闭 HTTP，覆盖未知/t1/c、有效 Off/On、回复乱序和凭据/账号
-  切换，严格比对请求。实际桌面验收入口为 catalog_smoke.py --listened-books-resume，
+  MusicHttpClient 签名和密闭 HTTP，覆盖未知/t1/c、有效 Off/On、凭据旋转、URL
+  Cookie 范围冲突和账号切换，严格比对请求；独立原生单测核对回包乱序。
+  实际桌面验收入口为 catalog_smoke.py --listened-books-resume，
   合成账号、精确原生 EAPI 分组、GTK WebView 与 libmpv null 输出，不是实际账号或声卡验证。
 
 按本机最近章节续听的 Linux 桌面验收：
