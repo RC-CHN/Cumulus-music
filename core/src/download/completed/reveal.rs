@@ -81,7 +81,7 @@ impl CompletedDownloads {
         let token = self.token()?.ok_or(Error::StaleResponse)?;
         let record = self.reveal_publication(&token, id)?;
         let facts = fs::recorded_facts(&record.path, record.integrity.clone())?;
-        verify_bytes(&record.path, &record.integrity, &facts)?;
+        verify_reveal_bytes(&record.path, &record.integrity, &facts)?;
         let reveal = DownloadFileReveal {
             downloads: self.clone(),
             token,
@@ -108,7 +108,11 @@ fn check_shape(metadata: &Metadata) -> Result<()> {
     Ok(())
 }
 
-fn verify_bytes(path: &Path, expected: &FileIntegrity, facts: &fs::Facts) -> Result<()> {
+pub(crate) fn verify_reveal_bytes(
+    path: &Path,
+    expected: &FileIntegrity,
+    facts: &fs::Facts,
+) -> Result<()> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]

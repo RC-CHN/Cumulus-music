@@ -310,8 +310,8 @@
         taskId: id,
       });
       assert(
-        value.verified && value.osLauncherInjected,
-        "native source directory validation",
+        value.verified && value.leafVerified && value.osLauncherInjected,
+        "native task source file validation",
       );
       directoryChecks++;
     };

@@ -67,8 +67,13 @@ Rust持久化与恢复
   原任务；重置Encoding并保留deadline，再启动已有worker。只查询已知song ID，
   成功后走既有publish+完整列表回读。无需再次读取已删除的源文件。ResumeAll和
   普通Resume不能将此状态重置为重新check/上传。仍遵守官方容量满保护。
-- 文件目录由原生按当前账号和原任务ID重查原文件、大小、内容完整性和常规祖先路径。
-  前端DTO不含本机路径/授权URL；桌面只调用共享file_manager打开已验证目录。
+- 官方 M622:3463–3490 将上传任务的 filename 交给 viewFileLocation，
+  M3085:3160–3214 调用 revealInFileExplorer；M4:13798–13806 默认调用 os.shellExplor，
+  参数是源文件本身。正式 IPC 只接账号代次和任务 ID，Rust 在 worker 中按任务记录
+  校验路径、大小与 SHA-256，并核对文件和父目录身份。交给系统前再次校验任务、文件、
+  父目录和账号代次。Windows 请求 Explorer 选中文件；Linux 调用 FileManager1.ShowItems，
+  仅在选中接口确定不可用时回退到打开同一父目录。前端 DTO 不接触本机路径或授权 URL；
+  此动作只处理上传任务的原音频，不发业务请求或修改文件。
 
 类型化命令、IPC和真实接口
 - CoreClient.cloudUploadSelection -> cloud_upload_selection(epoch,history)：完整本地
@@ -88,13 +93,14 @@ Rust持久化与恢复
 测试和证据入口
 - core/tests/cloud_scheduler_removal.rs：等待任务、在途NOS、未知分配、隐藏事务失败、
   完成历史清除，均核对源文件/远端资源保留及不重放。
-- core/tests/client_cloud/tasks.rs：205任务完整范围/确认后新任务、待传/历史隔离、
-  目录完整性/账号边界、源文件消失后的转码重查不重复check/alloc/metadata。
+- core/tests/client_cloud/tasks.rs：205任务完整范围/确认后新任务、待传/历史隔离；
+  原音频收据核对确切文件、同字节替换、内容变化、消失、旧账号代次和 DTO 路径隔离；
+  源文件消失后的转码重查不重复 check/alloc/metadata。
 - frontend/tests/cloud-tasks-state.test.ts：官方菜单向量、附件真实进度、分类查询、
   捕获范围、丢回执只读、部分重试、5000分块账号隔离、迟到分类反馈。
 - scripts/ci/cloud_task_smoke.py及desktop/examples/cloud_task_probe.js使用实际production
   WebView、IPC、Rust worker/SQLite/ffprobe；服务/对象存储及OS目录启动器显式替换。
-  实际native目录验证仍执行。不是线上服务、物理声卡或Windows实机视觉通过证明。
+  实际原文件验证仍执行。不是线上服务、物理声卡或Windows实机视觉通过证明。
 
 任务恢复状态
 - 上传任务从原生状态读取“取消待确认”“正在保存”“等待核对”“无法核对上传结果”。

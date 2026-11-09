@@ -149,8 +149,7 @@ async fn completed_and_cancelled_records_leave_pending_rows_and_remain_in_separa
     assert!(f.api.calls.lock().unwrap().is_empty());
 }
 #[tokio::test]
-async fn task_directory_requires_recorded_unchanged_source_and_its_account_without_projecting_a_path()
- {
+async fn task_reveal_pins_the_original_file_and_account_without_projecting_a_path() {
     let f = Fixture::new(0);
     let manager = manager(&f);
     let input = f.input();
@@ -159,21 +158,50 @@ async fn task_directory_requires_recorded_unchanged_source_and_its_account_witho
         .await
         .unwrap();
     let client = f.client();
-    let path = client
-        .cloud_upload_directory_path("1", &task.id)
+    let reveal = client
+        .cloud_upload_source_reveal("1", &task.id)
         .await
         .unwrap();
-    assert_eq!(path, input.path.canonicalize().unwrap().parent().unwrap());
+    assert_eq!(reveal.path(), input.path.canonicalize().unwrap());
+    reveal.check_current().unwrap();
     let page = client.cloud_upload_selection("1", false).await.unwrap();
     let public = serde_json::to_string(&page).unwrap();
     assert!(!public.contains(&f.root.path().to_string_lossy().to_string()));
-    std::fs::write(&input.path, b"different input").unwrap();
+
+    // Even a same-content replacement must not win after the host received
+    // the verified reveal. The upload task itself still records path+digest.
+    let original = input.path.with_extension("saved");
+    std::fs::rename(&input.path, &original).unwrap();
+    std::fs::write(&input.path, support::DATA).unwrap();
+    assert!(reveal.check_current().is_err());
+    std::fs::remove_file(&input.path).unwrap();
+    std::fs::rename(original, &input.path).unwrap();
+    let reveal = client
+        .cloud_upload_source_reveal("1", &task.id)
+        .await
+        .unwrap();
+    reveal.check_current().unwrap();
     assert!(
         client
-            .cloud_upload_directory_path("1", &task.id)
+            .cloud_upload_source_reveal("old", &task.id)
             .await
             .is_err()
     );
+    std::fs::write(&input.path, vec![b'x'; support::DATA.len()]).unwrap();
+    assert!(
+        client
+            .cloud_upload_source_reveal("1", &task.id)
+            .await
+            .is_err()
+    );
+    std::fs::write(&input.path, support::DATA).unwrap();
+    let fresh = client
+        .cloud_upload_source_reveal("1", &task.id)
+        .await
+        .unwrap();
+    std::fs::remove_file(&input.path).unwrap();
+    assert!(fresh.check_current().is_err());
+    std::fs::write(&input.path, support::DATA).unwrap();
     assert!(
         client
             .cloud_upload_removals("old", vec![task.id.clone()])
@@ -182,10 +210,25 @@ async fn task_directory_requires_recorded_unchanged_source_and_its_account_witho
     );
     assert!(
         client
-            .cloud_upload_removals("1", vec![task.id.clone(), task.id])
+            .cloud_upload_removals("1", vec![task.id.clone(), task.id.clone()])
             .await
             .is_err()
     );
+    let fresh = client
+        .cloud_upload_source_reveal("1", &task.id)
+        .await
+        .unwrap();
+    f.session
+        .adopt(
+            f.api.clone(),
+            json!({"userId":2}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        fresh.check_current(),
+        Err(cumulus_core::Error::StaleResponse)
+    ));
     assert!(f.api.calls.lock().unwrap().is_empty());
 }
 
