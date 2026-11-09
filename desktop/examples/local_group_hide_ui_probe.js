@@ -29,6 +29,7 @@
     }));
   }
   const menu = () => one('.action-menu[role="menu"]');
+  const hideAction = () => menu()?.querySelector('button[data-menu-key="hide_group"]:not(:disabled)');
   const rows = () => all('.local-tracks tbody tr');
   const ready = () => one('.local-page')?.dataset.localLoading === 'false';
   const bonus = () => all('[data-local-folder-key]').find((node) => /[/\\]Bonus$/.test(node.title));
@@ -41,17 +42,25 @@
     target.focus({ preventScroll: true });
     if (mouse) target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     else key(target, 'F10', true);
-    return wait(() => menu()?.querySelector('button[data-menu-key="hide_group"]:not(:disabled)'),
-      'index-only group menu action');
+    return wait(hideAction, 'index-only group menu action');
   }
-  async function capture(stage, target) {
-    if (!window.__localProof.capture) return;
-    await wait(() => !one('.menu-enter-active,.menu-leave-active'), 'menu transition settled');
-    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+  function visible(target) {
+    if (!target?.isConnected) return false;
     const bounds = target.getBoundingClientRect();
-    assert(bounds.width > 0 && bounds.height > 0 && target.contains(
-      document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
-    'proof control is not visible');
+    return bounds.width > 0 && bounds.height > 0 && target.contains(
+      document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
+  }
+  async function capture(stage, current) {
+    if (!window.__localProof.capture) return;
+    const transitioning = () => one('.menu-enter-active,.menu-leave-active');
+    await wait(async () => {
+      const target = current();
+      if (transitioning() || !visible(target)) return false;
+      // A completed list read can still replace the group button on the next
+      // render. Require the current, unobstructed control across both frames.
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      return current() === target && !transitioning() && visible(target);
+    }, `${stage}: proof control did not become visible`);
     await emit(stage);
     await wait(() => window.__folderCaptureAck === stage, 'screenshot acknowledgement');
   }
@@ -102,7 +111,7 @@
     const first = await context(filteredBonus, true);
     assert(first.textContent.trim() === '从列表中删除' &&
       !button('从本地磁盘删除', menu()), 'physical deletion is not offered');
-    await capture('ux_01_group_hide_menu', first);
+    await capture('ux_01_group_hide_menu', hideAction);
     key(document.activeElement, 'Escape');
     await wait(() => !menu() && document.activeElement === bonus(), 'escape restores anchor');
     assert((await nativePage()).revision === initial.revision, 'dismissal is read-only');
@@ -115,7 +124,7 @@
     assert(hidden.total === 5 && hidden.revision !== initial.revision &&
       !hidden.tracks.some((row) => [ids[0], ids[1]].includes(row.track.id)) &&
       hidden.tracks.some((row) => row.track.id === ids[2]), 'full subtree hidden, similar-prefix neighbor remains');
-    await capture('ux_02_group_hidden', allGroups());
+    await capture('ux_02_group_hidden', allGroups);
     click(button('清空本地搜索'));
     await wait(() => ready() && rows().length === 5, 'search clears without restoring hidden group');
     click(button('重新扫描'));
@@ -126,7 +135,7 @@
     assert(after.state === 'paused' && after.playId === before.playId && after.entryId === before.entryId &&
       after.queueRevision === before.queueRevision && Math.abs(after.position - before.position) < 0.05,
     'native decoder, queue and paused clock preserved');
-    await capture('ux_03_group_restored', bonus());
+    await capture('ux_03_group_restored', bonus);
     await emit('complete', { ok: true, counts: [initial.total, hidden.total, restored.total],
       stablePausedDecoder: true, similarPrefixNeighborRetained: true, realMusicRequests: 0 });
   } catch (error) {
