@@ -15,8 +15,6 @@ use crate::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-const RESUME_EXPERIMENT: &str = "Podcast_ResumePlaySwitch";
-
 fn episode_progress(episode: &Episode) -> f64 {
     let record = &episode.raw["djPlayRecordVo"];
     let location = record["listenLocation"].as_f64().unwrap_or(0.0);
@@ -41,6 +39,7 @@ pub(super) struct RadioPlaybackTarget {
 pub(super) enum RadioPlaybackStart {
     Overlay { select_checkpoint: bool },
     Table { mode: crate::playback::PlaybackMode },
+    QueueNext,
 }
 
 pub(super) fn same_radio_transport(
@@ -207,18 +206,18 @@ impl MusicClient {
             .verified_pc_experiment_revision()?
             .as_deref()
             .map(|revision| {
-                self.pc_experiments
-                    .observed_group(token, api, revision, RESUME_EXPERIMENT)
+                self.pc_experiments.observed_group(
+                    token,
+                    api,
+                    revision,
+                    crate::podcast::resume::EXPERIMENT,
+                )
             })
             .transpose()?
             .flatten();
         let read_resume = |radio_id: String| async move {
-            let setting = self
-                .session
-                .run_for(token, |api, _| async move {
-                    PodcastApi::new(api).resume_enabled(&json!(radio_id)).await
-                })
-                .await;
+            let setting =
+                crate::podcast::resume::read_for(&self.session, token, &json!(radio_id)).await;
             match setting {
                 // The original setting reader returns null on failure; an
                 // actual identity or authentication change is never a default.
@@ -248,7 +247,7 @@ impl MusicClient {
                 policy,
                 RadioPlaybackStart::Overlay {
                     select_checkpoint: false
-                }
+                } | RadioPlaybackStart::QueueNext
             ) {
             let store = self.session.persistent_store()?;
             self.session.with_token(token, |owner| {
@@ -258,6 +257,7 @@ impl MusicClient {
             None
         };
         let table = matches!(policy, RadioPlaybackStart::Table { .. });
+        let queue_next = matches!(policy, RadioPlaybackStart::QueueNext);
         if table {
             episodes.truncate(super::queue_playlist::QUEUE_LIMIT);
         }
@@ -286,13 +286,14 @@ impl MusicClient {
             (None, RadioPlaybackStart::Table { .. }) => episodes
                 .iter()
                 .position(|voice| voice.raw["grayDisplay"] != true),
+            (None, RadioPlaybackStart::QueueNext) => None,
             (None, _) => Some(0),
         };
         let mut resources = Vec::with_capacity(episodes.len());
         let mut start = None;
         for (index, mut voice) in episodes.drain(..).enumerate() {
             guard.check()?;
-            if table && voice.raw["grayDisplay"] == true {
+            if (table || queue_next) && voice.raw["grayDisplay"] == true {
                 if Some(index) == selected {
                     return Err(Error::State("selected podcast episode is unavailable"));
                 }

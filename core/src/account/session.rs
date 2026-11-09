@@ -119,6 +119,7 @@ pub struct AccountSession {
     state: Mutex<SessionState>,
     store: Option<Arc<StateStore>>,
     policy: policy::PolicyHost,
+    pub(crate) podcast_resume: crate::podcast::resume::Observations,
     pub(super) legacy_renewal_running: std::sync::atomic::AtomicBool,
 }
 
@@ -155,6 +156,7 @@ impl AccountSession {
             }),
             store,
             policy: Default::default(),
+            podcast_resume: Default::default(),
             legacy_renewal_running: Default::default(),
         }
     }

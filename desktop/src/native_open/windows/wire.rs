@@ -16,6 +16,7 @@ impl fmt::Display for OversizedHeader {
 }
 impl std::error::Error for OversizedHeader {}
 
+#[allow(dead_code, reason = "exercised by the standalone Windows lab")]
 pub fn is_oversized(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::InvalidData
         && error

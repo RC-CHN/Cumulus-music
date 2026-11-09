@@ -438,3 +438,23 @@ test('overlay visibility refresh retains loaded controls while its read is pendi
   await turn();
   model.dispose();
 });
+
+test('a held clear preparation cannot restore a previous download visit', async () => {
+  const pending = deferred<import('../src/services/downloads.ts').DownloadClearPlan>();
+  const discarded: [string, string][] = [];
+  const model = useDownloads({
+    downloads: async (epoch) => state(epoch),
+    downloadClearPrepare: async () => pending.promise,
+    downloadClearDiscard: async (epoch, receipt) => {
+      discarded.push([epoch, receipt]);
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  model.enterVisit({}, { tab: 'active' });
+  const old = model.prepareClear();
+  model.enterVisit({}, { tab: 'active' });
+  pending.resolve({ epoch: '1', receipt: 'prior-visit', count: 2 });
+  assert.equal(await old, undefined);
+  assert.deepEqual(discarded, [['1', 'prior-visit']]);
+  model.dispose();
+});

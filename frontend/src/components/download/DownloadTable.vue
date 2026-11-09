@@ -6,7 +6,12 @@ import type {
   DownloadSort,
   DownloadControl,
 } from '../../services/downloads';
-import { bytesLabel, downloadPlaybackReady, downloadStatus } from '../../services/downloads';
+import {
+  bytesLabel,
+  downloadPlaybackReady,
+  downloadProgressStatus,
+  downloadStatus,
+} from '../../services/downloads';
 import { downloadDate, downloadSection, downloadTableColumns } from '../../services/downloadPage';
 import { useVirtualRows } from '../../composables/useVirtualRows';
 import DownloadTrackTitle from './DownloadTrackTitle.vue';
@@ -23,6 +28,7 @@ const props = defineProps<{
   total: number;
   query: DownloadQuery;
   locked: boolean;
+  rateCurrent: boolean;
   playable: boolean;
   queueable?: boolean;
   currentTaskId?: string;
@@ -273,9 +279,7 @@ async function key(event: KeyboardEvent, index: number) {
               max="1"
               :aria-label="`${task.track.name} 下载进度`"
             /><span class="download-progress-status">{{
-              task.status === 'downloading' && task.progress !== null
-                ? `${Math.round(task.progress * 100)}%`
-                : downloadStatus(task)
+              downloadProgressStatus(task, rateCurrent)
             }}</span></template
           >
         </div>

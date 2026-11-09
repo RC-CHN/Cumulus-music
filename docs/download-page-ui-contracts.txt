@@ -183,6 +183,25 @@ Repair 工作任务；不发起重新下载音频，也不会在文件移动/删
   返回走全局历史，不继承播客最近播放页的内部返回标志；使用既有下载页回退
   锚点还原同一行的副标题焦点。批量选择页仅展示文字。
   不把本批称为完整已下载声音菜单、活动传输行或分享恢复。
+
+正在下载的传输速度（官方 3.1.42.205594）
+
+- `DownloadingTrackViewer.tsx:254–262` 对歌曲、节目和 MV 使用同一进度列。
+  `DownloadProgressCell.tsx:437–485` 仅在 `OfflineState.start` 显示 `formatSpeed(speed)`；
+  其余状态显示状态或失败原因。M754:800–847,890 从原生回调按任务接收 speed，
+  忽略已暂停条目，在非最终 type=0 时更新，完成时清零。M32:128–131 使用十进制
+  B/s、KB/s 和 MB/s：KB/s 先保留两位再取整数，MB/s 保留一位。
+- Rust 在响应已核对并实际写入本次媒体主体后采样，最多按 1 秒窗口更新；开流时或
+  本次样本不足 250ms 显示零，连续 2 秒无字节也归零。采样用单调时钟，不计已续传
+  的旧字节，不保存速率或额外写数据库。官方原生采样算法未恢复，不宣称速率值逐点一致。
+- `DownloadsView.tasks[].speedBytesPerSecond` 是当前账号调度器的可选整数。无本次
+  活动主体、暂停／取消已请求、迁移、换账号、失败、校验或完成时不返回速率。原列表
+  轮询读取这个字段；读取失败保留状态并不继续显示旧速率。进度条仍按现有实际字节
+  比例绘制；权限、下载并发、续传、完整性和文件发布规则不变。
+- `scripts/ci/download_speed_smoke.py` 在封闭 Linux WebKitGTK 验证七态：初始零、
+  正速率、停滞零、请求暂停、已暂停、续传初始零、完成；保留七张截图。原生拒绝暂停
+  后才返回的 2,048 字节，从已保存的 20,480 字节发起 206 续传，最终发布的合成 FLAC
+  与夹具 SHA-256 相同。持久化记录无速率，无真实音乐或账号写入；未验证 Windows。
 - 定向 Rust 核对见 client_downloads::downloaded_voice_header_comes_from_native_task_origin_not_raw_song_metadata；
   Linux 隔离实窗入口 scripts/ci/download_voice_podcast_smoke.py，核对纯文字、无效归属、
   公开大整数 ID、真实回退焦点，以及同一暂停下载文件保持原时钟和队列。

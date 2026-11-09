@@ -76,7 +76,7 @@ fn creator_value(voice: &Value) -> &Value {
     }
 }
 
-fn creator(voice: &Value) -> Option<PlayerVoiceCreator> {
+pub(super) fn creator(voice: &Value) -> Option<PlayerVoiceCreator> {
     // A raw id alone does not prove a user profile link.
     let value = creator_value(voice);
     let name = ["nickname", "nickName", "userName"]
@@ -160,7 +160,7 @@ fn play_count(voice: &Value) -> Option<PlayerVoicePlayCount> {
     }
 }
 
-fn radio_id(voice: &Value) -> Option<String> {
+pub(super) fn radio_id(voice: &Value) -> Option<String> {
     // M/21 W constructs audio from radio. The name-only belongPodcastName
     // fallback is not a route or subscription authority.
     let radio = voice["radio"].as_object()?;
@@ -178,7 +178,7 @@ fn owns_episode(voice: &Value, owner: Option<&str>) -> bool {
         .is_some_and(|(owner, creator)| owner == creator)
 }
 
-fn radio(voice: &Value, owner: Option<&str>) -> Option<PlayerVoiceRadio> {
+pub(super) fn radio(voice: &Value, owner: Option<&str>) -> Option<PlayerVoiceRadio> {
     let id = radio_id(voice)?;
     radio_fields(voice, owner, id, &voice["audio"])
 }
@@ -363,7 +363,7 @@ impl MusicClient {
             Ok(())
         };
         let result = PodcastService::new(self.session.clone())?
-            .change_vinyl_subscription_for(token, &target.1, expected, &current)
+            .change_scoped_subscription_for(token, &target.1, expected, &current)
             .await?;
         current()?;
         Ok(result)

@@ -99,7 +99,7 @@ watch(showExact, (show) => {
             emit(
               'select',
               word.keyword,
-              word.label,
+              word.inputLabel ?? word.label,
               group.id === 'recommendations' ? 'rec_query' : undefined,
             )
           "

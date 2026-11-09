@@ -27,6 +27,7 @@ import PlaybackStartup from './settings/PlaybackStartup.vue';
 import PlaybackCache from './settings/PlaybackCache.vue';
 import AudioOutput from './settings/AudioOutput.vue';
 import LoudnessBalance from './settings/LoudnessBalance.vue';
+import InterfaceFont from './settings/InterfaceFont.vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import WindowBehavior from './settings/WindowBehavior.vue';
 import DesktopLyrics from './settings/DesktopLyrics.vue';
@@ -281,6 +282,10 @@ function accept(op: SettingsOperation) {
             动画设置已应用，但暂时无法保存到本机。重新选择可再次保存。
           </p>
         </div>
+      </section>
+      <section class="settings-section" aria-labelledby="settings-general">
+        <h2 id="settings-general">常规</h2>
+        <div class="settings-section-content"><InterfaceFont :epoch="account.epoch" /></div>
       </section>
       <PlaybackStartup :account="account" />
       <QueueClickPreferences :account="account" />

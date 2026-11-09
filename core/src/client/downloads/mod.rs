@@ -1,3 +1,4 @@
+mod clear;
 mod collect;
 mod commands;
 mod comments;
@@ -20,8 +21,8 @@ use crate::{
     storage::StateStore,
 };
 pub use collect::{
-    DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan,
-    DownloadLikedDestination,
+    DownloadBatchCollectPlan, DownloadCollectCreation, DownloadCollectCreationCommand,
+    DownloadCollectPlan, DownloadLikedDestination,
 };
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;
@@ -107,6 +108,8 @@ struct Host {
     worker: Mutex<Option<Worker>>,
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
     collect: Mutex<Option<collect::Visit>>,
+    clear: Mutex<Option<clear::ClearVisit>>,
+    collect_prepare: std::sync::atomic::AtomicU64,
 }
 struct Worker {
     token: SessionToken,
@@ -163,6 +166,8 @@ impl DownloadHost {
                 worker: Mutex::new(None),
                 jobs: Mutex::new(HashMap::new()),
                 collect: Mutex::new(None),
+                clear: Mutex::new(None),
+                collect_prepare: std::sync::atomic::AtomicU64::new(0),
             }),
         }
     }
@@ -242,6 +247,15 @@ impl MusicClient {
                 // Do not abort a task in the middle of file recovery.
                 worker.scheduler.stop();
                 worker.notify.notify_one();
+            }
+        }
+        {
+            let mut clear = host.clear.lock().map_err(|_| Error::LockPoisoned)?;
+            if clear
+                .as_ref()
+                .is_some_and(|visit| visit.belongs_to(previous))
+            {
+                *clear = None;
             }
         }
         let jobs = host.jobs.lock().map_err(|_| Error::LockPoisoned)?;

@@ -33,6 +33,7 @@ mod fm;
 mod fm_discovery;
 mod focus;
 mod history;
+mod interface_font;
 mod likes;
 mod local;
 mod login_device_removal;
@@ -136,6 +137,7 @@ pub struct MusicClient {
     podcast_subscription_recommendations: podcast::PodcastSubscriptionRecommendationHost,
     listened_books: history::ListenedBooksHost,
     history_sync: Arc<history::HistorySyncHost>,
+    history_radio_chapters: history::RadioChaptersHost,
     audiobook_skip: podcast::AudiobookSkipHost,
     community: community::CommunityHost,
     community_topics: community::topic::TopicHost,
@@ -155,6 +157,7 @@ pub struct MusicClient {
     follow_latest: catalog::FollowLatestHost,
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_home: style_home::StyleHome,
+    home_recall: Arc<discovery_home::recall::Host>,
     seeded_style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     pc_experiments: Arc<pc_experiments::PcExperimentHost>,
@@ -285,6 +288,7 @@ impl MusicClient {
         let pc_experiments = Arc::new(pc_experiments::PcExperimentHost::default());
         let message_poll = Arc::new(messages::PcMessagePollHost::default());
         let together = together::TogetherHost::default();
+        let room_detachment = together.detachment();
         let skip = player::OrdinarySkipHost::new(
             session.clone(),
             message_poll.clone(),
@@ -310,6 +314,7 @@ impl MusicClient {
             podcast_subscription_recommendations: Default::default(),
             listened_books: Default::default(),
             history_sync: Default::default(),
+            history_radio_chapters: Default::default(),
             audiobook_skip: Default::default(),
             playlist_square: Default::default(),
             community: Default::default(),
@@ -329,6 +334,7 @@ impl MusicClient {
             follow_latest: Default::default(),
             daily_recommendations: Default::default(),
             style_home: Default::default(),
+            home_recall: Default::default(),
             seeded_style_recommendations: Default::default(),
             style_recommendations: Default::default(),
             pc_experiments: pc_experiments.clone(),
@@ -352,6 +358,7 @@ impl MusicClient {
                 output.clone(),
                 skip,
                 pc_experiments.song_speed(),
+                room_detachment,
             ),
             mv: mv::MvHost::new(session.clone(), focus.clone(), output.clone()),
             output,

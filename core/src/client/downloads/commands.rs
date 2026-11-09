@@ -244,6 +244,9 @@ impl MusicClient {
                     ..Default::default()
                 })
             }
+            DownloadCommand::ConfirmClear { receipt } => {
+                clear::confirm(host, context, receipt).await
+            }
             DownloadCommand::StopOperation { operation_id } => {
                 host.stop(&context, &operation_id)?;
                 Ok(DownloadResult {
@@ -309,8 +312,16 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
     };
     match command {
         DownloadCommand::All { action } => {
-            if matches!(action, TaskControl::Repair) {
-                return Err(Error::InvalidInput("repair requires explicit tasks"));
+            match action {
+                TaskControl::Pause | TaskControl::Resume => (),
+                TaskControl::Cancel => {
+                    return Err(Error::InvalidInput(
+                        "bulk cancellation requires a prepared confirmation",
+                    ));
+                }
+                TaskControl::Repair => {
+                    return Err(Error::InvalidInput("repair requires explicit tasks"));
+                }
             }
             let ids: Vec<String> = context
                 .service
@@ -328,11 +339,7 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                             | DownloadStatus::Downloading
                             | DownloadStatus::Processing
                     ),
-                    TaskControl::Cancel => !matches!(
-                        t.status,
-                        DownloadStatus::Complete | DownloadStatus::Cancelled
-                    ),
-                    TaskControl::Repair => false,
+                    TaskControl::Cancel | TaskControl::Repair => false,
                 })
                 .map(|t| t.id)
                 .collect();

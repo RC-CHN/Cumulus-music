@@ -367,6 +367,10 @@ impl MpvEngine {
             MediaInput::NativeFile { .. } | MediaInput::SearchPublication(_) => {
                 Err(Error::InvalidInput("native local file must be pinned"))
             }
+            #[cfg(windows)]
+            MediaInput::WindowsNativeFile(_) => Err(Error::InvalidInput(
+                "rooted native local file must be pinned",
+            )),
             MediaInput::File(path) => {
                 let path = std::fs::canonicalize(path)?;
                 if !path.is_file() {
@@ -582,6 +586,26 @@ impl MpvEngine {
         request.validate()?;
         cancel.check()?;
         let source = match request.source {
+            #[cfg(windows)]
+            MediaInput::WindowsNativeFile(file) => {
+                if request.end.is_some() {
+                    return Err(Error::InvalidInput(
+                        "native local file cannot have a segment",
+                    ));
+                }
+                let format = file.format();
+                let loaded =
+                    self.load_pinned(Box::new(file.reader()), format, cancel.clone(), cancel)?;
+                if format == "mp3" && loaded.codec.as_deref() != Some("mp3") {
+                    self.stop()?;
+                    return Err(Error::Response("native rooted source is not MP3"));
+                }
+                cancel.check()?;
+                if request.start > 0.0 {
+                    self.seek(request.start)?;
+                }
+                return Ok(loaded);
+            }
             MediaInput::NativeFile { path, fingerprint } => {
                 if request.end.is_some() {
                     return Err(Error::InvalidInput(
@@ -1010,6 +1034,20 @@ impl AudioEngine for MpvEngine {
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
         MpvEngine::load_pinned_audio(self, file, authority, cancel)
+    }
+
+    fn load_pinned_audio_with_local_equalizer(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let result = self.load_publication_equalizer(file, authority, settings, cancel);
+        if result.is_err() {
+            let _ = self.stop();
+        }
+        result
     }
 
     fn load_pinned_ncm(

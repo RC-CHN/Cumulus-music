@@ -1,6 +1,6 @@
-use super::{Inner, OWNER, ROOTS, WatchEvent, WatchRoot, WatchStatus};
+use super::{Inner, OWNER, ROOTS, WatchEvent, WatchRoot, WatchStatus, selection};
 use crate::{Error, Result, library::identity::file_id};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 impl Inner {
     pub(super) fn roots(&self) -> Result<Vec<WatchRoot>> {
@@ -23,7 +23,7 @@ impl Inner {
         }
         Ok(roots)
     }
-    pub(super) fn watch(&self, path: &Path) -> Result<WatchRoot> {
+    pub(super) fn checked_path(&self, path: &Path) -> Result<(PathBuf, String)> {
         let path = path.canonicalize()?;
         if !path.is_dir() || path.starts_with(self.store.directory().canonicalize()?) {
             return Err(Error::InvalidInput(
@@ -31,11 +31,20 @@ impl Inner {
             ));
         }
         let id = file_id(&path)?;
+        Ok((path, id))
+    }
+    pub(super) fn watch(&self, path: &Path) -> Result<WatchRoot> {
+        let (path, id) = self.checked_path(path)?;
         let record = self.store.transaction(|tx| {
             let old: Option<WatchRoot> = tx
                 .get(OWNER, ROOTS, &id)?
                 .map(serde_json::from_value)
                 .transpose()?;
+            let order = match &old {
+                Some(root) => root.order,
+                None => selection::next_order(&selection::records(tx)?)?,
+            };
+            let deselected = old.as_ref().is_some_and(|root| root.deselected);
             let revision = old
                 .map(|v| v.revision)
                 .unwrap_or(0)
@@ -44,6 +53,9 @@ impl Inner {
             let record = WatchRoot {
                 id: id.clone(),
                 path,
+                order,
+                checked: true,
+                deselected,
                 enabled: true,
                 revision,
                 status: WatchStatus::Pending,

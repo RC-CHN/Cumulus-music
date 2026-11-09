@@ -2,21 +2,23 @@ pub use super::account_binding_qr::AccountBindingQrView;
 pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::community::topic::{CommunityTopic, CommunityTopicAction, CommunityTopicSlice};
 pub use super::downloads::{
-    DownloadCategory, DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan,
-    DownloadCommand, DownloadFailure, DownloadJobView, DownloadLikedDestination,
-    DownloadQualityPreferences, DownloadQuery, DownloadResult, DownloadShareAccess, DownloadSort,
-    DownloadTab, DownloadTaskView, DownloadsView, SongDownloadState, TaskControl,
+    DownloadBatchCollectPlan, DownloadCategory, DownloadClearPlan, DownloadCollectCreation,
+    DownloadCollectCreationCommand, DownloadCollectPlan, DownloadCommand, DownloadFailure,
+    DownloadJobView, DownloadLikedDestination, DownloadQualityPreferences, DownloadQuery,
+    DownloadResult, DownloadShareAccess, DownloadSort, DownloadTab, DownloadTaskView,
+    DownloadsView, SongDownloadState, TaskControl,
 };
 pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};
 pub use super::history::{
     HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage, HistoryPlaylistCard,
-    HistoryResource, ListenedBooksPage, ListenedBooksQuery,
+    HistoryRadioCollection, HistoryResource, ListenedBooksPage, ListenedBooksQuery,
 };
 pub use super::local::{
-    LocalCollectPlan, LocalCollectResult, LocalCollectSelection, LocalCommand, LocalGroup,
-    LocalGroupEntry, LocalLinkView, LocalMatchCommand, LocalMatchView, LocalPageView, LocalQuery,
-    LocalRootView, LocalSort, LocalTrackReference, LocalTrackView,
+    DirectoryChoice, DirectorySelection, LocalCollectPlan, LocalCollectResult,
+    LocalCollectSelection, LocalCommand, LocalGroup, LocalGroupEntry, LocalLinkView,
+    LocalMatchCommand, LocalMatchView, LocalPageView, LocalQuery, LocalRootView, LocalSort,
+    LocalTrackReference, LocalTrackView,
 };
 pub use super::login_device_removal::{
     LoginDeviceRemovalCommand, LoginDeviceRemovalPhase, LoginDeviceRemovalView,
@@ -40,20 +42,20 @@ pub use super::pc_experiments::PcPresentationView;
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
-    PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount,
-    PlayerVoiceRadio, PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction,
-    QualityChoiceView, QualityDetailsView, QualityMenuPresentation, QualityTrialCommand,
-    QualityTrialOutcome, QualityTrialView, QueueCatalogMenu, QueueClearContext,
-    QueueClickPreferencesCommand, QueueClickPreferencesView, QueueCollectionView, QueueEdit,
-    QueueMoreTipAction, QueueTrack, QueueView, SearchPodcastRowGesture, SearchResultPlayback,
-    SongRowSelection, StartupPreferencesCommand, StartupPreferencesView, VoiceSongAction,
-    VoiceSongCollectCreation, VoiceSongCollectPlan, VoiceSongCollectResult,
-    VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
-    VoiceSongDownloadPlan, VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision,
-    VoiceSongGroupDownloadHint, VoiceSongGroupDownloadPlan, VoiceSongGroupPlaylistCreation,
-    VoiceSongGroupPlaylistResult, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
-    VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability, VoiceSongSelectionAction,
-    VoiceSongSelectionKind,
+    PlayerPodcastResumeAction, PlayerPodcastResumeView, PlayerResourceKind, PlayerView,
+    PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount, PlayerVoiceRadio,
+    PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction, QualityChoiceView,
+    QualityDetailsView, QualityMenuPresentation, QualityTrialCommand, QualityTrialOutcome,
+    QualityTrialView, QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand,
+    QueueClickPreferencesView, QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack,
+    QueueView, QueueVoiceMenu, SearchPodcastRowGesture, SearchResultPlayback, SongRowSelection,
+    StartupPreferencesCommand, StartupPreferencesView, VoiceSongAction, VoiceSongCollectCreation,
+    VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongDownloadCreation,
+    VoiceSongDownloadDecision, VoiceSongDownloadPicker, VoiceSongDownloadPlan,
+    VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint,
+    VoiceSongGroupDownloadPlan, VoiceSongGroupPlaylistCreation, VoiceSongGroupPlaylistResult,
+    VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult,
+    VoiceSongRowAvailability, VoiceSongSelectionAction, VoiceSongSelectionKind,
 };
 pub use super::player::{
     VinylVoiceDetailTarget, VinylVoiceDetailView, VinylVoiceRecommendationCard,
@@ -111,7 +113,7 @@ pub use super::search::{
     ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,
     SearchItem, SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
     SearchPrivilegePatch, SearchQualityBadge, SearchReasonPage, SearchResultQuery,
-    SearchResultView, SearchSection,
+    SearchResultView, SearchSection, SearchVoiceMenu, SearchVoiceMenuTarget,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

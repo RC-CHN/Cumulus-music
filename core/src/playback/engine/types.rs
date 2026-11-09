@@ -17,6 +17,9 @@ pub enum MediaInput {
         path: PathBuf,
         fingerprint: crate::library::identity::FileFingerprint,
     },
+    /// An explicitly admitted fixed local Windows file, never opened by path.
+    #[cfg(windows)]
+    WindowsNativeFile(Arc<crate::library::WindowsOpenedAudio>),
     /// Internal publication receipt. A generic path/URL load must reject it.
     SearchPublication(Arc<crate::download::offline::SearchPublication>),
     Url(MediaUrl),

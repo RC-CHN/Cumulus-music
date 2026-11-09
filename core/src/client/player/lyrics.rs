@@ -141,6 +141,16 @@ impl MusicClient {
             .selected
             .as_ref()
             .ok_or(Error::State("no selected song"))?;
+        #[cfg(windows)]
+        if selected.resource["native_open_file"]
+            .get("held_id")
+            .is_some()
+        {
+            // The rooted audio grant contains no path for adjacent lyrics.
+            return Err(Error::State(
+                "rooted native audio does not include a lyric source",
+            ));
+        }
         let native = if let Some(value) = selected.resource.get("native_open_file") {
             let file: OpenedFile = serde_json::from_value(value.clone())?;
             let local: LocalResource = serde_json::from_value(selected.resource.clone())?;

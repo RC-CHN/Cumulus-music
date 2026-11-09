@@ -81,6 +81,9 @@ impl Inner {
                 }
                 match scan {
                     Ok(value) => {
+                        if !value.root_missing {
+                            root.deselected = false;
+                        }
                         root.status = WatchStatus::Ready;
                         root.last_scan_ms = Some(now);
                         root.result = Some(value);

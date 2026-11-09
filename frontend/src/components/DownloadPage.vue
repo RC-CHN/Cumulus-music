@@ -223,6 +223,7 @@ function play(task?: DownloadTask) {
           :total="view?.total ?? 0"
           :query="query"
           :locked="locked"
+          :rate-current="!readError"
           :playable="playable && !locked && !preparing"
           :queueable="queueable && !locked"
           :current-task-id="currentTaskId"

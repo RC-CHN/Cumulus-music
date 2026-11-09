@@ -11,7 +11,7 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use tokio::sync::Notify;
 
@@ -28,6 +28,7 @@ struct Transport {
     lost: AtomicBool,
     hold: AtomicBool,
     changed: AtomicBool,
+    detail_special: AtomicU8,
     entered: Notify,
     release: Notify,
 }
@@ -49,13 +50,13 @@ impl Api for Transport {
                         json!({"uid":"1","offset":0,"limit":10,"sortType":"default"})
                     );
                     Ok(
-                        json!({"code":200,"playlist":[list("81",1,0),list("82",2,0),list("83",1,5)],
+                        json!({"code":200,"playlist":[list("81",1,0),list("82",2,0),list("83",1,5),list("84",1,6)],
                               "more":false}),
                     )
                 }
                 DETAIL => {
                     assert_eq!(payload, json!({"id":"81","n":100000,"s":0}));
-                    let mut row = list("81", 1, 0);
+                    let mut row = list("81", 1, self.detail_special.load(Ordering::Acquire));
                     if self.changed.load(Ordering::Acquire) {
                         row["creator"]["userId"] = json!(2);
                     }
@@ -137,7 +138,7 @@ async fn choose(f: &Fixture, epoch: &str, id: &str) -> String {
             .iter()
             .map(|p| p.id.as_str())
             .collect::<Vec<_>>(),
-        ["81"]
+        ["81", "84"]
     );
     receipt
 }
@@ -363,3 +364,190 @@ mod liked;
 
 #[path = "download_collection/http.rs"]
 mod http;
+
+fn ordinary_batch_row(f: &Fixture, template: &str, n: u32, privilege: Value) -> String {
+    let id = format!("{:032x}", 2000 + n);
+    let mut row = f
+        .store
+        .get("1", "download_tasks_v1", template)
+        .unwrap()
+        .unwrap();
+    row["id"] = json!(id);
+    row["song_id"] = json!(n.to_string());
+    row["song"] = json!({"id":n,"name":"合成批量下载","privilege":privilege});
+    f.store.put("1", "download_tasks_v1", &id, &row).unwrap();
+    id
+}
+
+async fn batch_destination(f: &Fixture, epoch: &str, receipt: &str) {
+    let page = f
+        .client
+        .download_collect_destinations(epoch, receipt, PlaylistCollectSort::Default, 0)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(
+        page.playlists.into_iter().map(|p| p.id).collect::<Vec<_>>(),
+        ["81"]
+    );
+}
+
+#[tokio::test]
+async fn downloaded_batch_collect_filters_in_order_and_reconciles_one_lost_write() {
+    let f = Fixture::new();
+    let (template, _) = f.completed().await;
+    let zero = ordinary_batch_row(&f, &template, 23, json!({"subPriv":0}));
+    let negative = ordinary_batch_row(&f, &template, 24, json!({"subp":-1}));
+    let positive = ordinary_batch_row(&f, &template, 25, json!({"subp":4}));
+    let missing = ordinary_batch_row(&f, &template, 26, json!({}));
+    let matched = cloud_task(&f, &template, 0, json!({"id":77,"subp":2}));
+    let (api, epoch) = connect(&f);
+    let plan = f
+        .client
+        .download_batch_collect_prepare(
+            &epoch,
+            vec![
+                zero,
+                missing.clone(),
+                negative,
+                matched.clone(),
+                positive.clone(),
+            ],
+        )
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(plan.accepted_task_ids, [missing, matched, positive]);
+    assert!(api.reads.lock().unwrap().is_empty());
+    assert!(
+        f.client
+            .download_collect_liked_destination(&epoch, &plan.receipt)
+            .await
+            .unwrap()
+            .value
+            .is_none()
+    );
+    assert!(
+        f.client
+            .download_collect_creation(
+                &epoch,
+                &plan.receipt,
+                cumulus_core::client::dto::DownloadCollectCreationCommand::Create {
+                    name: "合成不创建".into(),
+                    private_playlist: true,
+                },
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        f.client
+            .download_collect_existing(&epoch, &plan.receipt, "81")
+            .await
+            .is_err()
+    );
+    batch_destination(&f, &epoch, &plan.receipt).await;
+    for rejected in ["82", "83", "84"] {
+        assert!(
+            f.client
+                .download_collect_existing(&epoch, &plan.receipt, rejected)
+                .await
+                .is_err()
+        );
+    }
+    api.detail_special.store(6, Ordering::Release);
+    assert!(
+        f.client
+            .download_collect_existing(&epoch, &plan.receipt, "81")
+            .await
+            .is_err()
+    );
+    assert!(api.writes.lock().unwrap().is_empty());
+    api.detail_special.store(0, Ordering::Release);
+    api.lost.store(true, Ordering::Release);
+    let result = f
+        .client
+        .download_collect_existing(&epoch, &plan.receipt, "81")
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(result.phase, PlaylistPhase::Uncertain);
+    assert_eq!(
+        f.client
+            .download_collect_existing(&epoch, &plan.receipt, "81")
+            .await
+            .unwrap()
+            .value
+            .operation_id,
+        result.operation_id
+    );
+    f.client
+        .download_collect_cancel(&epoch, &plan.receipt)
+        .unwrap();
+    api.saved
+        .lock()
+        .unwrap()
+        .extend(api.pending.lock().unwrap().drain(..));
+    let recovered = f
+        .client
+        .reconcile_playlist(&epoch, &result.operation_id)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(recovered.phase, PlaylistPhase::Confirmed);
+    assert_eq!(recovered.observed.unwrap().track_ids, ["26", "77", "25"]);
+    assert_eq!(
+        *api.writes.lock().unwrap(),
+        [json!({"pid":"81","trackIds":"[\"26\",\"77\",\"25\"]","op":"add"})]
+    );
+}
+
+#[tokio::test]
+async fn downloaded_batch_collect_fallback_is_first_and_even_skipped_rows_fence_dispatch() {
+    let f = Fixture::new();
+    let (template, _) = f.completed().await;
+    let first = ordinary_batch_row(&f, &template, 23, json!({"subp":null}));
+    let zero = ordinary_batch_row(&f, &template, 24, json!({"subPriv":0}));
+    let denied = ordinary_batch_row(&f, &template, 25, json!({"subp":-1}));
+    let private = cloud_task(&f, &template, 2, json!({}));
+    let (api, epoch) = connect(&f);
+    for input in [
+        vec![],
+        vec![denied, zero.clone()],
+        vec![first.clone(), first.clone()],
+        vec![first.clone(), private],
+        vec!["forged catalogue id".into()],
+    ] {
+        assert!(
+            f.client
+                .download_batch_collect_prepare(&epoch, input)
+                .await
+                .is_err()
+        );
+    }
+    let plan = f
+        .client
+        .download_batch_collect_prepare(&epoch, vec![first.clone(), zero.clone()])
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(plan.accepted_task_ids, [first]);
+    batch_destination(&f, &epoch, &plan.receipt).await;
+    api.hold.store(true, Ordering::Release);
+    let (result, ()) = tokio::join!(
+        f.client
+            .download_collect_existing(&epoch, &plan.receipt, "81"),
+        async {
+            tokio::time::timeout(std::time::Duration::from_secs(2), api.entered.notified())
+                .await
+                .unwrap();
+            assert_eq!(
+                ordinary_batch_row(&f, &template, 24, json!({"subPriv":2})),
+                zero
+            );
+            api.release.notify_one();
+        }
+    );
+    assert!(result.is_err());
+    assert!(api.writes.lock().unwrap().is_empty());
+}

@@ -1,6 +1,8 @@
 //! Main/settings and a transparent lyric WebView over one real native PCM/null engine.
 #[path = "support/assets.rs"]
 mod assets;
+#[path = "support/capture_ack.rs"]
+mod capture_ack;
 #[path = "support/desktop_lyric_fixture.rs"]
 mod desktop_lyric_fixture;
 #[allow(dead_code)]
@@ -88,9 +90,13 @@ struct FontProof {
     reads: Mutex<BTreeMap<&'static str, usize>>,
 }
 impl FontProof {
-    fn new() -> Self {
+    fn new(interface_phase: Option<&str>) -> Self {
         Self {
-            mode: Mutex::new("native"),
+            mode: Mutex::new(match interface_phase {
+                Some("reopen") => "interface-missing",
+                Some(_) => "interface",
+                None => "native",
+            }),
             reads: Mutex::new(BTreeMap::new()),
         }
     }
@@ -123,6 +129,21 @@ impl FontProof {
                     aliases: vec![format!("合成字体 {index}")],
                 })
                 .collect())),
+            "interface" | "interface-missing" => Some(Ok([
+                ("华文琥珀", &[][..]),
+                ("Proof Localized Family", &["合成黑体"][..]),
+                ("楷体", &[][..]),
+                ("Proof Latin Only", &[][..]),
+                ("华文隶书", &[][..]),
+                ("仿宋", &[][..]),
+            ]
+            .into_iter()
+            .filter(|(name, _)| mode != "interface-missing" || *name != "楷体")
+            .map(|(name, aliases)| cumulus_desktop::FontCatalogProofFamily {
+                name: name.into(),
+                aliases: aliases.iter().map(|alias| (*alias).into()).collect(),
+            })
+            .collect())),
             _ => unreachable!(),
         }
     }
@@ -135,14 +156,25 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     let reopened = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let fonts = std::env::var_os("CUMULUS_FONT_PROOF").is_some();
+    let interface_font = match std::env::var("CUMULUS_INTERFACE_FONT_PROOF").as_deref() {
+        Ok("first") => Some("first"),
+        Ok("reopen") => Some("reopen"),
+        Ok("reset") => Some("reset"),
+        Err(std::env::VarError::NotPresent) => None,
+        _ => panic!("invalid interface font proof phase"),
+    };
     let font_fallback = std::env::var_os("CUMULUS_FONT_PROOF_FORCE_IPC_FALLBACK").is_some();
     assert!(!font_fallback || fonts);
 
     let embedded = std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some();
     let native_sidecar = std::env::var_os("CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF").is_some();
     let credits = std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some();
+    assert!(
+        interface_font.is_none() || !(reopened || fonts || embedded || native_sidecar || credits),
+        "interface font proof has its own phases"
+    );
     #[cfg(target_os = "linux")]
-    let original_messages = (native_sidecar || credits).then(|| {
+    let original_messages = (native_sidecar || credits || interface_font.is_some()).then(|| {
         // SAFETY: no GTK, runtime or worker has started in this process.
         assert!(!unsafe { libc::setlocale(libc::LC_ALL, c"".as_ptr()) }.is_null());
         assert!(!matches!(
@@ -186,7 +218,7 @@ fn main() {
         .expect("write synthetic filename sidecar");
         path.canonicalize().expect("canonical synthetic audio")
     });
-    let output = root.join(if reopened { "reopen" } else { "first" });
+    let output = root.join(interface_font.unwrap_or(if reopened { "reopen" } else { "first" }));
     fs::create_dir(&output).expect("new proof directory");
     let block = Arc::new(AtomicBool::new(false));
     let mut context = assets::context();
@@ -209,7 +241,7 @@ fn main() {
         block: block.clone(),
     }));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
-        let font_proof = fonts.then(|| Arc::new(FontProof::new()));
+        let font_proof = (fonts || interface_font.is_some()).then(|| Arc::new(FontProof::new(interface_font)));
         if let Some(proof) = &font_proof {
             let proof = proof.clone();
             app.manage(cumulus_desktop::FontCatalogProof::new(move || proof.read()));
@@ -237,7 +269,7 @@ fn main() {
         app.manage(client);
         app.add_capability(r#"{"identifier":"desktop-lyric-proof","windows":["main","desktop-lyrics-*"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
-        app.listen("desktop-lyric-proof", move |event| {
+        app.listen(if interface_font.is_some() {"ux-proof"} else {"desktop-lyric-proof"}, move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let kind=value["kind"].as_str().unwrap_or("");
             let id=value["id"].clone();
@@ -372,6 +404,7 @@ fn main() {
                         let pending=output.join(format!("{stage}.pending"));
                         fs::write(&pending,serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                         fs::rename(pending,output.join(format!("{stage}.json"))).unwrap();
+                        if interface_font.is_some() && !capture_ack::acknowledge(&handle,&output,stage,value["captureHandshake"]==true).await { return; }
                         if stage=="complete" || stage=="failed" { handle.exit(if stage=="complete" {0}else{1}); }
                     });
                 }
@@ -391,6 +424,15 @@ fn main() {
                 include_str!("embedded_lyrics_ui_probe.js")
             } else if std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some() {
                 include_str!("lyric_credit_ui_probe.js")
+            } else if let Some(phase) = interface_font {
+                view.eval(format!("window.__interfaceFontProofPhase={};", json!(phase))).unwrap();
+                let source=include_str!("interface_font_ui_probe.js");
+                if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
+                    view.eval(capture_ack::script(source)).unwrap();
+                } else {
+                    view.eval(source).unwrap();
+                }
+                return;
             } else if fonts {
                 view.eval(format!("window.__fontForceIpcFallback={font_fallback};")).unwrap();
                 include_str!("fonts_ui_probe.js")

@@ -88,6 +88,12 @@ impl MusicClient {
                     "search podcast playback requires a preparation ticket",
                 ))
             }
+            PlaySelection::SearchVoiceMenu { .. } => Err(Error::InvalidInput(
+                "search voice menu playback requires a preparation ticket",
+            )),
+            PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
+                "history chapter playback requires a preparation ticket",
+            )),
             input => self.play_selection_inner(epoch, input, None).await,
         }
     }
@@ -130,6 +136,15 @@ impl MusicClient {
         daily_origin: Option<super::super::daily_notification::PlaybackOrigin>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        if let PlaySelection::SearchVoiceMenu { target } = &input {
+            return self
+                .play_search_voice_menu(
+                    &token,
+                    target,
+                    prepared.as_ref().ok_or(Error::StaleResponse)?,
+                )
+                .await;
+        }
         let (input, zone_detail) = match input {
             PlaySelection::VerticalZonePlaylistDetail {
                 id,
@@ -582,6 +597,32 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
+            PlaySelection::HistoryRadioChapter {
+                history_kind,
+                revision,
+                id,
+            } => {
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (resources, index, source, cancellation) = self
+                    .history_radio_chapter_queue(&token, history_kind, &revision, &id)
+                    .await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::ReplaceListenedBook {
+                            resources,
+                            index,
+                            source,
+                        },
+                        attempt,
+                        lease,
+                        Some(prepared),
+                        Some(cancellation),
+                    )
+                    .await?;
+                self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
             PlaySelection::PodcastSubscriptionRecommendation {
                 receipt,
                 revision,
@@ -957,6 +998,7 @@ impl MusicClient {
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::ListenedBookChapter { .. }
+                    | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::LocalBatch { .. }
                     | PlaySelection::LocalBatchAdd { .. }
@@ -967,6 +1009,7 @@ impl MusicClient {
                     | PlaySelection::SearchArtistCard { .. }
                     | PlaySelection::SearchPodcastCard { .. }
                     | PlaySelection::SearchPodcastRow { .. }
+                    | PlaySelection::SearchVoiceMenu { .. }
                     | PlaySelection::PodcastBrowseVoice { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {
@@ -1053,10 +1096,13 @@ impl MusicClient {
                         let detail = PlaylistApi::new(api).detail(&json!(id)).await?;
                         let ids =
                             super::playlist_batch::selected_ids(&id, &detail, &ids, &revision)?;
-                        let source = super::origin::named(
+                        let mut source = super::origin::named(
                             json!({"kind":"playlist","id":id}),
                             super::origin::resource_name(&detail, &id),
                         );
+                        if let Some(trial) = self.ordinary_playlist_trial(&selection_token, &id, &detail)? {
+                            source["trial_mode"] = json!(trial);
+                        }
                         Ok((ids, 0, quality, source))
                     }
                     PlaySelection::Playlist {
@@ -1106,7 +1152,11 @@ impl MusicClient {
                             json!({"kind":"playlist","id":id,"history_resource":history}),
                             super::origin::resource_name(detail, &id),
                         );
-                        if let Some(trial) = zone_trial {
+                        let trial = match zone_trial {
+                            Some(trial) => Some(trial),
+                            None => self.ordinary_playlist_trial(&selection_token, &id, detail)?,
+                        };
+                        if let Some(trial) = trial {
                             source["trial_mode"] = json!(trial);
                         }
                         if clears_playlist {

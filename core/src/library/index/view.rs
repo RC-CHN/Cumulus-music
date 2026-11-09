@@ -71,9 +71,14 @@ impl LocalLibrary {
     }
 
     fn visible_items(index: Index, options: ListOptions<'_>) -> Result<Vec<LibraryItem>> {
-        let virtual_tracks = cue_items(&index, options.include_missing);
+        let scope = &index.directories;
+        let cue_in_scope = |item: &LibraryItem| matches!(&item.revision, LocalRevision::Cue { sheet, .. } if scope.permits(sheet));
+        let virtual_tracks = cue_items(&index, options.include_missing)
+            .into_iter()
+            .filter(cue_in_scope);
         let containers: HashSet<PathBuf> = cue_items(&index, false)
             .into_iter()
+            .filter(cue_in_scope)
             .map(|t| t.path)
             .collect();
         let query = fold(options.query);
@@ -81,6 +86,7 @@ impl LocalLibrary {
         for item in index
             .files
             .into_values()
+            .filter(|item| scope.permits(&item.path))
             .filter(|item| options.include_containers || !containers.contains(&item.path))
             .chain(virtual_tracks)
         {

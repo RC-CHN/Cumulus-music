@@ -13,6 +13,7 @@ import type { LikeRecoveryClient } from './likeRecovery';
 import type { PlayerClient } from './player';
 import type { VoiceDetailActionsClient } from './voicePage';
 import type { AudiobookSkipClient } from './audiobookSkip';
+import type { PlayerPodcastResumeClient } from './playerPodcastResume';
 import type { PlaylistClient } from './playlists';
 import type { PlaylistCoverClient } from './playlistCover';
 import type { ColdOfflineClient } from './coldOffline';
@@ -30,7 +31,7 @@ import type {
 import type { CommentResourceClient } from './commentResource';
 import type { CommentWriteClient, VinylCommentWriteClient } from './commentWrites';
 import type { CommentFloorClient } from './commentFloor';
-import type { LocalClient, LocalCollectClient } from './local';
+import type { LocalClient, LocalCollectClient, LocalDirectoryClient } from './local';
 import type { LocalMatchClient } from './localMatching';
 import type {
   PodcastCatalogueClient,
@@ -59,7 +60,7 @@ import type { DiscoveryHomeClient } from './discoveryHome';
 import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
 import type { LatestReleaseClient } from './latestReleases';
 import type { CollectionClient } from './collections';
-import type { HistoryClient, HistorySyncClient } from './history';
+import type { HistoryClient, HistoryRadioCollectionClient, HistorySyncClient } from './history';
 import type { SettingsClient } from './settings';
 import type { LoginDeviceRemovalClient } from './loginDeviceRemoval';
 import type { AccountDetailClient, AccountRegionTable } from './accountDetail';
@@ -155,9 +156,11 @@ export interface CoreClient
     CommentFloorClient,
     LocalClient,
     LocalCollectClient,
+    LocalDirectoryClient,
     LocalMatchClient,
     PodcastClient,
     AudiobookSkipClient,
+    PlayerPodcastResumeClient,
     PodcastCatalogueClient,
     PodcastHomeClient,
     PodcastProgramMenuClient,
@@ -183,6 +186,7 @@ export interface CoreClient
     ReleaseNotificationClient,
     CollectionClient,
     HistoryClient,
+    HistoryRadioCollectionClient,
     HistorySyncClient,
     SettingsClient,
     AccountDetailClient,

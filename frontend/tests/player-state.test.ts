@@ -2015,6 +2015,36 @@ test('a cloud toolbar preparation preserves query/quality but cannot target a ne
   }
 });
 
+test('artist batch sends the frozen pages and cannot retarget during modal dismissal', async () => {
+  const pages = [
+    { query: { kind: 'artist_songs' as const, id: '12', offset: 0, limit: 20 }, revision: 'shown' },
+  ];
+  const calls: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, action) => {
+      calls.push(action);
+      return state('4', '1', 'selected');
+    },
+  });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'selected'));
+  const before = f.player.prepareArtistSongsBatch();
+  f.emit({ ...state('3', '1', 'selected'), queueRevision: '2' });
+  assert.throws(() => before(pages, ['3', '1']), { code: 'playback_changed' });
+  assert.deepEqual(calls, []);
+  await f.player.prepareArtistSongsBatch()(pages, ['3', '1']);
+  assert.deepEqual(calls, [
+    {
+      kind: 'queue_artist_songs_batch',
+      pages,
+      ids: ['3', '1'],
+      quality: 'standard',
+      expected_queue_revision: '2',
+    },
+  ]);
+  f.player.dispose();
+});
+
 test('a displayed seek cannot target a replacement song or account', async () => {
   const actions: PlayerAction[] = [];
   const f = fixture({

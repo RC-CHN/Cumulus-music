@@ -1,7 +1,8 @@
 import type { AccountData, TrackView } from './contracts';
 import type { AlbumCard } from './catalog';
-import type { EpisodeView, PodcastCard } from './podcast';
+import type { EpisodeView, PodcastCard, PodcastMutation } from './podcast';
 export type HistoryKind = 'song' | 'album' | 'playlist' | 'voice' | 'podcast' | 'audiobook';
+export type HistoryRadioKind = Extract<HistoryKind, 'podcast' | 'audiobook'>;
 export const historyTabs: { kind: HistoryKind; label: string }[] = [
   { kind: 'song', label: '歌曲' },
   { kind: 'podcast', label: '播客' },
@@ -32,6 +33,15 @@ export interface HistoryEntry {
   playProgress: number | null;
   listened: boolean | null;
   resource: HistoryResource;
+  canCollectRadio?: boolean;
+  chapter?: {
+    name: string;
+    tag: string | null;
+    recent: boolean;
+    percent: number | null;
+    completed: boolean;
+    playable: boolean;
+  };
 }
 export interface HistoryOperation {
   id: string;
@@ -52,6 +62,7 @@ export interface HistoryOperation {
 export interface HistoryPage {
   kind: HistoryKind;
   revision: string;
+  chapterRevision?: string;
   syncEnabled: boolean;
   canSync: boolean;
   remoteIncluded: boolean;
@@ -79,6 +90,16 @@ export interface HistoryClient {
     kind: HistoryKind,
     command: HistoryCommand,
   ): Promise<AccountData<HistoryPage>>;
+}
+export type HistoryRadioCollection = { kind: 'toggle'; expected: boolean } | { kind: 'reconcile' };
+export interface HistoryRadioCollectionClient {
+  historyRadioCollection(
+    epoch: string,
+    kind: HistoryRadioKind,
+    revision: string,
+    id: string,
+    action: HistoryRadioCollection,
+  ): Promise<AccountData<PodcastMutation>>;
 }
 export interface HistorySyncState {
   enabled: boolean;

@@ -1,6 +1,7 @@
 use super::within_jsk_interval;
 use crate::{Error, Result, storage::StateStore};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use uuid::Uuid;
 
 const KIND: &str = "login_refresh";
@@ -70,10 +71,41 @@ pub(super) fn complete(store: &StateStore, uid: &str, intent: &Intent, now: u64)
     finish(store, uid, intent, Some(now))
 }
 
-/// Only proven pre-transport failures can abandon the intent. Retain the
-/// previous successful time; unknown HTTP outcomes must remain pending.
-pub(super) fn not_sent(store: &StateStore, uid: &str, intent: &Intent) -> Result<()> {
-    finish(store, uid, intent, intent.last_success)
+/// Release only the intent whose transport was never entered, including when
+/// its request context is cancelled or times out. An entered transport keeps
+/// its intent for recovery even if the caller is no longer the current user.
+pub(super) struct Dispatch<'a> {
+    store: &'a StateStore,
+    uid: &'a str,
+    intent: &'a Intent,
+    pub(super) dispatched: AtomicBool,
+    closed: bool,
+}
+
+impl<'a> Dispatch<'a> {
+    pub(super) fn new(store: &'a StateStore, uid: &'a str, intent: &'a Intent) -> Self {
+        Self {
+            store,
+            uid,
+            intent,
+            dispatched: AtomicBool::new(false),
+            closed: false,
+        }
+    }
+
+    pub(super) fn release_unsent(&mut self) -> Result<()> {
+        if !self.closed && !self.dispatched.load(Ordering::Relaxed) {
+            finish(self.store, self.uid, self.intent, self.intent.last_success)?;
+            self.closed = true;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Dispatch<'_> {
+    fn drop(&mut self) {
+        let _ = self.release_unsent();
+    }
 }
 
 fn finish(store: &StateStore, uid: &str, intent: &Intent, last_success: Option<u64>) -> Result<()> {

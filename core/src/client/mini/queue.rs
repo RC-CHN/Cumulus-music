@@ -56,6 +56,7 @@ impl MusicClient {
                         origin: None,
                         like_song_id: None,
                         catalog_menu: false,
+                        voice_menu: false,
                         collectible: false,
                         entry_id: i.entry_id.clone(),
                         track: super::super::player::track(&i.resource)?,

@@ -68,6 +68,8 @@ impl Actor {
         self.history_error = None;
         self.equalizer_clear().await?;
         self.resolver.invalidate(None)?;
+        #[cfg(windows)]
+        self.resolver.clear_windows_native_files()?;
         let owner = self.token.uid.as_deref().unwrap_or("local-guest");
         let queue = PlaybackQueue::new(Some(self.store.clone()), owner)?;
         let prefs = Self::preferences(&self.store, owner)?;
@@ -92,6 +94,9 @@ impl Actor {
         resume_after_removal: Option<Cancellation>,
     ) -> Result<()> {
         self.queue.reload()?;
+        #[cfg(windows)]
+        self.resolver
+            .retain_windows_native_files(&self.token, &self.queue)?;
         if self
             .source_retry
             .as_ref()

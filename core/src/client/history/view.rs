@@ -10,8 +10,11 @@ pub(super) fn entry(
     kind: HistoryKind,
     record: HistoryRecord,
     available: bool,
+    chapter: Option<HistoryRadioChapterView>,
+    viewer: Option<&str>,
 ) -> Result<HistoryEntry> {
     let value = &record.resource;
+    let mut can_collect_radio = false;
     let resource = match kind {
         HistoryKind::Song => HistoryResource::Song {
             track: if let Some(id) = value["local_id"].as_str() {
@@ -37,12 +40,16 @@ pub(super) fn entry(
         HistoryKind::Voice => HistoryResource::Voice {
             voice: podcast::episode(&Episode::from_official(value)?, &[]),
         },
-        HistoryKind::Podcast => HistoryResource::Podcast {
-            radio: podcast::card(&Radio::from_official(value)?),
-        },
-        HistoryKind::Audiobook => HistoryResource::Audiobook {
-            radio: podcast::card(&Radio::from_official(value)?),
-        },
+        HistoryKind::Podcast | HistoryKind::Audiobook => {
+            let radio = Radio::from_official(value)?;
+            can_collect_radio = super::radio_collection::can_collect(&radio, &record.id, viewer);
+            let radio = podcast::card(&radio);
+            if kind == HistoryKind::Podcast {
+                HistoryResource::Podcast { radio }
+            } else {
+                HistoryResource::Audiobook { radio }
+            }
+        }
     };
     let device = if record.origin == RecordOrigin::Local {
         "本机"
@@ -70,6 +77,8 @@ pub(super) fn entry(
         play_progress: record.play_progress,
         listened: record.listened,
         resource,
+        chapter,
+        can_collect_radio,
     })
 }
 pub(super) fn operation(op: HistoryMutation) -> HistoryOperationView {

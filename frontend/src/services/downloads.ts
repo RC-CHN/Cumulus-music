@@ -57,6 +57,7 @@ export interface DownloadTask {
   bytes: number;
   total: number | null;
   progress: number | null;
+  speedBytesPerSecond?: number | null;
   requestedQuality: Quality;
   actualQuality: Quality | null;
   requestedResolution: number | null;
@@ -135,7 +136,8 @@ export type DownloadCommand =
   | { kind: 'start_cloud'; song_ids: string[]; revision: string; lyrics: boolean }
   | { kind: 'start'; song_ids: string[]; options: DownloadOptions }
   | { kind: 'control'; task_ids: string[]; action: DownloadControl }
-  | { kind: 'all'; action: Exclude<DownloadControl, 'repair'> }
+  | { kind: 'all'; action: 'pause' | 'resume' }
+  | { kind: 'confirm_clear'; receipt: string }
   | { kind: 'preferences'; revision: string; options: DownloadOptions }
   | { kind: 'configure'; root: string; path_type: number; file_type: number }
   | { kind: 'migrate'; root: string }
@@ -164,6 +166,11 @@ export interface DownloadCollectScope {
   epoch: string;
   receipt: string;
   canCreate: boolean;
+  ownedOnly?: boolean;
+}
+export interface DownloadBatchCollectPlan {
+  receipt: string;
+  acceptedTaskIds: string[];
 }
 export type DownloadCollectCreationCommand =
   | { kind: 'create'; name: string; privatePlaylist: boolean }
@@ -175,6 +182,11 @@ export interface DownloadCollectCreation {
   add: PlaylistMutationView | null;
   canAdd: boolean;
 }
+export interface DownloadClearPlan {
+  epoch: string;
+  receipt: string | null;
+  count: number;
+}
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
   downloadCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
@@ -183,6 +195,10 @@ export interface DownloadClient {
     epoch: string,
     taskId: string,
   ): Promise<AccountData<Pick<DownloadCollectScope, 'receipt' | 'canCreate'>>>;
+  downloadBatchCollectPrepare(
+    epoch: string,
+    taskIds: string[],
+  ): Promise<AccountData<DownloadBatchCollectPlan>>;
   downloadCollectDestinations(
     epoch: string,
     receipt: string,
@@ -211,13 +227,19 @@ export interface DownloadClient {
   ): Promise<AccountData<PlaylistMutationView>>;
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
+  downloadClearPrepare(epoch: string): Promise<DownloadClearPlan>;
+  downloadClearDiscard(epoch: string, receipt: string): Promise<void>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;
   pickDownloadDirectory(epoch: string): Promise<string | null>;
   openDownloadDirectory(epoch: string, taskId: string | null): Promise<void>;
 }
 export type DownloadDialogTarget =
-  | { kind: 'voice'; tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[] }
+  | {
+      kind: 'voice';
+      tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[];
+      live?: () => boolean;
+    }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }
   | { kind: 'start'; tracks: TrackView[] }
   | {
@@ -248,6 +270,21 @@ export function downloadStatus(task: DownloadTask): string {
     cancelling: '正在取消',
     cancelled: '已取消',
   }[task.status];
+}
+
+export function downloadProgressStatus(task: DownloadTask, fresh: boolean): string {
+  const rate = task.speedBytesPerSecond;
+  if (
+    !fresh ||
+    task.status !== 'downloading' ||
+    typeof rate !== 'number' ||
+    !Number.isSafeInteger(rate) ||
+    rate < 0
+  )
+    return downloadStatus(task);
+  if (rate >= 1_000_000) return `${(rate / 1_000_000).toFixed(1)} MB/s`;
+  if (rate >= 1_000) return `${Math.floor(Number((rate / 1_000).toFixed(2)))} KB/s`;
+  return `${rate} B/s`;
 }
 export function bytesLabel(bytes: number | null): string {
   if (bytes === null) return '—';

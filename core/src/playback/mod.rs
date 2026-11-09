@@ -1,5 +1,6 @@
 //! Native playback domain. Queue selection and timeline mapping do not claim
 //! that an audio engine has successfully loaded the selected resource.
+pub(crate) mod chorus;
 mod constraint;
 pub mod controller;
 pub mod mode;
@@ -22,7 +23,10 @@ pub mod source;
 pub(crate) mod stream_cache;
 pub use stream_cache::{StreamingAudioReader, StreamingMediaCacheStatus};
 mod timeline;
-pub(crate) use queue::{FM_BACKUP_POSITION, FM_BACKUP_QUEUE, FmRestoreOutcome, QueueResetPlan};
+pub(crate) use queue::{
+    FM_BACKUP_POSITION, FM_BACKUP_QUEUE, FmRestoreOutcome, QueueResetPlan, RECALL_GUIDE_SHOWN,
+    RECALL_STATE,
+};
 pub use queue::{PlaybackMode, PlaybackQueue, QueueEntry, QueueSnapshot, Step};
 pub use queue_move::QueueMovement;
 pub use timeline::{Timeline, TimelineMode, TimelineSnapshot};

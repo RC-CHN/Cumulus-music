@@ -67,6 +67,24 @@ impl Assigned {
 }
 
 impl PcExperimentHost {
+    /// Last confirmed group for presentation only, including after a failed
+    /// refresh. It cannot authorize requests, and never crosses identities.
+    pub(super) fn presented_group(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        credentials: &str,
+        name: &str,
+    ) -> Option<String> {
+        self.state
+            .lock()
+            .ok()?
+            .as_ref()
+            .filter(|current| current.same_identity(token, api, credentials))
+            .and_then(|current| current.groups.group(name))
+            .map(str::to_owned)
+    }
+
     /// M147's search presentation catch retains the last successful global
     /// web assignment, including one refreshed by another native consumer.
     /// This passive snapshot may be expired: it is not a fresh permission and

@@ -347,6 +347,7 @@ def focus_installed_control(atspi, app, name, roles, dialog=None, *, reveal_side
              lambda: control.get_state_set().contains(atspi.StateType.FOCUSED))
     if viewport is not None:
         assert visible_in_sidebar(), f'installed sidebar control {name!r} moved out of view after focus'
+    return control
 
 
 
@@ -688,6 +689,11 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         screenshot('installed-local-page.png')
         assert active_window() == window, 'installed app lost keyboard focus before opening the picker'
         inputs.key('Return')
+        directory_dialog = '选择本地文件夹'
+        focus_installed_control(accessibility, app, '添加文件夹', button_roles, dialog=directory_dialog)
+        assert active_window() == window, 'directory confirmation lost main window focus'
+        inputs.key('Return')
+
         def current_picker():
             active = active_window()
             return active if active not in (None, window) else None
@@ -710,6 +716,19 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             inputs.key('Return')
             wait_for('installed main window focus after selection', lambda: active_window() == window)
             picker_status['chooserClosed'] = True
+            staged = focus_installed_control(accessibility, app, location,
+                                             (accessibility.Role.CHECK_BOX,), dialog=directory_dialog)
+            assert not staged.get_state_set().contains(accessibility.StateType.CHECKED), (
+                'new folder must initially be unchecked')
+            inputs.key('space')
+            wait_for('checked directory draft', lambda: staged.get_state_set().contains(
+                accessibility.StateType.CHECKED))
+            assert indexed() is None, 'directory draft committed before confirmation'
+            picker_status['stagedBeforeCommit'] = True
+            focus_installed_control(accessibility, app, '确认', button_roles, dialog=directory_dialog)
+            assert active_window() == window, 'directory confirmation lost main window focus'
+            inputs.key('Return')
+            picker_status['confirmationPressed'] = True
         finally:
             (root/'picker-observation.json').write_text(json.dumps(picker_status, indent=2)+'\n', encoding='utf-8')
         indexed_row = wait_for('generated FLAC indexed by the installed app', indexed)

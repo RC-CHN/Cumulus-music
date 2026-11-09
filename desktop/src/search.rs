@@ -63,6 +63,39 @@ pub async fn search_refresh_privileges(
 }
 
 #[tauri::command]
+pub async fn search_voice_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: SearchVoiceMenuTarget,
+) -> Result<AccountData<SearchVoiceMenu>, ClientError> {
+    search_window(&window)?;
+    client
+        .search_voice_menu(
+            &epoch,
+            target,
+            crate::network_diagnostics::observed_default_route(&window),
+        )
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn search_open_voice_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: SearchVoiceMenuTarget,
+) -> Result<(), ClientError> {
+    search_window(&window)?;
+    let path = client.search_voice_directory_path(&epoch, target).await?;
+    client.validate_download_epoch(&epoch)?;
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn search_reason_page(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

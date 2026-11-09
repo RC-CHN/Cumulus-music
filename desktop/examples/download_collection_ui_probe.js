@@ -22,7 +22,7 @@
       event: 'ux-proof', payload: { stage, ...data },
     });
   const click = (item) => {
-    assert(item && !item.disabled && item.getAttribute('aria-disabled') !== 'true', 'enabled control');
+    assert(item && !item.disabled && item.getAttribute('aria-disabled') !== 'true', 'enabled control: ' + (item?.getAttribute('aria-label') || item?.textContent?.trim()));
     item.focus({ preventScroll: true });
     item.click();
   };
@@ -82,6 +82,74 @@
   };
   try {
     await wait(() => one('.track-row'), 'authenticated initial inventory');
+    if (window.__downloadBatchCollectProof) {
+      await seed('seed_collection_batch');
+      click(button('下载管理'));
+      await wait(ready, 'completed Downloads');
+      click(await wait(() => button('更多下载操作'), 'download menu'));
+      const actions = await wait(() => one('.action-menu')?.style.visibility === 'visible' &&
+        one('.action-menu'), 'download menu visible');
+      click(button('批量操作', actions));
+      const batch = await wait(() => one('.download-batch-page:not(.page-enter-active)')?.querySelector('[data-batch-index="0"]') &&
+        one('.download-batch-page'), 'batch inventory');
+      const records = [...batch.querySelectorAll('[data-batch-index]')];
+      const id = (row) => row.querySelector('.download-track-name').textContent.match(/(\d+) ·/)[1].replace(/^0+/, '');
+      assert(records.map(id).join(',') === '1,2,3,4,5,6,7', 'exact native original order');
+      // Select the known rights vector in a different order. The dispatch must
+      // retain original native list order, not click order.
+      for (const index of [3, 1, 2, 0]) click(records[index]);
+      const favorite = await wait(() => {
+        const action = button('收藏', batch);
+        return action && !action.disabled &&
+          one('.batch-select-label', batch)?.textContent.includes('已选 4 首歌曲') && action;
+      }, 'four selected records and enabled Favorite');
+      const openBatchPicker = async () => {
+        click(favorite);
+        const picker = await wait(dialog, 'native batch picker');
+        await wait(() => destination() && destination().getAttribute('aria-disabled') !== 'true',
+          'authoritative ordinary destination');
+        const summary = one('.collect-selection-summary', picker).textContent.replace(/\s+/g, ' ').trim();
+        assert(summary === '已选 4 项下载，将收藏 2 首歌曲。2 项歌曲无法收藏，已略过。', 'filtered native summary: ' + summary);
+        assert(!one('[data-playlist-id="1"]', picker) && !button('创建新歌单', picker) &&
+          !button('我喜欢的音乐', picker), 'only ordinary owned destination lane');
+        return { picker, summary };
+      };
+      const first = await openBatchPicker();
+      await capture('batch_picker', { summary: first.summary });
+      click(button('关闭歌单操作', first.picker));
+      await wait(() => !one('dialog[data-download-collect]') && document.activeElement === favorite,
+        'cancel returns to exact Favorite button');
+      assert(!one('.batch-operation-feedback', batch), 'cancel has no collection result');
+      await capture('batch_cancel', { exactReturnFocus: true });
+      await server('uncertain');
+      await openBatchPicker();
+      click(destination());
+      const retry = await wait(() => {
+        const picker = dialog();
+        return picker?.getAttribute('aria-busy') === 'false' &&
+          !one('.collect-status,.collect-working', picker) && button('核对结果', picker);
+      }, 'settled uncertain batch offers read-only recovery');
+      assert(destination().getAttribute('aria-disabled') === 'true' &&
+        one('.mutation-result', dialog()).dataset.phase === 'uncertain', 'pending destination cannot write again');
+      const notice = one('.mutation-result', dialog());
+      const rect = notice.getBoundingClientRect();
+      const paint = { x: rect.left + 24, y: rect.bottom - 4, color: getComputedStyle(notice).backgroundColor };
+      assert(/^rgb\(\d+, \d+, \d+\)$/.test(paint.color) && document.elementFromPoint(paint.x, paint.y) === notice,
+        'paint sample lies in opaque warning padding');
+      await capture('batch_uncertain', { paintSamples: [paint], screenX, screenY, ratio: devicePixelRatio });
+      await server('success');
+      click(retry);
+      await wait(() => !one('dialog[data-download-collect]') && document.activeElement === favorite,
+        'explicit verified recovery closes and returns focus');
+      const confirmed = one('.batch-operation-feedback', batch)?.textContent.trim();
+      assert(confirmed === '已收藏到歌单', 'read-back confirmation remains visible on the batch page');
+      await capture('batch_reconciled', { confirmed });
+      await emit('complete', {
+        ok: true, batchCollect: true, stageCount: count,
+        realMusicRequests: 0, realAccountWrites: 0,
+      });
+      return;
+    }
     await seed('seed_collection');
     await seed('cloud_comment_targets');
     click(button('下载管理'));

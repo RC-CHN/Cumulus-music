@@ -42,6 +42,15 @@ SourceResolver::resolve(resource, token) 对在线资源调用：
   /api/song/enhance/player/url/v1
   ids=单ID JSON字符串；level=11档Quality码；encodeType默认aac；
   immerseType=c51；trialMode默认-1，限制为已恢复的场景枚举。
+  普通歌单入口遵循 PC 3.1.42 M/3085:225–239、309–316、564–585：在显式
+  场景缺省时，当前登录账号已从本人 /api/user/playlist 确认的 starPlaylistId 用
+  43，M/91.a 中固定的雷达歌单 ID 用 37。要求正在操作同一个原生详情 ID；红心详情
+  若声明与账号或类型冲突则保守地保留默认场景。标题、specialType=100、其他账号
+  的红心标志或前端参数都不能获得这两个场景。分类不发额外账号请求。
+  整单、详情选行、批量播放及整单／批量加入队列都在原生资源和来源上保存该场景，
+  给音源请求和普通队列副歌分组复用。加入队列时重复项保留条目身份、更新来源，
+  当前播放项及其解码器不动。专区已核验的显式场景仍优先；心动（40）由独立
+  心动流程决定。此次不修改普通歌曲详情补齐参数，不猜测旧队列缺失的来源。
 按ID匹配响应；M/163要求内层code=200、非空url和md5三项同时满足。
 返回fee/flag/freeTrialInfo/freeTrialPrivilege/rightSource/level/type/br是独立事实，
 不能根据“有会员”把服务端降级当作高音质，也不以其他地址替代被拒绝的授权。

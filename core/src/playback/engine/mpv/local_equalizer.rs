@@ -13,6 +13,13 @@ use std::{fs::File, time::Duration};
 
 const CONTROL_WAIT: Duration = Duration::from_secs(2);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HeldOrigin {
+    ExplicitFile,
+    IndexedFile,
+    SearchPublication,
+}
+
 pub(super) struct LocalEqualizer {
     pass: Box<NativeStereoPass>,
     original_demuxer: &'static str,
@@ -80,7 +87,14 @@ impl MpvEngine {
             return self.load_inner(request, cancel);
         }
         let (file, format) = crate::library::native_open::checked_audio_file(path, fingerprint)?;
-        self.load_held_local_equalizer(file, format, settings, cancel, false)
+        self.load_held_local_equalizer(
+            file,
+            format,
+            settings,
+            cancel.clone(),
+            cancel,
+            HeldOrigin::ExplicitFile,
+        )
     }
 
     pub(super) fn load_indexed_local_equalizer(
@@ -98,7 +112,42 @@ impl MpvEngine {
         {
             return self.load_open_file(file, "flac", cancel.clone(), 0.0, cancel);
         }
-        self.load_held_local_equalizer(file, "flac", settings, cancel, true)
+        self.load_held_local_equalizer(
+            file,
+            "flac",
+            settings,
+            cancel.clone(),
+            cancel,
+            HeldOrigin::IndexedFile,
+        )
+    }
+
+    pub(super) fn load_publication_equalizer(
+        &mut self,
+        mut file: File,
+        authority: Cancellation,
+        settings: EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        authority.check()?;
+        cancel.check()?;
+        Self::check_regular(&file)?;
+        let format = crate::playback::engine::pinned_audio_format(&mut file)?;
+        if format != "flac"
+            || !settings.local_graph_requested()
+            || self.parametric.is_some()
+            || (self.loudness.is_some() && !self.loudness_reserved)
+        {
+            return self.load_open_file(file, format, authority, 0.0, cancel);
+        }
+        self.load_held_local_equalizer(
+            file,
+            format,
+            settings,
+            authority,
+            cancel,
+            HeldOrigin::SearchPublication,
+        )
     }
 
     fn load_held_local_equalizer(
@@ -106,10 +155,10 @@ impl MpvEngine {
         file: File,
         format: &'static str,
         settings: EqualizerSettings,
+        authority: Cancellation,
         cancel: &Cancellation,
-        indexed: bool,
+        origin: HeldOrigin,
     ) -> Result<LoadedMedia> {
-        let authority = cancel.clone();
         let plan = LocalEqualizerMaterialPlan::from_saved(settings);
         let selection = if format == "wav" && self.local_wave {
             NativeStereoSource::select_wave(file, authority, plan)?
@@ -122,17 +171,17 @@ impl MpvEngine {
                 // This is the old load_inner stock authority. A verified WAV
                 // capability must not make a non-graph MP3/FLAC load depend on
                 // the preparation request after it has already committed.
-                let authority = if indexed {
-                    authority
-                } else {
+                let authority = if origin == HeldOrigin::ExplicitFile {
                     Cancellation::default()
+                } else {
+                    authority
                 };
                 return self.load_open_file(file, format, authority, 0.0, cancel);
             };
             if format != "flac" {
                 return self.load_open_file(file, format, authority, 0.0, cancel);
             }
-            if indexed {
+            if origin == HeldOrigin::IndexedFile {
                 NativeStereoSource::select_indexed(file, authority, library, plan)?
             } else {
                 NativeStereoSource::select(file, authority, library, plan)?

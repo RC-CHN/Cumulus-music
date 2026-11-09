@@ -1,12 +1,12 @@
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { centeredRowTop, rowTop, rowWindow, type RowExpansion } from '../services/virtualWindow';
+import { centeredRowTop, rowTop, rowWindow, type RowLayout } from '../services/virtualWindow';
 
 /** Native passive scrolling; Vue only receives changes to the buffered row range. */
 export function useVirtualRows(
   count: () => number,
   rowHeight: number | (() => number),
   buffer = 8,
-  expansion: () => RowExpansion | undefined = () => undefined,
+  expansion: () => RowLayout | undefined = () => undefined,
 ) {
   const getRowHeight = () => (typeof rowHeight === 'number' ? rowHeight : rowHeight());
   const container = ref<HTMLElement>();

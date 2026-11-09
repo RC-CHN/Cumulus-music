@@ -8,6 +8,13 @@
   const row = (id = '7') => one(`.search-podcast-row[data-result-key="podcast:${id}"]`);
   const tab = () => one('#search-tab-podcasts');
   const index = (id) => row(id)?.querySelector('[data-result-action="play"]');
+  const menuTrigger = () => row()?.querySelector('.search-card-menu .menu-trigger');
+  const menuPanel = () => {
+    const trigger = menuTrigger();
+    const id = trigger?.getAttribute('aria-controls');
+    const panel = id && document.getElementById(id);
+    return panel && !panel.closest('[inert]') && trigger.getAttribute('aria-expanded') === 'true' && panel;
+  };
   const bar = () => one('.playerbar');
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (ok, message) => { if (!ok) throw Error(message); };
@@ -27,8 +34,13 @@
   let epoch, step = 'startup', count = 0, last;
   const gestures = [];
   let trustedIndexClicks = 0;
+  let trustedNextClicks = 0;
   for (const type of ['click','dblclick']) document.addEventListener(type, (event) => {
-    if (!event.isTrusted || !(event.target instanceof Element) || !event.target.closest('.search-podcast-row')) return;
+    if (!event.isTrusted || !(event.target instanceof Element)) return;
+    const panel = menuPanel();
+    if (type === 'click' && panel && event.target.closest('[data-menu-key="next"]')?.closest('[role="menu"]') === panel)
+      trustedNextClicks++;
+    if (!event.target.closest('.search-podcast-row')) return;
     if (type === 'click' && event.target.closest('[data-result-action="play"]')) trustedIndexClicks++;
     else if (!event.target.closest('button, a')) gestures.push([type, event.detail]);
   }, true);
@@ -46,6 +58,11 @@
     const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
     assert(target.contains(document.elementFromPoint(x,y)), 'actual pointer target is unobstructed');
     return { x:Math.round((screenX+x)*devicePixelRatio), y:Math.round((screenY+y)*devicePixelRatio) };
+  };
+  const hittable = (target) => {
+    if (!ready(target)) return false;
+    const rect = target.getBoundingClientRect();
+    return target.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
   };
   const rowPoint = () => targetPoint(row()?.querySelector('.search-podcast-score'));
   async function capture(label, extra = {}) {
@@ -119,9 +136,33 @@
       return state && state.position>paused.position+.12 && state;
     },'retained real decoder advances its existing clock');
     await capture('same_episode_resumed',{resumed,advanced});
+    step='menu-next';
+    await action({kind:'pause',paused:true});
+    const beforeNext=await wait(current('1','paused'),'same episode paused for Next');
+    const trigger=await wait(()=>hittable(menuTrigger()) && menuTrigger(),'visible row More trigger');
+    await capture('next_armed',{pointer:targetPoint(trigger)});
+    const nextButton=await wait(()=>{
+      const button=menuPanel()?.querySelector('[data-menu-key="next"]');
+      return hittable(button) && button;
+    },'enabled Next inside this row’s live menu');
+    const menuLabels=[...menuPanel().querySelectorAll('[role="menuitem"]')].map((button)=>button.textContent.trim());
+    assert(menuLabels.join('/')==='查看播客/播放/下一首播放','classified audio menu order');
+    await capture('next_menu',{menuLabels,pointer:targetPoint(nextButton)});
+    const queued=await wait(async()=>{
+      const state=await current('1','paused')();
+      return state && state.queueRevision!==beforeNext.queueRevision && state;
+    },'Next changes the queue without playing');
+    assert(queued.playId===beforeNext.playId && queued.entryId===beforeNext.entryId &&
+      queued.position===beforeNext.position && queued.mode===beforeNext.mode &&
+      queued.queueLen===beforeNext.queueLen,'Next preserves paused media and deduplicates the collection');
+    await wait(()=>document.activeElement===trigger && !menuPanel() &&
+      one('.search-voice-next-notice[role="status"]')?.textContent.trim()==='已添加至播放列表',
+    'Next restores row More focus and reports insertion');
+    assert(trustedNextClicks===1,'physical menu click is trusted');
+    await capture('next_inserted',{triggerFocused:document.activeElement===trigger,trustedNextClicks});
     await action({kind:'stop'});
     await wait(async()=>(await snapshot()).state==='idle','explicit native stop');
-    await emit('complete',{ok:true,stageCount:count,gestures,trustedIndexClicks});
+    await emit('complete',{ok:true,stageCount:count,gestures,trustedIndexClicks,trustedNextClicks});
   } catch (error) {
     await emit('failed',{step,count,message:String(error),last,gestures,
       page:one('.main-content')?.textContent.trim().slice(0,500)});

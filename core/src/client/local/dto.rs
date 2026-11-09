@@ -20,6 +20,7 @@ pub struct LocalTrackView {
 pub struct LocalRootView {
     pub id: String,
     pub path: String,
+    pub checked: bool,
     pub enabled: bool,
     pub status: crate::library::monitor::WatchStatus,
     pub progress: Option<ScanProgress>,

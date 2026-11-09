@@ -17,6 +17,7 @@ static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static MV_PREVIEW_PRIVILEGE_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static PODCAST_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 static VOICE_NEXT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -618,7 +619,9 @@ fn suggestion_match_rows(keyword: &str) -> Option<Value> {
     let (suggests, recs) = match keyword {
         "A+B" => (
             json!([
-                {"keyword":"合成精确词","name":"İ A+B 和 a+b <plain>"},
+                {"searchWord":"合成精确词","keyword":"不使用候选备用词",
+                 "name":"İ A+B 和 a+b <plain>","toUserWord":"合成输入栏文案",
+                 "realkeyword":"不使用默认真实词","showKeyword":"不使用默认展示词"},
                 {"keyword":"合成另一个词","name":"aab 不匹配"}
             ]),
             json!([{"keyword":"合成符号推荐","name":"推荐 a+b"}]),
@@ -1239,6 +1242,45 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     CALLS.fetch_add(1, Ordering::SeqCst);
     let mode = MODE.lock().unwrap().clone();
+    if mode == "voice_queue"
+        && category == "podcasts"
+        && let Some(word @ ("合成长音频续页" | "合成播客空值" | "合成播客空列表")) =
+            args["keyword"].as_str()
+    {
+        let offset = args["offset"].as_u64().unwrap();
+        assert_eq!(
+            *args,
+            json!({"keyword":word,"scene":"normal","offset":offset,"limit":10})
+        );
+        let rows = |start, end| {
+            json!(
+                (start..end)
+                    .map(|id| json!({"type":"voicelist","baseInfo":{
+                        "id":id,"name":format!("合成播客 {id}"),"voiceCount":3,
+                        "dj":{"nickname":"合成主播"}
+                    }}))
+                    .collect::<Vec<_>>()
+            )
+        };
+        let (resources, more) = match (word, offset) {
+            ("合成长音频续页", 0) => (rows(301, 311), false),
+            ("合成长音频续页", 10) => {
+                if !PODCAST_BATCH_FAILED.swap(true, Ordering::SeqCst) {
+                    return Some(Err(Error::Transport("合成播客续页失败".into())));
+                }
+                (rows(311, 314), true)
+            }
+            ("合成播客空值", 0) => (Value::Null, true),
+            ("合成播客空列表", 0) => (json!([]), true),
+            _ => {
+                return Some(Err(Error::InvalidInput("unexpected podcast continuation")));
+            }
+        };
+        return Some(Ok(json!({"code":200,"data":{
+            "resources":resources,"totalCount":99,"hasMore":more,
+            "queryRewriteInfo":{"rewriteQuery":"不属于播客分类的纠正"}
+        }})));
+    }
     if category == "all" && default_recovery_enabled() {
         assert_eq!(args["keyword"], "合成恢复第二词");
         let context = match args["channel"].as_str() {
@@ -1642,6 +1684,23 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     let song = &mut row["baseInfo"]["simpleSongData"];
                     song["id"] = json!(i + 101);
                     song["name"] = json!(format!("合成连续单曲 {}", i + 101));
+                    if i == 0 || i == 29 {
+                        song["alia"] = json!(["默认合成别名", "前缀合成连续单曲别名"]);
+                        song["tns"] = json!(["不显示的翻译合成连续单曲"]);
+                        row["extInfo"] = json!({
+                            "songAlias":true,
+                            "lyrics":{
+                                "txt":format!("🎵合成连续单曲歌词 {}", i + 101),
+                                "range":[{"first":2,"second":8}]
+                            }
+                        });
+                    } else if i == 1 {
+                        song["alia"] = json!(["合成连续单曲未命中"]);
+                        row["extInfo"] = json!({
+                            "songAlias":false,
+                            "lyrics":{"txt":"🎵不可切半","range":[{"first":1,"second":2}]}
+                        });
+                    }
                 } else if category != "songs" && category != "lyrics" {
                     let item = if legacy {
                         &mut row

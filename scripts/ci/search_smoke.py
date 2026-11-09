@@ -76,7 +76,7 @@ def main():
         flag = ('podcastTopClassicVerified' if args.podcast_top_classic else
                 'historyLastVerified' if args.history_last else
                 'suggestionMatchesVerified' if args.suggestion_matches else 'exactFallbackVerified')
-        count = 5 if args.suggestion_matches else 3
+        count = 7 if args.suggestion_matches else 3
         assert complete['ok'] and complete[flag] and complete['stageCount'] == count
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (count if args.screenshots else 0)
@@ -175,12 +175,20 @@ def verify_suggestion_matches(root, complete, capture):
                  'suggestionFirstSpaceVerified', 'suggestionRecommendationKeyboardVerified'):
         assert complete[name] is True
     stages = [
-        'suggestion_literal_matches', 'suggestion_pointer_active', 'suggestion_traditional_query',
-        'suggestion_simplified_query_not_reversed', 'suggestion_first_space',
+        'suggestion_literal_matches', 'suggestion_pointer_active', 'suggestion_pointer_selection',
+        'suggestion_traditional_query', 'suggestion_simplified_query_not_reversed',
+        'suggestion_first_space', 'suggestion_recommendation_selection',
     ]
     assert sorted(path.stem for path in (root / 'first').glob('ux_*.json')) == [
         f'ux_{index:02d}_{name}' for index, name in enumerate(stages, 1)
     ]
+    for index, popup, keyword, input_text in [
+        (3, 'İ A+B 和 a+b <plain>', '合成精确词', '合成输入栏文案'),
+        (7, 'B / C / A / b c', '合成分支推荐', '合成分支推荐'),
+    ]:
+        stage = json.loads((root / 'first' / f'ux_{index:02d}_{stages[index - 1]}.json').read_text(encoding='utf-8'))
+        assert stage['selection'] == {'popup': popup, 'result': keyword, 'input': input_text}, stage['selection']
+    assert complete['suggestionHistory'] == ['更改后的原词', '退出悬停', '合成分支推荐', '合成精确词']
     # These requests are recorded by the native synthetic backend, not by the
     # injected JS. The last edit and immediate Enter must not send a suggestion.
     expected = [

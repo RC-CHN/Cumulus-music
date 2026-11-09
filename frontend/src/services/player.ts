@@ -256,6 +256,7 @@ export interface QueueTrack {
   origin?: QueueOrigin;
   likeSongId?: string;
   catalogMenu?: boolean;
+  voiceMenu?: boolean;
   collectible?: boolean;
 }
 export interface QueueCatalogMenu {
@@ -268,6 +269,19 @@ export interface QueueCatalogMenu {
   commentCount: number | null;
   downloaded: boolean;
   downloadTaskId: string | null;
+}
+export interface QueueVoiceMenu {
+  epoch: string;
+  revision: string;
+  entryId: string;
+  track: TrackView;
+  voiceId: string;
+  sourceLabel: string;
+  radioId: string | null;
+  creator: { id: string | null; name: string } | null;
+  commentCount: number | null;
+  downloaded: boolean | null;
+  directoryAvailable: boolean;
 }
 export interface QueueLikeTarget {
   epoch: string;
@@ -381,7 +395,7 @@ export type ZonePlaylistBatchSelection = {
   quality: Quality;
 };
 
-export type SearchPodcastRowGesture = 'index' | 'double_click' | 'menu';
+export type SearchPodcastRowGesture = 'index' | 'double_click' | 'menu' | 'next';
 
 export type PlaySelection =
   | (AlbumDetailSelection & { row: import('./albumDurationSort').AlbumPlaybackRow | null })
@@ -405,9 +419,16 @@ export type PlaySelection =
   | { kind: 'message_track'; id: string; quality: Quality }
   | { kind: 'search_podcast_card'; id: string; receipt: string }
   | { kind: 'search_podcast_row'; id: string; receipt: string; gesture: SearchPodcastRowGesture }
+  | { kind: 'search_voice_menu'; target: import('./search').SearchVoiceMenuTarget }
   | { kind: 'podcast_browse_voice'; receipt: string }
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'listened_book_chapter'; revision: string; key: number }
+  | {
+      kind: 'history_radio_chapter';
+      history_kind: 'podcast' | 'audiobook';
+      revision: string;
+      id: string;
+    }
   | {
       kind: 'podcast_subscription_recommendation';
       id: string;
@@ -645,6 +666,13 @@ export type PlayerAction =
       expected_queue_revision: string;
     }
   | {
+      kind: 'queue_artist_songs_batch';
+      pages: import('./catalog').CatalogSelectionPage[];
+      ids: string[];
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
       kind: 'queue_album_batch';
       id: string;
       ids: string[];
@@ -856,6 +884,8 @@ export interface PlayerClient
     revision: string,
     entryId: string,
   ): Promise<QueueCatalogMenu>;
+  playerQueueVoiceMenu(epoch: string, revision: string, entryId: string): Promise<QueueVoiceMenu>;
+  playerQueueOpenVoiceDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
   playerVinylCommentsAvailable(epoch: string): Promise<boolean>;

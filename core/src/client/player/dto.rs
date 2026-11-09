@@ -118,6 +118,7 @@ pub enum SearchPodcastRowGesture {
     Index,
     DoubleClick,
     Menu,
+    Next,
 }
 
 /// Public resource identity only; queue source metadata never crosses IPC.
@@ -180,6 +181,8 @@ pub struct QueueTrack {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub catalog_menu: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub voice_menu: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub collectible: bool,
 }
 #[derive(Serialize)]
@@ -194,6 +197,21 @@ pub struct QueueCatalogMenu {
     pub comment_count: Option<u64>,
     pub downloaded: bool,
     pub download_task_id: Option<String>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueVoiceMenu {
+    pub epoch: String,
+    pub revision: String,
+    pub entry_id: String,
+    pub track: TrackView,
+    pub voice_id: String,
+    pub source_label: String,
+    pub radio_id: Option<String>,
+    pub creator: Option<super::PlayerVoiceCreator>,
+    pub comment_count: Option<u64>,
+    pub downloaded: Option<bool>,
+    pub directory_available: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -320,6 +338,11 @@ pub enum PlaySelection {
         revision: String,
         key: usize,
     },
+    HistoryRadioChapter {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        id: String,
+    },
     History {
         history_kind: crate::history::HistoryKind,
         revision: String,
@@ -423,6 +446,9 @@ pub enum PlaySelection {
     },
     SearchResultVoice {
         id: String,
+    },
+    SearchVoiceMenu {
+        target: crate::client::dto::SearchVoiceMenuTarget,
     },
     SearchHotTrack {
         id: String,
@@ -655,6 +681,12 @@ pub enum PlayerAction {
     },
     QueueArtistSongs {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueArtistSongsBatch {
+        pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        ids: Vec<String>,
         quality: Quality,
         expected_queue_revision: String,
     },

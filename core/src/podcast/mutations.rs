@@ -1,13 +1,16 @@
 //! M/232 mutations with durable intent and two matching reads (the recovered
 //! probes observed eventual consistency). Reconciliation never replays writes.
-use super::PodcastApi;
+use super::{
+    PodcastApi,
+    resume::{self, PlayerBinding},
+};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken, resources::MutationPhase},
     playback::engine::Cancellation,
     protocol::api::{
-        VinylPlaybackReadPermission, VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite,
-        identifier, validate_response,
+        PODCAST_RESUME_WRITE_PATH, PlayerPodcastResumeWrite, VinylPlaybackReadPermission,
+        VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, identifier, validate_response,
     },
     storage::{OperationLock, StateStore},
 };
@@ -49,6 +52,7 @@ enum ChangeScope<'a> {
     Ordinary,
     Search,
     Context(&'a (dyn Fn() -> Result<()> + Sync + 'a)),
+    Resume(PlayerBinding<'a>),
     Fresh(FreshVinylSubscription<'a>),
 }
 
@@ -108,6 +112,9 @@ impl PodcastService {
         id: &str,
     ) -> Result<bool> {
         let id = identifier(&json!(id))?;
+        if action == PodcastAction::Resume {
+            return super::resume::read_for(&self.session, token, &json!(id)).await;
+        }
         self.session
             .run_for(token, |api, _| async move {
                 let api = PodcastApi::new(api);
@@ -118,7 +125,7 @@ impl PodcastService {
                         .subscribed
                         .ok_or(Error::Response("podcast subscription state missing")),
                     PodcastAction::Like => Ok(api.liked_voices().await?.iter().any(|v| v.id == id)),
-                    PodcastAction::Resume => api.resume_enabled(&json!(id)).await,
+                    PodcastAction::Resume => unreachable!("handled above"),
                 }
             })
             .await
@@ -148,7 +155,7 @@ impl PodcastService {
         )
         .await
     }
-    pub(crate) async fn change_vinyl_subscription_for(
+    pub(crate) async fn change_scoped_subscription_for(
         &self,
         token: &SessionToken,
         id: &str,
@@ -177,6 +184,27 @@ impl PodcastService {
             id,
             !expected,
             ChangeScope::Fresh(binding),
+        )
+        .await
+    }
+
+    pub(crate) async fn change_player_resume_for(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        desired: bool,
+        revision: &str,
+        permission: &VinylPlaybackReadPermission<'_>,
+    ) -> Result<PodcastMutation> {
+        self.change_checked(
+            token,
+            PodcastAction::Resume,
+            id,
+            desired,
+            ChangeScope::Resume(PlayerBinding {
+                revision,
+                permission,
+            }),
         )
         .await
     }
@@ -254,6 +282,7 @@ impl PodcastService {
         let source: Option<&(dyn Fn() -> Result<()> + Sync)> = match scope {
             ChangeScope::Context(check) => Some(check),
             ChangeScope::Fresh(binding) => Some(binding.permission),
+            ChangeScope::Resume(binding) => Some(binding.permission),
             _ => None,
         };
         let fresh = match scope {
@@ -277,7 +306,9 @@ impl PodcastService {
         let before = if let Some(binding) = fresh {
             let radio = self.fresh_radio(token, id, binding).await?;
             checked_subscription(radio, &owner)?
-        } else if !matches!(scope, ChangeScope::Ordinary) {
+        } else if let ChangeScope::Resume(binding) = scope {
+            resume::read_player_for(&self.session, token, id, binding).await?
+        } else if matches!(scope, ChangeScope::Search | ChangeScope::Context(_)) {
             // The displayed result and membership list may have changed.
             // Check identity/ownership inside the same operation lock as the write.
             self.session
@@ -313,6 +344,23 @@ impl PodcastService {
         let result = if let Some(binding) = fresh {
             self.send_fresh_subscription(token, id, desired, binding)
                 .await
+        } else if let ChangeScope::Resume(PlayerBinding {
+            revision,
+            permission,
+        }) = scope
+        {
+            let before_send = |error| Error::RequestNotSent(Box::new(error));
+            async {
+                permission().map_err(before_send)?;
+                let api = self.session.native_api(token).map_err(before_send)?;
+                let write = PlayerPodcastResumeWrite::new(id, desired).map_err(before_send)?;
+                let reply = api
+                    .request_player_podcast_resume_write(write, revision, permission)
+                    .await?;
+                validate_response(PODCAST_RESUME_WRITE_PATH, reply, &[200])?;
+                Ok(())
+            }
+            .await
         } else {
             self.session
                 .run_for(token, |api, _| async move {
@@ -350,7 +398,11 @@ impl PodcastService {
             }
         }
         self.save_transition(&owner, &key, &record)?;
-        self.settle(token, record, fresh).await
+        let resume = match scope {
+            ChangeScope::Resume(binding) => Some(binding),
+            _ => None,
+        };
+        self.settle(token, record, fresh, resume).await
     }
     pub async fn reconcile_for(
         &self,
@@ -358,7 +410,7 @@ impl PodcastService {
         action: PodcastAction,
         id: &str,
     ) -> Result<PodcastMutation> {
-        self.reconcile_checked(token, action, id, None).await
+        self.reconcile_checked(token, action, id, None, None).await
     }
 
     pub(crate) async fn reconcile_fresh_vinyl_subscription_for(
@@ -367,7 +419,17 @@ impl PodcastService {
         id: &str,
         binding: FreshVinylSubscription<'_>,
     ) -> Result<PodcastMutation> {
-        self.reconcile_checked(token, PodcastAction::Subscribe, id, Some(binding))
+        self.reconcile_checked(token, PodcastAction::Subscribe, id, Some(binding), None)
+            .await
+    }
+
+    pub(crate) async fn reconcile_player_resume_for(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        binding: PlayerBinding<'_>,
+    ) -> Result<PodcastMutation> {
+        self.reconcile_checked(token, PodcastAction::Resume, id, None, Some(binding))
             .await
     }
 
@@ -377,6 +439,7 @@ impl PodcastService {
         action: PodcastAction,
         id: &str,
         fresh: Option<FreshVinylSubscription<'_>>,
+        resume: Option<PlayerBinding<'_>>,
     ) -> Result<PodcastMutation> {
         let key = key(action, id)?;
         let owner = self
@@ -386,19 +449,23 @@ impl PodcastService {
         if let Some(binding) = fresh {
             (binding.permission)()?;
         }
+        if let Some(binding) = resume {
+            (binding.permission)()?;
+        }
         let record = self
             .operation_for(token, action, id)?
             .ok_or(Error::State("no podcast mutation to reconcile"))?;
         if !record.phase.pending() {
             return Ok(record);
         }
-        self.settle(token, record, fresh).await
+        self.settle(token, record, fresh, resume).await
     }
     async fn settle(
         &self,
         token: &SessionToken,
         mut record: PodcastMutation,
         fresh: Option<FreshVinylSubscription<'_>>,
+        resume: Option<PlayerBinding<'_>>,
     ) -> Result<PodcastMutation> {
         let key = key(record.action, &record.id)?;
         let mut matching = 0;
@@ -411,6 +478,8 @@ impl PodcastService {
                     .await?
                     .subscribed
                     .ok_or(Error::Response("podcast subscription state missing"))?
+            } else if let Some(binding) = resume {
+                resume::read_player_for(&self.session, token, &record.id, binding).await?
             } else {
                 self.state_for(token, record.action, &record.id).await?
             };

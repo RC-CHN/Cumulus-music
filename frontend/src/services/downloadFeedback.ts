@@ -22,11 +22,9 @@ export function downloadCommandLabel(command: DownloadCommand): string {
     case 'control':
       return `${control[command.action]}（${command.task_ids.length}项）`;
     case 'all':
-      return command.action === 'pause'
-        ? '暂停全部下载'
-        : command.action === 'resume'
-          ? '继续全部下载'
-          : '清空下载任务';
+      return command.action === 'pause' ? '暂停全部下载' : '继续全部下载';
+    case 'confirm_clear':
+      return '清空下载任务';
     case 'preferences':
       return '保存下载设置';
     case 'configure':

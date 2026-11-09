@@ -6,6 +6,7 @@ pub(in crate::download) const FINAL_INTEGRITY_MISMATCH: &str = "final transfer i
 mod files;
 mod headers;
 mod manager;
+mod rates;
 mod records;
 mod run;
 mod url;

@@ -72,6 +72,10 @@ pub(super) fn creation_clock() -> Result<u64> {
 }
 
 impl DownloadService {
+    pub(crate) fn has_transfer_control(&self, id: &str) -> Result<bool> {
+        Ok(self.store.get(&self.owner, CONTROL, id)?.is_some())
+    }
+
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
         Self::with_backend(
             session,
@@ -141,6 +145,36 @@ impl DownloadService {
         self.guard(token)?;
         self.read(id)
     }
+    pub(crate) fn get_ordered_for(
+        &self,
+        token: &SessionToken,
+        ids: &[String],
+    ) -> Result<Vec<DownloadTask>> {
+        self.guard(token)?;
+        for id in ids {
+            valid_id(id)?;
+        }
+        let records = self.store.get_ordered(&self.owner, KIND, ids)?;
+        if records.len() != ids.len() {
+            return Err(Error::State("download task count mismatch"));
+        }
+        let result = ids
+            .iter()
+            .zip(records)
+            .map(|(id, value)| {
+                let task: DownloadTask = serde_json::from_value(
+                    value.ok_or(Error::State("download does not belong to this account"))?,
+                )?;
+                if &task.id != id {
+                    return Err(Error::State("download task ID mismatch"));
+                }
+                Ok(task)
+            })
+            .collect::<Result<_>>()?;
+        self.guard(token)?;
+        Ok(result)
+    }
+
     pub fn list(&self) -> Result<Vec<DownloadTask>> {
         let token = self.session.token()?;
         self.guard(&token)?;

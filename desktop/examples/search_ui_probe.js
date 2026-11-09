@@ -85,7 +85,7 @@
     await emit("search-fixture", { mode });
     await wait(() => window.__searchFixtureAck, "fixture");
   }
-  async function capture(label) {
+  async function capture(label, extra = {}) {
     await wait(
       () =>
         all(".search-panel,.search-history-confirm").every((n) =>
@@ -156,6 +156,7 @@
       searchPanelText: p?.textContent,
       tagLayout,
       focused: document.activeElement?.getAttribute("aria-label"),
+      ...extra,
     });
     await sleep(700);
   }
@@ -479,7 +480,10 @@
       await capture("suggestion_pointer_active");
       key(input(), "Enter");
       await result("合成精确词");
-      assert(input().value === literal, "hover selection preserves the display label");
+      assert(input().value === "合成输入栏文案", "hover selection uses toUserWord in the input");
+      await capture("suggestion_pointer_selection", {
+        selection: { popup: literal, result: one(".search-heading-copy h1").textContent, input: input().value },
+      });
 
       await open("音樂", "原字形 音樂 / 音乐");
       verifyRow(row("suggestions"), "原字形 音樂 / 音乐", ["音乐"]);
@@ -502,8 +506,11 @@
       assert(document.activeElement === recommendation, "keyboard advances to the recommendation");
       key(recommendation, "Enter");
       await result("合成分支推荐");
-      assert(input().value === "B / C / A / b c",
-        "recommended keyboard selection preserves the display label");
+      assert(input().value === "合成分支推荐",
+        "recommended keyboard selection without toUserWord fills the actual keyword");
+      await capture("suggestion_recommendation_selection", {
+        selection: { popup: "B / C / A / b c", result: one(".search-heading-copy h1").textContent, input: input().value },
+      });
 
       await open("退出悬停", "退出候选");
       point(row("suggestions"));
@@ -515,6 +522,16 @@
       type("更改后的原词");
       key(input(), "Enter");
       await result("更改后的原词");
+      const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
+      const { epoch } = await invoke("account_snapshot");
+      let history;
+      for (let n = 0; n < 50; n++) {
+        history = (await invoke("search_history", { epoch, command: { kind: "read" } })).value.slice(0, 4);
+        if (history[0] === "更改后的原词") break;
+        await sleep(25);
+      }
+      assert(history.join("|") === "更改后的原词|退出悬停|合成分支推荐|合成精确词",
+        "native history remembers only the selected search keywords");
       await emit("complete", {
         ok: true,
         suggestionMatchesVerified: true,
@@ -522,6 +539,7 @@
         suggestionGlyphDirectionVerified: true,
         suggestionFirstSpaceVerified: true,
         suggestionRecommendationKeyboardVerified: true,
+        suggestionHistory: history,
         stageCount: count,
         realMusicRequests: 0,
         realAccountWrites: 0,
@@ -657,7 +675,7 @@
           one(".search-heading-copy h1")?.textContent === "合成推荐",
         "search navigation",
       );
-      assert(input().value.includes("推荐结果"), "suggestion label stays in input, not the search term");
+      assert(input().value === "合成推荐", "missing toUserWord leaves the actual keyword in the input");
       await capture(`results_${w}_${t}`);
       await home();
       click(button("清空搜索历史"));

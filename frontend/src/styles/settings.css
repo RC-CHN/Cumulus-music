@@ -12,8 +12,37 @@
   padding: 7px 16px;
   min-height: 34px;
 }
-.settings-page :is(button, input, summary) {
+.settings-page :is(button, input, select, summary) {
   scroll-margin-block: 8px;
+}
+.interface-font-setting {
+  margin-block: 16px 10px;
+}
+.interface-font-setting > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.interface-font-setting > select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  width: min(100%, 240px);
+}
+.interface-font-setting > select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.interface-font-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 .settings-checkbox {
   display: flex;

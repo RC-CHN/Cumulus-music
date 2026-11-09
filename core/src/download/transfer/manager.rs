@@ -13,6 +13,7 @@ pub struct TransferManager {
     pub(super) owner: String,
     pub(super) backend: Arc<dyn MediaBackend>,
     pub(super) limit: u64,
+    pub(super) rates: super::rates::LiveRates,
 }
 impl TransferManager {
     pub fn new(store: Arc<StateStore>, owner: String) -> Result<Self> {
@@ -37,7 +38,12 @@ impl TransferManager {
             owner,
             backend,
             limit,
+            rates: Default::default(),
         })
+    }
+
+    pub(crate) fn live_rates(&self) -> std::collections::HashMap<String, u64> {
+        self.rates.snapshot()
     }
     pub fn create(&self, mut input: CreateTransfer) -> Result<TransferJob> {
         input.resource.validate(self.limit)?;

@@ -3,8 +3,8 @@ use crate::{
     client::mapping,
     download::{
         completed::FilePhase,
-        service::{DownloadStatus, DownloadTask},
-        transfer::TransferJob,
+        service::{DownloadPhase, DownloadStatus, DownloadTask},
+        transfer::{TransferJob, TransferStatus},
     },
 };
 use icu_collator::Collator;
@@ -38,6 +38,20 @@ impl Host {
             .active()?
             .map(|id| context.directory.get(&id))
             .transpose()?;
+        let live_rates = if query.tab == DownloadTab::Active && migration.is_none() {
+            self.worker
+                .lock()
+                .ok()
+                .and_then(|worker| {
+                    worker.as_ref().and_then(|worker| {
+                        (worker.token == context.token && !worker.handle.is_finished())
+                            .then(|| worker.scheduler.live_rates())
+                    })
+                })
+                .unwrap_or_default()
+        } else {
+            Default::default()
+        };
         let operations = context
             .files
             .list()?
@@ -125,6 +139,17 @@ impl Host {
                     .filter(|n| *n > 0)
                     .map(|n| (bytes as f64 / n as f64 * 0.95).clamp(0.0, 0.95))
             };
+            let speed_bytes_per_second = live_rates.get(&task.id).copied().filter(|_| {
+                task.status == DownloadStatus::Downloading
+                    && task.phase == DownloadPhase::Transfer
+                    && raw
+                        .as_ref()
+                        .is_some_and(|job| job.status == TransferStatus::Running)
+                    && context
+                        .service
+                        .has_transfer_control(&task.id)
+                        .is_ok_and(|pending| !pending)
+            });
             let actual_quality = task
                 .resource
                 .as_ref()
@@ -163,6 +188,7 @@ impl Host {
                 bytes,
                 total,
                 progress,
+                speed_bytes_per_second,
                 requested_quality: task.options.quality.as_str().into(),
                 actual_quality,
                 requested_resolution: match task.origin {

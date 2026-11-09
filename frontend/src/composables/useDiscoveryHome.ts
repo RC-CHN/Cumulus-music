@@ -1,6 +1,10 @@
 import { onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
-import type { DiscoveryHomeClient, DiscoveryHomePage } from '../services/discoveryHome';
+import type {
+  DiscoveryHomeClient,
+  DiscoveryHomePage,
+  HomeRecallGuide,
+} from '../services/discoveryHome';
 import type { RankingGroup } from '../services/rankings';
 
 // M/32.n uses 3h when the preload config has no home override.
@@ -13,6 +17,7 @@ export function useDiscoveryHome(
   expired: () => void,
 ) {
   const data = shallowRef<DiscoveryHomePage>();
+  const recallGuide = shallowRef<HomeRecallGuide>();
   const ranking = shallowRef<RankingGroup>();
   const error = ref('');
   const loading = ref(false);
@@ -28,6 +33,7 @@ export function useDiscoveryHome(
     ++serial;
     owner = epoch;
     data.value = undefined;
+    recallGuide.value = undefined;
     ranking.value = undefined;
     rankingObserved = 0;
     rankingFlight = 0;
@@ -49,6 +55,7 @@ export function useDiscoveryHome(
       const response = await core.discoveryHome(epoch);
       if (owner !== epoch || request !== serial || response.epoch !== epoch) return;
       data.value = response.value;
+      recallGuide.value = active() ? response.value.recallGuide : undefined;
       observed = Date.now();
       if (!response.value.recommendationEnabled) {
         viewport.scroll = 0;
@@ -93,6 +100,7 @@ export function useDiscoveryHome(
     ([epoch, status, visible]) => {
       const key = status === 'authenticated' ? epoch : undefined;
       if (owner !== key) reset(key);
+      if (!visible) recallGuide.value = undefined;
       clearInterval(rankTimer);
       if (key && visible) {
         void load();
@@ -120,6 +128,7 @@ export function useDiscoveryHome(
   return {
     data,
     ranking,
+    recallGuide,
     loading,
     error,
     viewport,

@@ -165,7 +165,7 @@ import QueuePanel from './components/QueuePanel.vue';
 import type {
   TrackCurrentToggle,
   QueueMenuAction,
-  QueueTrackMenuRequest,
+  QueueMenuRequest,
   TrackMenuRequest,
   TrackPendingToggle,
   TrackPlayGesture,
@@ -671,6 +671,20 @@ function playHistory(kind: HistoryKind, revision: string, ids: string[], index: 
     ids,
     index,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  });
+}
+function playHistoryChapter(kind: 'podcast' | 'audiobook', revision: string, id: string) {
+  const route = music.page.value;
+  if (
+    route.kind !== 'history' ||
+    recent.page.value?.chapterRevision !== revision ||
+    !signedIn.value
+  )
+    return;
+  void player.prepareSelection(async () => {
+    if (music.page.value !== route || recent.page.value?.chapterRevision !== revision)
+      throw { code: 'stale', message: '播放记录已更新', retryable: false };
+    return { kind: 'history_radio_chapter', history_kind: kind, revision, id };
   });
 }
 function openHistory(resource: HistoryResource) {
@@ -1505,6 +1519,22 @@ function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
           ? searchPodcastRowSelection(item, gesture)
           : undefined;
     if (!selection || !signedIn.value || player.busy.value) return;
+    if (gesture === 'next') {
+      if (
+        !ordinaryVoiceQueueable.value ||
+        player.view.value?.state === 'preparing' ||
+        player.view.value?.state === 'loading'
+      )
+        return;
+      void queueSearchResult(() =>
+        player.prepareSelectionForPage(async () => {
+          if (page.value !== route)
+            throw { code: 'stale', message: '搜索结果已更新', retryable: false };
+          return selection;
+        }),
+      );
+      return;
+    }
     void player.prepareSelection(async () => {
       if (page.value !== route)
         throw { code: 'stale', message: '搜索结果已更新', retryable: false };
@@ -1519,6 +1549,16 @@ function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
     const quality = view?.qualityPreferences.quality ?? 'standard';
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
   }
+}
+function playSearchVoiceMenu(target: import('./services/search').SearchVoiceMenuTarget) {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  if (route.kind !== 'search' || !ordinaryVoiceQueueable.value) return;
+  void player.prepareSelection(async (owner) => {
+    if (page.value !== route || owner !== epoch)
+      throw { code: 'stale', message: '搜索结果已更新', retryable: false };
+    return { kind: 'search_voice_menu', target };
+  });
 }
 const searchCollectionQueueable = computed(
   () =>
@@ -1538,28 +1578,31 @@ function queueSearchCard({ item, anchor }: SearchQueueRequest) {
   if (item.kind === 'album') albumAction({ album: item.album, action: 'next', anchor });
   else playlistActions.value?.show(item.playlist, 'next');
 }
-const searchVoiceQueueFeedback = ref('');
-let searchVoiceQueueAttempt = 0;
+const searchCardQueueFeedback = ref('');
+let searchCardQueueAttempt = 0;
 watch([music.page, () => music.account.value.epoch], () => {
-  searchVoiceQueueFeedback.value = '';
-  searchVoiceQueueAttempt++;
+  searchCardQueueFeedback.value = '';
+  searchCardQueueAttempt++;
 });
-async function queueSearchVoice(id: string) {
+async function queueSearchResult(run: () => Promise<PlayerView | undefined>) {
   const route = page.value;
   const epoch = account.value.epoch;
   if (route.kind !== 'search' || !ordinaryVoiceQueueable.value) return;
-  const attempt = ++searchVoiceQueueAttempt;
+  const attempt = ++searchCardQueueAttempt;
   const current = () =>
-    attempt === searchVoiceQueueAttempt && page.value === route && account.value.epoch === epoch;
+    attempt === searchCardQueueAttempt && page.value === route && account.value.epoch === epoch;
   const previous = player.view.value;
-  searchVoiceQueueFeedback.value = '';
+  searchCardQueueFeedback.value = '';
   try {
-    const next = await player.queueVoice(id);
+    const next = await run();
     if (current() && previous?.queueLen && next && next.queueRevision !== previous.queueRevision)
-      searchVoiceQueueFeedback.value = '已添加至播放列表';
+      searchCardQueueFeedback.value = '已添加至播放列表';
   } catch (error) {
-    if (current()) searchVoiceQueueFeedback.value = failure(error).message;
+    if (current()) searchCardQueueFeedback.value = failure(error).message;
   }
+}
+function queueSearchVoice(id: string) {
+  void queueSearchResult(() => player.queueVoice(id));
 }
 function searchCardComments(item: SearchItem) {
   if (item.kind === 'playlist')
@@ -2458,9 +2501,35 @@ function collectQueue(
         : undefined,
   };
 }
-function applyQueueMenu(key: QueueMenuAction, input: QueueTrackMenuRequest) {
+function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
   if (!input.live() || input.info.epoch !== account.value.epoch) return;
   const { track } = input.info;
+  if (input.kind === 'voice') {
+    const { voiceId, radioId, creator, epoch, revision, entryId } = input.info;
+    if (key === 'comments') openComments({ kind: 'voice', id: voiceId }, track.name);
+    else if (key === 'download' && signedIn.value && !downloadDialog.value) {
+      const route = page.value;
+      downloadDialog.value = {
+        kind: 'voice',
+        tracks: [{ id: voiceId, name: track.name }],
+        live: () => page.value === route && input.live() && account.value.epoch === epoch,
+      };
+    } else if (key === 'creator' && creator?.id) {
+      if (page.value.kind !== 'playlist_creator' || page.value.id !== creator.id)
+        music.navigate({ kind: 'playlist_creator', id: creator.id });
+    } else if (key === 'source' && radioId) {
+      const scope = podcasts.query.value.scope;
+      if (page.value.kind !== 'podcasts') {
+        podcasts.navigate({ kind: 'radio', id: radioId, ascending: true }, false);
+        music.navigate({ kind: 'podcasts' });
+      } else if (scope.kind !== 'radio' || scope.id !== radioId) openSceneRadio(radioId);
+    } else if (key === 'directory') {
+      void core.playerQueueOpenVoiceDirectory(epoch, revision, entryId).catch((error) => {
+        if (input.live()) input.report(failure(error).message);
+      });
+    }
+    return;
+  }
   if (key === 'comments') trackComments(track);
   else if (key === 'download') {
     if (!signedIn.value) loginOpen.value = true;
@@ -5296,12 +5365,16 @@ onUnmounted(() => {
               <HistoryPage
                 v-else-if="page.kind === 'history'"
                 :model="recent"
+                :account="account"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
                 @scope="music.replace({ kind: 'history', scope: $event })"
                 @play="playHistory"
+                @chapter="playHistoryChapter"
                 @open="openHistory"
+                @login="loginOpen = true"
+                @expired="music.bootstrap(false)"
               />
               <SettingsPage
                 :player="player"
@@ -5486,7 +5559,7 @@ onUnmounted(() => {
                 :queueable="searchCollectionQueueable"
                 :queue-drop-enabled="canDropSearchSong"
                 :voice-queueable="ordinaryVoiceQueueable"
-                :voice-queue-feedback="searchVoiceQueueFeedback"
+                :card-queue-feedback="searchCardQueueFeedback"
                 :playlist-action-busy="
                   playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
                 "
@@ -5532,6 +5605,7 @@ onUnmounted(() => {
                 @toggle-pending-track="toggleSearchPendingTrack"
                 @toggle-pending-voice="toggleSearchPendingVoice"
                 @play-card="playSearchCard"
+                @voice-menu-play="playSearchVoiceMenu"
                 @queue-card="queueSearchCard"
                 @queue-voice="queueSearchVoice"
                 @queue-drag="startSearchQueueDrop"
@@ -5624,6 +5698,7 @@ onUnmounted(() => {
                 @toggle-current="toggleVisibleTrack"
                 @play-tracks="playOnlineSongs"
                 :queue-artist-songs="player.queueArtistSongs"
+                :prepare-artist-songs-batch="player.prepareArtistSongsBatch"
                 @collect-tracks="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"
@@ -6545,6 +6620,12 @@ onUnmounted(() => {
     />
     <PlayerBar
       :account="account"
+      :podcast-resume="pcPresentation.podcastResume.value"
+      :recall-guide="discoveryHome.recallGuide.value"
+      @recall-guide-shown="
+        (epoch, receipt) => void core.acknowledgeHomeRecallGuide(epoch, receipt).catch(() => {})
+      "
+      @resume-confirmed="podcasts.observePlayerResume"
       :player="player"
       :intelligence="intelligence"
       :liked-playlist-id="signedIn ? favorite?.id : null"

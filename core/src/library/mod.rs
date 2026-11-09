@@ -12,6 +12,9 @@ mod records;
 mod types;
 pub use index::{IndexedFlacReceipt, LocalLibrary, LocalMapping, MappingSource};
 pub(crate) use index::{delete_completed_download, relocate_download};
+#[cfg(windows)]
+#[doc(hidden)]
+pub use native_open::{WindowsNativeOpenBatch, WindowsOpenedAudio};
 pub use records::{
     LibraryItem, ListOptions, LocalResource, LocalRevision, LocalSegment, LocalSource, ScanIssue,
     ScanProgress, ScanReport, ScanStage,

@@ -14,6 +14,10 @@ on:
         description: Also verify Windows SMTC through an independent OS session consumer
         type: boolean
         default: false
+      windows_native_file_diagnostic:
+        description: Run the candidate Windows native file handoff against this run's portable package
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -730,11 +734,15 @@ jobs:
           python scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-page-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-table-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-batch-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/download_collection_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe.exe --frontend-dist frontend/dist --root .build/ci-download-batch-collect-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/download_page_smoke.py --clear-snapshot --binary .build/target/debug/examples/ux_ui_probe.exe --frontend-dist frontend/dist --root .build/ci-download-clear-snapshot-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --navigation --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-navigation-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_voice_podcast_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-voice-podcast-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --mv-replay --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-mv-replay-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --menu --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-player-layout-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/player_layout_smoke.py --chorus-queue --binary .build/target/debug/examples/ux_ui_probe.exe --frontend-dist frontend/dist --root .build/ci-player-chorus-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/player_layout_smoke.py --fm-chorus --binary .build/target/debug/examples/ux_ui_probe.exe --frontend-dist frontend/dist --root .build/ci-player-fm-chorus-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/song_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-song-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_collect_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-collect-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/library_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-library-windows --runtime .build/package-stage/windows-x64/native
@@ -888,6 +896,7 @@ jobs:
           python scripts/ci/search_results_smoke.py --voice-next --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-next-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --podcast-follow --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-podcast-follow-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_recent_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-recent-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/player_podcast_resume_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --frontend-dist frontend/dist --root .build/ci-player-podcast-resume-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-progress-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_recent_smoke.py --badges --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-badges-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_recent_smoke.py --recommendations --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-recommendations-windows --runtime .build/package-stage/windows-x64/native
@@ -936,6 +945,7 @@ jobs:
           python scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-rankings-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-ordinary-essential-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/catalog_smoke.py --listened-books-resume --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-listened-books-resume-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --ordinary-essential-actions --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-ordinary-essential-actions-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --ordinary-essential-voice-actions --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-ordinary-essential-voice-actions-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-album-windows --runtime .build/package-stage/windows-x64/native --album
@@ -945,6 +955,7 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-windows --runtime .build/package-stage/windows-x64/native --artist
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-mv-windows --runtime .build/package-stage/windows-x64/native --artist-mv
           python scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe.exe --root .build/ci-discovery-home-windows
+          python scripts/ci/discovery_home_smoke.py --recall --binary .build/target/debug/examples/discovery_home_ui_probe.exe --root .build/ci-discovery-recall-windows
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-artist-batch-windows --runtime .build/package-stage/windows-x64/native --artist-batch
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-navigation-windows --runtime .build/package-stage/windows-x64/native --navigation
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-playback-credit-windows --runtime .build/package-stage/windows-x64/native --playback-credit
@@ -1024,6 +1035,44 @@ jobs:
             .build/ci-windows-cold-flac/tests.log
           if-no-files-found: error
           retention-days: 14
+      - name: Verify Windows native open tokens, profile and retained decoder inputs
+        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && inputs.windows_native_file_diagnostic
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $runtime = (Resolve-Path -LiteralPath '.build/package-stage/windows-x64/native').Path
+          $env:MPV_DLL_DIR_CUMULUS = $runtime
+          $env:CUMULUS_HELD_FFPROBE = Join-Path $runtime 'ffprobe.exe'
+          cargo test --locked --manifest-path desktop/probes/native-open-windows/Cargo.toml effective_connector_rejects_same_logon_restricted_thread_before_ready
+          if ($LASTEXITCODE -ne 0) { throw 'Effective connector proof failed' }
+          cargo test --locked -p cumulus-desktop --lib --features custom-protocol native_open::windows::profile::tests
+          if ($LASTEXITCODE -ne 0) { throw 'Held profile or database proof failed' }
+          cargo test --locked -p cumulus-desktop --lib --features custom-protocol confirmed_quit_cancels_a_consumed_cold_selection_without_enabling_old_startup
+          if ($LASTEXITCODE -ne 0) { throw 'Native quit recovery proof failed' }
+          cargo test --locked -p cumulus-desktop --lib --features custom-protocol a_reparse_ancestor_or_lock_cannot_open_its_target -- --ignored
+          if ($LASTEXITCODE -ne 0) { throw 'Windows profile reparse proof failed' }
+          cargo test --locked -p cumulus-core --test held_flac_probe --test held_mp3_probe -- --include-ignored
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged held ffprobe proof failed' }
+          cargo test --locked -p cumulus-core --lib windows_rooted_actor_loads_held -- --ignored
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged held libmpv proof failed' }
+      - name: Launch exact Windows package and exercise cold and warm native file open
+        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && inputs.windows_native_file_diagnostic
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          python scripts/ci/windows_native_open_smoke.py --packages .build/packages/windows-x64 --fixture-encoder "$env:CUMULUS_LOCAL_FIXTURE_FFMPEG" --root .build/ci-native-open-windows
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaged file activation proof failed' }
+      - name: Preserve Windows packaged native open evidence
+        if: always() && !cancelled() && matrix.shard == 'package-runtime' && hashFiles('.build/ci-native-open-windows/owner.log') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-packaged-native-open-attempt-${{ github.run_attempt }}
+          path: |
+            .build/ci-native-open-windows/report.json
+            .build/ci-native-open-windows/owner.log
+            .build/ci-native-open-windows/sender.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
@@ -1238,6 +1287,11 @@ jobs:
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --indexed-flac-only --binary .build/target/debug/examples/native_local_equalizer_probe \
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --frontend-dist frontend/dist --root .build/ci-indexed-flac-linux
+      - name: Verify search playback with the packaged FLAC decoder and rejected digest
+        if: matrix.shard == 'media-decoder'
+        run: |
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_download_row_smoke.py --local-marker --held-replacement --equalizer-flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --equalizer-flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-held-eq-trusted-linux --screenshots
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_download_row_smoke.py --local-marker --held-replacement --equalizer-flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --equalizer-flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --wrong-equalizer-digest --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-held-eq-wrong-digest-linux --screenshots
       - name: Verify isolated playback preferences and message actions on Linux
         if: matrix.shard == 'media-decoder'
         run: |
@@ -1373,6 +1427,9 @@ jobs:
     steps:
       - *linux_webview_checkout
       - *linux_webview_dependencies
+      - name: Native GTK folder chooser accessibility
+        if: matrix.shard == 'local-desktop'
+        run: sudo apt-get install -y gir1.2-atspi-2.0 at-spi2-core
       - *linux_webview_python
       - *linux_webview_toolchain
       - *linux_webview_rust_downloads
@@ -1441,6 +1498,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --podcast-follow --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-podcast-follow-linux
           cargo build -p cumulus-desktop --example podcast_recent_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-recent-linux
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/player_podcast_resume_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-player-podcast-resume-linux --screenshots
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/podcast_program_menu_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-podcast-program-menu-linux
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/podcast_recent_program_menu_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-podcast-recent-program-menu-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-progress-linux
@@ -1560,6 +1618,7 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-local-delete-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-local-resource-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-cold-start-linux
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- /usr/bin/python3 scripts/ci/local_directory_selection_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-directory-selection-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_folder_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-folder-reveal-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_group_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-group-hide-linux --screenshots
@@ -1582,6 +1641,14 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
+          loopback_only() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              target_user=$1
+              shift
+              ip link set lo up
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$(id -un)" "$@"
+          }
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
           cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
@@ -1638,6 +1705,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-rankings-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/catalog_smoke.py --listened-books-resume --binary .build/target/debug/examples/catalog_ui_probe --frontend-dist frontend/dist --root .build/ci-listened-books-resume-linux --screenshots
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/history_radio_chapter_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --frontend-dist frontend/dist --root .build/ci-history-radio-chapter-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential-actions --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-actions-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential-voice-actions --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-voice-actions-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-album-linux --album
@@ -1648,6 +1717,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-mv-linux --artist-mv
           cargo build -p cumulus-desktop --example discovery_home_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-home-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/discovery_home_smoke.py --recall --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-recall-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-batch-linux --artist-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-navigation-linux --navigation
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-playback-credit-linux --playback-credit
@@ -1756,6 +1826,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-page-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-table-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-batch-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_collection_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-batch-collect-linux --screenshots
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_page_smoke.py --clear-snapshot --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-clear-snapshot-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --navigation --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-navigation-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_voice_podcast_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-voice-podcast-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --mv-replay --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-mv-replay-linux
@@ -1764,6 +1836,8 @@ jobs:
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_collection_create_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-collection-create-linux
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/download_system_liked_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-download-system-liked-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
+          loopback_only env CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/player_layout_smoke.py --chorus-queue --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-player-chorus-linux --screenshots
+          loopback_only env CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/player_layout_smoke.py --fm-chorus --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-player-fm-chorus-linux --screenshots
           CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_lyric_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-lyric-copy-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_text_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-text-copy-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comment_copy_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-vinyl-comment-copy-linux
@@ -1829,6 +1903,9 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-qr-identity-recovery-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-author --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-author-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_voice_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-voice-menu-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_voice_menu_smoke.py --play --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-voice-menu-play-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_voice_menu_smoke.py --queue --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-queue-voice-menu-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-drawer-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-polling-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-deletion-linux

@@ -51,6 +51,27 @@ pub async fn history_command(
 }
 
 #[tauri::command]
+pub async fn history_radio_collection<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    kind: HistoryKind,
+    revision: String,
+    id: String,
+    action: HistoryRadioCollection,
+) -> Result<AccountData<PodcastMutationView>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("history collection is main-window only").into(),
+        );
+    }
+    client
+        .history_radio_collection(&epoch, kind, &revision, &id, action)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn listened_books(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

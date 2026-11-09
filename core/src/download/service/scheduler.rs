@@ -41,6 +41,13 @@ impl DownloadScheduler {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
     }
+
+    pub(crate) fn live_rates(&self) -> std::collections::HashMap<String, u64> {
+        if self.stop.load(Ordering::Acquire) {
+            return Default::default();
+        }
+        self.service.transfer.live_rates()
+    }
     /// Finite drain. Each task is attempted once; paused/errors need enqueue.
     /// A slot includes authorization, media, tags, publication and sidecars.
     pub async fn run_pending(&self) -> Result<Vec<ScheduledResult>> {

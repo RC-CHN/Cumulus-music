@@ -310,6 +310,7 @@ mod tests {
                         hint: Some(TrackHint::Alias {
                             text: format!("合成别名{id}"),
                         }),
+                        table_hint: None,
                         explicit: true,
                         original_recording: true,
                         reasons: vec![],
