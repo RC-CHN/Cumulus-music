@@ -140,6 +140,18 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     Tauri 构建在候选 0c518d98 重跑 8+4 态；前端 1041 项通过。
     12 张截图及两个实窗报告存于 .build/ui-proof/phase216-search-queue/。
     均为隔离的合成账号，没有真实上游写入。
+  - 播放详情的歌词正文和工具栏已接通固定公开贡献页，保留原报错。
+    工具栏原始证据 78de469f 通过隔离 Linux WebView 11 态、7 次模拟浏览器
+    交接，无真实上游写入，见 .build/ui-proof/phase217-lyric-toolbar/。
+    79b73996 的正文基础回归另有 7 项歌词单元、144 项播放器测试和定向
+    严格 Clippy；合并正文/工具栏/云贝核心的 83def1d9 又独立通过 24 项
+    相关 Rust 用例和严格 Clippy。悬赏请求及不明回执在 Rust 持久化，
+    正式桌面尚未开启扣费；Windows 缺真实本机 clientSign，且服务端实际
+    受理、扣费、重复和退款没有证据。见 playback-detail-lyric-follow.txt。
+  - 普通播放栏副歌标记按官方默认栏使用 4px、主题透明色和取整时钟；
+    f0d9d8db 的生产前端及实际 Linux WebView 通过普通队列 3 态与 FM
+    5 态，截图/像素与真实原生队列证据见 .build/ui-proof/phase219-chorus-clock/。
+    神光特效的独立进度条和 SDK 尚未接通，不由普通标记验收外推。
 
 当前不能据此关闭的要件
   - 主线的完整托管 gate、Windows 实际 WebView/系统媒体以及发行附件必须
