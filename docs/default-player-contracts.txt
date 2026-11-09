@@ -141,6 +141,28 @@ Windows 暖转交候选（尚不进入主线／安装包）
   卷 GUID 路径：https://learn.microsoft.com/windows/win32/fileio/naming-a-volume
   及 https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew 。
 
+Windows 原生复验入口
+- 在包含候选的 ref 上手动运行 CI，选择 windows_native_file_diagnostic。Windows
+  打包 runner 先用本次构建的媒体库运行受限连接令牌、持有资料目录、重解析
+  拒绝、SQLite 日志以及同句柄 FFprobe/libmpv 用例。媒体测试用空输出，
+  测量真实解码，不作声卡听感证明。
+- scripts/ci/windows_native_open_smoke.py 复核同一提交、运行及尝试的 portable
+  ZIP 及其 FLAC 校验清单，提取全新副本。仅 Windows x64 GitHub 托管 runner
+  执行：独立配置、WebView 数据及合成音频，检查临时程序精确出站阻断规则，
+  在退出时移除。它不加载账号凭据或安装文件关联。规则只针对提取的 app
+  路径，不声称整个 runner 或 WebView2 的宿主进程被隔离。
+- 测试从冷启动 WAV 的原生时钟开始，经无效文件和旧会话目录拒绝、最小化
+  原 HWND，再由两个短命 sender 热交接 FLAC 与 MP3。读取 SQLite 验证
+  现有窗口恢复、队列只保留持有文件键、条目更换与解码时钟继续。它记录
+  Windows 是否授予前台焦点，窗口恢复是硬断言，不能用测试脚本抢焦点。
+  必须有可用的 Windows 默认音频输出；若无输出，整应用测试不算通过。
+  诊断只上传 report.json 与两个程序日志，绑定 CI 运行和包内 exe 摘要。
+- Linux 已验证合成 WAV/FLAC/MP3、快照读回和路径拒绝；Windows 运行脚本
+  仍未执行。原生 proof 所在 job 失败即失败，不作为 RC 已通过的依据。
+  Windows API 依据：
+  https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule
+  https://learn.microsoft.com/windows/win32/winmsg/about-windows
+
 Debian 打开方式候选与系统默认归属
 - Cumulus 不写系统默认、Explorer UserChoice/Hash 或 Linux mimeapps.list，
   不展示默认播放器复选框，也不启动系统默认选择流程。Debian 包仅声明自己
