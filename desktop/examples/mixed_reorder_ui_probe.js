@@ -100,18 +100,22 @@
       (button.textContent.trim() === '本地音乐' || button.getAttribute('aria-label') === '本地音乐')),
       'local library navigation');
     click(localEntry);
-    const local = await wait(() => one('.local-tracks tbody tr[data-local-id]'), 'native file is indexed');
-    localId = local.dataset.localId;
-    click(local.querySelector('[data-local-track-menu]'));
-    const add = await wait(() => one('.action-menu:not([inert]) [data-menu-key="add_to_playlist"]:not(:disabled)'),
-      'local member action');
-    click(add);
-    const dialog = () => one('dialog[open][aria-labelledby="playlist-local-member-title"]');
-    const submit = await wait(() => dialog()?.querySelector('button[type="submit"]:not(:disabled)'),
-      'owned playlist membership chooser');
-    check(dialog().querySelector('select')?.value === '11', 'only chosen ordinary owned playlist');
-    click(submit);
-    await wait(() => !dialog(), 'local fixture membership saved');
+    // Reorder starts with one device member. Wait for the watch transaction
+    // to finish before taking the indexed revision; do not retry an add.
+    const track = await wait(async () => {
+      const page = await invoke('local_page', { query: { keyword: '', sort: 'title', descending: true,
+        group: 'list', groupKey: null, includeMissing: true, offset: 0, limit: 200, revision: null } });
+      return page.roots.length === 1 && page.roots[0].status === 'ready' && page.tracks[0];
+    }, 'native scan is ready for the fixture member');
+    localId = track.track.id;
+    await wait(() => one('.local-tracks tbody tr[data-local-id]')?.dataset.localId === localId,
+      'the real local page shows the exact native fixture');
+    const owned = (await invoke('playlist_page', { id: '11', page: { offset: 0, limit: 1 } })).value;
+    check(owned.playlist.owned && !owned.playlist.favorite && !owned.playlistLocal.hasMembers,
+      'fixture starts with a clean ordinary owned playlist');
+    const seeded = await invoke('mutate_playlist_local', { epoch, id: '11', revision: owned.playlistLocal.revision,
+      change: { op: 'add', rows: [{ id: localId, revision: track.revision }] } });
+    check(seeded.epoch === epoch && seeded.value.changed, 'exact synthetic device member was seeded once');
     const group = one('[data-sidebar-group="created"] .sidebar-group-toggle');
     if (group.getAttribute('aria-expanded') === 'false') click(group);
     group.closest('header').scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -161,6 +165,6 @@
       .map(event => ({ event, trusted: true }))), 'three trusted X11 gestures');
     await report('complete', { ok: true, localId, gestures, queue });
   } catch (error) {
-    await report('failed', { step, error: String(error), rows: rows(), gestures, status: status()?.innerText });
+    await report('failed', { step, error: error?.message ?? String(error), code: error?.code, rows: rows(), gestures, status: status()?.innerText });
   }
 })();
