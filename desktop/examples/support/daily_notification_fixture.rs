@@ -68,7 +68,7 @@ pub fn signed_reply(path: &str, args: &Value) -> Result<Value> {
         DETAILS => {
             assert_eq!(
                 args,
-                &json!({"c":r#"[{"id":"3","v":0},{"id":"5","v":0}]"#,"trialMode":-1})
+                &json!({"c":r#"[{"id":"3","v":0},{"id":"5","v":0}]"#,"trialMode":"-1"})
             );
             let mut first = song(3);
             first["al"]["picUrl"] =

@@ -40,7 +40,7 @@ def verify(directory, mode, expected, screenshots):
         assert wire[0]["args"] == {}
         assert wire[0]["responseCode"] == (500 if mode == "error" else 200)
     if len(wire) == 2:
-        assert wire[1]["args"] == {"c": '[{"id":"3","v":0},{"id":"5","v":0}]', "trialMode": -1}
+        assert wire[1]["args"] == {"c": '[{"id":"3","v":0},{"id":"5","v":0}]', "trialMode": "-1"}
         assert wire[1]["responseCode"] == 200
     calls = fixture["calls"]
     assert all(row["path"] in {DAILY, SETTINGS, MEDIA, PLAYLIST} for row in calls), calls
