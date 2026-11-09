@@ -1,4 +1,4 @@
-//! Offline Windows transport research; not linked by the desktop application.
+//! Offline Windows scenarios exercising the same Win32 primitives as desktop.
 #[cfg(windows)]
 #[path = "../../../src/native_open/windows/identity.rs"]
 mod identity;

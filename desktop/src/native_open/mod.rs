@@ -1,6 +1,14 @@
 //! One cold process argument group. Nothing in the WebView can supply a path.
 #[cfg(target_os = "linux")]
 pub(crate) mod linux;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+mod warm;
+#[cfg(target_os = "windows")]
+pub(crate) mod windows;
+#[cfg(target_os = "linux")]
+pub(crate) use linux as platform;
+#[cfg(target_os = "windows")]
+pub(crate) use windows as platform;
 
 use cumulus_core::{Error, client::ClientError};
 use std::{
@@ -56,8 +64,8 @@ impl Pending {
     }
 }
 
-/// Normal launches can coexist as before, but a cold file activation never
-/// claims a profile already in use. The file itself holds no application data.
+/// Platform owners request the exclusive lease; a profile without a relay
+/// may retain the shared fallback. The file itself holds no application data.
 pub(crate) struct ProcessGuard {
     lock: File,
 }

@@ -14,9 +14,10 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE, WAIT_TIMEOUT},
     Security::{
-        GetTokenInformation, IsValidSid, PSID, SID_AND_ATTRIBUTES, TOKEN_GROUPS,
-        TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER, TokenGroups,
-        TokenLogonSid, TokenRestrictedSids, TokenStatistics, TokenUser,
+        GetTokenInformation, IsValidSid, PSID, SID_AND_ATTRIBUTES, TOKEN_ELEVATION, TOKEN_GROUPS,
+        TOKEN_INFORMATION_CLASS, TOKEN_MANDATORY_LABEL, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER,
+        TokenElevation, TokenGroups, TokenIntegrityLevel, TokenLogonSid, TokenRestrictedSids,
+        TokenStatistics, TokenUser,
     },
     Storage::FileSystem::{
         FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_INFO, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
@@ -45,6 +46,8 @@ fn denied() -> io::Error {
 pub struct Identity {
     user: Vec<u8>,
     logon: Vec<u8>,
+    integrity: Vec<u8>,
+    elevated: bool,
 }
 
 impl Identity {
@@ -68,6 +71,8 @@ impl Identity {
         Ok(Self {
             user: user_sid(token)?,
             logon: logon_sid(token)?,
+            integrity: integrity_sid(token)?,
+            elevated: is_elevated(token)?,
         })
     }
 
@@ -160,7 +165,20 @@ impl Identity {
         text
     }
 
+    #[allow(dead_code, reason = "the standalone lab has a disjoint endpoint")]
     pub fn address(&self, root: &Path) -> io::Result<String> {
+        self.address_for(root, false)
+    }
+
+    #[allow(
+        dead_code,
+        reason = "the standalone lab never reaches the product endpoint"
+    )]
+    pub fn product_address(&self, root: &Path) -> io::Result<String> {
+        self.address_for(root, true)
+    }
+
+    fn address_for(&self, root: &Path, product: bool) -> io::Result<String> {
         let canonical = root.canonicalize()?;
         if !local_path(&canonical) {
             return Err(denied());
@@ -187,15 +205,42 @@ impl Identity {
             return Err(io::Error::last_os_error());
         }
         let mut hash = Sha256::new();
-        hash.update(b"cumulus-windows-file-open-lab-v1\0");
+        let prefix = if product {
+            hash.update(b"cumulus-windows-file-open-v1\0");
+            hash.update(&self.integrity);
+            hash.update([u8::from(self.elevated)]);
+            r"\\.\pipe\io.cumulus.music.open."
+        } else {
+            hash.update(b"cumulus-windows-file-open-lab-v1\0");
+            r"\\.\pipe\io.cumulus.music.open.lab."
+        };
         hash.update(id.VolumeSerialNumber.to_le_bytes());
         hash.update(id.FileId.Identifier);
         hash.update(&self.logon);
-        Ok(format!(
-            r"\\.\pipe\io.cumulus.music.open.lab.{:x}",
-            hash.finalize()
-        ))
+        Ok(format!("{prefix}{:x}", hash.finalize()))
     }
+}
+
+fn integrity_sid(token: HANDLE) -> io::Result<Vec<u8>> {
+    let buffer = TokenBuffer::query(token, TokenIntegrityLevel)?;
+    if buffer.len < size_of::<TOKEN_MANDATORY_LABEL>() {
+        return Err(denied());
+    }
+    // SAFETY: the aligned returned buffer contains the checked label header.
+    buffer.sid(unsafe {
+        (*buffer.words.as_ptr().cast::<TOKEN_MANDATORY_LABEL>())
+            .Label
+            .Sid
+    })
+}
+
+fn is_elevated(token: HANDLE) -> io::Result<bool> {
+    let buffer = TokenBuffer::query(token, TokenElevation)?;
+    if buffer.len < size_of::<TOKEN_ELEVATION>() {
+        return Err(denied());
+    }
+    // SAFETY: the aligned returned buffer contains the checked elevation structure.
+    Ok(unsafe { (*buffer.words.as_ptr().cast::<TOKEN_ELEVATION>()).TokenIsElevated } != 0)
 }
 
 fn user_sid(token: HANDLE) -> io::Result<Vec<u8>> {

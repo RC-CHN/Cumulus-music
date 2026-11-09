@@ -1,4 +1,5 @@
 //! One bounded Linux AF_UNIX request and a separate terminal receipt.
+use super::super::warm::Reply;
 use sha2::{Digest, Sha256};
 use std::{
     io::{self, Read, Write},
@@ -20,36 +21,6 @@ const MAX_PATHS: usize = 8;
 const IO_LIMIT: Duration = Duration::from_secs(2);
 const ACK_LIMIT: Duration = Duration::from_secs(20);
 pub(super) const READY: u8 = 6;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub(super) enum Reply {
-    Accepted = 0,
-    Unavailable = 2,
-    Invalid = 3,
-    Unknown = 4,
-    Busy = 5,
-}
-impl Reply {
-    pub(super) fn finish(self) -> ! {
-        if self != Self::Accepted {
-            eprintln!(
-                "{}",
-                match self {
-                    Self::Unavailable =>
-                        "Cumulus cannot hand off to the existing app profile; try when its main player is ready.",
-                    Self::Invalid =>
-                        "Cumulus could not open a readable MP3, FLAC or supported PCM WAV file.",
-                    Self::Unknown =>
-                        "Cumulus did not confirm the handoff. Check the existing player before opening the files again.",
-                    Self::Busy => "Cumulus is already processing an explicit file open.",
-                    Self::Accepted => unreachable!(),
-                }
-            );
-        }
-        std::process::exit(self as i32);
-    }
-}
 
 pub(super) fn address(root: &Path) -> io::Result<SocketAddr> {
     let mut hash = Sha256::new();

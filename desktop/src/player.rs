@@ -47,7 +47,7 @@ impl PlayerStreams {
         }
         Ok(())
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(crate) fn ready_for_native_open(&self, epoch: &str) -> bool {
         self.0.lock().is_ok_and(|values| {
             values
