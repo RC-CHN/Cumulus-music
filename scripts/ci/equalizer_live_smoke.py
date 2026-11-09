@@ -140,6 +140,7 @@ def main():
         assert stage['equalizer']['preset'] == {'kind': 'saved'}
         assert stage['equalizer']['saved_custom'] == custom_gains
         assert stage['entryId'] == before['entryId'] and stage['state'] == 'playing'
+        assert stage['playId'] == recalled['playId'] and stage['queueRevision'] == recalled['queueRevision']
         assert stage['loudness'] == recalled['loudness']
     off = read('eq_off')['native']
     independent = read('eq_independent_tone')
