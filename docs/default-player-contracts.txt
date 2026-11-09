@@ -184,6 +184,27 @@ Windows 原生复验入口
   暖打开的无效文件未获得原协议的受理结果：发送方返回 2（无法转交），
   停在该步骤，未验证后续暖 FLAC/MP3。保留独立报告与日志，不推断根因、
   默认输出、物理声卡或 Windows 暖交接已通过。
+- 保留包复验 42691269400 attempt 1 用 42682251677 attempt 1 的 5453e0ad
+  便携诊断包（产物 13705703308）。托管 Windows x64 的同一个 Python 进程
+  用同一绝对 exe、工作目录和隔离资料启动双方；暖发送端的无效渲染器环境值
+  用于检查图形旁路。冷 WAV 的空输出时钟走到 1.240711 秒，原 HWND 和进程
+  仍在；同机默认输出端点缺失（0x80070490）。无效媒体发送端打开管道，
+  双方随后各记录对端进程拒绝，发送端返回 2，未到 HELLO、READY、媒体选择或
+  暖 FLAC/MP3。日志没有共同时间顺序；一边先关闭也可能导致另一边 PID 查询、
+  回读或存活检查失败，不能认定是两次独立的令牌不匹配。
+- 对照该包源码：desktop/src/lib.rs::run 在图形前调用 windows::claim，持有
+  NTFS 目录、锁与按目录身份和登录上下文派生的管道。宿主在桌面初始化后由
+  windows/host.rs::install 读取 AccessShape，发送端在图形前由 forward 读取。
+  host.rs::send 和 effective.rs::authenticate 都先调用 verify_process；
+  identity.rs::verified_peer_token 用 GetNamedPipeClientProcessId 或
+  GetNamedPipeServerProcessId 取 PID，以 PROCESS_QUERY_LIMITED_INFORMATION
+  和 SYNCHRONIZE 打开进程、用 TOKEN_QUERY 打开主令牌，再回读 PID 并用
+  WaitForSingleObject 检查存活。用户、登录、完整性和提升级别都须一致，
+  effective.rs 再比较完整的令牌访问形状；通过后才可发送 HELLO 并验证实际
+  连接线程身份。便携 exe 摘要是独立的产物证据，不替代对端令牌检查。
+- 53e4de55 仅为下一次合成诊断的候选，尚无该候选的 Windows GUI 回执。
+  它只细分这些失败阶段，保留原认证、权限、失败出口和路由范围。
+  已有结果不证明安装版文件关联、默认输出、暖文件选择或暖播放；发布门槛不变。
   Windows API 依据：
   https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule
   https://learn.microsoft.com/windows/win32/winmsg/about-windows
