@@ -438,7 +438,13 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         >
         <button
           type="button"
-          :disabled="!tone.bass_db && !tone.treble_db && !spatial.presence && !spatial.stereoizer"
+          :disabled="
+            !settings?.master_bypassed &&
+            !tone.bass_db &&
+            !tone.treble_db &&
+            !spatial.presence &&
+            !spatial.stereoizer
+          "
           @click="actionFocus.run($event, resetEnhancements)"
         >
           重置增强音效
