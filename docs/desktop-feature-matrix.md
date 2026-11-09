@@ -16,6 +16,8 @@
 | [播放栏低音量提示](windows-system-master-volume.txt) | 同一桌面构建 11 态，覆盖合成低音量/静音/30% 边界、跳转设置、冷却及原生 Linux 无能力。另有[音质菜单](playback-quality-dynamic-ui-contracts.txt) 9 个独立实窗状态，确认分组、并排/单行和高度；这些结果不等于 Windows 实机输出。 |
 | [完整主流程](desktop-main-flow-proof.txt) | 同一桌面构建 HTTPS 硬切断 19 态、18 张 PNG，含登录恢复、日推、搜索、播放、歌单修改、下载及断网播放和清理；仅隔离合成写入，不代表该版本已在实服账号完成全流程。 |
 
+本批之后独立复验：[云盘容量提示](cloud-page-ui-contracts.txt) 9 个隔离实窗状态、无购买或版本读取；[创建前读失败](download-row-collection-contracts.txt) 8 个隔离实窗状态、明确未发送后允许重新确认。两项报告与上表完整构建的证据分开。
+
 以下继续保留基线和各专项的证据，不由本批覆盖其他业务。
 
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
