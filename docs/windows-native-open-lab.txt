@@ -161,3 +161,19 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/41916366610
 保留、仅当前登录会话的 DACL、单实例排他、超长头拒绝，以及等待超时、停止读取和
 停止接入后的重叠 I/O 排空。两份回执均无正式功能、真实文件打开或注册表写入；
 未验证跨登录/受限令牌拒绝，也未验证正式播放器接线。
+2026-11-10 Windows x64 fixed token output and actual pipe proof
+--------------------------------------------------------------
+Actions run 42655192968, exact source 5839a834, passed the four test cases and
+all three standalone real Windows pipe proofs. The elevation class accepted an
+initialized TOKEN_ELEVATION output, while a prior zero-length size request
+returned ERROR_BAD_LENGTH. The restrictions class accepted an aligned DWORD
+buffer, reported one byte, and wrote only the first byte. A one-byte buffer was
+rejected on this runner. The production parser requires the one-byte result and
+Boolean domain, then compares the entire original access shape. No ACL, token
+claim, process or impersonation requirement was loosened.
+
+Exact production logic (without diagnostic-only output) is in 72d88b28. The
+standalone report proves both directions of the same-logon connector, explicit
+restricted token denial before sending, and stable overlapped pipe cancellation.
+It does not launch the production desktop or play a file. Separate candidate
+workflow 42656675830 enables the packaged cold/warm file-open diagnostic.

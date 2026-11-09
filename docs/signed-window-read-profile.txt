@@ -1,0 +1,179 @@
+Private profile preparation for the signed desktop read proof
+=============================================================
+
+This Linux-only native helper supports the opt-in acceptance driver described
+in signed-window-read-proof.txt. It is neither a Tauri command nor an
+application login route. The normal client keeps its existing account
+lifecycle. The helper makes no HTTP request. The only serialized handoff is
+the private, minimized native child input described below.
+
+Caller contract
+---------------
+The operator explicitly authorizes the already selected PC account and supplies
+its expected decimal UID independently of the source, from a private input.
+Do not infer that expected UID from the very registry being validated or put it
+on a command line, in shell history, reports or screenshots. Shut down all
+writers to the source installation cleanly. Pass two absolute, nonoverlapping
+paths: that stopped installation root (not just the credential database) and a
+separate, caller-owned private scratch parent. This code never asks the app to
+close or to checkpoint the source. An active journal/WAL sidecar is refused;
+a closed, fully checkpointed WAL-mode database can retain its WAL header and
+is accepted without changing the source bytes.
+
+The native driver calls support/signed_window_read_profile.rs `prepare` with
+`IdentityMode::RequireSaved`, or explicitly with `DeriveIfMissing`. The latter
+still uses a present valid installation identity; it uses the same production
+Linux hardware derivation only if the saved identity is absent. An invalid
+saved identity never falls back. The same account-scoped device ID and Cookie
+record are retained. The `identity_was_derived` boolean is safe to report.
+
+Use `.state_dir()` as the otherwise empty application state and
+`.credential_dir()` as the explicit native profile when constructing
+`MusicClient::open_with_request_context`. The caller supplies the same derived
+`.native_profile()` to the client and bounded gate, uses `.credentials()` for
+the gate and attaches `.request_context()` to the native client. The gate must
+still confirm the same independently expected UID in the signed server reply
+before admitting subsequent reads. `.config_snapshot()` is only for the
+native gate, and `.config_dir()` identifies the minimized scratch config store
+for a separate native proof process. Neither contains a frontend IPC payload.
+
+The launcher, not this helper, establishes process isolation, network/route
+fencing, exact allowed media URL and no redirects. Only the generated scratch
+paths may be mounted into the proof child; never mount the source installation
+or the user's home. A separate proof process needs a private native handoff of
+its signed profile and independent expected UID. The driver must not expose
+these values to WebView JS or report raw native state, network traffic or paths.
+After the window and all native client/gate clones are stopped, call `.close()`
+to stop the PC observer and check cleanup. TempDir also cleans up on ordinary
+unwind or early refusal. Termination without running destructors can leave the
+private scratch root; the outer launcher must own cleanup in that case.
+
+Stopped installation with a shared directory mode
+-------------------------------------------------
+If the Linux installation directory is not private but its database files
+already are, do not change its mode or pass it directly to native preparation.
+The separate host wrapper accepts an owned installation path without following
+symlinks. It requires owner-only, singly linked database files, an independent
+private UID file outside the installation, and no SQLite WAL, SHM or journal
+for either database. It reads the active PC registry binding from a memory
+copy and stages only the registry and that account's database, with their
+original bytes, under a mode-0700 temporary tree.
+
+Run the existing supervisor through the wrapper. Put the source path, UID file
+and stopped-source assertion before the separator; pass all other supervisor
+options after it, including the read-only opt-in:
+
+  python3 scripts/research/signed_window_stage_profile.py \
+    --source /absolute/installation --expected-uid-file /absolute/private/uid \
+    --source-stopped -- --authorize-readonly [remaining supervisor options]
+
+The wrapper uses Linux Python 3.11 or later with SQLite deserialize support.
+The native preparer still applies all its original checks and prepares a
+separate minimized input for the sandbox. The staging tree can contain private
+registry pages; it is never mounted into the WebView sandbox. The wrapper
+rechecks source identity, file bytes and sidecars before and after the
+consumer, then unlinks its temporary tree on ordinary exit or failure. It does
+not stop a writer or provide an atomic snapshot of running databases.
+
+Offline staging tests (synthetic files only):
+
+  python3 -m unittest discover -s scripts/research -p 'test_signed_window_stage_profile.py' -v
+
+Storage and authorization checks
+--------------------------------
+Source paths are walked component by component without following aliases, with
+pinned directory descriptors and no-write/no-follow regular-file opens. The
+original files must be private, singly linked, bounded, and stable. The source
+never becomes a SQLite connection. Only bounded bytes read from its pinned
+file descriptor go into a read-only SQLite memory database; the bundled SQLite
+backup API copies that database to a separate in-memory read snapshot. The
+SQLite header is adjusted only in the in-memory bytes, when needed. Both source
+files and the selected directory are checked again after reading. The stopped
+source contract matters: the registry and credential are separate databases and
+this helper does not claim a cross-database live transaction.
+
+The snapshot requires the canonical `state` table, permits its production
+indexes, and rejects views/triggers or other schema objects. The primary state
+must contain the PC registry configuration and a unique active saved binding
+for the independently expected account. A removal receipt (even a completed
+one), inactive/nonrestorable binding, pending renewal journal, login invalidation notice, queue cleanup,
+empty/ambiguous scoped MUSIC_U, absent PC policy, or invalid identity stops
+preparation. The same native `Credentials` checks and Cookie matching code
+validate the copied record; no cookie is reconstructed from loose tokens or
+widened to another origin or path.
+
+Only `transport/credentials/session` is materialized into a new production
+credential database; no original database pages, alternate accounts, profile
+metadata, caches, history or local library records enter any scratch database.
+The PC config snapshot has its own private database. Hardware derivation uses
+a temporary state store removed before returning. The prepared directories and
+database are private (0700/0600). SDK token and MConfig downloads both fail
+locally; the guard is still required to stop renewal, mutation, and out-of-scope
+calls. Existing authorization is read-only for this proof, regardless of token
+fields present in the native credential record.
+
+One-shot host handoff
+---------------------
+Build and run the Linux example before starting the isolated window:
+
+  cargo build --locked -p cumulus-desktop --example signed_window_read_prepare
+  .build/target/debug/examples/signed_window_read_prepare --prepare \
+      SOURCE PRIVATE_UID_FILE INTENT_FILE NEW_PREPARED_DIR
+
+`--derive-if-missing` is optional and must be explicit. All inputs are paths;
+no UID, signature, query, or song is accepted in argv. `PRIVATE_UID_FILE`
+contains the independent canonical decimal UID and an optional single LF.
+`INTENT_FILE` is a separate private JSON file with exactly `keyword`, `songId`
+and `mediaHost`, all strings. The public search word and song ID must agree
+with the separately supervised bounded request. The host is a single exact
+lowercase approved media DNS name without a scheme, port or path; API origins
+are rejected. DNS/TLS pin checks and request authorization stay in the broker.
+Both input files are bounded, caller-owned, private, singly linked regular
+files, read with pinned parent handles and no symlink traversal.
+
+`NEW_PREPARED_DIR` is one new direct child of a distinct private parent; the
+basename starts with an ASCII alphanumeric and contains at most 64 ASCII
+alphanumerics, hyphens or underscores. The exporter writes and flushes a
+temporary sibling, cleans its source preparation, then publishes the complete
+directory with no-replace atomic rename. A failed check removes unfinished
+stages and leaves any preexisting target untouched. The published directory
+contains only:
+
+  credentials/core.sqlite3
+  config/core.sqlite3
+  parameters.json
+
+The parameters contain exactly `expectedUid`, `keyword`, `songId`,
+`clientSign`, `osVersion`, and `mediaHost`; only native code reads this file.
+The directories are private (0700) and files are private (0600). The CLI
+prints only success and whether the identity was derived, or a fixed failure
+message. The launcher mounts just this input read-only, lets the native child
+copy the permitted files into its private working state, and removes the
+published directory after the isolated process exits. Do not archive it or
+include it in reports. The original source is never mounted.
+
+Validation (all synthetic)
+--------------------------
+`cargo test --locked -p cumulus-desktop --test signed_window_read_profile`
+constructs production-format registries and verifies exact source file bytes
+are unchanged, a separate closed WAL-header snapshot works, only one credential
+row and one config survive, auxiliary requests are refused, output mode and
+cleanup are enforced, original Cookie scope is unchanged, and unsafe source
+paths or account bindings fail before use. The staged host export is checked
+against the actual synthetic fixture, including no-replace publication,
+sidecar refusal, and exact child input names and modes. No test opens real
+credentials, performs live requests, or proves the same-window GUI and CDN
+stage by itself.
+Closed installation preflight (2026-11-10)
+-------------------------------------------
+The actual previously authorized PC installation is closed and both selected
+databases have no SQLite sidecars. The installation root has mode 0775; the
+exporter refused it as a direct source. It then accepted a new 0700 directory
+containing only read-only copies of the two private database files. The source
+files and original installation permissions remained unchanged. The independent
+expected UID matched the earlier authorized account and the exporter reported
+hardware-derived local identity in the absence of a saved installation identity.
+Only the three expected private output files were produced. Both temporary
+directories were removed; this was offline preparation, not a live playback
+attempt. Retained aggregate evidence is under .build/ui-proof/phase195-signed-
+window-broker/real-profile-offline-preflight-private-source.json.

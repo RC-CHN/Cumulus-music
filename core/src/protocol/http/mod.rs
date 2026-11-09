@@ -5,6 +5,8 @@ mod client;
 mod login;
 #[cfg(test)]
 mod login_timing_tests;
+#[cfg(all(target_os = "linux", feature = "signed-window-read-proof"))]
+pub(crate) mod proof_proxy;
 pub(crate) use login::JskLoginContext;
 mod origin;
 mod profile;

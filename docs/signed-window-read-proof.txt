@@ -1,0 +1,192 @@
+Signed same-window read proof: transport gate
+=============================================
+
+desktop/examples/support/signed_window_read_gate.rs is a research-only Linux
+component, with no connection to the production entry point or renderer. The
+caller must supply the selected PC Credentials from a private copy, the
+production local ClientProfile, a validated saved PcConfig snapshot, and an
+independently authorized expected UID, fixed public query and selected public
+song ID. The gate has no network constructor. Tests use only injected fakes.
+
+The gate reconstructs the exact current `build_request` wire for every permitted
+request. It compares the prepared headers, encrypted business fields, exact PC
+origin/path, account-scoped Cookie jar, saved native MConfig header, device and
+clientSign. Distinct Cookie names may appear in a different order after the
+production jar is rebuilt; each value, duplicate count, and same-name precedence
+must still match. Credential revision/identity is checked against the original
+scope.
+No batch, mutation, login, renewal, SDK token, cache URL or unrelated query is
+permitted. No request is retried. The caller must separately fence egress and
+disable redirects/retries in the injected transports, before dispatch; rejecting
+a returned 3xx alone is not a network isolation mechanism.
+
+Account/get must return the independently selected UID before any other read.
+The owner's playlist list allows at most 16 consecutive pages of at most 200
+items each, advancing only by the actual row count. The list may include
+subscribed items; completion is not proof that every row is owned. Liked IDs
+are one bounded read with the same expected UID. A single default keyword read
+is optional. The query requires the complete native 190-key experiment vector,
+chooses exactly one V1/V3 comprehensive branch, and reads result/tab first for
+V3. The fixed query uses the current SearchBox `typing` channel. The current
+window proof admits the exact song from a recognized comprehensive result
+block and uses its ordinary SongCard menu. The native gate admits one detail
+and then one source request for that ID only, with `standard`/`aac`/`c51` and
+the current SearchNextPlay scene 42. No corrected or alternate keyword is
+admitted. Separate closed Rust tests cover the first Songs waterfall page
+(limit 10, offset 0); the live arm explicitly denies that path. A different account, credential rotation, malformed/partial reply,
+HTTP redirect, error or interrupted transport closes the gate. Declared EAPI
+encryption is decoded for validation; the unchanged original body is returned.
+No Set-Cookie or fresh configuration response is applied by the proof.
+
+A valid single nontrial source reply authorizes one exact normalized CDN URL
+for a brief period, with expected size and MD5. The verifier issues one offset-0
+GET without Range or If-Range through the injected credential-free media backend.
+It requires HTTP 200, a complete identity-encoded body, unambiguous declared
+length, matching byte length and MD5, and returns only a private anonymous file.
+A failed or cancelled fetch cannot retry or substitute another URL. The proof
+does not print response bodies, URLs, cookies, UID, signatures or source hashes.
+
+Reproduce the closed Linux checks:
+
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo test --locked -p cumulus-desktop --features custom-protocol --test signed_window_read_gate
+
+The suite uses the actual current Rust request context and both search cohorts
+against fake API and media transports. It is not evidence of a real account or
+GUI playback. The next stage needs an isolated HTTPS broker and a current
+production Vue/Tauri window consuming the anonymous file through the real
+MpvEngine pinned-descriptor path. The previous research launcher had separate
+receipts for a brokerless second decoder and, after 671d287, a real-account
+single-window pinned AAC playback run (8771a8f/97eef999). The retained
+`.build/main-flow-live-same-window-playback-summary.json` records one verified
+transfer and same-window pause/stop. Historical ordinary libmpv URL testing at
+c8ceda86 used synthetic audio. None of those runs exercised this later signed
+profile, full native search experiment and corresponding current window.
+
+Closed synthetic desktop shell
+------------------------------
+`signed_window_read_ui_probe --synthetic` uses the production Tauri configure
+path and the embedded Vue assets. The executable rejects an ordinary network
+namespace and uses a new proof profile with synthetic PC credentials, a fixed
+query, one playlist and one liked song. Only the fixed in-memory PC/CDN
+responders are wired; ordinary download transport and auxiliary SDK/config
+requests are closed. The proof opens My Playlists, checks the liked song in
+the comprehensive search results, and uses the SongCard's Next Play action on
+an empty queue.
+The gate's one authorized AAC response goes into an anonymous, mode-0600
+file and the same window's playback controller decodes it through the real
+libmpv pinned-input path. It checks advancement, a stable pause, resume of
+the same logical entry, and stop. Physical audio output is disabled.
+
+After the production frontend build, compile and run in a private namespace:
+
+  cargo build --locked -p cumulus-desktop --features custom-protocol --example signed_window_read_ui_probe
+  sudo unshare --net --fork --kill-child runuser -u "$(id -un)" -- \
+    xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' \
+    env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+    env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 \
+      WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+    /usr/bin/python3 scripts/ci/signed_window_read_smoke.py \
+      --binary .build/target/debug/examples/signed_window_read_ui_probe \
+      --root .build/ci-signed-window --screenshots
+
+The driver's report binds the actual embedded asset set and probe binary by
+SHA-256. Screenshot barriers keep each frame tied to its named native state.
+Only result counts, action categories and clock observations enter the report.
+This is the same-window synthetic pinned file proof; a supervised HTTPS broker
+and independent real-account input are verified separately. The synthetic
+report proves neither real-account playback nor direct upstream URLs through
+libmpv.
+
+2026-11-10 sealed Linux run: six checkpoints and six screenshots passed.
+The native clock advanced to 0.299 seconds, held at 0.540 during the pause,
+advanced again to 0.789 after resuming the same entry, then returned to idle.
+The fixed account/playlist/like/search/detail/source calls stayed on the closed
+backend, and there was exactly one media read and anonymous AAC load. The
+production window's unrelated startup reads were refused before dispatch;
+no configuration download, SDK token, or ordinary download was attempted.
+
+Opt-in live shell contract
+--------------------------
+The `signed-window-read-proof` feature adds `--live` to this Linux research
+example. The default binary keeps the original `--synthetic` interface. The
+live arm is only for the supervised host launcher. It rejects non-loopback
+interfaces, direct routes, ambient proxy variables, accessible host profile
+and resolver mounts, and any broker address other than `127.0.0.1:41389`.
+It accepts only read-only mounted, owner-only prepared parameters/SQLite files;
+the application opens new private copies under `/work`. The real profile is
+bound natively and its identifiers are not written to the proof.
+
+The same production page controls drive account restoration and resource reads,
+the fixed search (V1 or V3), the selected song, pause, resume and stop. After
+the signed one-use source receipt is validated, the only media GET is scoped to
+the approved CDN hostname. The verified anonymous AAC uses the same native
+libmpv path as the closed fixture. Account epoch and play/entry identity are
+checked natively. The paused clock is observed twice; continuing must advance
+that entry, and stopping must return the player to idle. Only one mode-0600
+`/proof/report.json` is produced, with native stage/clock counters and the
+embedded asset seal. No screenshots, raw errors, credentials, account/song
+identifiers or URLs are emitted by the proof reporter. A rejected run can retain
+bounded counters, the count of accepted checkpoints, and two allowlisted
+labels: the first local plan-rejection category and any dispatched read without
+a validated response. These labels never contain a Cookie, request path, or
+response body.
+
+Run offline shell admission checks with:
+
+  cargo test --locked -p cumulus-desktop --features custom-protocol,signed-window-read-proof --example signed_window_read_ui_probe
+
+These checks do not establish successful live playback. Launching the live arm
+requires the independent prepared profile and broker supervision, documented in
+signed-window-read-broker.txt.
+
+2026-11-10 real Linux discovery and fixed-host attempt
+-----------------------------------------------------
+The existing authorized PC session was staged from the stopped installation;
+the supervisor independently confirmed its selected account from the earlier
+approved QR profile. The source SQLite files passed the snapshot rechecks. The
+first live window reached own playlists and liked IDs and successfully read V3
+comprehensive search. Its next action attempted the separate Songs tab: the
+actual saved PC configuration marks `/api/search/song/list/page` as needing a
+fresh anti-cheat token. The proof correctly refused the token operation and
+never sent that request. The signed desktop Songs branch remains dependent on
+an actual supported token provider when this policy applies.
+
+The updated window instead opens the ordinary song card in official V3
+comprehensive results. In the real discovery run, the same embedded Vue/Tauri
+window verified the account, loaded both resource lists, located the selected
+song, fetched exact details and consumed one valid nontrial source receipt.
+Nine allowlisted API reads used a single TLS connection; no media or auxiliary
+network request was made. Only the canonical CDN authority and bounded proof
+facts were retained. The closed regression of that exact probe also passed
+all six window states with one pinned synthetic AAC load. A separate real play
+attempt also verified the account, card, details and nontrial receipt, but
+stopped locally before a CDN dial. This does not establish real playback;
+source authorization does not guarantee the same authority between requests.
+
+2026-11-10 real Linux playback from the same signed source response
+--------------------------------------------------------------------
+The exact sealed probe built from `ada26e73` (SHA-256
+`d48125ac2cc3272c5e51c4b9bffc927643d9192d5438fdb5bde8ff1187eac1ca`)
+passed all six checkpoints in one production Linux WebView: account resources,
+selected comprehensive song, playing, paused, resumed, stopped. It reused the
+independently approved account and passed the original stopped database recheck.
+The account and its resources were not modified.
+
+The same-response CDN arm admitted one exact authority after one bounded DNS
+resolution and one certificate check without HTTP. Nine signed PC API reads
+used one broker connection. There was one media connection, one credential-free
+full-body read, one verified private anonymous file and one pinned libmpv AAC
+load. No SDK, ordinary download, alternate media or other egress was attempted.
+The playback clock reached 2.955 s, held on the same entry at 3.165 s while
+paused, advanced to 3.415 s on resume, and returned to idle on stop. The
+supervisor independently checked the native timeline, exact account and entry,
+removed the temporary profile and retained only the bounded evidence. The
+production frontend seal is the same as in the companion six-screenshot
+synthetic regression. No real-account screenshots were recorded.
+
+Evidence: `.build/ui-proof/phase195-signed-window-broker/verified-real-window-summary.json`.
+The live proof uses libmpv's null sink and a pinned file; it does not establish
+physical sound, direct upstream URL handling by the normal package, account
+writes, ordinary real download, or Windows package behavior.
