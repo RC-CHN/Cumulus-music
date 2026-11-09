@@ -43,7 +43,8 @@ def main():
     assert [r['unavailable'] for r in receipts] == [0, 1, 1, 2, 2, 3, 4]
     assert [r['denied'] for r in receipts] == [0] * 5 + [1, 1]
     assert all(r['cueUnchanged'] and r['cachedWithoutUrls'] and r['mixed']['originalUnchanged'] and
-               not r['mixed']['onlineAudio'] and not r['mixed']['remoteMutations'] for r in receipts)
+               not r['mixed']['catalogAudioChecks'] and not r['mixed']['unsafeAudioAttempts'] and
+               not r['mixed']['remoteMutations'] for r in receipts)
     assert [r['mixed']['catalogReads'] for r in receipts[:4]].count(receipts[0]['mixed']['catalogReads']) == 4
     assert states[2]['queue'] == [local] and states[2]['position'] > .08
     assert 7900 <= states[2]['durationMs'] <= 8100 and states[2]['playId']

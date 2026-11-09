@@ -211,15 +211,23 @@ fn main() {
     let mixed_membership = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
     let mixed_queue = std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF").is_some();
     let reorder = std::env::var_os("CUMULUS_MIXED_REORDER_PROOF").is_some();
-    let cached_playlist = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_PROOF").is_some();
+    let cached_playlist_only = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_PROOF").is_some();
+    let cached_download = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_DOWNLOAD_PROOF").is_some();
     assert!(
-        [mixed_membership, mixed_queue, reorder, cached_playlist]
-            .into_iter()
-            .filter(|enabled| *enabled)
-            .count()
+        [
+            mixed_membership,
+            mixed_queue,
+            reorder,
+            cached_playlist_only,
+            cached_download,
+        ]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count()
             <= 1,
         "select only one mixed playlist proof mode"
     );
+    let cached_playlist = cached_playlist_only || cached_download;
     let mixed = mixed_membership || mixed_queue;
     let sealed_playlist = mixed || reorder || cached_playlist;
     assert!(!sealed_playlist || !(reopen || queue || cold || directory_selection));
@@ -239,13 +247,26 @@ fn main() {
         )
         .expect("read isolated reorder script")
     });
+    let cached_download_source = cached_download.then(|| {
+        let path = PathBuf::from(
+            std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_DOWNLOAD_SCRIPT")
+                .expect("explicit cached download proof script"),
+        );
+        assert!(path.is_absolute());
+        let code = fs::read_to_string(path).expect("cached download proof script");
+        assert!(code.len() < 64 * 1024);
+        code
+    });
     let reorder_fixture = reorder.then(|| {
         fs::create_dir(&root).expect("new synthetic mixed reorder root");
         Arc::new(mixed_reorder_fixture::Fixture::new(&root).expect("mixed reorder audio"))
     });
     let cached_fixture = cached_playlist.then(|| {
         fs::create_dir(&root).expect("new synthetic offline playlist root");
-        Arc::new(offline_playlist_fixture::Fixture::new(&root).expect("offline playlist audio"))
+        Arc::new(
+            offline_playlist_fixture::Fixture::new(&root, cached_download)
+                .expect("offline playlist audio"),
+        )
     });
     let mixed_fixture = mixed.then(|| {
         fs::create_dir(&root).expect("new synthetic mixed playlist root");
@@ -316,6 +337,9 @@ fn main() {
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
         let offline=Arc::new(Offline { hold:cold, started:AtomicBool::new(false), release:tokio::sync::Notify::new() });
         let store=registry.store();
+        if let Some(fixture)=&cached_fixture {
+            tauri::async_runtime::block_on(fixture.prepare(store.clone()))?;
+        }
         let api: Arc<dyn Api>=match (&mixed_fixture,&reorder_fixture,&cached_fixture) {
             (Some(fixture),None,None)=>fixture.clone(),
             (None,Some(fixture),None)=>fixture.clone(),
@@ -500,6 +524,7 @@ fn main() {
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
             webview.eval(if let Some(source)=&reorder_source {source.as_str()}
             else if let Some(script)=&mixed_queue_script {script.as_str()}
+            else if let Some(source)=&cached_download_source {source.as_str()}
             else if cached_playlist {include_str!("offline_playlist_ui_probe.js")}
             else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
