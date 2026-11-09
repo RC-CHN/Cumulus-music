@@ -6,6 +6,7 @@ use crate::{
     playback::{QueueEntry, QueueSnapshot, TimelineMode},
     protocol::api::{Api, PlaybackChorusRead, identifier},
 };
+use futures_util::future::try_join_all;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -159,7 +160,8 @@ impl Host {
     }
 }
 
-fn merge_points(points: &mut Points, request: &[Value], response: &Value) -> Result<()> {
+fn batch_points(request: &[Value], response: &Value) -> Result<BTreeMap<String, Option<f64>>> {
+    let mut points = BTreeMap::new();
     let requested: BTreeSet<_> = request.iter().map(identifier).collect::<Result<_>>()?;
     let rows = response["data"]
         .as_array()
@@ -169,20 +171,14 @@ fn merge_points(points: &mut Points, request: &[Value], response: &Value) -> Res
             continue;
         };
         if requested.contains(&id) {
-            match row["startTime"]
+            let seconds = row["startTime"]
                 .as_f64()
                 .filter(|time| time.is_finite() && *time > 0.0)
-            {
-                Some(time) => {
-                    points.insert(id, time / 1000.0);
-                }
-                None => {
-                    points.remove(&id);
-                }
-            }
+                .map(|time| time / 1000.0);
+            points.insert(id, seconds);
         }
     }
-    Ok(())
+    Ok(points)
 }
 
 fn selected_song<'a>(snapshot: &'a PlaybackSnapshot, play_id: &str) -> Result<Option<&'a Value>> {
@@ -277,15 +273,25 @@ impl MusicClient {
                 .points
                 .get_or_try_init(|| async {
                     let result = tokio::time::timeout(DEADLINE, async {
-                        let mut points = Points::new();
-                        for ids in &fill.plan.batches {
+                        // M86 starts all groups together, then folds the results in
+                        // request order, irrespective of the network arrival order.
+                        let reads = fill.plan.batches.iter().map(|ids| async {
                             permission()?;
                             let read = PlaybackChorusRead::new(ids.clone())?;
                             let response = api
                                 .request_playback_chorus(read, &fill.credentials, &permission)
                                 .await?;
                             permission()?;
-                            merge_points(&mut points, ids, &response)?;
+                            batch_points(ids, &response)
+                        });
+                        let batches = try_join_all(reads).await?;
+                        let mut points = Points::new();
+                        for (id, seconds) in batches.into_iter().flatten() {
+                            if let Some(seconds) = seconds {
+                                points.insert(id, seconds);
+                            } else {
+                                points.remove(&id);
+                            }
                         }
                         Result::Ok(points)
                     })

@@ -20,6 +20,7 @@ pub(super) struct Backend {
     credentials: AtomicU64,
     hold_first: AtomicBool,
     started: Notify,
+    second_started: Notify,
     release: Notify,
     calls: Mutex<Vec<Vec<String>>>,
     singles: Mutex<Vec<String>>,
@@ -53,7 +54,13 @@ impl Backend {
         let (path, payload) = read.into_request()?;
         assert_eq!(path, "/api/song/chorus");
         let ids = Self::ids(&payload);
-        self.calls.lock().unwrap().push(ids.clone());
+        {
+            let mut calls = self.calls.lock().unwrap();
+            calls.push(ids.clone());
+            if calls.len() == 2 {
+                self.second_started.notify_one();
+            }
+        }
         if self.hold_first.swap(false, Ordering::SeqCst) {
             self.started.notify_one();
             self.release.notified().await;
@@ -131,6 +138,42 @@ async fn actor_queue_reuses_chorus_points_across_selection_and_preserves_single_
         *api.chorus.calls.lock().unwrap(),
         [vec!["1", "2"], vec!["3"], vec!["1", "2"]]
     );
+}
+
+#[tokio::test]
+async fn chorus_starts_the_next_batch_before_the_first_response() {
+    let (_dir, api, _session, client, _) = fixture();
+    api.chorus.credentials.store(1, Ordering::SeqCst);
+    let first = replace(&client, "1", &["1", "2"]).await;
+    let inserted = client
+        .player_action(
+            "1",
+            PlayerAction::SearchNextPlay {
+                id: "3".into(),
+                quality: Quality::Standard,
+                expected_queue_revision: first.queue_revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    api.chorus.hold_first.store(true, Ordering::SeqCst);
+    let read = tokio::spawn(async move { marker(&client, "1", &inserted).await });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        api.chorus.second_started.notified(),
+    )
+    .await
+    .expect("the other trial bucket must dispatch before the held first response");
+    assert_eq!(
+        *api.chorus.calls.lock().unwrap(),
+        [vec!["3"], vec!["1", "2"]]
+    );
+    assert!(
+        !read.is_finished(),
+        "an incomplete map cannot reach the player"
+    );
+    api.chorus.release.notify_one();
+    assert_eq!(read.await.unwrap().unwrap(), Some(2.0));
 }
 
 #[tokio::test]
