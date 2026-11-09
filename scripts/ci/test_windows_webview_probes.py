@@ -1,4 +1,5 @@
 """Exact-artifact boundaries for the Windows WebView shard build handoff."""
+from collections import Counter
 from pathlib import Path
 import re
 import shutil
@@ -99,7 +100,7 @@ class WindowsWebViewProbes(unittest.TestCase):
         target = self.consumer / ARTIFACT / shard
         (shared / shard).rename(target)
         restore(self.consumer, self.identity, shard)
-        for original, name in (('playback', 'native_audio_probe.exe'), ('library', 'local_ui_probe.exe')):
+        for original, name in (('playback', 'native_audio_probe.exe'), ('library-local', 'local_ui_probe.exe')):
             original_dir = self.staged if original == self.shard else shared / original
             self.assertEqual((self.consumer / EXAMPLES / name).read_bytes(),
                              (original_dir / name).read_bytes())
@@ -126,9 +127,15 @@ class WindowsWebViewProbes(unittest.TestCase):
             r'(.*?)(?=^      - name:|\Z)', job, flags=re.MULTILINE | re.DOTALL,
         ))
         self.assertEqual(set(sections), set(PROBES))
+        matrix = re.search(r'^        shard: \[([^\]]+)\]$', job, re.MULTILINE)
+        self.assertIsNotNone(matrix)
+        self.assertEqual(Counter(matrix[1].split(', ')), Counter(PROBES.keys()))
+        producers = re.findall(r'^          name: windows-webview-probes-([\w-]+)-attempt-', workflow,
+                               flags=re.MULTILINE)
+        self.assertEqual(Counter(producers), Counter(PROBES.keys()))
         for shard, section in sections.items():
             expected = set(binary_names(shard))
-            if shard != 'package-runtime':
+            if shard not in {'catalog', 'package-runtime'}:
                 expected.add(UX.name)
             self.assertEqual(set(re.findall(r'examples/([a-z0-9_]+\.exe)', section)),
                              expected)
