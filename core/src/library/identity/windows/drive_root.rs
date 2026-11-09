@@ -221,17 +221,20 @@ fn open_nt(root: HANDLE, path: &str, directory: bool) -> io::Result<Option<File>
     };
     let mut result = null_mut();
     let mut io_status = IO_STATUS_BLOCK::default();
-    let (access, share, kind) = if directory {
+    let (access, share, options) = if directory {
         (
             FILE_READ_ATTRIBUTES | FILE_TRAVERSE | SYNCHRONIZE,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            // The directory option is documented with synchronous I/O,
+            // not the leaf-only reparse/no-recall flags. This name is the
+            // accepted direct NT root and still uses OBJ_DONT_REPARSE.
             FILE_DIRECTORY_FILE,
         )
     } else {
         (
             FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
             FILE_SHARE_READ | FILE_SHARE_DELETE,
-            FILE_NON_DIRECTORY_FILE,
+            FILE_NON_DIRECTORY_FILE | FILE_OPEN_NO_RECALL | FILE_OPEN_REPARSE_POINT,
         )
     };
     // SAFETY: the optional borrowed root and the counted UTF-16 buffer outlive this
@@ -250,7 +253,7 @@ fn open_nt(root: HANDLE, path: &str, directory: bool) -> io::Result<Option<File>
             FILE_ATTRIBUTE_NORMAL,
             share,
             FILE_OPEN,
-            kind | FILE_OPEN_NO_RECALL | FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT,
+            options | FILE_SYNCHRONOUS_IO_NONALERT,
             null(),
             0,
         )
