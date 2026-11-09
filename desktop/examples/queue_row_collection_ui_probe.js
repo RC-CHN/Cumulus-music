@@ -220,8 +220,9 @@
     await openQueue(2);
     const displayed = await client.playerQueue(epoch);
     const localIndex = indexed.map(id => displayed.tracks.findIndex(row => row.track.id === id));
-    assert(localIndex.every(i => i >= 0) && localIndex.every(i => !one('.queue-row-more', rows()[i])),
-      'local rows use only the inline action without gaining a catalog menu');
+    assert(localIndex.every(i => i >= 0 && displayed.tracks[i].localMenu &&
+      !displayed.tracks[i].catalogMenu && !displayed.tracks[i].voiceMenu && one('.queue-row-more', rows()[i])),
+      'local rows have their own menu without gaining a catalog or voice menu');
     const mapped = collect(localIndex[0]), unmatched = collect(localIndex[1]);
     click(mapped);
     await showPicker(['8']);
