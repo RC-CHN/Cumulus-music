@@ -20,8 +20,12 @@ const CUE: &[u8] = b"FILE \"same.flac\" WAVE\n TRACK 01 AUDIO\n  INDEX 01 00:00:
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_CLOUD_UPLOAD_UI_PROOF").is_some()
 }
+fn size_admission_enabled() -> bool {
+    std::env::var_os("CUMULUS_CLOUD_UPLOAD_SIZE_PROOF").is_some()
+}
 #[derive(Default)]
 struct State {
+    oversized_bytes: Option<u64>,
     serial: u64,
     calls: BTreeMap<String, usize>,
     inputs: BTreeMap<String, (String, u64)>,
@@ -115,6 +119,13 @@ impl Fixture {
         ] {
             fs::write(files.join(name), AUDIO)?;
         }
+        if size_admission_enabled() {
+            let path = files.join("oversized.flac");
+            fs::write(&path, AUDIO)?;
+            let file = fs::OpenOptions::new().write(true).open(path)?;
+            file.set_len(100 * 1024 * 1024 + 1)?;
+            self.state.lock().unwrap().oversized_bytes = Some(file.metadata()?.len());
+        }
         fs::write(files.join("cover.png"), COVER)?;
         fs::write(files.join("invalid.png"), b"synthetic invalid image")?;
         fs::write(files.join("lyrics.lrc"), LYRIC)?;
@@ -135,6 +146,8 @@ impl Fixture {
             "pair" => vec!["first/same.flac", "second/same.flac"],
             "single" => vec!["long.flac"],
             "extra" => vec!["extra.flac"],
+            "oversized" if size_admission_enabled() => vec!["oversized.flac"],
+            "size_mixed" if size_admission_enabled() => vec!["extra.flac", "oversized.flac"],
             "many" => vec!["many"],
             "cover" => vec!["cover.png"],
             "invalid" => vec!["invalid.png"],
@@ -157,7 +170,7 @@ impl Fixture {
             let stored = backend.state.lock().unwrap();
             json!({"key":key,"bytes":stored.data.len(),"matchesFixture": ([AUDIO,COVER,LYRIC,CUE].contains(&stored.data.as_slice())), "requests":stored.calls.len()})
         }).collect::<Vec<_>>();
-        json!({"calls":state.calls,"publishedIds":state.published.keys().collect::<Vec<_>>(),"attachmentMetadata":state.attachment_metadata,"objects":objects,"realRequests":0,"probe":"ffprobe","held":self.held.load(Ordering::Acquire),"holdEntered":self.hold_entered.load(Ordering::Acquire),"seededInputs":seeded_count,"seededInputsIntact":seeded_intact})
+        json!({"calls":state.calls,"publishedIds":state.published.keys().collect::<Vec<_>>(),"attachmentMetadata":state.attachment_metadata,"objects":objects,"realRequests":0,"probe":"ffprobe","held":self.held.load(Ordering::Acquire),"holdEntered":self.hold_entered.load(Ordering::Acquire),"seededInputs":seeded_count,"seededInputsIntact":seeded_intact,"sizeAdmissionBytes":state.oversized_bytes,"checkedInputNames":state.inputs.values().map(|v| &v.0).collect::<Vec<_>>()})
     }
     pub async fn response(&self, path: &str, args: &Value) -> Option<Result<Value>> {
         if !enabled()

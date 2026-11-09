@@ -27,7 +27,8 @@
     releasePick,
     lostReply = false;
   const calls = [],
-    receipts = [];
+    receipts = [],
+    sizeResults = [];
   async function control(kind, data = {}) {
     const id = ++serial;
     await emit({ kind, id, ...data });
@@ -247,6 +248,7 @@
       const result = await originalCommand(...args);
       if (args[1].kind === "upload_planned") {
         receipts.push(result.accepted);
+        if (result.uploadLimit) sizeResults.push(structuredClone(result));
         if (lostReply) {
           lostReply = false;
           throw { code: "io", message: "合成：原生任务已登记，回执未抵达界面" };
@@ -288,6 +290,48 @@
       .find((b) => b.textContent.trim() === "音乐云盘")
       .click();
     await wait(ready, "cloud ready");
+    if ((await control("upload-state")).sizeAdmissionBytes) {
+      await open();
+      assert(dialog().textContent.includes("100 MiB"), "advertised native limit");
+      await choose("oversized");
+      await wait(() => files().length === 1, "picked oversized file");
+      click("开始上传 (1)");
+      await wait(() => files()[0]?.querySelector(".cloud-file-error") &&
+        dialog().querySelector('[role="alert"]')?.textContent.includes("文件超过100M，无法上传") &&
+        dialog().getAttribute("aria-busy") === "false", "all-rejected size result");
+      const rejected = sizeResults[0],
+        before = await control("upload-state"),
+        uploading = { ...nativeQuery, tab: "uploading" };
+      assert(rejected.uploadLimit === "no_new_tasks" && rejected.accepted.length === 0 &&
+        rejected.failed.length === 1 && !before.checkedInputNames.length &&
+        (await client.cloudPage(epoch, uploading, false)).uploads.length === 0,
+        "no queued task or transfer for all-rejected selection");
+      await capture("size_all_rejected_light", { result: rejected, native: before });
+      await close();
+      await open();
+      await choose("size_mixed");
+      await wait(() => files().length === 2, "mixed local selection");
+      click("开始上传 (2)");
+      await wait(() => files().length === 1 && files()[0].querySelector(".cloud-file-error") &&
+        dialog().querySelector('[role="status"]')?.textContent.includes("部分文件超过100M，已经过滤") &&
+        dialog().getAttribute("aria-busy") === "false", "mixed admission result");
+      const mixed = sizeResults[1];
+      assert(mixed.uploadLimit === "partial" && mixed.accepted.length === 1 &&
+        mixed.failed.length === 1 && files()[0].dataset.uploadPath === mixed.failed[0].id,
+        "only the oversized row remains with its error");
+      await capture("size_partial_light", { result: mixed });
+      await close();
+      const history = await completed(1);
+      const after = await control("upload-state");
+      assert(history.uploads[0].id === mixed.accepted[0] && history.uploads[0].fileName === "extra.flac" &&
+        after.checkedInputNames.join() === "extra.flac" && after.publishedIds.length === 1 &&
+        after.objects.length === 1 && after.objects[0].matchesFixture,
+        "exact one eligible task traverses sealed upload pipeline");
+      await capture("size_admitted_light", { native: after, task: history.uploads[0].id });
+      await emit({ kind: "complete", stage: "complete", ok: true, cloudUploadUi: true,
+        sizeAdmission: true, stageCount: count, realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     await open();
     await capture("empty_light");
     selection = "pair";

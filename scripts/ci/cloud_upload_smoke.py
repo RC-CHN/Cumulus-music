@@ -11,6 +11,8 @@ LABELS = ['empty_light', 'choosing_light', 'same_names_light', 'attachments_ligh
           'cancelled_picker_small_light', 'attachments_small_light', 'omission_lyric_dark',
           'omission_cue_dark', 'omission_stopped_dark', 'account_replaced_dark']
 
+SIZE_LABELS = ['size_all_rejected_light', 'size_partial_light', 'size_admitted_light']
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -18,12 +20,15 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--size-admission', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_CLOUD_UPLOAD_UI_PROOF='1',
                CUMULUS_MINI_SCRIPT=str(Path(__file__).resolve().parents[2]/'desktop/examples/cloud_upload_probe.js'))
+    if args.size_admission:
+        env['CUMULUS_CLOUD_UPLOAD_SIZE_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -38,9 +43,10 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'cloud upload process exit {code}'
     complete = json.loads((root/'first/complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['cloudUploadUi'] and complete['stageCount'] == len(LABELS)
+    labels = SIZE_LABELS if args.size_admission else LABELS
+    assert complete['ok'] and complete['cloudUploadUi'] and complete['stageCount'] == len(labels)
     states = {}
-    for i, label in enumerate(LABELS, 1):
+    for i, label in enumerate(labels, 1):
         path = root/'first'/f'ux_{i:02}_{label}.json'
         state = json.loads(path.read_text(encoding='utf-8')); states[label] = state
         assert state['theme'] == ('dark' if label.endswith('_dark') else 'light')
@@ -48,6 +54,31 @@ def main():
         assert all(b['hit'] for b in state['buttons'])
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
+    if args.size_admission:
+        assert complete['sizeAdmission'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        rejected, mixed, admitted = (states[label] for label in labels)
+        assert rejected['result']['uploadLimit'] == 'no_new_tasks' and rejected['result']['accepted'] == []
+        assert rejected['native']['sizeAdmissionBytes'] == 100 * 1024 * 1024 + 1
+        assert rejected['native']['checkedInputNames'] == rejected['native']['objects'] == []
+        assert '文件超过100M，无法上传' in rejected['dialogText']
+        assert mixed['result']['uploadLimit'] == 'partial' and mixed['result']['accepted'] == [admitted['task']]
+        assert '部分文件超过100M，已经过滤' in mixed['dialogText']
+        for state in (rejected, mixed):
+            assert len(state['result']['failed']) == len(state['files']) == 1
+            assert state['result']['failed'][0]['id'] == state['files'][0]['path']
+            assert state['files'][0]['name'] == 'oversized.flac'
+        native = admitted['native']
+        assert native['checkedInputNames'] == ['extra.flac']
+        assert native['calls']['/api/cloud/upload/check'] == native['calls']['/api/cloud/pub/v2'] == 1
+        assert len(native['objects']) == 1 and native['objects'][0]['matchesFixture']
+        assert len(native['publishedIds']) == 1 and native['realRequests'] == 0
+        report = dict(ok=True, states=len(states), screenshots=len(states) if args.screenshots else 0,
+                      actualWebViews=1, actualFfprobe=True, nativeRegisteredUploads=1,
+                      rejectedDescriptorBytes=rejected['native']['sizeAdmissionBytes'],
+                      realAccountWrites=0, realMusicRequests=0)
+        (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
+        print(json.dumps(report))
+        return
     assert len(states['same_names_light']['files']) == 2
     assert len(states['partial_error_dark']['files']) == 1 and states['partial_error_dark']['files'][0]['error']
     assert states['unknown_receipt_light']['uncertain'] == 'true'
