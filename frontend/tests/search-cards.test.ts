@@ -13,9 +13,10 @@ import {
   searchCurrentSongId,
   searchCurrentVoiceId,
   searchVoiceSelection,
+  searchVoiceProgram,
 } from '../src/services/searchCards.ts';
 import type { CoreClient, TrackView } from '../src/services/contracts.ts';
-import type { SearchItem } from '../src/services/search.ts';
+import type { SearchItem, SearchSection } from '../src/services/search.ts';
 const artist = { kind: 'artist', artist: { id: '12' } } as Extract<SearchItem, { kind: 'artist' }>;
 const album = { kind: 'album', album: { id: '12' } } as Extract<SearchItem, { kind: 'album' }>;
 const voice = {
@@ -26,6 +27,36 @@ const podcast = {
   kind: 'podcast',
   podcast: { id: '7', unavailable: false },
 } as Extract<SearchItem, { kind: 'podcast' }>;
+
+test('ordinary search links use the observed public program even without a playable radio', () => {
+  const row = {
+    kind: 'voice',
+    voice: {
+      ...voice.voice,
+      name: '合成单集',
+      creator: '合成主播',
+      radioId: null,
+      unavailable: true,
+    },
+  } as const;
+  const section: SearchSection = {
+    id: 'search_block_voice:5',
+    title: '声音',
+    category: 'voices',
+    items: [row, podcast],
+  };
+  const program = { id: '21', name: '合成单集', creator: '合成主播' };
+  assert.deepEqual(searchVoiceProgram('all', section, row), program);
+  assert.deepEqual(searchVoiceProgram('voices', { ...section, id: '声音' }, row), program);
+  assert.equal(searchVoiceProgram('all', section, { ...row }), undefined);
+  assert.equal(searchVoiceProgram('all', section, podcast), undefined);
+  assert.equal(searchVoiceProgram('podcasts', section, row), undefined);
+  for (const id of ['search_block_best_match:0', 'search_block_hot_result_core_resources:1']) {
+    assert.equal(searchVoiceProgram('all', { ...section, id }, row), undefined);
+  }
+  const malformed = { ...row, voice: { ...row.voice, id: '21&uid=7' } };
+  assert.equal(searchVoiceProgram('all', { ...section, items: [malformed] }, malformed), undefined);
+});
 test('artist covers select the native resolver; album and radio keep their own snapshots', async () => {
   const calls: unknown[] = [];
   const core = {

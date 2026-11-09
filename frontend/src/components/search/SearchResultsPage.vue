@@ -7,7 +7,7 @@ import type {
 import type { ArtistCardRequest } from '../../services/artistCards';
 import type { AlbumCardRequest } from '../../services/catalogCards';
 import type { PlaylistLinkAction } from '../../services/playlistMenu';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { advanceSearchPage, type SearchPageStep } from '../../services/searchPagination';
 import type { SearchViewportMemory } from '../../services/searchViewport';
 import {
@@ -36,6 +36,9 @@ import { useSearchPodcastFollow } from '../../composables/useSearchPodcastFollow
 import { useMotion } from '../../composables/useMotion';
 import { createPageTransition } from '../../services/pageTransition';
 import { useCore } from '../../services/core';
+import { podcastProgramPublicLink, type PodcastProgramShare } from '../../services/podcast';
+import ModalTransition from '../ModalTransition.vue';
+import TrackShareDialog from '../TrackShareDialog.vue';
 import TrackTable from '../TrackTable.vue';
 import TrackRow from '../TrackRow.vue';
 import SearchLyricExtra from './SearchLyricExtra.vue';
@@ -46,8 +49,11 @@ import SearchHotExplanationCard from './SearchHotExplanationCard.vue';
 import GuestSearchResult from './GuestSearchResult.vue';
 import {
   searchCardIsCurrent,
+  searchVoiceLinkSection,
+  searchVoiceProgram,
   type SearchPendingVoiceToggle,
   type SearchQueueRequest,
+  type SearchVoiceLinkRequest,
 } from '../../services/searchCards';
 import type { PlayerOrigin, PlaybackStatus, SearchResultPlayback } from '../../services/player';
 const motion = useMotion();
@@ -379,6 +385,73 @@ let scrollDeadline: ReturnType<typeof setTimeout> | undefined;
 let activeCategory = '';
 let observer: ResizeObserver | undefined;
 let hotDeparture: HTMLButtonElement | undefined;
+interface VoiceLinkOwner {
+  epoch: string;
+  generation: number;
+  panel: HTMLElement;
+  sectionId: string;
+  request: SearchVoiceLinkRequest;
+}
+const voiceLinkOwner = shallowRef<VoiceLinkOwner>();
+const voiceLinkShare = shallowRef<{ program: PodcastProgramShare; canCopy: () => boolean }>();
+const voiceLinkStatus = ref('');
+const voiceLinkRestoreFocus = ref(false);
+let voiceLinkAnchor: HTMLElement | null = null;
+function voiceLinkCurrent(owner: VoiceLinkOwner) {
+  if (
+    props.account.status !== 'authenticated' ||
+    props.account.epoch !== owner.epoch ||
+    loadGeneration !== owner.generation ||
+    loading.value ||
+    panel.value !== owner.panel ||
+    !owner.panel.isConnected ||
+    owner.panel.closest('[inert], .page-leave-active, .search-results-leave-active')
+  )
+    return false;
+  const section = view.value?.sections.find((section) => section.id === owner.sectionId);
+  return !!section && !!searchVoiceProgram(category.value, section, owner.request.item);
+}
+function clearVoiceLink(restoreFocus = false) {
+  voiceLinkRestoreFocus.value = restoreFocus;
+  voiceLinkOwner.value = undefined;
+  voiceLinkShare.value = undefined;
+  voiceLinkStatus.value = '';
+}
+watch(
+  () => !!voiceLinkOwner.value && voiceLinkCurrent(voiceLinkOwner.value),
+  (current) => {
+    if (!current && voiceLinkOwner.value) clearVoiceLink();
+  },
+  { flush: 'sync' },
+);
+async function activateVoiceLink(section: SearchSection, request: SearchVoiceLinkRequest) {
+  if (!panel.value || !request.anchor || !panel.value.contains(request.anchor)) return;
+  const owner = {
+    epoch: props.account.epoch,
+    generation: loadGeneration,
+    panel: panel.value,
+    sectionId: section.id,
+    request,
+  };
+  const program = searchVoiceProgram(category.value, section, request.item);
+  if (!program || !voiceLinkCurrent(owner)) return;
+  const link = podcastProgramPublicLink(program.id);
+  if (!link) return;
+  clearVoiceLink();
+  voiceLinkOwner.value = owner;
+  const current = () => voiceLinkOwner.value === owner && voiceLinkCurrent(owner);
+  if (request.action === 'share') {
+    voiceLinkAnchor = request.anchor;
+    voiceLinkShare.value = { program, canCopy: current };
+    return;
+  }
+  try {
+    await core.copyText(link);
+    if (current()) voiceLinkStatus.value = '链接已复制';
+  } catch {
+    if (current()) voiceLinkStatus.value = '复制失败，请重试';
+  }
+}
 function trackFocusKey(row?: HTMLElement | null) {
   return row?.dataset.trackId
     ? `song-row:${row.getAttribute('aria-rowindex')}:${row.dataset.trackId}`
@@ -543,6 +616,7 @@ async function restore() {
   maybeMore();
 }
 async function load(reuse = false) {
+  clearVoiceLink();
   restoring = true;
   cancelAnimationFrame(frame);
   clearTimeout(scrollDeadline);
@@ -640,6 +714,7 @@ watch(
   { immediate: true },
 );
 onBeforeUnmount(() => {
+  clearVoiceLink();
   checkpoint(true, hotDeparture);
   loadGeneration++;
   observer?.disconnect();
@@ -685,6 +760,14 @@ onBeforeUnmount(() => {
       </p>
       <p v-if="voiceQueueFeedback" class="search-voice-next-notice" role="status">
         {{ voiceQueueFeedback }}
+      </p>
+      <p
+        v-if="voiceLinkStatus"
+        class="search-voice-next-notice"
+        role="status"
+        data-search-voice-link-status
+      >
+        {{ voiceLinkStatus }}
       </p>
     </div>
     <div class="search-results-toolbar">
@@ -1050,6 +1133,9 @@ onBeforeUnmount(() => {
                       : 'disabled'
                     : undefined
                 "
+                :voice-links="
+                  account.status === 'authenticated' && searchVoiceLinkSection(category, section)
+                "
                 :playlist-action-busy="playlistActionBusy"
                 :playlist-known="
                   item.kind === 'playlist' ? knownPlaylistIds?.has(item.playlist.id) : undefined
@@ -1085,6 +1171,7 @@ onBeforeUnmount(() => {
                 "
                 @queue="emit('queueCard', $event)"
                 @queue-voice="emit('queueVoice', $event)"
+                @voice-link="activateVoiceLink(section, $event)"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
                 @playlist-subscribe="emit('playlistSubscribe', $event)"
@@ -1145,5 +1232,17 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </Transition>
+    <ModalTransition
+      :return-focus="() => voiceLinkAnchor"
+      :restore-focus="voiceLinkRestoreFocus"
+      :fallback-focus="() => tabs?.querySelector<HTMLElement>('[aria-selected=true]') ?? null"
+    >
+      <TrackShareDialog
+        v-if="voiceLinkShare"
+        :program="voiceLinkShare.program"
+        :can-copy="voiceLinkShare.canCopy"
+        @close="clearVoiceLink(voiceLinkShare.canCopy())"
+      />
+    </ModalTransition>
   </section>
 </template>

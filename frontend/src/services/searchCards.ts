@@ -6,9 +6,39 @@ import {
   type PlayerView,
   type Quality,
 } from './player.ts';
-import type { SearchItem } from './search.ts';
+import type { SearchCategory, SearchItem, SearchSection } from './search.ts';
 import { albumCredits, catalogResourceSelection } from './catalogCards.ts';
+import { podcastProgramPublicLink, type PodcastProgramShare } from './podcast.ts';
 import { searchLiteral } from './searchMatch.ts';
+
+export interface SearchVoiceLinkRequest {
+  item: Extract<SearchItem, { kind: 'voice' }>;
+  action: 'share' | 'copy';
+  anchor: HTMLElement | null;
+}
+
+export function searchVoiceLinkSection(category: SearchCategory, section: SearchSection) {
+  return (
+    section.category === 'voices' &&
+    (category === 'voices' || (category === 'all' && section.id.startsWith('search_block_voice:')))
+  );
+}
+
+export function searchVoiceProgram(
+  category: SearchCategory,
+  section: SearchSection,
+  item: SearchItem,
+): PodcastProgramShare | undefined {
+  if (
+    item.kind !== 'voice' ||
+    !searchVoiceLinkSection(category, section) ||
+    !section.items.includes(item) ||
+    !podcastProgramPublicLink(item.voice.id)
+  )
+    return undefined;
+  const { id, name, creator } = item.voice;
+  return { id, name, creator };
+}
 
 export function searchCardKey(item: SearchItem): string {
   switch (item.kind) {

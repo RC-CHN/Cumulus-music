@@ -18,6 +18,7 @@ const props = defineProps<{
   album?: AlbumCard;
   podcast?: { id: string; name: string };
   program?: PodcastProgramShare;
+  canCopy?: () => boolean;
   beforeCopy?: () => Promise<string | undefined>;
 }>();
 const kind = computed(() =>
@@ -72,7 +73,7 @@ onBeforeUnmount(() => {
   alive = false;
 });
 async function copy() {
-  if (!link.value || busy.value) return;
+  if (!link.value || busy.value || props.canCopy?.() === false) return;
   busy.value = true;
   message.value = '';
   failed.value = false;
@@ -86,6 +87,7 @@ async function copy() {
         return;
       }
     }
+    if (props.canCopy?.() === false) return;
     await client.copyText(link.value);
     if (alive) message.value = '链接已复制';
   } catch {

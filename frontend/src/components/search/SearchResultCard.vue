@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
-import type { PodcastSearchFollow } from '../../services/podcast';
+import { podcastProgramPublicLink, type PodcastSearchFollow } from '../../services/podcast';
 import type { PlaylistView } from '../../services/contracts';
 import {
   playlistLinkMenuItem,
@@ -31,6 +31,7 @@ import {
   searchVideoCoverStats,
   type SearchPendingVoiceToggle,
   type SearchQueueRequest,
+  type SearchVoiceLinkRequest,
 } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 const props = defineProps<{
@@ -41,6 +42,7 @@ const props = defineProps<{
   playable: boolean;
   queueable: boolean;
   voiceNext?: 'ready' | 'disabled';
+  voiceLinks?: boolean;
   playlistActionBusy: boolean;
   playlistKnown?: boolean;
   albumSubscribed?: boolean | null;
@@ -60,6 +62,7 @@ const emit = defineEmits<{
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queue: [request: SearchQueueRequest];
   queueVoice: [id: string];
+  voiceLink: [request: SearchVoiceLinkRequest];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
   playlistSubscribe: [playlist: PlaylistView];
@@ -68,6 +71,19 @@ const emit = defineEmits<{
 }>();
 const menu = ref<InstanceType<typeof ActionMenu>>();
 const element = ref<HTMLElement>();
+let voiceLinkMenuItem: SearchItem | undefined;
+function captureVoiceLinkMenu() {
+  voiceLinkMenuItem = props.voiceLinks && props.item.kind === 'voice' ? props.item : undefined;
+}
+watch(
+  [() => props.item, () => props.voiceLinks],
+  () => {
+    if (!voiceLinkMenuItem) return;
+    voiceLinkMenuItem = undefined;
+    menu.value?.close();
+  },
+  { flush: 'sync' },
+);
 const followButton = ref<HTMLButtonElement>();
 const followLabel = computed(() =>
   props.podcastFollow?.kind === 'reconcile'
@@ -260,6 +276,22 @@ const items = computed<MenuItem[]>(() => {
           },
         ]
       : []),
+    ...(props.item.kind === 'voice' && props.voiceLinks
+      ? [
+          {
+            key: 'share',
+            label: '分享…',
+            icon: 'share',
+            disabled: !podcastProgramPublicLink(props.item.voice.id),
+          },
+          {
+            key: 'copy',
+            label: '复制链接',
+            icon: 'copy',
+            disabled: !podcastProgramPublicLink(props.item.voice.id),
+          },
+        ]
+      : []),
   ];
 });
 function actionAnchor() {
@@ -322,6 +354,14 @@ function action(key: string) {
     !playlistLinkMenuItem(props.item.playlist, key).disabled
   ) {
     emit('playlistLink', props.item.playlist, key);
+  } else if (
+    (key === 'share' || key === 'copy') &&
+    props.voiceLinks &&
+    props.item.kind === 'voice' &&
+    voiceLinkMenuItem === props.item
+  ) {
+    voiceLinkMenuItem = undefined;
+    emit('voiceLink', { item: props.item, action: key, anchor: actionAnchor() });
   } else if (
     key === 'download-playlist' &&
     props.item.kind === 'playlist' &&
@@ -655,6 +695,7 @@ watch(
             class="search-card-menu"
             :label="`更多操作：${card.name}`"
             :items="items"
+            @opened="captureVoiceLinkMenu"
             @select="action"
           />
         </div>
@@ -948,6 +989,7 @@ watch(
         class="search-card-menu"
         :label="`更多操作：${card.name}`"
         :items="items"
+        @opened="captureVoiceLinkMenu"
         @select="action"
       />
     </template>
