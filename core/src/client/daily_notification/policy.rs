@@ -15,16 +15,18 @@ pub(super) struct Policy {
     pub count: usize,
     pub descriptions: Vec<String>,
     pub daily_v3: bool,
+    pub daily: bool,
+    pub copyright: bool,
 }
 
 impl Policy {
     pub fn read(groups: &PcExperimentGroups, config: &Value) -> Option<Self> {
         let group = groups.group("PH-PC-push")?;
-        // Copyright has first refusal in its treatment cohort, while visual
-        // treatment uses a different native window. Neither is this lane.
+        let copyright = groups.group("PH-PC-push2") == Some("t1");
+        let daily = matches!(groups.group("PH-PC-Pop-Visual"), Some("" | "c"));
         if !matches!(group, "t1" | "t2" | "t3")
-            || !matches!(groups.group("PH-PC-push2"), Some("" | "c"))
-            || !matches!(groups.group("PH-PC-Pop-Visual"), Some("" | "c"))
+            || !matches!(groups.group("PH-PC-push2"), Some("" | "c" | "t1"))
+            || (!daily && !copyright)
         {
             return None;
         }
@@ -57,10 +59,18 @@ impl Policy {
             count: count as usize,
             descriptions,
             daily_v3: groups.group("PH-PC-Blacklist") == Some("t1"),
+            daily,
+            copyright,
         })
     }
 
-    pub fn first_exposure(&self, history: &History, local_ms: i64, server_ms: i64) -> bool {
+    pub fn first_exposure(
+        &self,
+        history: &History,
+        sibling: &History,
+        local_ms: i64,
+        server_ms: i64,
+    ) -> bool {
         if !history.enabled || history.shown.len() > MAX_DAYS + 1 {
             return false;
         }
@@ -71,10 +81,14 @@ impl Policy {
         // M/128 first checks the machine's current day, then the synchronized
         // date for the per-type frequency. This lane never displays a second
         // exposure that would depend on the copyright/duration experiments.
-        if history
-            .shown
-            .iter()
-            .any(|t| self::local_date(*t).is_none_or(|day| day == local_date || day == server_date))
+        if sibling.shown.len() > MAX_DAYS + 1
+            || sibling
+                .shown
+                .iter()
+                .any(|t| self::local_date(*t).is_none_or(|day| day == local_date))
+            || history.shown.iter().any(|t| {
+                self::local_date(*t).is_none_or(|day| day == local_date || day == server_date)
+            })
         {
             return false;
         }
@@ -157,18 +171,18 @@ mod tests {
     }
 
     #[test]
-    fn never_arms_default_control_immersive_or_copyright_first_cohorts() {
+    fn arms_only_the_recovered_startup_candidates() {
         let cfg = json!({"preload#push":{"day":3,"count":1,"t1":3.5,"t2":1,"desc":["合成"]}});
         let p = Policy::read(&groups("t1", "c", "c"), &cfg).unwrap();
         assert_eq!(p.delay, Duration::from_secs(210));
         assert_eq!(p.descriptions, ["合成"]);
         assert!(p.daily_v3);
-        for (push, priority, visual) in [
-            ("c", "c", "c"),
-            ("t1", "t1", "c"),
-            ("t1", "c", "t1"),
-            ("t3", "c", "c"),
-        ] {
+        assert!(p.daily && !p.copyright);
+        let priority = Policy::read(&groups("t1", "t1", "c"), &cfg).unwrap();
+        assert!(priority.daily && priority.copyright);
+        let immersive = Policy::read(&groups("t1", "t1", "t1"), &cfg).unwrap();
+        assert!(!immersive.daily && immersive.copyright);
+        for (push, priority, visual) in [("c", "c", "c"), ("t1", "c", "t1"), ("t3", "c", "c")] {
             assert!(Policy::read(&groups(push, priority, visual), &cfg).is_none());
         }
         assert!(
@@ -195,16 +209,33 @@ mod tests {
         )
         .unwrap();
         let mut h = History::default();
-        assert!(p.first_exposure(&h, at_date(2), at_date(2)));
+        assert!(p.first_exposure(&h, &History::default(), at_date(2), at_date(2)));
         h.shown.push(at_date(2));
         for (local, server) in [(2, 3), (3, 2), (3, 3), (4, 4)] {
-            assert!(!p.first_exposure(&h, at_date(local), at_date(server)));
+            assert!(!p.first_exposure(&h, &History::default(), at_date(local), at_date(server)));
         }
-        assert!(p.first_exposure(&h, at_date(5), at_date(5)));
+        assert!(p.first_exposure(&h, &History::default(), at_date(5), at_date(5)));
         h.snoozed_at = Some(at_date(2));
-        assert!(!p.first_exposure(&h, at_date(8), at_date(8)));
-        assert!(p.first_exposure(&h, at_date(9), at_date(9)));
+        assert!(!p.first_exposure(&h, &History::default(), at_date(8), at_date(8)));
+        assert!(p.first_exposure(&h, &History::default(), at_date(9), at_date(9)));
         h.enabled = false;
-        assert!(!p.first_exposure(&h, at_date(10), at_date(10)));
+        assert!(!p.first_exposure(&h, &History::default(), at_date(10), at_date(10)));
+    }
+    #[test]
+    fn shares_local_day_across_types_without_sharing_snooze_or_frequency() {
+        let p = Policy::read(
+            &groups("t1", "t1", "c"),
+            &json!({"preload#push":{"day":3,"count":1,"t1":1}}),
+        )
+        .unwrap();
+        let daily = History::default();
+        let other = History {
+            enabled: false,
+            snoozed_at: Some(at_date(2)),
+            shown: vec![at_date(2)],
+        };
+        assert!(!p.first_exposure(&daily, &other, at_date(2), at_date(3)));
+        assert!(p.first_exposure(&daily, &other, at_date(3), at_date(2)));
+        assert!(p.first_exposure(&daily, &other, at_date(3), at_date(3)));
     }
 }

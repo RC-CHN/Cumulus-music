@@ -4,7 +4,8 @@ use cumulus_core::{
     client::{
         ClientError, MusicClient,
         daily_notification::{
-            DailyNotificationCommand, DailyNotificationOutcome, DailyNotificationView,
+            DailyNotificationCommand, DailyNotificationKind, DailyNotificationOutcome,
+            DailyNotificationView,
         },
     },
 };
@@ -147,11 +148,16 @@ pub async fn daily_notification_command<R: tauri::Runtime>(
     let result = client
         .daily_notification_command(&epoch, &receipt, action, || foreground(&window))
         .await?;
-    if matches!(action, DailyNotificationCommand::Disable) {
+    let disabled = match result {
+        DailyNotificationOutcome::DisabledDaily => Some(DailyNotificationKind::Daily),
+        DailyNotificationOutcome::DisabledCopyright => Some(DailyNotificationKind::Copyright),
+        _ => None,
+    };
+    if let Some(kind) = disabled {
         let _ = window.emit_to(
             "main",
             PREFERENCE,
-            serde_json::json!({"epoch":epoch,"value":false}),
+            serde_json::json!({"epoch":epoch,"kind":kind,"value":false}),
         );
     }
     Ok(result)
@@ -162,9 +168,10 @@ pub fn daily_notification_enabled<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
-) -> std::result::Result<bool, ClientError> {
+    kind: DailyNotificationKind,
+) -> std::result::Result<Option<bool>, ClientError> {
     require_main(&window)?;
-    Ok(client.daily_notification_enabled(&epoch)?)
+    Ok(client.daily_notification_enabled(&epoch, kind)?)
 }
 
 #[tauri::command]
@@ -172,17 +179,15 @@ pub fn set_daily_notification_enabled<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
+    kind: DailyNotificationKind,
     enabled: bool,
 ) -> std::result::Result<bool, ClientError> {
     require_main(&window)?;
-    let enabled = client.set_daily_notification_enabled(&epoch, enabled)?;
-    if !enabled {
-        let _ = window.emit_to("main", EVENT, Option::<DailyNotificationView>::None);
-    }
+    let enabled = client.set_daily_notification_enabled(&epoch, kind, enabled)?;
     let _ = window.emit_to(
         "main",
         PREFERENCE,
-        serde_json::json!({"epoch":epoch,"value":enabled}),
+        serde_json::json!({"epoch":epoch,"kind":kind,"value":enabled}),
     );
     Ok(enabled)
 }

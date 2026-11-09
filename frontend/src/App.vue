@@ -2886,8 +2886,9 @@ function openSettingsSection(
   settingsFocus = { epoch, route, section };
   music.navigate(route);
 }
-function dailyNotificationDetails(epoch: string) {
-  if (epoch === music.account.value.epoch) music.navigate({ kind: 'daily' });
+function dailyNotificationDetails(epoch: string, playlistId: string | null) {
+  if (epoch !== music.account.value.epoch) return;
+  music.navigate(playlistId ? { kind: 'playlist', id: playlistId } : { kind: 'daily' });
 }
 function dailyNotificationSettings(epoch: string) {
   openSettingsSection(epoch, 'settings-desktop-notifications');

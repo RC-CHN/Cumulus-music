@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
 import type { DailyNotification, DailyNotificationAction } from '../services/dailyNotification';
@@ -10,7 +10,7 @@ import MenuTransition from './MenuTransition.vue';
 const props = defineProps<{ epoch: string }>();
 const emit = defineEmits<{
   settings: [epoch: string];
-  details: [epoch: string];
+  details: [epoch: string, playlistId: string | null];
   played: [];
   issue: [message: string];
 }>();
@@ -18,8 +18,11 @@ const client = useCore();
 const notice = shallowRef<DailyNotification>();
 const card = ref<HTMLElement>();
 const settled = ref(false);
+const copyright = computed(() => notice.value?.kind === 'copyright');
+const title = computed(() => (copyright.value ? '版权回归' : '每日推荐'));
 let mounted = false;
 let unlisten: (() => void) | undefined;
+let unlistenPreference: (() => void) | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let generation = 0;
 let focusOrigin: HTMLElement | undefined;
@@ -95,7 +98,7 @@ async function run(action: Exclude<DailyNotificationAction, 'shown'>) {
     const result = await client.dailyNotificationCommand(view.epoch, view.receipt, action);
     if (!mounted || view.epoch !== props.epoch) return;
     if (result === 'settings') emit('settings', view.epoch);
-    else if (result === 'details') emit('details', view.epoch);
+    else if (result === 'details') emit('details', view.epoch, view.playlistId);
     else if (result === 'played') emit('played');
   } catch (error) {
     if (mounted && props.epoch === view.epoch && action !== 'close')
@@ -128,6 +131,20 @@ onMounted(async () => {
       return;
     }
     unlisten = stop;
+    void client
+      .onDailyNotificationPreference(({ epoch, kind, value }) => {
+        const active = notice.value;
+        if (!value && active?.epoch === epoch && active.kind === kind) {
+          generation++;
+          retired.add(active.receipt);
+          hide();
+        }
+      })
+      .then((stopPreference) => {
+        if (!mounted) stopPreference();
+        else unlistenPreference = stopPreference;
+      })
+      .catch(() => {});
     await reload();
   } catch {
     // There is no remote or JS fallback for a missing native host.
@@ -137,6 +154,7 @@ onUnmounted(() => {
   mounted = false;
   generation++;
   unlisten?.();
+  unlistenPreference?.();
   hide();
 });
 </script>
@@ -148,18 +166,21 @@ onUnmounted(() => {
       ref="card"
       class="daily-notification"
       data-daily-notification
+      :data-notification-kind="notice.kind"
       :aria-busy="!settled"
-      aria-label="每日推荐桌面通知"
+      :aria-label="`${title}桌面通知`"
       @keydown.esc.stop.prevent="run('close')"
     >
       <header>
-        <span class="daily-notification-date" aria-hidden="true">{{ notice.day }}</span>
+        <span class="daily-notification-date" aria-hidden="true"
+          ><Icon v-if="copyright" name="heart" /><template v-else>{{ notice.day }}</template></span
+        >
         <div role="status">
-          <h2>每日推荐</h2>
+          <h2>{{ title }}</h2>
           <p v-if="notice.description">{{ notice.description }}</p>
         </div>
         <ActionMenu label="更多通知操作" :items="items" :disabled="!settled" @select="more" />
-        <button class="icon-button" aria-label="关闭每日推荐通知" @click="run('close')">
+        <button class="icon-button" :aria-label="`关闭${title}通知`" @click="run('close')">
           <Icon name="close" />
         </button>
       </header>
@@ -176,7 +197,9 @@ onUnmounted(() => {
         </li>
       </ol>
       <footer>
-        <button class="secondary" :disabled="!settled" @click="run('details')">查看详情</button>
+        <button class="secondary" :disabled="!settled" @click="run('details')">
+          {{ copyright ? '查看回归歌单' : '查看详情' }}
+        </button>
         <button class="primary" :disabled="!settled" @click="run('play')">一键播放</button>
       </footer>
     </section>

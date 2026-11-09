@@ -1,77 +1,88 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, reactive, watch } from 'vue';
 import { failure } from '../../services/contracts';
 import { useCore } from '../../services/core';
+import type { DailyNotificationKind } from '../../services/dailyNotification';
 
 const props = defineProps<{ epoch: string }>();
 const client = useCore();
-const enabled = ref<boolean>();
-const busy = ref(false);
-const issue = ref('');
-let generation = 0;
+const kinds = ['daily', 'copyright'] as const;
+const names = { daily: '每日推荐', copyright: '版权回归' };
+const row = () => ({ enabled: null as boolean | null, busy: false, issue: '', generation: 0 });
+const state = reactive({ daily: row(), copyright: row() });
+const stops: (() => void)[] = [];
 let alive = true;
-let stop: (() => void) | undefined;
 
-async function read() {
+function current(owner: string, kind: DailyNotificationKind, ticket: number) {
+  return alive && props.epoch === owner && state[kind].generation === ticket;
+}
+
+async function read(kind: DailyNotificationKind, reset: boolean) {
+  const entry = state[kind];
+  if (!reset && entry.busy) return;
   const owner = props.epoch;
-  const ticket = ++generation;
-  enabled.value = undefined;
-  issue.value = '';
-  busy.value = true;
+  const ticket = ++entry.generation;
+  if (reset) entry.enabled = null;
+  entry.issue = '';
+  entry.busy = true;
   try {
-    const value = await client.dailyNotificationEnabled(owner);
-    if (alive && generation === ticket && props.epoch === owner) enabled.value = value;
+    const value = await client.dailyNotificationEnabled(owner, kind);
+    if (current(owner, kind, ticket)) entry.enabled = value;
   } catch (error) {
-    if (alive && generation === ticket) issue.value = failure(error).message;
+    if (current(owner, kind, ticket)) entry.issue = failure(error).message;
   } finally {
-    if (alive && generation === ticket) busy.value = false;
+    if (current(owner, kind, ticket)) entry.busy = false;
   }
 }
 
-async function save(event: Event) {
+async function save(event: Event, kind: DailyNotificationKind) {
+  const entry = state[kind];
   const box = event.target as HTMLInputElement;
   const desired = box.checked;
-  box.checked = enabled.value === true;
-  if (busy.value || enabled.value === undefined) return;
+  box.checked = entry.enabled === true;
+  if (entry.busy || entry.enabled === null) return;
   const owner = props.epoch;
-  const ticket = ++generation;
-  issue.value = '';
-  busy.value = true;
+  const ticket = ++entry.generation;
+  entry.issue = '';
+  entry.busy = true;
   try {
-    const value = await client.setDailyNotificationEnabled(owner, desired);
-    if (alive && generation === ticket && props.epoch === owner) enabled.value = value;
+    const value = await client.setDailyNotificationEnabled(owner, kind, desired);
+    if (current(owner, kind, ticket)) entry.enabled = value;
   } catch (error) {
-    if (alive && generation === ticket) issue.value = failure(error).message;
+    if (current(owner, kind, ticket)) entry.issue = failure(error).message;
   } finally {
-    if (alive && generation === ticket) busy.value = false;
+    if (current(owner, kind, ticket)) entry.busy = false;
   }
 }
 
+const reload = () => Promise.all(kinds.map((kind) => read(kind, true)));
 watch(
   () => props.epoch,
-  () => void read(),
+  () => void reload(),
 );
 onMounted(async () => {
-  try {
-    const unlisten = await client.onDailyNotificationPreference(({ epoch, value }) => {
+  const listen = [
+    client.onDailyNotificationPreference(({ epoch, kind, value }) => {
       if (!alive || epoch !== props.epoch) return;
-      generation++;
-      enabled.value = value;
-      busy.value = false;
-    });
-    if (!alive) {
-      unlisten();
-      return;
-    }
-    stop = unlisten;
-  } catch {
-    // The local preference is still usable without a live observer.
+      const entry = state[kind];
+      entry.generation++;
+      entry.enabled = value;
+      entry.busy = false;
+    }),
+    client.onPcPresentationChanged((view) => {
+      if (alive && view.epoch === props.epoch) void read('copyright', false);
+    }),
+  ];
+  for (const result of await Promise.allSettled(listen)) {
+    if (result.status !== 'fulfilled') continue;
+    if (alive) stops.push(result.value);
+    else result.value();
   }
-  if (alive) await read();
+  if (alive) await reload();
 });
 onUnmounted(() => {
   alive = false;
-  stop?.();
+  for (const stop of stops) stop();
 });
 </script>
 
@@ -79,19 +90,21 @@ onUnmounted(() => {
   <section class="settings-section" aria-labelledby="settings-desktop-notifications">
     <h2 id="settings-desktop-notifications" tabindex="-1">桌面通知</h2>
     <div class="settings-section-content">
-      <label class="check-setting">
-        <input
-          type="checkbox"
-          aria-label="每日推荐"
-          data-daily-notification-preference
-          :checked="enabled"
-          :disabled="enabled === undefined || busy"
-          @change="save"
-        />
-        每日推荐
-      </label>
+      <template v-for="kind in kinds" :key="kind">
+        <label v-if="kind === 'daily' || state[kind].enabled !== null" class="settings-checkbox">
+          <input
+            type="checkbox"
+            :aria-label="names[kind]"
+            :data-daily-notification-preference="kind"
+            :checked="state[kind].enabled === true"
+            :disabled="state[kind].enabled === null || state[kind].busy"
+            @change="save($event, kind)"
+          />
+          <span>{{ names[kind] }}</span>
+        </label>
+        <p v-if="state[kind].issue" class="catalog-error" role="status">{{ state[kind].issue }}</p>
+      </template>
       <p class="settings-note">仅在 Cumulus 主窗口中显示。</p>
-      <p v-if="issue" class="catalog-error" role="status">{{ issue }}</p>
     </div>
   </section>
 </template>

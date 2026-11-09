@@ -329,6 +329,45 @@ impl VinylVoiceRecommendationsRead {
     }
 }
 
+/// One fixed PC read for the current copyright notification candidate.
+pub struct CopyrightNotificationRead(Option<Vec<String>>);
+
+impl CopyrightNotificationRead {
+    pub(crate) const POPUP: &str = "/api/pc/popup/copyright";
+    pub(crate) const DETAILS: &str = "/api/v3/song/detail";
+    pub(crate) const MAX_SONGS: usize = 500;
+
+    pub(crate) fn popup() -> Self {
+        Self(None)
+    }
+
+    pub(crate) fn details(ids: &[Value]) -> Result<Self> {
+        if !(1..=Self::MAX_SONGS).contains(&ids.len()) {
+            return Err(Error::Response(
+                "copyright song list is outside the reviewed bounds",
+            ));
+        }
+        let ids = ids.iter().map(identifier).collect::<Result<Vec<_>>>()?;
+        if ids.iter().any(|id| id.len() > 32) {
+            return Err(Error::Response("invalid copyright song identity"));
+        }
+        Ok(Self(Some(ids)))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        match self.0 {
+            None => (Self::POPUP, json!({})),
+            Some(ids) => {
+                let rows: Vec<_> = ids.into_iter().map(|id| json!({"id":id,"v":0})).collect();
+                (
+                    Self::DETAILS,
+                    json!({"c":Value::Array(rows).to_string(),"trialMode":-1}),
+                )
+            }
+        }
+    }
+}
+
 /// Fixed signed encyclopedia query for the native current-track identity.
 pub struct VinylWikiRead(String);
 
@@ -764,6 +803,19 @@ pub trait Api: Send + Sync + std::any::Any {
     }
 
     /// Signed PC read for one live playback selection; no generic API fallback.
+    fn request_copyright_notification<'a>(
+        &'a self,
+        _read: CopyrightNotificationRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "signed copyright notification read is unavailable",
+            ))
+        })
+    }
+
     fn request_vinyl_wiki<'a>(
         &'a self,
         _read: VinylWikiRead,

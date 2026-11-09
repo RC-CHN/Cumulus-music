@@ -42,15 +42,16 @@ personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置�
   修改本地免打扰和打开设置。新建回归歌单的另一条独立写入是
   M15:4843–4852 的 POST /api/unique/playlist/create，带序列化 trackIds、
   uniqueCode:"COPY_RIGHT_SONGS_RETURN"、playlistName:"回归歌单"、playlistDesc:""。
-  已接入传统每日推荐的「启动后首次／主窗前台」一条完整链，见下节。
-  Windows 原生后台通知、沉浸版、系统恢复、整点半点、同日二推和版权回归仍未接入。
+  已接入「启动后首次／主窗前台」的传统每日推荐，以及已存在回归歌单的版权回归，见下节。
+  Windows 原生后台／沉浸窗口、系统恢复、整点半点、同日二推及专用新建回归歌单仍未接入。
 
 每日推荐：启动首次／主窗前台
   恢复证据：_core/init/utils/app.ts:626–775、1015–1106 (M128)，M1384:4464–4466
   受信主页面加载完成 +3s 后读取 PH-PC-push 组及 preload#push 对应分钟数；M247:148–166
   默认 day/count/t1/t2/t3 为 0，不激活。Rust 只接受原生 PC 配置和同账号、
   同 API/凭据的已验证、新鲜分组；不为通知另取实验，不把搜索表现组当授权。
-  只运行 t1/t2/t3 的正延时、非版权优先和非沉浸展示。输入配置无效时保持沉默。
+  只运行 t1/t2/t3 的正延时。版权优先资格由 PH-PC-push2=t1 决定；
+  传统每日推荐仅在非沉浸实验组展示。输入配置无效时保持沉默。
   官方 GetForegroundWindow + MonitorFromWindow + GetWindowRect/GetMonitorInfoW
   （3.1.42.205594 x64 cloudmusic.dll E390E0–E3923C）按完整显示器矩形
   排除全屏。Cumulus 不试图控制别的进程窗口，只在真实可见、聚焦且非最小化的
@@ -71,6 +72,41 @@ personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置�
   聚焦标题，重新开启清除静默期。前端收据绑定账号/时间，不能自建通知、提交
   任意歌曲或触发远端设置写入。测试用隔离的合成用户和 null 音频；不代表
   Windows 原生通知、后台推送、实服或真实声卡验证。
+
+版权回归：同一启动候选、仅已有回归歌单
+  M1384:4464–4466、M128:927–1000（恢复 _core/init/utils/app.ts:1012–1107）
+  与每日推荐同一个计时器和单次通知收据；PH-PC-push2=t1 才先查版权回归。
+  M116:373 开关默认为开，M3097:1095–1104、1190–1199、1472–1509 仅该组显示
+  版权回归开关，重新打开只清自己的静默。各自按同步时间检查同日／N 日限次；
+  两类展示按本机日期共享首次门槛，账号切换不把设备级曝光/静默重置。
+  复用当前 daily-notification-v1/history；版权记录单独存 copyright-history，
+  展示确认在同一事务读取两类历史再写当前类型。授权依赖已验证本账号及受信前台。
+  M128:787–794 排除匿名、读本地版权开关与频率，不检查每日推荐专用的
+  /api/user/setting、已播放或正在播放。登录、全屏、凭据／实验失效仍停止。
+  M15:4836–4843、M12:281–310：签名 PC EAPI POST /api/pc/popup/copyright {}，
+  禁用缓存，仅 code=200 的 data；读取 songIdList、songNum、returnSongPlaylistId。
+  M128:960–986 → M120:12–22 → M15:2854–2876：签名 POST /api/v3/song/detail，
+  c=JSON([{id:String(id),v:0},…])、trialMode:-1；"0" 是本地格式化 uid，不进请求。
+  Rust 从单一当前候选固定派生这两条读取，检查同账号 Cookie/凭据代次与发送前权限，
+  只接纳回包中同次请求的真实曲目，关联 privilege，预览最多三首，完整候选有界。
+  请求无结果、无有效详情或出错后可继续传统每日推荐；有效版权候选独占本次。
+  官方版权回归始终使用 immersive_push_notify，Cumulus 用主窗内卡片和公开封面
+  （既有安全缩略图、无鉴权查询参数）。无 OS 窗口、资源回传遥测或图标逐像素复刻。
+  M3085:5443–5457：已存在正十进制 returnSongPlaylistId 时只进入同一歌单，
+  不额外收藏或写入。M3085:5498–5506 → M308:3122–3249 →
+  M1384:2579–2655／5186–5311：点击播放时保留普通队列，在当前后插入整组；
+  去除旧的同身份歌曲，开始首首通过普通音源权限的回归歌曲，保留
+  scene=copyrightReversionPush。首条明确禁播时不悄悄换下一首。特殊 FM／一起听／
+  心动队列不跨管线接管。不存在额外免费权益或每日推荐试听模式。
+  没有有效回归歌单 ID 且确有歌曲的候选，不显示无实现按钮，也不降级抢推每日推荐。
+  M15:4844–4852、M3160:2129–2162 已确认专用新建 JSON：
+  {"trackIds":"原始 songIdList 的 JSON","uniqueCode":"COPY_RIGHT_SONGS_RETURN",
+   "playlistName":"回归歌单","playlistDesc":""}；code=200 且 data.playlistId 有值
+  才跳入新歌单并延迟提示成功，没有额外 add/subscribe，即使原函数名含 Fav。
+  该路由未接入生产：恢复材料没有可见性、丢失回包读回或幂等保证；不以普通
+  /api/playlist/create 冒充、也不因回包缺失重试或猜测目标。合成探针严查该分支
+  不产生真实写入、不显示候选、不让每日推荐接管。M128:1022–1033 的定时任务
+  版权列表为空会直接 return（不同于启动），本实现没有开启定时、恢复或二推。
 
 原研究的联动观察
 playRecordSetting=1 曾使 allowPeopleCanSeeMyPlayRecord=false。

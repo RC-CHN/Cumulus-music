@@ -1,3 +1,4 @@
+mod copyright_notification;
 mod volume_diagnosis;
 pub use volume_diagnosis::VolumeDiagnosisDismissal;
 mod chorus;

@@ -2,7 +2,7 @@ import type { HistorySyncState } from '../services/history';
 import type { SearchPrivilegeObservation } from '../services/search';
 import type { PcPresentationView } from '../services/pcPresentation';
 import type { NativeLikeChanged } from '../services/nativeLikes';
-import type { DailyNotification } from '../services/dailyNotification';
+import type { DailyNotification, DailyNotificationPreference } from '../services/dailyNotification';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createVoiceSongGroupDownloadBridge } from './voiceSongGroupDownload';
@@ -218,11 +218,12 @@ export function createTauriClient(): CoreClient {
       listen<DailyNotification | null>('cumulus:daily-notification', (event) =>
         callback(event.payload),
       ),
-    dailyNotificationEnabled: (epoch) => invoke('daily_notification_enabled', { epoch }),
-    setDailyNotificationEnabled: (epoch, enabled) =>
-      invoke('set_daily_notification_enabled', { epoch, enabled }),
+    dailyNotificationEnabled: (epoch, kind) =>
+      invoke('daily_notification_enabled', { epoch, kind }),
+    setDailyNotificationEnabled: (epoch, kind, enabled) =>
+      invoke('set_daily_notification_enabled', { epoch, kind, enabled }),
     onDailyNotificationPreference: (callback) =>
-      listen<AccountData<boolean>>('cumulus:daily-notification-preference', (event) =>
+      listen<DailyNotificationPreference>('cumulus:daily-notification-preference', (event) =>
         callback(event.payload),
       ),
 
