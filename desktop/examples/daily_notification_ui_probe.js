@@ -83,8 +83,10 @@
         click(control('排行榜'));
         await wait(() => one('.main-content h1')?.textContent.trim() === '排行榜' && card(), 'other page before details');
         click(control('查看详情', card()));
-        await wait(() => !card() && one('.main-content h1')?.textContent.trim() === '每日推荐',
-          'details explicitly opens the Daily page');
+        await wait(() => !card()
+          && one('.main-content h1')?.textContent.trim().endsWith('每日推荐')
+          && document.querySelectorAll('.track-row').length === 4,
+          'details explicitly opens the dated Daily page and all four rows');
         assert(await offer() === null && (await player()).state === 'idle', 'details did not play');
         await stage('details');
       } else if (mode === 'close') {

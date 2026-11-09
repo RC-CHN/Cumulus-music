@@ -62,7 +62,7 @@ def verify(directory, mode, expected, screenshots):
         assert (history["snoozed_at"] is not None) is (mode == "snooze")
         assert states[labels[-1]]["noticeTitle"] is None
         if mode == "details":
-            assert states[mode]["heading"] == "每日推荐"
+            assert states[mode]["heading"].endswith("每日推荐")
         if mode == "settings":
             assert states[mode]["focused"] == "settings-desktop-notifications" and states[mode]["preference"]
         if mode == "play":
