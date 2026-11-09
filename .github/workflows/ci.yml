@@ -1090,34 +1090,40 @@ jobs:
           retention-days: 3
           compression-level: 1
 
-  linux-webview-shards:
+  linux-webview-media:
     name: Linux WebView (${{ matrix.shard }})
+    # Only these checks consume the exact release package runtime.
     needs: [frontend, package-linux, linux-webview-probe]
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
-        shard: [media, playback, library-search, local-desktop, account-catalog]
+        shard: [media-decoder, media-startup]
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - &linux_webview_checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Linux native dependencies
+      - &linux_webview_dependencies
+        name: Linux native dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
           sudo locale-gen en_US.UTF-8
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - &linux_webview_python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - name: Install pinned toolchain
+      - &linux_webview_toolchain
+        name: Install pinned toolchain
         run: rustup show
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - &linux_webview_rust_downloads
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         id: rust-cache
         with:
           # Linux reuses downloads only, never a target directory.
@@ -1128,7 +1134,8 @@ jobs:
           restore-keys: |
             rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
             rust-Linux-downloads-v2-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - &linux_webview_dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: frontend-dist
           path: frontend/dist
@@ -1167,17 +1174,19 @@ jobs:
           printf 'CUMULUS_CI_PACKAGED_FLAC_SHA256=%s\n' "$flac_sha" >> "$GITHUB_ENV"
           test ! -d .build/target
           df -h .
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - &linux_webview_probe_download
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/cumulus-webview-ux-probe
-      - name: Verify and install the same-attempt Linux WebView probe
+      - &linux_webview_probe_restore
+        name: Verify and install the same-attempt Linux WebView probe
         run: |
           python3 scripts/ci/linux_webview_probe_artifact.py restore \
             --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
             --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
       - name: Verify the packaged Linux FLAC decoder through ordinary local equalizer playback
-        if: matrix.shard == 'media'
+        if: matrix.shard == 'media-decoder'
         run: |
           cargo build -p cumulus-desktop --example native_local_equalizer_probe --features custom-protocol --locked
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
@@ -1187,7 +1196,7 @@ jobs:
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --frontend-dist frontend/dist --root .build/ci-native-local-equalizer-linux
       - name: Verify the local spatial controls on packaged Linux FLAC
-        if: matrix.shard == 'media'
+        if: matrix.shard == 'media-decoder'
         run: |
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
@@ -1196,7 +1205,7 @@ jobs:
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --frontend-dist frontend/dist --root .build/ci-native-spatial-controls-linux
       - name: Verify local PCM WAV spatial controls on Linux
-        if: matrix.shard == 'media'
+        if: matrix.shard == 'media-decoder'
         run: |
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
@@ -1204,7 +1213,7 @@ jobs:
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe \
             --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-linux
       - name: Verify local 48 kHz WAV and packaged FLAC spatial controls on Linux
-        if: matrix.shard == 'media'
+        if: matrix.shard == 'media-decoder'
         run: |
           verify_spatial_rate() {
             sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
@@ -1218,7 +1227,7 @@ jobs:
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 \
             --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --root .build/ci-native-spatial-flac-48k-linux
       - name: Verify indexed Linux FLAC and held fallback with the packaged decoder
-        if: matrix.shard == 'media'
+        if: matrix.shard == 'media-decoder'
         run: |
           export CUMULUS_FLAC_PROBE_LIBRARY="$PWD/.build/package-stage/linux-x64/native/libcumulus_flac150.so.14"
           cargo test -p cumulus-core --locked --lib indexed_large_flac_reframes_and_seek_discards_the_staged_suffix -- --ignored
@@ -1230,7 +1239,7 @@ jobs:
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --frontend-dist frontend/dist --root .build/ci-indexed-flac-linux
       - name: Verify isolated playback preferences and message actions on Linux
-        if: matrix.shard == 'media'
+        if: matrix.shard == 'media-decoder'
         run: |
           cargo build -p cumulus-desktop --example minibar_skip_ui_probe --features custom-protocol --locked
           outer_network=$(readlink /proc/self/ns/net)
@@ -1258,7 +1267,7 @@ jobs:
           isolated_proof scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-read-all-linux --screenshots
           isolated_proof scripts/ci/queue_click_smoke.py --daily-row --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-daily-linux --screenshots
       - name: Verify native media and playback startup
-        if: matrix.shard == 'media'
+        if: matrix.shard == 'media-startup'
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:
           GDK_BACKEND: x11
@@ -1314,6 +1323,67 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_peq_native_smoke.py --pause-local --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-peq-pause-local-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_peq_native_smoke.py --runtime-fault --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-peq-fault-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_peq_restart_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-peq-restart-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+      - &linux_webview_disk_after
+        name: Measure Linux WebView disk after smoke
+        if: always()
+        run: df -h .
+      - &linux_webview_failure_checkpoints
+        name: Gather compact SongCard failure checkpoints
+        id: compact-failure-checkpoints
+        if: failure()
+        run: python scripts/ci/diagnostics.py --failure-checkpoints
+      - &linux_webview_failure_checkpoints_upload
+        name: Preserve compact SongCard failure checkpoints
+        if: failure() && steps.compact-failure-checkpoints.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: failure-checkpoints-linux-webview-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: .build/diagnostics/failure-checkpoints.tar.gz
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+      - &linux_webview_diagnostics
+        name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - &linux_webview_diagnostics_upload
+        name: Upload synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-linux-webview-${{ matrix.shard }}
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-webview-shards:
+    name: Linux WebView (${{ matrix.shard }})
+    # These checks use synthetic inputs and the runner's native libraries.
+    needs: [frontend, linux-webview-probe]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [playback, library-search, local-desktop, account-catalog]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_webview_checkout
+      - *linux_webview_dependencies
+      - *linux_webview_python
+      - *linux_webview_toolchain
+      - *linux_webview_rust_downloads
+      - *linux_webview_dist
+      - name: Check Linux WebView inputs and measure disk
+        run: |
+          test -f frontend/dist/index.html
+          test ! -d .build/target
+          df -h .
+      - *linux_webview_probe_download
+      - *linux_webview_probe_restore
       - name: Verify player, queue and podcast playback
         if: matrix.shard == 'playback'
         env:
@@ -1608,47 +1678,27 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-settings-linux --relay-settings
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-publication-linux --relay-publication
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-recovery-linux --relay-recovery
-      - name: Measure Linux WebView disk after smoke
-        if: always()
-        run: df -h .
-      - name: Gather compact SongCard failure checkpoints
-        id: compact-failure-checkpoints
-        if: failure()
-        run: python scripts/ci/diagnostics.py --failure-checkpoints
-      - name: Preserve compact SongCard failure checkpoints
-        if: failure() && steps.compact-failure-checkpoints.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: failure-checkpoints-linux-webview-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
-          path: .build/diagnostics/failure-checkpoints.tar.gz
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Archive synthetic failure diagnostics
-        if: failure()
-        run: python scripts/ci/diagnostics.py
-      - name: Upload synthetic failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: diagnostics-linux-webview-${{ matrix.shard }}
-          include-hidden-files: true
-          path: .build/diagnostics/synthetic-proofs.tar.gz
-          if-no-files-found: error
-          retention-days: 7
+      - *linux_webview_disk_after
+      - *linux_webview_failure_checkpoints
+      - *linux_webview_failure_checkpoints_upload
+      - *linux_webview_diagnostics
+      - *linux_webview_diagnostics_upload
 
   linux-webview:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
     if: always()
-    needs: linux-webview-shards
+    needs: [linux-webview-shards, linux-webview-media]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require all Linux WebView shards
         env:
           SHARDS: ${{ needs.linux-webview-shards.result }}
-        run: test "$SHARDS" = success
+          MEDIA: ${{ needs.linux-webview-media.result }}
+        run: |
+          test "$SHARDS" = success
+          test "$MEDIA" = success
 
   linux-webview-ux:
     name: Linux WebView download, search and player smoke
