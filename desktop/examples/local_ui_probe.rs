@@ -204,11 +204,18 @@ fn main() {
         !directory_selection || (!queue && !cold && !reopen),
         "directory selection needs a fresh dedicated profile"
     );
-    let mixed = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
+    let mixed_queue = std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF").is_some();
+    let mixed = mixed_queue || std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
     assert!(!mixed || !(reopen || queue || cold || directory_selection));
     let mixed_fixture = mixed.then(|| {
         fs::create_dir(&root).expect("new synthetic mixed playlist root");
-        Arc::new(mixed_playlist_fixture::Fixture::new(&root).expect("mixed playlist audio"))
+        let fixture = mixed_playlist_fixture::Fixture::new(&root).expect("mixed playlist audio");
+        if mixed_queue {
+            fixture
+                .add_queue_anchor()
+                .expect("separate local playback anchor");
+        }
+        Arc::new(fixture)
     });
     if !reopen && !mixed {
         fs::create_dir(&root).expect("new proof root");
@@ -288,8 +295,14 @@ fn main() {
             let stage=value["stage"].as_str().unwrap_or("").to_owned();
             let stage=stage.as_str();
             if let Some(fixture)=&mixed_fixture {
-                if !["ux_01_add_dialog","ux_02_add_cancelled","ux_03_mixed_read","ux_04_local_playing",
-                     "ux_05_remove_dialog","ux_06_remove_cancelled","ux_07_removed","complete","failed"].contains(&stage) {return;}
+                let stages = if mixed_queue {
+                    &["ux_01_paused_baseline","ux_02_local_next_menu","ux_03_local_next","ux_04_online_next",
+                      "ux_05_entire_playlist","ux_06_drag_target","ux_07_drag_boundary","ux_08_drag_inserted"][..]
+                } else {
+                    &["ux_01_add_dialog","ux_02_add_cancelled","ux_03_mixed_read","ux_04_local_playing",
+                      "ux_05_remove_dialog","ux_06_remove_cancelled","ux_07_removed"][..]
+                };
+                if !stages.contains(&stage) && !["complete","failed"].contains(&stage) {return;}
                 value["nativeReceipt"]=fixture.receipt(&store).expect("mixed playlist receipt");
                 let pending=output.join(format!("{stage}.pending"));
                 fs::write(&pending,serde_json::to_vec_pretty(&value).unwrap()).unwrap();
@@ -420,7 +433,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
-            webview.eval(if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
+            webview.eval(if mixed_queue {include_str!("mixed_playlist_queue_ui_probe.js")} else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
             } else if queue_reveal {
                 include_str!("local_queue_file_reveal_ui_probe.js")

@@ -17,6 +17,7 @@ use std::{
 
 const OPAQUE: &str = "a10c0000000000000000000000000001";
 const MEDIA: &str = "合成混排本地曲目.wav";
+const QUEUE_ANCHOR: &str = "独立暂停基准.wav";
 const TARGET: &str = "11";
 const PLAYER_URL: &str = "/api/song/enhance/player/url/v1";
 
@@ -68,6 +69,10 @@ impl Fixture {
         })
     }
 
+    pub fn add_queue_anchor(&self) -> std::io::Result<()> {
+        fs::write(self.audio.with_file_name(QUEUE_ANCHOR), &self.audio_bytes)
+    }
+
     pub fn receipt(&self, store: &StateStore) -> cumulus_core::Result<Value> {
         let record = store
             .get("2", "playlist-local-membership-v1", TARGET)?
@@ -84,6 +89,8 @@ impl Fixture {
                 .map(|id| json!({"route":PLAYER_URL,"id":id})).collect::<Vec<_>>(),
             "unsafeAudioAttempts":self.unsafe_audio.load(Ordering::Acquire),
             "originalUnchanged":fs::read(&self.audio).is_ok_and(|bytes| bytes == self.audio_bytes),
+            "queueAnchorUnchanged":fs::read(self.audio.with_file_name(QUEUE_ANCHOR))
+                .is_ok_and(|bytes| bytes == self.audio_bytes),
         }))
     }
 }
