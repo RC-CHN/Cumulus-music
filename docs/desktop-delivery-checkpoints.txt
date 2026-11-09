@@ -76,6 +76,17 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     3.563 秒，退出码 0。正式程序这次首帧约 8.7 秒，音频送入私有 PipeWire
     空输出。记录见 `.build/ui-proof/phase191-product/`，不是声卡、Windows
     文件交接或当前 RC 的发布证据。
+  - 主线 `c1c75375b2369cc6145a078d28545fd9577359be` 的普通 Linux
+    `cumulus` 使用正式入口 `--play` 打开两条带中文文件名的合成 FLAC/MP3。
+    在非 C 系统 locale（en_US.UTF-8）、独立 X11 窗口和仅 loopback 的环境，
+    核对前台窗口属于该程序、原生队列顺序和进程到私有 PipeWire sink 的实际链接。
+    用 XTest 点击正式播放器按钮：第一轨时钟 1.075→2.256 秒，暂停时约
+    5.34 秒保持不动，续播到 6.337 秒；下一首为 MP3，输出频谱从 440 Hz
+    切到 10 kHz。停止后实际 PCM 全为零，保留第二轨选择和最后书签。
+    `.build/ui-proof/phase202-main-stock-c1c75375/` 含四态截图和 receipt.json；
+    可执行文件 SHA-256 为
+    `b257fdeb371ff73f9c788e00d4e0805463eb34c4aadde9903370c1d6ea701337`。
+    此流程没有使用真实账号、Windows 或物理音频设备，也不等于系统 MPRIS 验证。
 
 当前不能据此关闭的要件
   - 主线的完整托管 gate、Windows 实际 WebView/系统媒体以及发行附件必须
