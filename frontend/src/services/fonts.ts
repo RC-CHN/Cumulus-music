@@ -30,7 +30,7 @@ export function interfaceFontPage(choices: string[], selected: string | null, pa
 
 export function interfaceFontCss({ family, sizePx }: InterfaceFont) {
   return {
-    family: family ? `${JSON.stringify(family)}, var(--interface-font-fallback)` : '',
+    family: family ? JSON.stringify(family) : '',
     size: `${sizePx}px`,
   };
 }

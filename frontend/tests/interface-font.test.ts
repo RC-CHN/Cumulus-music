@@ -32,7 +32,7 @@ test('the main interface applies the saved native font; rejected selections keep
   assert.equal(model.writeError.value, false);
   assert.deepEqual(interfaceFontCss(model.current.value), { family: '', size: '12px' });
   assert.deepEqual(interfaceFontCss({ family: '体"\\; url(test)', sizePx: 14 }), {
-    family: '"体\\"\\\\; url(test)", var(--interface-font-fallback)',
+    family: '"体\\"\\\\; url(test)"',
     size: '14px',
   });
 });
