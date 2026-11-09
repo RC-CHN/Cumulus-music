@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
+import sys
 from threading import Event
 import time
 from motion_smoke import launch
@@ -149,6 +150,56 @@ def verify_artist_top50(root, group, screenshots):
     print(json.dumps(report, ensure_ascii=False))
 
 
+def verify_offline_route(root, screenshots):
+    first = root / 'first'
+    read = lambda path: json.loads(path.read_text(encoding='utf-8'))
+    stages = (
+        ('cold_offline', 0, None), ('local_diagnostics', 0, None),
+        ('first_online', 1, 'all'), ('classified', 2, 'songs'),
+        ('known_offline', 2, None), ('restored_category', 2, 'songs'),
+        ('interrupted_offline', 3, None), ('new_online', 4, 'all'),
+        ('reachable_error', 5, 'all'), ('explicit_retry', 6, 'all'),
+    )
+    expected = [
+        ['all', '合成断网前搜索'], ['songs', '合成断网前搜索'],
+        ['all', '合成迟到搜索'], ['all', '合成恢复搜索'],
+        ['all', '合成读取失败'], ['all', '合成读取失败'],
+    ]
+    classified_scroll = None
+    for index, (label, count, category) in enumerate(stages, 1):
+        path = first / f'ux_{index:02}_{label}.json'
+        row = read(path)
+        assert row['label'] == label and row['category'] == category
+        assert row['hasOffline'] == (category is None) and row['browserOnline'] == (category is not None)
+        assert row['diagnostics'] == (label == 'local_diagnostics')
+        assert row['offlineResultCalls'] == row['requests'] == expected[:count], (label, row)
+        if label == 'classified':
+            classified_scroll = row['trackScroll']
+            assert classified_scroll > 0
+        if label == 'restored_category':
+            assert abs(row['trackScroll'] - classified_scroll) <= 1
+        if screenshots:
+            assert path.with_suffix('.png').is_file()
+    complete = read(first / 'complete.json')
+    assert complete['ok'] and complete['stageCount'] == len(stages)
+    assert complete['offlineResultCalls'] == complete['requests'] == expected
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    if os.name != 'nt':
+        locale = read(first / 'locale.json')
+        assert locale['numeric'] == 'C'
+        assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
+                   for key in ('messages', 'characters')), locale
+    report = dict(ok=True, actualWebView=True, nativeIpc=True, browserConnectivitySynthetic=True,
+                  localDiagnosticsVerified=True, restoredTrackScroll=classified_scroll,
+                  networkNamespaceWithoutRoutes=sys.platform == 'linux',
+                  stages=[label for label, _, _ in stages],
+                  searchReads=expected, screenshots=len(stages) if screenshots else 0,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                                      encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -180,11 +231,15 @@ def main():
     mode.add_argument('--album-artist', action='store_true')
     mode.add_argument('--suggestion-focus', action='store_true')
     mode.add_argument('--filtered-pagination', action='store_true')
+    mode.add_argument('--offline-route', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--trusted-playlist-pointer', action='store_true',
                         help='also drag a resize handle using XTest under isolated Xvfb')
     args = parser.parse_args()
+    if (args.offline_route and sys.platform == 'linux' and
+            len(Path('/proc/net/route').read_text().splitlines()) != 1):
+        parser.error('--offline-route on Linux requires a sealed no-route network namespace')
     if args.trusted_playlist_pointer and (not args.playlist_creator or not os.environ.get('DISPLAY')):
         parser.error('--trusted-playlist-pointer requires --playlist-creator under isolated Xvfb')
     root = args.root.resolve()
@@ -200,7 +255,12 @@ def main():
         env[key] = str(directory)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    source = Path(__file__).resolve().parents[2] / 'desktop/examples/search_results_ui_probe.js'
+    probe = 'search_offline_ui_probe.js' if args.offline_route else 'search_results_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples' / probe
+    if args.offline_route:
+        env['CUMULUS_SEARCH_OFFLINE_PROOF'] = '1'
+        if os.name != 'nt':
+            env['LC_ALL'] = 'en_US.UTF-8'
     script = root / 'search-results.js'
     prefix = ''
     if args.frontend_dist:
@@ -295,6 +355,9 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.offline_route:
+        verify_offline_route(root, args.screenshots)
+        return
     if args.artist_top50:
         verify_artist_top50(root, args.artist_top50, args.screenshots)
         return

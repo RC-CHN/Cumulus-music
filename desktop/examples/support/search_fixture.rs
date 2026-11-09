@@ -7,6 +7,7 @@ use std::sync::{
 };
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
+static OFFLINE_RESULT_CALLS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static PRESENTATION_QUERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static SUGGESTION_MATCH_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -30,6 +31,12 @@ static ARTIST_GALLERY_FAILED: AtomicBool = AtomicBool::new(false);
 static ARTIST_GALLERY_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
+}
+pub fn offline_proof_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_OFFLINE_PROOF").is_some()
+}
+pub fn offline_result_calls() -> Option<Vec<(String, String)>> {
+    offline_proof_enabled().then(|| OFFLINE_RESULT_CALLS.lock().unwrap().clone())
 }
 fn default_recovery_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_DEFAULT_RECOVERY_PROOF").is_some()
@@ -1237,6 +1244,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         "/api/search/mlog/get" => "mvs",
         _ => return None,
     };
+    if offline_proof_enabled() {
+        OFFLINE_RESULT_CALLS.lock().unwrap().push((
+            category.to_owned(),
+            args["keyword"]
+                .as_str()
+                .expect("sealed search keyword")
+                .to_owned(),
+        ));
+    }
     CALLS.fetch_add(1, Ordering::SeqCst);
     let mode = MODE.lock().unwrap().clone();
     if category == "all" && default_recovery_enabled() {
@@ -1306,6 +1322,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    let offline_songs = offline_proof_enabled() && category == "songs";
     if mode == "voice_next" && category == "all" {
         let best = response["data"]["blocks"]
             .as_array_mut()
@@ -1610,7 +1627,9 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     } else {
         limit
     };
-    let total = if short_playlists {
+    let total = if offline_songs {
+        9
+    } else if short_playlists {
         33
     } else if lyric_boundary {
         63
@@ -1638,7 +1657,11 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                 let mut row = rows[i % rows.len()].clone();
                 // Additional grid rows have distinct identities, so the active
                 // resource marker cannot accidentally match repeated fixtures.
-                if category == "songs" && mode.starts_with("song_waterfall") {
+                if offline_songs {
+                    let song = &mut row["baseInfo"]["simpleSongData"];
+                    song["id"] = json!(i + 101);
+                    song["name"] = json!(format!("合成恢复单曲 {}", i + 1));
+                } else if category == "songs" && mode.starts_with("song_waterfall") {
                     let song = &mut row["baseInfo"]["simpleSongData"];
                     song["id"] = json!(i + 101);
                     song["name"] = json!(format!("合成连续单曲 {}", i + 101));
@@ -1706,7 +1729,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         container["totalCount"] = json!(99);
         container["queryRewriteInfo"] = json!({"rewriteQuery":"不能从歌词页接收的纠正词"});
     }
-    if mode.starts_with("scroll") || mode.starts_with("song_waterfall") {
+    if offline_songs || mode.starts_with("scroll") || mode.starts_with("song_waterfall") {
         for key in [
             "totalCount",
             "playlistCount",

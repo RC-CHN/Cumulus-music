@@ -32,6 +32,7 @@ import { useMotion } from './composables/useMotion';
 import { useHeaderSettingsGuide } from './composables/useHeaderSettingsGuide';
 import { createPageTransition } from './services/pageTransition';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
+import SearchOffline from './components/search/SearchOffline.vue';
 import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
@@ -307,6 +308,19 @@ import { relayPlaybackDisposition } from './services/relay';
 import { modalDepth } from './services/modal';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
+const searchOnline = ref(navigator.onLine);
+function updateSearchConnectivity() {
+  searchOnline.value = navigator.onLine;
+}
+onMounted(() => {
+  window.addEventListener('online', updateSearchConnectivity);
+  window.addEventListener('offline', updateSearchConnectivity);
+  updateSearchConnectivity();
+});
+onUnmounted(() => {
+  window.removeEventListener('online', updateSearchConnectivity);
+  window.removeEventListener('offline', updateSearchConnectivity);
+});
 const pcPresentation = usePcPresentation(core, searchMemory);
 const guestSearchReady = pcPresentation.guestSearchReady;
 const collectionMemory = createCollectionViewportMemory();
@@ -5470,7 +5484,7 @@ onUnmounted(() => {
               <SearchResultsPage
                 :memory="searchMemory"
                 :search-id="page.kind === 'search' ? page.searchId : undefined"
-                v-else-if="page.kind === 'search'"
+                v-else-if="page.kind === 'search' && searchOnline"
                 :account="account"
                 :guest-ready="guestSearchReady"
                 :keyword="page.keyword"
@@ -5562,6 +5576,7 @@ onUnmounted(() => {
                 @album="(id) => openCatalog({ kind: 'album', id })"
                 @expired="music.bootstrap(false)"
               />
+              <SearchOffline v-else-if="page.kind === 'search'" />
               <SearchReasonPage
                 v-else-if="page.kind === 'search_reason'"
                 :epoch="account.epoch"
