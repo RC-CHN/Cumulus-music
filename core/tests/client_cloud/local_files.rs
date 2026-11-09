@@ -65,18 +65,25 @@ async fn scanned_files_require_explicit_catalog_mapping_current_revision_and_acc
     let json = serde_json::to_string(&r).unwrap();
     assert!(!json.contains(media.path().to_str().unwrap()));
     assert!(!json.contains("_cloud_catalog_id"));
-    assert_eq!(
-        client
-            .cloud_directory_path("1", "1", &r.revision)
-            .await
-            .unwrap(),
-        media.path().canonicalize().unwrap()
-    );
+    let reveal = client
+        .cloud_file_reveal("1", "1", &r.revision)
+        .await
+        .unwrap();
+    assert_eq!(reveal.path(), path.canonicalize().unwrap());
+    reveal.check_current().unwrap();
+    lib.map_online(&f.session, &id, &json!(9002)).unwrap();
+    assert!(reveal.check_current().is_err());
+    lib.map_online(&f.session, &id, &json!(9001)).unwrap();
+    let reveal = client
+        .cloud_file_reveal("1", "1", &r.revision)
+        .await
+        .unwrap();
     std::fs::write(&path, b"changed source bytes").unwrap();
+    assert!(reveal.check_current().is_err());
     assert!(!resource(&client, "1").await.local_available);
     assert!(
         client
-            .cloud_directory_path("1", "1", &r.revision)
+            .cloud_file_reveal("1", "1", &r.revision)
             .await
             .is_err()
     );
@@ -99,7 +106,7 @@ async fn scanned_files_require_explicit_catalog_mapping_current_revision_and_acc
     assert!(!resource(&client, &epoch).await.local_available);
 }
 #[tokio::test]
-async fn cue_source_directory_is_associated_only_while_its_sheet_and_source_revisions_match() {
+async fn cue_reveal_selects_the_audio_only_while_its_sheet_and_source_revisions_match() {
     let f = Fixture::new(1);
     let media = tempfile::tempdir().unwrap();
     let path = media.path().join("audio.flac");
@@ -124,18 +131,19 @@ async fn cue_source_directory_is_associated_only_while_its_sheet_and_source_revi
     let client = f.client().with_local_probe(Arc::new(Probe));
     let r = resource(&client, "1").await;
     assert!(r.local_available);
-    assert_eq!(
-        client
-            .cloud_directory_path("1", "1", &r.revision)
-            .await
-            .unwrap(),
-        media.path().canonicalize().unwrap()
-    );
+    let reveal = client
+        .cloud_file_reveal("1", "1", &r.revision)
+        .await
+        .unwrap();
+    assert_eq!(reveal.path(), path.canonicalize().unwrap());
+    reveal.check_current().unwrap();
+    assert_ne!(reveal.path(), cue.canonicalize().unwrap());
     std::fs::write(&cue, "REM changed sheet\n").unwrap();
+    assert!(reveal.check_current().is_err());
     assert!(!resource(&client, "1").await.local_available);
     assert!(
         client
-            .cloud_directory_path("1", "1", &r.revision)
+            .cloud_file_reveal("1", "1", &r.revision)
             .await
             .is_err()
     );
@@ -162,7 +170,7 @@ async fn corrupt_local_mapping_degrades_only_the_file_action_and_cannot_disclose
     assert!(!serde_json::to_string(&r).unwrap().contains("SECRET"));
     assert!(
         client
-            .cloud_directory_path("1", "1", &r.revision)
+            .cloud_file_reveal("1", "1", &r.revision)
             .await
             .is_err()
     );

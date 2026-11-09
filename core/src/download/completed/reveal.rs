@@ -5,7 +5,7 @@ use crate::{
     account::SessionToken,
     download::{
         offline::{OfflineLibrary, OfflineRecord},
-        service::{DownloadPhase, files},
+        service::{DownloadOrigin, DownloadPhase, files},
     },
     library::identity::fingerprint_metadata,
     media::integrity::FileIntegrity,
@@ -23,6 +23,7 @@ pub struct DownloadFileReveal {
     downloads: CompletedDownloads,
     token: SessionToken,
     record: OfflineRecord,
+    origin: DownloadOrigin,
     facts: fs::Facts,
 }
 
@@ -31,13 +32,25 @@ impl DownloadFileReveal {
         &self.record.path
     }
 
+    pub(crate) fn matches_cloud_association(
+        &self,
+        cloud_id: &str,
+        catalog_id: Option<&str>,
+    ) -> bool {
+        match &self.origin {
+            DownloadOrigin::Cloud { .. } => self.record.song_id == cloud_id,
+            DownloadOrigin::Song => catalog_id == Some(self.record.song_id.as_str()),
+            _ => false,
+        }
+    }
+
     /// Recheck immediately before the host dispatches the path to its shell.
     /// The OS file manager takes a pathname, not the verified file handle.
     pub fn check_current(&self) -> Result<()> {
-        let record = self
+        let (record, origin) = self
             .downloads
             .reveal_publication(&self.token, &self.record.task_id)?;
-        if record != self.record {
+        if record != self.record || origin != self.origin {
             return Err(Error::StaleResponse);
         }
         fs::unchanged(self.path(), &self.facts)?;
@@ -46,7 +59,11 @@ impl DownloadFileReveal {
 }
 
 impl CompletedDownloads {
-    fn reveal_publication(&self, token: &SessionToken, id: &str) -> Result<OfflineRecord> {
+    fn reveal_publication(
+        &self,
+        token: &SessionToken,
+        id: &str,
+    ) -> Result<(OfflineRecord, DownloadOrigin)> {
         self.guard(&Some(token.clone()))?;
         let task = self.task(id)?;
         let path = task.playback_target()?;
@@ -74,18 +91,19 @@ impl CompletedDownloads {
         {
             return Err(Error::State("download publication record changed"));
         }
-        Ok(record)
+        Ok((record, task.origin))
     }
 
     pub(crate) fn verify_reveal(&self, id: &str) -> Result<DownloadFileReveal> {
         let token = self.token()?.ok_or(Error::StaleResponse)?;
-        let record = self.reveal_publication(&token, id)?;
+        let (record, origin) = self.reveal_publication(&token, id)?;
         let facts = fs::recorded_facts(&record.path, record.integrity.clone())?;
         verify_reveal_bytes(&record.path, &record.integrity, &facts)?;
         let reveal = DownloadFileReveal {
             downloads: self.clone(),
             token,
             record,
+            origin,
             facts,
         };
         reveal.check_current()?;

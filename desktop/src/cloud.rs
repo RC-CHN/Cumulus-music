@@ -94,16 +94,15 @@ pub async fn open_cloud_directory<R: tauri::Runtime>(
     if window.label() != "main" {
         return Err(Error::InvalidInput("cloud file manager requires main window").into());
     }
-    let path = client
-        .cloud_directory_path(&epoch, &song_id, &revision)
+    let reveal = client
+        .cloud_file_reveal(&epoch, &song_id, &revision)
         .await
         .map_err(ClientError::from)?;
-    client
-        .validate_cloud_epoch(&epoch)
-        .map_err(ClientError::from)?;
-    crate::file_manager::open_directory(path)
-        .await
-        .map_err(Into::into)
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        reveal.check_current()
+    })
+    .await
+    .map_err(Into::into)
 }
 #[tauri::command]
 pub async fn cloud_page(

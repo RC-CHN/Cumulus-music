@@ -70,12 +70,7 @@ async fn cloud_resource_never_invents_a_public_catalog_identity_or_exposes_nativ
     }
     assert!(client.cloud_resource("1", "999", &revision).await.is_err());
     assert!(client.cloud_resource("2", "1", &revision).await.is_err());
-    assert!(
-        client
-            .cloud_directory_path("1", "1", &revision)
-            .await
-            .is_err()
-    );
+    assert!(client.cloud_file_reveal("1", "1", &revision).await.is_err());
     f.api.rows.lock().unwrap().pop();
     client
         .cloud_page("1", query(CloudTab::Uploaded), true)
@@ -87,7 +82,7 @@ async fn cloud_resource_never_invents_a_public_catalog_identity_or_exposes_nativ
     ));
 }
 #[tokio::test]
-async fn completed_cloud_download_is_associated_by_origin_and_rechecked_before_directory_access() {
+async fn completed_cloud_download_is_associated_by_origin_and_rechecked_before_file_reveal() {
     let f = Fixture::new(1);
     f.api.rows.lock().unwrap()[0]["fileSize"] = json!(MEDIA_BYTES.len());
     let service =
@@ -123,24 +118,14 @@ async fn completed_cloud_download_is_associated_by_origin_and_rechecked_before_d
             .unwrap()
             .local_available
     );
-    assert_eq!(
-        client
-            .cloud_directory_path("1", "1", &revision)
-            .await
-            .unwrap()
-            .canonicalize()
-            .unwrap(),
-        root.canonicalize().unwrap()
-    );
+    let reveal = client.cloud_file_reveal("1", "1", &revision).await.unwrap();
+    assert_eq!(reveal.path(), target.canonicalize().unwrap());
+    reveal.check_current().unwrap();
     let mut changed = MEDIA_BYTES.to_vec();
     changed[0] ^= 1;
     std::fs::write(&target, changed).unwrap();
-    assert!(
-        client
-            .cloud_directory_path("1", "1", &revision)
-            .await
-            .is_err()
-    );
+    assert!(reveal.check_current().is_err());
+    assert!(client.cloud_file_reveal("1", "1", &revision).await.is_err());
     std::fs::remove_file(&target).unwrap();
     assert!(
         !client
@@ -161,12 +146,7 @@ async fn completed_cloud_download_is_associated_by_origin_and_rechecked_before_d
                 .unwrap()
                 .local_available
         );
-        assert!(
-            client
-                .cloud_directory_path("1", "1", &revision)
-                .await
-                .is_err()
-        );
+        assert!(client.cloud_file_reveal("1", "1", &revision).await.is_err());
     }
     f.session
         .adopt(
@@ -176,6 +156,102 @@ async fn completed_cloud_download_is_associated_by_origin_and_rechecked_before_d
         )
         .unwrap();
     assert!(client.cloud_resource("1", "1", &revision).await.is_err());
+}
+#[tokio::test]
+async fn cloud_file_reveal_pins_upload_then_download_then_scan_without_dispatch_fallback() {
+    use super::local_files::{Probe, library};
+    use std::fs;
+
+    let f = Fixture::new(0);
+    let client = f
+        .client_with_chunk_size(support::DATA.len())
+        .with_local_probe(Arc::new(Probe));
+    let input = f.input();
+    let upload = client
+        .cloud_command(
+            "1",
+            CloudCommand::Upload {
+                files: vec![input.clone()],
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(upload.accepted.len(), 1);
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            let history = client.cloud_upload_selection("1", true).await.unwrap();
+            if history
+                .uploads
+                .iter()
+                .any(|task| task.id == upload.accepted[0] && task.phase == CloudPhase::Complete)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let downloaded = f.root.path().join("offline/cloud-original.flac");
+    fs::create_dir_all(downloaded.parent().unwrap()).unwrap();
+    {
+        let mut rows = f.api.rows.lock().unwrap();
+        rows[0]["fileSize"] = json!(MEDIA_BYTES.len());
+    }
+    let service =
+        DownloadService::with_backend(f.session.clone(), Arc::new(Files), 1024 * 1024).unwrap();
+    let task = service
+        .create_cloud(
+            &json!(700),
+            DownloadDestination::Path {
+                path: downloaded.clone(),
+            },
+            false,
+        )
+        .await
+        .unwrap();
+    service
+        .run(&task.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+
+    let scan = tempfile::tempdir().unwrap();
+    let mapped = scan.path().join("mapped.flac");
+    fs::write(&mapped, MEDIA_BYTES).unwrap();
+    let library = library(&f);
+    library.scan(scan.path()).unwrap();
+    let id = library.list(Default::default()).unwrap()[0].id.clone();
+    library.map_online(&f.session, &id, &json!(999999)).unwrap();
+    let page = client
+        .cloud_page("1", query(CloudTab::Uploaded), true)
+        .await
+        .unwrap();
+    let revision = page.revision.unwrap();
+    let resolve = || client.cloud_file_reveal("1", "700", &revision);
+
+    let upload_file = resolve().await.unwrap();
+    assert_eq!(upload_file.path(), input.path.canonicalize().unwrap());
+    upload_file.check_current().unwrap();
+    fs::rename(&input.path, input.path.with_extension("held")).unwrap();
+    assert!(upload_file.check_current().is_err());
+
+    let download = resolve().await.unwrap();
+    assert_eq!(download.path(), downloaded.canonicalize().unwrap());
+    download.check_current().unwrap();
+    fs::rename(&downloaded, downloaded.with_extension("held")).unwrap();
+    fs::write(&downloaded, MEDIA_BYTES).unwrap();
+    assert!(download.check_current().is_err());
+
+    let scanned = resolve().await.unwrap();
+    assert_eq!(scanned.path(), mapped.canonicalize().unwrap());
+    scanned.check_current().unwrap();
+    f.api.rows.lock().unwrap().clear();
+    client
+        .cloud_page("1", query(CloudTab::Uploaded), true)
+        .await
+        .unwrap();
+    assert!(matches!(scanned.check_current(), Err(Error::QueueChanged)));
+    assert!(matches!(resolve().await, Err(Error::QueueChanged)));
 }
 #[tokio::test]
 async fn ordinary_next_play_does_not_confuse_a_cloud_song_with_an_equal_numeric_catalog_id() {

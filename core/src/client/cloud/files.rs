@@ -1,27 +1,22 @@
 //! Cloud menu local-file association. Paths remain on the native side.
 use super::*;
-use crate::{download::service::DownloadTask, media::integrity::inspect_file};
+use crate::download::service::DownloadTask;
 use std::path::{Path, PathBuf};
 
-fn regular(path: &Path, bytes: u64) -> bool {
+pub(super) fn regular(path: &Path, bytes: u64) -> bool {
     path.is_absolute()
         && std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() == bytes)
         && path.ancestors().all(|ancestor| {
             std::fs::symlink_metadata(ancestor).is_ok_and(|m| !m.file_type().is_symlink())
         })
 }
-fn local_file(context: &Context, song_id: &str, verify: bool) -> Result<Option<PathBuf>> {
+fn local_file(context: &Context, song_id: &str) -> Result<Option<PathBuf>> {
     context.guard()?;
     // Official viewFileLocation prefers its upload-source association.
     for upload in context.uploads.list()? {
         if upload.song_id.as_deref() == Some(song_id)
             && matches!(upload.phase, CloudPhase::Published | CloudPhase::Complete)
             && regular(&upload.source, upload.total)
-            && (!verify
-                || context
-                    .uploads
-                    .verified_source_file(&upload.id, song_id)
-                    .is_ok())
         {
             context.guard()?;
             return Ok(Some(upload.source));
@@ -30,21 +25,19 @@ fn local_file(context: &Context, song_id: &str, verify: bool) -> Result<Option<P
     context.guard()?;
     Ok(None)
 }
-fn downloaded_file(downloads: Vec<DownloadTask>, verify: bool) -> Option<PathBuf> {
+fn downloaded_file(downloads: Vec<DownloadTask>) -> Option<PathBuf> {
     for task in downloads {
         let (Some(path), Some(expected)) = (task.target, task.output_integrity) else {
             continue;
         };
-        if regular(&path, expected.bytes)
-            && (!verify || inspect_file(&path).is_ok_and(|actual| actual == expected))
-        {
+        if regular(&path, expected.bytes) {
             return Some(path);
         }
     }
     None
 }
 impl MusicClient {
-    async fn cloud_resource_context(
+    pub(super) async fn cloud_resource_context(
         &self,
         epoch: &str,
         song_id: &str,
@@ -92,7 +85,7 @@ impl MusicClient {
             .cloud_resource_context(epoch, song_id, revision)
             .await?;
         let result = self
-            .resolve_cloud_file(epoch, context.clone(), song_id, catalog_id, false)
+            .resolve_cloud_file(epoch, context.clone(), song_id, catalog_id)
             .await;
         // Local catalog/journal faults must not remove playback, collection or
         // delete actions. Account and cloud revision failures still fail closed.
@@ -110,42 +103,18 @@ impl MusicClient {
         })
     }
 
-    /// Native desktop use only: resolve again after the menu action and verify
-    /// recorded content, membership, snapshot and account before returning.
-    pub async fn cloud_directory_path(
-        &self,
-        epoch: &str,
-        song_id: &str,
-        revision: &str,
-    ) -> Result<PathBuf> {
-        let (context, _, catalog_id) = self
-            .cloud_resource_context(epoch, song_id, revision)
-            .await?;
-        let file = self
-            .resolve_cloud_file(epoch, context.clone(), song_id, catalog_id, true)
-            .await?
-            .ok_or(Error::State("cloud local file missing or changed"))?;
-        let directory = file
-            .parent()
-            .ok_or(Error::State("cloud local file lacks directory"))?
-            .to_owned();
-        require_revision(&context, revision)?;
-        Ok(directory)
-    }
     async fn resolve_cloud_file(
         &self,
         epoch: &str,
         context: Arc<Context>,
         song_id: &str,
         catalog_id: Option<String>,
-        verify: bool,
     ) -> Result<Option<PathBuf>> {
         let upload_context = context.clone();
         let cloud_id = song_id.to_owned();
-        let uploaded =
-            tokio::task::spawn_blocking(move || local_file(&upload_context, &cloud_id, verify))
-                .await
-                .map_err(|_| Error::State("cloud resource worker stopped"))?;
+        let uploaded = tokio::task::spawn_blocking(move || local_file(&upload_context, &cloud_id))
+            .await
+            .map_err(|_| Error::State("cloud resource worker stopped"))?;
         context.guard()?;
         let mut fault = uploaded.is_err();
         if let Ok(Some(path)) = uploaded {
@@ -156,10 +125,9 @@ impl MusicClient {
             .await
         {
             Ok(downloads) => {
-                let downloaded =
-                    tokio::task::spawn_blocking(move || downloaded_file(downloads, verify))
-                        .await
-                        .map_err(|_| Error::State("cloud file worker stopped"))?;
+                let downloaded = tokio::task::spawn_blocking(move || downloaded_file(downloads))
+                    .await
+                    .map_err(|_| Error::State("cloud file worker stopped"))?;
                 context.guard()?;
                 if let Some(path) = downloaded {
                     return Ok(Some(path));
@@ -207,7 +175,7 @@ impl MusicClient {
         Ok(None)
     }
 }
-fn require_revision(context: &Context, revision: &str) -> Result<()> {
+pub(super) fn require_revision(context: &Context, revision: &str) -> Result<()> {
     context.guard()?;
     if context
         .library

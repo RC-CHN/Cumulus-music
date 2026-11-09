@@ -3,6 +3,7 @@ mod commands;
 mod dto;
 mod files;
 mod removal;
+mod reveal;
 mod selection;
 mod view;
 use super::{ClientError, MusicClient};
@@ -15,6 +16,7 @@ pub use dto::*;
 pub use removal::{
     CloudRemovalFileState, CloudRemovalFileView, CloudRemovalPhase, CloudRemovalView,
 };
+pub use reveal::CloudFileReveal;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 
