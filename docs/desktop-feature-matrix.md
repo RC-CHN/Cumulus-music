@@ -24,7 +24,9 @@
 
 另行合入的专项：[新云盘音频上传的 100 MiB 限制](cloud-upload-form-ui-contracts.txt)在 Linux 实窗验证全部拒绝与混合过滤，原生另验证恰好上限及旧任务继续；[均衡器重置](desktop-equalizer-contracts.txt)在同一原生播放中解除总旁路并保留预设和队列；每日推荐启动通知仅在通过策略的主窗前台展示，独立实窗验证了播放、详情、设置、关闭、免打扰、禁用和三项抑制条件（合成账号）。不把专项运行当成 Windows 实机或真实账号证据。
 
-隔离集成树 `f47743c2` 使用同一前端构建验证 [版权回归通知](account-settings-contracts.txt) 8 态、每日推荐通知 9 态和 [播客单集行菜单](podcast-program-row-menu-contracts.txt) 7 态，合计 34 张 Linux WebView 截图，另通过严格 Clippy、45 项定向 Rust 测试及 1011 项前端测试。证据在 `.build/ui-proof/phase145-notices-program-menu/`。后续独立复验先准备再打开的节目菜单 7 态，以及包含无歌单 ID 的版权回归 11 态和 3 个每日推荐回归场景；无歌单 ID 可播放和处理通知，未知可见性与幂等性的创建请求没有接入。两批均为合成账号和媒体，尚未进入当前 RC 主线。
+隔离集成树 `f47743c2` 使用同一前端构建验证 [版权回归通知](account-settings-contracts.txt) 8 态、每日推荐通知 9 态和 [播客单集行菜单](podcast-program-row-menu-contracts.txt) 7 态，合计 34 张 Linux WebView 截图，另通过严格 Clippy、45 项定向 Rust 测试及 1011 项前端测试。证据在 `.build/ui-proof/phase145-notices-program-menu/`。后续独立复验先准备再打开的节目菜单 7 态，以及包含无歌单 ID 的版权回归 11 态和 3 个每日推荐回归场景；无歌单 ID 可播放和处理通知，未知可见性与幂等性的创建请求没有接入。两批均为合成账号和媒体；对应产品已合入主线 `a4b42feb`，RC 是否包含这批功能以实际发行标记和产物为准。
+
+下一批集成树 `8deb7f1e` 的[最近更新单集菜单](podcast-program-row-menu-contracts.txt)绑定列表版本和节目 ID，复用 Rust 的下载、评论和队列用例；定向 Rust 与 Linux 实窗验证分页后丢弃旧回包、暂停时插入下一首、直接单集播放和公开链接分享。[前台定时通知](account-settings-contracts.txt)按已恢复的半点、抖动、共享计数、优先级和凭据隔离执行，由原生合成时钟验证，不把周期测试说成后台系统推送。两者均未用真实账号验收，详见[交付证据索引](desktop-delivery-checkpoints.txt)。
 
 以下继续保留基线和各专项的证据，不由本批覆盖其他业务。
 

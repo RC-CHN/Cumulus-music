@@ -1,7 +1,8 @@
 发布与 CI/CD
 
 支持矩阵：Linux x86_64（Ubuntu 24.04 基线）、Windows x86_64（MSVC）。用户明确排除 macOS。
-规则的权威入口是根目录 AGENTS.md。所有版本文件目前统一为 0.1.0。
+规则的权威入口是根目录 AGENTS.md。待发布版本以 Cargo.toml 的 workspace.package.version
+为准；发布检查会核对 Cargo.lock、前端及 Tauri 版本文件和对应发行说明。
 
 CI (.github/workflows/ci.yml)
 1. 独立前端 runner：公开源文件边界、版本与 release 历史、发布门禁的拒绝分支测试、格式、前端测试、类型检查和正式构建。
@@ -27,7 +28,7 @@ Windows 提供 NSIS/zip，附原生运行时依赖、上游许可证与包版本
 双声道合成源核对处理进度、原生版本、无失败块；清单写入 parametricPlayback，
 CD 必须核对本次结果。这是原生组件验证，不代表桌面提供完整预设或实机听感。
 当前配置不改变已发布包的边界。
-Linux 原生 job 按本次 manifest 校验 .deb 和便携 tar.gz，分别在私有
+Linux 打包 job 按本次 manifest 校验 .deb 和便携 tar.gz，分别在私有
 目录和无外网 Xvfb 中启动包内程序。两条路径均经正式界面导入合成
 FLAC、选择均衡器预设、暂停，并在私有 PipeWire 空输出检查音频样本。
 便携程序优先加载与自己相邻的滤镜，避免选中另一个已安装版本的库。
@@ -40,14 +41,17 @@ FLAC、选择均衡器预设、暂停，并在私有 PipeWire 空输出检查音
    git push origin main。不要提前打 tag。普通修改必须在该提交之前准备好。
 3. 等待该标记提交自己的 CI 全绿，取得其 run ID。
 4. gh workflow run release.yml --ref main -f version=X.Y.Z -f ci_run_id=<ID>。
-5. CD 验证唯一 release commit、版本一致、main push CI、精确 SHA、五项必要 job、run attempt、产物集合与校验和。
+5. CD 验证唯一 release commit、版本一致、main push CI、精确 SHA、run attempt、产物集合与校验和。
+   它核对前端、两端原生检查、Linux WebView 和 CI gate；gate 还要求两端打包成功。
    只下载此 CI 的产物，不重新构建。创建指向该 commit 的 vX.Y.Z 标签；先草稿上传完整附件，再公开。
 6. 检查 Release URL、所有附件、SHA256SUMS、release-provenance.json 和 tag 目标。
+用户要求 RC 时，上述标记标题、version 输入和 tag 使用完整的 X.Y.Z-rc.N（N 为正整数）；
+GitHub 将其标记为预发布，不更新最新正式版。
 
 失败处理
 - CI 未过：修复后重新验证，不打 tag/不发版本。标记提交只在内容全部准备完成后创建，避免同版本多条 release commit。
 - release commit 上若出现真实代码问题，不能再追加同版本 release commit；保留失败记录并推进下一版本，禁止改写已公开历史。
-- tag/Release 已存在：CD 拒绝覆盖。上传失败留下草稿时，检查失败点并只恢复该草稿的缺失上传/发布；绝不移动 tag 或覆盖已有附件。
+- tag/Release 已存在：CD 拒绝覆盖。草稿恢复只接受原标签、原草稿及与 CI 清单完全一致的已上传附件；缺失附件或摘要不符时拒绝。恢复不会上传或覆盖附件，详见 release-recovery.txt。
 - CI 正在 rerun/attempt 改变/附件过期/摘要不符：停止发布，等待完整、同一 attempt 的成功 CI 产物。
 - GitHub 的 contents:write 权限只授予 CD 发布 job；PR CI 只有读取权限，不运行来自 fork 的代码来发布。
 
