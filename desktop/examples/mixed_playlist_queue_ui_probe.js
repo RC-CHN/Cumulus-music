@@ -35,7 +35,7 @@
     .find((button) => !button.disabled && button.getClientRects().length);
   const libraryRow = (name) => all('.local-tracks tbody tr')
     .find((candidate) => candidate.querySelector('.local-title')?.textContent.trim() === name);
-  let step = 'initialize', epoch, baseline, localId, anchorId;
+  let step = 'initialize', epoch, baseline, localId, anchorId, setupIssue;
   const state = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
 
@@ -121,12 +121,34 @@
     anchorId = (await wait(() => libraryRow(anchorName), 'indexed independent playback anchor')).dataset.localId;
     require(localId && anchorId && localId !== anchorId, 'independent indexed local references');
     step = 'add the local member through the production library menu';
+    await wait(() => one('.local-page')?.dataset.localLoading === 'false' &&
+      libraryRow(audioName) === local, 'local index scan and read are settled');
+    const providers = one('#app').__vue_app__._context.provides;
+    const core = providers[Reflect.ownKeys(providers)
+      .find((key) => typeof key === 'symbol' && key.description === 'core-client')];
+    const originalMutation = core.mutatePlaylistLocal;
+    core.mutatePlaylistLocal = async (...args) => {
+      try {
+        return await originalMutation(...args);
+      } catch (issue) {
+        setupIssue = typeof issue?.code === 'string' ? issue.code : 'unknown';
+        throw issue;
+      }
+    };
     click(local.querySelector('[data-local-track-menu]'));
     click(await wait(() => item('add_to_playlist'), 'local file add action'));
     const dialog = () => one('dialog[open][aria-labelledby="playlist-local-member-title"]');
-    click(await wait(() => [...(dialog()?.querySelectorAll('button') ?? [])]
-      .find((button) => button.textContent.trim() === '添加' && !button.disabled), 'owned device-local add confirmation'));
-    await wait(() => !dialog(), 'local membership save finished');
+    const add = await wait(() => {
+      if (document.activeElement?.textContent.trim() !== '取消') return;
+      return [...(dialog()?.querySelectorAll('button') ?? [])]
+        .find((button) => button.textContent.trim() === '添加' && !button.disabled);
+    }, 'owned device-local add confirmation and settled cancel focus');
+    click(add);
+    await wait(() => {
+      require(!dialog()?.querySelector('[role="alert"]'), 'local membership setup rejected: ' + setupIssue);
+      return !dialog();
+    }, 'local membership save finished');
+    core.mutatePlaylistLocal = originalMutation;
 
     step = 'play the independent local anchor';
     const search = one('[aria-label="搜索本地音乐"]');
@@ -216,7 +238,7 @@
     await emit('complete', { ok: true, localId, anchorId, trustedDown, trustedUp, states: 8,
       frontendApp, ...compact(await state(), await queue()) });
   } catch (error) {
-    await emit('failed', { step, error: String(error), playlist: visibleRows(),
+    await emit('failed', { step, error: String(error), setupIssue, playlist: visibleRows(),
       menus: all('.action-menu button').map((button) => ({ text: button.textContent.trim(), disabled: button.disabled })) });
   }
 })();
