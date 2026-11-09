@@ -342,6 +342,15 @@ export type PlaylistQueueDropSource = {
   sourceChanged: () => void;
   current: () => boolean;
 };
+export type MixedPlaylistQueueDropSource = {
+  kind: 'mixed_playlist';
+  id: string;
+  revision: string;
+  rows: { trackId: string; trackIndex: number; local: boolean }[];
+  quality: Quality;
+  sourceChanged: () => void;
+  current: () => boolean;
+};
 export type SearchQueueDropSource = {
   kind: 'search';
   rows: { receipt: string; trackId: string }[];
@@ -361,6 +370,7 @@ export type AlbumQueueDropSource = AlbumQueueDropGesture & {
 export type QueueDropSource =
   | LocalQueueDropSource
   | PlaylistQueueDropSource
+  | MixedPlaylistQueueDropSource
   | SearchQueueDropSource
   | AlbumQueueDropSource;
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
@@ -645,6 +655,24 @@ export type PlayerAction =
     }
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
+  | {
+      kind: 'queue_mixed_playlist';
+      id: string;
+      revision: string;
+      track: { id: string; local: boolean } | null;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'drop_mixed_playlist_songs_into_queue';
+      id: string;
+      revision: string;
+      rows: { track_id: string; track_index: number; local: boolean }[];
+      quality: Quality;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
+    }
   | {
       kind: 'queue_voice';
       id: string;

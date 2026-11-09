@@ -2300,3 +2300,109 @@ test('the finished looping bottom bar uses the rendered EOF receipt without a le
   assert.equal(actions.length, 1);
   f.player.dispose();
 });
+
+test('mixed playlist menu sends local identity, whole-list intent and saved quality through the same queue fence', async () => {
+  const calls: PlayerAction[] = [];
+  const qualityPreferences = {
+    revision: 'saved',
+    quality: 'hires' as const,
+    damaged: false,
+    appliesToCurrent: true,
+  };
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      const revision = String(calls.length + 1);
+      return {
+        ...state(String(calls.length + 2), '1', 'playing'),
+        queueRevision: revision,
+        qualityPreferences,
+      };
+    },
+  });
+  await f.player.connect(account());
+  f.emit({
+    ...state('2', '1', 'playing'),
+    requestedQuality: 'exhigh',
+    actualQuality: 'standard',
+    qualityPreferences,
+  });
+  const local = { id: 'local-digest', local: true };
+  await f.player.queueMixedPlaylist('73', 'mixed-v1', local);
+  await f.player.queueMixedPlaylist('73', 'mixed-v1', null);
+  assert.deepEqual(
+    calls,
+    [local, null].map((track, index) => ({
+      kind: 'queue_mixed_playlist',
+      id: '73',
+      revision: 'mixed-v1',
+      track,
+      quality: 'hires',
+      expected_queue_revision: String(index + 1),
+    })),
+  );
+  f.player.dispose();
+});
+
+test('mixed playlist drop preserves typed selection order and requests refresh without replay when the source changes', async () => {
+  const calls: PlayerAction[] = [];
+  const paused: PlayerView = { ...state('2', '1', 'paused-song'), state: 'paused', position: 22 };
+  let fresh = false;
+  const f = fixture({
+    playerAction: async (_epoch, action) => {
+      calls.push(action);
+      if (!fresh) throw { code: 'playlist_drop_source_changed', message: '请刷新歌单后重新拖入' };
+      return { ...paused, revision: '3', queueRevision: '2' };
+    },
+  });
+  await f.player.connect(account());
+  f.emit(paused);
+  await f.player.loadQueue();
+  const shown = f.player.queue.value!;
+  let refreshes = 0;
+  const source = {
+    kind: 'mixed_playlist' as const,
+    id: '73',
+    revision: 'mixed-v1',
+    rows: [
+      { trackId: '701', trackIndex: 5, local: false },
+      { trackId: 'local-digest', trackIndex: 1, local: true },
+    ],
+    quality: 'standard' as const,
+    sourceChanged: () => {
+      refreshes++;
+    },
+    current: () => true,
+  };
+  assert.equal(await f.player.dropIntoQueue(source, shown, paused.playId, 'next-entry'), false);
+  await f.player.retry();
+  assert.equal(refreshes, 1);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    kind: 'drop_mixed_playlist_songs_into_queue',
+    id: '73',
+    revision: 'mixed-v1',
+    quality: 'standard',
+    rows: [
+      { track_id: '701', track_index: 5, local: false },
+      { track_id: 'local-digest', track_index: 1, local: true },
+    ],
+    expected_queue_revision: shown.revision,
+    expected_play_id: paused.playId,
+    before_entry_id: 'next-entry',
+  });
+  fresh = true;
+  assert.equal(
+    await f.player.dropIntoQueue(
+      { ...source, revision: 'mixed-v2' },
+      shown,
+      paused.playId,
+      'next-entry',
+    ),
+    true,
+  );
+  assert.equal(f.player.view.value?.position, 22);
+  assert.equal(f.player.view.value?.playId, 'paused-song');
+  assert.equal(refreshes, 1);
+  f.player.dispose();
+});

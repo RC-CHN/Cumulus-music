@@ -61,6 +61,12 @@ const items = computed<MenuItem[]>(() => {
   const input = request.value;
   const track = input?.track;
   if (!track || (input?.episode && !input.episode.live())) return [];
+  const nextDisabled =
+    !props.player.ready.value ||
+    props.player.busy.value ||
+    (!!input.queueNext && props.player.queueBusy.value) ||
+    props.player.view.value?.fm;
+  const nextHint = props.player.view.value?.fm ? '私人漫游期间请先切换到普通播放队列' : undefined;
   if (input.removeLocalMember)
     return [
       {
@@ -69,6 +75,17 @@ const items = computed<MenuItem[]>(() => {
         icon: 'play',
         disabled: track.missing || !props.player.ready.value || props.player.busy.value,
       },
+      ...(input.queueNext
+        ? [
+            {
+              key: 'next',
+              label: '下一首播放',
+              icon: 'next',
+              disabled: track.missing || nextDisabled,
+              hint: nextHint,
+            },
+          ]
+        : []),
       { key: 'remove_local_member', label: '从歌单中移除', icon: 'trash' },
     ];
   const selection = input.episode?.selection;
@@ -89,13 +106,8 @@ const items = computed<MenuItem[]>(() => {
       key: 'next',
       label: '下一首播放',
       icon: 'next',
-      disabled:
-        !canPlay ||
-        !props.player.ready.value ||
-        props.player.busy.value ||
-        (!!request.value?.queueNext && props.player.queueBusy.value) ||
-        props.player.view.value?.fm,
-      hint: props.player.view.value?.fm ? '私人漫游期间请先切换到普通播放队列' : undefined,
+      disabled: !canPlay || nextDisabled,
+      hint: nextHint,
     },
     ...(!track.local && !selection
       ? [{ key: 'comments', label: '查看评论', icon: 'comment' }]
