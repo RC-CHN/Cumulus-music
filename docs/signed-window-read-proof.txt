@@ -55,3 +55,44 @@ MpvEngine pinned-descriptor path. Historical real decode 8771a8fc happened in a
 second brokerless process; historical same-window ordinary libmpv URL testing
 at c8ceda86 used synthetic audio. A pinned file handoff in the current window
 would prove same-window native decode, not direct upstream URL playback.
+
+Closed synthetic desktop shell
+------------------------------
+`signed_window_read_ui_probe --synthetic` uses the production Tauri configure
+path and the embedded Vue assets. The executable rejects an ordinary network
+namespace and uses a new proof profile with synthetic PC credentials, a fixed
+query, one playlist and one liked song. Only the fixed in-memory PC/CDN
+responders are wired; ordinary download transport and auxiliary SDK/config
+requests are closed. The proof opens My Playlists, checks the liked song in
+the Songs search tab, and uses the row's Next Play action on an empty queue.
+The gate's one authorized AAC response goes into an anonymous, mode-0600
+file and the same window's playback controller decodes it through the real
+libmpv pinned-input path. It checks advancement, a stable pause, resume of
+the same logical entry, and stop. Physical audio output is disabled.
+
+After the production frontend build, compile and run in a private namespace:
+
+  cargo build --locked -p cumulus-desktop --features custom-protocol --example signed_window_read_ui_probe
+  sudo unshare --net --fork --kill-child runuser -u "$(id -un)" -- \
+    xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' \
+    env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+    env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 \
+      WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+    /usr/bin/python3 scripts/ci/signed_window_read_smoke.py \
+      --binary .build/target/debug/examples/signed_window_read_ui_probe \
+      --root .build/ci-signed-window --screenshots
+
+The driver's report binds the actual embedded asset set and probe binary by
+SHA-256. Screenshot barriers keep each frame tied to its named native state.
+Only result counts, action categories and clock observations enter the report.
+This is the same-window synthetic pinned file proof; a supervised HTTPS broker
+and independent real-account input remain separate work. It proves neither
+real-account playback nor direct upstream URLs through libmpv.
+
+2026-11-10 sealed Linux run: six checkpoints and six screenshots passed.
+The native clock advanced to 0.299 seconds, held at 0.540 during the pause,
+advanced again to 0.789 after resuming the same entry, then returned to idle.
+The fixed account/playlist/like/search/detail/source calls stayed on the closed
+backend, and there was exactly one media read and anonymous AAC load. The
+production window's unrelated startup reads were refused before dispatch;
+no configuration download, SDK token, or ordinary download was attempted.

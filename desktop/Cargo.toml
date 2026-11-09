@@ -251,6 +251,10 @@ name = "main_flow_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "signed_window_read_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "search_playback_read"
 required-features = ["custom-protocol"]
 
