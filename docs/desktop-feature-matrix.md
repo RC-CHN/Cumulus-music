@@ -55,6 +55,10 @@ Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为�
 核对 0/10 与 10/10 的真实签名请求、失败保留与显式重试、空列表与 null 的差异，
 以及详情返回后的焦点。其独立证据不作为 Windows 或集成构建的运行结果。
 
+## 2026-11-10 实服与同窗口验收
+
+[签名播放证据](signed-window-read-proof.txt)确认：同一个 Linux Tauri 窗口恢复既有授权账号，读取本人歌单和喜欢列表，从官方 V3 综合搜索取得歌曲，核对非试听授权，再通过一次完整媒体读取驱动原生 libmpv 解码、暂停、继续和停止。原账号和数据库不变。使用 null 音频输出，未验证实体声卡、受易盾令牌保护的单曲分类、实服写操作、普通实服下载或 Windows 便携包。歌单编辑、下载和真正断网后的本地播放仍按[独立合成主流程](desktop-main-flow-proof.txt)记录。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
 | **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 默认兼容声明与 Linux 的本机派生不同，尚无 Windows 原生采集、完整官方引擎或全部风控分支的等价证据。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) |
