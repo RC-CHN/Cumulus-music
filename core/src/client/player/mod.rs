@@ -1,3 +1,5 @@
+mod volume_diagnosis;
+pub use volume_diagnosis::VolumeDiagnosisDismissal;
 mod chorus;
 mod comment_count;
 mod dto;
@@ -125,6 +127,7 @@ pub(super) struct PlayerHost {
     intelligence: Arc<intelligence::IntelligenceHost>,
     relay_enabled: bool,
     queue_more_enabled: bool,
+    volume_diagnosis: volume_diagnosis::Host,
     power: Option<Arc<crate::playback::keep_awake::PowerControl>>,
     ordinary_skip: OrdinarySkipHost,
     song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
@@ -163,6 +166,7 @@ impl PlayerHost {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
             relay_enabled: false,
             queue_more_enabled: false,
+            volume_diagnosis: Default::default(),
             power: None,
             ordinary_skip,
             song_speed,

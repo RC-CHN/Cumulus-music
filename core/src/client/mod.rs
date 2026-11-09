@@ -82,7 +82,7 @@ pub use player::{
     PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView,
     VinylRecommendationPlacement, VinylRelatedPlaylistView, VinylRelatedPlaylistsView,
     VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView, VinylWikiCardView,
-    VinylWikiMetaView, VinylWikiView,
+    VinylWikiMetaView, VinylWikiView, VolumeDiagnosisDismissal,
 };
 
 use crate::{

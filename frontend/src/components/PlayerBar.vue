@@ -16,6 +16,10 @@ import EqualizerPanel from './EqualizerPanel.vue';
 import AudioEffectsPanel from './AudioEffectsPanel.vue';
 import EffectDirectory from './EffectDirectory.vue';
 import ModalTransition from './ModalTransition.vue';
+import MenuTransition from './MenuTransition.vue';
+import { useCore } from '../services/core';
+import { useVolumeDiagnosis } from '../composables/useVolumeDiagnosis';
+import type { VolumeDiagnosisDismissal } from '../services/systemMasterVolume';
 import PlaybackSpeed from './PlaybackSpeed.vue';
 import PlaybackQuality from './PlaybackQuality.vue';
 import PlaybackVolume from './PlaybackVolume.vue';
@@ -77,6 +81,21 @@ const {
   endedStepKey,
   loadingStepBusy,
 } = props.player;
+const volumeControl = ref<InstanceType<typeof PlaybackVolume>>();
+const volumePrompt = ref<HTMLElement>();
+const volumeDiagnosis = useVolumeDiagnosis(
+  useCore(),
+  () =>
+    ready.value && view.value?.epoch === props.account.epoch ? props.account.epoch : undefined,
+  () => closeVolumeDiagnosis('auto_close'),
+);
+function closeVolumeDiagnosis(action: VolumeDiagnosisDismissal) {
+  const focused = volumePrompt.value?.contains(document.activeElement);
+  const epoch = volumeDiagnosis.close(action);
+  if (!epoch) return;
+  if (action === 'jump_settings') emit('audioOutput', epoch);
+  else if (focused) volumeControl.value?.focusTrigger();
+}
 const cover = useCoverImage(() => ({
   owner: view.value?.epoch ?? '',
   source: view.value?.track?.coverUrl,
@@ -686,7 +705,30 @@ async function seek(event: Event) {
     <div class="player-tools">
       <PlaybackQuality :player="player" @member="emit('member')" />
       <PlaybackSpeed :player="player" :together-active="togetherActive" />
-      <PlaybackVolume :player="player" />
+      <div class="volume-diagnosis-anchor">
+        <PlaybackVolume ref="volumeControl" :player="player" @diagnose="volumeDiagnosis.check" />
+        <MenuTransition>
+          <div
+            v-if="volumeDiagnosis.prompt.value"
+            ref="volumePrompt"
+            class="volume-diagnosis"
+            data-volume-diagnosis
+            @keydown.esc.stop.prevent="closeVolumeDiagnosis('manual_close')"
+          >
+            <span role="status">当前系统设置可能影响播放体验</span>
+            <button class="volume-diagnosis-action" @click="closeVolumeDiagnosis('jump_settings')">
+              去查看
+            </button>
+            <button
+              class="icon-button"
+              aria-label="关闭音量诊断"
+              @click="closeVolumeDiagnosis('manual_close')"
+            >
+              <Icon name="close" />
+            </button>
+          </div>
+        </MenuTransition>
+      </div>
       <button
         class="icon-button"
         aria-label="歌词"

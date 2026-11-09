@@ -90,3 +90,44 @@
   color: var(--warning);
   margin: 8px 0 2px;
 }
+
+.volume-diagnosis-anchor {
+  position: relative;
+  flex: none;
+}
+.volume-diagnosis {
+  position: absolute;
+  z-index: 4;
+  inset-block-end: calc(100% + 12px);
+  inset-inline-end: 0;
+  box-sizing: border-box;
+  inline-size: min(368px, calc(100vw - 32px));
+  min-block-size: 58px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 6px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: 0 4px 20px #0002;
+  color: var(--text);
+}
+.volume-diagnosis [role='status'] {
+  flex: 1;
+  min-inline-size: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+.volume-diagnosis-action {
+  flex: none;
+  min-height: 32px;
+  padding-inline: 12px;
+  border-radius: 16px;
+  background: var(--surface-hover);
+  color: var(--text);
+  white-space: nowrap;
+}
+.volume-diagnosis-action:hover {
+  background: var(--line);
+}

@@ -22,7 +22,9 @@ export function usePlaybackVolume(player: VolumeControls) {
         ? 100
         : Math.min(99, Math.max(1, Math.round(value.value))),
   );
-  let generation = 0,
+  let inputRevision = 0,
+    settlement = Promise.resolve(),
+    generation = 0,
     alive = true,
     requested: number | undefined,
     retryTarget: number | undefined,
@@ -73,13 +75,14 @@ export function usePlaybackVolume(player: VolumeControls) {
   }
   function set(input: number) {
     if (!alive || !player.ready.value || !Number.isFinite(input)) return;
+    inputRevision++;
     const target = Math.max(0, Math.min(100, input));
     if (target > 0) restore = target;
     draft.value = target;
     issue.value = undefined;
     retryTarget = undefined;
     requested = target;
-    if (!pending.value) void drain();
+    if (!pending.value) settlement = drain();
   }
   const toggleMute = () => set(value.value > 0 ? 0 : restore);
   const wheel = (delta: number) => {
@@ -105,7 +108,10 @@ export function usePlaybackVolume(player: VolumeControls) {
   });
   return {
     value,
+    native,
     percent,
+    inputRevision: () => inputRevision,
+    settled: () => settlement,
     pending,
     dragging,
     issue,

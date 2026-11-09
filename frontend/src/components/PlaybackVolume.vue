@@ -3,7 +3,9 @@ import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'v
 import { usePlaybackVolume, type VolumeControls } from '../composables/usePlaybackVolume';
 import Icon from './Icon.vue';
 import MenuTransition from './MenuTransition.vue';
+import type { VolumeDiagnosisVisit } from '../services/systemMasterVolume';
 const props = defineProps<{ player: VolumeControls; mini?: boolean }>();
+const emit = defineEmits<{ diagnose: [visit: VolumeDiagnosisVisit] }>();
 const model = usePlaybackVolume(props.player);
 const buttonLabel = computed(() =>
   props.mini ? '音量调节' : model.value.value === 0 ? '取消静音' : '静音',
@@ -15,16 +17,56 @@ const opened = ref(false),
   slider = ref<HTMLInputElement>();
 const id = useId();
 let hide: ReturnType<typeof setTimeout> | undefined;
+let visit: { epoch: string; before: number; revision: number } | undefined;
+let generation = 0;
+let restoringFocus = false;
+function focusTrigger() {
+  restoringFocus = true;
+  try {
+    trigger.value?.focus({ preventScroll: true });
+  } finally {
+    restoringFocus = false;
+  }
+}
+defineExpose({ focusTrigger });
 function show() {
   if (!props.player.ready.value) return;
   clearTimeout(hide);
+  if (opened.value) return;
+  generation++;
+  const epoch = props.player.view.value?.epoch;
+  if (!props.mini && epoch !== undefined)
+    visit = { epoch, before: model.value.value, revision: model.inputRevision() };
   opened.value = true;
 }
-function close(restore = false) {
+function close(restore = false, diagnose = true) {
   clearTimeout(hide);
+  const current = visit;
+  visit = undefined;
+  const after = model.value.value,
+    revision = model.inputRevision(),
+    serial = generation;
   opened.value = false;
   model.end();
-  if (restore) trigger.value?.focus({ preventScroll: true });
+  if (restore) focusTrigger();
+  if (
+    !diagnose ||
+    !current ||
+    current.revision === revision ||
+    !(after >= 80 && after > current.before)
+  )
+    return;
+  void model.settled().then(() => {
+    if (
+      serial === generation &&
+      revision === model.inputRevision() &&
+      props.player.ready.value &&
+      props.player.view.value?.epoch === current.epoch &&
+      !model.issue.value &&
+      model.native.value === after
+    )
+      emit('diagnose', { epoch: current.epoch, before: current.before, after });
+  });
 }
 function leave() {
   clearTimeout(hide);
@@ -39,7 +81,7 @@ function pointerLeave() {
   if (!props.mini) leave();
 }
 function focus(event: FocusEvent) {
-  if (props.mini || root.value?.contains(event.relatedTarget as Node)) return;
+  if (restoringFocus || props.mini || root.value?.contains(event.relatedTarget as Node)) return;
   show();
 }
 function keydown(event: KeyboardEvent) {
@@ -75,11 +117,15 @@ watch(model.issue, async (issue, previous) => {
 });
 watch(
   [() => props.player.view.value?.epoch, props.player.ready, () => props.player.scope?.value],
-  () => close(),
+  () => {
+    generation++;
+    close(false, false);
+  },
   { flush: 'sync' },
 );
 onMounted(() => document.addEventListener('pointerdown', outside, true));
 onUnmounted(() => {
+  generation++;
   clearTimeout(hide);
   document.removeEventListener('pointerdown', outside, true);
 });
