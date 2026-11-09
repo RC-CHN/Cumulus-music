@@ -17,6 +17,7 @@ def main():
     variant = parser.add_mutually_exclusive_group()
     variant.add_argument('--embedded', action='store_true', help='Frozen local FLAC in both lyric surfaces')
     variant.add_argument('--native-sidecar', action='store_true', help='Open unindexed native WAV and show its nested sidecar in both lyric surfaces')
+    variant.add_argument('--matched-local', action='store_true', help='Matched and unmatched CUE lyrics with actual indexed audio')
     variant.add_argument('--credits', action='store_true', help='Sealed ordinary vinyl lyric contributor flow')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -30,7 +31,9 @@ def main():
         env['CUMULUS_EMBEDDED_LYRIC_PROOF'] = '1'
     if args.native_sidecar:
         env['CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF'] = '1'
-    local = args.embedded or args.native_sidecar
+    if args.matched_local:
+        env['CUMULUS_MATCHED_LOCAL_LYRIC_PROOF'] = '1'
+    local = args.embedded or args.native_sidecar or args.matched_local
     if args.credits:
         env['CUMULUS_LYRIC_CREDIT_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
@@ -93,6 +96,42 @@ def main():
             if args.screenshots:
                 assert len(list(output.glob('ux_*.png'))) == len(stages)
             continue
+        if args.matched_local:
+            paths = sorted(output.glob('ux_*.json'))
+            assert [p.stem for p in paths] == [
+                'ux_01_unmatched_main', 'ux_02_matched_main', 'ux_03_matched_desktop',
+            ]
+            stages = [json.loads(p.read_text(encoding='utf-8')) for p in paths]
+            unmatched, matched, desktop = stages
+            assert [s['surface'] for s in stages] == ['main', 'main', 'lyric']
+            assert [s['fromSidecar'] for s in stages] == [True, False, False]
+            assert unmatched['lyricTimes'] == matched['lyricTimes'] == [0, 2]
+            assert unmatched['playId'] != matched['playId'] == desktop['playId']
+            assert desktop['paintedRow']
+            assert [s['lyricRequests'] for s in stages] == [0, 1, 1]
+            assert [s['audioReceipt']['exactLocalLoads'] for s in stages] == [1, 2, 2]
+            assert all(not s['overflow'] and s['nativePlayer']['state'] == 'paused' and
+                       s['nativePlayer']['track']['local'] and
+                       s['nativePlayer']['playId'] == s['playId'] for s in stages)
+            assert [s['nativePlayer']['timeline']['media_start'] for s in stages] == [0, 4, 4]
+            assert matched['nativePlayer']['queueRevision'] == desktop['nativePlayer']['queueRevision']
+            assert matched['nativePlayer']['position'] == desktop['nativePlayer']['position']
+            assert complete['sameNativePlayback'] and complete['stageCount'] == len(stages)
+            assert complete['matchedLyricCalls'] == [{'id': '123', 'lv': -1, 'tv': -1, 'rv': -1, 'yv': -1}]
+            assert complete['lyricRequests'] == 1 and not complete['pendingLyrics']
+            assert complete['audioReceipt'] == {'exactLocalLoads': 2, 'otherLoads': 0}
+            assert all(not s['onlineAudioRequests'] and not s['audioReceipt']['otherLoads']
+                       for s in [*stages, complete])
+            if sys.platform.startswith('linux'):
+                for stage in [*stages, complete]:
+                    locale = stage['locale']
+                    assert locale['numeric'] == 'C'
+                    assert locale['messages'] == locale['originalMessages'] not in ('C', 'POSIX')
+            assert len(complete['lyricWindows']) == 1 and complete['factoryCount'] in (1, 2)
+            total += len(stages)
+            if args.screenshots:
+                assert len(list(output.glob('ux_*.png'))) == len(stages)
+            continue
         if local:
             stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
             assert [stage['surface'] for stage in stages] == ['main', 'lyric']
@@ -138,6 +177,9 @@ def main():
     if args.native_sidecar:
         report.update(nativeOpenSidecar=True, format='PCM WAV', sameNativePlayback=True,
                       localIndexUnchanged=True)
+    if args.matched_local:
+        report.update(matchedLocalCue=True, unmatchedLocalSidecar=True, sameNativePlayback=True,
+                      lyricCalls=complete['matchedLyricCalls'], exactLocalLoads=2, onlineAudioRequests=0)
     if args.credits:
         report.update(lyricCredits=True, cachedFailure=True, freshOmission=True, sameNativePlayback=True)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

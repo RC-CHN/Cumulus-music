@@ -8,6 +8,8 @@ mod desktop_lyric_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/matched_local_lyric_fixture.rs"]
+mod matched_local_lyric_fixture;
 #[path = "support/mini_fixture.rs"]
 mod mini_fixture;
 #[path = "../../core/tests/support/native_lyric_wave.rs"]
@@ -169,20 +171,31 @@ fn main() {
     let embedded = std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some();
     let native_sidecar = std::env::var_os("CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF").is_some();
     let credits = std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some();
+    let matched = std::env::var_os("CUMULUS_MATCHED_LOCAL_LYRIC_PROOF").is_some();
+    assert!(
+        !matched
+            || !(reopened
+                || fonts
+                || embedded
+                || native_sidecar
+                || credits
+                || interface_font.is_some())
+    );
     assert!(
         interface_font.is_none() || !(reopened || fonts || embedded || native_sidecar || credits),
         "interface font proof has its own phases"
     );
     #[cfg(target_os = "linux")]
-    let original_messages = (native_sidecar || credits || interface_font.is_some()).then(|| {
-        // SAFETY: no GTK, runtime or worker has started in this process.
-        assert!(!unsafe { libc::setlocale(libc::LC_ALL, c"".as_ptr()) }.is_null());
-        assert!(!matches!(
-            locale_name(libc::LC_NUMERIC).as_str(),
-            "C" | "POSIX"
-        ));
-        locale_name(libc::LC_MESSAGES)
-    });
+    let original_messages = (native_sidecar || credits || matched || interface_font.is_some())
+        .then(|| {
+            // SAFETY: no GTK, runtime or worker has started in this process.
+            assert!(!unsafe { libc::setlocale(libc::LC_ALL, c"".as_ptr()) }.is_null());
+            assert!(!matches!(
+                locale_name(libc::LC_NUMERIC).as_str(),
+                "C" | "POSIX"
+            ));
+            locale_name(libc::LC_MESSAGES)
+        });
     assert!(!(embedded && native_sidecar), "select one local lyric case");
     assert!(
         !(reopened && (embedded || native_sidecar)),
@@ -218,6 +231,8 @@ fn main() {
         .expect("write synthetic filename sidecar");
         path.canonicalize().expect("canonical synthetic audio")
     });
+    let matched_fixture =
+        matched.then(|| matched_local_lyric_fixture::Fixture::new(&root).unwrap());
     let output = root.join(interface_font.unwrap_or(if reopened { "reopen" } else { "first" }));
     fs::create_dir(&output).expect("new proof directory");
     let block = Arc::new(AtomicBool::new(false));
@@ -247,14 +262,17 @@ fn main() {
             app.manage(cumulus_desktop::FontCatalogProof::new(move || proof.read()));
         }
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
-        let api=Arc::new(desktop_lyric_fixture::Library::with_credit_proof(credits));
+        let api=Arc::new(desktop_lyric_fixture::Library::new(credits,matched));
+        let proof_store=registry.store();
         let session=Arc::new(AccountSession::new(api.clone(),Some(registry.store())));
         let count=Arc::new(AtomicUsize::new(0));
         let factory_count=count.clone(); let wave=relay_fixture::wave(&root)?;
         let audio_directory=embedded_dir.clone();
         let native_audio=native_path.clone();
+        let matched_audio=matched_fixture.clone();
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(move || {
             factory_count.fetch_add(1,Ordering::AcqRel);
+            if let Some(fixture)=&matched_audio { return fixture.audio(); }
             let audio = relay_fixture::NativeAudio::open(wave.clone())?;
             let audio = match &audio_directory {
                 Some(directory) => audio.allow_download_directory(directory.clone()),
@@ -332,6 +350,26 @@ fn main() {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__lyricAck[{id}]={answer};")).unwrap();
                     });
                 }
+                "watch_matched" | "link_matched" => {
+                    let watch=kind=="watch_matched";
+                    let fixture=matched_fixture.as_ref().expect("matched CUE proof only").clone();
+                    let handle=handle.clone(); let store=proof_store.clone(); let session=session.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let client=handle.state::<MusicClient>();
+                        let result=if watch {
+                            client.local_command(LocalCommand::Watch {
+                                path: fixture.directory.to_string_lossy().into_owned(),
+                            }).await
+                        } else {
+                            fixture.link(store,&session)
+                        };
+                        let answer=match result {
+                            Ok(()) => json!({"ok":true}),
+                            Err(error) => json!({"error":format!("synthetic CUE index: {error}")}),
+                        };
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__lyricAck[{id}]={answer};")).unwrap();
+                    });
+                }
                 "open_native_sidecar" => {
                     let path=native_path.as_ref().expect("native sidecar proof only").clone();
                     let handle=handle.clone();
@@ -384,6 +422,11 @@ fn main() {
                     value["lyricWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("desktop-lyrics-")).collect::<Vec<_>>());
                     value["lyricRequests"]=json!(api.lyrics.load(Ordering::Acquire));
                     value["pendingLyrics"]=json!(api.pending.load(Ordering::Acquire));
+                    if let Some(fixture)=&matched_fixture {
+                        value["audioReceipt"]=fixture.receipt();
+                        value["matchedLyricCalls"]=json!(&*api.matched_calls.lock().unwrap());
+                        value["onlineAudioRequests"]=json!(api.matched_audio_requests.load(Ordering::Acquire));
+                    }
                     if let Some(proof)=&font_proof {
                         let snapshot=proof.snapshot();
                         value["fontReads"]=snapshot["total"].clone();
@@ -420,7 +463,9 @@ fn main() {
         if view.label()=="main" && payload.event()==PageLoadEvent::Finished {
             view.eval(format!("window.__lyricProofReopen={};", std::env::var_os("CUMULUS_PROOF_REOPEN").is_some())).unwrap();
             view.eval(format!("window.__nativeSidecarLyricProof={native_sidecar};")).unwrap();
-            view.eval(if native_sidecar || std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some() {
+            view.eval(if matched {
+                include_str!("matched_local_lyrics_ui_probe.js")
+            } else if native_sidecar || std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some() {
                 include_str!("embedded_lyrics_ui_probe.js")
             } else if std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some() {
                 include_str!("lyric_credit_ui_probe.js")
