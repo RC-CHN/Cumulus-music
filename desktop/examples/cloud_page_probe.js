@@ -8,6 +8,52 @@
  function click(text,scope=dialog()??page()){const n=[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===text||b.getAttribute('aria-label')===text);assert(n&&!n.disabled,'enabled '+text);n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});n.click();}
  function search(text){const n=page().querySelector('[aria-label="搜索云盘歌曲"]');n.focus();n.value=text;n.dispatchEvent(new Event('input',{bubbles:true}));n.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));}
  async function ready(rows){await sleep(0);await wait(()=>page()?.dataset.cloudLoading==='false'&&page()?.dataset.cloudReady==='true'&&page()?.querySelectorAll('[data-cloud-id]').length===rows,'cloud rows '+rows);}
+ const locator=()=>page().querySelector('button.cloud-playback-locator:not(.cloud-locator-leave-active)');
+ async function scrollCloud(top){
+  const old=page().scrollTop;page().scrollTop=top;
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  assert(page().scrollTop!==old,'cloud page actually scrolled');
+ }
+ async function verifyLocator(epoch,id){
+  const selected=()=>page().querySelector(`[data-cloud-id="${id}"]`);
+  await wait(()=>selected()?.classList.contains('playing'),'cloud resource highlighted');
+  assert(!locator(),'locator is hidden before scrolling');
+  const snapshot=()=>invoke('player_snapshot',{epoch});
+  const before=await snapshot(), state=await stats();
+  await scrollCloud(1150);
+  await wait(locator,'show locator on cloud scroll');
+  const control=locator();
+  const buttonBox=control.getBoundingClientRect();
+  const hit=document.elementFromPoint(buttonBox.left+buttonBox.width/2,buttonBox.top+buttonBox.height/2);
+  assert(control.contains(hit),'locator is above the table and can be clicked');
+  control.dispatchEvent(new PointerEvent('pointerenter'));
+  await capture('locator_shown_light');
+  await sleep(3100);
+  assert(locator()===control,'hover holds past the scroll timeout');
+  control.click();
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const rowBox=selected().getBoundingClientRect(), viewport=page().getBoundingClientRect();
+  const centerError=Math.abs(rowBox.top+rowBox.height/2-(viewport.top+page().clientTop+page().clientHeight/2));
+  assert(centerError<=1.5,'locator centers the original cloud row in its scroll viewport');
+  const after=await snapshot(), checked=await stats();
+  assert(after.playId===before.playId&&after.queueRevision===before.queueRevision&&
+    after.state===before.state&&after.position===before.position,'locate did not touch the playback session');
+  assert(JSON.stringify(state)===JSON.stringify(checked),'locate did not change the cloud service fixture');
+  await capture('locator_centered_light');
+  const left=performance.now();
+  control.dispatchEvent(new PointerEvent('pointerleave'));
+  await sleep(2500);
+  assert(locator()===control,'locator does not hide before three seconds');
+  await wait(()=>!locator(),'locator hides after leaving');
+  const hideMs=performance.now()-left;
+  assert(hideMs>=2800&&hideMs<5000,'locator hide deadline is about three seconds');
+  click('下一页',page());await ready(200);await wait(()=>!selected(),'current cloud song not on page two');
+  await scrollCloud(600);
+  assert(!locator(),'locator does not jump across pages');
+  click('上一页',page());await ready(200);await wait(selected,'return to original page');
+  assert(!locator(),'page transition retires earlier visibility');
+  return {centerError,hideMs,sameCatalogIdRejected:true,otherPageRejected:true,playbackUnchanged:true};
+ }
  async function theme(value){localStorage.setItem('cumulus.appearance.v1',value);window.dispatchEvent(new StorageEvent('storage',{key:'cumulus.appearance.v1',newValue:value}));await wait(()=>document.documentElement.dataset.theme===value,'theme');}
  async function close(){click(dialog().classList.contains('cloud-delete-dialog')?(dialog().textContent.includes('保留记录并返回')?'保留记录并返回':'保留歌曲'):'取消');await wait(()=>!document.querySelector('dialog[open]'),'modal leave');}
  async function select(n){const rows=[...page().querySelectorAll('[data-cloud-id]')];for(let i=0;i<n;i++){const c=rows[i].querySelector('input');if(!c.checked){c.focus();c.click();}}await sleep(0);}
@@ -15,12 +61,19 @@
  rows:[...page().querySelectorAll('[data-cloud-id]')].map(n=>({id:n.dataset.cloudId,height:rect(n).height,selected:!!n.querySelector('input:checked')})),keyword:page().querySelector('[aria-label="搜索云盘歌曲"]')?.value??null,capacity:page().querySelector('.cloud-capacity').textContent,uploadButton:page().querySelector('.cloud-upload-button')?rect(page().querySelector('.cloud-upload-button')):null,checks:[...page().querySelectorAll('[data-cloud-id] td:first-child input')].map(n=>({box:rect(n),cell:rect(n.closest('td'))})),tab:[...page().querySelectorAll('[role="tab"]')].find(n=>n.getAttribute('aria-selected')==='true')?.textContent.trim(),alerts:[...page().querySelectorAll('[role="alert"]')].map(n=>n.textContent.trim()),empty:page().querySelector('.empty-state')?.textContent.trim(),dialog:!!d,phase:d?.dataset.cloudDeletePhase??null,working:d?.getAttribute('aria-busy')==='true',text:d?.textContent,focusInside:!d||d.contains(document.activeElement),active:document.activeElement?.getAttribute('aria-label')||document.activeElement?.textContent?.trim(),rect:d?rect(d):null,buttons:buttons.map(n=>{const r=rect(n),top=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return{label:n.textContent.trim()||n.getAttribute('aria-label'),disabled:n.disabled,hit:n===top||n.contains(top)};}),dialogs:d?[{open:true,opacity:getComputedStyle(d).opacity,rect:rect(d),background:getComputedStyle(d).backgroundColor}]:[]};}
  async function capture(name){last=name;await sleep(0);await wait(()=>!document.querySelector('.modal-enter-active,.modal-leave-active'),'modal transition');await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));await sleep(250);const value=facts();assert(!value.overflow&&value.focusInside,'layout/focus '+name);assert(value.rows.length<=200,'bounded cloud page');if(value.rect){assert(value.rect.top>=7&&value.rect.bottom<=value.height-7,'modal vertical bounds');assert(value.buttons.every(b=>b.hit),'modal controls hit');}window.__miniRecorded=null;const stage=`ux_${String(++count).padStart(2,'0')}_${name}`;await emit({kind:'snapshot',stage,cloudPageUi:true,...value});await wait(()=>window.__miniRecorded===stage,'snapshot');}
  try{
-  await wait(()=>document.querySelector('.track-row .track-play:not(:disabled)'),'startup playback control ready');document.querySelector('.track-row').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(()=>document.querySelector('.playerbar')?.dataset.state==='playing','native playback');let epoch=(await invoke('account_snapshot')).epoch;await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});await invoke('player_action',{epoch,action:{kind:'seek',seconds:10}});
-  await control('report-resize',{width:1120,height:760,scale:devicePixelRatio});[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='音乐云盘').click();await wait(page,'cloud page');await ready(200);await theme('light');await capture('catalog_light');await theme('dark');await capture('catalog_dark');
+  await wait(()=>document.querySelector('.track-row .track-play:not(:disabled)'),'startup playback control ready');document.querySelector('.track-row').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(()=>document.querySelector('.playerbar')?.dataset.state==='playing','native playback');let epoch=(await invoke('account_snapshot')).epoch;
+  const catalog=await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['1300'],index:0,quality:'standard'}});
+  assert(catalog.resourceKind==='catalog'&&catalog.track.id==='1300','catalog and cloud fixture share the same numeric id');
+  await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});await invoke('player_action',{epoch,action:{kind:'seek',seconds:10}});
+  await control('report-resize',{width:1120,height:760,scale:devicePixelRatio});[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='音乐云盘').click();await wait(page,'cloud page');await ready(200);
+  assert(page().querySelector('[data-cloud-id="1300"]'),'same-number cloud row in this page');
+  await scrollCloud(600);assert(!locator(),'same numeric catalog song does not reveal a cloud locator');
+  await scrollCloud(0);await theme('light');await capture('catalog_light');await theme('dark');await capture('catalog_dark');
   const sort=page().querySelector('[data-cloud-sort="title"]');sort.focus();sort.click();await ready(200);assert(page().querySelector('[data-cloud-sort="title"]').closest('th').getAttribute('aria-sort')==='ascending','title ascending');await capture('sort_title_dark');
   click('下一页',page());await ready(200);assert(page().scrollTop===0,'query change returns to top');await capture('second_page_dark');click('下一页',page());await ready(5);assert(page().scrollTop===0,'query change returns to top');await theme('light');await capture('last_page_light');
   search('005');await ready(1);assert(page().scrollTop===0,'query change returns to top');await capture('filtered_light');const artist=page().querySelector('.cloud-artist');assert(artist&&artist.tagName==='SPAN','artist is not a sort action');assert(artist.textContent.trim()==='合成歌手 5 / 合成合作歌手','uploaded artist fills only the first unnamed catalog credit');const id=page().querySelector('[data-cloud-id]').dataset.cloudId;click('播放 '+page().querySelector('.cloud-track-title strong').textContent,page());await wait(()=>document.querySelector('.playerbar')?.dataset.state==='playing','cloud native playback');await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});await invoke('player_action',{epoch,action:{kind:'seek',seconds:10}});await capture('filtered_playing_light');
   search('no-such-cloud-track');await ready(0);await wait(()=>page().textContent.includes('没有找到相关歌曲'),'filtered empty');await capture('empty_filter_light');click('清空云盘搜索',page());await ready(200);
+  const locatorProof=await verifyLocator(epoch,id);
   await control('cloud-cache-break');search('001');await wait(()=>page().querySelector('.empty-state[role="alert"]'),'failed local query');assert(!page().querySelector('[data-cloud-id]'),'old query rows hidden');await theme('dark');await capture('query_failed_dark');click('重新加载');await ready(1);await capture('query_recovered_dark');
   await config({fail:true});click('刷新云盘',page());await wait(()=>page().querySelector('[role="alert"]'),'remote failure');assert(page().querySelector('[data-cloud-id]'),'cache remains under same query');await capture('cached_remote_error_dark');await config({fail:false});click('重新加载');await wait(()=>!page().querySelector('[role="alert"]'),'remote recovered');await capture('remote_recovered_dark');
   const tab=page().querySelector('[data-cloud-tab="uploaded"]');tab.focus();tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));await wait(()=>page().textContent.includes('还没有上传任务'),'uploading empty');await theme('light');await capture('tasks_empty_light');click('上传音乐',page());await wait(dialog,'upload form');await capture('upload_light');await control('report-resize',{width:760,height:540,scale:devicePixelRatio});await wait(()=>innerWidth===760&&innerHeight===540,'small window');await theme('dark');await capture('upload_small_dark');await close();await capture('upload_closed_small_dark');
@@ -29,6 +82,6 @@
   click('删除所选',page());await wait(dialog,'remaining confirmation');await config({mode:0});click('删除歌曲');await wait(()=>!document.querySelector('dialog[open]'),'confirmed close');await capture('delete_confirmed_light');assert((await stats()).writes.length===3,'one remaining send');
   await select(2);click('删除所选',page());await wait(dialog,'uncertain confirmation');await config({mode:3});click('删除歌曲');await wait(()=>dialog()?.dataset.cloudDeletePhase==='uncertain','unknown delete');await theme('dark');await capture('delete_unknown_dark');await close();click('删除所选',page());await wait(()=>dialog()?.dataset.cloudDeletePhase==='uncertain','reopened pending operation');await capture('delete_unknown_reopened_dark');click('只读核对');await wait(()=>dialog()?.dataset.cloudDeleteWorking==='false','failed reconcile settled');await capture('delete_unknown_read_dark');await config({fail:false,mode:0});click('只读核对');await wait(()=>!document.querySelector('dialog[open]'),'read confirms deletion');await capture('delete_reconciled_dark');assert((await stats()).writes.length===4,'read never repeats delete');
   search('005');await ready(1);click('上传音乐',page());await wait(dialog,'old account upload');await control('account');await wait(()=>!document.querySelector('dialog[open]'),'account closes upload');await wait(()=>page()?.querySelector('[aria-label="搜索云盘歌曲"]').value==='','private search cleared');await ready(200);await theme('light');await capture('account_replaced_light');
-  await emit({kind:'complete',stage:'complete',ok:true,cloudPageUi:true,stageCount:count,cloudMetadataFallback:true,realMusicRequests:0,realAccountWrites:0,writeCount:(await stats()).writes.length});
+  await emit({kind:'complete',stage:'complete',ok:true,cloudPageUi:true,stageCount:count,cloudMetadataFallback:true,locatorProof,realMusicRequests:0,realAccountWrites:0,writeCount:(await stats()).writes.length});
  }catch(e){let diagnostic={};try{diagnostic=page()?facts():{};}catch(detail){diagnostic={diagnosticError:String(detail)};}await emit({kind:'failed',stage:'failed',message:String(e),stack:e?.stack,last,stageCount:count,...diagnostic});}
 })();
