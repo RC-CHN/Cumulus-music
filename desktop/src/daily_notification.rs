@@ -71,8 +71,8 @@ fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
         // Tao's outer_position is a cached Ok() even on Wayland, where the
         // compositor need not disclose absolute coordinates. Inspect GTK's
         // actual display (not the session environment), on the setup thread.
-        if !gtk::gdk::Display::default()
-            .is_some_and(|display| display.type_().name() == "GdkX11Display")
+        if gtk::gdk::Display::default()
+            .is_none_or(|display| display.type_().name() != "GdkX11Display")
         {
             return Ok(());
         }
