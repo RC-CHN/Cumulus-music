@@ -114,12 +114,28 @@
     await capture('repeat_after_next', true);
     if (window.__cumulusFollowNoticeProof) {
       async function confirmation(artist) {
-        click(one(`[aria-label="合成新歌歌手 ${artist} 更多操作"]`));
-        await wait(() => button('不接收此歌手的通知'), 'notification menu');
-        click(button('不接收此歌手的通知'));
-        await wait(() => one('dialog[open]')?.textContent.includes('后续将屏蔽') ||
-          one('dialog[open]')?.textContent.includes('未收到确认'), 'notification confirmation');
-        await wait(() => ['取消', '关闭'].includes(document.activeElement?.textContent.trim()),
+        const opener = one(`[aria-label="合成新歌歌手 ${artist} 更多操作"]`);
+        const owner = opener?.closest('.follow-artist-notice');
+        assert(owner, 'notification menu owner');
+        click(opener);
+        let activeItem;
+        await wait(() => {
+          const panel = document.getElementById(opener.getAttribute('aria-controls') ?? '');
+          const item = panel && button('不接收此歌手的通知', panel);
+          // Leaving menus are inert but can still contain identical labels.
+          // Wait for the opened menu's own item to be painted and focused.
+          activeItem = item && opener.getAttribute('aria-expanded') === 'true' &&
+            !panel.closest('[inert]') && !item.disabled &&
+            getComputedStyle(item).visibility === 'visible' && document.activeElement === item
+            ? item : undefined;
+          return activeItem;
+        }, 'active notification menu');
+        activeItem.click();
+        const confirmation = () => owner.querySelector('dialog[open]');
+        await wait(() => confirmation()?.textContent.includes('后续将屏蔽') ||
+          confirmation()?.textContent.includes('未收到确认'), 'notification confirmation');
+        await wait(() => confirmation()?.contains(document.activeElement) &&
+          ['取消', '关闭'].includes(document.activeElement?.textContent.trim()),
           'safe initial focus for notification dialog');
       }
       await confirmation(1);
