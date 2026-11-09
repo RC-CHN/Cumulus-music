@@ -30,7 +30,7 @@ impl Reply {
                         "Cumulus cannot hand off to the existing app profile; try when its main player is ready.",
                     Self::Invalid =>
                         if cfg!(windows) {
-                            "Cumulus could not open a supported local FLAC or PCM WAV file."
+                            "Cumulus could not open a supported local MP3, FLAC or PCM WAV file."
                         } else {
                             "Cumulus could not open a readable MP3, FLAC or supported PCM WAV file."
                         },
@@ -117,7 +117,9 @@ pub(super) fn dispatch_windows<R: Runtime>(
     };
     if !paths.iter().any(|path| {
         path.extension().is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("flac") || extension.eq_ignore_ascii_case("wav")
+            ["flac", "wav", "mp3"]
+                .iter()
+                .any(|format| extension.eq_ignore_ascii_case(format))
         })
     }) {
         return Reply::Invalid;
