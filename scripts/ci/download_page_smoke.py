@@ -124,7 +124,9 @@ def main():
         }
         for song, task in records.items():
             work = Path(task['work']).resolve()
-            assert work.is_relative_to(root / 'media')
+            # Rust stores extended Windows paths; the Python root may use a
+            # drive letter. Compare the existing parent even after cancellation.
+            assert work.parent.samefile(root / 'media')
             assert work.exists() == (song == '703')
         print(json.dumps(dict(ok=True, actualWebView=True, stageCount=4, downloadClearVerified=True)))
         return
