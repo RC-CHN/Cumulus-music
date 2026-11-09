@@ -15,9 +15,9 @@ on:
         type: boolean
         default: false
       windows_native_file_output:
-        description: Run only the portable Windows file handoff diagnostic (off runs full CI)
+        description: Run a Windows native handoff diagnostic (off runs full CI)
         type: choice
-        options: ['off', 'default', 'null']
+        options: ['off', 'default', 'null', 'pipe-lab']
         default: 'off'
 
 permissions:
@@ -45,6 +45,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
     uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output != 'pipe-lab'
     name: Frontend and release rules
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -1053,6 +1054,38 @@ jobs:
           name: diagnostics-windows-webview-${{ matrix.shard }}
           include-hidden-files: true
           path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-pipe-lab:
+    # Isolated native protocol proof; this job produces no release packages.
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output == 'pipe-lab' && github.ref == 'refs/heads/validation/phase206-windows-pipe-lab'
+    name: Windows native pipe lab
+    runs-on: windows-2022
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Identify pinned MSVC toolchain
+        run: rustup show
+      - name: Exercise the production pipe protocol between native Windows processes
+        run: |
+          mkdir -p .build
+          cargo test --locked --manifest-path desktop/probes/native-open-windows/Cargo.toml \
+            --target x86_64-pc-windows-msvc \
+            effective_cross_process::effective_cross_process_product_protocol -- --exact --nocapture \
+            2>&1 | tee .build/ci-windows-pipe-lab.log
+          grep -Eq 'test result: ok\. 1 passed; 0 failed; 0 ignored;' .build/ci-windows-pipe-lab.log
+      - name: Preserve the native protocol result
+        if: always() && !cancelled() && hashFiles('.build/ci-windows-pipe-lab.log') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native-pipe-lab-attempt-${{ github.run_attempt }}
+          path: .build/ci-windows-pipe-lab.log
           if-no-files-found: error
           retention-days: 7
 
