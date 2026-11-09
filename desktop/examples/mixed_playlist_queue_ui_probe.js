@@ -36,6 +36,7 @@
   const libraryRow = (name) => all('.local-tracks tbody tr')
     .find((candidate) => candidate.querySelector('.local-title')?.textContent.trim() === name);
   let step = 'initialize', epoch, baseline, localId, anchorId, setupIssue;
+  const originMismatches = [];
   const state = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
 
@@ -79,8 +80,8 @@
       label + ': paused native file instance and clock stay exact');
     require(same(view.tracks.map(({ track }) => track.local), ids.map((id) => id === localId || id === anchorId)),
       label + ': catalog and native resources retain their original types');
-    require(view.tracks.slice(1).every(({ origin }) => origin?.kind === 'playlist' && origin.id === '11'),
-      label + ': additions retain the verified mixed playlist origin');
+    if (!view.tracks.slice(1).every(({ origin }) => origin?.kind === 'playlist' && origin.id === '11'))
+      originMismatches.push(label);
     require(view.tracks.filter(({ track }) => track.id === localId).every((entry) => entry.localMenu),
       label + ': the mixed member has a native local row, not a catalog placeholder');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -241,13 +242,14 @@
     await wait(() => !one('.queue-panel'), 'queue drawer closed');
     click(library);
     await wait(() => libraryRow(anchorName)?.dataset.localId === anchorId, 'same anchor file remains indexed');
+    require(!originMismatches.length, 'mixed source missing from queue checkpoints: ' + originMismatches.join(', '));
     const frontendApp = performance.getEntriesByType('resource')
       .map(({ name }) => new URL(name).pathname.split('/').pop())
       .find((name) => /^App-[a-zA-Z0-9_-]+\.js$/.test(name));
     await emit('complete', { ok: true, localId, anchorId, trustedDown, trustedUp, states: 8,
       frontendApp, ...compact(await state(), await queue()) });
   } catch (error) {
-    await emit('failed', { step, error: String(error), setupIssue, playlist: visibleRows(),
+    await emit('failed', { step, error: String(error), setupIssue, originMismatches, playlist: visibleRows(),
       menus: all('.action-menu button').map((button) => ({ text: button.textContent.trim(), disabled: button.disabled })) });
   }
 })();

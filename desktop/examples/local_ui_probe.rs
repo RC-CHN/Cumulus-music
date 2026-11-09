@@ -205,6 +205,16 @@ fn main() {
         "directory selection needs a fresh dedicated profile"
     );
     let mixed_queue = std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF").is_some();
+    let mixed_queue_script = mixed_queue.then(|| {
+        let path = PathBuf::from(
+            std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_SCRIPT")
+                .expect("explicit mixed queue proof script"),
+        );
+        assert!(path.is_absolute());
+        let code = fs::read_to_string(path).expect("mixed queue proof script");
+        assert!(code.len() < 64 * 1024);
+        code
+    });
     let mixed = mixed_queue || std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
     assert!(!mixed || !(reopen || queue || cold || directory_selection));
     let mixed_fixture = mixed.then(|| {
@@ -433,7 +443,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
-            webview.eval(if mixed_queue {include_str!("mixed_playlist_queue_ui_probe.js")} else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
+            webview.eval(if let Some(script)=&mixed_queue_script {script.as_str()} else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
             } else if queue_reveal {
                 include_str!("local_queue_file_reveal_ui_probe.js")

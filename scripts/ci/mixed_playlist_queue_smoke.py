@@ -41,7 +41,9 @@ def main():
         path = root / 'profile' / key
         path.mkdir(parents=True, mode=0o700)
         env[key] = str(path)
-    env.update(CUMULUS_PROOF_DIR=str(run), CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF='1')
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples/mixed_playlist_queue_ui_probe.js'
+    env.update(CUMULUS_PROOF_DIR=str(run), CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF='1',
+               CUMULUS_MIXED_PLAYLIST_QUEUE_SCRIPT=str(source))
 
     with ExitStack() as stack:
         driver = TrustedDrag()
