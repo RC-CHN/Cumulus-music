@@ -40,6 +40,10 @@ pub struct SearchWord {
 pub struct SearchSuggestionWord {
     #[serde(flatten)]
     pub word: SearchWord,
+    // The confirmed suggestion can fill different text into the input than
+    // the popup displayed. Omit the override when the strings are identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_label: Option<String>,
     pub label_parts: Vec<SearchSuggestionPart>,
 }
 

@@ -216,6 +216,8 @@ export interface SearchWord {
   defaultReceipt?: string;
 }
 export interface SearchSuggestionWord extends SearchWord {
+  /** Value written to the input after selection; defaults to the visible label. */
+  inputLabel?: string;
   labelParts: SearchTextPart[];
 }
 export type SearchChartDestination = 'podcasts' | 'audiobooks';

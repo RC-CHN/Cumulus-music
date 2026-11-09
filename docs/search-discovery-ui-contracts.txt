@@ -223,6 +223,16 @@ search_smoke.py --history-last。
 中的推荐组标为 rec_query，普通建议保留 suggest。继续只发送固定来源值到支持的结果端点，
 不传原始追踪字段；真实词、显示词和回退行为不变。
 
+输入建议的三种文本：官方 M/623:601–616 与
+SearchBox/view/searchResultsItems.jsx:123–131 以 `name || keyword` 绘制候选，
+M/623:1304–1309 则用 `searchWord || keyword || toUserWord || name` 提交综合搜索和
+本机历史；回填搜索框使用 `toUserWord || searchWord || keyword || name`。三种值
+可以不同。Cumulus 只为 /api/search/pc/suggest/keyword/get 单独投影，匹配高亮计算
+基于候选文案，确认时回填原生 `inputLabel`（与候选相同则省略）。`realkeyword`、
+`showKeyword` 和默认词凭据不参与建议。若优先查询字段有值但不是安全文本，丢弃该行，
+避免代用户搜索次优字段；无有效候选或回填文案时用已校验文本保留可访问按钮。没有改变
+普通建议、推荐建议渠道、接口、账号边界或本机历史格式。
+
 发现区推荐按官方 M623:1386–1390 等待本机历史读取，再使用最近一条作为 lastQuery。
 Cumulus 同时等待已排队的本机历史更新；热搜可独立加载。等待期间离开空查询浮层或切换
 账号不会发送迟到的推荐请求，不向新会话传递旧账号的搜索词。
