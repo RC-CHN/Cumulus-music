@@ -5,6 +5,7 @@ import type { CloudDeleteTarget } from '../composables/useCloudDelete';
 import { cloudDeleteTarget } from '../services/cloudDelete';
 import Icon from './Icon.vue';
 import CloudCapacity from './cloud/CloudCapacity.vue';
+import CloudPlaybackLocator from './cloud/CloudPlaybackLocator.vue';
 import CloudSongTable from './cloud/CloudSongTable.vue';
 import { cloudSongColumns } from '../services/cloudSongs';
 import CloudTaskTable from './cloud/CloudTaskTable.vue';
@@ -73,6 +74,37 @@ const keyword = ref(query.value.keyword),
   omission = ref<{ epoch: string; id: string; title: string; choice: CloudAttachmentOmission }>();
 const tracks = computed(() => view.value?.tracks ?? []),
   uploads = computed(() => view.value?.uploads ?? []);
+const locatorScope = computed(() =>
+  JSON.stringify([
+    props.model.accountEpoch.value,
+    query.value.tab,
+    query.value.keyword,
+    query.value.sort,
+    query.value.descending,
+    query.value.offset,
+    query.value.limit,
+    view.value?.revision,
+  ]),
+);
+const locatedCloudId = computed(() => {
+  const player = props.player.view.value;
+  const id = props.currentId;
+  if (
+    query.value.tab !== 'uploaded' ||
+    loading.value ||
+    busy.value ||
+    uploadOpen.value ||
+    deletion.value ||
+    collecting.value ||
+    rowDialogOpen.value ||
+    view.value?.offset !== query.value.offset ||
+    player?.resourceKind !== 'cloud' ||
+    player.epoch !== props.model.accountEpoch.value ||
+    player.track?.id !== id
+  )
+    return;
+  return tracks.value.some(({ track }) => track.id === id) ? id : undefined;
+});
 const ids = computed(() =>
   query.value.tab === 'uploaded'
     ? tracks.value.map((t) => t.track.id)
@@ -567,6 +599,7 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
         </button>
       </div>
     </template>
+    <CloudPlaybackLocator :key="locatorScope" :host="pageRoot" :row-id="locatedCloudId" />
     <div v-if="view && view.total > query.limit" class="cloud-pagination">
       <button
         class="secondary"

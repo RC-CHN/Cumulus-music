@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from window_manager import launch
 
-LABELS = ['catalog_light','catalog_dark','sort_title_dark','second_page_dark','last_page_light','filtered_light','filtered_playing_light','empty_filter_light','query_failed_dark','query_recovered_dark','cached_remote_error_dark','remote_recovered_dark','tasks_empty_light','upload_light','upload_small_dark','upload_closed_small_dark','delete_confirm_light','delete_cancel_light','delete_rejected_dark','delete_partial_light','delete_confirmed_light','delete_unknown_dark','delete_unknown_reopened_dark','delete_unknown_read_dark','delete_reconciled_dark','account_replaced_light']
+LABELS = ['catalog_light','catalog_dark','sort_title_dark','second_page_dark','last_page_light','filtered_light','filtered_playing_light','empty_filter_light','locator_shown_light','locator_centered_light','query_failed_dark','query_recovered_dark','cached_remote_error_dark','remote_recovered_dark','tasks_empty_light','upload_light','upload_small_dark','upload_closed_small_dark','delete_confirm_light','delete_cancel_light','delete_rejected_dark','delete_partial_light','delete_confirmed_light','delete_unknown_dark','delete_unknown_reopened_dark','delete_unknown_read_dark','delete_reconciled_dark','account_replaced_light']
 
 
 def main():
@@ -36,6 +36,9 @@ def main():
     complete = json.loads((root/'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['cloudPageUi'] and complete['stageCount'] == len(LABELS)
     assert complete['cloudMetadataFallback'] and complete['writeCount'] == 4
+    locator = complete['locatorProof']
+    assert locator['sameCatalogIdRejected'] and locator['otherPageRejected'] and locator['playbackUnchanged']
+    assert locator['centerError'] <= 1.5 and 2800 <= locator['hideMs'] < 5000
     rows = {}
     for i, label in enumerate(LABELS,1):
         path=root/'first'/f'ux_{i:02}_{label}.json'
@@ -63,7 +66,7 @@ def main():
     assert rows['filtered_playing_light']['nativePlayer']['track']['id']=='1005'
     for name,row in rows.items():
         if name!='account_replaced_light': assert row['nativePlayer']['state']=='paused' and abs(row['nativePlayer']['position']-10)<.2
-    report=dict(ok=True,states=len(LABELS),screenshots=len(LABELS) if args.screenshots else 0,actualWebViews=1,syntheticDeleteRequests=4,cloudMetadataFallback=True,realMusicRequests=0,realAccountWrites=0,physicalDisplayVerified=False,physicalAudioOutputVerified=False)
+    report=dict(ok=True,states=len(LABELS),screenshots=len(LABELS) if args.screenshots else 0,actualWebViews=1,syntheticDeleteRequests=4,cloudMetadataFallback=True,locator=locator,realMusicRequests=0,realAccountWrites=0,physicalDisplayVerified=False,physicalAudioOutputVerified=False)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8'); print(json.dumps(report))
 
 if __name__ == '__main__': main()
