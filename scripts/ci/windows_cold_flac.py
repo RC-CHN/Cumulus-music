@@ -92,10 +92,10 @@ def stage_runtime(package, msys, working, *, require_package_flac=False):
     return runtime, origin, dlls, sorted(imports)
 
 
-def test_executable(log):
+def test_executable(log, *, repo=ROOT):
     args = ['cargo', 'test', '--locked', '-p', 'cumulus-core', '--lib', '--no-run',
             '--message-format=json']
-    result = subprocess.run(args, cwd=ROOT, capture_output=True, encoding='utf-8',
+    result = subprocess.run(args, cwd=repo, capture_output=True, encoding='utf-8',
                             errors='replace', check=False, timeout=600)
     log.write(result.stderr)
     if result.returncode:
@@ -104,7 +104,7 @@ def test_executable(log):
     log.flush()
     artifacts = [json.loads(line) for line in result.stdout.splitlines()]
     paths = {
-        (ROOT / item['executable']).resolve(strict=True)
+        (repo / item['executable']).resolve(strict=True)
         for item in artifacts
         if item.get('reason') == 'compiler-artifact' and item.get('executable')
         and item['target']['name'] == 'cumulus_core' and item['profile']['test']
@@ -138,7 +138,8 @@ def check_identity(receipt, runtime):
         raise ValueError('Windows native receipt does not identify the verified runtime')
 
 
-def verify(root, package, msys, native_audio_probe=None, *, require_package_flac=False):
+def verify(root, package, msys, native_audio_probe=None, *, require_package_flac=False,
+           core_test_binary=None):
     root.mkdir(parents=True, exist_ok=False)
     report = {
         'ok': False,
@@ -150,6 +151,7 @@ def verify(root, package, msys, native_audio_probe=None, *, require_package_flac
         'libflacArchiveSha256': FLAC_ARCHIVE_SHA256,
         'audioOutput': 'null',
         'optionalLimiterShipped': False,
+        'coreTestBinary': 'prebuilt' if core_test_binary is not None else 'local-cargo',
         'passed': [],
     }
     try:
@@ -160,7 +162,7 @@ def verify(root, package, msys, native_audio_probe=None, *, require_package_flac
             )
             report.update(libflacOrigin=origin, libflacPackaged=origin == 'package-stage',
                           dllSha256=dlls, libflacImports=imports)
-            test = test_executable(log)
+            test = core_test_binary if core_test_binary is not None else test_executable(log)
             system = Path(os.environ['SystemRoot'])
             excluded = {'PATH', 'MPV_DLL_DIR_CUMULUS', 'CUMULUS_FLAC_PROBE_LIBRARY',
                         'CUMULUS_LIMITER_PROBE_MPV'}
@@ -215,6 +217,8 @@ def main():
     parser.add_argument('--runtime', required=True, type=Path)
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--native-audio-probe', type=Path, help='same-build GUI probe inside the verified temporary runtime')
+    parser.add_argument('--core-test-binary', type=Path,
+                        help='use the core libtest harness restored from this CI attempt instead of compiling it')
     parser.add_argument('--require-package-flac', action='store_true', help='reject missing packaged FLAC rather than filling the private proof directory')
     args = parser.parse_args()
     if sys.platform != 'win32':
@@ -225,7 +229,8 @@ def main():
     verify(args.report.resolve(), args.runtime.resolve(strict=True),
            Path(os.environ['CUMULUS_MSYS2_ROOT']).resolve(strict=True),
            args.native_audio_probe.resolve(strict=True) if args.native_audio_probe else None,
-           require_package_flac=args.require_package_flac)
+           require_package_flac=args.require_package_flac,
+           core_test_binary=args.core_test_binary.resolve(strict=True) if args.core_test_binary else None)
 
 
 if __name__ == '__main__':

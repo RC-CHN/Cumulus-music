@@ -77,15 +77,21 @@ disabled by default.
 
 Windows native CI verification
 
-The existing Windows package job runs scripts/ci/windows_cold_flac.py
-after staging the exact media runtime. It creates a temporary proof copy
-of the package DLLs without changing the NSIS/ZIP or MSYS2 installation.
-It uses a staged or installed UCRT64 libFLAC only if the DLL matches the
-audited SHA-256. If it is absent from the package and the installed bytes
-are unavailable or different, it extracts only libFLAC.dll from the
-hash-locked MSYS2 1.5.0-2 archive. A different libFLAC already in the
-package is an error, not an override. Its PE architecture and libogg /
-libwinpthread imports are checked against the package closure.
+The Windows probe job builds the standalone cumulus-core library test
+harness with the same locked Cargo command used by the local verifier.
+The package-runtime job checks that executable's digest, size, commit,
+run, and attempt alongside its WebView probes, then executes the exact
+cold FLAC cases against the verified portable ZIP media runtime. It
+creates a temporary proof copy of the package DLLs without changing the
+NSIS/ZIP or MSYS2 installation. CI requires the packaged libFLAC to
+match the audited SHA-256. Its PE architecture and libogg/libwinpthread
+imports are checked against the package closure.
+
+A direct local invocation without a prebuilt test harness still uses
+Cargo. If the local invocation does not require packaged libFLAC and the
+package lacks it, the verifier can use the hash-matched UCRT64 installed
+DLL or extract it from the hash-locked MSYS2 1.5.0-2 archive. A different
+libFLAC already in the package is always an error.
 
 The test process has an absolute path for each DLL and a System32/Windows
 PATH. A dedicated Rust test refuses relative and missing SDK inputs even
