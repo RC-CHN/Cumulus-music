@@ -99,6 +99,15 @@ Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为�
 - [普通视频恢复审计](ordinary-video-pc-recovery.txt)复现了官方 PC 从卡片走入 MV 默认路由的行为，未找到可独立授权的普通视频播放链。[限幅器联合实验](limiter-native-pipeline-proof.txt)已在 Linux 跑通真实解码、有限缓冲、恢复限幅器和同一 libmpv 实例，验证跳转换代、尾帧及自然 EOF；正式播放器尚未启用该路径。
 - [搜索歌单](search-results-ui-contracts.txt)按官方标题下的第二行展示接口推荐理由；[播放最新](follow-new-song-contracts.txt)保留重复选中首曲时的原进度，并在首曲不可播时保留原队列。[动态会员扫码](desktop-member-contracts.txt)使用独立窗口和当前投放凭据，旧版本无法生成二维码；未验证真实开通、支付或礼券。
 - [听歌排行](profile-play-record-contracts.txt)恢复了用户主页入口、周榜和总榜、访客实时权限及本人播放次数。访客被拒绝时不请求榜单；同账号近期播放历史仍独立。[云盘元数据](cloud-metadata-recovery.txt)按官方规则补首位歌手，保留原云盘 ID；未找到 PC 端手动重新匹配链路。
+- 集成树 `4925610430d3e1808c432ce8164ba4a0b19c61d7` 用同一套生产前端和
+  原生探针实际核对了云盘三条流程：[歌词来源与空态/失败](playback-detail-lyric-follow.txt)
+  6 态、[当前云盘曲定位](cloud-song-table-ui-contracts.txt) 28 态、
+  [上传任务与原音频选中](cloud-task-table-ui-contracts.txt) 27 态。
+  Linux 实窗共 61 态和 61 张截图；证据索引为
+  `.build/ui-proof/phase202-cloud-combined/report.json`。定位实际居中，离开悬浮后
+  约 3.06 秒隐藏，不改原播放项；上传任务的原生文件校验实际执行，系统文件管理器
+  使用测试替身。48 项云盘核心和 20 项下载文件测试通过，前端 1040 项及类型/生产
+  构建、定向严格 Clippy 通过。不是 Windows、实体设备或实服账号证据。
 - [播客和有声书分类](search-discovery-ui-contracts.txt)恢复官方评分；[播放最新](follow-new-song-contracts.txt)在首曲没有线上授权时仅使用当前账号同一歌曲已验证的下载。[进程内 FLAC](limiter-inprocess-decoder.txt)验证了专有前瞻限幅器前的解码和样本跳转，仍未切换正式播放器；网络授权与输入边界见[源契约](limiter-authorized-source-contract.txt)。
 - [本人排行删除](profile-play-record-contracts.txt)支持按时期删除并在不确定时只读核对；[外部歌单](external-playlist-import-contracts.txt)支持按官方规则预览分享链接，未提交外部导入任务。[冷离线 FLAC](cold-offline-flac-handoff.txt)通过合成凭据、真实解码、原路径替换与会话撤销的专项验证，正式播放器未切换。
 - [用户主页笔记](profile-notes-contracts.txt)独立读取作者列表，复用动态详情和评论，保留返回焦点；[社区编辑器](community-composer-contracts.txt)支持五类附件搜索及账号隔离的本机草稿。[排行卡](profile-play-record-contracts.txt)按作者播放周榜，同源暂停和恢复保留播放实例。三项已过 Linux 合并版 WebView，未执行真实发布。
