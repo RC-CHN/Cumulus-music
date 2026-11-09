@@ -420,6 +420,10 @@ export function createTauriClient(): CoreClient {
     localCollectCancel: (epoch, receipt) => invoke('local_collect_cancel', { epoch, receipt }),
     localCommand: (command) => invoke('local_command', { command }),
     pickLocalDirectory: () => invoke('pick_local_directory'),
+    localDirectorySelection: () => invoke('local_directory_selection'),
+    stageLocalDirectory: (revision) => invoke('stage_local_directory', { revision }),
+    applyLocalDirectories: (revision, choices) =>
+      invoke('apply_local_directories', { revision, choices }),
     openLocalTrackDirectory: (id, revision) =>
       invoke('open_local_track_directory', { id, revision }),
     revealLocalFolder: (query, revision) => invoke('reveal_local_folder', { query, revision }),

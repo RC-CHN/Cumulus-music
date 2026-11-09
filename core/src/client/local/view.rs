@@ -56,6 +56,7 @@ pub(super) fn root(root: &WatchRoot) -> LocalRootView {
     let report = root.result.as_ref();
     LocalRootView {
         id: root.id.clone(),
+        checked: root.checked,
         path: root.path.to_string_lossy().into_owned(),
         enabled: root.enabled,
         status: root.status,

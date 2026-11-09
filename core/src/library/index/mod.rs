@@ -7,6 +7,7 @@ mod scan;
 mod view;
 use super::{
     LibraryItem, LocalRevision,
+    monitor::DirectoryScope,
     probe::{AudioProbe, Ffprobe},
     records::CueRecord,
 };
@@ -36,6 +37,7 @@ struct Index {
     files: BTreeMap<String, LibraryItem>,
     cues: BTreeMap<String, CueRecord>,
     hidden: BTreeMap<String, LocalRevision>,
+    directories: DirectoryScope,
 }
 
 impl LocalLibrary {
@@ -88,6 +90,11 @@ impl LocalLibrary {
             files,
             cues,
             hidden,
+            directories: if load_hidden {
+                DirectoryScope::read(tx)?
+            } else {
+                DirectoryScope::default()
+            },
         })
     }
     fn commit(&self, old: &Index, new: &Index, cancelled: &dyn Fn() -> bool) -> Result<()> {
