@@ -2109,25 +2109,29 @@ async fn download_categories_filter_before_pagination_and_keep_cloud_audio_with_
         .get("1", "download_tasks_v1", &original)
         .unwrap()
         .unwrap();
-    for i in 0..240_u64 {
-        let mut record = seed.clone();
-        let id = format!("{i:032x}");
-        record["id"] = json!(id);
-        record["song"] = json!({"id":10000+i,"name":format!("分类对照 {i:03}"),"ar":[{"name":"fixture"}],"al":{"name":"fixture"}});
-        record["origin"] = serde_json::to_value(match i % 4 {
-            0 => DownloadOrigin::Song,
-            1 => DownloadOrigin::Cloud {
-                file_name: "original.wav".into(),
-                file_size: 42,
-            },
-            2 => DownloadOrigin::Voice {
-                voice_id: i.to_string(),
-            },
-            _ => DownloadOrigin::Mv { resolution: 1080 },
+    f.store
+        .transaction(|tx| {
+            for i in 0..240_u64 {
+                let mut record = seed.clone();
+                let id = format!("{i:032x}");
+                record["id"] = json!(id);
+                record["song"] = json!({"id":10000+i,"name":format!("分类对照 {i:03}"),"ar":[{"name":"fixture"}],"al":{"name":"fixture"}});
+                record["origin"] = serde_json::to_value(match i % 4 {
+                    0 => DownloadOrigin::Song,
+                    1 => DownloadOrigin::Cloud {
+                        file_name: "original.wav".into(),
+                        file_size: 42,
+                    },
+                    2 => DownloadOrigin::Voice {
+                        voice_id: i.to_string(),
+                    },
+                    _ => DownloadOrigin::Mv { resolution: 1080 },
+                })?;
+                tx.put("1", "download_tasks_v1", &id, &record)?;
+            }
+            Ok(())
         })
         .unwrap();
-        f.store.put("1", "download_tasks_v1", &id, &record).unwrap();
-    }
     let query = DownloadQuery {
         tab: DownloadTab::Completed,
         category: DownloadCategory::Song,
@@ -2194,6 +2198,7 @@ async fn filtered_download_playback_uses_the_entire_order_not_the_visible_prefix
     let offline = OfflineLibrary::new(f.session.clone()).unwrap();
     let token = f.session.token().unwrap();
     let original_path = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let mut records = Vec::with_capacity(140);
     for i in 1..=140 {
         let mut record = seed.clone();
         let id = format!("{i:032x}");
@@ -2222,8 +2227,17 @@ async fn filtered_download_playback_uses_the_entire_order_not_the_visible_prefix
                 },
             )
             .unwrap();
-        f.store.put("1", "download_tasks_v1", &id, &record).unwrap();
+        records.push((id, record));
     }
+    // Keep native file verification and offline publication outside this fixture transaction.
+    f.store
+        .transaction(|tx| {
+            for (id, record) in records {
+                tx.put("1", "download_tasks_v1", &id, &record)?;
+            }
+            Ok(())
+        })
+        .unwrap();
     let query = DownloadQuery {
         tab: DownloadTab::Completed,
         category: DownloadCategory::Song,
