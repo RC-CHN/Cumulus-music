@@ -20,7 +20,11 @@ use std::{
 };
 
 #[derive(Default)]
-pub(crate) struct Pending(Mutex<Option<Vec<PathBuf>>>);
+pub(crate) struct Pending {
+    paths: Mutex<Option<Vec<PathBuf>>>,
+    #[cfg(windows)]
+    opening_epoch: std::sync::OnceLock<u64>,
+}
 
 impl Pending {
     pub(crate) fn from_args(mut args: impl Iterator<Item = OsString>) -> Self {
@@ -40,7 +44,7 @@ impl Pending {
             let Some(path) = first.to_str().and_then(|text| text.strip_prefix("--play=")) else {
                 // A lossless queue path is required, but the unsupported
                 // explicit activation must still suppress old-queue autoplay.
-                return Self(Mutex::new(Some(Vec::new())));
+                return Self::explicit(Vec::new());
             };
             vec![PathBuf::from(path)]
         } else {
@@ -52,15 +56,39 @@ impl Pending {
         if paths.len() > 8 || paths.iter().any(|path| !path.is_absolute()) {
             paths.clear();
         }
-        Self(Mutex::new(Some(paths)))
+        Self::explicit(paths)
+    }
+
+    fn explicit(paths: Vec<PathBuf>) -> Self {
+        Self {
+            paths: Mutex::new(Some(paths)),
+            #[cfg(windows)]
+            opening_epoch: std::sync::OnceLock::new(),
+        }
     }
 
     pub(crate) fn requested(&self) -> bool {
-        self.0.lock().is_ok_and(|pending| pending.is_some())
+        self.paths.lock().is_ok_and(|pending| pending.is_some())
     }
 
     pub(crate) fn take(&self) -> Option<Vec<PathBuf>> {
-        self.0.lock().ok()?.take()
+        self.paths.lock().ok()?.take()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn take_for_epoch(&self, epoch: u64) -> Option<Vec<PathBuf>> {
+        let mut pending = self.paths.lock().ok()?;
+        if pending.is_none() || self.opening_epoch.set(epoch).is_err() {
+            return None;
+        }
+        pending.take()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn blocks_startup(&self, epoch: &str) -> bool {
+        self.opening_epoch
+            .get()
+            .is_some_and(|current| epoch.parse::<u64>().ok() == Some(*current))
     }
 }
 

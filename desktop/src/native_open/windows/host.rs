@@ -6,7 +6,7 @@ use super::{
     stable::{Server, Stop},
     wire,
 };
-use crate::native_open::warm::{Reply, dispatch, ready_epoch};
+use crate::native_open::warm::{Reply, dispatch_windows, ready_windows};
 use std::{
     io,
     os::windows::io::{AsRawHandle, IntoRawHandle},
@@ -124,7 +124,7 @@ fn handle<R: Runtime>(
     access: &AccessShape,
     stopped: Arc<AtomicBool>,
 ) -> Option<Reply> {
-    let Some(epoch) = ready_epoch(app) else {
+    let Some(permit) = ready_windows(app) else {
         return Some(Reply::Unavailable);
     };
     if pipe
@@ -138,7 +138,7 @@ fn handle<R: Runtime>(
             .verify_connector(pipe.as_raw_handle())
         {
             Connector::Verified if access.verify_process(pipe.as_raw_handle(), true).is_ok() => {
-                dispatch(app, paths, stopped, Some(&epoch))
+                dispatch_windows(app, paths, stopped, permit)
             }
             Connector::RetireWorker => return None,
             _ => Reply::Unavailable,

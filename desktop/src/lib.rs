@@ -137,6 +137,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 messages::counts::window_visibility(window.app_handle(), false);
             }
             if matches!(event, tauri::WindowEvent::Destroyed) {
+                player::close(window);
                 if window.label() == "main" {
                     #[cfg(any(target_os = "linux", target_os = "windows"))]
                     if let Some(relay) = window.try_state::<native_open::platform::Relay>() {
@@ -169,7 +170,6 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                         .state::<watchman::collection::MeasurementBridge>()
                         .page_started();
                 }
-                player::close(window);
             }
         })
         .invoke_handler(|invoke| {
@@ -762,11 +762,24 @@ pub fn run() {
             }
             Ok(())
         })
-        .on_page_load(daily_notification::page_loaded)
+        .on_page_load(|webview, page| {
+            #[cfg(windows)]
+            if webview.label() == "main"
+                && page.event() == tauri::webview::PageLoadEvent::Started
+                && let Some(streams) = webview.try_state::<player::PlayerStreams>()
+            {
+                streams.stop("main", None);
+            }
+            daily_notification::page_loaded(webview, page);
+        })
         .build(context)
         .expect("could not start Cumulus")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
+                #[cfg(windows)]
+                if let Some(streams) = app.try_state::<player::PlayerStreams>() {
+                    streams.stop("main", None);
+                }
                 #[cfg(any(target_os = "linux", target_os = "windows"))]
                 if let Some(relay) = app.try_state::<native_open::platform::Relay>() {
                     relay.stop();
