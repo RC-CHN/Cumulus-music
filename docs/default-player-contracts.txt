@@ -112,13 +112,24 @@ Windows 暖转交候选（尚不进入主线／安装包）
   FFI 已通过独立 Windows GNU 链接/严格 Clippy，未在 Windows 运行。实际 Windows
   固定 NTFS 可执行 cargo test -p cumulus-desktop --locked --lib
   native_open::windows::profile::tests；重解析用例需相应建符号链接权限。
-- 合入前仍需补齐媒体与提交边界：媒体文件必须从验证卷打开持有句柄，MP3/FLAC
-  的探测不能在验权后另用普通路径重开。原生播放器订阅已排除结束任务，
-  队列持久提交前仍须再次校验窗口、会话和选中代次。连接令牌比较是普通桌面
-  令牌的保守接受范围，不能代替真实 Windows 受限线程与持有文件句柄验收；
-  不把当前候选当作可发布的 Windows 暖转交。
-  本地固定盘与无重解析的源文件前置实验见本地提交 a128070f89e8，
-  持有句柄的 FLAC 探测见 7eadfc3559fd；两者的原生 Windows 验收仍待补齐。
+- Windows 持有媒体候选只接受固定本地 NTFS 的普通 WAV/FLAC 文件。先通过
+  QueryDosDeviceW 读取当前盘符的直接本机磁盘设备名，再用 NtCreateFile
+  打开那个 NT 卷根，而不重新解析盘符。卷根和相对路径打开不跟随重解析；
+  远程/可移除卷、SUBST 子目录、UNC、流名、链接与需回迁数据的文件不进入。
+  元数据使用同一个持有文件：受支持 PCM WAV 由 Rust 解析，纯 FLAC 通过
+  受信 ffprobe 的 fd: 标准输入适配器，子进程从不接收媒体文件名。任一
+  检查失败不会回退到按路径读取。候选暂不接纳 MP3（尚未验证其同句柄
+  元数据链），也未接伴随歌词和本地 EQ 专用解码链。
+- Windows 核心候选的 cold/warm 方法与既有入口分开，未改变桌面激活或
+  关联。每批最多八个文件，只有在队列写事务最后通过账号、窗口和选中
+  代际栅栏后，才会装入本进程播放器。队列记录只有不透明查找键，不保存
+  可重开的路径或文件句柄；进程重启、账号切换和离开现有队列后不能用
+  旧键再开。MPV stock 解码读取原文件句柄，用独立逻辑游标处理 seek，
+  从不重新解析媒体路径。把同名文件换成不同内容不会改变现有持有对象。
+- 原生 Windows 固定 NTFS/reparse 验收以及打包 ffprobe 9.0.2 与实际
+  libmpv 的完整媒体验收须在 Windows 运行；GNU 交叉检查不算这些通过。
+  Windows 冷暖入口仍须接入逐订阅原生许可；真实 NTFS、连接令牌、文件解码、
+  原生窗口与持久队列交接均须实机验证。当前候选不作为已发布的 Windows 暖转交。
   平台依据：https://learn.microsoft.com/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient
   与 https://learn.microsoft.com/windows/win32/secauthz/restricted-tokens 。
 

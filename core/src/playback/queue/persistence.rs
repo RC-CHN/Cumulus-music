@@ -9,6 +9,13 @@ struct FmCommit<'a> {
     position: Option<Option<Value>>,
 }
 
+#[derive(Default)]
+struct CommitChecks<'a> {
+    fm: Option<FmCommit<'a>>,
+    more: Option<Option<bool>>,
+    final_guard: Option<&'a dyn Fn() -> Result<()>>,
+}
+
 impl PlaybackQueue {
     /// Same durable queue snapshot as the task/ledger observation immediately
     /// before a catalog file is submitted to a native decoder.
@@ -78,11 +85,13 @@ impl PlaybackQueue {
             true,
             None,
             intelligence,
-            Some(FmCommit {
-                expected: input,
-                position: checkpoint,
-            }),
-            None,
+            CommitChecks {
+                fm: Some(FmCommit {
+                    expected: input,
+                    position: checkpoint,
+                }),
+                ..CommitChecks::default()
+            },
         )?;
         Ok(if restore {
             FmRestoreOutcome::Restored(position)
@@ -129,7 +138,13 @@ impl PlaybackQueue {
         quality: Option<(&str, &QualityPreferences)>,
         intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
     ) -> Result<()> {
-        self.commit_owned_with_fm(candidate, release_fm, quality, intelligence, None, None)
+        self.commit_owned_with_fm(
+            candidate,
+            release_fm,
+            quality,
+            intelligence,
+            CommitChecks::default(),
+        )
     }
 
     pub(super) fn commit_more(
@@ -137,7 +152,37 @@ impl PlaybackQueue {
         candidate: QueueSnapshot,
         preference: Option<bool>,
     ) -> Result<()> {
-        self.commit_owned_with_fm(candidate, false, None, None, None, Some(preference))
+        self.commit_owned_with_fm(
+            candidate,
+            false,
+            None,
+            None,
+            CommitChecks {
+                more: Some(preference),
+                ..CommitChecks::default()
+            },
+        )
+    }
+
+    pub(super) fn commit_replacement(
+        &mut self,
+        candidate: QueueSnapshot,
+        release_fm: bool,
+        guard: Option<&dyn Fn() -> Result<()>>,
+    ) -> Result<()> {
+        let Some(guard) = guard else {
+            return self.commit_with_fm_release(candidate, release_fm);
+        };
+        self.commit_owned_with_fm(
+            candidate,
+            release_fm,
+            None,
+            None,
+            CommitChecks {
+                final_guard: Some(guard),
+                ..CommitChecks::default()
+            },
+        )
     }
 
     fn commit_owned_with_fm(
@@ -146,9 +191,13 @@ impl PlaybackQueue {
         release_fm: bool,
         quality: Option<(&str, &QualityPreferences)>,
         intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
-        fm: Option<FmCommit<'_>>,
-        more: Option<Option<bool>>,
+        checks: CommitChecks<'_>,
     ) -> Result<()> {
+        let CommitChecks {
+            fm,
+            more,
+            final_guard,
+        } = checks;
         super::super::queue_more::normalize(&mut candidate);
         candidate.validate()?;
         let unchanged_session = match (&intelligence, &self.intelligence) {
@@ -250,7 +299,13 @@ impl PlaybackQueue {
                     tx.delete(&self.owner, "fm-player-v1", "source")?;
                     tx.delete(&self.owner, "fm-player-v1", "failure")?;
                 }
-                tx.change_stamp()
+                let stamp = tx.change_stamp()?;
+                // Still inside the write transaction: a stale native
+                // selection must roll back every staged queue/owner change.
+                if let Some(guard) = final_guard {
+                    guard()?;
+                }
+                Ok(stamp)
             });
             if let Err(error) = result {
                 // No candidate state is published after a failed write. On a
@@ -275,11 +330,47 @@ impl PlaybackQueue {
             }
             self.store_stamp = Some(result?);
             self.persisted = Some(snapshot);
+        } else if let Some(guard) = final_guard {
+            guard()?;
         }
         self.state = candidate;
         self.intelligence_raw = intelligence_raw;
         self.intelligence = intelligence;
         self.revision = revision;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod guarded_native_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn native_commit_rechecks_authority_inside_the_write_transaction() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(dir.path()).unwrap());
+        let owner = "local-guest";
+        let mut queue = PlaybackQueue::new(Some(store.clone()), owner).unwrap();
+        queue
+            .replace(vec![json!({"id":"before"})], 0, json!({"kind":"songs"}))
+            .unwrap();
+        let saved = store.get(owner, "playback", "queue").unwrap();
+        let attempts = Cell::new(0);
+        let denied = || {
+            attempts.set(attempts.get() + 1);
+            Err(Error::StaleResponse)
+        };
+        assert!(matches!(
+            queue.replace_guarded_native(
+                vec![json!({"local_id":"held"})],
+                json!({"kind":"local", "nativeOpen":true}),
+                &denied,
+            ),
+            Err(Error::StaleResponse)
+        ));
+        assert_eq!(attempts.get(), 1);
+        assert_eq!(store.get(owner, "playback", "queue").unwrap(), saved);
+        assert_eq!(queue.selected().unwrap().resource["id"], "before");
     }
 }

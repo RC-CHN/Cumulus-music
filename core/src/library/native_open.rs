@@ -16,6 +16,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::{WindowsNativeOpenBatch, WindowsOpenedAudio};
+
 pub(crate) const MAX_NATIVE_FILES: usize = 8;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,26 +99,7 @@ pub(crate) fn inspect_opened_file(path: &Path, probe: &dyn AudioProbe) -> Result
     let metadata = if format == "wav" {
         // The same native PCM layout defines the queue duration and decoder.
         // No path-based probe or alternate audio stream gets to pick either.
-        let layout = pcm_wave::PcmWave::inspect(&mut file)?;
-        if fingerprint_metadata(file.metadata()?)? != fingerprint {
-            return Err(Error::State("native local audio changed"));
-        }
-        AudioMetadata {
-            format: Some("pcm_s16le".into()),
-            duration: layout.frames as f64 / f64::from(layout.rate),
-            title: path
-                .file_stem()
-                .and_then(|v| v.to_str())
-                .unwrap_or("")
-                .into(),
-            album: String::new(),
-            artists: Vec::new(),
-            bitrate: Some(u64::from(layout.rate) * pcm_wave::BYTES_PER_FRAME as u64 * 8),
-            sample_rate: Some(layout.rate),
-            channels: Some(2),
-            container: format.into(),
-            cover_bytes: None,
-        }
+        wav_metadata(&path, &mut file, &fingerprint)?
     } else {
         checked_audio_file(&path, &fingerprint)?;
         let metadata = probe.inspect(&path)?;
@@ -127,16 +113,48 @@ pub(crate) fn inspect_opened_file(path: &Path, probe: &dyn AudioProbe) -> Result
         metadata
     };
 
-    let local = LocalResource {
-        local_id: path_id(&path)?,
-        local_revision: LocalRevision::File {
-            fingerprint: fingerprint.clone(),
-        },
-        metadata,
-    };
-    let mut resource = serde_json::to_value(local)?;
+    let mut resource = resource_from_metadata(&path, fingerprint.clone(), metadata)?;
     resource["native_open_file"] = serde_json::to_value(OpenedFile { path, fingerprint })?;
     Ok(resource)
+}
+
+fn wav_metadata(
+    path: &Path,
+    file: &mut File,
+    fingerprint: &FileFingerprint,
+) -> Result<AudioMetadata> {
+    let layout = pcm_wave::PcmWave::inspect(file)?;
+    if &fingerprint_metadata(file.metadata()?)? != fingerprint {
+        return Err(Error::State("native local audio changed"));
+    }
+    Ok(AudioMetadata {
+        format: Some("pcm_s16le".into()),
+        duration: layout.frames as f64 / f64::from(layout.rate),
+        title: path
+            .file_stem()
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
+            .into(),
+        album: String::new(),
+        artists: Vec::new(),
+        bitrate: Some(u64::from(layout.rate) * pcm_wave::BYTES_PER_FRAME as u64 * 8),
+        sample_rate: Some(layout.rate),
+        channels: Some(2),
+        container: "wav".into(),
+        cover_bytes: None,
+    })
+}
+
+fn resource_from_metadata(
+    path: &Path,
+    fingerprint: FileFingerprint,
+    metadata: AudioMetadata,
+) -> Result<Value> {
+    Ok(serde_json::to_value(LocalResource {
+        local_id: path_id(path)?,
+        local_revision: LocalRevision::File { fingerprint },
+        metadata,
+    })?)
 }
 
 impl OpenedFile {

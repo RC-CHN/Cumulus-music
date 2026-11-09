@@ -321,3 +321,30 @@ a same-size/same-creation-time/same-modification-time replacement, confirms
 different full IDs, and rejects hard-linked files. The second requires both
 leaf and ancestor reparses to be rejected despite their targets being readable
 via ordinary paths. Neither fixture has run on Windows yet.
+
+
+Explicit Windows native media (candidate, independent of the library index)
+
+The rooted media candidate now reads the DOS drive mapping only as a namespace
+string. It accepts a direct local HarddiskVolume device, opens that NT root,
+and checks the live handle for a real fixed local NTFS root. It does not reopen
+the drive alias after the check. Sources on the live native queue retain a
+process-owned file from the same metadata probe through stock libmpv reading.
+The queue keeps only an opaque lookup key. Old persisted rows cannot reopen
+that path. Neither library scanning nor the existing indexed FLAC receipt is
+enabled on Windows by this candidate.
+
+Platform contracts: Microsoft QueryDosDeviceW (current mapping is the first
+string), NtCreateFile (root-relative and NT device names), OBJECT_ATTRIBUTES
+(OBJ_DONT_REPARSE), and FileFsDeviceInformation (remote/removable flags):
+- https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-querydosdevicew
+- https://learn.microsoft.com/windows/win32/api/winternl/nf-winternl-ntcreatefile
+- https://learn.microsoft.com/windows-hardware/drivers/ddi/wudfwdm/ns-wudfwdm-_object_attributes
+- https://learn.microsoft.com/openspecs/windows_protocols/ms-fscc/616b66d5-b335-4e1c-8f87-b4a55e8d3e4a
+
+On Windows with a fixed NTFS temp root, run the ignored
+`windows_rooted_wav_metadata_and_readers_keep_the_exact_open_object` and
+`windows_rooted_actor_loads_held_wav_after_filename_replacement` core lib
+tests; the latter uses actual libmpv with null output and the trusted runtime
+discovery rules. Run the separate held FFprobe test against the packaged
+executable. These native cases are not reported as passed by cross-compilation.
