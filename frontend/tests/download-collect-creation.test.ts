@@ -103,3 +103,34 @@ test('a verified first add can be explicitly continued, and an account switch ig
     ['create', 'status', 'add_created'],
   );
 });
+
+test('a definitive preflight failure allows a new explicit confirmation without a status read', async () => {
+  const calls: DownloadCollectCreationCommand[] = [];
+  const model = useDownloadCollectCreation(
+    {
+      async downloadCollectCreation(_epoch, _receipt, command) {
+        calls.push(command);
+        assert.equal(command.kind, 'create');
+        if (calls.length === 1) {
+          throw { code: 'download_create_not_started', message: '创建尚未发送，可以重试' };
+        }
+        return reply(operation('create', 'confirmed'), operation('tracks', 'confirmed'));
+      },
+    },
+    () => owner,
+    () => {},
+    () => {},
+    () => assert.fail('not expired'),
+  );
+  await model.create('合成歌单', false);
+  assert.equal(model.phase.value, 'prepared');
+  assert.equal(model.locked.value, false);
+  assert.match(model.notice.value, /尚未发送/);
+  assert.equal(calls.length, 1);
+  await model.create('修改后的名称', true);
+  assert.equal(model.phase.value, 'complete');
+  assert.deepEqual(
+    calls.map(({ kind }) => kind),
+    ['create', 'create'],
+  );
+});

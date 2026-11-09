@@ -113,7 +113,13 @@
       assert(e === epoch && typeof receipt === 'string' && receipt.length === 32, 'opaque task receipt and account');
       const entry = {receipt, command};
       commands.push(entry);
-      const reply = await native(e, receipt, command);
+      let reply;
+      try {
+        reply = await native(e, receipt, command);
+      } catch (error) {
+        entry.error = error?.code ?? String(error);
+        throw error;
+      }
       assert(reply.epoch === e && reply.value.receipt === receipt, 'same native creation receipt');
       entry.outcome = {
         create: reply.value.create.phase, add: reply.value.add?.phase ?? null,
@@ -132,6 +138,16 @@
     await capture('canceled');
 
     await open(ordinary.id);
+    await server('fail_create_preflight');
+    await submit('合成下载未发送', false);
+    await wait(() => phase() === 'prepared' && create() && !create().disabled &&
+      create().getAttribute('aria-disabled') !== 'true' &&
+      one('[data-download-create-notice]', picker())?.textContent.includes('创建尚未发送'),
+      'read failure before dispatch leaves the actual form editable');
+    assert(!check() && !field().disabled && commands.length === 1 &&
+      commands[0].error === 'download_create_not_started',
+      'definitely unsent is distinct from a missing acknowledgement');
+    await capture('preflight_not_sent');
     await submit('合成下载公开歌单', false);
     await wait(() => !picker() && commands.at(-1)?.outcome?.add === 'confirmed' &&
       one('.downloads-page')?.textContent.includes('已收藏到新歌单。'), 'create then add confirms in place');
@@ -162,8 +178,8 @@
     click(check());
     await wait(() => !picker() && commands.at(-1)?.outcome?.add === 'confirmed', 'read-only add reconciliation');
     await capture('add_reconciled');
-    assert(commands.map(({command}) => command.kind).join(',') === 'create,create,status,create,status',
-      'three explicit creates, two explicit readbacks, no replay');
+    assert(commands.map(({command}) => command.kind).join(',') === 'create,create,create,status,create,status',
+      'three creates dispatched, one unsent attempt, two explicit readbacks, no replay');
     await emit('complete', {ok:true, stageCount:count, realMusicRequests:0, realAccountWrites:0, commands});
   } catch (error) {
     await emit('failed', {ok:false, stageCount:count, last, error:String(error), commands});

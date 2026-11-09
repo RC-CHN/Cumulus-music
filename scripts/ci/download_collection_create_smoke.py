@@ -8,7 +8,7 @@ from pathlib import Path
 from window_manager import launch
 
 
-STAGES = ('form_prepared', 'canceled', 'confirmed', 'create_pending',
+STAGES = ('form_prepared', 'canceled', 'preflight_not_sent', 'confirmed', 'create_pending',
           'create_readback_only', 'add_pending', 'add_reconciled')
 
 
@@ -26,6 +26,11 @@ def verify(root, screenshots):
         assert len(list(output.glob('ux_*.png'))) == len(STAGES)
     stages = dict(zip(STAGES, map(read, paths), strict=True))
     assert all(value['actual'] for value in stages.values())
+    preflight = stages['preflight_not_sent']
+    assert preflight['phase'] == 'prepared' and preflight['createButton']
+    assert '创建尚未发送' in preflight['notice']
+    assert len(preflight['commands']) == 1
+    assert preflight['commands'][0]['error'] == 'download_create_not_started'
     assert stages['form_prepared']['focused'] == 'name'
     assert stages['create_pending']['focused'] == stages['add_pending']['focused'] == 'reconcile'
     assert not any(stages[name]['createButton'] for name in
@@ -39,13 +44,16 @@ def verify(root, screenshots):
         {'pid': '1003', 'trackIds': '["9010"]', 'op': 'add'},
     ]
     for name, (create_count, add_count) in zip(
-            STAGES, [(0, 0), (0, 0), (1, 1), (2, 1), (2, 1), (3, 2), (3, 2)], strict=True):
+            STAGES, [(0, 0), (0, 0), (0, 0), (1, 1), (2, 1), (2, 1), (3, 2), (3, 2)], strict=True):
         report = stages[name]['syntheticCollection']
         assert report['guardedCreatePayloads'] == creates[:create_count]
         assert report['guardedAddPayloads'] == report['inlineAddPayloads'] == adds[:add_count]
         assert (report['creates'], report['writes']) == (create_count, add_count)
     assert result['syntheticCollection'] == stages['add_reconciled']['syntheticCollection']
-    first, lost_create, recovered_create, lost_add, recovered_add = result['commands']
+    unsent, first, lost_create, recovered_create, lost_add, recovered_add = result['commands']
+    assert unsent['receipt'] == first['receipt'] and 'outcome' not in unsent
+    assert unsent['command']['name'] == '合成下载未发送'
+    assert first['command']['name'] == '合成下载公开歌单'
     assert len({first['receipt'], lost_create['receipt'], lost_add['receipt']}) == 3
     for sent, recovered in [(lost_create, recovered_create), (lost_add, recovered_add)]:
         assert sent['receipt'] == recovered['receipt']

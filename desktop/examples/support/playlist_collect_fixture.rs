@@ -132,6 +132,14 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 assert_eq!(args.as_object().unwrap().len(), 4);
                 s.sorted_pages.push((order.into(), page));
             }
+            if download_create_enabled()
+                && s.mode == "fail_create_preflight"
+                && !sorted
+                && args == &json!({"uid":"2","includeVideo":true,"offset":0,"limit":200})
+            {
+                s.mode = "success".into();
+                return Some(Err(Error::Transport("合成创建预读暂不可用".into())));
+            }
             if sorted && s.mode == "fail_list" {
                 return Some(Err(Error::Transport("合成歌单列表暂时不可用".into())));
             }

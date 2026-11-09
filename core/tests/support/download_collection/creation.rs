@@ -11,6 +11,7 @@ const NAME: &str = "合成下载收藏";
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Case {
     Success,
+    PreflightUnavailable,
     LostCreate,
     LateList,
     LostAdd,
@@ -68,6 +69,18 @@ impl Api for Native {
                         payload,
                         json!({"uid":"1","includeVideo":true,"offset":0,"limit":200})
                     );
+                    if self.case == Case::PreflightUnavailable
+                        && self
+                            .reads
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .filter(|p| *p == OWNED)
+                            .count()
+                            == 1
+                    {
+                        return Err(Error::Transport("synthetic failed preflight read".into()));
+                    }
                     let mut rows = vec![list("81", 1, 0)];
                     if self.case == Case::ExistingId
                         || writes > 0 && self.show_created.load(Ordering::Acquire)
@@ -274,6 +287,35 @@ async fn explicit_create_journals_the_exact_new_destination_and_one_add() {
             .collect::<Vec<_>>(),
         [CREATE, WRITE]
     );
+}
+
+#[tokio::test]
+async fn a_failed_preflight_creates_no_journal_and_can_be_explicitly_retried() {
+    let (f, api, epoch, receipt, _) = fixture(Case::PreflightUnavailable).await;
+    let error = f
+        .client
+        .download_collect_creation(&epoch, &receipt, create())
+        .await
+        .err()
+        .expect("offline preflight must not create");
+    assert!(matches!(
+        error,
+        Error::State("download collection create not sent")
+    ));
+    assert!(api.writes.lock().unwrap().is_empty());
+    assert!(
+        f.client
+            .download_collect_creation(&epoch, &receipt, status(false))
+            .await
+            .is_err()
+    );
+    let retry = f
+        .client
+        .download_collect_creation(&epoch, &receipt, create())
+        .await
+        .unwrap();
+    finished(&retry.value);
+    assert_eq!(api.writes.lock().unwrap().len(), 2);
 }
 
 #[tokio::test]
