@@ -109,6 +109,11 @@
   不伪造完成；结果提示和 DownloadOperations 保留原有恢复入口。
 
 验证与剩余边界
+- Linux phase139 使用真实 WebKitGTK、生产下载 IPC 和封闭服务，49 个状态、
+  49 张截图。节目 721 与音频 121 分开，菜单「查看评论(246)」进入节目
+  721；节目 722 返回同号歌曲线程时显示「查看评论」。读取只用两个节目 ID
+  与原始 wire type 4，没有音频 ID、真实账号或网络写入。另有 39 项定向
+  Rust 测试和前端全量测试；记录在 `.build/ui-proof/phase139-downloaded-voice/`。
 - 单元策略覆盖歌曲动作顺序、声音 ID 分流、清理中/取消中/读取失败/FM 等可用性；
   UI/文件证据按层记录在 ui-ux-validation.txt，不把测试数当作官方一致性比例。
 - `scripts/ci/download_page_smoke.py --menu` 在封闭 Linux WebKitGTK 验证 41 个状态，
