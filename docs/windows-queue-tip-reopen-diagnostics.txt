@@ -20,7 +20,8 @@ Daily/player, recommendation/focus, the named UI captures and Stop/exit. The
 Python driver retains the strict verdict and separately records only fixed
 milestone names (up to 64 from at most 256 KiB), known stage-file presence, and
 the normalized exit status, if available. The workflow uploads only these
-phase-specific JSON files as queue-tip-failure-receipts-windows-x64, with no raw
+phase-specific JSON files as queue-tip-failure-receipts-windows-webview-playback
+(previously queue-tip-failure-receipts-windows-x64), with no raw
 stderr, path, renderer payload, database, or memory dump. File presence does not
 mean its write completed or assertions passed. An empty trace does not identify
 what happened before the first breadcrumb. shutdown_stop_returned means only

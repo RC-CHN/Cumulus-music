@@ -72,27 +72,35 @@ class DraftValidation(unittest.TestCase):
 
 
 class RequiredJobs(unittest.TestCase):
-    def test_release_refuses_without_each_successful_linux_webview_job_before_package_download(self):
+    def test_release_refuses_without_each_successful_webview_before_package_download(self):
         repository = "owner/repo"
         sha = "release-sha"
         run = {"id": 12, "repository": {"full_name": repository},
                "head_repository": {"full_name": repository}, "workflow_id": 42,
                "path": ".github/workflows/ci.yml", "event": "push", "head_branch": "main",
                "head_sha": sha, "status": "completed", "conclusion": "success", "run_attempt": 1}
-        for lane in ("Linux WebView smoke", "Linux WebView probe build",
-                     "Linux WebView download, search and player smoke"):
-            successful = [
-                {"name": name, "status": "completed", "conclusion": "success"}
-                for name in publish.REQUIRED_JOBS - {lane}
-            ]
-            for failed in ([], [{"name": lane, "status": "completed", "conclusion": "failure"}]):
-                with self.subTest(lane=lane, failed=failed), \
+        webviews = ("Linux WebView smoke", "Linux WebView probe build",
+                    "Linux WebView download, search and player smoke",
+                    "Windows WebView (playback)", "Windows WebView (search-account)",
+                    "Windows WebView (catalog)")
+        all_names = ("Frontend and release rules", "Native (linux-x64)",
+                     "Native (windows-x64)", "CI gate", *webviews)
+        self.assertEqual(publish.REQUIRED_JOBS, set(all_names))
+        for webview in webviews:
+            for conclusion in (None, "failure"):
+                jobs = [
+                    {"name": name, "status": "completed",
+                     "conclusion": conclusion if name == webview else "success"}
+                    for name in all_names
+                    if name != webview or conclusion is not None
+                ]
+                with self.subTest(webview=webview, conclusion=conclusion), \
                      patch.dict(os.environ, {"GITHUB_REPOSITORY": repository,
                                              "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": sha}), \
                      patch("sys.argv", ["publish.py", "--version", "0.1.0", "--run-id", "12"]), \
                      patch("publish.git", return_value=sha), \
                      patch("publish.check_release", return_value=sha), \
-                     patch("publish.api", side_effect=[{"id": 42}, run, {"jobs": successful + failed}]), \
+                     patch("publish.api", side_effect=[{"id": 42}, run, {"jobs": jobs}]), \
                      patch("publish.subprocess.run") as command:
                     with self.assertRaisesRegex(AssertionError, "required CI jobs"):
                         publish.main()

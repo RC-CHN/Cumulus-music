@@ -420,7 +420,7 @@ jobs:
   package-windows:
     name: Package and verify (windows-x64)
     runs-on: windows-2022
-    # Packaging and GUI probes use the same verified media staging directory.
+    # Keep package-bound verification with the media build.
     timeout-minutes: 150
     defaults:
       run:
@@ -525,8 +525,90 @@ jobs:
           python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
           flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
           python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
-      - name: Windows native media and desktop WebView regression
+      - name: Verify local queue with the Windows media fixture encoder
         if: runner.os == 'Windows'
+        run: |
+          cargo build -p cumulus-desktop --example local_ui_probe --features custom-protocol --locked
+          python scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe.exe --root .build/ci-local-queue-windows --runtime .build/package-stage/windows-x64/native
+      - name: Bind shared Windows WebView inputs to this CI attempt
+        run: python scripts/ci/windows_webview_inputs.py stage
+      - name: Preserve shared Windows WebView inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-webview-inputs-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-inputs/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Preserve synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-windows-x64
+          # Archive first: path-escaping fixtures deliberately contain colons,
+          # which upload-artifact cannot accept as individual filenames.
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-windows-x64
+          path: .build/packages/windows-x64/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  windows-webview:
+    name: Windows WebView (${{ matrix.shard }})
+    needs: package-windows
+    runs-on: windows-2022
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [playback, search-account, catalog]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned toolchain
+        run: rustup show
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target
+          # Restore only. The Native Windows job owns Rust target cache writes.
+          key: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          restore-keys: |
+            rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-${{ runner.os }}-v1-
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: packages-windows-x64
+          path: .build/packages/windows-x64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-webview-inputs-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-inputs
+      - name: Verify and restore exact Windows WebView inputs
+        run: python scripts/ci/windows_webview_inputs.py restore
+      # Each runner keeps its own desktop and runs its checks serially.
+      # Keep the proof roots literal so diagnostics.py can discover them.
+      - name: Windows WebView regression (playback)
+        if: runner.os == 'Windows' && matrix.shard == 'playback'
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
           python scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe.exe --report .build/ci-native-audio-windows.json --runtime .build/package-stage/windows-x64/native
@@ -552,7 +634,6 @@ jobs:
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows-legacy --legacy
           cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
           python scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe.exe --root .build/ci-scroll-windows
-          cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           python scripts/ci/playback_power_guide_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-power-guide-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/system_master_volume_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-system-master-volume-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
@@ -585,6 +666,54 @@ jobs:
           python scripts/ci/download_page_smoke.py --mv-replay --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-mv-replay-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --menu --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-player-layout-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/song_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-song-menu-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_collect_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-collect-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/library_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-library-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/card_source_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-card-source-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-menu-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_queue_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-queue-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_batch_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-batch-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_batch_table_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-batch-table-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-sidebar-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_scroll_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-scroll-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-shortcuts-ui-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example mini_ui_probe --example local_ui_probe --features custom-protocol --locked
+          python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-intelligence-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-fm-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-feedback-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-pin-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-menu-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-menu-exit-windows --runtime .build/package-stage/windows-x64/native --exit
+          python scripts/ci/lyric_report_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-lyric-report-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-page-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-batch-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-menu-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_toolbar_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-toolbar-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_upload_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-upload-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_task_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-task-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_song_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-song-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_delete_context_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-delete-context-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-local-delete-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-local-resource-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe.exe --root .build/ci-local-cold-start-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-shortcuts-windows --runtime .build/package-stage/windows-x64/native --shortcuts
+          cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
+          python scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-desktop-lyrics-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/desktop_lyrics_smoke.py --embedded --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-embedded-lyrics-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-native-sidecar-lyrics-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-vinyl-lyric-credits-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-fonts-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
+          python scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe.exe --root .build/ci-output-settings-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
+          python scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe.exe --root .build/ci-startup-windows --runtime .build/package-stage/windows-x64/native
+      - name: Windows WebView regression (search-account)
+        if: runner.os == 'Windows' && matrix.shard == 'search-account'
+        run: |
           python scripts/ci/vinyl_display_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-display-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_comments_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-comments-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_comments_smoke.py --composer --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-composer-windows --runtime .build/package-stage/windows-x64/native
@@ -645,6 +774,53 @@ jobs:
           python scripts/ci/bundled_themes_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-bundled-themes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/remote_skin_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-remote-skins-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/member_welfare_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-member-welfare-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
+          python scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe.exe --root .build/ci-shortcuts-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
+          python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-detail-windows --account-detail --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-bindings-windows --account-bindings --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-profile-edit-windows --profile-edit --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-avatar-windows --account-avatar --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-device-removal-windows --device-removal --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-quick-login-windows --quick-login --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-active-switch-windows --active-switch --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-qr-legacy-windows --qr-status legacy --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-qr-jsk-windows --qr-status jsk --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/login_entry_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-login-entry-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example login_notice_ui_probe --features custom-protocol --locked
+          python scripts/ci/login_notice_smoke.py --binary .build/target/debug/examples/login_notice_ui_probe.exe --root .build/ci-login-notice-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example renewal_ui_probe --features custom-protocol --locked
+          python scripts/ci/session_renewal_smoke.py --binary .build/target/debug/examples/renewal_ui_probe.exe --root .build/ci-session-renewal-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example legacy_renewal_ui_probe --features custom-protocol --locked
+          python scripts/ci/legacy_session_renewal_smoke.py --binary .build/target/debug/examples/legacy_renewal_ui_probe.exe --root .build/ci-legacy-renewal-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example auth_ui_probe --features custom-protocol --locked
+          python scripts/ci/jsk_auth_smoke.py --binary .build/target/debug/examples/auth_ui_probe.exe --root .build/ci-jsk-auth-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example device_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/device_login_smoke.py --binary .build/target/debug/examples/device_login_ui_probe.exe --root .build/ci-device-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/device_login_smoke.py --binary .build/target/debug/examples/device_login_ui_probe.exe --root .build/ci-device-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
+          cargo build -p cumulus-desktop --example sms_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
+          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-send-failure-windows --runtime .build/package-stage/windows-x64/native --send-failure
+          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-send-failure-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy --send-failure
+          cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe.exe --root .build/ci-email-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe.exe --root .build/ci-email-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
+          cargo build -p cumulus-desktop --example question_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe.exe --root .build/ci-question-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe.exe --root .build/ci-question-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
+          cargo build -p cumulus-desktop --example phone_entry_ui_probe --features custom-protocol --locked
+          python scripts/ci/phone_entry_smoke.py --binary .build/target/debug/examples/phone_entry_ui_probe.exe --root .build/ci-phone-entry-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/phone_entry_smoke.py --binary .build/target/debug/examples/phone_entry_ui_probe.exe --root .build/ci-phone-entry-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
+          cargo build -p cumulus-desktop --example reuse_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe.exe --root .build/ci-reuse-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe.exe --root .build/ci-reuse-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
+      - name: Windows WebView regression (catalog)
+        if: runner.os == 'Windows' && matrix.shard == 'catalog'
+        run: |
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           python scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe.exe --root .build/ci-user-blacklist-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
@@ -711,96 +887,6 @@ jobs:
           python scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-preview-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-lyrics-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_lyrics_smoke.py --waterfall --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-lyrics-waterfall-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/song_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-song-menu-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/playlist_collect_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-collect-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/library_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-library-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/card_source_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-card-source-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/playlist_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-menu-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/playlist_queue_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-queue-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/playlist_batch_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-batch-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/playlist_batch_table_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-batch-table-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-sidebar-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/search_scroll_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-scroll-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-shortcuts-ui-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example mini_ui_probe --example local_ui_probe --features custom-protocol --locked
-          python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-intelligence-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-fm-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-feedback-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-pin-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-menu-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-menu-exit-windows --runtime .build/package-stage/windows-x64/native --exit
-          python scripts/ci/lyric_report_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-lyric-report-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-page-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-batch-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-menu-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_toolbar_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-toolbar-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_upload_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-upload-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_task_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-task-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_song_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-song-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_delete_context_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-delete-context-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-local-delete-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-local-resource-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe.exe --root .build/ci-local-cold-start-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe.exe --root .build/ci-local-queue-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-shortcuts-windows --runtime .build/package-stage/windows-x64/native --shortcuts
-          cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
-          python scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-desktop-lyrics-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/desktop_lyrics_smoke.py --embedded --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-embedded-lyrics-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-native-sidecar-lyrics-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-vinyl-lyric-credits-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-fonts-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
-          python scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe.exe --root .build/ci-shortcuts-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
-          python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-login-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-detail-windows --account-detail --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-bindings-windows --account-bindings --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-profile-edit-windows --profile-edit --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-avatar-windows --account-avatar --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-device-removal-windows --device-removal --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-quick-login-windows --quick-login --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-active-switch-windows --active-switch --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-qr-legacy-windows --qr-status legacy --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-qr-jsk-windows --qr-status jsk --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/login_entry_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-login-entry-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example login_notice_ui_probe --features custom-protocol --locked
-          python scripts/ci/login_notice_smoke.py --binary .build/target/debug/examples/login_notice_ui_probe.exe --root .build/ci-login-notice-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example renewal_ui_probe --features custom-protocol --locked
-          python scripts/ci/session_renewal_smoke.py --binary .build/target/debug/examples/renewal_ui_probe.exe --root .build/ci-session-renewal-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example legacy_renewal_ui_probe --features custom-protocol --locked
-          python scripts/ci/legacy_session_renewal_smoke.py --binary .build/target/debug/examples/legacy_renewal_ui_probe.exe --root .build/ci-legacy-renewal-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example auth_ui_probe --features custom-protocol --locked
-          python scripts/ci/jsk_auth_smoke.py --binary .build/target/debug/examples/auth_ui_probe.exe --root .build/ci-jsk-auth-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example device_login_ui_probe --features custom-protocol --locked
-          python scripts/ci/device_login_smoke.py --binary .build/target/debug/examples/device_login_ui_probe.exe --root .build/ci-device-login-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/device_login_smoke.py --binary .build/target/debug/examples/device_login_ui_probe.exe --root .build/ci-device-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
-          cargo build -p cumulus-desktop --example sms_login_ui_probe --features custom-protocol --locked
-          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-login-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
-          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-send-failure-windows --runtime .build/package-stage/windows-x64/native --send-failure
-          python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-send-failure-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy --send-failure
-          cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
-          python scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe.exe --root .build/ci-email-login-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe.exe --root .build/ci-email-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
-          cargo build -p cumulus-desktop --example question_login_ui_probe --features custom-protocol --locked
-          python scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe.exe --root .build/ci-question-login-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe.exe --root .build/ci-question-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
-          cargo build -p cumulus-desktop --example phone_entry_ui_probe --features custom-protocol --locked
-          python scripts/ci/phone_entry_smoke.py --binary .build/target/debug/examples/phone_entry_ui_probe.exe --root .build/ci-phone-entry-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/phone_entry_smoke.py --binary .build/target/debug/examples/phone_entry_ui_probe.exe --root .build/ci-phone-entry-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
-          cargo build -p cumulus-desktop --example reuse_login_ui_probe --features custom-protocol --locked
-          python scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe.exe --root .build/ci-reuse-login-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe.exe --root .build/ci-reuse-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
-          cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
-          python scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe.exe --root .build/ci-output-settings-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
-          python scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe.exe --root .build/ci-startup-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           python scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-rankings-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-windows --runtime .build/package-stage/windows-x64/native
@@ -844,10 +930,10 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-recovery-windows --runtime .build/package-stage/windows-x64/native --relay-recovery
       - name: Preserve Windows queue tip failure receipts
-        if: failure()
+        if: failure() && matrix.shard == 'playback'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: queue-tip-failure-receipts-windows-x64
+          name: queue-tip-failure-receipts-windows-webview-${{ matrix.shard }}
           path: |
             .build/ci-queue-more-tip-windows/first-failure-receipt.json
             .build/ci-queue-more-tip-windows/reopen-failure-receipt.json
@@ -861,20 +947,11 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: diagnostics-windows-x64
-          # Archive first: path-escaping fixtures deliberately contain colons,
-          # which upload-artifact cannot accept as individual filenames.
+          name: diagnostics-windows-webview-${{ matrix.shard }}
           include-hidden-files: true
           path: .build/diagnostics/synthetic-proofs.tar.gz
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: packages-windows-x64
-          path: .build/packages/windows-x64/
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
 
   linux-webview-probe:
     name: Linux WebView probe build
@@ -1569,7 +1646,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native-linux, native, package-linux, package-windows, linux-webview-probe, linux-webview, linux-webview-ux, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, native, package-linux, package-windows, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -1583,6 +1660,7 @@ jobs:
           LINUX_WEBVIEW_PROBE: ${{ needs.linux-webview-probe.result }}
           LINUX_WEBVIEW: ${{ needs.linux-webview.result }}
           LINUX_WEBVIEW_UX: ${{ needs.linux-webview-ux.result }}
+          WINDOWS_WEBVIEW: ${{ needs.windows-webview.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
           SMTC: ${{ needs.smtc-diagnostic.result }}
@@ -1596,6 +1674,7 @@ jobs:
           test "$LINUX_WEBVIEW_PROBE" = success
           test "$LINUX_WEBVIEW" = success
           test "$LINUX_WEBVIEW_UX" = success
+          test "$WINDOWS_WEBVIEW" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success
           else

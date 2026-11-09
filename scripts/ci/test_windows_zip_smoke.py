@@ -67,7 +67,7 @@ class WindowsZipProof(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'missing or mismatched Windows FLAC manifest'):
             self.check_decoder(fault='no-receipt')
 
-    def exercise(self, *, version='1.2.3', misplaced=False, changed=False):
+    def exercise(self, *, version='1.2.3', misplaced=False, changed=False, ci_identity=None):
         with tempfile.TemporaryDirectory() as folder, patch.dict('os.environ', {}, clear=True):
             root = Path(folder)
             commit = 'a' * 40
@@ -82,12 +82,13 @@ class WindowsZipProof(unittest.TestCase):
                 package.writestr(f'{top}/third-party/licenses/example', 'not executable')
             asset = dict(name=archive.name, bytes=archive.stat().st_size,
                          sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
-            manifest = dict(version=version, commit=commit, platform=PLATFORM, assets=[asset])
+            manifest = dict(version=version, commit=commit, platform=PLATFORM,
+                            ciRun='17', ciAttempt='2', assets=[asset])
             (root / f'manifest-{PLATFORM}.json').write_text(json.dumps(manifest), encoding='utf-8')
             if changed:
                 content = archive.read_bytes()
                 archive.write_bytes(bytes([content[0] ^ 1]) + content[1:])
-            portable = portable_runtime(root, commit, root)
+            portable = portable_runtime(root, commit, root, **(ci_identity or {}))
             self.assertEqual({file.name for file in portable.iterdir()}, REQUIRED)
             self.assertEqual((portable / 'cumulus.exe').read_bytes(), b'cumulus.exe')
 
@@ -103,3 +104,11 @@ class WindowsZipProof(unittest.TestCase):
     def test_rejects_same_size_changed_archive(self):
         with self.assertRaisesRegex(AssertionError, 'checksum mismatch'):
             self.exercise(changed=True)
+
+
+    def test_rejects_same_zip_from_another_ci_run_or_attempt(self):
+        self.exercise(ci_identity=dict(ci_run='17', ci_attempt='2'))
+        for field, identity in (('ciRun', dict(ci_run='18', ci_attempt='2')),
+                                ('ciAttempt', dict(ci_run='17', ci_attempt='1'))):
+            with self.subTest(field=field), self.assertRaisesRegex(AssertionError, field):
+                self.exercise(ci_identity=identity)
