@@ -128,3 +128,24 @@ Private sanitized evidence:
 It records the exact code marker, binary SHA-256, fixed logical paths and result
 counts. The earlier reuse-only missing-identity attempt remains separate and is
 not relabeled as success. No anonymous registration was attempted.
+
+2026-11-10 selected PC account resources and search
+-------------------------------------------------
+Exact Linux candidate 9149f502 restored the previously authorized PC account
+and matched the server account ID with the selected saved profile in memory.
+The production client then read the complete own playlist list and liked IDs,
+the exact 190-key assignment, result tabs, and the V3 comprehensive results.
+All six HTTPS and service responses were 200. The playlist sequence used the
+official EAPI form representation (includeVideo, limit and offset are strings
+inside the encrypted object), not the pre-serialization Rust JSON values.
+
+The first expanded probe denied that request locally because its guard expected
+numbers and a Boolean. It made no playlist request; the same run verified
+identity, liked IDs, and search only. The corrected probe passed the five
+scoped tests and strict Clippy before the successful read. It retained the
+original PC scope and configuration, did not request SDK tokens, config
+downloads, session renewal, or send a business write. Original main database
+hashes matched before and after; temporary copied state was removed. Evidence
+contains aggregate counts only: .build/ui-proof/phase192-integrated-main-flow/
+signed-live-account-resources-final.json. Real-account media playback, real
+account mutations, and Windows GUI are outside this Rust proof.
