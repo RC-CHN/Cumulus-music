@@ -235,6 +235,19 @@ export function useSearchResults(
     position.value = next;
     save();
   }
+  function resetPreviewPages() {
+    function firstPages(value: SearchPosition): SearchPosition {
+      if (!value.previewPositions) return value;
+      return { ...value, previewPositions: undefined };
+    }
+    position.value = firstPages(position.value);
+    const epoch = account?.epoch;
+    const saved = epoch && activeKey ? memory.get(activeKey, epoch) : undefined;
+    // Category changes can arrive while a cached comprehensive view is
+    // still restoring. Clear its rail positions even before it has a panel.
+    if (epoch && saved?.position.previewPositions)
+      memory.set(activeKey, { ...saved, position: firstPages(saved.position) }, epoch);
+  }
   function save() {
     if (view.value)
       memory.set(
@@ -493,6 +506,7 @@ export function useSearchResults(
     open,
     more,
     savePosition,
+    resetPreviewPages,
     dispose,
   };
 }

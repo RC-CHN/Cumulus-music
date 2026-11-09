@@ -91,6 +91,7 @@ const props = defineProps<{
   playbackState?: PlaybackStatus;
   currentVoiceId?: string;
   memory: SearchViewportMemory;
+  detailDeparture: () => boolean;
   searchId?: number;
   guestReady?: boolean;
 }>();
@@ -470,7 +471,11 @@ function trackFocusKey(row?: HTMLElement | null) {
     ? `song-row:${row.getAttribute('aria-rowindex')}:${row.dataset.trackId}`
     : undefined;
 }
-function checkpoint(focus = false, explicit?: HTMLElement) {
+function checkpoint(focus = false, explicit?: HTMLElement, freshPreviews = false) {
+  if (freshPreviews) {
+    previewPositions.value = {};
+    model.resetPreviewPages();
+  }
   if (!panel.value || (!explicit && (restoring || loading.value))) return;
   const active =
     explicit && panel.value.contains(explicit)
@@ -579,6 +584,7 @@ async function restore() {
   )
     return;
   const generation = loadGeneration;
+  const navigationFocus = document.activeElement;
   expandedLyrics.value = new Set(model.position.value.expandedLyrics ?? []);
   previewPositions.value = { ...model.position.value.previewPositions };
   await nextTick();
@@ -616,14 +622,28 @@ async function restore() {
         node.dataset.resultKey === position.focus ||
         (category.value === 'songs' && trackFocusKey(node) === position.focus),
     );
-    const controls = [
-      ...(card?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
-    ];
-    (
-      controls.find(
-        (n) => position.focusAction && n.dataset.resultAction === position.focusAction,
-      ) ?? controls[0]
-    )?.focus({ preventScroll: true });
+    if (card && !card.closest('[inert]')) {
+      const controls = [...card.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      (
+        controls.find(
+          (n) => position.focusAction && n.dataset.resultAction === position.focusAction,
+        ) ?? controls[0]
+      )?.focus({ preventScroll: true });
+    } else {
+      const rail = card?.closest('.search-carousel') ?? section?.querySelector('.search-carousel');
+      const active = document.activeElement;
+      // A reset may put the returning card on an inert page. Keep focus in
+      // its rail unless the user already moved to another control.
+      if (
+        active === document.body ||
+        (active === navigationFocus && active?.matches('.back-button'))
+      )
+        rail
+          ?.querySelector<HTMLButtonElement>(
+            '[data-grid-index]:not([inert]) .search-card-open:not(:disabled)',
+          )
+          ?.focus({ preventScroll: true });
+    }
   }
   restoring = false;
   maybeMore();
@@ -720,7 +740,8 @@ watch(
     props.searchId,
   ],
   () => {
-    if (activeCategory) checkpoint(true);
+    if (activeCategory)
+      checkpoint(true, undefined, activeCategory === 'all' && category.value !== 'all');
     hotDeparture = undefined;
     void load(true);
   },
@@ -728,7 +749,7 @@ watch(
 );
 onBeforeUnmount(() => {
   clearVoiceLink();
-  checkpoint(true, hotDeparture);
+  checkpoint(true, hotDeparture, activeCategory === 'all' && props.detailDeparture());
   loadGeneration++;
   observer?.disconnect();
   cancelAnimationFrame(frame);

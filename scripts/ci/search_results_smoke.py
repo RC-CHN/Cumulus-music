@@ -477,7 +477,20 @@ def main():
     if args.carousel:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['searchCarouselVerified'] and complete['searchBestThirdVerified'] and complete['stageCount'] == 6
+        assert complete['ok'] and complete['searchCarouselVerified'] and complete['searchBestThirdVerified'] and complete['stageCount'] == 7
+        before, resized, category_back = (
+            json.loads((first / name).read_text(encoding='utf-8')) for name in (
+                'ux_04_carousel_detail_back_reset.json', 'ux_05_carousel_same_columns_reset.json',
+                'ux_07_carousel_category_back.json'))
+        old, new = resized['beforeResize'], resized['afterResize']
+        assert old['columns'] == new['columns'] == 6 and old['start'] == 4 and new['start'] == 0
+        assert old['reads'] == new['reads'] == ['all'] and old['player'] == new['player']
+        assert before['start'] == 0 and before['rendererReads'] == ['all']
+        assert before['syntheticSearchCalls'] == resized['syntheticSearchCalls'] == 1
+        assert before['searchCarouselCalls'] == resized['searchCarouselCalls']
+        assert before['signedSearch']['calls'] == resized['signedSearch']['calls']
+        assert category_back['start'] == 0 and category_back['rendererReads'] == ['all', 'playlists']
+        assert category_back['syntheticSearchCalls'] == 2
         calls = complete['searchCarouselCalls']
         assert [call['path'] for call in calls] == ['/api/search/pc/complex/page'], calls
         assert calls[0]['args'] == {
@@ -487,9 +500,10 @@ def main():
         }, calls
         reads = signed_result_reads(complete, len(calls), 2)
         assert complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (7 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchCarouselVerified=True,
-                              searchBestThirdVerified=True, stageCount=6,
+                              searchBestThirdVerified=True, mountedResizeReset=True,
+                              detailBackReset=True, categoryBackReset=True, stageCount=7,
                               nativeAssignmentAndResultReads=reads, realAccountWrites=0)))
         return
     if args.filtered_pagination:

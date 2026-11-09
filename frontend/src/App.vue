@@ -1422,6 +1422,16 @@ function openSearchItem(item: SearchItem) {
     else music.notice.value = '此视频暂不可打开';
   }
 }
+function departingSearchForDetail() {
+  const kind = page.value.kind;
+  return (
+    kind === 'playlist' ||
+    kind === 'catalog' ||
+    kind === 'playlist_creator' ||
+    kind === 'mv' ||
+    (kind === 'podcasts' && podcasts.query.value.scope.kind === 'radio')
+  );
+}
 function openSearchHotTarget(target: SearchHotTarget, anchor: HTMLButtonElement) {
   if (page.value.kind !== 'search' || !signedIn.value) return;
   if (target.kind === 'song' || target.kind === 'voice') void playSearchHotTarget(target, anchor);
@@ -5556,6 +5566,7 @@ onUnmounted(() => {
               />
               <SearchResultsPage
                 :memory="searchMemory"
+                :detail-departure="departingSearchForDetail"
                 :search-id="page.kind === 'search' ? page.searchId : undefined"
                 v-else-if="page.kind === 'search' && searchOnline"
                 :account="account"

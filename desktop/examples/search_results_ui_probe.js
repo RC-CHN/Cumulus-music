@@ -8,9 +8,9 @@
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
   const key=(n,k)=>n.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
   let count=0,step='startup',holdCategory,holdKeyword,held=false,release,gate;
-  const songReads=[], filteredMvReads=[];
+  const songReads=[], filteredMvReads=[], carouselReads=[];
   const fetch=window.fetch;
-  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);if(window.__cumulusSearchFilteredPaginationProof&&query?.category==='mvs')filteredMvReads.push([query.offset,query.limit]);const delayed=query?.category===holdCategory&&(!holdKeyword||query?.keyword===holdKeyword)?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
+  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);if(window.__cumulusSearchFilteredPaginationProof&&query?.category==='mvs')filteredMvReads.push([query.offset,query.limit]);if(window.__cumulusSearchCarouselProof&&query)carouselReads.push(query.category);const delayed=query?.category===holdCategory&&(!holdKeyword||query?.keyword===holdKeyword)?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
   const hold=(category,keyword)=>{held=false;holdCategory=category;holdKeyword=keyword;gate=new Promise(r=>{const timer=setTimeout(r,10000);release=()=>{clearTimeout(timer);holdCategory=undefined;gate=undefined;r();};});};
   const fixture=async mode=>{window.__searchFixtureAck=false;await emit('search-fixture',{mode});await wait(()=>window.__searchFixtureAck,'fixture acknowledgement');};
   const ready=()=>one('#search-result-panel')?.getAttribute('aria-busy')==='false' && !one('.search-results-leave-active');
@@ -284,6 +284,7 @@
       const visible=()=>[...carousel().querySelectorAll('[data-grid-index]:not([inert])')].map(node=>Number(node.dataset.gridIndex));
       const next=()=>button('歌单预览下一页',carousel());
       const previous=()=>button('歌单预览上一页',carousel());
+      const openIndex=index=>carousel()?.querySelector(`[data-grid-index="${index}"] .search-card-open`);
       const reveal=()=>carousel().scrollIntoView({block:'center'});
       const settled=()=>carousel().querySelector('.search-carousel-rail').getAnimations().every(a=>a.playState!=='running'&&!a.pending);
       assert(carousel()?.querySelectorAll('[data-grid-index]').length===10&&artist()&&columns()===6,'dense carousel keeps at most ten rows and uses official columns');
@@ -306,10 +307,40 @@
       click(findSource());
       await wait(()=>one('.playlist-hero h1')?.textContent.includes('合成歌单 28'),'later carousel card opens its playlist');
       click(button('返回上一页'));
-      await wait(()=>current()===4&&findSource()===document.activeElement&&Math.abs(one('.search-result-panel').scrollTop-top)<=1,'Back restores exact section, page, scroll, and later-card focus');
-      await capture('carousel_back_focus');
+      await wait(()=>current()===0&&openIndex(0)===document.activeElement&&Math.abs(one('.search-result-panel').scrollTop-top)<=1,
+        'detail Back starts the first page, preserves vertical scroll and focuses a visible card in the same rail');
+      assert(findSource().closest('[inert]')&&previous().getAttribute('aria-disabled')==='true',
+        'original detail card remains offscreen when the rail restarts');
+      await capture('carousel_detail_back_reset',{start:current(),rendererReads:[...carouselReads]});
+      const invoke=(...args)=>window.__TAURI_INTERNALS__.invoke(...args);
+      const {epoch}=await invoke('account_snapshot');
+      const playback=async()=>{
+        const {state,playId,entryId,position,queueRevision}=await invoke('player_snapshot',{epoch});
+        const queue=await invoke('player_queue',{epoch});
+        return {state,playId,entryId,position,queueRevision,tracks:queue.tracks.map(entry=>entry.entryId)};
+      };
+      click(next());
+      await wait(()=>current()===4&&settled(),'later wide page before same-column resize');
+      openIndex(9).focus({preventScroll:true});
+      assert(document.activeElement===openIndex(9),'late card owns focus before resize');
+      const beforeResize={start:current(),columns:columns(),reads:[...carouselReads],player:await playback()};
+      const oldWidth=carousel().querySelector('.search-carousel-viewport').getBoundingClientRect().width;
+      await emit('resize',{width:1104,height:760});
+      await wait(()=>innerWidth===1104&&current()===0&&columns()===6&&document.activeElement===openIndex(0),
+        'same-column resize resets the first page and moves hidden focus');
+      const resizedViewport=carousel().querySelector('.search-carousel-viewport').getBoundingClientRect();
+      assert(resizedViewport.width<oldWidth&&previous().getAttribute('aria-disabled')==='true'&&
+        next().getAttribute('aria-disabled')==='false'&&visible().join(',')==='0,1,2,3,4,5'&&
+        Math.abs(openIndex(0).closest('[data-grid-index]').getBoundingClientRect().left-resizedViewport.left)<1,
+        'same-column resize actually renders the first group');
+      const afterResize={start:current(),columns:columns(),reads:[...carouselReads],player:await playback()};
+      assert(JSON.stringify(beforeResize.reads)===JSON.stringify(afterResize.reads)&&
+        JSON.stringify(beforeResize.player)===JSON.stringify(afterResize.player),'resize preserves search reads and player');
+      await capture('carousel_same_columns_reset',{beforeResize,afterResize});
+      click(next());
+      await wait(()=>current()===4&&settled(),'later wide page before narrow resize');
       await theme(760,540,'dark');
-      await wait(()=>columns()<6,'narrow carousel measures resized viewport');
+      await wait(()=>columns()<6&&current()===0,'narrow carousel measures resized viewport and resets');
       assert(best().querySelectorAll('[data-result-key]').length===3&&
         getComputedStyle(best().querySelector('.search-result-grid')).gridTemplateColumns.split(' ').length===1,'narrow best match stacks without dropping the third card');
       reveal();
@@ -320,12 +351,13 @@
       const last=current();
       click(previous());
       await wait(()=>current()<last&&settled(),'previous arrow returns to prior group');
-      const preserved=current();
+      assert(current()>0,'leave comprehensive while a later preview page is visible');
       click(button('查看全部歌单',carousel().closest('section')));
       await wait(()=>ready()&&one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true'&&!one('.search-carousel'),'section heading opens regular complete category');
       click(button('返回上一页'));
-      await wait(()=>current()===preserved&&settled(),'category Back restores the carousel independently of network');
-      await capture('carousel_category_back');
+      await wait(()=>current()===0&&settled()&&previous().getAttribute('aria-disabled')==='true',
+        'category Back mounts the first carousel page without another comprehensive read');
+      await capture('carousel_category_back',{start:current(),rendererReads:[...carouselReads]});
       await emit('complete',{ok:true,searchCarouselVerified:true,searchBestThirdVerified:true,stageCount:count,realAccountWrites:0});
       return;
     }

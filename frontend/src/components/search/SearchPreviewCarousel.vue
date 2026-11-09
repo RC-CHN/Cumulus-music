@@ -31,6 +31,7 @@ const start = computed(() => Math.min(lastStart.value, page.value * columns.valu
 const unit = computed(() => (width.value + gap.value) / columns.value);
 const visible = (index: number) => index >= start.value && index < start.value + columns.value;
 let observer: ResizeObserver | undefined;
+let resizeTimer: number | undefined;
 
 function move(step: -1 | 1) {
   const target = page.value + step;
@@ -39,19 +40,16 @@ function move(step: -1 | 1) {
   emit('position', Math.min(lastStart.value, target * columns.value));
 }
 
-function measure() {
-  const node = viewport.value;
-  if (!node) return;
-  const next = node.clientWidth;
-  if (!next || next === width.value) return;
+function resetForResize(node: HTMLElement, next: number) {
+  if (viewport.value !== node || !node.isConnected) return;
   const active = document.activeElement;
-  const cell =
-    active instanceof HTMLElement ? active.closest<HTMLElement>('[data-grid-index]') : null;
-  const index = cell && node.contains(cell) ? Number(cell.dataset.gridIndex) : undefined;
   moving.value = false;
   width.value = next;
-  if (index !== undefined && !visible(index)) {
+  if (props.position !== 0) emit('position', 0);
+  if (active instanceof HTMLElement && node.parentElement?.contains(active)) {
     void nextTick(() => {
+      if (viewport.value !== node || !node.isConnected) return;
+      if (active.isConnected && !active.closest('[inert]')) return;
       if (document.activeElement !== document.body && document.activeElement !== active) return;
       node
         .querySelector<HTMLButtonElement>(
@@ -62,18 +60,34 @@ function measure() {
   }
 }
 
+function stopObserving() {
+  observer?.disconnect();
+  window.clearTimeout(resizeTimer);
+}
 watch(
   viewport,
   (node) => {
-    observer?.disconnect();
+    stopObserving();
     if (!node) return;
-    observer = new ResizeObserver(measure);
+    width.value = node.clientWidth;
+    let lastBox: Pick<DOMRectReadOnly, 'width' | 'height'> | undefined;
+    observer = new ResizeObserver(([entry]) => {
+      if (!entry || viewport.value !== node) return;
+      const { width: next, height } = entry.contentRect;
+      if (!lastBox && !next) return;
+      if (lastBox?.width === next && lastBox.height === height) return;
+      const initial = !lastBox;
+      lastBox = { width: next, height };
+      window.clearTimeout(resizeTimer);
+      if (!next) return;
+      if (initial) width.value = next;
+      else resizeTimer = window.setTimeout(() => resetForResize(node, next), 50);
+    });
     observer.observe(node);
-    measure();
   },
   { flush: 'post' },
 );
-onBeforeUnmount(() => observer?.disconnect());
+onBeforeUnmount(stopObserving);
 </script>
 
 <template>
