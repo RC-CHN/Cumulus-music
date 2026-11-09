@@ -14,6 +14,10 @@ on:
         description: Also verify Windows SMTC through an independent OS session consumer
         type: boolean
         default: false
+      windows_retained_package_runtime:
+        description: Replay the retained Windows package-runtime trial only; no build or release gate
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,12 +38,13 @@ env:
 
 jobs:
   smtc-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_smtc_diagnostic
+    if: github.event_name == 'workflow_dispatch' && !inputs.windows_retained_package_runtime && inputs.windows_smtc_diagnostic
     uses: ./.github/workflows/windows-smtc-diagnostic.yml
   media-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
+    if: github.event_name == 'workflow_dispatch' && !inputs.windows_retained_package_runtime && inputs.windows_diagnostic
     uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
+    if: github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime
     name: Frontend and release rules
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -72,6 +77,7 @@ jobs:
           retention-days: 7
 
   native-linux:
+    if: github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime
     # Keep the established required job context used by the release verifier.
     name: Native (linux-x64)
     runs-on: ubuntu-24.04
@@ -152,6 +158,7 @@ jobs:
           key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   package-linux:
+    if: github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime
     name: Package and verify (linux-x64)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -308,6 +315,7 @@ jobs:
           retention-days: 3
 
   native:
+    if: github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime
     name: Native (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -424,6 +432,7 @@ jobs:
           key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-tree-${{ steps.rust-cache-source.outputs.tree }}
 
   windows-release-runtime:
+    if: github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime
     name: Windows release media runtime
     runs-on: windows-2022
     timeout-minutes: 45
@@ -1088,7 +1097,7 @@ jobs:
         id: msys2
         if: matrix.shard == 'package-runtime'
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
-        with:
+        with: &windows_package_proof_tools
           msystem: UCRT64
           update: true
           install: mingw-w64-ucrt-x86_64-binutils mingw-w64-ucrt-x86_64-ffmpeg
@@ -1097,7 +1106,7 @@ jobs:
         shell: pwsh
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
-        run: |
+        run: &windows_package_verify_proof_tools |
           $bin = (Resolve-Path -LiteralPath (Join-Path $env:CUMULUS_MSYS2_ROOT 'ucrt64/bin')).Path
           $ffmpeg = (Resolve-Path -LiteralPath (Join-Path $bin 'ffmpeg.exe')).Path
           $objdump = (Resolve-Path -LiteralPath (Join-Path $bin 'objdump.exe')).Path
@@ -1163,6 +1172,134 @@ jobs:
           name: diagnostics-windows-webview-${{ matrix.shard }}
           include-hidden-files: true
           path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-retained-package-runtime:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_retained_package_runtime && github.repository_id == '1432308824'
+    name: Windows retained package-runtime trial
+    runs-on: windows-2022
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: '2d913f04b4535efb6cb942305ed82cf98ed60455'
+          path: producer
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify producer jobs and retained artifact IDs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $api = "repos/$env:GITHUB_REPOSITORY/actions"
+          $trial = gh api "$api/runs/42686828896/attempts/1" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $trial.id -ne 42686828896 -or $trial.run_attempt -ne 1 -or
+              $trial.workflow_id -ne 398042187 -or $trial.repository.id -ne 1432308824 -or
+              $trial.head_repository.id -ne $trial.repository.id -or $trial.event -ne 'workflow_dispatch' -or
+              $trial.status -ne 'completed' -or $trial.path -ne '.github/workflows/ci.yml' -or
+              $trial.head_branch -ne 'validation/phase207-ci-runtime-overlap' -or
+              $trial.head_sha -ne '2d913f04b4535efb6cb942305ed82cf98ed60455') { throw 'Wrong producer attempt' }
+          $jobs = @{
+            '129395786152' = 'Frontend and release rules'
+            '129396663305' = 'Windows WebView probe build'
+            '129402539957' = 'Package and verify (windows-x64)'
+          }
+          $artifactSpecs = @(
+            @{ id=13704927653; job='129395786152'; name='frontend-dist'; bytes=787678; sha='b4dfeeaddb1a193529b7b9257f788ecb133aae9b694177dafa88a2c9f0e10e01' }
+            @{ id=13704973823; job='129396663305'; name='windows-webview-inputs-attempt-1'; bytes=36145244; sha='a5593006f7002f3449998770477d57e715be8468962de3c6e441c91b630d2ec9' }
+            @{ id=13705759388; job='129396663305'; name='windows-webview-probes-package-runtime-attempt-1'; bytes=94936337; sha='8c57a248c353ef88e367c7b78b8d3fb01131e698adc5c556fc30bee12526dc54' }
+            @{ id=13707187497; job='129402539957'; name='packages-windows-x64'; bytes=208945715; sha='ffc178986c3582dea4882d908dde007eb328f4cc09b53a1376c16aa91b9bc569' }
+          )
+          foreach ($jobId in $jobs.Keys) {
+            $job = gh api "$api/jobs/$jobId" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $job.id -ne [long]$jobId -or $job.run_id -ne $trial.id -or
+                $job.run_attempt -ne 1 -or $job.head_sha -ne $trial.head_sha -or
+                $job.name -ne $jobs[$jobId] -or $job.conclusion -ne 'success') { throw 'Wrong producer job' }
+            $lines = @(gh api "$api/jobs/$jobId/logs" --allow-escape-sequences)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot verify retained producer uploads' }
+            foreach ($spec in $artifactSpecs | Where-Object { $_.job -eq $jobId }) {
+              $pattern = 'Artifact ' + [regex]::Escape($spec.name) + '\.zip successfully finalized\. Artifact ID ' + $spec.id + '$'
+              if (@($lines -match $pattern).Count -ne 1) { throw 'Wrong producer artifact upload' }
+            }
+          }
+          foreach ($spec in $artifactSpecs) {
+            $artifact = gh api "$api/artifacts/$($spec.id)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $artifact.id -ne $spec.id -or $artifact.name -ne $spec.name -or
+                $artifact.expired -ne $false -or $artifact.size_in_bytes -ne $spec.bytes -or
+                $artifact.digest -ne "sha256:$($spec.sha)" -or $artifact.workflow_run.id -ne $trial.id -or
+                $artifact.workflow_run.head_sha -ne $trial.head_sha -or
+                $artifact.workflow_run.repository_id -ne $trial.repository.id -or
+                $artifact.workflow_run.head_repository_id -ne $trial.repository.id) { throw 'Wrong retained artifact' }
+          }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          run-id: '42686828896'
+          artifact-ids: '13704927653'
+          github-token: ${{ github.token }}
+          path: producer/.build/retained-frontend-dist
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          run-id: '42686828896'
+          artifact-ids: '13704973823'
+          github-token: ${{ github.token }}
+          path: producer/.build/windows-webview-inputs
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          run-id: '42686828896'
+          artifact-ids: '13705759388'
+          github-token: ${{ github.token }}
+          path: producer/.build/windows-webview-probes/package-runtime
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          run-id: '42686828896'
+          artifact-ids: '13707187497'
+          github-token: ${{ github.token }}
+          path: producer/.build/packages/windows-x64
+          merge-multiple: true
+      - name: Verify and seed the pinned MSYS2 installer cache
+        timeout-minutes: 5
+        working-directory: producer
+        run: python scripts/ci/windows_msys2_bootstrap.py
+      - name: Install the Windows proof tools
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with: *windows_package_proof_tools
+      - name: Verify the synthetic FLAC encoder and PE inspection tool
+        shell: pwsh
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: *windows_package_verify_proof_tools
+      - name: Run the original package-runtime proofs against retained inputs
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: python scripts/ci/windows_retained_package_runtime.py replay --producer producer --report .build/retained-runtime-proof/report.json
+      - name: Preserve synthetic proof receipts
+        if: always() && !cancelled() && hashFiles('.build/retained-runtime-proof/report.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-retained-package-runtime-attempt-${{ github.run_attempt }}
+          path: |
+            .build/retained-runtime-proof/report.json
+            producer/.build/ci-windows-cold-flac/report.json
+            producer/.build/ci-windows-cold-flac/tests.log
+            producer/.build/ci-windows-cold-flac/stereo-pcm-gui.json
+            producer/.build/ci-windows-zip/*.json
+            producer/.build/ci-local-queue-windows/run/complete.json
           if-no-files-found: error
           retention-days: 7
 
@@ -1816,7 +1953,7 @@ jobs:
   linux-webview:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
-    if: always()
+    if: always() && (github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime)
     needs: [linux-webview-shards, linux-webview-media]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2004,7 +2141,7 @@ jobs:
   linux-webview-ux:
     # Preserve the existing CI and release context while requiring all UX shards.
     name: Linux WebView download, search and player smoke
-    if: always()
+    if: always() && (github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime)
     needs: linux-webview-ux-shards
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2016,7 +2153,7 @@ jobs:
 
   gate:
     name: CI gate
-    if: always()
+    if: always() && (github.event_name != 'workflow_dispatch' || !inputs.windows_retained_package_runtime)
     needs: [frontend, native-linux, native, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
