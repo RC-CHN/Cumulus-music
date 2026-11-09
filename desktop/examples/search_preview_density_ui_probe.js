@@ -22,6 +22,8 @@
   const best = () => keys(one('.search-best-section'));
   const ready = () => panel()?.getAttribute('aria-busy') === 'false'
     && !one('.page-enter-active,.page-leave-active,.search-results-leave-active');
+  const sectionFor = (kind) =>
+    one(`[data-result-section^="search_block_${kind === 'mv' ? 'video' : 'artist'}:"]`);
   const cohorts = [
     { mode: 'c', expanded: false, dense: false, layout: null },
     { mode: 'density', expanded: false, dense: true, layout: 'compact_grid' },
@@ -32,8 +34,7 @@
     Array.from({ length }, (_, index) => `${kind}:${start + index}`);
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   function preview(video) {
-    const block = video ? 'video' : 'artist';
-    const section = one(`[data-result-section^="search_block_${block}:"]`);
+    const section = sectionFor(video ? 'mv' : 'artist');
     if (!section) return null;
     const carousel = one('.search-carousel', section);
     const grid = one('.search-result-grid[data-loaded-count]', section);
@@ -75,14 +76,65 @@
       && view.singleRow;
   }
   let epoch, paused, top, core, originalProjection, stopEvents, step = 'startup';
-  const events = [], commands = [], projections = [], geometry = [];
+  const events = [], commands = [], projections = [], geometry = [], restoredViews = [];
   const native = () => invoke('player_snapshot', { epoch });
   const presentation = () => invoke('pc_presentation', { epoch });
+  const paint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const samePaused = (state) => state.state === 'paused' && state.playId === paused.playId
     && state.entryId === paused.entryId && state.queueRevision === paused.queueRevision
     && Math.abs(state.position - paused.position) < .04;
   const assigned = (view, cohort) => view.epoch === epoch && !view.searchFooter
     && view.searchExpanded === cohort.expanded && view.searchDense === cohort.dense;
+  const bounds = (node) => {
+    const rect = node?.getBoundingClientRect();
+    return rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null;
+  };
+  function sectionFrame(kind) {
+    const scroller = panel(), section = sectionFor(kind);
+    if (!scroller || !section) return null;
+    const { left, top } = scroller.getBoundingClientRect();
+    const x = left + scroller.clientLeft, y = top + scroller.clientTop;
+    const viewport = {
+      left: Math.max(0, x), top: Math.max(0, y),
+      right: Math.min(innerWidth, x + scroller.clientWidth),
+      bottom: Math.min(innerHeight, y + scroller.clientHeight),
+    };
+    return {
+      viewport, windowSize: { width: innerWidth, height: innerHeight }, scrollTop: scroller.scrollTop,
+      section: bounds(section), heading: bounds(one(':scope > header', section)),
+      cards: all('.search-grid-cell:not([inert]) [data-result-key]', section)
+        .map((node) => ({ key: node.dataset.resultKey, bounds: bounds(node) })),
+    };
+  }
+  function inside(rect, viewport) {
+    return !!rect && rect.left < rect.right && rect.top < rect.bottom
+      && rect.left >= viewport.left - .5 && rect.right <= viewport.right + .5
+      && rect.top >= viewport.top + 1 && rect.bottom <= viewport.bottom - 1;
+  }
+  function fullyVisible(frame, expected) {
+    return !!frame && inside(frame.section, frame.viewport) && inside(frame.heading, frame.viewport)
+      && same(frame.cards.map(({ key }) => key), expected)
+      && frame.cards.every(({ bounds }) => inside(bounds, frame.viewport));
+  }
+  async function captureSection(stage, kind, expected) {
+    step = stage + '_' + kind;
+    const scroller = panel(), frame = sectionFrame(kind);
+    assert(frame?.section, 'preview section available for screenshot ' + step);
+    const center = ({ top, bottom }) => (top + bottom) / 2;
+    scroller.scrollTop = frame.scrollTop + center(frame.section) - center(frame.viewport);
+    await paint();
+    await wait(() => fullyVisible(sectionFrame(kind), expected), 'whole preview inside the WebView ' + step);
+    const visible = sectionFrame(kind);
+    assert(document.activeElement === cover(), 'scrolling to preview does not steal song focus');
+    assert(samePaused(await native()), 'scrolling to preview leaves paused native playback intact');
+    window.__searchFooterRecorded = '';
+    await emit(step, { kind, layoutStage: stage, frame: visible, focusPreserved: true });
+    await wait(() => window.__searchFooterRecorded === step, 'native actor and PNG receipt ' + step);
+    const after = sectionFrame(kind);
+    assert(document.activeElement === cover() && fullyVisible(after, expected)
+      && Math.abs(after.scrollTop - visible.scrollTop) < 1,
+      'preview stayed within the same painted viewport until capture receipt');
+  }
   async function refresh(cohort, nonce) {
     const before = await presentation();
     await emit('pc-presentation-fixture', { nonce, mode: cohort.mode });
@@ -107,7 +159,7 @@
       && matchesPreview(preview(true), cohort, true)
       && same(best(), expectedKeys('artist', 100, cohort.expanded ? 3 : 2)),
     'official one-row or carousel geometry, candidates, and best-match count');
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await paint();
     const artist = preview(false), mv = preview(true);
     assert(matchesPreview(artist, cohort, false) && matchesPreview(mv, cohort, true),
       'official geometry remains after paint');
@@ -128,6 +180,20 @@
     await emit(stage, { mode: cohort.mode, artist, mv, bestKeys: best(), publicPresentation,
       focusPreserved: true, scrollTop: panel().scrollTop, noOverflow: document.documentElement.scrollWidth <= innerWidth });
     await wait(() => window.__searchFooterRecorded === stage, 'native actor and PNG receipt ' + stage);
+    try {
+      // A single window need not fit both sections. Capture each full section
+      // before restoring the original visit for the next signed update.
+      await captureSection(stage, 'artist', artist.visibleKeys);
+      await captureSection(stage, 'mv', mv.visibleKeys);
+    } finally {
+      panel().scrollTop = top;
+      if (document.activeElement !== cover()) cover()?.focus({ preventScroll: true });
+      await paint();
+    }
+    step = stage + '_restored';
+    assert(document.activeElement === cover() && Math.abs(panel().scrollTop - top) < 1,
+      'restore the original focus and scroll before the next cohort');
+    restoredViews.push({ stage, scrollTop: panel().scrollTop, focusKey: cover().closest('[data-result-key]').dataset.resultKey });
   }
   try {
     await wait(async () => {
@@ -176,11 +242,13 @@
       await capture(cohorts[index], index);
     }
     await emit('complete', { ok: true, previewDensityVerified: true, stageCount: cohorts.length,
+      sectionStageCount: 2 * cohorts.length, restoredViews,
       refreshCommands: commands, presentationEvents: events, receiptProjections: projections,
       realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, step, error: String(error), stack: error.stack,
       current: { artist: preview(false), mv: preview(true), bestKeys: best() },
+      sectionFrames: { artist: sectionFrame('artist'), mv: sectionFrame('mv') }, restoredViews,
       geometry, refreshCommands: commands, receiptProjections: projections });
   } finally {
     stopEvents?.();

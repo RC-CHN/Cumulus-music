@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sqlite3
+import struct
 from pathlib import Path
 
 from motion_smoke import launch
@@ -235,11 +236,15 @@ def verify_preview_density(root, repository, screenshots):
     done = read(output / "complete.json")
     modes = [mode for mode, _, _, _ in PREVIEW_COHORTS]
     names = [f"ux_{index:02}_{mode}" for index, mode in enumerate(modes, 1)]
+    capture_names = [label for name in names for label in (name, name + "_artist", name + "_mv")]
     assert done["ok"] and done["previewDensityVerified"] and done["stageCount"] == len(names)
+    assert done["sectionStageCount"] == len(capture_names) - len(names)
     assert done["realMusicRequests"] == done["realAccountWrites"] == 0
     paths = sorted(output.glob("ux_*.json"))
-    assert [path.stem for path in paths] == names
-    stages = list(map(read, paths))
+    assert [path.stem for path in paths] == capture_names
+    captures = {path.stem: read(path) for path in paths}
+    stages = [captures[name] for name in names]
+    assert all(captures[name]["stage"] == name for name in capture_names)
     trace = done["signedSearch"]
     assert trace["transport"] == "MusicHttpClient" and trace["syntheticOnly"] and trace["sameProfileAccountRestore"]
     assert trace["footerCase"] == "c" and trace["serverMode"] == "both" and trace["serverGeneration"] == 3
@@ -265,9 +270,19 @@ def verify_preview_density(root, repository, screenshots):
     assert paused["state"] == "paused" and paused["position"] > 2
     assert [row["track"]["id"] for row in queue["tracks"]] == ["1"]
     assert done["nativeQueue"] == queue and done["presentationQueryCalls"] == queries
+    restored = done["restoredViews"]
+    assert len(restored) == len(names)
+
+    def assert_inside(rect, viewport):
+        assert viewport["left"] - .5 <= rect["left"] < rect["right"] <= viewport["right"] + .5
+        assert viewport["top"] + 1 <= rect["top"] < rect["bottom"] <= viewport["bottom"] - 1
+
     for index, (stage, (mode, expanded, dense, layout)) in enumerate(zip(stages, PREVIEW_COHORTS)):
+        name = names[index]
         assert stage["mode"] == mode and stage["focusPreserved"] and stage["noOverflow"]
         assert abs(stage["scrollTop"] - 70) < 1
+        assert restored[index]["stage"] == name and restored[index]["focusKey"] == "song:1"
+        assert abs(restored[index]["scrollTop"] - stage["scrollTop"]) < 1
         assert stage["presentationQueryCalls"] == queries, "layout update must not replay search"
         assert stage["syntheticSearchCalls"] == done["syntheticSearchCalls"], "unexpected additional fixture search call"
         assert stage["audioFactoryCount"] == 1 and stage["nativeQueue"] == queue
@@ -302,6 +317,24 @@ def verify_preview_density(root, repository, screenshots):
             assert row["allKeys"] == [
                 f"{kind}:{item}" for item in range(first, first + (candidates if expanded else visible))
             ]
+            capture = captures[f"{name}_{kind}"]
+            assert capture["kind"] == kind and capture["layoutStage"] == name and capture["focusPreserved"]
+            assert capture["nativeQueue"] == queue and capture["presentationQueryCalls"] == queries
+            assert capture["audioFactoryCount"] == 1
+            assert capture["syntheticSearchCalls"] == done["syntheticSearchCalls"]
+            capture_player = capture["nativePlayer"]
+            assert all(capture_player[key] == paused[key] for key in ("state", "playId", "entryId", "queueRevision"))
+            assert abs(capture_player["position"] - paused["position"]) < .04
+            frame = capture["frame"]
+            assert frame["scrollTop"] > stage["scrollTop"]
+            viewport, window_size = frame["viewport"], frame["windowSize"]
+            assert 0 <= viewport["left"] < viewport["right"] <= window_size["width"]
+            assert 0 <= viewport["top"] < viewport["bottom"] <= window_size["height"]
+            assert_inside(frame["section"], viewport)
+            assert_inside(frame["heading"], viewport)
+            assert [card["key"] for card in frame["cards"]] == row["visibleKeys"]
+            for card in frame["cards"]:
+                assert_inside(card["bounds"], viewport)
     assert all(stages[1][kind]["columns"] > stages[0][kind]["columns"] for kind in ("artist", "mv")), (
         "fixture width must visibly distinguish the two official single-row spans"
     )
@@ -311,10 +344,20 @@ def verify_preview_density(root, repository, screenshots):
     locale = read(output / "locale.json")
     assert locale["numeric"] == "C"
     assert all(locale[key].casefold().replace("-", "") == "en_us.utf8" for key in ("messages", "characters"))
-    pictures = sorted(path.stem for path in output.glob("ux_*.png"))
-    assert pictures == (names if screenshots else [])
+    pictures = sorted(output.glob("ux_*.png"))
+    markers = sorted(output.glob("ux_*.captured"))
+    expected = capture_names if screenshots else []
+    assert [path.stem for path in pictures] == [path.stem for path in markers] == expected
+    assert all(bool(capture.get("captureHandshake")) == screenshots for capture in captures.values())
+    for path, marker in zip(pictures, markers):
+        assert marker.read_text(encoding="utf-8") == "captured\n"
+        with path.open("rb") as image:
+            header = image.read(24)
+        assert header[:16] == b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" and len(header) == 24
+        assert min(struct.unpack(">II", header[16:])) > 0
     return dict(ok=True, actualWebView=True, genuineSignedPcTransport=True, sameCredentialRestore=True,
-                stageCount=len(names), screenshots=len(pictures), fullAssignmentReads=4, comprehensiveSearchReads=2,
+                stageCount=len(names), sectionStageCount=len(capture_names) - len(names),
+                screenshots=len(pictures), fullAssignmentReads=4, comprehensiveSearchReads=2,
                 nativeReceiptProjections=3, nativeNullPlaybackVerified=True, locale=locale,
                 layouts=[{"cohort": mode, "more2": expanded, "efficiency": dense,
                           "artistColumns": stage["artist"]["columns"], "mvColumns": stage["mv"]["columns"]}
