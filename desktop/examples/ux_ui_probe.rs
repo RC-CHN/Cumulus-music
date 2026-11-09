@@ -1341,16 +1341,23 @@ fn main() {
                 .expect("trusted instrumented fixture EQ adapter")).canonicalize()?;
             let paths = tone_geometry::prepare(&root, &path)?;
             client = client.with_audio_factory(move || Ok(Box::new(tone_geometry::Audio::open(paths.clone(), path.clone())?)));
-        } else if peq_proof || device_peq_proof {
+        } else if peq_proof || device_peq_proof || audio_effect_tabs_proof {
             let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER")
                 .expect("trusted synthetic PEQ adapter"));
             let wave = relay_fixture::wave(&root)?;
             let directory_graphic_eq_unavailable = device_peq_proof && !device_source_bypass_proof;
+            let count = factory_count.clone();
             client = client
                 .with_effect_material_backend(Arc::new(effect_peq_fixture::Material))
-                .with_audio_factory(move || Ok(Box::new(effect_peq_fixture::Audio::open(
-                    wave.clone(), path.clone(), directory_graphic_eq_unavailable,
-                )?)));
+                .with_audio_factory(move || {
+                    let audio = effect_peq_fixture::Audio::open(
+                        wave.clone(), path.clone(), directory_graphic_eq_unavailable,
+                    )?;
+                    if audio_effect_tabs_proof {
+                        count.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                    }
+                    Ok(Box::new(audio))
+                });
         } else if motion_proof {
             let elapsed = factory_elapsed.clone();
             let count=factory_count.clone();
@@ -1471,7 +1478,7 @@ fn main() {
                 value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());
                 value["effectDirectoryMaterialGets"]=effect_peq_fixture::report()["materialGets"].clone();
             }
-            if peq_proof || device_peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
+            if peq_proof || device_peq_proof || audio_effect_tabs_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if device_source_bypass_proof {
                 value["headphoneSourceCalls"]=json!(effect_directory_fixture::source_calls());
             }

@@ -2,10 +2,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { AccountView } from '../services/contracts';
+import { equalizerTone, equalizerToneEnabled } from '../services/equalizer';
 import Icon from './Icon.vue';
 import EffectDirectory from './EffectDirectory.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
+import LocalEqualizerMaster from './LocalEqualizerMaster.vue';
 
 const props = defineProps<{ account: AccountView; player: PlayerModel }>();
 const emit = defineEmits<{ close: []; login: [] }>();
@@ -17,13 +19,50 @@ const routes = [
 type Tab = (typeof routes)[number]['key'];
 const active = ref<Tab>('catalogue');
 const online = ref(navigator.onLine);
-const view = props.player.view;
+const { view, ready } = props.player;
 const title = useId();
 const dialog = ref<HTMLDialogElement>();
 const tablist = ref<HTMLElement>();
 const activeRoute = computed(() => routes.find((route) => route.key === active.value)!);
 const tabId = (key: Tab) => `${title}-tab-${key}`;
 const panelId = (key: Tab) => `${title}-panel-${key}`;
+const selectedLocalEqualizer = computed(() => {
+  const current = view.value;
+  const eq = current?.equalizer;
+  if (
+    !ready.value ||
+    !current ||
+    current.epoch !== props.account.epoch ||
+    current.deviceParametric ||
+    current.boundParametric ||
+    !eq
+  )
+    return;
+  // An open master bit is the initial local default, not a selected effect.
+  // An explicitly enabled flat GEQ is still a selection; saved gains alone are not.
+  const { bass_db, treble_db } = equalizerTone(eq.settings);
+  if (
+    eq.settings.enabled ||
+    (equalizerToneEnabled(eq.settings) && (bass_db !== 0 || treble_db !== 0))
+  )
+    return eq;
+});
+const showLocalMaster = computed(() => {
+  const eq = selectedLocalEqualizer.value;
+  return (
+    !!eq &&
+    !eq.damaged &&
+    !eq.source_bypassed &&
+    (eq.status === 'configured' || eq.status === 'processing')
+  );
+});
+const canToggleLocalMaster = () => showLocalMaster.value;
+const localMasterIssue = computed(
+  () =>
+    active.value !== 'equalizer' &&
+    !!selectedLocalEqualizer.value &&
+    (props.player.equalizerDraft.blocked.value || selectedLocalEqualizer.value.status === 'failed'),
+);
 
 function focusTab() {
   tablist.value?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus({
@@ -84,6 +123,12 @@ watch(
   () => [props.account.epoch, props.account.status],
   () => emit('close'),
 );
+watch(showLocalMaster, async (visible) => {
+  const focused = document.activeElement;
+  if (visible || !focused?.closest('.audio-effects-master')) return;
+  await nextTick();
+  if (dialog.value?.open && document.activeElement === document.body) focusTab();
+});
 onMounted(() => {
   updateNetwork();
   dialog.value?.showModal();
@@ -110,22 +155,35 @@ onUnmounted(() => {
         <Icon name="close" />
       </button>
     </header>
-    <nav ref="tablist" role="tablist" aria-label="音效页签" @keydown="keyboard">
-      <button
-        v-for="route in routes"
-        :id="tabId(route.key)"
-        :key="route.key"
-        type="button"
-        role="tab"
-        :data-audio-effect-tab="route.key"
-        :aria-selected="active === route.key"
-        :aria-controls="panelId(route.key)"
-        :tabindex="active === route.key ? 0 : -1"
-        @click="activate(route.key)"
-      >
-        {{ route.label }}
-      </button>
-    </nav>
+    <div class="audio-effects-tab-bar">
+      <nav ref="tablist" role="tablist" aria-label="音效页签" @keydown="keyboard">
+        <button
+          v-for="route in routes"
+          :id="tabId(route.key)"
+          :key="route.key"
+          type="button"
+          role="tab"
+          :data-audio-effect-tab="route.key"
+          :aria-selected="active === route.key"
+          :aria-controls="panelId(route.key)"
+          :tabindex="active === route.key ? 0 : -1"
+          @click="activate(route.key)"
+        >
+          {{ route.label }}
+        </button>
+      </nav>
+      <LocalEqualizerMaster
+        v-if="showLocalMaster"
+        class="audio-effects-master"
+        :player="player"
+        :can-toggle="canToggleLocalMaster"
+        in-header
+      />
+    </div>
+    <p v-if="localMasterIssue" class="audio-effects-master-issue" role="status">
+      均衡器设置尚未确认。
+      <button type="button" @click="activate('equalizer')">查看均衡器</button>
+    </p>
     <section
       v-for="route in routes"
       :id="panelId(route.key)"
@@ -166,6 +224,7 @@ onUnmounted(() => {
           embedded
           :account="account"
           :player="player"
+          :master-in-header="showLocalMaster"
           @close="emit('close')"
           @login="emit('login')"
         />
@@ -203,12 +262,26 @@ onUnmounted(() => {
   flex: none;
   padding-inline: 24px 14px;
 }
-.audio-effects-panel nav {
+.audio-effects-tab-bar {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   flex: none;
-  gap: 24px;
+  gap: 12px;
   padding-inline: 24px;
   border-block-end: 1px solid var(--line);
+}
+.audio-effects-panel nav {
+  display: flex;
+  gap: 24px;
+}
+.audio-effects-master-issue {
+  margin: 8px 24px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.audio-effects-master-issue button {
+  color: var(--accent);
 }
 .audio-effects-panel [role='tab'] {
   position: relative;
@@ -247,8 +320,20 @@ onUnmounted(() => {
   margin-block: 12px;
 }
 @media (max-width: 540px) {
+  .audio-effects-tab-bar {
+    padding-inline: 14px;
+  }
+  .audio-effects-panel nav {
+    gap: 12px;
+  }
   .audio-effects-content {
     padding-inline: 14px;
+  }
+}
+@media (max-width: 380px) {
+  .audio-effects-tab-bar {
+    flex-wrap: wrap;
+    gap: 0 12px;
   }
 }
 </style>

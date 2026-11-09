@@ -87,6 +87,11 @@ export function useEqualizerDraft(
     schedule();
   }
 
+  function toggleMaster() {
+    const value = settings.value;
+    if (value) stage({ ...value, master_bypassed: !value.master_bypassed });
+  }
+
   async function send(recover: boolean) {
     const base = current();
     if (!base || !draft.value || pending.value || blocked.value !== recover) return;
@@ -167,6 +172,7 @@ export function useEqualizerDraft(
     blocked,
     error,
     stage,
+    toggleMaster,
     applyDraft: () => send(true),
     discard,
     reset,

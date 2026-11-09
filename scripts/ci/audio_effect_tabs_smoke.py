@@ -8,13 +8,17 @@ import sys
 from window_manager import launch
 
 STAGES = {
-    'offline_default': ('catalogue', False, 0),
-    'offline_equalizer': ('equalizer', False, 0),
-    'online_catalogue': ('catalogue', True, 1),
-    'device_brands': ('devices', True, 2),
-    'device_models': ('devices', True, 3),
-    'online_equalizer': ('equalizer', True, 3),
-    'menu_default': ('catalogue', True, 4),
+    # Tab, connectivity, number of catalogue/device requests, local switch, EQ revision delta.
+    'offline_default': ('catalogue', False, 0, None, 0),
+    'offline_equalizer': ('equalizer', False, 0, None, 0),
+    'offline_equalizer_selected': ('equalizer', False, 0, True, 1),
+    'offline_catalogue_master_off': ('catalogue', False, 0, False, 2),
+    'online_catalogue': ('catalogue', True, 1, False, 2),
+    'device_brands': ('devices', True, 2, False, 2),
+    'device_models': ('devices', True, 3, False, 2),
+    'device_master_on': ('devices', True, 3, True, 3),
+    'online_equalizer': ('equalizer', True, 3, True, 3),
+    'menu_default': ('catalogue', True, 4, True, 3),
 }
 CATALOGUE = {'path': '/api/usertool/sound/queryAllSound', 'args': {'exposeType': 5}}
 WIRE = [
@@ -33,6 +37,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path, required=True)
+    parser.add_argument('--filter', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -46,6 +51,7 @@ def main():
            if not key.upper().startswith(('CUMULUS_', 'WEBVIEW2_')) and key.upper() != 'MPV_DLL_DIR_CUMULUS'}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_EFFECT_DIRECTORY_PROOF='1',
                CUMULUS_AUDIO_EFFECT_TABS_PROOF='1',
+               CUMULUS_AUDIO_FILTER=str(args.filter.resolve(strict=True)),
                CUMULUS_UX_SCRIPT=str(repo / 'desktop/examples/audio_effect_tabs_ui_probe.js'),
                CUMULUS_PROOF_FRONTEND_DIST=str(args.frontend_dist.resolve(strict=True)),
                LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
@@ -63,13 +69,17 @@ def main():
     assert done['closedFocus'] == '当前歌曲更多操作'
     rows = {path.stem.split('_', 2)[2]: read(path) for path in sorted(out.glob('ux_*.json'))}
     assert tuple(rows) == tuple(STAGES)
-    identities, positions, revisions, queue_revisions = set(), set(), set(), set()
+    identities, positions, queue_revisions = set(), set(), set()
+    initial_revision = int(rows['offline_default']['nativePlayer']['equalizer']['revision'])
+    selected_settings = rows['offline_equalizer_selected']['nativePlayer']['equalizer']['settings']
     for name, row in rows.items():
-        tab, online, calls = STAGES[name]
-        assert row['active'] == tab and row['online'] is online
+        tab, online, calls, master, revisions = STAGES[name]
+        assert row['active'] == tab and row['online'] is online and row['headerMaster'] is master
         assert row['connectedTabs'] == ['音效', '设备适配', '均衡器']
         assert row['effectDirectoryCalls'] == WIRE[:calls] and row['effectDirectoryMaterialGets'] == 0
         assert row['audioFactoryCount'] == 1
+        native = row['nativePeq']
+        assert native['decoderLoads'] == 1 and native['starts'] == native['stops'] == native['attaches'] == 0
         player, queue = row['nativePlayer'], row['nativeQueue']
         assert player['state'] == 'paused' and player['error'] is None and not player['nativeSeeking']
         assert player['track']['id'] == '1' and player['resourceKind'] == 'catalog'
@@ -78,9 +88,17 @@ def main():
         assert player['position'] == row['observedPosition'] and player['position'] > .25
         positions.add(player['position'])
         identities.add((player['epoch'], player['playId'], player['entryId']))
-        revisions.add(player['equalizer']['revision'])
         queue_revisions.add(player['queueRevision'])
-    assert len(identities) == len(positions) == len(revisions) == len(queue_revisions) == 1
+        eq = player['equalizer']
+        assert int(eq['revision']) == initial_revision + revisions
+        assert not player.get('boundParametric') and not player.get('deviceParametric')
+        if master is None:
+            assert not eq['settings']['enabled'] and not any(eq['settings']['gains'])
+        else:
+            assert eq['status'] in ('configured', 'processing')
+            assert eq['preset'] == {'kind': 'built_in', 'index': 1}
+            assert eq['settings'] == (selected_settings if master else {**selected_settings, 'master_bypassed': True})
+    assert len(identities) == len(positions) == len(queue_revisions) == 1
     assert done['effectDirectoryCalls'] == WIRE and done['effectDirectoryMaterialGets'] == 0
     assert done['nativePlayer']['position'] == done['observedPosition'] == next(iter(positions))
     assert done['nativePlayer']['state'] == 'paused'
@@ -90,6 +108,7 @@ def main():
     report = {'ok': True, 'actualWebView': True, 'actualProductionUiAndIpc': True, 'platform': 'linux',
               'nativeNullAudio': True, 'sealedSyntheticAccount': True, 'stages': list(STAGES),
               'screenshots': screenshots, 'pausedPosition': next(iter(positions)), 'sameNativeIdentity': True,
+              'localEqualizerHeaderAcrossTabs': True, 'localMasterWrites': 2, 'decoderLoads': 1,
               'browserOfflineStateSimulated': True, 'wire': WIRE, 'materialGets': 0, 'realAccountWrites': 0}
     (root / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
