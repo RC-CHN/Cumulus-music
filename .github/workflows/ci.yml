@@ -1206,6 +1206,8 @@ jobs:
           artifact-ids: '13705703308'
           github-token: ${{ github.token }}
           path: .build/packages/windows-x64
+          # v4 nests downloads selected by ID unless this is enabled.
+          merge-multiple: true
       - name: Launch the exact retained package with frozen synthetic media
         timeout-minutes: 10
         run: |
