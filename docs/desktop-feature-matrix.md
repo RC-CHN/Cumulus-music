@@ -6,6 +6,18 @@
 
 “实服”指表中注明的具体授权样本；“桌面”指实际 Tauri WebView；“合成”可能包含真实 libmpv、SQLite、回环 HTTP 或虚拟音频设备，但没有访问真实账号资源。不同时间、平台或分支的证据不能合并成整项通过。
 
+## 2026-11-09 集成验收
+
+集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。
+
+| 本批交互 | 证据与剩余边界 |
+| --- | --- |
+| [下载行收藏](download-row-collection-contracts.txt) | 同一桌面构建已有目标 7 态、新建 7 态、系统「我喜欢的音乐」6 态。创建回执缺失时不追加；追加回执缺失只核对；系统列表和点赞列表一致才更新红心。单个窗口的目标互斥由原生测试验证。归因缺可信播放和动作引用，明确不补造。 |
+| [播放栏低音量提示](windows-system-master-volume.txt) | 同一桌面构建 11 态，覆盖合成低音量/静音/30% 边界、跳转设置、冷却及原生 Linux 无能力。另有[音质菜单](playback-quality-dynamic-ui-contracts.txt) 9 个独立实窗状态，确认分组、并排/单行和高度；这些结果不等于 Windows 实机输出。 |
+| [完整主流程](desktop-main-flow-proof.txt) | 同一桌面构建 HTTPS 硬切断 19 态、18 张 PNG，含登录恢复、日推、搜索、播放、歌单修改、下载及断网播放和清理；仅隔离合成写入，不代表该版本已在实服账号完成全流程。 |
+
+以下继续保留基线和各专项的证据，不由本批覆盖其他业务。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
 | **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 默认兼容声明与 Linux 的本机派生不同，尚无 Windows 原生采集、完整官方引擎或全部风控分支的等价证据。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) |
