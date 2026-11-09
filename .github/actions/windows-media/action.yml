@@ -19,6 +19,7 @@ runs:
       run: python scripts/ci/windows_media.py prepare --msys "$CUMULUS_MSYS2_ROOT"
     - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
       id: media-cache
+      if: ${{ false }} # Force a cold build in both diagnostic jobs.
       with:
         path: .build/windows-media/cache
         key: ${{ steps.plan.outputs.cache-key }}
