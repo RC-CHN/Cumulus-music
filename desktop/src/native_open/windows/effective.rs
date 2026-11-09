@@ -244,7 +244,7 @@ unsafe fn read<T: Copy>(buffer: &TokenBuffer, offset: usize) -> io::Result<T> {
     })
 }
 
-// `value` must be the documented fixed-size Win32 POD output for `class`.
+// `value` must match the verified fixed-size Win32 POD output for `class`.
 unsafe fn query_fixed<T>(
     token: HANDLE,
     class: TOKEN_INFORMATION_CLASS,
@@ -265,6 +265,14 @@ unsafe fn query_fixed<T>(
 }
 
 fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {
+    if class == TokenHasRestrictions {
+        // The Windows x64 lab observed this class writing a one-byte BOOLEAN,
+        // despite its DWORD description. A sentinel rejects an unwritten byte.
+        let mut value = u8::MAX;
+        // SAFETY: this class returned exactly one byte in the native lab.
+        let (success, actual) = unsafe { query_fixed(token, class, &mut value) };
+        return restriction_boolean(success, actual, value);
+    }
     if class == TokenMandatoryPolicy {
         let mut value = TOKEN_MANDATORY_POLICY::default();
         // SAFETY: this fixed class returns exactly TOKEN_MANDATORY_POLICY.
@@ -277,7 +285,6 @@ fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {
     }
     if ![
         TokenIsAppContainer,
-        TokenHasRestrictions,
         TokenSessionId,
         TokenUIAccess,
         TokenVirtualizationAllowed,
@@ -293,6 +300,14 @@ fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {
     let (success, actual) = unsafe { query_fixed(token, class, &mut value) };
     if success && actual as usize == size_of::<u32>() {
         Ok(value)
+    } else {
+        Err(denied())
+    }
+}
+
+fn restriction_boolean(success: bool, actual: u32, value: u8) -> io::Result<u32> {
+    if success && actual as usize == size_of::<u8>() && matches!(value, 0 | 1) {
+        Ok(u32::from(value))
     } else {
         Err(denied())
     }
@@ -427,6 +442,26 @@ mod tests {
     };
 
     const LIMIT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn restriction_boolean_rejects_unwritten_invalid_and_wrong_size_results() {
+        assert_eq!(restriction_boolean(true, 1, 0).unwrap(), 0);
+        assert_eq!(restriction_boolean(true, 1, 1).unwrap(), 1);
+        for (success, actual, value) in [
+            (false, 1, 1),
+            (true, 0, 0),
+            (true, 4, 1),
+            (true, 1, 2),
+            (true, 1, u8::MAX),
+        ] {
+            assert_eq!(
+                restriction_boolean(success, actual, value)
+                    .unwrap_err()
+                    .kind(),
+                io::ErrorKind::PermissionDenied
+            );
+        }
+    }
 
     #[test]
     fn effective_connector_rejects_same_logon_restricted_thread_before_ready() {
