@@ -98,7 +98,7 @@ async fn playlist_rows(
         let item = match slot {
             PlaylistPageSlot::Service(item) => item,
             PlaylistPageSlot::Local(row) => {
-                tracks.push(row);
+                tracks.push(*row);
                 continue;
             }
         };

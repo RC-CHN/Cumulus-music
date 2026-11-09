@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 pub(super) enum PlaylistPageSlot<'a> {
     Service(&'a Value),
-    Local(TrackView),
+    Local(Box<TrackView>),
 }
 
 impl MusicClient {
@@ -50,6 +50,7 @@ impl MusicClient {
             }
             let store = PlaylistLocalStore::new(self.session.clone())?;
             let membership = store.project(&token, &id, &detail)?;
+            let generation = membership.generation();
             if local_revision
                 .as_ref()
                 .is_some_and(|r| r != &membership.revision)
@@ -90,16 +91,17 @@ impl MusicClient {
                         .ok_or(Error::QueueChanged),
                     PlaylistLocalRow::Local(reference) => {
                         refs.insert(reference.id.clone(), reference.revision.clone());
-                        Ok(PlaylistPageSlot::Local(match items.remove(&reference.id) {
+                        let row = match items.remove(&reference.id) {
                             Some(item) => view::track(item.id, &item.metadata, false),
                             None => missing_playlist_row(reference.id.clone(), true),
-                        }))
+                        };
+                        Ok(PlaylistPageSlot::Local(Box::new(row)))
                     }
                 })
                 .collect::<Result<Vec<_>>>()?;
             let rows = playlist_rows(api, slots, page.offset, None, None).await?;
             // A concurrent local edit during song-detail lookup invalidates this page.
-            if store.project(&token, &id, &detail)?.revision != membership.revision {
+            if store.generation(&token, &id)? != generation {
                 return Err(Error::QueueChanged);
             }
             let total = membership.rows.len();
