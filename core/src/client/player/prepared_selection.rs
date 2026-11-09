@@ -284,14 +284,22 @@ impl MusicClient {
     }
 
     /// Candidate Windows cold entry: paths come only from native shell input.
+    /// The native readiness predicate has the same constraints as for warm.
     #[cfg(windows)]
     pub async fn play_windows_native_open_files(
         &self,
         epoch: &str,
         paths: Vec<std::path::PathBuf>,
+        authority: Cancellation,
     ) -> Result<PlayerView> {
-        self.open_native_files(epoch, paths, true, None, NativeFileAdmission::RootedWindows)
-            .await
+        self.open_native_files(
+            epoch,
+            paths,
+            true,
+            Some(authority),
+            NativeFileAdmission::RootedWindows,
+        )
+        .await
     }
 
     /// Candidate Windows warm entry. The source authority is a cheap native
