@@ -1,3 +1,4 @@
+pub use super::lyrics::LyricContribution;
 use crate::{
     client::dto::TrackView,
     lyrics::{DisplayType, LyricLine, LyricPreferences, YrcInfo},
@@ -842,6 +843,8 @@ pub struct LyricsView {
     pub romanization: Vec<LyricLine>,
     pub lyric_contributor: Option<LyricContributorView>,
     pub translation_contributor: Option<LyricContributorView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contribution: Option<LyricContribution>,
     pub words: YrcInfo,
     pub offset: f64,
     pub scrollable: bool,

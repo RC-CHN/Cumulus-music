@@ -30,7 +30,7 @@ pub(super) fn project(
     )
 }
 
-fn ordinary_song(resource: &Value, song_id: &str) -> bool {
+pub(super) fn ordinary_song(resource: &Value, song_id: &str) -> bool {
     let ordinary = match identity::kind(resource) {
         PlayerResourceKind::Catalog => true,
         PlayerResourceKind::Downloaded => ["cloud_song_id", "voice_id", "download_voice_id"]

@@ -286,9 +286,9 @@ const podcastOwned = computed(
       !podcastTarget.value.receipt &&
       playbackVoice.value?.radio?.ownedByViewer === true),
 );
-const podcastCore = useCore();
+const core = useCore();
 const podcastFollow = usePodcastFollow(
-  podcastCore,
+  core,
   () => props.account,
   () =>
     props.player.lyricsOpen.value &&
@@ -302,7 +302,7 @@ const podcastFollow = usePodcastFollow(
     action: (owner, id, current) => {
       const target = podcastTarget.value;
       if (target?.radioId === id && target.epoch === owner && ownsPodcastCard(target))
-        return voicePageSubscriptionAction(podcastCore, target, current);
+        return voicePageSubscriptionAction(core, target, current);
     },
   },
 );
@@ -560,6 +560,44 @@ const currentLyric = computed(() => {
     ? document
     : undefined;
 });
+const contributionCopy = {
+  upload: ['', '上传歌词'],
+  scrolling: ['该歌词暂无自动滚动，', '上传滚动歌词'],
+  translation: ['该歌词暂无翻译，', '上传翻译'],
+  scrolling_and_translation: ['该歌词暂无翻译和自动滚动，', '上传滚动歌词或翻译'],
+} as const;
+const contribution = computed(() => {
+  const document = currentLyric.value;
+  return document?.contribution &&
+    document.epoch === props.account.epoch &&
+    props.player.lyricsOpen.value &&
+    props.activeDetailTab === 'lyrics' &&
+    !commentsVisible.value
+    ? contributionCopy[document.contribution]
+    : undefined;
+});
+const contributionOpening = ref(false);
+const contributionError = ref(false);
+let contributionAttempt = 0;
+watch([currentEpoch, currentPlayId, contribution], () => {
+  contributionAttempt += 1;
+  contributionOpening.value = false;
+  contributionError.value = false;
+});
+async function openContribution() {
+  const document = currentLyric.value;
+  if (!document || !contribution.value || contributionOpening.value) return;
+  const attempt = ++contributionAttempt;
+  contributionOpening.value = true;
+  contributionError.value = false;
+  try {
+    await core.openLyricContribution(document.epoch, document.playId);
+  } catch {
+    if (attempt === contributionAttempt) contributionError.value = true;
+  } finally {
+    if (attempt === contributionAttempt) contributionOpening.value = false;
+  }
+}
 const currentCloudTrack = computed(
   () => view.value?.epoch === props.account.epoch && view.value?.resourceKind === 'cloud',
 );
@@ -600,7 +638,7 @@ const coverLine = computed(() =>
 );
 const lines = computed(() => {
   const document = currentLyric.value;
-  if (!document) return [];
+  if (!document || document.displayType === 'pure') return [];
   const revision = currentQueueRevision.value;
   const target: LyricSeekTarget | undefined = revision
     ? { epoch: document.epoch, playId: document.playId, queueRevision: revision }
@@ -1170,11 +1208,26 @@ const displayedAuxiliary = computed(() =>
                 }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
               </div>
               <template v-else-if="currentLyric">
+                <div v-if="contribution?.[0]" class="lyric-contribution" data-non-selectable>
+                  {{ contribution[0]
+                  }}<button
+                    type="button"
+                    class="text-button"
+                    data-lyric-contribution
+                    :aria-disabled="contributionOpening"
+                    @click="openContribution"
+                  >
+                    {{ contribution[1] }}
+                  </button>
+                </div>
+                <p v-if="contributionError" class="lyric-contribution-error" role="alert">
+                  无法打开歌词贡献页面，请重试。
+                </p>
                 <div
                   v-if="
                     currentLyric.fromSidecar ||
                     currentLyric.fromEmbedded ||
-                    currentLyric.networkFailed
+                    (currentLyric.networkFailed && (currentCloudLyric || lines.length))
                   "
                   class="lyric-cache-note"
                 >
@@ -1205,7 +1258,31 @@ const displayedAuxiliary = computed(() =>
                     <span>暂无歌词</span>
                   </div>
                   <div v-else-if="!currentCloudLyric" class="empty-state">
-                    {{ currentLyric.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
+                    {{
+                      currentLyric.networkFailed
+                        ? '歌词加载失败'
+                        : currentLyric.displayType === 'pure'
+                          ? '纯音乐，请欣赏'
+                          : '暂无歌词'
+                    }}
+                    <button
+                      v-if="currentLyric.networkFailed"
+                      type="button"
+                      class="secondary lyric-upload"
+                      @click="player.loadLyrics"
+                    >
+                      刷新
+                    </button>
+                    <button
+                      v-else-if="contribution && !contribution[0]"
+                      type="button"
+                      class="secondary lyric-upload"
+                      data-lyric-contribution
+                      :aria-disabled="contributionOpening"
+                      @click="openContribution"
+                    >
+                      {{ contribution[1] }}
+                    </button>
                   </div>
                 </template>
                 <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">

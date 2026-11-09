@@ -39,6 +39,7 @@ pub use super::mv::{
 };
 pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
 pub use super::pc_experiments::PcPresentationView;
+pub use super::player::LyricContribution;
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,

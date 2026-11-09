@@ -1068,6 +1068,24 @@ impl Api for Library {
                     json!({"code":200,"data":[row]})
                 }
                 "/api/song/lyric/v1" => {
+                    if std::env::var_os("CUMULUS_LYRIC_CONTRIBUTION_PROOF").is_some() {
+                        return match args["id"].as_str() {
+                            Some("1") => Ok(json!({"code":200,"sgc":true})),
+                            Some("2") => {
+                                Ok(json!({"code":200,"qfy":true,"lrc":{"lyric":"合成未滚动歌词"}}))
+                            }
+                            Some("3") => Ok(
+                                json!({"code":200,"qfy":true,"lrc":{"lyric":"[00:01.00]合成待翻译歌词"}}),
+                            ),
+                            Some("4") => Ok(json!({"code":200,"lrc":{"lyric":"纯音乐，请欣赏"}})),
+                            Some("5") => Err(cumulus_core::Error::State(
+                                "synthetic lyric network failure",
+                            )),
+                            _ => Err(cumulus_core::Error::InvalidInput(
+                                "unexpected lyric proof song",
+                            )),
+                        };
+                    }
                     let long = std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some();
                     if long && (args["id"] == 3 || args["id"] == "3") {
                         tokio::time::sleep(std::time::Duration::from_secs(2)).await;

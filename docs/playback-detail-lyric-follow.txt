@@ -166,3 +166,29 @@ vinyl_comment_copy_smoke.py 在 Linux 实窗用真实拖选和 Ctrl+C 核对内�
 评论正文和预置的引用段落。引用保留 `@作者: `，两项都不包含评论行的作者、
 按钮或 HTML，原生暂停时钟和评论读取请求不变。引用来自只读夹具，不发送
 评论写请求。使用合成数据和 null 输出，未实测 Windows。
+
+打开歌词贡献页
+------------
+官方 PC 3.1.42.205594 的 TrackLyric/NoLyric.tsx:146–207 与
+LyricDisplay/LyricContributeTip.tsx:58–142 区分普通无歌词、未滚动、
+缺翻译、两者皆缺、纯音乐、云盘与加载错误。async:lyric 使用原
+/api/song/lyric/v1；服务端 qfy 映射为 askForTranslation，滚动取
+当前歌词解析状态。M/159:11 的固定浏览器目标为
+https://music.163.com/#/wiki/song?type=2&songId=<当前公开歌曲 ID>。
+
+Cumulus 在打开播放详情的歌词页签显示相应的上传入口，只携带当前
+epoch/playId 调用 lyric_contribution_open。Rust 读取该曲目已解析的
+快照，核对账号代次、当前播放和公共曲目 ID，不重新拉歌词，也不接受
+渲染层给定 URL。已经下载的普通单曲仍须来源可核；本地歌词、云盘、
+声音、纯音乐、未完成和无可用结果的失败读取均没有此入口。M/3081
+保留刷新失败但仍能展示的同曲缓存；此时依据缓存中的歌词显示贡献入口。
+宿主调用系统浏览器；打开失败可在同一曲目上显式重试，不改变播放状态。
+
+官方的「求歌词／求翻译／求滚动」是另一个分支。M/185:28–74 要求
+确认悬赏 1 云贝，说明 30 天内未补歌词可退；M/15:4156 调用
+POST /api/v1/feedback/lyric，参数为 songId、errorType（6/7/8）、
+lyricType="lrc"、lyricVersion=0、xInfo（JSON 文本：lyric_error
+含该选项的 txt/errType/errTitle，detail=""）。官方对 code=200
+提示已发送，失败时提示稍后再试。此批没有发起或提供扣费动作，未证实
+服务端扣费、重复提交或失联回执的对账语义。黑胶工具栏的独立贡献
+入口也未包含；此次只接通歌词正文的浏览器入口。

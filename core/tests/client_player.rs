@@ -32,6 +32,7 @@ struct Backend {
     url_started: Notify,
     url_release: Notify,
     trial: Mutex<Option<Value>>,
+    lyric_contribution_response: Mutex<Option<Value>>,
     playlist_trial: playlist_trial::Fixture,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
@@ -395,6 +396,9 @@ impl Api for Backend {
                     json!({"code":200,"data":true})
                 }
                 "/api/song/lyric/v1" => {
+                    if let Some(response) = self.lyric_contribution_response.lock().unwrap().clone() {
+                        return Ok(response);
+                    }
                     json!({"code":200,"lrc":{"lyric":"[00:01]第一行\n[00:03]第二行","version":1},"yrc":{"lyric":"[1000,1000](1000,500,0)你(1500,500,0)好","version":1},"ytlrc":{"lyric":"[1000,1000]hello"},"yromalrc":{"lyric":"[1000,1000]ni hao"},"lyricContributor":{"cookie":"SECRET"}})
                 }
                 _ => panic!("unexpected {path}"),
@@ -1101,6 +1105,66 @@ async fn complete_playlist_is_native_and_public_player_queue_lyrics_are_whitelis
         updated.state,
         cumulus_core::playback::controller::PlaybackStatus::Paused
     );
+}
+
+#[tokio::test]
+async fn lyric_contribution_opens_only_the_current_ordinary_song_with_a_resolved_document() {
+    let (_dir, api, _session, client, _) = fixture();
+    let cases = [
+        (json!({"code":200,"sgc":true}), json!("upload")),
+        (
+            json!({"code":200,"lrc":{"lyric":"普通歌词"}}),
+            json!("scrolling"),
+        ),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"[00:01]原词"}}),
+            json!("translation"),
+        ),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"普通歌词"}}),
+            json!("scrolling_and_translation"),
+        ),
+        (
+            json!({"code":200,"qfy":false,"lrc":{"lyric":"[00:01]原词"}}),
+            Value::Null,
+        ),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"纯音乐，请欣赏"}}),
+            Value::Null,
+        ),
+    ];
+    let mut previous: Option<String> = None;
+    for (index, (response, expected)) in cases.into_iter().enumerate() {
+        let song = (index + 1).to_string();
+        *api.lyric_contribution_response.lock().unwrap() = Some(response);
+        let playback = client.play_selection("1", songs(&song)).await.unwrap();
+        let play_id = playback.play_id.unwrap();
+        if let Some(previous) = previous {
+            assert!(matches!(
+                client.lyric_contribution_url("1", &previous).await,
+                Err(Error::StaleResponse)
+            ));
+        }
+        assert!(client.lyric_contribution_url("1", &play_id).await.is_err());
+        let document = client.player_lyrics("1", &play_id).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(document).unwrap()["contribution"],
+            expected
+        );
+        let calls = api.calls.lock().unwrap().len();
+        let result = client.lyric_contribution_url("1", &play_id).await;
+        if expected.is_null() {
+            assert!(result.is_err());
+        } else {
+            assert_eq!(
+                result.unwrap(),
+                format!("https://music.163.com/#/wiki/song?type=2&songId={song}")
+            );
+        }
+        assert_eq!(api.calls.lock().unwrap().len(), calls);
+        assert!(client.lyric_contribution_url("0", &play_id).await.is_err());
+        previous = Some(play_id);
+    }
 }
 
 #[tokio::test]

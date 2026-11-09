@@ -1,3 +1,4 @@
+mod contribution;
 mod contributors;
 mod segment;
 use super::*;
@@ -11,6 +12,7 @@ use crate::{
     playback::QueueEntry,
     protocol::api::ApiFuture,
 };
+pub use contribution::LyricContribution;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, PartialEq)]
@@ -283,6 +285,7 @@ impl MusicClient {
         &self,
         token: &SessionToken,
         play_id: &str,
+        target: &LyricTarget,
         value: LyricSnapshot,
         forgotten_entry: Option<&QueueEntry>,
     ) -> Result<LyricsView> {
@@ -302,6 +305,11 @@ impl MusicClient {
             require_current_entry(&self.session, token, expected)?;
         }
         let (lyric_contributor, translation_contributor) = contributors::project(&value, &player);
+        let contribution = contribution::option(
+            &value,
+            player.selected.as_ref().map(|entry| &entry.resource),
+            target,
+        );
         let lyric = value.lyric;
         let mut result = LyricsView {
             word_translation: auxiliary(lyric.yrc_info.yrc_trans.as_deref()),
@@ -316,6 +324,7 @@ impl MusicClient {
             romanization: lyric.roma_lyric_lines,
             lyric_contributor,
             translation_contributor,
+            contribution,
             words: lyric.yrc_info,
             offset: lyric.offset,
             scrollable: lyric.scrollable,
@@ -348,7 +357,7 @@ impl MusicClient {
             native_open,
         } = self.lyric_context(epoch, play_id).await?;
         let request = LyricRequest {
-            target,
+            target: target.clone(),
             demand: LyricDemand {
                 detail_page: true,
                 ..Default::default()
@@ -365,7 +374,7 @@ impl MusicClient {
             }
             service.fetch(request).await?
         };
-        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+        self.lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
             .await
     }
     pub(in crate::client) async fn cached_player_lyrics(
@@ -387,7 +396,7 @@ impl MusicClient {
         let failed = value.is_lyric_fetch_failed;
         Ok(Some((
             revision,
-            self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+            self.lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
                 .await?,
             failed,
         )))
@@ -413,7 +422,7 @@ impl MusicClient {
             ..
         } = self.lyric_context(epoch, play_id).await?;
         let value = service.set_target_preferences(&target, preferences)?;
-        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+        self.lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
             .await
     }
     pub async fn lyric_offset(&self, epoch: &str, play_id: &str, gain: f64) -> Result<LyricsView> {
@@ -425,7 +434,7 @@ impl MusicClient {
             ..
         } = self.lyric_context(epoch, play_id).await?;
         let value = service.adjust_target_offset(&target, gain)?;
-        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+        self.lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
             .await
     }
 }

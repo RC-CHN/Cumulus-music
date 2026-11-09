@@ -751,6 +751,7 @@ export interface LyricsView {
   romanization: LyricLine[];
   lyricContributor?: import('./lyricContributors').LyricContributor | null;
   translationContributor?: import('./lyricContributors').LyricContributor | null;
+  contribution?: 'upload' | 'scrolling' | 'translation' | 'scrolling_and_translation';
   words: { yrc?: string; yrcRoma?: string; yrcTrans?: string };
   offset: number;
   scrollable: boolean;
@@ -922,6 +923,7 @@ export interface PlayerClient
     command: ReportCommand,
   ): Promise<AccountData<ProfileReportView>>;
   playerLyrics(epoch: string, playId: string, cachedOnly?: boolean): Promise<LyricsView>;
+  openLyricContribution(epoch: string, playId: string): Promise<void>;
   lyricPreferences(
     epoch: string,
     playId: string,

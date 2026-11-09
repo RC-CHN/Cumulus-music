@@ -1399,6 +1399,25 @@ input[type='range'] {
   font-weight: 400;
   margin-top: 6px;
 }
+.lyric-contribution,
+.lyric-contribution-error {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.lyrics-panel[data-vinyl-mode='lyric'] .lyric-contribution {
+  text-align: center;
+}
+.lyric-contribution .text-button {
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.lyric-upload {
+  display: block;
+  margin: 8px auto 0;
+}
 .lyric-cloud-empty {
   gap: 0;
   font-size: 23px;
