@@ -1,4 +1,8 @@
 //! Use only kernel-observed identities; never log or persist them.
+#[cfg(test)]
+#[path = "identity/diagnostics.rs"]
+pub(super) mod diagnostics;
+
 use sha2::{Digest, Sha256};
 use std::{
     fs::{File, OpenOptions},

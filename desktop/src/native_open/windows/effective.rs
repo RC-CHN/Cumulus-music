@@ -372,7 +372,14 @@ mod tests {
     #[test]
     fn effective_connector_rejects_same_logon_restricted_thread_before_ready() {
         let scratch = tempfile::tempdir().unwrap();
-        let identity = Identity::current().unwrap();
+        let identity = Identity::current().unwrap_or_else(|error| {
+            panic!(
+                "full process identity unavailable before pipe creation: kind={:?} win32={:?}; {}",
+                error.kind(),
+                error.raw_os_error(),
+                super::super::identity::diagnostics::current_process()
+            )
+        });
         let address = identity.address(scratch.path()).unwrap();
         let address_wide = wide(&address);
         let stop = Stop::new().unwrap();
