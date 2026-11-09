@@ -1,0 +1,57 @@
+Windows 本机磁盘描述符离线探针
+
+适用：cloudmusic.dll x64 3.1.42.205594，
+SHA-256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+以下文件相对本机解包证据目录：
+protocol/device-fingerprint/regions/00cf4930.asm、
+00cf5e50.asm；protocol/device-storage-codec/regions/00cf4540.asm；
+protocol/core-more/regions/00cef440.asm。未使用第三方播放器作为依据。
+
+CF4930 在 NT 分别尝试 SMART CF5BA0、SCSI miniport CF5650、CF5E50、
+CF5900，成功即结束。探针只观测 CF5E50 里的两个真实、只读 IOCTL：
+- 依次打开 PhysicalDrive0 到 PhysicalDrive15，CreateFileW 请求访问权
+  0、共享读写、OPEN_EXISTING。按 12 字节零查询、0x2710 字节缓冲区
+  执行 0x2d1400（StorageDeviceProperty / PropertyStandardQuery）。
+- 在同一已打开句柄执行 0x2d0c10，输入空。CF5E50 即使已得到第一个
+  查询的候选也会调用第二个，只在目标串为空时才采用后者。诊断程序
+  有意不据此选盘，两个查询分别计数，继续观察其他槽。
+
+CF6031–CF61DA 对描述符序列每四个字符先解码后半、再解码前半。
+CF669C 的表只给 0–9/A–F/a–f 加上十六进制值，其余不加值；零结果
+不追加。若解码结果未提供期望的长度前缀，或者前缀含有不是窄字符
+字母数字、空格或连字符的字节，回读原串。CF626B–CF63DB 验证被选
+串；仍含其他字节时，CF4540 用大写两位十六进制逐字节编码，按
+CEF440 传入的 260 字节目标截到最多 259 字节。WordSwapped、Raw、
+UppercaseHex 只说明候选形态，不说明通过最后的宽字节校验。
+
+探针读取实际 IOCTL 返回长度内的结构、总大小、序列偏移和终止符。
+拒绝越界的偏移、声明大于回包的长度以及不足以证明尾部字组的返回；
+不会像原生指令那样遍历到声明缓冲区外。USB 结构尊重实际长度和返回
+状态，拒绝会被静默截断的嵌入 NUL 后缀；这比原生从缓冲区 +0x10
+按 C 串读取更保守。此处没有执行最终的 CEE4D0、CF1120、CEE8E0
+宽字节转换、修整及校验，也不复用卷序列号、产品名或随机数。
+
+独立 Windows x64 命令（在仓库根目录）：
+
+    New-Item -ItemType Directory -Force .build/windows-storage-identity | Out-Null
+    rustc --edition 2024 -D warnings scripts/research/windows_storage_descriptor_probe.rs -o .build/windows-storage-identity/probe.exe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & .build/windows-storage-identity/probe.exe --offline
+
+只输出聚合计数和固定解析错误类别；不输出原序列、派生值、哈希、设备
+路径或单盘索引。0 表示至少有可读候选，2 表示未观察到候选，3 表示
+工作线程不可用或五秒未完成。程序独立运行；没有提权、文件持久化、
+账号、网络、运行中客户端接线或默认配置变化。五秒只约束探针等待，
+不称为 Win32 驱动调用已取消；运行器另设置进程超时。
+
+验收边界：4 个合成 Rust 用例覆盖顺序、无效字组、原串回退、大写编码、
+裁剪、长度、偏移、终止和 USB 返回状态。Linux 纯测试、Windows GNU
+x64 交叉链接及两套严格 Clippy 通过。未执行 Windows API，不能从交叉
+链接推断主机已返回有效硬件字段；SMART/SCSI 顺序、实际磁盘字段最终
+选择、ACP 编码和同机官方对照仍须后续工作。
+
+Microsoft API 语义（只支持系统字段，不是网易算法证据）：
+https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew
+https://learn.microsoft.com/windows/win32/api/winioctl/ns-winioctl-storage_device_descriptor
+https://learn.microsoft.com/windows/win32/api/winioctl/ni-winioctl-ioctl_storage_get_media_serial_number
+https://learn.microsoft.com/windows/win32/devio/media-serial-number-data-str
