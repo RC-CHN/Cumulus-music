@@ -30,6 +30,24 @@
       payload: { stage, ...data },
     });
   let stageCount = 0;
+  let guideGeometry;
+  function measureGuide() {
+    const bubble = guide(), trigger = gear();
+    if (!bubble || !trigger) return undefined;
+    const style = getComputedStyle(bubble);
+    const rect = (element) => {
+      const { left, right, top, bottom, width } = element.getBoundingClientRect();
+      return { left, right, top, bottom, width };
+    };
+    const arrow = parseFloat(style.getPropertyValue('--guide-arrow'));
+    const entering = bubble.classList.contains('header-playback-guide-enter-active');
+    return {
+      bounds: rect(bubble), anchor: rect(trigger), viewportWidth: innerWidth,
+      arrow, entering, opacity: style.opacity, transform: style.transform,
+      settled: !entering && style.opacity === '1' && style.transform === 'none' &&
+        Number.isFinite(arrow),
+    };
+  }
   async function capture(label, data = {}) {
     await sleep(330);
     const stage = `ux_${String(++stageCount).padStart(2, '0')}_${label}`;
@@ -159,16 +177,20 @@
         check(performance.now() - entered >= 5900, 'no premature first-home display');
         check(document.activeElement === active, 'the passive guide does not steal focus');
         await wait(() => localStorage.getItem(marker) === '1', 'visible guide remembered on presentation');
-        await sleep(330);
-        const bounds = guide().getBoundingClientRect(), anchor = gear().getBoundingClientRect();
-        const style = getComputedStyle(guide());
-        const arrow = parseFloat(style.getPropertyValue('--guide-arrow'));
-        check(bounds.left >= 7 && bounds.right <= innerWidth - 7 &&
+        // RAF or WebView scheduling can defer the start of the CSS transition
+        // beyond the marker write. Measure final layout, not a scaled frame.
+        await wait(() => {
+          guideGeometry = measureGuide() ?? guideGeometry;
+          return guideGeometry?.settled;
+        }, 'popover entrance transition and arrow placement settle');
+        const { bounds, anchor, arrow, viewportWidth } = guideGeometry;
+        check(bounds.left >= 7 && bounds.right <= viewportWidth - 7 &&
           Math.abs(bounds.top - anchor.bottom - 8) < 1 &&
           Math.abs(bounds.left + arrow - anchor.left - anchor.width / 2) < 1,
           'popover stays inside the viewport with its arrow aligned under the gear');
         check(guide().textContent.includes('功能上新，音乐播放中保持亮屏不休眠'), 'official wording');
-        await capture('guide_presented', { bounds: { left: bounds.left, right: bounds.right } });
+        await capture('guide_presented', { bounds: { left: bounds.left, right: bounds.right },
+          geometry: guideGeometry });
         if (mode === 'close') {
           click(guide().querySelector('.header-playback-guide-close'));
           await wait(() => !guide() && document.activeElement === gear(), 'close restores gear focus');
@@ -195,6 +217,6 @@
     await emit('complete', { ok: true, mode, stageCount, writes, powerReads, mediaReads,
       marker: localStorage.getItem(marker), smtcMarker: localStorage.getItem(smtcMarker) });
   } catch (error) {
-    await emit('failed', { mode, error: String(error), stageCount });
+    await emit('failed', { mode, error: String(error), stageCount, geometry: guideGeometry });
   }
 })();
