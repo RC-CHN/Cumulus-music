@@ -6545,6 +6545,8 @@ onUnmounted(() => {
     />
     <PlayerBar
       :account="account"
+      :podcast-resume="pcPresentation.podcastResume.value"
+      @resume-confirmed="podcasts.observePlayerResume"
       :player="player"
       :intelligence="intelligence"
       :liked-playlist-id="signedIn ? favorite?.id : null"

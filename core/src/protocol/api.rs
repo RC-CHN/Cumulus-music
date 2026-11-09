@@ -16,6 +16,7 @@ pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + '
 
 pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
 pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
+pub(crate) const PODCAST_RESUME_WRITE_PATH: &str = "/api/dj/user/setting/resumeplay/update";
 pub(crate) const PODCAST_RESUME_READ_PATH: &str = "/api/dj/user/setting/resumeplay/get";
 
 /// One original chorus endpoint batch. The IDs are selected by the native queue.
@@ -288,6 +289,47 @@ impl VinylVoiceDetailRead {
 
     pub fn into_request(self) -> (&'static str, Value) {
         (Self::PATH, json!({"id":self.0}))
+    }
+}
+
+/// Fixed, native-only preflight/read-back for the current playback radio.
+pub struct PlayerPodcastResumeRead(String);
+
+impl PlayerPodcastResumeRead {
+    pub(crate) fn new(radio: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(radio) {
+            return Err(Error::InvalidInput("invalid current podcast"));
+        }
+        Ok(Self(radio.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (PODCAST_RESUME_READ_PATH, json!({"radioId":self.0}))
+    }
+}
+
+/// Fixed, native-only update for the radio bound to the current playback entry.
+pub struct PlayerPodcastResumeWrite {
+    radio: String,
+    enabled: bool,
+}
+
+impl PlayerPodcastResumeWrite {
+    pub(crate) fn new(radio: &str, enabled: bool) -> Result<Self> {
+        if !canonical_vinyl_comment_id(radio) {
+            return Err(Error::InvalidInput("invalid current podcast"));
+        }
+        Ok(Self {
+            radio: radio.into(),
+            enabled,
+        })
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (
+            PODCAST_RESUME_WRITE_PATH,
+            json!({"radioId":self.radio,"resumePlayValue":u8::from(self.enabled)}),
+        )
     }
 }
 
@@ -710,6 +752,32 @@ pub trait Api: Send + Sync + std::any::Any {
     /// An ordinary read still works when this optional presentation proof is absent.
     fn podcast_resume_observation_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    fn player_podcast_resume_write_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_player_podcast_resume_read<'a>(
+        &'a self,
+        _read: PlayerPodcastResumeRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("current podcast resume read is unavailable")) })
+    }
+
+    fn request_player_podcast_resume_write<'a>(
+        &'a self,
+        _write: PlayerPodcastResumeWrite,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::RequestNotSent(Box::new(Error::State(
+                "current podcast resume setting is unavailable",
+            ))))
+        })
     }
 
     fn upload_podcast_progress<'a>(

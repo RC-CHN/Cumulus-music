@@ -9,6 +9,8 @@ mod pc_presentation;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback;
+#[path = "pc_experiment_transport/player_podcast_resume.rs"]
+mod player_podcast_resume;
 #[path = "pc_experiment_transport/search_footer.rs"]
 mod search_footer;
 #[path = "pc_experiment_transport/search_presentation.rs"]

@@ -48,10 +48,12 @@ mod vinyl_similar;
 pub use vinyl_similar::{
     VinylRecommendationPlacement, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
 };
+mod podcast_resume;
 mod vinyl_wiki;
 mod voice_detail;
 mod voice_recommendations;
 mod voice_scope;
+pub use podcast_resume::{PlayerPodcastResumeAction, PlayerPodcastResumeView};
 pub use voice_recommendations::{
     VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
 };

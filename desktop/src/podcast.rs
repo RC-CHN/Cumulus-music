@@ -11,6 +11,25 @@ pub async fn audiobook_skip_settings(
         .await
         .map_err(Into::into)
 }
+#[tauri::command]
+pub async fn player_podcast_resume<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    entry_id: String,
+    action: PlayerPodcastResumeAction,
+) -> Result<AccountData<Option<PlayerPodcastResumeView>>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("podcast resume requires the main window").into(),
+        );
+    }
+    client
+        .player_podcast_resume(&epoch, &play_id, &entry_id, action)
+        .await
+        .map_err(Into::into)
+}
 fn require_scene_main<R: tauri::Runtime>(
     window: &tauri::WebviewWindow<R>,
 ) -> Result<(), ClientError> {

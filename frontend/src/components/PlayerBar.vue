@@ -34,6 +34,7 @@ import { useQueueMoreTip } from '../composables/useQueueMoreTip';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 import PlayerTrackActions from './PlayerTrackActions.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
+import type { PlayerPodcastResumeTarget } from '../services/playerPodcastResume';
 import type { AudiobookSkipContext } from '../services/audiobookSkip';
 const equalizerOpen = ref(false);
 const audioEffectsOpen = ref(false);
@@ -54,10 +55,12 @@ const props = withDefaults(
     commentCount?: number;
     vinylComments?: boolean;
     vinylCommentsOpen?: boolean;
+    podcastResume?: boolean;
   }>(),
   { togetherActive: false },
 );
 const emit = defineEmits<{
+  resumeConfirmed: [epoch: string, radioId: string, enabled: boolean];
   like: [track: TrackView];
   retry: [];
   comments: [track: TrackView];
@@ -174,6 +177,24 @@ const audiobookSkipContext = computed<AudiobookSkipContext | undefined>(() => {
   )
     return { kind: 'player', playId: current.playId, entryId: current.entryId };
   return undefined;
+});
+const podcastResumeTarget = computed<PlayerPodcastResumeTarget | undefined>((previous) => {
+  const current = view.value;
+  if (
+    !props.podcastResume ||
+    props.togetherActive ||
+    props.account.status !== 'authenticated' ||
+    current?.epoch !== props.account.epoch ||
+    !current.voiceDetail ||
+    (current.state !== 'playing' && current.state !== 'paused') ||
+    !current.playId ||
+    !current.entryId
+  )
+    return undefined;
+  const { epoch, playId, entryId } = current;
+  return previous?.epoch === epoch && previous.playId === playId && previous.entryId === entryId
+    ? previous
+    : { epoch, playId, entryId };
 });
 const currentDownload = computed<CurrentPlaybackDownload | undefined>((previous) => {
   if (!props.downloadsAllowed || view.value?.epoch !== props.account.epoch) return undefined;
@@ -823,7 +844,15 @@ async function seek(event: Event) {
         @catalog="(resource) => emit('catalog', resource)"
         @effects="audioEffectsOpen = true"
       />
-      <AudiobookSkipMenu :epoch="account.epoch" :context="audiobookSkipContext" />
+      <AudiobookSkipMenu
+        :epoch="account.epoch"
+        :context="audiobookSkipContext"
+        :resume-target="podcastResumeTarget"
+        :fallback-focus="() => transportControls ?? null"
+        @resume-confirmed="
+          (epoch, radioId, enabled) => emit('resumeConfirmed', epoch, radioId, enabled)
+        "
+      />
     </div>
     <div class="player-feedback-stack">
       <TransitionGroup name="playback-feedback">

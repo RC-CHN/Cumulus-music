@@ -447,6 +447,29 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       }
     }
   }
+  function observePlayerResume(owner: string, radioId: string, enabled: boolean) {
+    const shown = page.value;
+    const current = query.value;
+    if (
+      !owner ||
+      owner !== epoch.value ||
+      shown?.epoch !== owner ||
+      current.scope.kind !== 'radio' ||
+      current.scope.id !== radioId ||
+      shown.scope.kind !== 'radio' ||
+      shown.scope.id !== radioId
+    )
+      return;
+    // The confirmed native mutation invalidates the old detail snapshot. Keep
+    // its current display, but don't let an in-flight pre-confirmation read
+    // undo the checkbox or reuse the invalidated revision on the next action.
+    read++;
+    stateRead++;
+    loading.value = false;
+    query.value = { ...current, revision: null };
+    operations.value = operations.value.filter((v) => v.action !== 'resume' || v.id !== radioId);
+    page.value = { ...shown, resumeEnabled: enabled, operations: operations.value };
+  }
   async function externalLikeChanged() {
     read++;
     stateRead++;
@@ -479,6 +502,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     load,
     state,
     externalLikeChanged,
+    observePlayerResume,
     navigate,
     openCard,
     recommendedCards,

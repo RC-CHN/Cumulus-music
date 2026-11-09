@@ -4,7 +4,10 @@ use super::PodcastApi;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    protocol::api::{Api, identifier},
+    protocol::api::{
+        Api, PODCAST_RESUME_READ_PATH, PlayerPodcastResumeRead, VinylPlaybackReadPermission,
+        identifier, validate_response,
+    },
 };
 use serde_json::{Value, json};
 use std::{
@@ -17,6 +20,12 @@ use std::{
 
 pub(crate) const EXPERIMENT: &str = "Podcast_ResumePlaySwitch";
 const CAPACITY: usize = 1024;
+
+#[derive(Clone, Copy)]
+pub(crate) struct PlayerBinding<'a> {
+    pub(crate) revision: &'a str,
+    pub(crate) permission: &'a VinylPlaybackReadPermission<'a>,
+}
 
 struct AccountObservations {
     token: SessionToken,
@@ -90,6 +99,23 @@ impl Observations {
         Ok(())
     }
 
+    pub(crate) fn known(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        credentials: &str,
+        id: &str,
+    ) -> Result<Option<bool>> {
+        Ok(self
+            .current
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|current| current.owns(token, api, credentials))
+            .and_then(|current| current.radios.get(id))
+            .map(|&(_, enabled)| enabled))
+    }
+
     pub(crate) fn known_off(
         &self,
         token: &SessionToken,
@@ -120,7 +146,24 @@ pub(crate) async fn read_for(
     token: &SessionToken,
     id: &Value,
 ) -> Result<bool> {
-    let id = identifier(id)?;
+    read_observed(session, token, identifier(id)?, None).await
+}
+
+pub(super) async fn read_player_for(
+    session: &AccountSession,
+    token: &SessionToken,
+    id: &str,
+    binding: PlayerBinding<'_>,
+) -> Result<bool> {
+    read_observed(session, token, id.into(), Some(binding)).await
+}
+
+async fn read_observed(
+    session: &AccountSession,
+    token: &SessionToken,
+    id: String,
+    player: Option<PlayerBinding<'_>>,
+) -> Result<bool> {
     session
         .run_for(token, |api, _| async move {
             let observation = api
@@ -128,9 +171,26 @@ pub(crate) async fn read_for(
                 .ok()
                 .flatten()
                 .zip(session.podcast_resume.issue());
-            let enabled = PodcastApi::new(api.clone())
-                .resume_enabled(&json!(id))
-                .await?;
+            let enabled = if let Some(binding) = player {
+                (binding.permission)()?;
+                let reply = api
+                    .request_player_podcast_resume_read(
+                        PlayerPodcastResumeRead::new(&id)?,
+                        binding.revision,
+                        binding.permission,
+                    )
+                    .await?;
+                (binding.permission)()?;
+                PodcastApi::resume_from_reply(&validate_response(
+                    PODCAST_RESUME_READ_PATH,
+                    reply,
+                    &[200],
+                )?)?
+            } else {
+                PodcastApi::new(api.clone())
+                    .resume_enabled(&json!(id))
+                    .await?
+            };
             if let Some((credentials, sequence)) = observation {
                 let _ = session.with_verified_profile(token, &api, |_, _| {
                     if api.podcast_resume_observation_revision()?.as_deref() == Some(&credentials) {

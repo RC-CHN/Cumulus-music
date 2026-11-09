@@ -10,11 +10,12 @@ use crate::{
             Api, ApiFuture, CopyrightNotificationRead, DailyNotificationRead, GuardedPlaylistAdd,
             GuardedPlaylistCreate, GuardedSongLike, MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH,
             MessageReadAllPermission, PlaybackChorusPermission, PlaybackChorusRead,
-            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
-            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
-            VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
-            VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
-            VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
+            PlayerPodcastResumeRead, PlayerPodcastResumeWrite, PlaylistAddPermission,
+            SongCardLikedRead, SongLikePermission, SystemLikedRead, VinylCommentRead,
+            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
+            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
+            VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead,
+            VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -76,6 +77,10 @@ enum RequestBinding<'a> {
     VinylDiscovery,
     VinylPlaybackRead(&'a VinylPlaybackReadPermission<'a>),
     DownloadLikedRead(&'a PlaylistAddPermission<'a>),
+    PlayerPodcastResumeWrite {
+        permission: &'a VinylPlaybackReadPermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     VinylPodcastSubscriptionWrite {
         permission: &'a VinylPlaybackReadPermission<'a>,
         dispatched: &'a AtomicBool,
@@ -906,6 +911,20 @@ impl MusicHttpClient {
                 permission()?;
                 dispatched.store(true, Ordering::Release);
             }
+            if let Some(RequestBinding::PlayerPodcastResumeWrite {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                if route != WireRoute::Eapi
+                    || self.player_podcast_resume_write_revision()?.as_deref()
+                        != Some(snapshot.revision.as_str())
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                permission()?;
+                dispatched.store(true, Ordering::Release);
+            }
             if let Some(RequestBinding::PodcastBadge {
                 permission,
                 dispatched,
@@ -1238,6 +1257,94 @@ impl Api for MusicHttpClient {
         }
         self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get", ASSIGNMENT_PATH])?;
         Ok(Some(revision))
+    }
+
+    fn player_podcast_resume_write_revision(&self) -> Result<Option<String>> {
+        use crate::protocol::{
+            api::{PODCAST_RESUME_READ_PATH, PODCAST_RESUME_WRITE_PATH},
+            pc_experiments::ASSIGNMENT_PATH,
+        };
+        let Some(revision) = self.podcast_resume_observation_revision()? else {
+            return Ok(None);
+        };
+        let origin = self.credentials.origin();
+        let route = select_route_with_policy(
+            origin,
+            PODCAST_RESUME_WRITE_PATH,
+            &json!({}),
+            self.options.routing,
+        )?;
+        if route != WireRoute::Eapi {
+            return Ok(None);
+        }
+        let target = origin.request_url(route, PODCAST_RESUME_WRITE_PATH)?;
+        let current = self.credentials.request_credentials(&target)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/w/nuser/account/get",
+                ASSIGNMENT_PATH,
+                PODCAST_RESUME_READ_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
+    fn request_player_podcast_resume_read<'a>(
+        &'a self,
+        read: PlayerPodcastResumeRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.player_podcast_resume_write_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            self.vinyl_playback_read(read.into_request(), revision, permission)
+                .await
+        })
+    }
+
+    fn request_player_podcast_resume_write<'a>(
+        &'a self,
+        write: PlayerPodcastResumeWrite,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let dispatched = AtomicBool::new(false);
+            let result = async {
+                if self.player_podcast_resume_write_revision()?.as_deref() != Some(revision) {
+                    return Err(Error::CredentialChanged);
+                }
+                let (path, payload) = write.into_request();
+                self.execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::PlayerPodcastResumeWrite {
+                        permission,
+                        dispatched: &dispatched,
+                    }),
+                )
+                .await
+            }
+            .await;
+            result.map_err(|error| {
+                if !dispatched.load(Ordering::Acquire) {
+                    Error::RequestNotSent(Box::new(error))
+                } else if matches!(error.root(), Error::RequestNotSent(_)) {
+                    Error::MutationUncertain
+                } else {
+                    error
+                }
+            })
+        })
     }
 
     fn upload_podcast_progress<'a>(
