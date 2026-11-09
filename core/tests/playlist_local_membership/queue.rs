@@ -212,6 +212,7 @@ async fn a_membership_edit_while_catalog_hydrates_does_not_commit_the_old_mix() 
     std::fs::write(&file, b"track").unwrap();
     let server = Arc::new(Server::new());
     let (client, session, library) = open(&temp.path().join("profile"), server.clone(), Some(9));
+    let client = Arc::new(client);
     library.scan(&media).unwrap();
     let row = refs(&client).await.remove(0);
     let revision = client
