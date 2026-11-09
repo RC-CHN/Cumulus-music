@@ -197,7 +197,12 @@ onUnmounted(() => {
         </li>
       </ol>
       <footer>
-        <button class="secondary" :disabled="!settled" @click="run('details')">
+        <button
+          v-if="!copyright || notice.playlistId"
+          class="secondary"
+          :disabled="!settled"
+          @click="run('details')"
+        >
           {{ copyright ? '查看回归歌单' : '查看详情' }}
         </button>
         <button class="primary" :disabled="!settled" @click="run('play')">一键播放</button>

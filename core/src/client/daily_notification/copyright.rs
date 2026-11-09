@@ -15,17 +15,14 @@ pub(super) struct ReturningSong {
 }
 
 pub(super) struct CopyrightOffer {
-    pub(super) playlist: String,
+    pub(super) playlist: Option<String>,
     pub(super) rows: Vec<ReturningSong>,
     pub(super) description: String,
 }
 
 pub(super) enum Candidate {
     Empty,
-    /// A legitimate official candidate wins arbitration even though this host
-    /// cannot publish its unique playlist or display that primary action.
-    NeedsUniquePlaylist,
-    Existing(CopyrightOffer),
+    Available(CopyrightOffer),
 }
 
 fn normalized(reply: &Value, requested: &HashSet<String>) -> Result<Vec<ReturningSong>> {
@@ -70,18 +67,17 @@ fn classify(data: &Value, rows: Vec<ReturningSong>) -> Candidate {
     if rows.is_empty() {
         return Candidate::Empty;
     }
-    let Ok(playlist) = identifier(&data["returnSongPlaylistId"]) else {
-        return Candidate::NeedsUniquePlaylist;
-    };
-    if playlist.len() > 32 {
-        return Candidate::NeedsUniquePlaylist;
-    }
+    // M/3085 btn_2 plays the frozen rows independently of the btn_1
+    // playlist action. A missing/invalid ID never grants create authority.
+    let playlist = identifier(&data["returnSongPlaylistId"])
+        .ok()
+        .filter(|id| id.len() <= 32);
     let description = data["songNum"]
         .as_u64()
         .filter(|n| (1..=1_000_000).contains(n))
         .map(|count| format!("有{count}首你喜欢的歌曲重新上架了！"))
         .unwrap_or_default();
-    Candidate::Existing(CopyrightOffer {
+    Candidate::Available(CopyrightOffer {
         playlist,
         rows,
         description,
@@ -166,18 +162,18 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn only_valid_existing_playlist_materializes_a_candidate() {
+    fn valid_rows_materialize_even_without_a_playlist_identity() {
         let payload = json!({"songs":[{"id":2,"name":"回归", "al":{"picUrl":"https://p1.music.126.net/a.jpg?SECRET=x"}},
             {"id":999,"name":"foreign"}],"privileges":[{"id":2,"pl":320000},{"id":3,"pl":320000}]});
         let requested = HashSet::from(["2".into(), "3".into()]);
         let rows = || normalized(&payload, &requested).unwrap();
         assert_eq!(rows().len(), 1);
-        let Candidate::Existing(offer) =
+        let Candidate::Available(offer) =
             classify(&json!({"returnSongPlaylistId":81,"songNum":7}), rows())
         else {
             panic!("existing playlist should be available");
         };
-        assert_eq!(offer.playlist, "81");
+        assert_eq!(offer.playlist.as_deref(), Some("81"));
         assert_eq!(offer.description, "有7首你喜欢的歌曲重新上架了！");
         assert!(offer.rows[0].playable);
         assert_eq!(
@@ -189,10 +185,12 @@ mod tests {
             json!({"returnSongPlaylistId":0}),
             json!({"returnSongPlaylistId":"foreign"}),
         ] {
-            assert!(matches!(
-                classify(&data, rows()),
-                Candidate::NeedsUniquePlaylist
-            ));
+            let Candidate::Available(no_playlist) = classify(&data, rows()) else {
+                panic!("playback rows do not require a playlist ID");
+            };
+            assert_eq!(no_playlist.playlist, None);
+            assert_eq!(no_playlist.rows[0].track.id, "2");
+            assert!(no_playlist.rows[0].playable);
         }
         assert!(matches!(classify(&Value::Null, vec![]), Candidate::Empty));
     }

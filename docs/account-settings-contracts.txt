@@ -42,7 +42,7 @@ personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置�
   修改本地免打扰和打开设置。新建回归歌单的另一条独立写入是
   M15:4843–4852 的 POST /api/unique/playlist/create，带序列化 trackIds、
   uniqueCode:"COPY_RIGHT_SONGS_RETURN"、playlistName:"回归歌单"、playlistDesc:""。
-  已接入「启动后首次／主窗前台」的传统每日推荐，以及已存在回归歌单的版权回归，见下节。
+  已接入「启动后首次／主窗前台」的传统每日推荐和版权回归，见下节。
   Windows 原生后台／沉浸窗口、系统恢复、整点半点、同日二推及专用新建回归歌单仍未接入。
 
 每日推荐：启动首次／主窗前台
@@ -73,7 +73,7 @@ personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置�
   任意歌曲或触发远端设置写入。测试用隔离的合成用户和 null 音频；不代表
   Windows 原生通知、后台推送、实服或真实声卡验证。
 
-版权回归：同一启动候选、仅已有回归歌单
+版权回归：同一启动候选、播放不依赖回归歌单
   M1384:4464–4466、M128:927–1000（恢复 _core/init/utils/app.ts:1012–1107）
   与每日推荐同一个计时器和单次通知收据；PH-PC-push2=t1 才先查版权回归。
   M116:373 开关默认为开，M3097:1095–1104、1190–1199、1472–1509 仅该组显示
@@ -98,14 +98,18 @@ personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置�
   去除旧的同身份歌曲，开始首首通过普通音源权限的回归歌曲，保留
   scene=copyrightReversionPush。首条明确禁播时不悄悄换下一首。特殊 FM／一起听／
   心动队列不跨管线接管。不存在额外免费权益或每日推荐试听模式。
-  没有有效回归歌单 ID 且确有歌曲的候选，不显示无实现按钮，也不降级抢推每日推荐。
+  恢复源码 app.ts:930–936 总是给出「一键播放」；M3085:5443–5460 的歌单按钮和
+  :5471–5506 的播放按钮互相独立。没有有效回归歌单 ID 时仍展示版权回归、允许
+  直接播放和本机通知管理，省去「创建回归歌单」按钮。原生也拒绝该收据的详情动作，
+  且不消耗该收据。两条分支共用曝光、播放权限、关闭、静默和设置，不降级抢推每日推荐。
   M15:4844–4852、M3160:2129–2162 已确认专用新建 JSON：
   {"trackIds":"原始 songIdList 的 JSON","uniqueCode":"COPY_RIGHT_SONGS_RETURN",
    "playlistName":"回归歌单","playlistDesc":""}；code=200 且 data.playlistId 有值
   才跳入新歌单并延迟提示成功，没有额外 add/subscribe，即使原函数名含 Fav。
   该路由未接入生产：恢复材料没有可见性、丢失回包读回或幂等保证；不以普通
-  /api/playlist/create 冒充、也不因回包缺失重试或猜测目标。合成探针严查该分支
-  不产生真实写入、不显示候选、不让每日推荐接管。M128:1022–1033 的定时任务
+  /api/playlist/create 冒充、也不因回包缺失重试或猜测目标。合成探针严查无 ID
+  分支不显示创建／详情、不产生创建请求，不让每日推荐接管，并验证普通队列播放。
+  M128:1022–1033 的定时任务
   版权列表为空会直接 return（不同于启动），本实现没有开启定时、恢复或二推。
 
 原研究的联动观察

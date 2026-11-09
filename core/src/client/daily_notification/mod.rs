@@ -309,7 +309,7 @@ impl MusicClient {
         }
         if self.can_offer_notification(&schedule, Copyright, &foreground)? {
             match self.copyright_candidate(&schedule, &foreground).await {
-                Ok(Candidate::Existing(copyright)) => {
+                Ok(Candidate::Available(copyright)) => {
                     if !self.can_offer_notification(&schedule, Copyright, &foreground)? {
                         return Ok(None);
                     }
@@ -327,7 +327,6 @@ impl MusicClient {
                         description,
                     );
                 }
-                Ok(Candidate::NeedsUniquePlaylist) => return Ok(None),
                 Err(error)
                     if matches!(
                         error.root(),
@@ -396,10 +395,7 @@ impl MusicClient {
         use chrono::Datelike;
         let (kind, playlist_id) = match &content {
             Content::Daily => (DailyNotificationKind::Daily, None),
-            Content::Copyright(value) => (
-                DailyNotificationKind::Copyright,
-                Some(value.playlist.clone()),
-            ),
+            Content::Copyright(value) => (DailyNotificationKind::Copyright, value.playlist.clone()),
         };
         let view = DailyNotificationView {
             epoch: schedule.owner.generation.to_string(),
@@ -569,6 +565,15 @@ impl MusicClient {
             }
             if !matches!(action, Command::Close) && (!offer.shown || !foreground()) {
                 return Err(Error::StaleResponse);
+            }
+            if matches!(action, Command::Details)
+                && matches!(&offer.content, Content::Copyright(value) if value.playlist.is_none())
+            {
+                // The renderer cannot turn Play-only authority into navigation
+                // or a write. Leave this receipt available for genuine actions.
+                return Err(Error::State(
+                    "copyright notification has no existing playlist",
+                ));
             }
             if matches!(action, Command::Snooze | Command::Disable) {
                 self.session.with_token(&owner, |_| {
