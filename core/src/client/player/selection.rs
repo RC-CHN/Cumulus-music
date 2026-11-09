@@ -276,11 +276,16 @@ impl MusicClient {
                 };
                 (input, keep_queue.then_some(policy))
             }
-            input @ PlaySelection::MixedPlaylist {
+            input @ (PlaySelection::MixedPlaylist {
                 double_click: true,
                 start: Some(_),
                 ..
-            } => {
+            }
+            | PlaySelection::OfflinePlaylist {
+                double_click: true,
+                start_id: Some(_),
+                ..
+            }) => {
                 let keep_queue = !self.replace_queue_on_double_click(&token)?;
                 (input, keep_queue.then_some(RetainedRow::Catalog))
             }
@@ -787,6 +792,73 @@ impl MusicClient {
                 self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
+            PlaySelection::OfflinePlaylist {
+                id,
+                revision,
+                start_id,
+                double_click,
+            } => {
+                let offline = self
+                    .offline_playlist_queue(
+                        &token,
+                        &id,
+                        &revision,
+                        start_id.as_deref(),
+                        preserve.is_some(),
+                    )
+                    .await?;
+                if double_click && let Some(lease) = lease {
+                    let row = &offline.resources[offline.index];
+                    if let Some(state) = self
+                        .toggle_active_song_row(
+                            &token,
+                            super::queue_click::TableSong::IndexedLocal(row),
+                            attempt,
+                            lease,
+                            &offline.guard,
+                            preserve.as_ref(),
+                        )
+                        .await?
+                    {
+                        self.session.check_generation(&token)?;
+                        return project(&state, &token);
+                    }
+                }
+                let state = if let Some(snapshot) = preserve {
+                    let lease = lease.ok_or(Error::StaleResponse)?;
+                    self.focus.check(lease, Owner::Audio)?;
+                    let resource = offline
+                        .resources
+                        .into_iter()
+                        .next()
+                        .ok_or(Error::QueueChanged)?;
+                    self.play_retained_queue_row_with_source(
+                        &token,
+                        snapshot,
+                        (resource, offline.source),
+                        lease,
+                        RetainedRow::Local,
+                        Some(offline.guard),
+                    )
+                    .await?
+                } else {
+                    self.submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources: offline.resources,
+                            index: offline.index,
+                            source: offline.source,
+                        },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
+                        Some(offline.guard),
+                    )
+                    .await?
+                };
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
             PlaySelection::MixedPlaylist {
                 id,
                 revision,
@@ -1093,6 +1165,7 @@ impl MusicClient {
                     | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::MixedPlaylist { .. }
+                    | PlaySelection::OfflinePlaylist { .. }
                     | PlaySelection::LocalBatch { .. }
                     | PlaySelection::LocalBatchAdd { .. }
                     | PlaySelection::Podcast { .. }

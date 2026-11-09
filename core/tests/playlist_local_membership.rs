@@ -1,3 +1,5 @@
+#[path = "playlist_local_membership/offline.rs"]
+mod offline;
 #[path = "playlist_local_membership/queue.rs"]
 mod queue;
 #[path = "playlist_local_membership/reorder.rs"]

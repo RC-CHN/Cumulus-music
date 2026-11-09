@@ -5,6 +5,8 @@ use super::{
 };
 use crate::{
     Error, Result,
+    account::SessionToken,
+    client::playlist_offline::{invalidates_cache, may_fallback},
     client::{dto::*, local::view},
     playlist::{PlaylistApi, PlaylistLocalRow, PlaylistLocalStore},
     protocol::api::identifier,
@@ -27,41 +29,82 @@ impl MusicClient {
         mapping::page(page.offset, page.limit)?;
         let id = identifier(&json!(id))?;
         let token = self.session.token()?;
-        let (api, uid, detail) = self
+        let page = match self
+            .online_playlist_page(&token, &id, &page, local_revision.as_deref())
+            .await
+        {
+            Ok(page) => page,
+            Err(error) if may_fallback(&error) => {
+                match self
+                    .offline_playlist_page(&token, &id, &page, local_revision.as_deref())
+                    .await
+                {
+                    Ok(Some(page)) => page,
+                    Ok(None) => return Err(error),
+                    Err(cache_error) => return Err(cache_error),
+                }
+            }
+            Err(error) => return Err(error),
+        };
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: token.generation.to_string(),
+                value: page,
+            })
+        })
+    }
+
+    async fn online_playlist_page(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        page: &PageRequest,
+        local_revision: Option<&str>,
+    ) -> Result<TrackPage> {
+        let (api, uid, detail) = match self
             .session
-            .run_for(&token, |api, uid| async {
+            .run_for(token, |api, uid| async {
                 let detail = PlaylistApi::new(api.clone()).detail(&json!(id)).await?;
                 Ok((api, uid, detail))
             })
-            .await?;
+            .await
+        {
+            Ok(data) => data,
+            Err(error) => {
+                if invalidates_cache(&error) {
+                    let _ = self.invalidate_offline_playlist(token, id);
+                }
+                return Err(error);
+            }
+        };
         let mut playlist = mapping::playlist(&detail, &uid)?;
         if playlist.id != id {
             return Err(Error::Response("playlist identity mismatch"));
         }
-        let result = if !playlist.owned || playlist.favorite {
+        if !playlist.owned || playlist.favorite {
+            let _ = self.invalidate_offline_playlist(token, id);
             if local_revision.is_some() {
                 return Err(Error::QueueChanged);
             }
-            self.session
-                .run_for(&token, |current, _| async {
-                    self.session.require_api(&token, &api)?;
-                    playlist_track_page(current, &uid, &id, &detail, &page, None, None).await
+            return self
+                .session
+                .run_for(token, |current, _| async {
+                    self.session.require_api(token, &api)?;
+                    playlist_track_page(current, &uid, id, &detail, page, None, None).await
                 })
-                .await?
-        } else {
-            let revision = playlist_track_revision(&id, &detail)?;
+                .await;
+        }
+        let result = {
+            let revision = playlist_track_revision(id, &detail)?;
             if (page.offset > 0 && (page.revision.is_none() || local_revision.is_none()))
                 || page.revision.as_ref().is_some_and(|r| r != &revision)
             {
                 return Err(Error::QueueChanged);
             }
             let store = PlaylistLocalStore::new(self.session.clone())?;
-            let membership = store.project(&token, &id, &detail)?;
+            let membership = store.project(token, id, &detail)?;
             let generation = membership.generation();
-            if local_revision
-                .as_ref()
-                .is_some_and(|r| r != &membership.revision)
-            {
+            if local_revision.is_some_and(|r| r != membership.revision) {
                 return Err(Error::QueueChanged);
             }
             let tracks = detail["trackIds"]
@@ -108,20 +151,20 @@ impl MusicClient {
                 .collect::<Result<Vec<_>>>()?;
             let rows = self
                 .session
-                .run_for(&token, |current, _| async {
-                    self.session.require_api(&token, &api)?;
+                .run_for(token, |current, _| async {
+                    self.session.require_api(token, &api)?;
                     playlist_rows(current, slots, page.offset, None, None).await
                 })
                 .await?;
             // A concurrent local edit during song-detail lookup invalidates this page.
-            if store.generation(&token, &id)? != generation {
+            if store.generation(token, id)? != generation {
                 return Err(Error::QueueChanged);
             }
             let total = membership.rows.len();
             if total != tracks.len() {
                 playlist.track_count = total;
             }
-            TrackPage {
+            let result = TrackPage {
                 revision: Some(revision),
                 total,
                 more: page.offset.saturating_add(rows.len()) < total,
@@ -134,15 +177,20 @@ impl MusicClient {
                     has_unbound_legacy: tracks.iter().any(|row| row["v"].as_i64() == Some(-1)),
                     rows: refs,
                 }),
+                playlist_offline: None,
                 daily: None,
                 style_tags: None,
-            }
+            };
+            // A failed cache write must not hide an otherwise valid live read.
+            self.session.require_api(token, &api)?;
+            let _ = self.observe_offline_playlist(
+                token,
+                &result,
+                generation,
+                detail["updateTime"].as_u64(),
+            );
+            result
         };
-        self.session.with_token(&token, |_| {
-            Ok(AccountData {
-                epoch: token.generation.to_string(),
-                value: result,
-            })
-        })
+        Ok(result)
     }
 }

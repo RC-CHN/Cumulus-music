@@ -527,6 +527,7 @@ pub(super) fn track_page(rows: &[Value]) -> Result<TrackPage> {
         more: false,
         playlist: None,
         playlist_local: None,
+        playlist_offline: None,
         daily: None,
         style_tags: None,
     })

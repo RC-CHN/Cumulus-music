@@ -174,7 +174,7 @@ pub struct AccountData<T> {
     pub value: T,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistView {
     pub id: String,
@@ -216,14 +216,14 @@ pub struct PlaylistCollectPage {
     pub next_page: Option<u32>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistHeaderDate {
     pub kind: PlaylistHeaderDateKind,
     pub timestamp_ms: u64,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlaylistHeaderDateKind {
     Created,
@@ -247,7 +247,7 @@ pub struct PlaylistSubscribersPage {
     pub next_offset: Option<u32>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistReference {
     /// Missing/zero IDs denote display-only credits, never a navigable artist.
@@ -255,7 +255,7 @@ pub struct ArtistReference {
     pub name: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackView {
     pub id: String,
@@ -288,9 +288,17 @@ pub struct TrackPage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playlist_local: Option<PlaylistLocalPage>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub playlist_offline: Option<PlaylistOfflinePage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub daily: Option<DailyRecommendationState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style_tags: Option<super::style_tags::StyleCategory>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistOfflinePage {
+    pub cached_at_ms: u64,
 }
 
 /// Display-only local membership fence. TrackPage::revision continues to
