@@ -524,7 +524,12 @@
       await result("更改后的原词");
       const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
       const { epoch } = await invoke("account_snapshot");
-      const history = (await invoke("search_history", { epoch, command: { kind: "read" } })).value.slice(0, 4);
+      let history;
+      for (let n = 0; n < 50; n++) {
+        history = (await invoke("search_history", { epoch, command: { kind: "read" } })).value.slice(0, 4);
+        if (history[0] === "更改后的原词") break;
+        await sleep(25);
+      }
       assert(history.join("|") === "更改后的原词|退出悬停|合成分支推荐|合成精确词",
         "native history remembers only the selected search keywords");
       await emit("complete", {
