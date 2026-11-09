@@ -33,6 +33,7 @@ mod queue_menu;
 mod queue_more_playlist;
 pub(super) mod queue_playlist;
 mod queue_voice_menu;
+pub use queue_voice_menu::QueueVoiceFileReveal;
 mod reports;
 mod search_artist;
 mod search_podcast;

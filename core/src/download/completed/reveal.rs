@@ -44,6 +44,11 @@ impl DownloadFileReveal {
         }
     }
 
+    pub(crate) fn matches_voice_association(&self, voice_id: &str, media_id: &str) -> bool {
+        self.record.song_id == media_id
+            && matches!(&self.origin, DownloadOrigin::Voice { voice_id: id } if id == voice_id)
+    }
+
     /// Recheck immediately before the host dispatches the path to its shell.
     /// The OS file manager takes a pathname, not the verified file handle.
     pub fn check_current(&self) -> Result<()> {
@@ -92,6 +97,24 @@ impl CompletedDownloads {
             return Err(Error::State("download publication record changed"));
         }
         Ok((record, task.origin))
+    }
+
+    /// Cheap indexed candidate check; dispatch still hashes the selected file.
+    pub(crate) fn voice_reveal_candidate(
+        &self,
+        id: &str,
+        voice_id: &str,
+        media_id: &str,
+    ) -> Result<std::path::PathBuf> {
+        let token = self.token()?.ok_or(Error::StaleResponse)?;
+        let (record, origin) = self.reveal_publication(&token, id)?;
+        if record.song_id != media_id
+            || !matches!(&origin, DownloadOrigin::Voice { voice_id: id } if id == voice_id)
+            || std_fs::symlink_metadata(&record.path)?.len() != record.integrity.bytes
+        {
+            return Err(Error::DownloadedFileMissing);
+        }
+        Ok(record.path)
     }
 
     pub(crate) fn verify_reveal(&self, id: &str) -> Result<DownloadFileReveal> {

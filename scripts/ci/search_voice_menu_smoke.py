@@ -1,13 +1,15 @@
 """Exercise the voice More menus and native directory handoff in Linux."""
 import argparse
-from contextlib import closing
+from contextlib import closing, nullcontext
 import ctypes
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import time
 
+from local_folder_reveal_smoke import fake_file_manager
 from search_queue_drop_smoke import TrustedDrag
 from window_manager import launch
 
@@ -69,7 +71,11 @@ def queue_result(root, output, rows, complete, locale):
     for stage in ('01_playing_menu', '03_fallback_menu', '05_remove_menu', '07_resume_menu', '09_directory_menu'):
         samples = read(output / f'paint-ux_{stage}.json')['samples']
         assert len(samples) == 1 and samples[0]['ok'], stage
-    assert (root / 'folder-argv.txt').read_text(encoding='utf-8').splitlines() == [str(root / 'episode files')]
+    leaf = root / 'episode files' / 'synthetic-voice.flac'
+    assert leaf.is_file()
+    calls = [json.loads(line) for line in (root / 'show-items.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert calls == [[[leaf.resolve().as_uri()], '']]
+    assert not (root / 'folder-argv.txt').exists(), 'FileManager1 success must not fall back'
     assert complete['voiceMenuCalls'] == [
         {'resourceType': 1, 'resourceIds': f'["{id_}"]'} for id_ in (401, 401, 402, 402, 401, 401)]
     # Only the initial voice load and second-row queue insertion resolve sources.
@@ -80,7 +86,7 @@ def queue_result(root, output, rows, complete, locale):
         ['/api/dj/program/detail', {'id': '402'}],
     ]
     return dict(ok=True, actualWebView=True, states=QUEUE_STAGES, screenshots=len(QUEUE_STAGES),
-                locale=locale, sameDecoder=True, directoryArgvVerified=True, trusted=complete['trusted'],
+                locale=locale, sameDecoder=True, exactFileManager1Calls=1, trusted=complete['trusted'],
                 realMusicRequests=0, realAccountWrites=0, wire=complete['voiceMenuCalls'],
                 sourcePreparation=complete['voiceNextCalls'])
 
@@ -92,10 +98,19 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--play', action='store_true', help='check explicit Search Menu Play versus row Pause')
     mode.add_argument('--queue', action='store_true', help='check the ordinary queue voice More menu')
+    parser.add_argument('--queue-private-bus', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if sys.platform != 'linux' or not os.environ.get('DISPLAY'):
         parser.error('requires Linux Xvfb')
     assert len(Path('/proc/net/route').read_text().splitlines()) == 1, 'requires a sealed network namespace'
+    if args.queue and not args.queue_private_bus:
+        # Do not claim the file-manager name on a user's desktop bus.
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('DBUS_SESSION_BUS_ADDRESS', 'AT_SPI_BUS_ADDRESS', 'AT_SPI_DISPLAY')}
+        subprocess.run(['dbus-run-session', '--', sys.executable, __file__,
+                        *sys.argv[1:], '--queue-private-bus'],
+                       env=env, check=True, timeout=195)
+        return
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     env = {key: value for key, value in os.environ.items() if not key.upper().startswith('CUMULUS_')}
@@ -106,6 +121,8 @@ def main():
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] /
                                      'desktop/examples' / script),
                CUMULUS_PROOF_FRONTEND_DIST=str(args.frontend_dist.resolve(strict=True)))
+    if args.queue:
+        env['CUMULUS_QUEUE_VOICE_FILE_PROOF'] = '1'
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
         folder = root / key
         folder.mkdir(mode=0o700)
@@ -117,7 +134,8 @@ def main():
     launcher.chmod(0o700)
     env['PATH'] = str(launcher.parent) + os.pathsep + env.get('PATH', '')
     output = root / 'first'
-    with closing(TrustedDrag()) as pointer, (root / 'host.log').open('x', encoding='utf-8') as log:
+    shell = fake_file_manager(root, env, once=True) if args.queue else nullcontext()
+    with shell, closing(TrustedDrag()) as pointer, (root / 'host.log').open('x', encoding='utf-8') as log:
         def input_at_capture(path, payload, _pid):
             if args.queue:
                 return queue_input(pointer, path.stem, payload)

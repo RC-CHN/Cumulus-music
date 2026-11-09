@@ -518,13 +518,23 @@ pub async fn player_queue_open_voice_directory<R: tauri::Runtime>(
     if window.label() != "main" {
         return Err(Error::InvalidInput("queue voice directory requires the main window").into());
     }
-    let path = client
-        .player_queue_voice_directory(&epoch, &revision, &entry_id)
+    let reveal = client
+        .player_queue_voice_file_reveal(&epoch, &revision, &entry_id)
         .await?;
-    client.validate_download_epoch(&epoch)?;
-    crate::file_manager::open_directory(path)
-        .await
-        .map_err(Into::into)
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        let client = app.state::<MusicClient>();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                reveal.check_current(&client),
+            )
+            .await
+            .map_err(|_| Error::State("queue voice file reveal validation timed out"))?
+        })
+    })
+    .await
+    .map_err(Into::into)
 }
 #[tauri::command]
 pub async fn player_chorus(

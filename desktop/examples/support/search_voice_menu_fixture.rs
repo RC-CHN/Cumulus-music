@@ -7,6 +7,8 @@ use cumulus_core::{
     },
     storage::StateStore,
 };
+#[path = "../../../core/tests/support/queue_voice_publication.rs"]
+mod queue_publication;
 use serde_json::{Value, json};
 use std::{
     path::Path,
@@ -66,9 +68,16 @@ pub async fn response(path: &str, args: &Value, cached: bool) -> Option<Result<V
     })
 }
 
-pub fn seed(root: &Path, session: Arc<AccountSession>, store: &StateStore) -> Result<()> {
+pub async fn seed(root: &Path, session: Arc<AccountSession>, store: Arc<StateStore>) -> Result<()> {
     let parent = root.join("episode files");
     std::fs::create_dir(&parent)?;
+    if std::env::var_os("CUMULUS_QUEUE_VOICE_FILE_PROOF").is_some() {
+        let task =
+            queue_publication::publish(store, 2, "401", "1", parent.join("synthetic-voice.flac"))
+                .await?;
+        assert_eq!(task.status, DownloadStatus::Complete);
+        return Ok(());
+    }
     let service = DownloadService::new(session)?;
     let mut task = service.create(
         &json!("1"),

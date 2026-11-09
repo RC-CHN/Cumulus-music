@@ -1258,7 +1258,7 @@ fn main() {
             tauri::async_runtime::block_on(async {
                 assert_eq!(client.restore_account().await?.status,
                     cumulus_core::account::SessionStatus::Authenticated);
-                search_voice_menu_fixture::seed(&root, fixture_session.clone(), &proof_store)
+                search_voice_menu_fixture::seed(&root, fixture_session.clone(), proof_store.clone()).await
             })?;
             app.manage(cumulus_desktop::DefaultRouteObserver::new(||
                 cumulus_core::network_diagnostics::DefaultRoute::Present));
