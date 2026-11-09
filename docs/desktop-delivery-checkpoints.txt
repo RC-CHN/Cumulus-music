@@ -66,6 +66,16 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     桌面歌词设置独立。两批随后合入产品候选，分别可用
     scripts/ci/download_speed_smoke.py 和 scripts/ci/interface_font_smoke.py
     复验；这些独立报告不当作最终合并提交的 Windows 或实服证据。
+  - 合并源码 `d9b68db6dd79d239e4a48607f283cb75346936f4`：前端 1040 项、
+    类型/生产构建、Rust 格式和 Windows x64 GNU 全桌面目标严格 Clippy 通过。
+    相同前端和原生编译在 Linux GTK/WebKit 验证了下载速率 7 态、字体 11 态、
+    最近播放播客/有声书选章 4 态。该源码普通程序另在没有外网和现有会话的
+    X11 环境完成正式窗口、访客、设置、本地选择器和退出。AT-SPI/XTest 打开
+    目录窗口，选择合成 FLAC 的文件夹，确认默认未勾选；勾选仍不入库，点确认
+    后才看到索引。实际 libmpv 时钟从 1.153 秒推进到 2.390 秒，暂停保持
+    3.563 秒，退出码 0。正式程序这次首帧约 8.7 秒，音频送入私有 PipeWire
+    空输出。记录见 `.build/ui-proof/phase191-product/`，不是声卡、Windows
+    文件交接或当前 RC 的发布证据。
 
 当前不能据此关闭的要件
   - 主线的完整托管 gate、Windows 实际 WebView/系统媒体以及发行附件必须
