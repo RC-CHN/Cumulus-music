@@ -779,7 +779,15 @@ def main():
         assert by_name['prepared_offline']['publicationView']['preflightFailed']
         assert by_name['prepared_offline']['publicationView']['recovering']['phase'] == 'prepared'
         assert all(by_name[name]['publicationCalls'] == 1 for name in ['blocked_dark', 'confirm', 'cancelled_dialog', 'unknown_ipc', 'cancelled_unseen'])
-        assert by_name['cancelled_unseen']['networkCalls'] == by_name['blocked_dark']['networkCalls']
+        # The fixture also handles independent background polling, which may
+        # complete between captures. Only the actual relay API calls are scoped
+        # to this cancellation; no relay preflight, pull or write may occur.
+        baseline = by_name['blocked_dark']['relayCalls']
+        assert sum(baseline.get(path, 0) for path in (
+            '/api/relay/songlist/submit', '/api/relay/play/state/submit',
+        )) == 1, baseline
+        for name in ['small_dark', 'confirm', 'cancelled_dialog', 'unknown_ipc', 'cancelled_unseen']:
+            assert by_name[name]['relayCalls'] == baseline, (name, baseline, by_name[name]['relayCalls'])
         for name in ['blocked_playing', 'uncertain_playing']:
             assert by_name[name]['nativePlayer']['state'] == 'playing'
         for name in ['recovered_lost_ack', 'recovered', 'read_recovered']:
