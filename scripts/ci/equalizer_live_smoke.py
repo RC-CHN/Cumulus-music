@@ -122,6 +122,25 @@ def main():
     for stage in (custom_saved, built_in, recalled):
         assert stage['equalizer']['saved_custom'] == custom_gains
         assert stage['entryId'] == before['entryId'] and stage['state'] == 'playing'
+    zero_bypassed = read('eq_zero_enhancements_bypassed')
+    zero_reset = read('eq_zero_enhancements_reset')
+    assert zero_bypassed['tone'] == zero_reset['tone'] == [0, 0]
+    assert zero_bypassed['spatial'] == zero_reset['spatial'] == [0, 0]
+    before_reset = zero_bypassed['native']
+    after_reset = zero_reset['native']
+    assert before_reset['equalizer']['settings'] == {
+        **recalled['equalizer']['settings'], 'master_bypassed': True,
+    }
+    assert after_reset['equalizer']['settings'] == recalled['equalizer']['settings']
+    assert after_reset['equalizer']['status'] == zero_reset['status'] == 'processing'
+    assert (int(recalled['equalizer']['revision']) + 1 == int(before_reset['equalizer']['revision'])
+            == int(after_reset['equalizer']['revision']) - 1)
+    assert recalled['position'] < before_reset['position'] < after_reset['position']
+    for stage in (before_reset, after_reset):
+        assert stage['equalizer']['preset'] == {'kind': 'saved'}
+        assert stage['equalizer']['saved_custom'] == custom_gains
+        assert stage['entryId'] == before['entryId'] and stage['state'] == 'playing'
+        assert stage['loudness'] == recalled['loudness']
     off = read('eq_off')['native']
     independent = read('eq_independent_tone')
     assert independent['tone'] == [6, 0]
@@ -162,7 +181,7 @@ def main():
     assert tone_settings['gains'][4] == 4
     assert saved['state'] == 'paused' and saved['position'] >= 11
     complete = read('complete')
-    assert complete['ok'] and complete['retainedAdjustmentFocus'] == 3
+    assert complete['ok'] and complete['retainedAdjustmentFocus'] == 4
     assert complete['heldRangeChecks'] == 2
     record = persisted(root)
     saved_custom_record = {'enabled': True, 'gains': custom_gains}
@@ -214,6 +233,7 @@ def main():
               'keyboardAdjustmentFocusVerified': True,
               'discardedUnconfirmedDraftWithoutRewriting': True,
               'masterBypassRetainedAndRestored': True,
+              'zeroEnhancementResetReopenedSavedCurve': True,
               'missingPluginRecoveredWithoutEq': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))

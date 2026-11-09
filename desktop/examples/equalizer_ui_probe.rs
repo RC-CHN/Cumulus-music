@@ -87,7 +87,7 @@ fn main() {
         let handle=app.handle().clone();
         app.listen("equalizer-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).unwrap();let stage=value["stage"].as_str().unwrap_or("").to_owned();
-            if !["eq_initial","eq_enabled","eq_keyboard_gain","eq_same_curve_saved","eq_same_curve_builtin","eq_custom","eq_discard_after_loss","eq_custom_saved","eq_custom_built_in","eq_custom_recalled","eq_off","eq_independent_tone","eq_reenabled","eq_flat","eq_tone","eq_master_bypassed","eq_master_edited","eq_saved","eq_master_saved","eq_reopened","eq_reopened_playing","eq_reopened_custom_recalled","eq_reopened_tone_reset","eq_missing","eq_disabled_recovery","complete","failed"].contains(&stage.as_str()) {return;}
+            if !["eq_initial","eq_enabled","eq_keyboard_gain","eq_same_curve_saved","eq_same_curve_builtin","eq_custom","eq_discard_after_loss","eq_custom_saved","eq_custom_built_in","eq_custom_recalled","eq_zero_enhancements_bypassed","eq_zero_enhancements_reset","eq_off","eq_independent_tone","eq_reenabled","eq_flat","eq_tone","eq_master_bypassed","eq_master_edited","eq_saved","eq_master_saved","eq_reopened","eq_reopened_playing","eq_reopened_custom_recalled","eq_reopened_tone_reset","eq_missing","eq_disabled_recovery","complete","failed"].contains(&stage.as_str()) {return;}
             let handle=handle.clone();let output=output.clone();
             tauri::async_runtime::spawn(async move {
                 let client=handle.state::<MusicClient>();
