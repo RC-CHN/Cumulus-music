@@ -131,6 +131,14 @@ class WindowsMsys2Bootstrap(unittest.TestCase):
         self.assertEqual([call.args[0] for call in opener.call_args_list], [MIRROR, RELEASE])
         self.assert_ready()
 
+    def test_early_eof_with_pinned_content_length_uses_release(self):
+        truncated = Response(WRONG_BYTES[:5], MIRROR)
+        truncated.headers['Content-Length'] = str(len(INSTALLER))
+        opener = Mock(side_effect=[truncated, Response(INSTALLER, RELEASE)])
+        bootstrap.seed(self.root, opener)
+        self.assertEqual([call.args[0] for call in opener.call_args_list], [MIRROR, RELEASE])
+        self.assert_ready()
+
     def test_redirect_hook_rejects_downgrade_and_other_authorities(self):
         request = urllib.request.Request(MIRROR)
         redirect = bootstrap.OfficialRedirect()

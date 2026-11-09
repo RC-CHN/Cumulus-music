@@ -96,6 +96,10 @@ def transfer(url, destination, open_url):
             if size > ARCHIVE_BYTES:
                 raise BootstrapError('MSYS2 installer exceeds its pinned byte length.')
             output.write(block)
+        if length is not None and size < ARCHIVE_BYTES:
+            # HTTPResponse.read1 may report an early EOF rather than raise
+            # IncompleteRead for a connection that ended before its framing.
+            raise http.client.IncompleteRead(b'', ARCHIVE_BYTES - size)
     if not verified(destination):
         raise BootstrapError('MSYS2 installer failed its pinned byte length or SHA-256 check.')
 
