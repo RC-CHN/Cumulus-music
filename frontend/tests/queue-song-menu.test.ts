@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { QueueCatalogMenu, QueueVoiceMenu } from '../src/services/player.ts';
-import { queueSongMenuItems, queueVoiceMenuItems } from '../src/services/trackMenu.ts';
+import {
+  queueFileMenuItems,
+  queueSongMenuItems,
+  queueVoiceMenuItems,
+} from '../src/services/trackMenu.ts';
 
 const completed: QueueCatalogMenu = {
   epoch: '1',
@@ -86,4 +90,74 @@ test('voice groups keep queue controls without single-episode actions or catalog
     single.some(({ key }) => key === 'directory' || key === 'download'),
     false,
   );
+});
+
+test('file menus use only their typed native origin and preserve file actions', () => {
+  const info = {
+    epoch: '1',
+    revision: '3',
+    entryId: 'file-entry',
+    track: { ...completed.track, id: 'a'.repeat(64), local: true },
+  };
+  const local = {
+    kind: 'local' as const,
+    tracks: [info.track],
+    anchor: {} as HTMLElement,
+    live: () => true,
+    play() {},
+    remove() {},
+    report() {},
+    collect() {},
+    collectionLocked: () => false,
+  };
+  const cases = [
+    [
+      {
+        ...local,
+        info: { ...info, origin: { kind: 'playlist', id: '73' }, sourceLabel: '合成混合歌单' },
+      },
+      '来自：合成混合歌单',
+    ],
+    [{ ...local, info: { ...info, origin: { kind: 'playlist', id: '73' } } }, '来自：歌单'],
+    [
+      { ...local, info: { ...info, origin: { kind: 'local' }, sourceLabel: '不采用此字段' } },
+      '来自：本地音乐',
+    ],
+    [{ ...local, info: { ...info, origin: { kind: 'downloads' } } }, undefined],
+    [{ ...local, info }, undefined],
+    [
+      {
+        ...local,
+        kind: 'downloaded',
+        downloadKind: 'song',
+        info: { ...info, origin: { kind: 'downloads' } },
+      },
+      '来自：下载的单曲',
+    ],
+    [
+      {
+        ...local,
+        kind: 'downloaded',
+        downloadKind: 'voice',
+        info: { ...info, origin: { kind: 'downloads' } },
+      },
+      '来自：下载的声音',
+    ],
+    [
+      {
+        ...local,
+        kind: 'downloaded',
+        downloadKind: 'song',
+        info: { ...info, origin: { kind: 'playlist', id: '73' } },
+      },
+      undefined,
+    ],
+  ] as const;
+  for (const [row, label] of cases) {
+    const menu = queueFileMenuItems(row, true, false);
+    assert.equal(menu.find(({ key }) => key === 'source')?.label, label);
+    assert.ok(menu.some(({ key }) => key === 'directory'));
+    assert.ok(menu.some(({ key }) => key === 'remove'));
+    assert.equal(menu.find(({ key }) => key === 'play')?.label, '暂停');
+  }
 });

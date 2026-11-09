@@ -106,12 +106,27 @@ pub(super) fn queue(entry: &crate::playback::QueueEntry) -> Option<QueueOrigin> 
             ("album", Kind::Catalog) => QueueOrigin::Album { id: id()? },
             ("artist", Kind::Catalog) => QueueOrigin::Artist { id: id()? },
             ("playlist", Kind::Catalog) => QueueOrigin::Playlist { id: id()? },
+            // Mixed playlists give indexed files their own resource identity
+            // and the same verified playlist source as online queue rows.
+            ("playlist", Kind::Local) if super::queue_local_menu::eligible(entry) => {
+                QueueOrigin::Playlist { id: id()? }
+            }
             ("local", Kind::Local) if source["nativeOpen"] != true => QueueOrigin::Local,
             ("cloud", Kind::Cloud) => QueueOrigin::Cloud,
             ("downloads", Kind::Downloaded) => QueueOrigin::Downloads,
             _ => return None,
         },
     )
+}
+
+pub(super) fn local_queue_source_name<'a>(
+    entry: &'a QueueEntry,
+    origin: &QueueOrigin,
+) -> Option<&'a str> {
+    (matches!(origin, QueueOrigin::Playlist { .. })
+        && identity::kind(&entry.resource) == PlayerResourceKind::Local)
+        .then(|| entry.source["source_name"].as_str().and_then(label))
+        .flatten()
 }
 
 /// Only the native selected catalog entry can supply the search label.
@@ -257,6 +272,56 @@ mod tests {
             (json!({"voice_id":"7"}), json!({"kind":"album","id":42})),
         ] {
             assert!(view(resource, source).is_none());
+        }
+    }
+
+    #[test]
+    fn indexed_local_playlist_origin_uses_the_native_source_and_excludes_unbound_rows() {
+        let playlist = json!({
+            "kind": "playlist",
+            "id": "73",
+            "href": "PRIVATE_URL",
+            "toState": {"opaque": "PRIVATE"},
+        });
+        let resource = json!({
+            "local_id": "e".repeat(64),
+            "local_revision": {"kind": "cue", "sheet": "PRIVATE_PATH"},
+            "song": {"album": {"id": "999"}},
+        });
+        let entry = |resource, source| QueueEntry {
+            entry_id: "row".into(),
+            resource,
+            source,
+        };
+        assert_eq!(
+            serde_json::to_value(queue(&entry(resource.clone(), playlist.clone()))).unwrap(),
+            json!({"kind": "playlist", "id": "73"})
+        );
+        assert_eq!(
+            serde_json::to_value(queue(&entry(resource.clone(), json!({"kind": "local"}))))
+                .unwrap(),
+            json!({"kind": "local"})
+        );
+        for (key, value) in [
+            ("local_id", json!("11")),
+            ("local_revision", Value::Null),
+            ("native_open_file", json!({"held_id": "private"})),
+            ("voice_id", json!("7")),
+            ("cloud_song_id", json!("73")),
+            ("download_task_id", json!("11")),
+        ] {
+            let mut invalid = resource.clone();
+            invalid[key] = value;
+            assert!(queue(&entry(invalid, playlist.clone())).is_none(), "{key}");
+        }
+        for (key, value) in [
+            ("id", json!("https://invalid.example/playlist")),
+            ("nativeOpen", json!(true)),
+            ("kind", json!("unknown")),
+        ] {
+            let mut invalid = playlist.clone();
+            invalid[key] = value;
+            assert!(queue(&entry(resource.clone(), invalid)).is_none(), "{key}");
         }
     }
 

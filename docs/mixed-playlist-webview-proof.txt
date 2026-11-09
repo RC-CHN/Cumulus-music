@@ -28,3 +28,5 @@ core-playlist-contracts.txt。
 原文件逐字节一致、暂停位置和队列不变。回执检查了 6 次歌单读取、零远端
 歌单写入、零真实音乐请求；只允许上文的单次合成预取。
 本机复核回执：.build/ui-proof/phase225-mixed-playlist/receipt.json。
+
+混合曲目入队和来源导航另有独立夹具与回执，见 mixed-playlist-queue-webview-proof.txt。

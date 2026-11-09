@@ -183,6 +183,9 @@ pub struct QueueTrack {
     pub more_recommendation: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<QueueOrigin>,
+    /// Verified mixed-playlist name for a local row's source menu.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub like_song_id: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -554,6 +557,13 @@ pub struct PlaylistDropRow {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct MixedPlaylistDropRow {
+    pub track_id: String,
+    pub track_index: usize,
+    pub local: bool,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AlbumDropRow {
     pub track_id: String,
     pub track_index: usize,
@@ -619,6 +629,15 @@ pub enum PlayerAction {
         expected_play_id: Option<String>,
         before_entry_id: Option<String>,
     },
+    DropMixedPlaylistSongsIntoQueue {
+        id: String,
+        revision: String,
+        rows: Vec<MixedPlaylistDropRow>,
+        quality: Quality,
+        expected_queue_revision: String,
+        expected_play_id: Option<String>,
+        before_entry_id: Option<String>,
+    },
     DropSearchSongsIntoQueue {
         rows: Vec<super::super::search::SearchDropRow>,
         quality: Quality,
@@ -679,6 +698,13 @@ pub enum PlayerAction {
     },
     QueuePlaylist {
         id: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueMixedPlaylist {
+        id: String,
+        revision: String,
+        track: Option<MixedPlaylistStart>,
         quality: Quality,
         expected_queue_revision: String,
     },

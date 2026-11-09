@@ -81,6 +81,7 @@ interface QueueFileMenuRequest extends QueueRowMenuRequest {
     entryId: string;
     track: TrackView;
     origin?: QueueOrigin;
+    sourceLabel?: string;
   };
   collect(): void;
   collectionLocked(): boolean;
@@ -106,6 +107,18 @@ export function queueFileMenuItems(
   const songDownload = input.kind === 'downloaded' && input.downloadKind === 'song';
   const artistTarget = songDownload && track.artistRefs?.[0]?.id;
   const voiceDownload = input.kind === 'downloaded' && input.downloadKind === 'voice';
+  const sourceLabel =
+    input.kind === 'local'
+      ? origin?.kind === 'playlist'
+        ? input.info.sourceLabel || '歌单'
+        : origin?.kind === 'local'
+          ? '本地音乐'
+          : undefined
+      : origin?.kind === 'downloads'
+        ? voiceDownload
+          ? '下载的声音'
+          : '下载的单曲'
+        : undefined;
   return [
     {
       key: 'play',
@@ -130,17 +143,7 @@ export function queueFileMenuItems(
           },
         ]
       : []),
-    ...(origin?.kind === 'local'
-      ? [{ key: 'source', label: '来自：本地音乐', icon: 'source' }]
-      : origin?.kind === 'downloads'
-        ? [
-            {
-              key: 'source',
-              label: voiceDownload ? '来自：下载的声音' : '来自：下载的单曲',
-              icon: 'source',
-            },
-          ]
-        : []),
+    ...(sourceLabel ? [{ key: 'source', label: `来自：${sourceLabel}`, icon: 'source' }] : []),
     { key: 'directory', label: '打开文件所在目录', icon: 'folder' },
     { key: 'remove-divider', label: '', separator: true },
     { key: 'remove', label: '从列表中删除', icon: 'trash', disabled: transportLocked },

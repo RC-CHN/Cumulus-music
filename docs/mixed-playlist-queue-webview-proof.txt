@@ -1,0 +1,38 @@
+混合歌单队列的 Linux 实窗验收
+============================
+
+官方路由、普通与混合队列命令、纯拖放的落点边界见
+playlist-queue-ui-contracts.txt。原生文件显示及播放来自 libmpv null
+输出的真实解码时钟。目录 ID 和账号均为合成，不给任何音乐授权地址。
+
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo build --locked -p cumulus-desktop --example local_ui_probe --features custom-protocol
+  sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/mixed_playlist_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/mixed-playlist-queue-webview
+
+可用 --expected-app 加上本次前端构建产生的 App-*.js 文件名，
+独立核对 WebView 实际载入的正式前端。测试用例脚本仅由独立 Rust
+example 启动，正式程序没有额外入口。每个窗口阶段记录截图、原生播放
+和队列回执、SQLite 混合成员，以及被接受的合成目录请求。
+
+夹具创建两个独立的 WAV，并在本机索引租约退出后用正式确认菜单添加
+一首本地曲目到自建歌单。另一首只作为正在播放的独立基准，原生暂停后
+保留准确的 playId、队列 entryId 和播放位置。正式界面先添加本机
+下一首，再添加目录下一首，然后从歌单详情菜单添加所有可用曲目，
+保留本机资源身份、目录身份与顺序，不把旧本地占位当成歌曲请求。
+XTest 在实际窗口拖动逆序选择的一首目录曲目与一首本机曲目，验证
+相对于当前项不同的正向队列间隙、实绘落点线和真正的指针松开。
+最后从另一页打开本机队列条目的来源菜单，核对准确歌单名称并进入
+同一自建歌单；只读导航不重开或修改播放。原始文件逐字节核对。
+
+验收只使用隔离网络命名空间与封闭的原生合成服务，不修改真实账号、
+远端歌单或任何用户文件。结果只代表 Linux WebView，实体声卡、Windows
+窗口、官方远端响应、离线完整歌单缓存不在此回执范围内。
+
+实际通过：Linux x86_64，正式实现 1062d1ba；实际 WebView 载入
+index-PwwQE0MT.js → App-BsY5YRBr.js；10 个阶段和 10 张截图全部核对。
+混合拖入的正向落点索引为 3。来源菜单完整显示「来自：合成自建混排歌单」，
+点击返回原歌单后仍为同一条暂停的本机播放。四个队列动作各只读一次 V6
+详情，目录水合依次为无、[702]、[701,702]、[702]。本机截图及摘要在
+.build/ui-proof/phase233-mixed-queue/receipt.json；原始夹具结果在
+proof/mixed-queue-webview 工作树 .build/mixed-queue-complete/ 下。
