@@ -1102,9 +1102,12 @@ jobs:
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_cache_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-cache-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-native-stop-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-quality-linux
-          for quality_case in layout_only layout_vivid control; do
-            sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_quality_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-playback-quality-cards-"$quality_case"-linux --case "$quality_case"
-          done
+          run_quality_cards() {
+            sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_quality_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist "$@"
+          }
+          run_quality_cards --root .build/ci-playback-quality-cards-layout_only-linux --case layout_only
+          run_quality_cards --root .build/ci-playback-quality-cards-layout_vivid-linux --case layout_vivid
+          run_quality_cards --root .build/ci-playback-quality-cards-control-linux --case control
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_trial_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-trial-native-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/trial_seek_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-trial-seek-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_rights_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-rights-ui-linux
