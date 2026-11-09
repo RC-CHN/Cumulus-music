@@ -123,10 +123,15 @@
     require(paused.playId === playing.playId && paused.state === 'paused', 'pause exact selected local decoder');
     click(one('.playerbar [aria-label="播放队列"]'));
     await wait(() => {
-      const visible = all('.queue-panel .queue-row').map(row => row.textContent);
+      const panel = one('.queue-panel');
+      if (!panel || panel.classList.contains('queue-panel-enter-active')) return false;
+      const bounds = panel.getBoundingClientRect();
+      if (!bounds.width || bounds.left < 0 || bounds.right > innerWidth + 1 ||
+          getComputedStyle(panel).opacity !== '1') return false;
+      const visible = [...panel.querySelectorAll('.queue-row')].map(row => row.textContent);
       return visible.length === 3 && [title, '合成线上曲目 701', '合成线上曲目 702']
         .every((label, index) => visible[index].includes(label));
-    }, 'actual queue drawer projects the three playable entries');
+    }, 'actual queue drawer paints the three playable entries');
     await capture('ux_04_local_playing', { queue: expectedQueue, playId: paused.playId,
       nativePosition: paused.position, queueRevision: paused.queueRevision });
     click(one('[aria-label="关闭播放队列"]'));
