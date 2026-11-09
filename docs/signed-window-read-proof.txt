@@ -1,0 +1,57 @@
+Signed same-window read proof: transport gate
+=============================================
+
+desktop/examples/support/signed_window_read_gate.rs is a research-only Linux
+component, with no connection to the production entry point or renderer. The
+caller must supply the selected PC Credentials from a private copy, the
+production local ClientProfile, a validated saved PcConfig snapshot, and an
+independently authorized expected UID, fixed public query and selected public
+song ID. The gate has no network constructor. Tests use only injected fakes.
+
+The gate reconstructs the exact current `build_request` wire for every permitted
+request. It compares the prepared headers, encrypted business fields, exact PC
+origin/path, account-scoped Cookie jar, saved native MConfig header, device and
+clientSign. Credential revision/identity is checked against the original scope.
+No batch, mutation, login, renewal, SDK token, cache URL or unrelated query is
+permitted. No request is retried. The caller must separately fence egress and
+disable redirects/retries in the injected transports, before dispatch; rejecting
+a returned 3xx alone is not a network isolation mechanism.
+
+Account/get must return the independently selected UID before any other read.
+The owner's playlist list allows at most 16 consecutive pages of at most 200
+items each, advancing only by the actual row count. The list may include
+subscribed items; completion is not proof that every row is owned. Liked IDs
+are one bounded read with the same expected UID. A single default keyword read
+is optional. The query requires the complete native 190-key experiment vector,
+chooses exactly one V1/V3 comprehensive branch, and reads result/tab first for
+V3. The fixed query uses the current SearchBox `typing` channel and the first
+Songs waterfall page (limit 10, offset 0). No corrected or alternate keyword is
+admitted. Exactly one matching song from that page permits one detail and then
+one source request, with `standard`/`aac`/`c51` and the current SearchNextPlay
+scene 42. A different account, credential rotation, malformed/partial reply,
+HTTP redirect, error or interrupted transport closes the gate. Declared EAPI
+encryption is decoded for validation; the unchanged original body is returned.
+No Set-Cookie or fresh configuration response is applied by the proof.
+
+A valid single nontrial source reply authorizes one exact normalized CDN URL
+for a brief period, with expected size and MD5. The verifier issues one offset-0
+GET without Range or If-Range through the injected credential-free media backend.
+It requires HTTP 200, a complete identity-encoded body, unambiguous declared
+length, matching byte length and MD5, and returns only a private anonymous file.
+A failed or cancelled fetch cannot retry or substitute another URL. The proof
+does not print response bodies, URLs, cookies, UID, signatures or source hashes.
+
+Reproduce the closed Linux checks:
+
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo test --locked -p cumulus-desktop --features custom-protocol --test signed_window_read_gate
+
+The suite uses the actual current Rust request context and both search cohorts
+against fake API and media transports. It is not evidence of a real account or
+GUI playback. The next stage needs an isolated HTTPS broker and a current
+production Vue/Tauri window consuming the anonymous file through the real
+MpvEngine pinned-descriptor path. Historical real decode 8771a8fc happened in a
+second brokerless process; historical same-window ordinary libmpv URL testing
+at c8ceda86 used synthetic audio. A pinned file handoff in the current window
+would prove same-window native decode, not direct upstream URL playback.
