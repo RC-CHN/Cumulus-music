@@ -2,40 +2,9 @@
 //! No hardware, registry, WMI, accounts, command-line input or network.
 
 #[cfg(any(all(windows, target_arch = "x86_64"), test))]
-const PLACEHOLDERS: [&str; 5] = ["unknow", "oem", "o.e.m", "invalid", "diy"];
-
+mod windows_identity_board_rules;
 #[cfg(any(all(windows, target_arch = "x86_64"), test))]
-fn board_serial(
-    wide: &[u16],
-    is_digit: impl Fn(u16) -> bool,
-    lowercase: impl FnOnce(&mut [u16]),
-) -> Vec<u16> {
-    let mut cleaned: Vec<_> = wide
-        .iter()
-        .copied()
-        .take_while(|unit| *unit != 0)
-        .filter(|unit| *unit != 0x20)
-        .take(79)
-        .collect();
-    if cleaned.len() < 6 || cleaned.iter().copied().all(is_digit) {
-        return Vec::new();
-    }
-    let mut folded = cleaned.clone();
-    // The CRT gets a separate writable, NUL-terminated copy.
-    folded.push(0);
-    lowercase(&mut folded);
-    let folded = &folded[..folded
-        .iter()
-        .position(|unit| *unit == 0)
-        .unwrap_or(folded.len())];
-    if PLACEHOLDERS.iter().any(|word| {
-        let word: Vec<_> = word.encode_utf16().collect();
-        folded.windows(word.len()).any(|window| window == word)
-    }) {
-        cleaned.clear();
-    }
-    cleaned
-}
+use windows_identity_board_rules::board_serial;
 
 #[cfg(any(all(windows, target_arch = "x86_64"), test))]
 fn board_cases() -> Vec<(&'static str, Vec<u16>, Vec<u16>)> {

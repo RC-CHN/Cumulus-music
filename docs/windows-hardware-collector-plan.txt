@@ -1,5 +1,5 @@
 Windows 真实本机硬件 collector：下一批实施方案与证据边界
-2026-11-04；状态：静态恢复与验证方案，尚未实现或进行 Windows 设备实采。
+2026-11-04；更新 2026-11-10：已加隔离的主板/BIOS 探针；尚无 Windows WMI 实采回执。
 
 本文件不改变当前默认配置。当前 Windows 默认/windows-local 只声明官方兼容 UA/osver，
 不调用 Linux collector、不补造 clientSign。后续工作要增加的是 Windows 本机事实来源，
@@ -236,7 +236,7 @@ Windows 离线对照顺序：
    首次空种子拒绝、事务失败不轮换、账号凭据 deviceId 不变。分支没实测就保留缺口，
    不通过真实账号请求来弥补采集证据，也不把 CI 编译成功记为官方等价。
 
-当前没有 Windows 硬件采集或生产接线。已有仅处理合成字符串的独立探针，见下节。
+当前没有生产 Windows 硬件采集。合成编码探针与独立本地 WMI 探针见下两节。
 
 7. Windows 代码页与主板过滤离线探针
 
@@ -274,11 +274,48 @@ WMI，不读硬件/注册表/账号，不接收参数，不更改系统或线程
 等于进程 ACP 为 UTF-8。两次都只保留合成输入观察；`encoding_probe=complete` 只说明
 探针断言通过，不等同于硬件采集、官方二进制对照或生产接线已验证。
 
-本地 Linux 用 Rust 1.96.0 / x86_64-pc-windows-gnu 交叉链接并核对 PE 导入，纯合成
-UTF-16 规则通过 2 项测试。未在本机执行 Windows API；短缓冲区、别名与 UTF-8
-manifest 的运行观察仍等 Windows。Windows Native CI 运行上面的首个程序，输出只含
-合成样本及代码页结果；
-它不需要解包材料、账号、网络、音频设备或桌面会话。
+本地 Linux 用固定工具链交叉链接并核对 PE 导入，纯合成 UTF-16 规则通过。
+保留的 Windows Native CI 试跑 42675190782 attempt 1（60940b37484e，
+Windows Server 2022 10.0.20348，镜像 20261101.353.1）执行上述非 manifest 程序；
+源文件与此次拆分共用过滤器之前的版本一致。该次 GetACP=1252，CP_ACP 与
+CP_THREAD_ACP 都解析为 1252。对固定 ASCII、带重音 CP1252、以及显式
+CP936 和 CP65001 的合成输入，短一单元的 -1 调用返回 0 / 错误 122，但实际
+写全了非 NUL 单元，并与完整缓冲区、显式输入长度两个对照一致；UTF-8
+代理对及坏 UTF-8 的替代字符也符合该次结果。CP1252 的编码将固定 CJK
+和补充字符替换为问号；UCRT digit 类匹配合成的 ASCII、阿拉伯-印度和
+全角 1。15 项合成过滤向量通过。此为 Windows API 实测，未读 WMI。
+显式 CP65001 仍不证明进程或线程的实际别名为 UTF-8；manifest 运行缺证。
+
+8. 独立本机主板/BIOS WMI 探针
+
+`desktop/probes/windows-board-identity` 是显式调用的独立程序，不属于应用
+workspace、桌面启动或 CI。它用工作线程上的 MTA、探针进程内的 COM 安全
+初始化、固定本机 ROOT\CIMV2 和代理 10/0/3/3，按 D00510、CFDC10 的
+两条带末尾空格的 WQL 先各取首个对象的 SerialNumber。两次查询都在
+选择之前发生。先校验主板，只在主板无可用值时校验 BIOS；不去找第二行。
+Next 同时检查 HRESULT 与对象数，接受带首对象的成功状态；只安全借用
+明确的非 BYREF VT_BSTR，缺字段、其他类型或超界就不采用。
+相对恢复路径的安全差异：ConnectServer 设有限等待标志，Next 单次 1.5 秒，
+整个独立进程从主线程等待 12 秒后退出；拒绝超过 4096 UTF-16 单元的
+BSTR。退出不是声明 COM 调用本身支持取消；探针不持有持久状态。
+
+D02970 用 CP_ACP/flags=0 把 NUL 终止的 BSTR 编成窄字节；再按 CF7680
+用 CP_THREAD_ACP/flags=0、输入 -1、探测长度减一的目的缓冲区转回。
+只在观察到 0/122，且写全的非 NUL 单元逐个等于同次完整缓冲区对照时，
+才加终止符、删 U+0020 并应用 CEE8E0（79 单元上限、长度、CRT digit
+分类和原有五个占位词）。完整对照不替代失败短输出。两种探针共用相同
+UTF-16 过滤器；不将未校验结果用于 ID、签名或 Cookie。
+
+在 Windows x86_64 从仓库根目录显式运行：
+
+    cargo run --locked --manifest-path desktop/probes/windows-board-identity/Cargo.toml
+
+输出仅包括代码页编号、两个查询和验证的类别、必要的 HRESULT 及最后选择
+Board/Bios/None；无设备序列、长度、主机名、MAC、摘要或签名，不读账号、
+远端 WMI、注册表或磁盘。得到 None 仍可是一条完整诊断；初始化错误或总
+超时另报。Linux 本地能运行两项选择/短缓冲规则测试并交叉链接 Windows
+程序；尚未在真实 Windows 上执行新探针，也无原官方 DLL 对同一台机器的
+主板/BIOS 输出对照。该探针不改变当前默认配置。
 
 Microsoft 主文档核对（只支持 API 语义，不能替代网易字段选择的本地恢复证据）：
 GetAdaptersInfo / IP_ADAPTER_INFO：
