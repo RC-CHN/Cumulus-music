@@ -92,7 +92,12 @@ def main():
     if script == 'download_page_ui_probe.js':
         env['CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF'] = '1'
     if args.menu:
-        env['CUMULUS_DOWNLOAD_MENU_COMMENT_PROOF'] = '1'
+        env.update(
+            CUMULUS_DOWNLOAD_MENU_COMMENT_PROOF='1',
+            # The menu now hands off to a receipt-bound native picker.
+            CUMULUS_DOWNLOAD_COLLECTION_PROOF='1',
+            CUMULUS_PLAYLIST_COLLECT_PROOF='1',
+        )
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script)
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
@@ -123,6 +128,12 @@ def main():
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
     if args.menu:
         assert result['playerDownloadStateVerified']
+        collection, = (root / 'first').glob('ux_*_collect_handoff.json')
+        handoff = json.loads(collection.read_text(encoding='utf-8'))['syntheticCollection']
+        for observed in (handoff, result['syntheticCollection']):
+            assert observed['sortedPages'][0] == ['default', 0]
+            assert observed['writes'] == observed['creates'] == 0
+            assert observed['inlineAddPayloads'] == []
         assert result['downloadMenuCommentVerified']
         assert result['downloadCloudCommentVerified']
         assert result['downloadMenuCommentReads'][:8] == [

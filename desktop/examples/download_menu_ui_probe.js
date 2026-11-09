@@ -514,9 +514,13 @@
     click(button("停止播放", one(".playerbar")));
     await open();
     await action("收藏");
-    await wait(() => one(".playlist-collect-dialog"), "collection dialog");
+    const collection = () => one("dialog.playlist-collect-dialog[data-download-collect][open]");
+    await wait(
+      () => collection()?.querySelector('[data-playlist-id="2"]'),
+      "scoped download collection shows the native owned destination",
+    );
     await capture("collect_handoff");
-    click(button("关闭歌单操作", one("dialog")));
+    click(button("关闭歌单操作", collection()));
     await wait(() => !one("dialog"), "collect dismissed");
     await open();
     await action("分享");
