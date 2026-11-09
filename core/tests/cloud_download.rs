@@ -167,7 +167,7 @@ async fn downloaded_cloud_comments_keep_the_catalogue_id_separate_from_the_origi
         assert_eq!(row.track.id, "123");
         assert_eq!(row.comment_track_id.as_deref(), expected_id);
         let offline = client
-            .download_song_comment_count("1", &task.id, DefaultRoute::Missing)
+            .download_comment_count("1", &task.id, DefaultRoute::Missing)
             .await;
         assert_eq!(f.api.count(COMMENTS), 0);
         if expected_id.is_some() {
@@ -176,7 +176,7 @@ async fn downloaded_cloud_comments_keep_the_catalogue_id_separate_from_the_origi
             assert!(matches!(offline, Err(Error::InvalidInput(_))));
         }
         let result = client
-            .download_song_comment_count("1", &task.id, DefaultRoute::Present)
+            .download_comment_count("1", &task.id, DefaultRoute::Present)
             .await;
         if expected_id.is_some() {
             assert_eq!(result.unwrap().value, Some(42));

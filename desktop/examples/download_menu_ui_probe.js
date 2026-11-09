@@ -165,11 +165,11 @@
         ],
       epoch = (await client.accountSnapshot()).epoch;
     await select("song");
-    assert(await client.downloadSongCommentCount(epoch + "0", row().dataset.downloadTask).then(
+    assert(await client.downloadCommentCount(epoch + "0", row().dataset.downloadTask).then(
       () => false, (error) => error.code === "stale"), "old account generation cannot query a count");
-    const originalCommentCount = client.downloadSongCommentCount;
+    const originalCommentCount = client.downloadCommentCount;
     const commentReads = [];
-    client.downloadSongCommentCount = async (...args) => {
+    client.downloadCommentCount = async (...args) => {
       const read = { done: false };
       commentReads.push(read);
       try {
@@ -262,7 +262,7 @@
       resumeInventory();
     }
     await capture("comment_retired_task");
-    client.downloadSongCommentCount = originalCommentCount;
+    client.downloadCommentCount = originalCommentCount;
     const observeSongComments = client.commentsPage;
     let songCommentTarget;
     client.commentsPage = (e, resource, ...args) => {
@@ -361,7 +361,7 @@
     for (const [task, stage] of [
       [privateCloud, "cloud_private_no_comments"], [legacyCloud, "cloud_legacy_no_comments"],
     ]) {
-      assert(await client.downloadSongCommentCount(epoch, task.id).then(() => false, () => true),
+      assert(await client.downloadCommentCount(epoch, task.id).then(() => false, () => true),
         "native IPC rejects cloud task without an authorized catalogue identity");
       assert(await client.downloadSongShareAccess(epoch, task.id).then(() => false, () => true),
         "native IPC rejects cloud task without a public song sharing target");
@@ -458,8 +458,10 @@
     await emit("resize", { width: 1120, height: 760 });
     await wait(() => innerWidth === 1120, "wide");
     await select("voice");
-    assert(await client.downloadSongCommentCount(epoch, row().dataset.downloadTask).then(
-      () => false, () => true), "a voice task cannot query the song comment API");
+    await open(1);
+    assert(button("查看评论", menu()) && !button("查看评论(888)", menu()),
+      "a song thread with the same ID cannot supply the episode count");
+    await capture("voice_count_wrong_thread");
     await open();
     assert(
       !button("收藏", menu()) && !button("复制链接", menu()),
@@ -472,10 +474,10 @@
       requested = resource;
       return originalComments(e, resource, ...args);
     };
-    await action("查看评论");
+    await action("查看评论(246)");
     await wait(() => requested, "voice comment route");
     assert(
-      requested.kind === "voice" && requested.id === "121",
+      requested.kind === "voice" && requested.id === "721",
       "voice identifier and resource type",
     );
     await capture("voice_comments");

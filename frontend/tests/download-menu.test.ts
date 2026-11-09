@@ -80,7 +80,15 @@ test('voice audio id is never treated as a song or program identifier', () => {
     false,
   );
   voice.track = { ...voice.track, voiceId: '77' };
-  assert.equal(downloadMenuItems(voice, state).find((i) => i.key === 'comments')?.disabled, false);
+  assert.equal(downloadMenuCommentResource(voice), undefined);
+  const completedEpisode = { ...voice, commentVoiceId: '78' };
+  assert.deepEqual(downloadMenuCommentResource(completedEpisode), { kind: 'voice', id: '78' });
+  assert.equal(
+    downloadMenuItems(completedEpisode, { ...state, commentCount: 24 }).find(
+      (i) => i.key === 'comments',
+    )?.label,
+    '查看评论(24)',
+  );
 });
 test('live status and file recovery control permitted actions', () => {
   const items = downloadMenuItems({ ...task, cleanupPending: true }, state);

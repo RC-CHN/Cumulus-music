@@ -31,6 +31,16 @@ pub(super) fn catalogue_track_id(task: &DownloadTask) -> Option<String> {
     }
 }
 
+pub(super) fn episode_comment_id(task: &DownloadTask) -> Option<String> {
+    if task.status != DownloadStatus::Complete {
+        return None;
+    }
+    let DownloadOrigin::Voice { voice_id } = &task.origin else {
+        return None;
+    };
+    identifier(&json!(voice_id)).ok()
+}
+
 pub(super) fn link_track_id(task: &DownloadTask) -> Option<String> {
     // M556 invokes M35.j on the resource with its origin metadata: a negative
     // copyright status hides both actions. Paid status alone doesn't hide them.

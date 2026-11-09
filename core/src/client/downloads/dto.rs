@@ -81,6 +81,8 @@ pub struct DownloadTaskView {
     pub track: TrackView,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comment_track_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment_voice_id: Option<String>,
     pub collection_available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_track_id: Option<String>,

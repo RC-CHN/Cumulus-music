@@ -138,6 +138,7 @@ impl Host {
             let error = task_error(&task, needs_transfer_restart);
             let voice_podcast = super::voice_podcast(&task);
             let comment_track_id = super::resource::catalogue_track_id(&task);
+            let comment_voice_id = super::resource::episode_comment_id(&task);
             let link_track_id = super::resource::link_track_id(&task);
             let collection_available = super::collect::eligible(&task);
             values.push(DownloadTaskView {
@@ -153,6 +154,7 @@ impl Host {
                 },
                 track,
                 comment_track_id,
+                comment_voice_id,
                 link_track_id,
                 collection_available,
                 voice_podcast,

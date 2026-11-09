@@ -70,6 +70,82 @@ impl Fixture {
     }
 }
 #[tokio::test]
+async fn completed_download_comment_count_queries_episode_id_with_legacy_wire_type() {
+    use cumulus_core::{
+        Error, account::profiles::ProfileRegistry, client::MusicClient,
+        network_diagnostics::DefaultRoute, protocol::http::ApiOrigin,
+    };
+
+    let f = Fixture::new(vec![
+        detail(),
+        detail(),
+        permission(true),
+        resource(),
+        json!({"code":200,"data":[{"threadId":"A_DJ_1_81","commentCount":27}]}).into(),
+        json!({"code":200,"data":[{"threadId":"R_SO_4_81","commentCount":99}]}).into(),
+    ]);
+    let client = MusicClient::with_session(
+        f.session.clone(),
+        ProfileRegistry::open(&f.root.path().join("state"), ApiOrigin::Pc).unwrap(),
+    );
+    let task = f
+        .service
+        .create_voice(&json!(81), f.destination(), DownloadOptions::default())
+        .await
+        .unwrap();
+    assert!(matches!(
+        client
+            .download_comment_count("1", &task.id, DefaultRoute::Present)
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    f.service
+        .run(&task.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    assert!(
+        client
+            .download_comment_count("999", &task.id, DefaultRoute::Present)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        client
+            .download_comment_count("1", &task.id, DefaultRoute::Missing)
+            .await
+            .unwrap()
+            .value,
+        None
+    );
+    assert_eq!(f.api.calls().len(), 4);
+    assert_eq!(
+        client
+            .download_comment_count("1", &task.id, DefaultRoute::Present)
+            .await
+            .unwrap()
+            .value,
+        Some(27)
+    );
+    assert_eq!(
+        client
+            .download_comment_count("1", &task.id, DefaultRoute::Present)
+            .await
+            .unwrap()
+            .value,
+        None
+    );
+    let calls = f.api.calls();
+    assert_eq!(calls.len(), 6);
+    for call in &calls[4..] {
+        assert!(!call.cache);
+        assert_eq!(call.path, "/api/resource/commentInfo/list");
+        assert_eq!(
+            call.payload,
+            json!({"resourceType":4,"resourceIds":"[\"81\"]"})
+        );
+    }
+}
+#[tokio::test]
 async fn program_download_renews_rights_after_reopen_tags_correct_identity_and_manages_files() {
     let f = Fixture::new(vec![
         detail(),

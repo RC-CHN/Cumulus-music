@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import type { DownloadTask } from '../../services/downloads';
 import type { TrackView } from '../../services/contracts';
 import {
-  downloadCommentCountCandidate,
+  downloadMenuCommentResource,
   downloadMenuItems,
   downloadMenuShareTrack,
   downloadShareRestriction,
@@ -150,16 +150,17 @@ async function show(event: MouseEvent | KeyboardEvent, selected: DownloadTask) {
     task.value?.id === selected.id;
   const r = anchor.getBoundingClientRect();
   const pointer = event instanceof MouseEvent && event.type === 'contextmenu' && event.button === 2;
-  if (epoch && !props.locked && downloadCommentCountCandidate(selected)) {
+  const comment = downloadMenuCommentResource(selected);
+  if (epoch && !props.locked && comment) {
     preparingComment = true;
     try {
-      const response = await client.downloadSongCommentCount(epoch, selected.id);
-      const current = task.value;
+      const response = await client.downloadCommentCount(epoch, selected.id);
+      const current = task.value && downloadMenuCommentResource(task.value);
       if (
         !live() ||
         response.epoch !== epoch ||
-        !current ||
-        !downloadCommentCountCandidate(current)
+        current?.kind !== comment.kind ||
+        current.id !== comment.id
       )
         return;
       commentCount.value = response.value ?? undefined;

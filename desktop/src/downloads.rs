@@ -142,7 +142,7 @@ pub async fn downloads(
     client.downloads(&epoch, query).await.map_err(Into::into)
 }
 #[tauri::command]
-pub async fn download_song_comment_count<R: tauri::Runtime>(
+pub async fn download_comment_count<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
@@ -152,7 +152,7 @@ pub async fn download_song_comment_count<R: tauri::Runtime>(
         return Err(Error::InvalidInput("download comment menu requires main window").into());
     }
     client
-        .download_song_comment_count(
+        .download_comment_count(
             &epoch,
             &task_id,
             crate::network_diagnostics::default_route(),

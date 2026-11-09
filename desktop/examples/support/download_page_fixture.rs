@@ -60,6 +60,14 @@ pub async fn menu_comment_response(
         "[\"1\"]" => (1, "R_SO_4_1", 321),
         "[\"2\"]" => (2, "R_SO_4_2", 0),
         "[\"3\"]" => (3, "R_SO_4_4", 987),
+        "[\"721\"]" => (721, "A_DJ_1_721", 246),
+        "[\"722\"]" => (722, "R_SO_4_722", 888),
+        "[\"121\"]" | "[\"122\"]" => {
+            MENU_COMMENT_CALLS.lock().unwrap().push(args.clone());
+            return Some(Err(Error::InvalidInput(
+                "program main song ID reached the comment API",
+            )));
+        }
         "[\"9010\"]" if CLOUD_MENU_ACTIVE.load(Ordering::SeqCst) => (9010, "R_SO_4_9010", 654),
         "[\"5\"]" | "[\"6\"]" | "[\"7\"]" if CLOUD_MENU_ACTIVE.load(Ordering::SeqCst) => {
             MENU_COMMENT_CALLS.lock().unwrap().push(args.clone());
@@ -577,7 +585,15 @@ impl Fixture {
                         json!({"id":i,"name":format!("合成{kind} {i:03} · 沿着海岸走到日落之后（特别收录版本）"),"ar":[{"name":format!("Artist {} · Cumulus", 150-i)}],"al":{"name":format!("专辑 {:03}", 150-i)},"dt":235000,"fee":0}),
                     );
                     if (121..=132).contains(&i) {
-                        task.song.as_mut().unwrap()["voice_id"] = json!(i.to_string());
+                        let voice_id = if menu_comments_enabled() && i <= 122 {
+                            (i + 600).to_string()
+                        } else {
+                            i.to_string()
+                        };
+                        task.origin = DownloadOrigin::Voice {
+                            voice_id: voice_id.clone(),
+                        };
+                        task.song.as_mut().unwrap()["voice_id"] = json!(voice_id);
                     }
                     if voice_podcast_enabled() && (121..=123).contains(&i) {
                         let id = i + 580;

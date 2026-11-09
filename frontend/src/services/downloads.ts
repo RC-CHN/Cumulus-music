@@ -39,6 +39,7 @@ export interface DownloadTask {
   source: 'song' | 'cloud' | 'mv' | 'voice';
   track: TrackView;
   commentTrackId?: string;
+  commentVoiceId?: string;
   linkTrackId?: string;
   collectionAvailable: boolean;
   voicePodcast?: { name: string; id?: string };
@@ -176,7 +177,7 @@ export interface DownloadCollectCreation {
 }
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
-  downloadSongCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
+  downloadCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
   downloadSongShareAccess(epoch: string, taskId: string): Promise<AccountData<DownloadShareAccess>>;
   downloadCollectPrepare(
     epoch: string,

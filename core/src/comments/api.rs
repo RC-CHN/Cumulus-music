@@ -209,6 +209,15 @@ impl CommentApi {
                 ));
             }
         };
+        self.information_with_wire_type(kind, resource_type, ids)
+            .await
+    }
+    async fn information_with_wire_type(
+        &self,
+        kind: ResourceKind,
+        resource_type: u8,
+        ids: &[String],
+    ) -> Result<Value> {
         if ids.is_empty() || ids.len() > 100 {
             return Err(Error::InvalidInput("invalid comment information batch"));
         }
@@ -249,6 +258,17 @@ impl CommentApi {
     }
     pub(crate) async fn count(&self, kind: ResourceKind, id: String) -> Result<u64> {
         let rows = self.information(kind, &[id]).await?;
+        Self::count_from(&rows)
+    }
+    pub(crate) async fn downloaded_voice_count(&self, id: String) -> Result<u64> {
+        // M622 uses the episode's offline ID with the legacy track wire
+        // discriminator. A song thread with the same ID is still unrelated.
+        let rows = self
+            .information_with_wire_type(ResourceKind::Voice, 4, &[id])
+            .await?;
+        Self::count_from(&rows)
+    }
+    fn count_from(rows: &Value) -> Result<u64> {
         let count = model::number(&rows[0]["commentCount"])?;
         if count >= (1_u64 << 53) {
             return Err(Error::Response(

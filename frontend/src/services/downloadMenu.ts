@@ -12,13 +12,10 @@ export interface DownloadMenuState {
 }
 export function downloadMenuCommentResource(task: DownloadTask): CommentResource | undefined {
   if (task.status !== 'complete') return undefined;
-  if (task.source === 'voice' && task.track.voiceId)
-    return { kind: 'voice', id: task.track.voiceId };
+  if (task.source === 'voice' && task.commentVoiceId)
+    return { kind: 'voice', id: task.commentVoiceId };
   if ((task.source === 'song' || task.source === 'cloud') && task.commentTrackId)
     return { kind: 'track', id: task.commentTrackId };
-}
-export function downloadCommentCountCandidate(task: DownloadTask): boolean {
-  return downloadMenuCommentResource(task)?.kind === 'track';
 }
 export function downloadMenuShareTrack(task: DownloadTask): TrackView | undefined {
   if (task.status !== 'complete' || !['song', 'cloud'].includes(task.source)) return;
@@ -46,12 +43,12 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
       },
       { key: 'cancel', label: '删除下载', icon: 'trash', danger: true, disabled: blocked },
     ];
-  const voice = task.source === 'voice';
+  const comment = downloadMenuCommentResource(task);
   const link = downloadMenuShareTrack(task);
   const filesBlocked = blocked || task.cleanupPending;
   const commentCount = state.commentCount ?? 0;
   const comments =
-    downloadCommentCountCandidate(task) && Number.isSafeInteger(commentCount) && commentCount > 0
+    comment && Number.isSafeInteger(commentCount) && commentCount > 0
       ? '查看评论(' + commentCount + ')'
       : '查看评论';
   return [
@@ -67,7 +64,7 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
       icon: 'next',
       disabled: blocked || !state.queueable || !downloadPlaybackReady(task),
     },
-    ...(downloadMenuCommentResource(task)
+    ...(comment
       ? [{ key: 'comments', label: comments, icon: 'comment', disabled: state.locked }]
       : []),
     { key: 'resource-divider', label: '', separator: true },
