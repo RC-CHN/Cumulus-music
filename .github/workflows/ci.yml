@@ -423,11 +423,10 @@ jobs:
             ${{ matrix.rust-target-cache }}
           key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-tree-${{ steps.rust-cache-source.outputs.tree }}
 
-  package-windows:
-    name: Package and verify (windows-x64)
-    needs: frontend
+  windows-release-runtime:
+    name: Windows release media runtime
     runs-on: windows-2022
-    timeout-minutes: 150
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -436,11 +435,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -465,6 +459,48 @@ jobs:
             mingw-w64-ucrt-x86_64-ladspa-sdk
       - name: Install pinned toolchain
         run: rustup show
+      - name: Build and verify Windows media runtime
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/windows-media
+        with:
+          msys-root: ${{ steps.msys2.outputs.msys2-location }}
+          save-cache: 'false'
+      - name: Stage the exact native files shared with packaging
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: python scripts/ci/windows_release_runtime.py --msys "$CUMULUS_MSYS2_ROOT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-release-runtime-attempt-${{ github.run_attempt }}
+          path: .build/windows-release-runtime/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+
+  package-windows:
+    name: Package and verify (windows-x64)
+    needs: [frontend, windows-release-runtime]
+    runs-on: windows-2022
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned toolchain
+        run: rustup show
       - name: Restore Windows release dependencies
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         id: release-deps
@@ -477,12 +513,10 @@ jobs:
             .build/target/release/build
             .build/target/release/deps
           key: rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
-      - name: Build and verify Windows media runtime
-        if: runner.os == 'Windows'
-        uses: ./.github/actions/windows-media
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          msys-root: ${{ steps.msys2.outputs.msys2-location }}
-          save-cache: 'false'
+          name: windows-release-runtime-attempt-${{ github.run_attempt }}
+          path: .build/windows-release-runtime
       - run: npm --prefix frontend ci
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -492,8 +526,7 @@ jobs:
         env:
           # Scope the concurrency trial to Release; debug and GUI keep the default.
           CARGO_BUILD_JOBS: '3'
-          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
-        run: python scripts/ci/package.py --platform 'windows-x64'
+        run: python scripts/ci/package.py --platform windows-x64 --windows-runtime .build/windows-release-runtime
       # The portable runtime, FLAC and local-queue proofs consume this exact
       # package in parallel with the other Windows regression shards.
       - name: Archive synthetic failure diagnostics
@@ -642,14 +675,15 @@ jobs:
 
   windows-webview:
     name: Windows WebView (${{ matrix.shard }})
-    needs: [package-windows, windows-webview-probes]
+    # The packaged-media jobs below still open the exact final ZIP.
+    needs: [windows-release-runtime, windows-webview-probes]
     runs-on: windows-2022
     timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
         # Keep long suites on separate desktops; the gate requires every shard.
-        shard: [playback, library, library-local, search, search-account, catalog-discovery, catalog, package-media, package-runtime]
+        shard: [playback, library, library-local, search, search-account, catalog-discovery, catalog]
     defaults:
       run:
         shell: bash
@@ -661,44 +695,16 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - name: Verify and seed the pinned MSYS2 installer cache
-        if: matrix.shard == 'package-runtime'
-        timeout-minutes: 5
-        run: python scripts/ci/windows_msys2_bootstrap.py
-      - name: Windows media dependencies
-        id: msys2
-        if: matrix.shard == 'package-runtime'
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            base-devel
-            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
-            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
-            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
-            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
-            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
-            mingw-w64-ucrt-x86_64-ladspa-sdk
-      - name: Install pinned toolchain
-        if: matrix.shard == 'package-runtime'
-        run: rustup show
-      - name: Build and verify Windows media runtime
-        if: matrix.shard == 'package-runtime'
-        uses: ./.github/actions/windows-media
-        with:
-          msys-root: ${{ steps.msys2.outputs.msys2-location }}
-          save-cache: 'false'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: packages-windows-x64
-          path: .build/packages/windows-x64
+          name: windows-release-runtime-attempt-${{ github.run_attempt }}
+          path: .build/windows-release-runtime
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-webview-inputs-attempt-${{ github.run_attempt }}
           path: .build/windows-webview-inputs
       - name: Verify and restore exact Windows WebView inputs
-        run: python scripts/ci/windows_webview_inputs.py restore
+        run: python scripts/ci/windows_webview_inputs.py restore --shared-runtime .build/windows-release-runtime
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-webview-probes-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
@@ -1005,17 +1011,6 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-settings-windows --runtime .build/package-stage/windows-x64/native --relay-settings
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-recovery-windows --runtime .build/package-stage/windows-x64/native --relay-recovery
-      - name: Windows WebView regression (package-media)
-        if: runner.os == 'Windows' && matrix.shard == 'package-media'
-        run: |
-          python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-windows
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
-          flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
       - name: Preserve Windows queue tip failure receipts
         if: failure() && matrix.shard == 'playback'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -1040,6 +1035,95 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Preserve synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-windows-webview-${{ matrix.shard }}
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-webview-packaged:
+    name: Windows WebView (${{ matrix.shard }})
+    needs: [package-windows, windows-webview-probes]
+    runs-on: windows-2022
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep long suites on separate desktops; the gate requires every shard.
+        shard: [package-media, package-runtime]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify and seed the pinned MSYS2 installer cache
+        if: matrix.shard == 'package-runtime'
+        timeout-minutes: 5
+        run: python scripts/ci/windows_msys2_bootstrap.py
+      - name: Windows media dependencies
+        id: msys2
+        if: matrix.shard == 'package-runtime'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
+            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ladspa-sdk
+      - name: Install pinned toolchain
+        if: matrix.shard == 'package-runtime'
+        run: rustup show
+      - name: Build and verify Windows media runtime
+        if: matrix.shard == 'package-runtime'
+        uses: ./.github/actions/windows-media
+        with:
+          msys-root: ${{ steps.msys2.outputs.msys2-location }}
+          save-cache: 'false'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: packages-windows-x64
+          path: .build/packages/windows-x64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-webview-inputs-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-inputs
+      - name: Verify and restore exact Windows WebView inputs
+        run: python scripts/ci/windows_webview_inputs.py restore
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-webview-probes-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-probes/${{ matrix.shard }}
+      - name: Verify and restore the shard's prebuilt test probes
+        run: python scripts/ci/windows_webview_probes.py restore '${{ matrix.shard }}'
+      - name: Windows WebView regression (package-media)
+        if: runner.os == 'Windows' && matrix.shard == 'package-media'
+        run: |
+          python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-windows
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
+          flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
       - name: Windows WebView regression (package-runtime)
         if: matrix.shard == 'package-runtime'
         env:
@@ -1922,7 +2006,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native-linux, native, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, native, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -1938,6 +2022,8 @@ jobs:
           LINUX_WEBVIEW_UX: ${{ needs.linux-webview-ux.result }}
           WINDOWS_WEBVIEW_PROBES: ${{ needs.windows-webview-probes.result }}
           WINDOWS_WEBVIEW: ${{ needs.windows-webview.result }}
+          WINDOWS_WEBVIEW_PACKAGED: ${{ needs.windows-webview-packaged.result }}
+          WINDOWS_RELEASE_RUNTIME: ${{ needs.windows-release-runtime.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
           SMTC: ${{ needs.smtc-diagnostic.result }}
@@ -1953,6 +2039,8 @@ jobs:
           test "$LINUX_WEBVIEW_UX" = success
           test "$WINDOWS_WEBVIEW_PROBES" = success
           test "$WINDOWS_WEBVIEW" = success
+          test "$WINDOWS_WEBVIEW_PACKAGED" = success
+          test "$WINDOWS_RELEASE_RUNTIME" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success
           else

@@ -90,10 +90,12 @@ def windows_media(destination, msys):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=["linux-x64", "windows-x64"], required=True)
+    parser.add_argument("--windows-runtime", type=Path, help="use the verified same-attempt Windows runtime")
     args = parser.parse_args()
     os.chdir(ROOT)
     windows = args.platform == "windows-x64"
     assert windows == (sys.platform == "win32"), "build on the target platform"
+    assert windows or args.windows_runtime is None, "the shared runtime is Windows-only"
     version = check_versions()
     sha = git("rev-parse", "HEAD")
     assert not git("status", "--porcelain", "--untracked-files=normal"), "commit source changes before building release packages"
@@ -104,17 +106,26 @@ def main():
     stage.mkdir(parents=True, exist_ok=False)
     output.mkdir(parents=True, exist_ok=False)
     native = stage / "native"
-    native.mkdir()
+    runtime_receipt = None
     suffix = ".exe" if windows else ""
     filter_name = "cumulus_audio_filter.dll" if windows else "libcumulus_audio_filter.so"
     run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe", "--example", "parametric_probe"])
-    shutil.copy2(target / "release" / filter_name, native / filter_name)
-    if windows:
-        dlls, flac_decoder = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"]))
-        flac_digest_env = WINDOWS_FLAC_DIGEST_ENV
+    if args.windows_runtime:
+        from windows_release_runtime import restore
+        from windows_webview_inputs import ci_identity
+
+        identity = ci_identity(os.environ)
+        assert sha == identity["commit"], "checkout differs from shared runtime commit"
+        runtime_receipt = restore(args.windows_runtime, identity, native, include_notices=True)
+        dlls, flac_decoder = runtime_receipt["dlls"], runtime_receipt["flac"]
     else:
-        dlls, flac_decoder = [], stage_linux_decoder(native, stage / "flac-source-build")
-        flac_digest_env = LINUX_FLAC_DIGEST_ENV
+        native.mkdir()
+        shutil.copy2(target / "release" / filter_name, native / filter_name)
+        if windows:
+            dlls, flac_decoder = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"]))
+        else:
+            dlls, flac_decoder = [], stage_linux_decoder(native, stage / "flac-source-build")
+    flac_digest_env = WINDOWS_FLAC_DIGEST_ENV if windows else LINUX_FLAC_DIGEST_ENV
     build_env = {key: value for key, value in os.environ.items()
                  if key.upper() not in {LINUX_FLAC_DIGEST_ENV, WINDOWS_FLAC_DIGEST_ENV}}
     build_env[flac_digest_env] = flac_decoder["library"]["sha256"]
@@ -198,10 +209,15 @@ def main():
     }, indent=2), encoding="utf-8")
     archive_base = f"Cumulus-{version}-{args.platform}"
     if windows:
-        with zipfile.ZipFile(output / f"{archive_base}.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+        portable_zip = output / f"{archive_base}.zip"
+        with zipfile.ZipFile(portable_zip, "w", zipfile.ZIP_DEFLATED) as archive:
             for file in sorted(portable.rglob("*")):
                 if file.is_file():
                     archive.write(file, file.relative_to(portable.parent))
+        if runtime_receipt:
+            from windows_release_runtime import verify_portable
+
+            verify_portable(portable_zip, archive_base, runtime_receipt)
     else:
         with tarfile.open(output / f"{archive_base}.tar.gz", "w:gz") as archive:
             archive.add(portable, arcname=portable.name)
