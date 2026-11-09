@@ -10,36 +10,38 @@
   const click = n => {assert(n && !n.disabled,'available control');n.click();};
   const field = (label,value) => {const n=one(`[aria-label="${label}"]`);assert(n,label);n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
   window.__lyricAck={};
-  let serial=0,stageCount=0,epoch='',fontReads=0,mode='native',nativeCatalog;
+  let serial=0,stageCount=0,epoch='',mode='native',nativeCatalog,forcedFallback=false;
   const checks=[];
   let retry;
-  // Tauri's invoke property is immutable. Intercept only this command's fetch
-  // transport in the test WebView; all ordinary font reads reach the real host.
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = (url, options) => {
-    if(!String(url).endsWith('/system_font_catalog'))return nativeFetch(url,options);
-    fontReads++;
-    if(mode==='native'){
-      const response=nativeFetch(url,options);
-      if(retry?.active) {
-        retry.reads++;
-        void response.then(value=>{
-          retry.transport=value.headers.get('Tauri-Response')==='ok'?'ok':'command_error';
-          if(retry.transport==='command_error') {
-            void value.clone().json().then(error=>{
-              if(typeof error?.code==='string' && /^[a-z0-9_]{1,64}$/.test(error.code))retry.code=error.code;
-            },()=>{});
-          }
-        },()=>{retry.transport='fetch_rejected';});
-      }
-      return response;
-    }
-    const args=JSON.parse(options.body);
-    const value=mode==='failure'?{code:'state',message:'synthetic font enumeration failure'}:
-      {epoch:args.epoch,fallbacks:nativeCatalog.fallbacks,families:Array.from({length:12005},(_,i)=>({name:`Synthetic Font ${String(i).padStart(5,'0')} with a deliberately long family name`,aliases:[`合成字体 ${i}`]}))};
-    return Promise.resolve(new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json','Tauri-Response':mode==='failure'?'error':'ok'}}));
-  };
   const fixture = async(kind,payload={}) => {const id=++serial;await emit({kind,id,...payload});await wait(()=>id in window.__lyricAck,kind);const value=window.__lyricAck[id];delete window.__lyricAck[id];if(value.error)throw Error(value.error);return value.value??value;};
+  const fontStats = () => fixture('font_catalog');
+  const fontMode = async value => {
+    await fixture('font_catalog',{mode:value});
+    mode=value;
+  };
+  const rows = dialog => [...dialog.querySelectorAll('.font-list .font-option input')].map(n=>n.value);
+  const synthetic = index => `Synthetic Font ${String(index).padStart(5,'0')} with a deliberately long family name`;
+  const syntheticPage = start => Array.from({length:20},(_,i)=>synthetic(start+i));
+  const sameRows = (actual, expected) => actual.length===expected.length &&
+    actual.every((name,index)=>name===expected[index]);
+  async function forceFallback() {
+    // Tauri 2.11.5 falls back to postMessage after a fetch failure. Exercise
+    // that exact transition using a read; never fail or repeat a mutation.
+    const original=window.fetch;
+    window.fetch=(url,...args)=>{
+      if(!forcedFallback && String(url).endsWith('/account_snapshot')){
+        forcedFallback=true;
+        return Promise.reject(Error('sealed IPC custom-protocol failure'));
+      }
+      return original.call(window,url,...args);
+    };
+    try {
+      assert((await invoke('account_snapshot')).epoch===epoch && forcedFallback,
+        'forced fetch failure must recover the same account via native IPC');
+    } finally {
+      window.fetch=original;
+    }
+  }
   const lyric = source => fixture('eval',{source});
   const settings = () => invoke('desktop_lyric_settings',{epoch});
   const read = () => lyric("return await window.__TAURI_INTERNALS__.invoke('desktop_lyric_read',{generation:location.hash.split('=')[1]});");
@@ -62,10 +64,15 @@
       const radio=rect(row.querySelector('input')),name=rect(row.querySelector('span'));
       assert(rect(row).height<=44 && radio.right<=name.x && Math.abs(radio.y+radio.height/2-name.y-name.height/2)<5,'font radio and name are not aligned');
     }
-    await emit({kind:'snapshot',stage:`ux_${String(++stageCount).padStart(2,'0')}_${name}`,surface:'main',overflow,width:innerWidth,height:innerHeight,rows,controls:controls.map(rect),dialog:dialog?rect(dialog):null,fontMode:mode,fontReads,retry:retry??null,body:document.body.textContent});
+    const catalog=mode==='large' && dialog ? {
+      page:dialog.querySelector('.font-pagination span')?.textContent.trim(),
+      count:dialog.querySelector('.font-pagination small')?.textContent.trim(),
+      names:[...dialog.querySelectorAll('.font-list .font-option input')].map(node=>node.value),
+    } : null;
+    await emit({kind:'snapshot',stage:`ux_${String(++stageCount).padStart(2,'0')}_${name}`,surface:'main',overflow,width:innerWidth,height:innerHeight,rows,controls:controls.map(rect),dialog:dialog?rect(dialog):null,fontMode:mode,retry:retry??null,forcedFallback,catalog,body:document.body.textContent});
     await sleep(1000);
   };
-  const open = async() => {const n=button('选择字体');n.scrollIntoView({block:'center',behavior:'instant'});n.focus();click(n);await Promise.resolve();const animated=one('.font-dialog');if(animated && document.documentElement.dataset.motion==='full')assert(getComputedStyle(animated).transitionDuration.split(',').some(v=>parseFloat(v)>0),'modal enter animation missing');await wait(()=>one('.font-dialog[open]'),'font dialog opened');await wait(()=>!one('.font-list[aria-busy="true"]'),'font directory loaded');};
+  const open = async() => {const n=button('选择字体');n.scrollIntoView({block:'center',behavior:'instant'});n.focus();click(n);await Promise.resolve();const animated=one('.font-dialog');if(animated && document.documentElement.dataset.motion==='full')assert(getComputedStyle(animated).transitionDuration.split(',').some(v=>parseFloat(v)>0),'modal enter animation missing');await wait(()=>one('.font-dialog[open]'),'font dialog opened');await wait(()=>one('.font-dialog[open] .font-list[aria-busy="false"]'),'font directory loaded');};
   const close = async() => {click(one('[aria-label="关闭字体选择"]'));await wait(()=>!one('.font-dialog'),'font dialog closed');assert(document.activeElement===button('选择字体'),'focus restored to font button');};
   const apply = async() => {const revision=(await settings()).preferences.current.revision;await sleep(50);click(button('应用样式'));await wait(async()=>(await settings()).preferences.current.revision!==revision,'appearance saved');await wait(()=>!one('.desktop-lyric-settings[aria-busy="true"]'),'saved UI');};
   try {
@@ -84,7 +91,7 @@
       checks.push('missing font preserved across process restart','native lyric CSS fallback chain');
     } else {
       theme('light');await open();assert(document.activeElement===one('[aria-label="搜索本机字体"]'),'search initial focus');await capture('native_light');
-      const count=fontReads;assert(count>=3,'font transport observer inactive');await sleep(1000);assert(fontReads===count,'settings poll enumerates fonts');
+      const count=(await fontStats()).total;assert(count===2,'initial and dialog native reads');await sleep(1000);assert((await fontStats()).total===count,'settings poll enumerates fonts');
       await fixture('show');one('[aria-label="搜索本机字体"]').focus();await fixture('key',{key:'Tab'});assert(one('.font-dialog').contains(document.activeElement),'Tab escaped modal');
       await fixture('key',{key:'Escape'});await wait(()=>!one('.font-dialog'),'native Escape closes dialog');assert(document.activeElement===button('选择字体'),'Escape lost trigger focus');
       checks.push('native font enumeration and no polling','independent Tab and Escape with focus restoration');
@@ -99,20 +106,21 @@
       await open();field('搜索本机字体','Cumulus No Such Search 59490');await sleep(120);await capture('no_match');await close();
       field('桌面歌词字体','Cumulus Missing Font 19317');await apply();await open();assert(one('.font-fallback-note'),'missing font message');theme('dark');await capture('missing_dark');
       await fixture('resize_main',{width:760,height:540});await capture('missing_narrow');await close();
-      const beforeFailure=fontReads;
-      mode='failure';await open();
-      assert(fontReads===beforeFailure+1 && one('.font-dialog [role="alert"]'),'one injected font error expected');
+      const beforeFailure=(await fontStats()).total;
+      await fontMode('failure');await open();
+      const failed=await fontStats();
+      assert(failed.total===beforeFailure+1 && failed.sources.failure===1 &&
+        one('.font-dialog [role="alert"]'),'one injected font error expected');
       await capture('read_failed');
-      const failedCount=fontReads;
       await sleep(1000);
-      assert(fontReads===failedCount,'font failure auto retry');
+      assert((await fontStats()).total===failed.total,'font failure auto retry');
 
       // Activate the exact current modal button through the same independent
       // native keyboard driver as Tab/Escape. Neither a stale selector nor a
       // direct IPC call can stand in for the user's retry.
       const dialog=one('.font-dialog[open]');
       const refresh=dialog?.querySelector('.font-search > button');
-      retry={active:false, clicks:0, trusted:false, reads:0, transport:'not_observed'};
+      retry={clicks:0,trusted:false,reads:0};
       await fixture('show');
       await wait(()=>document.hasFocus() && dialog?.isConnected && dialog.open &&
         refresh?.isConnected && !refresh.matches(':disabled') &&
@@ -124,23 +132,42 @@
       refresh.focus({preventScroll:true});
       assert(document.activeElement===refresh,'retry button did not take focus');
       refresh.addEventListener('click',event=>{retry.clicks++;retry.trusted=event.isTrusted;});
-      mode='native';
-      retry.active=true;
+      await fontMode('native');
       await fixture('key',{key:'Return'});
       await wait(()=>retry.clicks>0,'native retry activation did not reach the button');
-      await wait(()=>retry.reads>0,'retry button did not dispatch the font read');
+      await wait(async()=>{
+        retry.reads=(await fontStats()).sources.native-failed.sources.native;
+        return retry.reads>0;
+      },'retry button did not dispatch the native font read');
       await wait(()=>dialog.isConnected && dialog.open && !dialog.querySelector('[role="alert"]') &&
         dialog.querySelectorAll('.font-list .font-option').length>0,'explicit native retry');
-      retry.active=false;
       const expected=nativeCatalog.families.slice(0,20).map(f=>f.name);
-      const shown=[...dialog.querySelectorAll('.font-list .font-option input')].map(n=>n.value);
-      assert(JSON.stringify(shown)===JSON.stringify(expected),'retry did not restore native font rows');
-      assert(retry.clicks===1 && retry.trusted && retry.reads===1 && fontReads===failedCount+1,
+      assert(sameRows(rows(dialog),expected),'retry did not restore native font rows');
+      assert(retry.clicks===1 && retry.trusted && retry.reads===1 && (await fontStats()).total===failed.total+1,
         'explicit retry must produce one trusted activation and one font read');
       await capture('retry_native');await close();checks.push('visible failure and explicit read-only retry');
-      mode='large';await open();assert(document.querySelectorAll('.font-list .font-option').length===20,'large page rows');click(one('[aria-label="下一页字体"]'));await sleep(100);assert(one('.font-list input').value.includes('00020'),'second bounded page');await capture('large_directory');field('搜索本机字体','合成字体 12004');await sleep(100);assert(document.querySelectorAll('.font-list input').length===1,'alias search');await capture('alias_search');await close();checks.push('12005 synthetic fonts bounded to 20 DOM rows','localized alias search and page reset');
-      mode='native';await fixture('resize_main',{width:1120,height:760});await open();click(one('.font-default input'));click(button('使用此字体'));await wait(()=>!one('.font-dialog'),'default selected');assert(one('[aria-label="桌面歌词字体"]').value==='','default draft');click(button('还原草稿'));await wait(()=>one('[aria-label="桌面歌词字体"]').value==='Cumulus Missing Font 19317','cancel font draft');checks.push('default draft and unsaved changes restored');
+      if(window.__fontForceIpcFallback)await forceFallback();
+      const beforeLarge=await fontStats();
+      await fontMode('large');await open();
+      const large=one('.font-dialog[open]');
+      const page = () => large.querySelector('.font-pagination span')?.textContent.trim();
+      const countText = () => large.querySelector('.font-pagination small')?.textContent.trim();
+      await wait(()=>sameRows(rows(large),syntheticPage(0)) && page()==='1 / 601' &&
+        countText()==='12005 种字体','first exact synthetic directory page');
+      click(large.querySelector('[aria-label="下一页字体"]'));
+      await wait(()=>sameRows(rows(large),syntheticPage(20)) && page()==='2 / 601',
+        'second exact bounded synthetic directory page');
+      await capture('large_directory');
+      field('搜索本机字体','合成字体 12004');
+      await wait(()=>sameRows(rows(large),[synthetic(12004)]) && page()==='1 / 1',
+        'exact alias row and first page after search input');
+      await capture('alias_search');
+      const afterLarge=await fontStats();
+      assert(afterLarge.total===beforeLarge.total+1 && afterLarge.sources.large===1,
+        'pagination and alias filtering use one synthetic catalog read');
+      await close();checks.push('12005 synthetic fonts bounded to 20 DOM rows','localized alias search and page reset');
+      await fontMode('native');await fixture('resize_main',{width:1120,height:760});await open();click(one('.font-default input'));click(button('使用此字体'));await wait(()=>!one('.font-dialog'),'default selected');assert(one('[aria-label="桌面歌词字体"]').value==='','default draft');click(button('还原草稿'));await wait(()=>one('[aria-label="桌面歌词字体"]').value==='Cumulus Missing Font 19317','cancel font draft');checks.push('default draft and unsaved changes restored');
     }
-    await emit({kind:'complete',stage:'complete',ok:true,stageCount,checks,realMusicRequests:0,enumerationMs,nativeFamilies:nativeCatalog.families.length,fontReads,reopened:!!window.__lyricProofReopen});
-  } catch(e) {await emit({kind:'failed',stage:'failed',message:String(e)+'\n'+String(e?.stack||''),stageCount,checks,fontReads,fontMode:mode,retry:retry??null,body:document.body.textContent});}
+    await emit({kind:'complete',stage:'complete',ok:true,stageCount,checks,realMusicRequests:0,enumerationMs,nativeFamilies:nativeCatalog.families.length,forcedFallback,reopened:!!window.__lyricProofReopen});
+  } catch(e) {await emit({kind:'failed',stage:'failed',message:String(e)+'\n'+String(e?.stack||''),stageCount,checks,fontMode:mode,retry:retry??null,forcedFallback,body:document.body.textContent});}
 })();

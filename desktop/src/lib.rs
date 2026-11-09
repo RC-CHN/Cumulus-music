@@ -71,6 +71,8 @@ mod updates;
 pub use updates::UpdateAdapters;
 pub mod watchman;
 pub use effects::configure_native_audio;
+#[doc(hidden)]
+pub use fonts::{Family as FontCatalogProofFamily, FontCatalogProof};
 pub use graphics::prepare_process as prepare_graphics;
 #[doc(hidden)]
 pub use network_diagnostics::DefaultRouteObserver;

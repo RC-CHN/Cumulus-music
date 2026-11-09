@@ -34,7 +34,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
@@ -83,12 +83,61 @@ fn locale_name(category: libc::c_int) -> String {
     }
 }
 
+struct FontProof {
+    mode: Mutex<&'static str>,
+    reads: Mutex<BTreeMap<&'static str, usize>>,
+}
+impl FontProof {
+    fn new() -> Self {
+        Self {
+            mode: Mutex::new("native"),
+            reads: Mutex::new(BTreeMap::new()),
+        }
+    }
+
+    fn select(&self, mode: &str) {
+        *self.mode.lock().unwrap() = match mode {
+            "native" => "native",
+            "failure" => "failure",
+            "large" => "large",
+            _ => panic!("unknown synthetic font catalog"),
+        };
+    }
+
+    fn snapshot(&self) -> Value {
+        let reads = self.reads.lock().unwrap();
+        json!({"total":reads.values().sum::<usize>(),"sources":&*reads})
+    }
+
+    fn read(&self) -> Option<cumulus_core::Result<Vec<cumulus_desktop::FontCatalogProofFamily>>> {
+        let mode = *self.mode.lock().unwrap();
+        *self.reads.lock().unwrap().entry(mode).or_default() += 1;
+        match mode {
+            "native" => None,
+            "failure" => Some(Err(cumulus_core::Error::State(
+                "synthetic font enumeration failure",
+            ))),
+            "large" => Some(Ok((0..12_005)
+                .map(|index| cumulus_desktop::FontCatalogProofFamily {
+                    name: format!("Synthetic Font {index:05} with a deliberately long family name"),
+                    aliases: vec![format!("合成字体 {index}")],
+                })
+                .collect())),
+            _ => unreachable!(),
+        }
+    }
+}
+
 fn main() {
     // SAFETY: before creating any runtime threads or GTK widgets.
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("isolated proof root"));
     fs::create_dir_all(&root).unwrap();
     let reopened = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
+    let fonts = std::env::var_os("CUMULUS_FONT_PROOF").is_some();
+    let font_fallback = std::env::var_os("CUMULUS_FONT_PROOF_FORCE_IPC_FALLBACK").is_some();
+    assert!(!font_fallback || fonts);
+
     let embedded = std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some();
     let native_sidecar = std::env::var_os("CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF").is_some();
     let credits = std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some();
@@ -160,6 +209,11 @@ fn main() {
         block: block.clone(),
     }));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
+        let font_proof = fonts.then(|| Arc::new(FontProof::new()));
+        if let Some(proof) = &font_proof {
+            let proof = proof.clone();
+            app.manage(cumulus_desktop::FontCatalogProof::new(move || proof.read()));
+        }
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let api=Arc::new(desktop_lyric_fixture::Library::with_credit_proof(credits));
         let session=Arc::new(AccountSession::new(api.clone(),Some(registry.store())));
@@ -286,6 +340,11 @@ fn main() {
                     ack(json!({"ok":true}));
                 }
                 "windows" => ack(json!({"main":handle.get_webview_window("main").unwrap().is_visible().unwrap(),"mini":handle.webview_windows().keys().filter(|l|l.starts_with("desktop-lyrics-")).collect::<Vec<_>>()})),
+                "font_catalog" => {
+                    let proof=font_proof.as_ref().expect("font fixture only");
+                    if let Some(mode)=value["mode"].as_str() { proof.select(mode); }
+                    ack(proof.snapshot());
+                }
                 "snapshot" | "complete" | "failed" => {
                     let mut value=value.clone(); let output=output.clone(); let handle=handle.clone();
                     value["factoryCount"]=json!(count.load(Ordering::Acquire));
@@ -293,6 +352,11 @@ fn main() {
                     value["lyricWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("desktop-lyrics-")).collect::<Vec<_>>());
                     value["lyricRequests"]=json!(api.lyrics.load(Ordering::Acquire));
                     value["pendingLyrics"]=json!(api.pending.load(Ordering::Acquire));
+                    if let Some(proof)=&font_proof {
+                        let snapshot=proof.snapshot();
+                        value["fontReads"]=snapshot["total"].clone();
+                        value["fontSources"]=snapshot["sources"].clone();
+                    }
                     #[cfg(target_os="linux")]
                     if let Some(original)=&original_messages {
                         let numeric=locale_name(libc::LC_NUMERIC);
@@ -327,7 +391,8 @@ fn main() {
                 include_str!("embedded_lyrics_ui_probe.js")
             } else if std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some() {
                 include_str!("lyric_credit_ui_probe.js")
-            } else if std::env::var_os("CUMULUS_FONT_PROOF").is_some() {
+            } else if fonts {
+                view.eval(format!("window.__fontForceIpcFallback={font_fallback};")).unwrap();
                 include_str!("fonts_ui_probe.js")
             } else { include_str!("desktop_lyrics_ui_probe.js") }).unwrap();
         }

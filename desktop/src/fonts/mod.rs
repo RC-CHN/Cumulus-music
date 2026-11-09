@@ -22,6 +22,17 @@ pub struct Catalog {
 pub(crate) struct Host {
     operation: tokio::sync::Mutex<()>,
 }
+type ProofCatalog = dyn Fn() -> Option<Result<Vec<Family>>> + Send + Sync;
+
+/// Native example-only catalog source. A missing result delegates to the real
+/// platform, and every reply still passes the ordinary IPC and epoch guards.
+#[doc(hidden)]
+pub struct FontCatalogProof(Box<ProofCatalog>);
+impl FontCatalogProof {
+    pub fn new(source: impl Fn() -> Option<Result<Vec<Family>>> + Send + Sync + 'static) -> Self {
+        Self(Box::new(source))
+    }
+}
 fn normalize(mut families: Vec<Family>) -> Result<Vec<Family>> {
     if families.len() > 32768 {
         return Err(Error::State("font catalog too large"));
@@ -65,11 +76,30 @@ pub async fn system_font_catalog<R: Runtime>(
     check(&app, &epoch)?;
     let host = app.state::<Host>();
     let _operation = host.operation.try_lock().map_err(|_| Error::MutationBusy)?;
+    let proof = app
+        .try_state::<FontCatalogProof>()
+        .and_then(|source| (source.0)());
+    let families = match proof {
+        Some(result) => result?,
+        None => platform_families(&app, &epoch).await?,
+    };
+    let families = normalize(families)?;
+    check(&app, &epoch)?;
+    Ok(Catalog {
+        epoch,
+        families,
+        fallbacks: cumulus_core::preferences::desktop_lyrics::font_families(""),
+    })
+}
+async fn platform_families<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    epoch: &str,
+) -> Result<Vec<Family>> {
     #[cfg(target_os = "linux")]
     let families = {
         let (send, receive) = tokio::sync::oneshot::channel();
         let worker = app.clone();
-        let owner = epoch.clone();
+        let owner = epoch.to_owned();
         app.run_on_main_thread(move || {
             let result = (|| -> Result<Vec<Family>> {
                 use gtk::prelude::*;
@@ -97,19 +127,15 @@ pub async fn system_font_catalog<R: Runtime>(
             .await
             .map_err(|_| Error::State("font enumeration stopped"))??
     };
+    #[cfg(not(target_os = "linux"))]
+    let _ = (app, epoch);
     #[cfg(target_os = "windows")]
     let families = tauri::async_runtime::spawn_blocking(windows::enumerate)
         .await
         .map_err(|_| Error::State("font enumeration stopped"))??;
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     let families: Vec<Family> = return Err(Error::State("system fonts unavailable").into());
-    let families = normalize(families)?;
-    check(&app, &epoch)?;
-    Ok(Catalog {
-        epoch,
-        families,
-        fallbacks: cumulus_core::preferences::desktop_lyrics::font_families(""),
-    })
+    Ok(families)
 }
 #[cfg(test)]
 mod tests {
