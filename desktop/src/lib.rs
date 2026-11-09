@@ -727,9 +727,6 @@ pub fn run() {
             if pc_presentation::start(app.handle()).is_err() {
                 eprintln!("Cumulus PC presentation refresh is unavailable.");
             }
-            if daily_notification::start(app.handle()).is_err() {
-                eprintln!("Cumulus daily recommendation notification is unavailable.");
-            }
             if renewal::start_legacy(app.handle()).is_err() {
                 eprintln!("Cumulus scheduled legacy session renewal is unavailable.");
             }
@@ -744,6 +741,7 @@ pub fn run() {
             }
             Ok(())
         })
+        .on_page_load(daily_notification::page_loaded)
         .build(context)
         .expect("could not start Cumulus")
         .run(|app, event| {

@@ -1891,14 +1891,14 @@ fn main() {
             if daily_notification_fixture::mode().as_deref()==Some("fullscreen") {
                 window.set_fullscreen(true)?;
             }
-            cumulus_desktop::daily_notification::start(app.handle())?;
         }
         queue_more_fixture::phase_milestone("main_window_built");
         if media_proof {cumulus_desktop::system_media::install(app.handle());}
         playback_power_guide_fixture::install_media(app.handle());
         if shortcut_proof {cumulus_desktop::shortcuts::install(app.handle());}
         Ok(())
-    }).on_page_load(|view, payload| {
+    }).on_page_load(move |view, payload| {
+        if daily_notification_proof { cumulus_desktop::daily_notification::page_loaded(view,payload); }
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             queue_more_fixture::phase_milestone("main_page_loaded");
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());

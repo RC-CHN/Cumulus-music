@@ -26,6 +26,13 @@
   let epoch, count = 0, step = 'startup';
   const player = () => invoke('player_snapshot', { epoch });
   const offer = () => invoke('daily_notification', { epoch });
+  const windowFacts = () => Promise.all(
+    ['is_focused', 'is_visible', 'is_minimized', 'is_fullscreen',
+      'outer_position', 'outer_size', 'current_monitor'].map(async (name) => {
+      try { return [name, await invoke('plugin:window|' + name, { label: 'main' })]; }
+      catch (error) { return [name, String(error)]; }
+    }),
+  ).then(Object.fromEntries);
   async function stage(label) {
     step = label;
     await wait(() => !one('.page-enter-active,.page-leave-active'), 'page transition settled');
@@ -112,6 +119,6 @@
     await emit('complete', { ok: true, dailyNotificationMode: mode, count });
   } catch (error) {
     await emit('failed', { ok: false, step, message: error.message, focus: document.activeElement?.outerHTML.slice(0, 300),
-      body: document.body.innerText.slice(0, 400) });
+      body: document.body.innerText.slice(0, 400), windowFacts: await windowFacts() });
   }
 })();

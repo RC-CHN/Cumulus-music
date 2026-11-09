@@ -47,14 +47,14 @@ personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置�
 
 每日推荐：启动首次／主窗前台
   恢复证据：_core/init/utils/app.ts:626–775、1015–1106 (M128)，M1384:4464–4466
-  启动 +3s 后读取 PH-PC-push 组及 preload#push 对应分钟数；M247:148–166
+  受信主页面加载完成 +3s 后读取 PH-PC-push 组及 preload#push 对应分钟数；M247:148–166
   默认 day/count/t1/t2/t3 为 0，不激活。Rust 只接受原生 PC 配置和同账号、
   同 API/凭据的已验证、新鲜分组；不为通知另取实验，不把搜索表现组当授权。
   只运行 t1/t2/t3 的正延时、非版权优先和非沉浸展示。输入配置无效时保持沉默。
   官方 GetForegroundWindow + MonitorFromWindow + GetWindowRect/GetMonitorInfoW
   （3.1.42.205594 x64 cloudmusic.dll E390E0–E3923C）按完整显示器矩形
   排除全屏。Cumulus 不试图控制别的进程窗口，只在真实可见、聚焦且非最小化的
-  主窗中、能核验完整屏幕几何并确认非全屏时呈现；不可核验的平台不触发。
+  主窗中、能核验完整屏幕几何并确认非全屏时呈现；Wayland 和未知后端不触发。
   本机 personalizedRecommend 开关默认为开 (M116:372)，首曝检查同日、
   配置的 N 日限次、七天免打扰，并用 DateSync 服务端时间、不可得时本机时间。
   需要登录且 /api/user/setting 明确 personalServiceSetting=0：原实现只

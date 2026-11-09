@@ -37,7 +37,34 @@ fn foreground<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> bool {
     !(position == *monitor.position() && size == *monitor.size())
 }
 
-pub fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
+pub fn page_loaded<R: tauri::Runtime>(
+    webview: &tauri::Webview<R>,
+    page: &tauri::webview::PageLoadPayload<'_>,
+) {
+    if webview.label() != "main" || page.event() != tauri::webview::PageLoadEvent::Finished {
+        return;
+    }
+    let app = webview.app_handle();
+    let url = page.url();
+    let bundled = matches!(
+        (url.scheme(), url.host_str()),
+        ("tauri", Some("localhost")) | ("http" | "https", Some("tauri.localhost"))
+    ) && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none();
+    let development = !cfg!(feature = "custom-protocol")
+        && app
+            .config()
+            .build
+            .dev_url
+            .as_ref()
+            .is_some_and(|dev| url.origin() == dev.origin());
+    if (bundled || development) && app.try_state::<MusicClient>().is_some() && start(app).is_err() {
+        eprintln!("Cumulus daily recommendation notification is unavailable.");
+    }
+}
+
+fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
         use gtk::prelude::ObjectExt;
