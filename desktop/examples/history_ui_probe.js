@@ -11,10 +11,15 @@
   let stageCount=0;
   async function capture(name,extra={}){
     await sleep(400);
+    // A history read can finish while the entering route is still translated.
+    // Check clipping after the real transition (including its no-frame deadline).
+    const settledHistory=()=>one('.page-view:not(.page-enter-active,.page-leave-active) .history-page');
+    await wait(settledHistory,`history route did not settle: ${name}`);
     assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');
-    const page=one('.history-page').getBoundingClientRect(),main=one('.main-content').getBoundingClientRect();
+    const page=settledHistory().getBoundingClientRect(),main=one('.main-content').getBoundingClientRect();
     const note=one('.history-note').getBoundingClientRect();
-    assert(page.bottom<=main.bottom+1,'history page clipped');assert(note.bottom<=main.bottom+1,'history footer clipped');
+    assert(page.bottom<=main.bottom+1,`history page clipped: ${name} (${page.bottom} > ${main.bottom})`);
+    assert(note.bottom<=main.bottom+1,`history footer clipped: ${name} (${note.bottom} > ${main.bottom})`);
     const rows=all('.history-window .history-row');assert(rows.length<=35,'unbounded history rows');
     for(const row of rows){for(const action of row.querySelectorAll('.history-actions button')){
       const b=action.getBoundingClientRect(),cell=action.parentElement.getBoundingClientRect();
