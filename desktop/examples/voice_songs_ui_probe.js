@@ -69,15 +69,26 @@
   function trackIds(value) { return value.entries.map((entry) => entry.id); }
   async function park(playId) {
     await click(() => label('暂停'), 'park current actual decoder');
-    let previous;
+    // The actor polls paused libmpv at 200 ms. Consecutive WebView reads
+    // 55 ms apart can repeat an old sample before the final pause position.
+    let previous, stableSince, samples = 0;
     return wait(async () => {
       const current = await state();
+      const now = performance.now();
       if (current.state !== 'paused' || current.playId !== playId || current.nativeSeeking ||
-          current.error || !Number.isFinite(current.position)) return false;
-      const settled = previous === current.position;
-      previous = current.position;
-      return settled && current;
-    }, 'paused clock and same decoder settle');
+          current.error || !Number.isFinite(current.position)) {
+        previous = undefined;
+        samples = 0;
+        return false;
+      }
+      if (previous !== current.position) {
+        previous = current.position;
+        stableSince = now;
+        samples = 0;
+      }
+      samples++;
+      return samples >= 3 && now - stableSince >= 450 && current;
+    }, 'paused clock and same decoder settle across native polls');
   }
   async function waitPlaying(kind, id) {
     return wait(async () => {
@@ -326,10 +337,16 @@
       const nextStage = await capture('context_next');
       assert(equal(plays[0].args, [epoch, second.playId, newPage.receipt, { kind: 'next_play', index: 0 }, 'standard']),
         'actual context action is source-bound');
-      assert(nextStage.player.state === 'paused' && nextStage.player.playId === second.playId &&
-        nextStage.player.entryId === second.entryId && nextStage.player.position === secondPaused.position &&
-        nextStage.queue.entries.slice(0,2).every((entry, index) => equal(entry, retired.queue.entries[index])),
-      'context next preserves exact paused decoder, clock and old queue entries');
+      const expected = {
+        state: 'paused', playId: second.playId, entryId: second.entryId, position: secondPaused.position,
+        entries: retired.queue.entries,
+      };
+      const actual = {
+        state: nextStage.player.state, playId: nextStage.player.playId, entryId: nextStage.player.entryId,
+        position: nextStage.player.position, entries: nextStage.queue.entries.slice(0,2),
+      };
+      assert(equal(actual, expected),
+        `context next preserves exact paused decoder, clock and old queue entries: ${JSON.stringify({ expected, actual })}`);
 
       dbl(1);
       const ordinary = await waitPlaying('catalog', '1810');
