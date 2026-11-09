@@ -260,6 +260,7 @@ import { usePodcastRankings } from './composables/usePodcastRankings';
 import { usePodcastTop } from './composables/usePodcastTop';
 import {
   AUDIOBOOK_CATEGORY,
+  type EpisodeView,
   type PodcastProgramTarget,
   type PodcastScope,
 } from './services/podcast';
@@ -1458,9 +1459,21 @@ function playSearchChart(keywords: string[]) {
     return { kind: 'search_chart', ids: response.value.ids, quality };
   });
 }
+function playVoiceCard(voice: EpisodeView) {
+  const selection = searchVoiceSelection({ kind: 'voice', voice });
+  if (!selection || !signedIn.value || !player.ready.value || player.busy.value) return;
+  if (player.loaded.value && searchCurrentVoiceId(player.view.value) === voice.id)
+    void player.toggleSource();
+  else void player.select(selection);
+}
+function playPodcastBrowseVoice(voice: EpisodeView) {
+  const { kind } = page.value;
+  if (kind === 'podcast_discovery' || kind === 'podcast_rankings') playVoiceCard(voice);
+}
 function playSearchCard(item: SearchItem) {
   const route = page.value;
   if (route.kind !== 'search') return;
+  if (item.kind === 'voice') return playVoiceCard(item.voice);
   if (item.kind === 'podcast' && (route.category ?? 'all') === 'all') {
     const selection = searchPodcastCardSelection(item);
     if (!selection || !signedIn.value || player.busy.value) return;
@@ -1472,11 +1485,8 @@ function playSearchCard(item: SearchItem) {
     return;
   }
   const view = player.view.value;
-  if (searchCardIsCurrent(item, view?.origin, searchCurrentVoiceId(view)) && player.loaded.value) {
+  if (searchCardIsCurrent(item, view?.origin) && player.loaded.value) {
     void player.toggleSource();
-  } else if (item.kind === 'voice') {
-    const selection = searchVoiceSelection(item);
-    if (selection) void player.select(selection);
   } else {
     const quality = view?.qualityPreferences.quality ?? 'standard';
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
@@ -5619,7 +5629,7 @@ onUnmounted(() => {
                 :current-voice="currentVoiceId"
                 :playing="player.playing.value"
                 @open="openSceneRadio"
-                @play="(voice) => playSearchCard({ kind: 'voice', voice })"
+                @play="playPodcastBrowseVoice"
                 @settings="openPodcastPrivacy"
                 @category="(id) => music.navigate({ kind: 'podcast_category', id })"
                 @rankings="(target) => music.navigate({ kind: 'podcast_rankings', target })"
@@ -5635,7 +5645,7 @@ onUnmounted(() => {
                 :playing="player.playing.value"
                 @radio="openSceneRadio"
                 @host="(id) => music.navigate({ kind: 'playlist_creator', id })"
-                @play="(voice) => playSearchCard({ kind: 'voice', voice })"
+                @play="playPodcastBrowseVoice"
               />
               <PlaylistCreatorPage
                 v-else-if="profileUid !== null"

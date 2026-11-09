@@ -931,10 +931,27 @@
     click(button("返回上一页"));
     await wait(() => preview('podcast')?.dataset.activeChart === 'score', "Back restores the top preview");
     click(button("最热播客", preview('podcast')));
-    await wait(() => preview('podcast') && button("播放 合成声音 407", preview('podcast')), "updated hot preview uses the ordinary voice chart");
-    click(button("播放 合成声音 407", preview('podcast')));
-    await wait(() => preview('podcast') && button("暂停 合成声音 407", preview('podcast')) && one('.playerbar')?.dataset.state === 'playing', "preview row starts native playback");
-    assert((await snapshot()).track?.voiceId === '407', "preview plays selected episode identity");
+    const previewVoice = (action) => {
+      const lane = preview('podcast');
+      const target = lane && button(`${action} 合成声音 407`, lane);
+      return target && !target.disabled ? target : null;
+    };
+    await wait(() => previewVoice("播放"), "updated hot preview uses the ordinary voice chart");
+    click(previewVoice("播放"));
+    await wait(() => previewVoice("暂停") && one('.playerbar')?.dataset.state === 'playing', "preview row starts native playback");
+    const previewPlaying = await snapshot();
+    assert(previewPlaying.track?.voiceId === '407' && previewPlaying.playId !== resumedRadio.playId,
+      "preview plays the selected episode in a new native entry");
+    click(previewVoice("暂停"));
+    await wait(() => previewVoice("播放") && one('.playerbar')?.dataset.state === 'paused',
+      "preview pauses the same native episode");
+    click(previewVoice("播放"));
+    await wait(() => previewVoice("暂停") && one('.playerbar')?.dataset.state === 'playing',
+      "preview resumes the same native episode");
+    const previewResumed = await snapshot();
+    assert(previewResumed.playId === previewPlaying.playId && previewResumed.entryId === previewPlaying.entryId &&
+      previewResumed.queueRevision === previewPlaying.queueRevision,
+      "preview toggles preserve the decoder, selected entry and queue");
     click(button("免费听书", preview('book')));
     await wait(() => preview('book') && button("打开 合成播客 363", preview('book')), "free book preview has independent rows");
     click(button("查看全部", preview('book')));
@@ -1032,7 +1049,14 @@
       ranked("voice").querySelector('[aria-label="上升 2 名"]'), "chart advertises the correct movement and group");
     click(button("播放 合成声音 407", rankPage()));
     await wait(() => button("暂停 合成声音 407", rankPage()) && one(".playerbar")?.dataset.state === "playing", "ranked voice starts native playback");
-    assert((await snapshot()).track?.voiceId === "407", "rank entry plays the chosen episode, not the radio identity");
+    const rankedPlaying = await snapshot();
+    assert(rankedPlaying.track?.voiceId === "407", "rank entry plays the chosen episode, not the radio identity");
+    assert(!await invoke("play_selection", { epoch: "0", selection: { kind: "search_result_voice", id: "404" } })
+      .then(() => true, () => false), "a retired account epoch cannot select a different episode");
+    const afterStaleSelection = await snapshot();
+    assert(afterStaleSelection.playId === rankedPlaying.playId && afterStaleSelection.entryId === rankedPlaying.entryId &&
+      afterStaleSelection.queueRevision === rankedPlaying.queueRevision,
+      "a stale selection does not replace the ranked episode or its queue");
     await capture("podcast_rankings_voice");
     click(button("音乐声音", rankPage()));
     await wait(() => ranked("voice")?.textContent.includes("合成声音 408"), "voice category uses categoryId rather than chartType");
