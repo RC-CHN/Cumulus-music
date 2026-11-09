@@ -3,6 +3,8 @@ use tauri::Manager;
 
 static MODE: AtomicU8 = AtomicU8::new(0);
 static READS: AtomicUsize = AtomicUsize::new(0);
+static SPATIAL_READS: AtomicUsize = AtomicUsize::new(0);
+static VOLUME_BEFORE_SPATIAL: AtomicUsize = AtomicUsize::new(0);
 
 pub fn running() -> bool {
     std::env::var_os("CUMULUS_SYSTEM_MASTER_VOLUME_PROOF").is_some()
@@ -19,6 +21,9 @@ pub fn install<R: tauri::Runtime>(app: &tauri::App<R>) {
                 app.manage(cumulus_desktop::audio_diagnostics::SystemMasterVolumeProbe::new(read)),
                 "the sealed synthetic endpoint must be installed before opening a proof WebView"
             );
+            assert!(app.manage(
+                cumulus_desktop::audio_diagnostics::SystemSpatialSoundProbe::new(read_spatial)
+            ));
         }
         Ok(mode) if mode == "unsupported" && cfg!(target_os = "linux") => {}
         Err(std::env::VarError::NotPresent) => {}
@@ -39,6 +44,17 @@ fn read() -> Option<(f32, bool)> {
     }
 }
 
+fn read_spatial() -> Option<bool> {
+    VOLUME_BEFORE_SPATIAL.store(READS.load(Ordering::Relaxed), Ordering::Relaxed);
+    SPATIAL_READS.fetch_add(1, Ordering::Relaxed);
+    match MODE.load(Ordering::Relaxed) {
+        0 | 4 | 5 => Some(false),
+        1 | 3 => Some(true),
+        2 => None,
+        _ => unreachable!("fixture selects a named input"),
+    }
+}
+
 pub fn set(mode: &str) {
     MODE.store(
         match mode {
@@ -55,4 +71,12 @@ pub fn set(mode: &str) {
 
 pub fn reads() -> usize {
     READS.load(Ordering::Relaxed)
+}
+
+pub fn spatial_reads() -> usize {
+    SPATIAL_READS.load(Ordering::Relaxed)
+}
+
+pub fn volume_before_spatial() -> usize {
+    VOLUME_BEFORE_SPATIAL.load(Ordering::Relaxed)
 }

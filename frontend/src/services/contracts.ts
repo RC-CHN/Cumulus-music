@@ -74,7 +74,11 @@ import type { SystemMediaClient } from './systemMedia';
 import type { ShortcutsClient } from './shortcuts';
 import type { OutputClient } from './output';
 import type { DailyNotificationClient } from './dailyNotification';
-import type { SystemMasterVolumeClient, VolumeDiagnosisClient } from './systemMasterVolume';
+import type {
+  SystemMasterVolumeClient,
+  SystemSpatialSoundClient,
+  VolumeDiagnosisClient,
+} from './systemMasterVolume';
 import type { EffectDirectoryClient } from './effectDirectory';
 import type { RelayClient } from './relay';
 import type { RelayPublicationClient } from './relayPublication';
@@ -190,6 +194,7 @@ export interface CoreClient
     QueueClickPreferencesClient,
     OutputClient,
     SystemMasterVolumeClient,
+    SystemSpatialSoundClient,
     DailyNotificationClient,
     VolumeDiagnosisClient,
     EffectDirectoryClient,

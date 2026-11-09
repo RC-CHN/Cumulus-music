@@ -3,11 +3,11 @@ use std::{marker::PhantomData, rc::Rc};
 #[cfg(windows)]
 use windows::Win32::{
     Media::Audio::{
-        Endpoints::IAudioEndpointVolume, IMMDeviceEnumerator, MMDeviceEnumerator, eMultimedia,
-        eRender,
+        ERole, Endpoints::IAudioEndpointVolume, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator,
+        eMultimedia, eRender,
     },
     System::Com::{
-        CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
+        CLSCTX_ALL, COINIT, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
     },
 };
 
@@ -23,14 +23,14 @@ pub(super) enum ReadStage {
 }
 
 #[cfg(windows)]
-struct Apartment(PhantomData<Rc<()>>);
+pub(super) struct Apartment(PhantomData<Rc<()>>);
 
 #[cfg(windows)]
 impl Apartment {
-    fn initialize() -> Result<Self, (ReadStage, Option<u32>)> {
+    pub(super) fn initialize(model: COINIT) -> Result<Self, (ReadStage, Option<u32>)> {
         // SAFETY: on the blocking worker; both S_OK and S_FALSE are balanced
         // on the same thread, and failure never creates a lease.
-        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }
+        unsafe { CoInitializeEx(None, model) }
             .ok()
             .map_err(|err| (ReadStage::InitializeCom, Some(err.code().0 as u32)))?;
         Ok(Self(PhantomData))
@@ -40,24 +40,32 @@ impl Apartment {
 #[cfg(windows)]
 impl Drop for Apartment {
     fn drop(&mut self) {
-        // SAFETY: this guard is used only in read(), after its COM objects
-        // have been dropped on the thread that initialized COM.
+        // SAFETY: COM objects are dropped before this guard, on the thread
+        // that initialized COM.
         unsafe { CoUninitialize() };
     }
 }
 
 #[cfg(windows)]
-pub(super) fn read() -> Result<(f32, bool), (ReadStage, Option<u32>)> {
-    let _apartment = Apartment::initialize()?;
+pub(super) fn default_render_endpoint(
+    _apartment: &Apartment,
+    role: ERole,
+) -> Result<IMMDevice, (ReadStage, Option<u32>)> {
     // SAFETY: the calling apartment is initialized; no aggregation or
     // renderer-supplied device identifier is involved.
     let devices: IMMDeviceEnumerator =
         unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }
             .map_err(|err| (ReadStage::CreateEnumerator, Some(err.code().0 as u32)))?;
-    // SAFETY: this is the recovered default rendering role, not the app's
-    // configured output device, and the interface owns its returned references.
-    let device = unsafe { devices.GetDefaultAudioEndpoint(eRender, eMultimedia) }
-        .map_err(|err| (ReadStage::FindDefaultEndpoint, Some(err.code().0 as u32)))?;
+    // SAFETY: the interface owns its returned references. The caller holds
+    // this thread's initialized COM apartment until those references drop.
+    unsafe { devices.GetDefaultAudioEndpoint(eRender, role) }
+        .map_err(|err| (ReadStage::FindDefaultEndpoint, Some(err.code().0 as u32)))
+}
+
+#[cfg(windows)]
+pub(super) fn read() -> Result<(f32, bool), (ReadStage, Option<u32>)> {
+    let apartment = Apartment::initialize(COINIT_MULTITHREADED)?;
+    let device = default_render_endpoint(&apartment, eMultimedia)?;
     // SAFETY: IAudioEndpointVolume is the documented interface for this
     // activation; it does not require activation parameters.
     let endpoint: IAudioEndpointVolume = unsafe { device.Activate(CLSCTX_ALL, None) }

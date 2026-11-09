@@ -538,6 +538,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::player_queue,
                 player::queue_more_tip,
                 audio_diagnostics::system_master_volume,
+                audio_diagnostics::system_spatial_sound,
                 audio_diagnostics::check_volume_diagnosis,
                 audio_diagnostics::dismiss_volume_diagnosis,
                 daily_notification::daily_notification,

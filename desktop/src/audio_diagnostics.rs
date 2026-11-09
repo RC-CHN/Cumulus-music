@@ -6,6 +6,8 @@ use tauri::Manager;
 use tokio::sync::Semaphore;
 
 #[cfg(windows)]
+mod spatial_windows;
+#[cfg(windows)]
 mod windows;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -16,24 +18,28 @@ pub enum SystemMasterVolume {
     Ready { percent: u8 },
 }
 
-type EndpointReader = dyn Fn() -> Option<(f32, bool)> + Send + Sync;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SystemSpatialSound {
+    Unsupported,
+    Unavailable,
+    Ready { active: bool },
+}
 
-/// A desktop-only reader, with at most one OS call in flight. An isolated
-/// native host can inject its own fixture before opening a WebView.
-pub struct SystemMasterVolumeProbe {
-    reader: Arc<EndpointReader>,
+struct EndpointProbe<T> {
+    reader: Arc<dyn Fn() -> Option<T> + Send + Sync>,
     permits: Arc<Semaphore>,
 }
 
-impl SystemMasterVolumeProbe {
-    pub fn new(reader: impl Fn() -> Option<(f32, bool)> + Send + Sync + 'static) -> Self {
+impl<T: Send + 'static> EndpointProbe<T> {
+    fn new(reader: impl Fn() -> Option<T> + Send + Sync + 'static) -> Self {
         Self {
             reader: Arc::new(reader),
             permits: Arc::new(Semaphore::new(1)),
         }
     }
 
-    async fn sample_effective(&self) -> Option<f32> {
+    async fn sample(&self) -> Option<T> {
         let Ok(permit) = self.permits.clone().try_acquire_owned() else {
             return None;
         };
@@ -42,12 +48,37 @@ impl SystemMasterVolumeProbe {
             // Keep the permit through OS completion even if a view closes or
             // the IPC deadline expires. Another read cannot queue behind it.
             let _permit = permit;
-            reader().and_then(|(scalar, muted)| effective_scalar(scalar, muted))
+            reader()
         });
         match tokio::time::timeout(Duration::from_secs(2), job).await {
             Ok(Ok(value)) => value,
             _ => None,
         }
+    }
+}
+
+/// A desktop-only reader, with at most one OS call in flight. An isolated
+/// native host can inject its own fixture before opening a WebView.
+pub struct SystemMasterVolumeProbe(EndpointProbe<(f32, bool)>);
+
+impl SystemMasterVolumeProbe {
+    pub fn new(reader: impl Fn() -> Option<(f32, bool)> + Send + Sync + 'static) -> Self {
+        Self(EndpointProbe::new(reader))
+    }
+
+    async fn sample_effective(&self) -> Option<f32> {
+        let (scalar, muted) = self.0.sample().await?;
+        effective_scalar(scalar, muted)
+    }
+}
+
+/// A separate read-only console render endpoint, with the same bounded worker
+/// contract as the master-volume probe.
+pub struct SystemSpatialSoundProbe(EndpointProbe<bool>);
+
+impl SystemSpatialSoundProbe {
+    pub fn new(reader: impl Fn() -> Option<bool> + Send + Sync + 'static) -> Self {
+        Self(EndpointProbe::new(reader))
     }
 }
 
@@ -105,6 +136,36 @@ pub async fn system_master_volume<R: tauri::Runtime>(
             percent: percent(scalar),
         },
         None => SystemMasterVolume::Unavailable,
+    })
+}
+
+fn native_spatial_reader() -> Option<&'static SystemSpatialSoundProbe> {
+    #[cfg(windows)]
+    {
+        static NATIVE: std::sync::OnceLock<SystemSpatialSoundProbe> = std::sync::OnceLock::new();
+        Some(NATIVE.get_or_init(|| SystemSpatialSoundProbe::new(spatial_windows::read)))
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+#[tauri::command]
+pub async fn system_spatial_sound<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+) -> Result<SystemSpatialSound, ClientError> {
+    require_main(&window)?;
+    let sample = if let Some(probe) = window.try_state::<SystemSpatialSoundProbe>() {
+        probe.0.sample().await
+    } else if let Some(probe) = native_spatial_reader() {
+        probe.0.sample().await
+    } else {
+        return Ok(SystemSpatialSound::Unsupported);
+    };
+    Ok(match sample {
+        Some(active) => SystemSpatialSound::Ready { active },
+        None => SystemSpatialSound::Unavailable,
     })
 }
 

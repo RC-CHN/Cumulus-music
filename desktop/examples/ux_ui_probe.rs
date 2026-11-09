@@ -1343,6 +1343,8 @@ fn main() {
                     return;
                 }
                 value["systemMasterVolumeReads"] = json!(system_master_volume_fixture::reads());
+                value["systemSpatialSoundReads"] = json!(system_master_volume_fixture::spatial_reads());
+                value["volumeReadsBeforeSpatial"] = json!(system_master_volume_fixture::volume_before_spatial());
             }
             if let Some(wire) = external_import.as_ref() { value["externalImport"] = wire.report(); }
             if external_import_fixture::sidebar_mode().is_some() { value["externalImportSidebarReads"] = json!(external_import_fixture::sidebar_reads()); }

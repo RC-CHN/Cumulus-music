@@ -211,6 +211,7 @@ export function createTauriClient(): CoreClient {
     onWindowLifecycle: (handler) =>
       listen<WindowLifecycleView>('cumulus:window-lifecycle', (event) => handler(event.payload)),
     systemMasterVolume: () => invoke('system_master_volume'),
+    systemSpatialSound: () => invoke('system_spatial_sound'),
     dailyNotification: (epoch) => invoke('daily_notification', { epoch }),
     dailyNotificationCommand: (epoch, receipt, action) =>
       invoke('daily_notification_command', { epoch, receipt, action }),

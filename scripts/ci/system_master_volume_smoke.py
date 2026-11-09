@@ -14,6 +14,15 @@ CASES = {
     "unsupported": {"unsupported": None},
 }
 
+SPATIAL = {
+    "initial": "未启用或设备不支持",
+    "muted": "已开启（可能影响声音效果）",
+    "unavailable": "暂时无法读取系统空间音效，请刷新重试。",
+    "recovered": "已开启（可能影响声音效果）",
+    "reopened": "已开启（可能影响声音效果）",
+    "unsupported": None,
+}
+
 
 DIAGNOSIS_CASES = {
     "synthetic": {
@@ -128,9 +137,12 @@ def main():
                     assert row["focused"] == "settings-audio-output", row
             else:
                 assert row["visible"] == (case == "synthetic") and row["percent"] == observation, (label, row)
+                assert row["spatial"] == SPATIAL[label], (label, row)
                 assert abs(player["position"] - row["pausedAt"]) < 0.2
                 if case == "synthetic":
                     assert row["systemMasterVolumeReads"] == index, (label, row)
+                    assert row["systemSpatialSoundReads"] == index, (label, row)
+                    assert row["volumeReadsBeforeSpatial"] == index, (label, row)
                 if label in {"muted", "unavailable", "recovered"}:
                     assert row["focused"] == "刷新音频输出设备", (label, row)
                 if label == "recovered":
@@ -141,6 +153,7 @@ def main():
     result = dict(ok=True, actualWebView=True, webViewRuntime="WebView2" if windows else "GTK/WebKit",
                   nativeIpc=True, nativeLibmpvNull=True, windowsMediaRuntime=windows_media,
                   playerVolumeDiagnosis=args.diagnosis,
+                  readOnlySpatialSound=not args.diagnosis,
                   stateCount=count, screenshots=count if args.screenshots else 0,
                   syntheticWindowsEndpoint=True, nativeLinuxUnsupported=not windows,
                   physicalWindowsReadVerified=False, realOsWrites=0, realMusicRequests=0,

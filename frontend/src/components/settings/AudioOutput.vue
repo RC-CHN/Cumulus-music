@@ -4,15 +4,30 @@ import type { AccountView } from '../../services/contracts';
 import type { OutputEngine } from '../../services/output';
 import { useOutputSettings } from '../../composables/useOutputSettings';
 import { useControlFocus } from '../../composables/useControlFocus';
-import { useSystemMasterVolume } from '../../composables/useSystemMasterVolume';
+import {
+  useSystemMasterVolume,
+  useSystemSpatialSound,
+} from '../../composables/useSystemMasterVolume';
 const props = defineProps<{ account: AccountView }>();
 const model = useOutputSettings();
 const diagnostics = useSystemMasterVolume();
-const busy = computed(() => model.loading.value || model.busy.value || diagnostics.loading.value);
-function read() {
-  return Promise.all([model.read(), diagnostics.read()]);
+const spatial = useSystemSpatialSound();
+const diagnosticsLoading = ref(false);
+const busy = computed(() => model.loading.value || model.busy.value || diagnosticsLoading.value);
+async function readDiagnostics() {
+  if (diagnosticsLoading.value) return;
+  diagnosticsLoading.value = true;
+  try {
+    await diagnostics.read();
+    await spatial.read();
+  } finally {
+    diagnosticsLoading.value = false;
+  }
 }
-onMounted(() => void diagnostics.read());
+function read() {
+  return Promise.all([model.read(), readDiagnostics()]);
+}
+onMounted(() => void readDiagnostics());
 const refresh = ref<HTMLButtonElement>();
 const pendingDevice = shallowRef<{ id: string; epoch: string }>();
 const pendingSelection = computed(() =>
@@ -83,6 +98,7 @@ watch(
 onUnmounted(() => {
   model.dispose();
   diagnostics.dispose();
+  spatial.dispose();
 });
 </script>
 <template>
@@ -176,14 +192,29 @@ onUnmounted(() => {
         </p>
         <p v-else class="settings-note" role="status">暂时无法读取系统音量，请刷新重试。</p>
       </div>
+      <div
+        v-if="spatial.visible.value"
+        class="system-spatial-sound"
+        data-system-spatial-sound
+        aria-labelledby="system-spatial-sound-title"
+      >
+        <h3 id="system-spatial-sound-title">系统空间音效</h3>
+        <p v-if="spatial.loading.value" class="settings-note" role="status">
+          正在读取系统空间音效…
+        </p>
+        <p v-else-if="spatial.view.value?.kind === 'ready'" class="settings-note" role="status">
+          {{ spatial.view.value.active ? '已开启（可能影响声音效果）' : '未启用或设备不支持' }}
+        </p>
+        <p v-else class="settings-note" role="status">暂时无法读取系统空间音效，请刷新重试。</p>
+      </div>
     </div>
   </section>
 </template>
 <style scoped>
-.system-master-volume {
+:is(.system-master-volume, .system-spatial-sound) {
   margin-top: 20px;
 }
-.system-master-volume h3 {
+:is(.system-master-volume, .system-spatial-sound) h3 {
   margin: 0;
   font-size: 14px;
 }

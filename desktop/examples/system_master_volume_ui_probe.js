@@ -19,6 +19,7 @@
   const bar = () => one('.playerbar');
   const diagnosis = () => one('[data-system-master-volume]');
   const volume = () => one('[data-system-master-percent]')?.textContent.trim() ?? null;
+  const spatial = () => one('[data-system-spatial-sound]');
   const ready = () => one('.audio-output')?.getAttribute('aria-busy') === 'false';
   const refresh = () => one('[aria-label="刷新音频输出设备"]');
   const daily = () => all('.nav-item').find((node) => node.textContent.trim() === '每日推荐');
@@ -53,6 +54,7 @@
   async function capture(label) {
     last = label;
     one('.audio-output').scrollIntoView({ block:'center' });
+    spatial()?.scrollIntoView({ block: 'nearest' });
     await sleep(300);
     assert(bar().dataset.playId === playId && bar().dataset.state === 'paused' &&
       Math.abs(Number(bar().dataset.position) - pausedAt) < 0.2, 'diagnostics never changed the player');
@@ -63,6 +65,7 @@
       visible: !!diagnosis(), percent: volume(), playId, pausedAt,
       focused: document.activeElement?.getAttribute('aria-label'),
       text: diagnosis()?.textContent.trim() ?? '',
+      spatial: spatial()?.querySelector('[role="status"]')?.textContent.trim() ?? null,
       width:innerWidth, theme:document.documentElement.dataset.theme,
     });
     await wait(() => window.__systemProbeStageRecorded === stage, 'native evidence saved for ' + stage);
@@ -106,14 +109,19 @@
     pausedAt = Number(bar().dataset.position);
     await openSettings();
     if (window.__systemMasterVolumeUnsupported) {
-      assert(!diagnosis(), 'normal Linux command hides the Windows diagnostic');
+      assert(!diagnosis() && !spatial(), 'normal Linux commands hide Windows observations');
       assert((await invoke('system_master_volume')).kind === 'unsupported', 'native unsupported result');
+      assert((await invoke('system_spatial_sound')).kind === 'unsupported', 'native spatial unsupported result');
       await capture('unsupported');
     } else {
       assert(volume() === '37%' && diagnosis().textContent.includes('低于30%可能影响收听体验'),
         'official threshold hint and normalized scalar');
       assert(one('.audio-output select').compareDocumentPosition(diagnosis()) & Node.DOCUMENT_POSITION_FOLLOWING,
         'diagnosis follows the output selection');
+      const spatialStatus = spatial();
+      assert(spatialStatus && (diagnosis().compareDocumentPosition(spatialStatus) & Node.DOCUMENT_POSITION_FOLLOWING),
+        'spatial status follows master volume');
+      assert(!spatialStatus.querySelector('button,input,select'), 'spatial status is read-only');
       await capture('initial');
       await readFixture('muted', '0%');
       await capture('muted');

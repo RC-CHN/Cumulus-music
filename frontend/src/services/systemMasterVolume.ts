@@ -6,6 +6,13 @@ export interface SystemMasterVolumeClient {
   systemMasterVolume(): Promise<SystemMasterVolume>;
 }
 
+export type SystemSpatialSound =
+  | { kind: 'unsupported' | 'unavailable' }
+  | { kind: 'ready'; active: boolean };
+export interface SystemSpatialSoundClient {
+  systemSpatialSound(): Promise<SystemSpatialSound>;
+}
+
 export type VolumeDiagnosisDismissal = 'auto_close' | 'manual_close' | 'jump_settings';
 
 export interface VolumeDiagnosisVisit {

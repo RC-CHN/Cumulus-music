@@ -88,7 +88,7 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/41938331717
   Windows 原版依次读系统主音量、系统音频增强及空间音效。低主音量判断
   采用有效原始浮点数，大于零且严格小于 30%；系统静音折为零，不触发。
   29.99% 可以触发，设置行仍显示舍入后的 30%。增强或空间音效启用可以各自
-  触发原提示；社区版没有这两项采样，也不会把它们伪装为关或启用。
+  触发原提示；社区版的提示仍只采用主音量，不从设置页复用这两项判断。
 - M/473:11843–11930 的弹层原文「当前系统设置可能影响播放体验」「去查看」，
   5 秒自动关闭；「去查看」进入 /setting/play，refer=volume_dignose。
   M/1384:4323–4373 手动关闭或跳设置才持久化时间；仅当
@@ -106,3 +106,27 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/41938331717
   scripts/ci/system_master_volume_smoke.py --diagnosis（既有 --binary、--root，
   Linux 可选 --frontend-dist / --screenshots；Windows 需 --runtime）。
   无实体 Windows 声卡数值、听感、增强或空间音效的结论。
+
+系统空间音效：独立只读设置项
+
+- Play.jsx:95–132、560–589 在 Windows 的播放设置先读主音量，再读空间音效，
+  最后读系统音频增强。M/4:15332–15339 是 `audioplayer.getSystemSpatialSound`。
+  同一 x64 DLL 的 F23130–F2317B 绑定 F1C140；F1C231 调 1B0220。
+  1B023E 初始化 STA，1B0260–1B0299 创建 MMDeviceEnumerator 并取
+  eRender/eConsole（不是主音量的 eMultimedia）。1B02BE–1B02C5 激活
+  `ISpatialAudioClient`（BBF8E066-AAAA-49BE-9A4D-FD2A858EA27F），
+  1B02DD–1B02EB 调 `GetMaxDynamicObjectCount`，成功时大于零才返回启用。
+  不激活音频流。微软说明零也可能表示设备不提供动态空间对象：
+  https://learn.microsoft.com/en-us/windows/win32/api/spatialaudioclient/nf-spatialaudioclient-ispatialaudioclient-getmaxdynamicobjectcount
+- 同一设置区进入或手动刷新时，桌面在主音量之后以独立、有界的阻塞调用读取
+  这个默认控制台端点。结果只区分已开启、未启用或设备不支持、暂时不可读取。
+  失败不当作关闭，不保存账号偏好，不输出端点 ID、对象数或 HRESULT。
+  Linux 原生返回 unsupported，隐藏整项；不提供开关，不改变输出或播放。
+- 相邻增强读取 F1BAD0→1AF2E0→1AEDD0 使用默认端点 ID 拼装系统注册表路径，
+  在 1AF10F–1AF172 读私有值，读取失败仍可沿用内部默认 true。没有把公用
+  `PKEY_AudioEndpoint_Disable_SysFx` 当作相同字段，不复制私有读取、注册表写入、
+  修复或官方客服入口。也没有把空间音效结果接入播放栏诊断提示。
+- 同一 `system_master_volume_smoke.py` 真实 WebView/IPC 夹具同时核对两个端点
+  读取的顺序和次数、空间音效开/不可用/恢复及 Linux 隐藏；只在测试宿主注入
+  空间状态，仍以真实播放时钟和当前暂停实例不变作为约束。其结果不代表有
+  实体 Windows 端点或当前播放器使用了默认控制台设备。
