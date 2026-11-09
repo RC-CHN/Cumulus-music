@@ -36,3 +36,22 @@ ClientHello bytes over local sockets. They verify intact forwarding, same
 host/one CDN admission, no dial for a wrong SNI or authority, refusal of
 alternate proxy authorization, truncated-handshake timeout and disarming.
 This does not constitute a real service or media result.
+
+Supervisor and retained evidence
+--------------------------------
+`scripts/research/signed_window_live_proof.py` requires an explicit read-only
+opt-in and confirmation that the source snapshots are closed. Supply the exact
+probe, profile helper and embedded asset digests; the independent UID file;
+an intent file with public keyword, song ID and exact CDN host; and one
+reviewed IPv4 pin for each authority. The checked executables are copied into
+a new private directory. Certificate preflight runs before any credential
+copy. The source path is never mounted into the child.
+
+The sandbox must report only loopback, a private display and D-Bus, and zero
+external routes. Each bridge connection must match one broker dial. The
+supervisor requires one CDN dial, one full media read, one verified anonymous
+native load, and six ordered checkpoints ending with native stop. Successful
+and failed runs remove the credential copy and application work directory.
+Only a whitelist of counts, status, asset hashes and native clock timings is
+retained. Real-account screenshots and child logs are not retained. The proof
+does not exercise real mutations or direct URL input into libmpv.
