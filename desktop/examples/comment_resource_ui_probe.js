@@ -136,7 +136,22 @@
   function input(label,value){const node=one(`[aria-label="${label}"]`);assert(node,'input '+label);node.value=value;node.dispatchEvent(new Event('input',{bubbles:true}));}
   async function card(kind,id){await wait(()=>header()?.dataset.resourceKind===kind&&header()?.dataset.resourceId===id&&header().getAttribute('aria-busy')==='false'&&page()?.getAttribute('aria-busy')==='false'&&one('.comment-resource-type'),'resource '+kind);await settle();name().focus();}
   async function comments(id='1') { const row=all('.track-row').find(row=>row.dataset.trackId===id)??all('.track-row')[Number(id)-1];assert(row,'song '+id);click(row.querySelector('.track-more'));await wait(()=>one('[role="menu"]'),'menu');click(button('查看评论',one('[role="menu"]')));await wait(()=>page()?.getAttribute('aria-busy')==='false','comment list');await settle(); }
-  async function native(state,kind,id){await wait(async()=>{const v=await snapshot();return v.state===state&&v.resourceKind===kind&&v.track?.id===id&&one('.playerbar')?.dataset.state===state&&!play()?.disabled&&(state!=='playing'||v.position>.2);},'native '+state);await settle();return snapshot();}
+  async function native(state, kind, id) {
+    await wait(async () => {
+      const value = await snapshot();
+      const control = play();
+      return value.state === state && value.resourceKind === kind && value.track?.id === id &&
+        one('.playerbar')?.dataset.state === state && control?.isConnected && !control.disabled &&
+        (state !== 'playing' || value.position > .2);
+    }, 'native ' + state + ' and rendered resource playback ready');
+    await settle();
+    return snapshot();
+  }
+  async function stopForRestart(kind, id) {
+    click(button('停止播放', one('.playerbar')));
+    // Native idle can precede the end of the renderer's busy transport command.
+    await native('idle', kind, id);
+  }
   async function capture(label,extra={}){
     last=label;await settle();const active=document.activeElement;
     const controls=all('button',header()??page()??document).filter(node=>bounds(node)&&!node.disabled).map(node=>{const r=bounds(node);const x=r.left+Math.min(6,(r.right-r.left)/2),y=(r.top+r.bottom)/2;const hit=document.elementFromPoint(x,y);return {label:node.getAttribute('aria-label')??node.textContent.trim(),hit:node===hit||node.contains(hit)};});
@@ -147,14 +162,15 @@
   try {
     await wait(()=>one('.track-row'),'startup');epoch=(await invoke('account_snapshot')).epoch;await resize(1120,760);await theme('light');await comments();await card('track','1');await capture('track_initial_light');
     click(play());await native('playing','catalog','1');await capture('track_playing_light');await theme('dark');click(play());const paused=await native('paused','catalog','1');await capture('track_paused_dark');click(play());const resumed=await native('playing','catalog','1');assert(paused.playId===resumed.playId&&paused.entryId===resumed.entryId&&paused.queueRevision===resumed.queueRevision,'track resume keeps identity');await capture('track_resumed_dark');
-    click(button('停止播放',one('.playerbar')));await wait(async()=>(await snapshot()).state==='idle','stop');await capture('track_stopped_dark');click(play());await native('playing','catalog','1');await capture('track_restarted_dark');
+    await stopForRestart('catalog','1');await capture('track_stopped_dark');click(play());await native('playing','catalog','1');await capture('track_restarted_dark');
     click(button('合成专辑 · A long album name',header()));await wait(()=>one('.album-header'),'album navigation');await settle();await capture('album_link_dark');click(button('返回上一页'));await card('track','1');await capture('album_return_dark');
     await theme('light');click(button('测试歌手',header()));await wait(()=>one('.artist-header'),'artist navigation');await settle();await capture('artist_link_light');click(button('返回上一页'));await card('track','1');await capture('artist_return_light');
     click(button('每日推荐'));await wait(()=>one('.track-row')&&!header(),'daily');await mode('resource-offline');await comments();await wait(()=>one('.comment-resource-error')&&one('.comment-resource-header .form-warning'),'cached metadata');name().focus();await capture('resource_cached_failure_light');
     input('评论内容','合成草稿：资源重试不得修改');await mode('none');click(button('重试资源信息',header()));await wait(()=>header()?.getAttribute('aria-busy')==='false'&&!one('.comment-resource-error'),'metadata retry');await settle();assert(one('[aria-label="评论内容"]').value==='合成草稿：资源重试不得修改','metadata retry preserves draft');await capture('resource_cache_retry_light');
     click(button('每日推荐'));await wait(()=>one('.track-row')&&!header(),'daily2');await mode('resource-offline');await comments('2');await wait(()=>one('.comment-resource-error')&&!play(),'empty metadata failure');name().focus();await capture('resource_empty_failure_light');await mode('none');click(button('重试资源信息',header()));await card('track','2');await wait(()=>one('.comment-resource-cover > .icon'),'bad cover fallback');await capture('resource_empty_retry_light');
     click(button('每日推荐'));await wait(()=>one('.track-row')&&!header(),'held origin');await theme('dark');await mode('hold-resource');await comments('2');await wait(async()=>(await mode('read')).pending,'metadata inflight');name().focus();await capture('held_resource_dark');click(button('每日推荐'));await wait(()=>one('.track-row')&&!header(),'leave held resource');await capture('left_resource_dark');await mode('none');await wait(async()=>(await mode('read')).delayedCompleted===1,'late metadata released');assert(!header(),'late metadata cannot reopen page');await capture('late_resource_dark');
-    click(button('我的播客'));await wait(()=>one('[aria-label="播客编号或链接"]'),'podcast page');input('播客编号或链接','71');await wait(()=>!button('打开播客').disabled,'radio input');click(button('打开播客'));await wait(()=>one('[data-voice-id="81"]'),'radio episodes');click(one('[data-voice-id="81"] [aria-label="单集评论"]'));await card('voice','81');await capture('voice_header_dark');click(play());const voice=await native('playing','voice','181');assert(voice.track.voiceId==='81','program id distinct from song id');await capture('voice_playing_dark');click(play());const vp=await native('paused','voice','181');assert(vp.playId===voice.playId,'voice pause keeps identity');await capture('voice_paused_dark');click(button('停止播放',one('.playerbar')));await wait(async()=>(await snapshot()).state==='idle','voice stop');click(play());await native('playing','voice','181');await capture('voice_restarted_dark');
+    click(button('我的播客'));await wait(()=>one('[aria-label="播客编号或链接"]'),'podcast page');input('播客编号或链接','71');await wait(()=>!button('打开播客').disabled,'radio input');click(button('打开播客'));await wait(()=>one('[data-voice-id="81"]'),'radio episodes');click(one('[data-voice-id="81"] [aria-label="单集评论"]'));await card('voice','81');await capture('voice_header_dark');click(play());const voice=await native('playing','voice','181');assert(voice.track.voiceId==='81','program id distinct from song id');await capture('voice_playing_dark');click(play());const vp=await native('paused','voice','181');assert(vp.playId===voice.playId,'voice pause keeps identity');await capture('voice_paused_dark');
+    await stopForRestart('voice','181');click(play());await native('playing','voice','181');await capture('voice_restarted_dark');
     const beforeCreator = await snapshot();
     click(button('合成主播',header()));
     await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成主播主页','host account profile');
