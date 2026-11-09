@@ -171,6 +171,7 @@ def main():
     mode.add_argument('--song-waterfall', action='store_true')
     mode.add_argument('--voice-queue', action='store_true')
     mode.add_argument('--voice-next', action='store_true')
+    mode.add_argument('--voice-links', action='store_true')
     mode.add_argument('--podcast-follow', action='store_true')
     mode.add_argument('--mv-play', action='store_true')
     mode.add_argument('--mv-fallback', action='store_true')
@@ -217,6 +218,10 @@ def main():
         prefix = 'window.__cumulusSearchVoiceQueueProof = true;\n'
     if args.voice_next:
         prefix = 'window.__cumulusSearchVoiceNextProof = true;\n'
+    if args.voice_links:
+        env['CUMULUS_SEARCH_VOICE_LINKS_PROOF'] = '1'
+        prefix = ('window.__cumulusSearchVoiceLinksProof = true;\n'
+                  + source.with_name('search_voice_links_ui_probe.js').read_text(encoding='utf-8') + '\n')
     if args.podcast_follow:
         prefix = 'window.__cumulusSearchPodcastFollowProof = true;\n'
     if args.mv_play:
@@ -292,6 +297,52 @@ def main():
     assert code == 0, f'probe exited {code}'
     if args.artist_top50:
         verify_artist_top50(root, args.artist_top50, args.screenshots)
+        return
+    if args.voice_links:
+        first = root / 'first'
+        read = lambda p: json.loads(p.read_text(encoding='utf-8'))
+        complete = read(first / 'complete.json')
+        states = [read(p) for p in sorted(first.glob('ux_*.json'))]
+        assert [state['label'] for state in states] == [
+            'voice_link_best_match', 'voice_link_comprehensive_menu', 'voice_link_comprehensive_copy',
+            'voice_link_classified_share', 'voice_link_classified_copy', 'voice_link_retired',
+        ]
+        assert complete['ok'] and complete['voiceLinksVerified'] and complete['stageCount'] == len(states)
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert all(state['voiceNextCalls'] == [] for state in [*states, complete])
+        reads = [state['syntheticSearchCalls'] for state in states]
+        assert reads[0] == reads[1] == reads[2] < reads[3] == reads[4] < reads[5], reads
+        playback = states[0]['playback']
+        assert playback['playId'] and playback['entryId'] and playback['position'] > .15
+        assert len(playback['entryIds']) == 2
+        assert all(state['playback'] == playback for state in states)
+        for state in [*states, complete]:
+            native = state['nativePlayer']
+            assert native['state'] == 'paused' and native['track']['id'] == '1'
+            assert native['queueLen'] == len(playback['entryIds'])
+            assert all(native[key] == playback[key]
+                       for key in ('playId', 'entryId', 'queueRevision', 'position'))
+        links = [state['clipboard'] for state in states[2:]]
+        assert links == ['https://music.163.com/dj?id=401'] * 2 + ['https://music.163.com/dj?id=402'] * 2
+        assert states[3]['link'] == links[-1]
+        pictures = len(list(first.glob('ux_*.png')))
+        assert pictures == (len(states) if args.screenshots else 0)
+        if args.screenshots:
+            painted = [read(p) for p in sorted(first.glob('paint-ux_*.json'))]
+            assert len(painted) == 2 and all(item['samples'] and
+                                             all(sample['ok'] for sample in item['samples'])
+                                             for item in painted)
+        if os.name != 'nt':
+            locale = read(first / 'locale.json')
+            assert locale['numeric'] == 'C'
+            assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
+                       for key in ('messages', 'characters'))
+        report = dict(ok=True, actualWebView=True, nativeNullPlaybackVerified=True,
+                      nativeClipboardVerified=True, states=[state['label'] for state in states],
+                      screenshots=pictures, clipboard=links, syntheticSearchReads=reads,
+                      realMusicRequests=0, realAccountWrites=0)
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
         return
     if args.voice_author:
         first = root / 'first'

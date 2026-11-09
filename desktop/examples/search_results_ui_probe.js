@@ -55,6 +55,11 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchVoiceLinksProof){
+      await window.__searchVoiceLinksRun({one,wait,click,key,fresh,choose,capture,emit,fixture,assert,theme});
+      await emit('complete',{ok:true,voiceLinksVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchArtistTop50Proof){
       await window.__searchArtistTop50Run({one,wait,button,click,ready,choose,capture,fresh,sleep,assert,fixture});
       await emit('complete',{ok:true,artistTop50Verified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
