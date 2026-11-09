@@ -108,6 +108,37 @@ def accepted_report(report, assets_sha):
                      "deniedBeforeDispatch", "closedAfterFailure")}}
 
 
+def rejected_checkpoint(output):
+    """Keep bounded facts from a failed window; never retain the child report."""
+    try:
+        report = read_private_json(output / "report.json", MAX_REPLY)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(report, dict) or report.get("liveReadOnly") is not True:
+        return {}
+    facts = {}
+    stages = report.get("stages")
+    if isinstance(stages, list) and stages == STAGES[:len(stages)]:
+        facts["completedStages"] = len(stages)
+    for key in ("initialized", "searchAfterResources", "observedLibmpvNullClock"):
+        if type(report.get(key)) is bool:
+            facts[key] = report[key]
+    for key in ("mediaReads", "anonymousPinnedLoads", "auxiliaryAttempts", "otherMediaAttempts"):
+        if count(report.get(key), 0, 10000):
+            facts[key] = report[key]
+    gate = report.get("gate")
+    if isinstance(gate, dict):
+        booleans = ("expectedAccountVerified", "comprehensiveRead", "selectedSongFound",
+                    "songDetailRead", "mediaAuthorized", "mediaConsumed", "searchV3",
+                    "searchTabRead", "closedAfterFailure")
+        bounded = ("playlistPages", "playlistCount", "likedCount", "attemptedReads",
+                   "deniedBeforeDispatch")
+        facts["gate"] = {key: gate[key] for key in booleans if type(gate.get(key)) is bool}
+        facts["gate"].update({key: gate[key] for key in bounded
+                              if count(gate.get(key), 0, 1000000)})
+    return facts
+
+
 def write_evidence(root, result):
     fd = os.open(root / "result.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
@@ -125,6 +156,7 @@ def run(args):
     require(root.is_absolute() and root.parent.resolve(strict=True) == root.parent)
     root.mkdir(mode=0o700)
     stage = "validate_intent"
+    failure = {}
     try:
         intent = read_private_json(args.intent, 4096)
         require(isinstance(intent, dict) and set(intent) == {"keyword", "songId", "mediaHost"})
@@ -171,8 +203,15 @@ def run(args):
             for path in (work, output, relay):
                 path.mkdir(mode=0o700)
             stage = "isolated_window"
-            with Broker(relay, pc, cdn) as broker:
-                sandbox = isolated_window(probe, prepared, work, output, broker.path)
+            broker = Broker(relay, pc, cdn)
+            try:
+                with broker:
+                    sandbox = isolated_window(probe, prepared, work, output, broker.path)
+            finally:
+                failure["broker"] = broker.summary()
+                checkpoint = rejected_checkpoint(output)
+                if checkpoint:
+                    failure["checkpoint"] = checkpoint
             stage = "verify_evidence"
             network = broker.summary()
             require(network["disarmed"] is True and count(network["pcDialAttempts"], 1, PC_DIALS)
@@ -195,7 +234,7 @@ def run(args):
         write_evidence(root, evidence)
     except (ValueError, RuntimeError, OSError, subprocess.SubprocessError):
         # Errors can contain a local path, host, subprocess argv, or input data.
-        write_evidence(root, {"ok": False, "stage": stage})
+        write_evidence(root, {"ok": False, "stage": stage, **failure})
         raise Refused("signed window proof stopped") from None
 
 

@@ -120,6 +120,32 @@ class SignedWindowLauncherTests(unittest.TestCase):
             self.assertNotIn("synthetic private sentinel", result.read_text())
             self.assertEqual(evidence["broker"], summary)
 
+            args.output = path / "failed-window"
+
+            def failed_window(*arguments):
+                window(*arguments)
+                destination = arguments[3] / "report.json"
+                report = json.loads(destination.read_text())
+                report.update(ok=False, stages=proof.STAGES[:2], mediaReads=0)
+                report["gate"]["attemptedReads"] = "synthetic private sentinel"
+                destination.write_text(json.dumps(report))
+                raise RuntimeError("synthetic private exception")
+
+            with patch.dict(sys.modules, {"signed_window_sandbox": SimpleNamespace(run=failed_window)}), \
+                    patch.object(proof, "verify_certificate", side_effect=preflight), \
+                    patch.object(proof.subprocess, "run", side_effect=prepare), \
+                    patch.object(proof.Broker, "summary", return_value=summary):
+                with self.assertRaises(proof.Refused):
+                    proof.run(args)
+            failed = args.output / "result.json"
+            receipt = proof.read_private_json(failed, proof.MAX_REPLY)
+            self.assertEqual((receipt["ok"], receipt["stage"]), (False, "isolated_window"))
+            self.assertEqual(receipt["checkpoint"]["completedStages"], 2)
+            self.assertEqual(receipt["checkpoint"]["mediaReads"], 0)
+            self.assertNotIn("attemptedReads", receipt["checkpoint"]["gate"])
+            self.assertNotIn("synthetic private", failed.read_text())
+            self.assertFalse(scratch[-1].exists())
+
             args.output = path / "wrong-hash"
             args.probe_sha256 = "0" * 64
             with patch.dict(sys.modules, {"signed_window_sandbox": SimpleNamespace(run=window)}), \
