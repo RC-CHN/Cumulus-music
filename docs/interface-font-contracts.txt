@@ -29,6 +29,16 @@ Cumulus
   旧版配置；无法从此证明像素、系统字体安装行为或 Windows 实机效果。
 
 验证入口
+- 用离线合成本机字体目录执行原 M81 的 `o` 与 `p`：默认、仿宋、楷体、汉仪、
+  UTF-16 顺序和五种排除规则与 Rust 对照；原生目录本身是桩，不代表实机字形。
 - Rust preferences::interface_font 测试覆盖默认、筛选、精确排序、自动字号、拒绝无效
   值、重开、独立歌词设置和损坏记录显式恢复。前端 interface-font.test.ts 覆盖成功与
   本机保存失败、目录旧返回拒绝、大目录分页及选择保留。
+- 在仅有 loopback 的网络命名空间和 Xvfb 下，用 `desktop_lyrics_ui_probe` 及
+  `scripts/ci/interface_font_smoke.py --binary <probe> --root <fresh-root>
+  --frontend-dist frontend/dist --screenshots`。同一安装目录实际重启三次：11 状态、
+  11 张有确认回执的 PNG。默认 12px、仿宋 13px、楷体 14px、华文隶书 15px，且本地化
+  名称、字体缺失后保留、重开后应用和显式默认均经过真实 IPC、SQLite 与 CSS。
+  各进程中合成 PCM 的播放 ID、选中条目、两项队列版本和暂停 4 秒位置不变；
+  桌面歌词偏好未写入，GTK 初始化只把数字 locale 固定为 C，保留 en_US.UTF-8 消息语言。
+  目录由合成数据驱动，图片不证明所有字体已安装、实机字形、声卡或 Windows。
