@@ -80,7 +80,10 @@ enum GuardedReadback<'a> {
 
 enum AddDestination<'a> {
     Owned(&'a str),
-    DownloadPicker(&'a str),
+    DownloadPicker {
+        playlist: &'a str,
+        regular_only: bool,
+    },
     LocalPicker(&'a str),
     DownloadCreated(&'a str),
     Created(&'a str),
@@ -377,12 +380,16 @@ impl PlaylistService {
         token: &SessionToken,
         playlist: &str,
         songs: &[String],
+        regular_only: bool,
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
-            AddDestination::DownloadPicker(playlist),
+            AddDestination::DownloadPicker {
+                playlist,
+                regular_only,
+            },
             songs,
             operation_id,
             permission,
@@ -480,6 +487,14 @@ impl PlaylistService {
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
         let local_picker = matches!(destination, AddDestination::LocalPicker(_));
+        let regular_picker = local_picker
+            || matches!(
+                destination,
+                AddDestination::DownloadPicker {
+                    regular_only: true,
+                    ..
+                }
+            );
         let system_liked_group = matches!(
             destination,
             AddDestination::SystemLiked(_) | AddDestination::DownloadSystemLiked(_)
@@ -522,13 +537,13 @@ impl PlaylistService {
         };
         let (playlist, revision, before) = match destination {
             owned @ (AddDestination::Owned(_)
-            | AddDestination::DownloadPicker(_)
+            | AddDestination::DownloadPicker { .. }
             | AddDestination::LocalPicker(_)
             | AddDestination::DownloadCreated(_)
             | AddDestination::Created(_)) => {
                 let (playlist, creation) = match owned {
                     AddDestination::Owned(playlist)
-                    | AddDestination::DownloadPicker(playlist)
+                    | AddDestination::DownloadPicker { playlist, .. }
                     | AddDestination::LocalPicker(playlist) => {
                         (identifier(&json!(playlist))?, None)
                     }
@@ -560,8 +575,8 @@ impl PlaylistService {
                         matches!(owned, AddDestination::DownloadCreated(_)),
                     )
                     .await?
-                } else if local_picker || matches!(owned, AddDestination::DownloadPicker(_)) {
-                    self.read_picker_detail(token, &playlist, &uid, local_picker)
+                } else if local_picker || matches!(owned, AddDestination::DownloadPicker { .. }) {
+                    self.read_picker_detail(token, &playlist, &uid, regular_picker)
                         .await?
                 } else {
                     self.read_detail(token, &playlist).await?
@@ -630,7 +645,7 @@ impl PlaylistService {
         token: &SessionToken,
         playlist: &str,
         uid: &str,
-        local_picker: bool,
+        regular_only: bool,
     ) -> Result<PlaylistSnapshot> {
         self.session
             .run_for(token, |api, _| async move {
@@ -644,7 +659,7 @@ impl PlaylistService {
                         return Err(Error::StaleResponse);
                     }
                 }
-                if (local_picker && row["specialType"].as_i64() != Some(0))
+                if (regular_only && row["specialType"].as_i64() != Some(0))
                     || (!row["specialType"].is_null() && row["specialType"].as_i64().is_none())
                 {
                     return Err(Error::StaleResponse);

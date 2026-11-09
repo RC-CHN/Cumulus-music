@@ -95,6 +95,10 @@ impl Source {
         }
     }
 
+    fn is_batch(&self) -> bool {
+        matches!(self.selection, Selection::Batch(_))
+    }
+
     fn single_song(&self) -> Result<&String> {
         match &self.selection {
             Selection::Single { songs: [song], .. } => Ok(song),
@@ -335,7 +339,9 @@ impl MusicClient {
             );
             Ok(visit.ticket)
         })?;
-        let reply = self.playlist_collect_page(epoch, sort, page).await?;
+        let reply = self
+            .playlist_collect_page_scope(epoch, sort, page, source.is_batch())
+            .await?;
         source.require()?;
         with_visit(slot, &source, |visit| {
             let item = visit
@@ -408,6 +414,7 @@ impl MusicClient {
                     &ctx.token,
                     playlist,
                     source.songs(),
+                    source.is_batch(),
                     &attempt.operation,
                     &check,
                 )

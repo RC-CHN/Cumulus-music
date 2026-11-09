@@ -11,7 +11,7 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use tokio::sync::Notify;
 
@@ -28,6 +28,7 @@ struct Transport {
     lost: AtomicBool,
     hold: AtomicBool,
     changed: AtomicBool,
+    detail_special: AtomicU8,
     entered: Notify,
     release: Notify,
 }
@@ -49,13 +50,13 @@ impl Api for Transport {
                         json!({"uid":"1","offset":0,"limit":10,"sortType":"default"})
                     );
                     Ok(
-                        json!({"code":200,"playlist":[list("81",1,0),list("82",2,0),list("83",1,5)],
+                        json!({"code":200,"playlist":[list("81",1,0),list("82",2,0),list("83",1,5),list("84",1,6)],
                               "more":false}),
                     )
                 }
                 DETAIL => {
                     assert_eq!(payload, json!({"id":"81","n":100000,"s":0}));
-                    let mut row = list("81", 1, 0);
+                    let mut row = list("81", 1, self.detail_special.load(Ordering::Acquire));
                     if self.changed.load(Ordering::Acquire) {
                         row["creator"]["userId"] = json!(2);
                     }
@@ -137,7 +138,7 @@ async fn choose(f: &Fixture, epoch: &str, id: &str) -> String {
             .iter()
             .map(|p| p.id.as_str())
             .collect::<Vec<_>>(),
-        ["81"]
+        ["81", "84"]
     );
     receipt
 }
@@ -446,7 +447,7 @@ async fn downloaded_batch_collect_filters_in_order_and_reconciles_one_lost_write
             .is_err()
     );
     batch_destination(&f, &epoch, &plan.receipt).await;
-    for rejected in ["82", "83"] {
+    for rejected in ["82", "83", "84"] {
         assert!(
             f.client
                 .download_collect_existing(&epoch, &plan.receipt, rejected)
@@ -454,6 +455,15 @@ async fn downloaded_batch_collect_filters_in_order_and_reconciles_one_lost_write
                 .is_err()
         );
     }
+    api.detail_special.store(6, Ordering::Release);
+    assert!(
+        f.client
+            .download_collect_existing(&epoch, &plan.receipt, "81")
+            .await
+            .is_err()
+    );
+    assert!(api.writes.lock().unwrap().is_empty());
+    api.detail_special.store(0, Ordering::Release);
     api.lost.store(true, Ordering::Release);
     let result = f
         .client
