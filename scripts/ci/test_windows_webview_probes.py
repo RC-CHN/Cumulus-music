@@ -93,6 +93,17 @@ class WindowsWebViewProbes(unittest.TestCase):
         self.assertEqual(list(examples.iterdir()), [old])
         self.assertEqual(old.read_bytes(), b'prior executable')
 
+    def test_package_runtime_reuses_exact_playback_and_library_probes(self):
+        shard = 'package-runtime'
+        shared = self.producer / ARTIFACT
+        target = self.consumer / ARTIFACT / shard
+        (shared / shard).rename(target)
+        restore(self.consumer, self.identity, shard)
+        for original, name in (('playback', 'native_audio_probe.exe'), ('library', 'local_ui_probe.exe')):
+            original_dir = self.staged if original == self.shard else shared / original
+            self.assertEqual((self.consumer / EXAMPLES / name).read_bytes(),
+                             (original_dir / name).read_bytes())
+
     def test_workflow_uses_the_closed_shard_inventory(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/ci.yml').read_text()
         job = workflow.split('  windows-webview:\n', 1)[1]
@@ -103,6 +114,9 @@ class WindowsWebViewProbes(unittest.TestCase):
         ))
         self.assertEqual(set(sections), set(PROBES))
         for shard, section in sections.items():
+            expected = set(binary_names(shard))
+            if shard != 'package-runtime':
+                expected.add(UX.name)
             self.assertEqual(set(re.findall(r'examples/([a-z0-9_]+\.exe)', section)),
-                             {*binary_names(shard), UX.name})
+                             expected)
             self.assertNotIn('cargo build', section)
