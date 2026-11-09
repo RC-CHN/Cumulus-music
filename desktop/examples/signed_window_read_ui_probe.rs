@@ -5,6 +5,11 @@ mod proof;
 
 #[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "signed-window-read-proof")]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--live")) {
+        // A real proof emits only the sanitized report, including on failure.
+        std::process::exit(proof::live::run());
+    }
     proof::run()
 }
 

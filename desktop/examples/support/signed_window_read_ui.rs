@@ -1,6 +1,14 @@
 //! Run real Tauri, Vue and libmpv with no production network or profile access.
+#[path = "signed_window_read_audio.rs"]
+mod audio;
 #[path = "capture_ack.rs"]
 mod capture_ack;
+#[cfg(feature = "signed-window-read-proof")]
+#[path = "signed_window_read_live.rs"]
+pub mod live;
+#[cfg(feature = "signed-window-read-proof")]
+#[path = "signed_window_read_sandbox.rs"]
+mod sandbox;
 #[path = "signed_window_read_gate.rs"]
 mod signed_window_read_gate;
 #[path = "signed_window_read_ui_fixture.rs"]
@@ -63,18 +71,13 @@ fn seal(context: &tauri::Context<tauri::Wry>) -> Value {
     json!({"embedded":true,"entries":entries.len(),"sha256":format!("{:x}",digest.finalize())})
 }
 
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    if args.len() != 1 || args[0] != "--synthetic" {
-        return Err("only --synthetic is supported; no real credentials or network".into());
-    }
-    require_network_isolation()?;
-    let root =
-        PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").ok_or("new proof root required")?);
-    fs::DirBuilder::new().mode(0o700).create(&root)?;
-    let root = root.canonicalize()?;
-    let output = root.join("first");
-    fs::DirBuilder::new().mode(0o700).create(&output)?;
+struct ProofContext {
+    context: tauri::Context<tauri::Wry>,
+    assets: Value,
+    window: tauri::utils::config::WindowConfig,
+}
+
+fn prepare_context() -> Result<ProofContext, Box<dyn std::error::Error>> {
     // SAFETY: GTK, the WebView, and playback workers have not started.
     unsafe { cumulus_desktop::prepare_graphics() };
     let mut context = tauri::generate_context!();
@@ -88,12 +91,36 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     security.csp = Some(tauri::utils::config::Csp::Policy(
         policy.replace(" https://*.music.126.net https://*.music.163.com", ""),
     ));
+    Ok(ProofContext {
+        context,
+        assets,
+        window,
+    })
+}
+
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.len() != 1 || args[0] != "--synthetic" {
+        return Err("only --synthetic is supported; no real credentials or network".into());
+    }
+    require_network_isolation()?;
+    let root =
+        PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").ok_or("new proof root required")?);
+    fs::DirBuilder::new().mode(0o700).create(&root)?;
+    let root = root.canonicalize()?;
+    let output = root.join("first");
+    fs::DirBuilder::new().mode(0o700).create(&output)?;
+    let ProofContext {
+        context,
+        assets,
+        window,
+    } = prepare_context()?;
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             let state = synthetic::State::open(&root)?;
             let fixture = state.fixture.clone();
             let gate = state.gate.clone();
-            let facts = Arc::new(synthetic::NativeFacts::default());
+            let facts = Arc::new(audio::NativeFacts::default());
             let (engine_fixture, engine_gate, engine_facts, engine_root) = (
                 fixture.clone(), gate.clone(), facts.clone(), root.clone(),
             );
@@ -102,8 +129,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             )?
             .with_official_search_experiment()
             .with_download_backend(Arc::new(synthetic::RejectMedia(fixture.clone())))
-            .with_audio_factory(move || Ok(Box::new(synthetic::Audio::open(
+            .with_audio_factory(move || Ok(Box::new(audio::Audio::open(
                 engine_gate.clone(), engine_fixture.clone(), engine_facts.clone(), engine_root.clone(),
+                audio::Expectation::Synthetic { bytes: synthetic::AAC.len() as u64 },
             )?)));
             app.manage(client);
             app.add_capability(r#"{"identifier":"signed-synthetic-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;

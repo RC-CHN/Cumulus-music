@@ -96,3 +96,33 @@ The fixed account/playlist/like/search/detail/source calls stayed on the closed
 backend, and there was exactly one media read and anonymous AAC load. The
 production window's unrelated startup reads were refused before dispatch;
 no configuration download, SDK token, or ordinary download was attempted.
+
+Opt-in live shell contract
+--------------------------
+The `signed-window-read-proof` feature adds `--live` to this Linux research
+example. The default binary keeps the original `--synthetic` interface. The
+live arm is only for the supervised host launcher. It rejects non-loopback
+interfaces, direct routes, ambient proxy variables, accessible host profile
+and resolver mounts, and any broker address other than `127.0.0.1:41389`.
+It accepts only read-only mounted, owner-only prepared parameters/SQLite files;
+the application opens new private copies under `/work`. The real profile is
+bound natively and its identifiers are not written to the proof.
+
+The same production page controls drive account restoration and resource reads,
+the fixed search (V1 or V3), the selected song, pause, resume and stop. After
+the signed one-use source receipt is validated, the only media GET is scoped to
+the approved CDN hostname. The verified anonymous AAC uses the same native
+libmpv path as the closed fixture. Account epoch and play/entry identity are
+checked natively. The paused clock is observed twice; continuing must advance
+that entry, and stopping must return the player to idle. Only one mode-0600
+`/proof/report.json` is produced, with native stage/clock counters and the
+embedded asset seal. No screenshots, raw errors, credentials, account/song
+identifiers or URLs are emitted by the proof reporter.
+
+Run offline shell admission checks with:
+
+  cargo test --locked -p cumulus-desktop --features custom-protocol,signed-window-read-proof --example signed_window_read_ui_probe
+
+These checks do not establish successful live playback. Launching the live arm
+requires the independent prepared profile and broker supervision, documented in
+signed-window-read-broker.txt.

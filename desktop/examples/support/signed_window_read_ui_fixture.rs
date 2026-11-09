@@ -3,11 +3,7 @@ use super::signed_window_read_gate::Gate;
 use cumulus_core::{
     Error, Result,
     account::credentials::Credentials,
-    download::transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest, MediaUrl},
-    playback::engine::{
-        AudioEngine, Cancellation, EngineSnapshot, LoadRequest, LoadedMedia, MediaInput, MpvConfig,
-        MpvEngine,
-    },
+    download::transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
     protocol::{
         api::ApiFuture,
         context::{RequestContext, TokenProvider},
@@ -24,7 +20,6 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     io::{Cursor, Read},
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -36,7 +31,8 @@ pub const OWNER: &str = "83";
 pub const SONG: &str = "41";
 pub const QUERY: &str = "合成窗口检索";
 const MEDIA: &str = "https://m1.music.126.net/signed-window-fixture.m4a?only=1";
-const AAC: &[u8] = include_bytes!("../../../core/tests/fixtures/tag_audio/playback-12s.m4a");
+pub(super) const AAC: &[u8] =
+    include_bytes!("../../../core/tests/fixtures/tag_audio/playback-12s.m4a");
 
 fn song() -> Value {
     json!({"id":SONG,"name":"合成窗口音频","ar":[{"name":"合成歌手"}],
@@ -233,107 +229,5 @@ impl State {
             state,
             profile,
         })
-    }
-}
-
-#[derive(Default)]
-pub struct NativeFacts {
-    pub pinned_loads: AtomicUsize,
-    pub null_clock: AtomicUsize,
-}
-
-pub struct Audio {
-    engine: MpvEngine,
-    facts: Arc<NativeFacts>,
-    gate: Arc<Gate>,
-    fixture: Arc<Closed>,
-    directory: PathBuf,
-}
-
-impl Audio {
-    pub fn open(
-        gate: Arc<Gate>,
-        fixture: Arc<Closed>,
-        facts: Arc<NativeFacts>,
-        directory: PathBuf,
-    ) -> Result<Self> {
-        Ok(Self {
-            engine: MpvEngine::open(MpvConfig {
-                null_output: true,
-                ..Default::default()
-            })?,
-            facts,
-            gate,
-            fixture,
-            directory,
-        })
-    }
-}
-
-impl AudioEngine for Audio {
-    fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
-        let MediaInput::Url(url) = request.source else {
-            return Err(Error::State(
-                "synthetic proof refused non-URL transport input",
-            ));
-        };
-        if request.start != 0.0 || request.end.is_some() {
-            return Err(Error::State(
-                "synthetic proof requires an ordinary full track",
-            ));
-        }
-        let url = MediaUrl::parse(url.as_str())?;
-        // The production controller calls AudioEngine on spawn_blocking.
-        let file = tauri::async_runtime::block_on(self.gate.fetch_verified(
-            &*self.fixture,
-            &url,
-            &self.directory,
-            cancel,
-        ))?;
-        let metadata = file.metadata()?;
-        if metadata.nlink() != 0
-            || metadata.mode() & 0o777 != 0o600
-            || metadata.len() != AAC.len() as u64
-        {
-            return Err(Error::State(
-                "synthetic AAC was not held in a private anonymous file",
-            ));
-        }
-        let opened = self
-            .engine
-            .load_pinned_audio(file, cancel.clone(), cancel)?;
-        if opened.codec.as_deref() != Some("aac")
-            || !opened
-                .duration
-                .is_some_and(|value| (11.8..12.3).contains(&value))
-        {
-            return Err(Error::State("unexpected real AAC decode"));
-        }
-        self.facts.pinned_loads.fetch_add(1, Ordering::AcqRel);
-        Ok(opened)
-    }
-    fn pause(&mut self, value: bool) -> Result<()> {
-        self.engine.pause(value)
-    }
-    fn seek(&mut self, value: f64) -> Result<()> {
-        self.engine.seek(value)
-    }
-    fn volume(&mut self, value: f64) -> Result<()> {
-        self.engine.volume(value)
-    }
-    fn speed(&mut self, value: f64) -> Result<()> {
-        self.engine.speed(value)
-    }
-    fn stop(&mut self) -> Result<()> {
-        self.engine.stop()
-    }
-    fn poll(&mut self) -> Result<EngineSnapshot> {
-        let value = self.engine.poll()?;
-        if value.audio_output.as_deref() == Some("null")
-            && value.position.is_some_and(|value| value > 0.1)
-        {
-            self.facts.null_clock.fetch_add(1, Ordering::Relaxed);
-        }
-        Ok(value)
     }
 }

@@ -2,6 +2,10 @@
 (async () => {
   if (window.__signedWindowStarted) return;
   window.__signedWindowStarted = true;
+  const options = window.__signedWindowInput;
+  const live = options?.live === true;
+  const word = live ? options.keyword : '合成窗口检索';
+  const song = live ? options.songId : '41';
   const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
   const emit = (stage, payload = {}) => invoke('plugin:event|emit', {
     event: 'ux-proof', payload: { stage, ...payload },
@@ -32,28 +36,32 @@
     await emit(`ux_${name}`, { playerState: bar()?.dataset.state ?? null });
   };
   try {
+    assert(typeof word === 'string' && /^[1-9][0-9]{0,19}$/.test(song), 'invalid proof selection');
     const account = await wait(async () => {
       const result = await invoke('account_snapshot');
-      return result.status === 'authenticated' && result.nickname === '合成窗口账号' &&
+      return result.status === 'authenticated' && (live ? result.nickname : result.nickname === '合成窗口账号') &&
         one('.account-button')?.title === result.nickname && result;
-    }, 'same window did not restore synthetic account');
+    }, 'same window did not restore account');
     const own = await wait(() => [...document.querySelectorAll('button.nav-item')].find(node =>
       node.textContent.trim() === '我的歌单' && node.getClientRects().length && !node.disabled),
     'own playlist navigation missing');
     own.click();
-    await wait(() => one('.playlist-library-page [aria-label="合成窗口歌单"]'),
-      'own playlist did not render');
+    await wait(() => live
+      ? one('.playlist-library-page .library-section[data-group="created"]') &&
+        !one('.playlist-library-page .library-message.muted') &&
+        !one('.playlist-library-page .error-state')
+      : one('.playlist-library-page [aria-label="合成窗口歌单"]'),
+    'own playlist did not render');
     await stage('account_resources');
 
-    const word = '合成窗口检索';
     const input = await wait(() => one('.searchbox input'), 'search input missing');
     input.value = word;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     one('.searchbox').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await wait(() => one('.search-heading-copy h1')?.textContent === word, 'fixed search heading missing');
     await click('[data-category="songs"]', 'songs tab missing');
-    const row = '[aria-labelledby="search-tab-songs"] [data-track-id="41"]';
-    await wait(() => one(row)?.textContent.includes('合成窗口音频') &&
+    const row = `[aria-labelledby="search-tab-songs"] [data-track-id="${song}"]`;
+    await wait(() => live ? one(row) : one(row)?.textContent.includes('合成窗口音频') &&
       one(`${row} [aria-label="取消喜欢 合成窗口音频"]`), 'fixed result or own liked state missing');
     await stage('search_song');
 
@@ -62,7 +70,7 @@
     const player = () => invoke('player_snapshot', { epoch: account.epoch });
     const playing = await wait(async () => {
       const result = await player();
-      return result.track?.id === '41' && result.state === 'playing' && result.position > 0.25 &&
+      return result.track?.id === song && result.state === 'playing' && result.position > 0.25 &&
         result.queueLen === 1 && result.playId && bar()?.dataset.state === 'playing' && result;
     }, 'verified AAC did not advance on native clock');
     await stage('playing');
@@ -93,6 +101,8 @@
     await stage('stopped');
     await emit('complete', { playerState: 'idle' });
   } catch (error) {
-    await emit('failed', { error: error instanceof Error ? error.message : 'unknown renderer failure' });
+    await emit('failed', live ? {} : {
+      error: error instanceof Error ? error.message : 'unknown renderer failure',
+    });
   }
 })();
