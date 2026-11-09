@@ -31,6 +31,8 @@ pub struct HistoryEntry {
     pub resource: HistoryResource,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chapter: Option<HistoryRadioChapterView>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub can_collect_radio: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,4 +99,11 @@ pub enum HistoryCommand {
         id: String,
         expected_revision: String,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HistoryRadioCollection {
+    Toggle { expected: bool },
+    Reconcile,
 }

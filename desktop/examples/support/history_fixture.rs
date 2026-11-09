@@ -16,7 +16,9 @@ pub struct Library {
     base: super::fixture::Library,
     mode: AtomicU8,
     chapters: bool,
+    collections: bool,
     chapter_calls: Mutex<Vec<Value>>,
+    collected: Mutex<BTreeSet<String>>,
     removed: Mutex<BTreeMap<String, BTreeSet<String>>>,
     pub reads: AtomicUsize,
     pub writes: AtomicUsize,
@@ -26,6 +28,12 @@ impl Library {
         Self {
             chapters: true,
             ..Self::default()
+        }
+    }
+    pub fn with_collections() -> Self {
+        Self {
+            collections: true,
+            ..Self::with_chapters()
         }
     }
 
@@ -51,10 +59,14 @@ impl Library {
         const RESUME: &str = "/api/dj/user/setting/resumeplay/get";
         const RIGHTS: &str = "/api/dj/play/url/check";
         const SOURCE: &str = "/api/song/enhance/player/url/v1";
-        if !matches!(
+        const MEMBERSHIP: &str = "/api/djradio/get/subed";
+        const SUBSCRIBE: &str = "/api/djradio/sub";
+        const UNSUBSCRIBE: &str = "/api/djradio/unsub";
+        if !(matches!(
             path,
             PODCAST | BOOK | PROGRAMS | AROUND | RADIO | DETAIL | RESUME | RIGHTS | SOURCE
-        ) {
+        ) || self.collections && matches!(path, MEMBERSHIP | SUBSCRIBE | UNSUBSCRIBE))
+        {
             return None;
         }
         self.chapter_calls
@@ -66,6 +78,9 @@ impl Library {
             let row = |id, name: &str, episode: Option<u64>, chapter: &str, kind: &str| {
                 let mut data = json!({"id":id,"name":name,"resourceType":kind,"programCount":2,
                     "dj":{"nickname":"合成主播"},"voiceName":chapter,"tag":"续听"});
+                if self.collections {
+                    data["dj"]["userId"] = json!(if matches!(id, 83 | 84) { 2 } else { 7 });
+                }
                 if let Some(episode) = episode {
                     data["voiceId"] = json!(episode);
                 }
@@ -73,15 +88,49 @@ impl Library {
                     "multiTerminalInfo":{"os":"windows","osText":"Windows"}})
             };
             let program = |radio, id, name: &str| {
-                json!({"id":id,"name":name,"mainSong":{"id":id+1000},
-                    "duration":30000,"radio":{"id":radio,"name":if radio==81 {"合成历史播客"} else {"合成历史有声书"},
-                    "categoryId":if radio==82 {10001} else {3}}})
+                let mut data = json!({"id":id,"name":name,"mainSong":{"id":id+1000},
+                    "duration":30000,"radio":{"id":radio,"name":match radio {
+                        81 => "合成历史播客", 82 => "合成历史有声书", _ => "独立播放有声书",
+                    },"categoryId":if radio==81 {3} else {10001}}});
+                if self.collections {
+                    data["radio"]["dj"] =
+                        json!({"userId":if radio == 84 {2} else {7},"nickname":"合成主播"});
+                }
+                data
             };
             let number = |value: &Value| value.as_u64().or_else(|| value.as_str()?.parse().ok());
             if cached {
                 return Err(bad());
             }
             Ok(match path {
+                MEMBERSHIP if args == &json!({"targetUserId":"2","limit":1000}) => {
+                    let ids = self.collected.lock().unwrap();
+                    json!({"code":200,"hasMore":false,"count":ids.len(),
+                        "djRadios":ids.iter().map(|id|json!({"id":id})).collect::<Vec<_>>()})
+                }
+                RADIO | SUBSCRIBE | UNSUBSCRIBE if self.collections => {
+                    let id = args["id"]
+                        .as_str()
+                        .filter(|id| matches!(*id, "81" | "82"))
+                        .ok_or_else(bad)?;
+                    if args != &json!({"id":id}) {
+                        return Err(bad());
+                    }
+                    let mut ids = self.collected.lock().unwrap();
+                    match path {
+                        RADIO => json!({"code":200,"data":{
+                            "id":id,"name":"合成历史收藏","creator":{"userId":7},
+                            "subed":ids.contains(id)
+                        }}),
+                        SUBSCRIBE if ids.insert(id.to_owned()) => json!({"code":200}),
+                        UNSUBSCRIBE if id == "81" && ids.remove(id) => {
+                            return Err(Error::Transport(
+                                "synthetic lost collection acknowledgement".into(),
+                            ));
+                        }
+                        _ => return Err(bad()),
+                    }
+                }
                 PODCAST if args == &json!({"filterVoiceBook":true}) => {
                     self.reads.fetch_add(1, Ordering::SeqCst);
                     json!({"code":200,"data":{"list":[
@@ -91,47 +140,75 @@ impl Library {
                 }
                 BOOK if args == &json!({}) => {
                     self.reads.fetch_add(1, Ordering::SeqCst);
+                    let mut rows = vec![row(
+                        82,
+                        "合成历史有声书",
+                        Some(822),
+                        "有声书第二章",
+                        "VOICE_BOOK",
+                    )];
+                    if self.collections {
+                        rows.push(row(
+                            84,
+                            "独立播放有声书",
+                            Some(842),
+                            "独立播放第二章",
+                            "VOICE_BOOK",
+                        ));
+                    }
                     json!({"code":200,"data":{"data":{
-                        "todayRecords":[row(82,"合成历史有声书",Some(822),"有声书第二章","VOICE_BOOK")],
+                        "todayRecords":rows,
                         "yesterdayRecords":[],"theDayBeforeYesterdayRecords":[],"earlierRecords":[]
                     }}})
                 }
                 PROGRAMS => {
                     let radio = number(&args["radioId"])
-                        .filter(|id| matches!(id, 81 | 82))
+                        .filter(|id| matches!(id, 81 | 82) || (self.collections && *id == 84))
                         .ok_or_else(bad)?;
                     if args != &json!({"radioId":radio.to_string(),"limit":250,"offset":0}) {
                         return Err(bad());
                     }
-                    let names = if radio == 81 {
-                        ["播客第一集", "播客第二集"]
-                    } else {
-                        ["有声书第一章", "有声书第二章"]
+                    let names = match radio {
+                        81 => ["播客第一集", "播客第二集"],
+                        82 => ["有声书第一章", "有声书第二章"],
+                        _ => ["独立播放第一章", "独立播放第二章"],
                     };
                     json!({"code":200,"data":{"programs":[program(radio,radio*10+1,names[0]),
                         program(radio,radio*10+2,names[1])],"count":2,"more":false}})
                 }
-                DETAIL if matches!(args["id"].as_str(), Some("812" | "822")) => {
+                DETAIL
+                    if matches!(args["id"].as_str(), Some("812" | "822"))
+                        || (self.collections && args["id"] == "842") =>
+                {
                     let id = number(&args["id"]).unwrap();
                     let radio = id / 10;
-                    let name = if radio == 81 {
-                        "播客第二集"
-                    } else {
-                        "有声书第二章"
+                    let name = match radio {
+                        81 => "播客第二集",
+                        82 => "有声书第二章",
+                        _ => "独立播放第二章",
                     };
                     json!({"code":200,"program":program(radio,id,name)})
                 }
-                RESUME if matches!(args["radioId"].as_str(), Some("81" | "82")) => {
+                RESUME
+                    if matches!(args["radioId"].as_str(), Some("81" | "82"))
+                        || (self.collections && args["radioId"] == "84") =>
+                {
                     json!({"code":200,"data":{"resumePlayValue":0}})
                 }
-                RIGHTS if matches!(args["voiceId"].as_str(), Some("812" | "822")) => {
+                RIGHTS
+                    if matches!(args["voiceId"].as_str(), Some("812" | "822"))
+                        || (self.collections && args["voiceId"] == "842") =>
+                {
                     let id = number(&args["voiceId"]).unwrap();
                     json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":true}})
                 }
                 SOURCE => {
                     let ids: Vec<String> =
                         serde_json::from_str(args["ids"].as_str().ok_or_else(bad)?)?;
-                    if ids.len() != 1 || !matches!(ids[0].as_str(), "1812" | "1822") {
+                    if ids.len() != 1
+                        || !(matches!(ids[0].as_str(), "1812" | "1822")
+                            || (self.collections && ids[0] == "1842"))
+                    {
                         return Err(bad());
                     }
                     json!({"code":200,"data":[{"id":ids[0],

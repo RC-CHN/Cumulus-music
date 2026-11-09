@@ -155,7 +155,7 @@ impl PodcastService {
         )
         .await
     }
-    pub(crate) async fn change_vinyl_subscription_for(
+    pub(crate) async fn change_scoped_subscription_for(
         &self,
         token: &SessionToken,
         id: &str,

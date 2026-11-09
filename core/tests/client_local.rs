@@ -36,6 +36,23 @@ use std::{
     },
     time::Duration,
 };
+use unicode_casefold::UnicodeCaseFold;
+
+// Search includes the full path. Pick a term that cannot match the test's
+// parent directory, even when the runner supplies a descriptive TMPDIR.
+fn fixture_query_term(media: &Path, role: &str) -> String {
+    let parent: String = media
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .case_fold()
+        .collect();
+    (0..)
+        .map(|suffix| format!("batch-{role}-fixture-{suffix}"))
+        .find(|term| !parent.contains(term))
+        .unwrap()
+}
+
 struct Offline;
 impl Api for Offline {
     fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {

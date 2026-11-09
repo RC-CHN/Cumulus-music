@@ -12,9 +12,10 @@ export function usePodcastFollow(
   account: () => AccountView,
   active: () => boolean,
   expired: () => void,
-  playback?: {
+  target?: {
     scope: () => string;
     receipt?: () => string | undefined;
+    success?: (subscribed: boolean) => string;
     action: (
       owner: string,
       id: string,
@@ -27,7 +28,7 @@ export function usePodcastFollow(
   const writing = shallowRef<{ owner: string }>();
   const refreshing = ref(false);
   const notice = shallowRef<{ scope: string; text: string }>();
-  const scope = () => playback?.scope() ?? '';
+  const scope = () => target?.scope() ?? '';
   const status = computed(() => {
     const current = notice.value;
     return current && current.scope === scope() ? current.text : '';
@@ -118,12 +119,11 @@ export function usePodcastFollow(
     )
       return;
     const origin = scope();
-    const receipt = playback?.receipt?.();
+    const receipt = target?.receipt?.();
     const ownsAction = () =>
-      valid(owner, visit) &&
-      (!receipt || (playback?.receipt?.() === receipt && scope() === origin));
-    const request = playback
-      ? playback.action(owner, id, current)
+      valid(owner, visit) && (!receipt || (target?.receipt?.() === receipt && scope() === origin));
+    const request = target
+      ? target.action(owner, id, current)
       : () =>
           core.podcastCommand(
             owner,
@@ -150,9 +150,8 @@ export function usePodcastFollow(
         confirmed = { id, subscribed: action.observed };
       announce(
         ['confirmed', 'unchanged'].includes(action.phase)
-          ? action.observed
-            ? '已收藏播客'
-            : '已取消收藏播客'
+          ? (target?.success?.(action.observed === true) ??
+              (action.observed ? '已收藏播客' : '已取消收藏播客'))
           : action.phase === 'rejected'
             ? '收藏操作未成功'
             : '收藏操作待核对',
@@ -167,5 +166,6 @@ export function usePodcastFollow(
       }
     }
   }
-  return { control, activate, status, refreshing, retry: () => refresh() };
+  const membershipUnknown = computed(() => !refreshing.value && subscribed.value === undefined);
+  return { control, activate, status, refreshing, membershipUnknown, retry: () => refresh() };
 }

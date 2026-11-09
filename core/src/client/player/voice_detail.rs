@@ -363,7 +363,7 @@ impl MusicClient {
             Ok(())
         };
         let result = PodcastService::new(self.session.clone())?
-            .change_vinyl_subscription_for(token, &target.1, expected, &current)
+            .change_scoped_subscription_for(token, &target.1, expected, &current)
             .await?;
         current()?;
         Ok(result)

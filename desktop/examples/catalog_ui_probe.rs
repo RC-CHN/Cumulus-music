@@ -147,7 +147,10 @@ fn main() {
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
     let history_chapters =
         std::env::var("CUMULUS_HISTORY_RADIO_CHAPTER_PROOF").as_deref() == Ok("1");
+    let history_collection =
+        std::env::var("CUMULUS_HISTORY_RADIO_COLLECTION_PROOF").as_deref() == Ok("1");
     assert!(!history_chapters || (histories && !is_live && !interactive && !collections));
+    assert!(!history_collection || history_chapters);
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
     let relay_recovery = std::env::var("CUMULUS_RELAY_RECOVERY_PROOF").as_deref() == Ok("1");
@@ -184,7 +187,8 @@ fn main() {
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let comment_fixture=Arc::new(comment_read_fixture::Library::default());
         let follow_new_song_fixture=Arc::new(follow_new_song_fixture::Library::new(collection_fixture.clone(),follow_offline_head));
-        let history_fixture=Arc::new(if history_chapters { history_fixture::Library::with_chapters() }
+        let history_fixture=Arc::new(if history_collection { history_fixture::Library::with_collections() }
+            else if history_chapters { history_fixture::Library::with_chapters() }
             else { history_fixture::Library::default() });
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
@@ -365,9 +369,11 @@ fn main() {
                     value["publicationCalls"]=serde_json::json!(publication_fixture.publications.lock().unwrap().len());
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
                 }
-                if (is_live || relays || interactive || history_chapters) && value["playing"]==true {
+                let paused_collection = history_collection && value["checkPausedPlayback"]==true;
+                if ((is_live || relays || interactive || history_chapters) && value["playing"]==true) || paused_collection {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
-                    if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some(){
+                    if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some()
+                        || (paused_collection && !matches!(player.state, cumulus_core::playback::controller::PlaybackStatus::Paused)) {
                         let failure=serde_json::json!({"ok":false,"error":"native playback did not advance",
                             "stage":stage,"state":player.state,"position":player.position,
                             "queueLen":player.queue_len,"hasPlaybackError":player.error.is_some()});
@@ -418,7 +424,9 @@ fn main() {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             if history_chapters {
-                let source=script.as_deref().unwrap_or(include_str!("history_radio_chapter_ui_probe.js"));
+                let source=script.as_deref().unwrap_or(if history_collection {
+                    include_str!("history_radio_collection_ui_probe.js")
+                } else { include_str!("history_radio_chapter_ui_probe.js") });
                 if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
                     view.eval(capture_ack::script(source)).unwrap();
                 } else {

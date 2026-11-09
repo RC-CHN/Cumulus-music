@@ -432,3 +432,36 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   同一提交的 Windows 包任务也先通过冷 FLAC、便携版启动和六个自然播完场景，
   随后同样在 `startup` 报 `enabled settings control`，历史观察及命令均为空
   （CI 42111466668，任务 127539828781）。Windows 修正版结果须另验。
+
+最近播放的播客和有声书行内收藏
+- 官方 Windows PC 3.1.42.205594 的 HistoryPlay.jsx:241–253 进入播客或有声书分类；
+  HistoryDjRadio.tsx:60–79、HistoryAudiobook.tsx:57–78 的
+  NormalAudioTable 同时指定 showPlayTime 和 showPlayRecord。M2077:131–145
+  因后者换用 AudioTitleCellWithPlayRecord。该组件 :65–76、262–286、330–354
+  从账号 subscribedAudioIdsMap 取状态，隐藏自己创建或列指定 hideFavBtn 的操作，
+  将「收藏／取消收藏」按播单 ID 交给 Action.favorite／Action.remove。章节仍是
+  独立播放目标；本批只接行内收藏按钮，尚未移植同一行的「更多」。
+- M3085:699–706、1417–1424 匿名操作打开登录；收藏无确认，取消收藏须先确认
+  「确定不再收藏该播单？」／「不再收藏」(:1397–1404、1505、1521–1528)。
+  M3160:1688–1722／M15:3510–3525 的账号订阅表读取
+  /api/djradio/get/subed {targetUserId,limit:1000}。M3160:1098–1122、
+  1373–1387 经 M232:392–445／M15:2072–2073 使用 /api/djradio/sub 或
+  /api/djradio/unsub。普通业务参数是 {id}；官方可为关联当前队列的收藏追加
+  sourceMap 归因，没有对应原生归因链，Cumulus 不发送该字段。
+- 页面沿用现有账号订阅表，不逐行请求，不从历史元数据的 subed 推断本账号状态。
+  不完整或失败的订阅表保持未知并可手动重读。原生只投影当前行是否可收藏；
+  不展示不可用、自己的播单或创建者身份不明的写入口。主窗口的
+  history_radio_collection 接收 epoch、历史分类、原生快照版本、行 ID 和动作，
+  从快照取真实播单，核对会话、凭据、行和版本。初读先取同一播单的详情，核对
+  创建者、收藏现态和仍然有效的历史目标，再沿用同账号的收藏操作锁与日志。
+  已达目标不重发；确认需要两次详情一致。官方先乐观更新再按失败回滚；本实现
+  等待核对后更新界面。回执丢失仅允许「核对收藏」读取，不能重发写入。
+- 取消确认不读写，焦点回原按钮。切换账号或历史快照撤回过期确认，不将结果
+  写入另一视图。收藏与移除历史、章节链接及当前原生播放互不替代。
+- 回归入口：core/tests/client_history.rs；隔离 Linux 实窗脚本
+  scripts/ci/history_radio_collection_smoke.py 使用 catalog_ui_probe、合成账号与
+  原生 null 播放，核对两个分类、请求顺序、取消确认、回执丢失、SQLite 和队列。
+  最终实窗 8 态及 8 张截图通过：仅有播客收藏、取消及有声书收藏三条合成写入，
+  没有历史写入。原有章节实窗另通过 4 态。证据为
+  .build/gui-final/audit.json 和 .build/gui-chapter-regression/audit.json。
+  未验证真实账号、物理声卡或 Windows WebView。
