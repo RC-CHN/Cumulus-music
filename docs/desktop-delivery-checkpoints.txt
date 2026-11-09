@@ -87,6 +87,13 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     可执行文件 SHA-256 为
     `b257fdeb371ff73f9c788e00d4e0805463eb34c4aadde9903370c1d6ea701337`。
     此流程没有使用真实账号、Windows 或物理音频设备，也不等于系统 MPRIS 验证。
+    同一程序另在独立会话总线复验正式 MPRIS 路径：进程自己的
+    org.mpris.MediaPlayer2.Cumulus.instance 服务接受 Pause、Play、Next、Stop。
+    暂停于 5.33 秒，恢复超过 6.42 秒；下一首实际输出由 440 Hz 变为 10 kHz，
+    停止后私有 PipeWire 输出为零并保留同一条目和最后书签。前台 GTK 窗口、
+    进程到私有输出的连接、SQLite 状态和 D-Bus PlaybackStatus 分别读取。
+    证据见 `.build/ui-proof/phase203-stock-mpris-c1c75375/`，不涉及物理媒体键、
+    实体音频设备或真实账号。
 
 当前不能据此关闭的要件
   - 主线的完整托管 gate、Windows 实际 WebView/系统媒体以及发行附件必须

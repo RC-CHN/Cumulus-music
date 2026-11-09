@@ -177,6 +177,13 @@ Windows 原生复验入口
   42656675830 已通过令牌、资料目录与持有解码检查，但便携包冷启动 WAV 的
   持久时钟未前进，未执行热交接。那次运行未采样默认端点；不能确认失败原因。
   原生 proof 所在 job 失败即失败，不作为 RC 已通过的依据。
+  2026-11-10 的独立空输出运行 42679410870 复用 42667945952 attempt 1 的
+  ad461a94 诊断包，先复核产物、尝试、包内 exe 摘要。此 runner 的默认渲染端点
+  缺失（find_default_endpoint，0x80070490）；合成冷 WAV 使用证明空输出，
+  真实 HWND 可见、所有者仍存活、SQLite 时钟已到 1.040 秒。
+  暖打开的无效文件未获得原协议的受理结果：发送方返回 2（无法转交），
+  停在该步骤，未验证后续暖 FLAC/MP3。保留独立报告与日志，不推断根因、
+  默认输出、物理声卡或 Windows 暖交接已通过。
   Windows API 依据：
   https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule
   https://learn.microsoft.com/windows/win32/winmsg/about-windows

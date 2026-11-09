@@ -108,6 +108,16 @@ Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为�
   约 3.06 秒隐藏，不改原播放项；上传任务的原生文件校验实际执行，系统文件管理器
   使用测试替身。48 项云盘核心和 20 项下载文件测试通过，前端 1040 项及类型/生产
   构建、定向严格 Clippy 通过。不是 Windows、实体设备或实服账号证据。
+- [普通云盘歌曲文件定位](cloud-menu-ui-contracts.txt)核对上传源、完成下载和
+  扫描/CUE 三种原生凭据。Linux 实窗 32 态通过；生产 IPC 向隔离的
+  FileManager1 发送恰好一次选中原音频的请求。115 项云盘及下载核心测试、
+  Linux 严格 Clippy 和 Windows 交叉检查通过；未实际运行 Explorer。
+- [搜索结果离线与恢复](search-results-ui-contracts.txt)的 Linux 实窗通过
+  10 态：离线卸载结果，恢复当前分类、滚动和焦点，丢弃迟到回包，在线读取失败
+  仍可显式重试。依赖 WebView 连通事件；官方业务探测计时和 Windows 未在此验证。
+- [音效共用页头](effects-directory-desktop.txt)只在当前账号选中且确认配置
+  本机均衡器时提供该开关。Linux 实窗 10 态验证跨页签开关、同一条目/暂停位置、
+  一次解码和两次设置提交；独立 PEQ、权限和目录请求不走此开关。
 - [播客和有声书分类](search-discovery-ui-contracts.txt)恢复官方评分；[播放最新](follow-new-song-contracts.txt)在首曲没有线上授权时仅使用当前账号同一歌曲已验证的下载。[进程内 FLAC](limiter-inprocess-decoder.txt)验证了专有前瞻限幅器前的解码和样本跳转，仍未切换正式播放器；网络授权与输入边界见[源契约](limiter-authorized-source-contract.txt)。
 - [本人排行删除](profile-play-record-contracts.txt)支持按时期删除并在不确定时只读核对；[外部歌单](external-playlist-import-contracts.txt)支持按官方规则预览分享链接，未提交外部导入任务。[冷离线 FLAC](cold-offline-flac-handoff.txt)通过合成凭据、真实解码、原路径替换与会话撤销的专项验证，正式播放器未切换。
 - [用户主页笔记](profile-notes-contracts.txt)独立读取作者列表，复用动态详情和评论，保留返回焦点；[社区编辑器](community-composer-contracts.txt)支持五类附件搜索及账号隔离的本机草稿。[排行卡](profile-play-record-contracts.txt)按作者播放周榜，同源暂停和恢复保留播放实例。三项已过 Linux 合并版 WebView，未执行真实发布。
