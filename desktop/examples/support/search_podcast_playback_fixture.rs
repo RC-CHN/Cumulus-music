@@ -1,4 +1,4 @@
-//! Sealed PC comprehensive search, two result blocks, and real null audio.
+//! Sealed comprehensive and classified Search Podcasts with real null audio.
 use cumulus_core::{Error, Result, storage::StateStore};
 use serde_json::{Value, json};
 use std::sync::Mutex;
@@ -8,6 +8,10 @@ const QUERY: &str = "合成播单续播";
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_PODCAST_PLAYBACK_PROOF").is_some()
+}
+
+fn row_mode() -> bool {
+    std::env::var_os("CUMULUS_SEARCH_PODCAST_ROW_PROOF").is_some()
 }
 
 pub fn initialize(store: &StateStore) -> Result<()> {
@@ -33,7 +37,7 @@ fn episode(id: u64) -> Value {
     json!({
         "id":id,"name":format!("合成节目 {id}"),"duration":30000,
         "mainSong":{"id":id+1000,"duration":30000},
-        "radio":{"id":7,"name":"合成续播播单","categoryId":2}
+        "radio":{"id":if id == 400 {9} else {7},"name":"合成续播播单","categoryId":2}
     })
 }
 
@@ -45,6 +49,7 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         "/api/search/pc/result/tab"
         | "/api/search/pc/complex/page"
         | "/api/search/pc/complex/page/v3"
+        | "/api/search/voicelist/get"
         | "/api/v6/dj/program/byradio"
         | "/api/dj/program/detail"
         | "/api/dj/play/url/check"
@@ -88,6 +93,22 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
                     "resources":[allowed,radio(8,"合成不可加载播单",1)]}
             ]}})
         }
+        "/api/search/voicelist/get" if row_mode() => {
+            assert_eq!(args["keyword"], QUERY);
+            assert_eq!(args["offset"], 0);
+            json!({"code":200,"data":{"totalCount":2,"hasMore":false,"resources":[
+                {"type":"voicelist","baseInfo":{"id":7,"name":"合成续播播单","categoryId":2,"programCount":251,"dj":{"userId":5,"nickname":"合成主播"}}},
+                {"type":"voicelist","baseInfo":{"id":8,"name":"合成不可加载播单","categoryId":2,"programCount":1}}
+            ]}})
+        }
+        "/api/djradio/v3/get" if row_mode() && args["id"] == "7" => {
+            json!({"code":200,"data":{"id":7,"name":"合成续播播单","categoryId":2,"programCount":251}})
+        }
+        "/api/v6/dj/program/byradio"
+            if row_mode() && args["radioId"] == "7" && args["limit"] != 250 =>
+        {
+            json!({"code":200,"data":{"programs":[episode(1)],"count":1,"more":false}})
+        }
         "/api/v6/dj/program/byradio" if args["radioId"] == "8" => {
             assert_eq!(*args, json!({"radioId":"8","offset":0,"limit":250}));
             return Some(Err(Error::Transport("合成播单读取失败".into())));
@@ -105,18 +126,24 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
             }})
         }
         "/api/dj/program/detail" => {
-            assert_eq!(*args, json!({"id":"1"}));
-            json!({"code":200,"program":episode(1)})
+            let id: u64 = args["id"].as_str().unwrap().parse().unwrap();
+            assert!(id == 1 || row_mode() && id == 400);
+            assert_eq!(*args, json!({"id":id.to_string()}));
+            json!({"code":200,"program":episode(id)})
         }
         "/api/dj/play/url/check" => {
-            assert_eq!(args["voiceId"], "1");
-            json!({"code":200,"data":{"voiceId":1,"songId":1001,"canPlay":true}})
+            let id: u64 = args["voiceId"].as_str().unwrap().parse().unwrap();
+            assert!(id == 1 || row_mode() && id == 400);
+            json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":true}})
         }
         "/api/song/enhance/player/url/v1" => {
             let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
             assert_eq!(ids.len(), 1);
-            assert!(ids[0] == "1001" || ids[0] == 1001);
-            json!({"code":200,"data":[{"id":1001,"code":200,"level":"standard","expi":120,
+            let id: u64 = ids[0]
+                .as_u64()
+                .unwrap_or_else(|| ids[0].as_str().unwrap().parse().unwrap());
+            assert!(id == 1001 || row_mode() && id == 1400);
+            json!({"code":200,"data":[{"id":id,"code":200,"level":"standard","expi":120,
                 "url":"https://m1.music.126.net/cumulus-relay-fixture.wav","md5":"fixture"}]})
         }
         _ => panic!("unexpected search podcast route {path}"),
