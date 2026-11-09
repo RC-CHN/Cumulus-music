@@ -58,6 +58,7 @@
   try {
     await wait(() => input() && !input().disabled && one('.track-row'), 'authenticated fixture booted');
     input().focus();
+    input().click();
     await visibleCharts();
     await capture('opened');
 

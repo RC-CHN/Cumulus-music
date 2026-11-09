@@ -54,11 +54,16 @@
     release,
     holdKind,
     held = false;
-  const checks = [];
+  const checks = [], activationReads = [];
+  let activationSubmissions = 0;
   const nativeFetch = window.fetch;
   window.fetch = async function (url, options) {
     const match = String(url).endsWith("/search_discovery");
     const query = match ? JSON.parse(options.body).query : undefined;
+    if (window.__cumulusSearchFocusActivationProof) {
+      if (query && query.kind !== "defaults") activationReads.push(query);
+      if (String(url).endsWith("/search_results")) activationSubmissions++;
+    }
     const delay = query?.kind === holdKind ? gate : undefined;
     const response = await nativeFetch.call(window, url, options);
     if (delay) {
@@ -242,9 +247,7 @@
       );
       await capture("default_recovery_initial");
       input().focus({ preventScroll: true });
-      await wait(() => panel() && document.activeElement === input(), "focused search input");
-      key(input(), "Escape");
-      await wait(() => !panel() && document.activeElement === input(), "Escape keeps input focus");
+      await wait(() => !panel() && document.activeElement === input(), "focus does not open search");
       await sleep(5200);
       assert(input().placeholder === missing, "focused input did not retry after the popover closed");
       await capture("default_recovery_input_focused");
@@ -285,6 +288,79 @@
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",
     );
+    if (window.__cumulusSearchFocusActivationProof) {
+      const typed = "合成键入激活", committed = "合成输入法激活";
+      const expanded = () => input().getAttribute("aria-expanded") === "true";
+      const focus = () => input().focus({ preventScroll: true });
+      const compose = (phase, data) => input().dispatchEvent(
+        new CompositionEvent(`composition${phase}`, { bubbles: true, data }),
+      );
+      const chartIds = ["HOT_SEARCH_SONG#@#", "HOT_SEARCH_STYLE_ROCK#@#", "HOT_SEARCH_STYLE_ACG#@#"];
+      const state = async (label, expected, visible) => {
+        await wait(() => expanded() === visible && !!panel() === visible, label);
+        await sleep(350); // Observe beyond the production suggestion debounce.
+        const reads = activationReads.map(({ kind, keyword, id }) => [kind, keyword ?? id ?? null]);
+        const primary = reads.filter(([kind]) => kind !== "chart");
+        const details = reads.filter(([kind]) => kind === "chart").map(([, id]) => id);
+        const expectedDetails = expected.flatMap(([kind]) => kind === "charts" ? chartIds : []);
+        assert(JSON.stringify(primary) === JSON.stringify(expected), `${label}: ${JSON.stringify(primary)}`);
+        assert(JSON.stringify(details) === JSON.stringify(expectedDetails), `${label}: ${JSON.stringify(details)}`);
+        assert(document.activeElement === input(), `${label}: input must retain focus`);
+        assert(!one(".search-results-page") && activationSubmissions === 0, `${label}: no search submission`);
+        await capture(label, { activationReads: reads, expanded: visible });
+      };
+      const discovery = [["charts", null], ["recommendations", null]];
+      const typedReads = [["suggestions", typed]];
+      const committedReads = [...typedReads, ["suggestions", committed]];
+      const awaitHome = () => wait(
+        () => panel() && one(".search-chart") && !panel().textContent.includes("正在加载"),
+        "discovery content",
+      );
+      button("开始搜索").focus({ preventScroll: true });
+      const inactiveBackground = getComputedStyle(input().form).backgroundImage;
+      focus();
+      assert(getComputedStyle(input().form).backgroundImage !== inactiveBackground,
+        "focus still has a visible selected background");
+      await state("focus_only", [], false);
+
+      type(typed);
+      await wait(() => panel()?.textContent.includes(typed + " · 联想结果 1"), "typing opens suggestions");
+      await state("edit_opens_suggestions", typedReads, true);
+
+      key(input(), "Escape");
+      await wait(() => !panel(), "Escape removes the panel");
+      button("开始搜索").focus({ preventScroll: true });
+      focus();
+      assert(input().value === typed, "refocus retains the entered text");
+      await state("refocus_only", typedReads, false);
+
+      compose("start", "");
+      type("yin");
+      key(input(), "Enter", { isComposing: true });
+      await state("composing_closed", typedReads, false);
+      type(committed);
+      compose("end", committed);
+      await wait(() => panel()?.textContent.includes(committed + " · 联想结果 1"), "commit opens suggestions");
+      await state("composition_commit", committedReads, true);
+
+      key(input(), "Escape");
+      type("");
+      await awaitHome();
+      await state("empty_edit_opens_discovery", [...committedReads, ...discovery], true);
+      key(input(), "Escape");
+      await wait(() => !panel(), "close before keyboard open");
+      key(input(), "ArrowDown");
+      await awaitHome();
+      await state("arrow_opens_discovery", [...committedReads, ...discovery, ...discovery], true);
+      key(input(), "Escape");
+      await wait(() => !panel(), "close before pointer open");
+      input().click();
+      await awaitHome();
+      await state("click_opens_discovery", [...committedReads, ...discovery, ...discovery, ...discovery], true);
+      await emit("complete", { ok: true, stageCount: count, searchFocusActivationVerified: true,
+        activationSubmissions, realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     if (window.__cumulusPodcastBrowseAroundProof) {
       await fixture("audio_ranks");
       const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);

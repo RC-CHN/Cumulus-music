@@ -5,7 +5,8 @@
 .search-host .searchbox {
   width: 100%;
 }
-.searchbox-open {
+.searchbox-open,
+.searchbox:has(input:focus) {
   background: var(--surface-raised);
 }
 .search-submit {
