@@ -12,6 +12,7 @@ const props = defineProps<{
   playlist: PlaylistView;
   total: number;
   playable: boolean;
+  offline?: boolean;
   preparing: boolean;
   downloadDisabled: boolean;
   subscribed: boolean;
@@ -56,7 +57,7 @@ function play(event: MouseEvent) {
   <section ref="root" class="playlist-hero" aria-label="歌单详情">
     <div class="playlist-art">
       <img
-        v-if="playlist.coverUrl"
+        v-if="!offline && playlist.coverUrl"
         :src="playlist.coverUrl"
         alt="歌单封面"
         referrerpolicy="no-referrer"
@@ -79,7 +80,7 @@ function play(event: MouseEvent) {
       <div class="playlist-title">
         <h1 :title="playlist.name">{{ playlist.name }}</h1>
         <button
-          v-if="playlist.owned && !playlist.favorite"
+          v-if="!offline && playlist.owned && !playlist.favorite"
           class="icon-button playlist-edit"
           title="编辑歌单"
           aria-label="编辑歌单"
@@ -93,15 +94,19 @@ function play(event: MouseEvent) {
         <PlaylistDescription :text="playlist.description" />
         <div class="playlist-credits">
           <component
-            :is="playlist.creatorId ? 'button' : 'span'"
+            :is="!offline && playlist.creatorId ? 'button' : 'span'"
             v-if="playlist.creator"
             class="playlist-creator"
-            :type="playlist.creatorId ? 'button' : undefined"
-            :aria-label="playlist.creatorId ? `查看作者主页：${playlist.creator}` : undefined"
-            @click="playlist.creatorId && $emit('creator', playlist.creatorId)"
+            :type="!offline && playlist.creatorId ? 'button' : undefined"
+            :aria-label="
+              !offline && playlist.creatorId ? `查看作者主页：${playlist.creator}` : undefined
+            "
+            @click="!offline && playlist.creatorId && $emit('creator', playlist.creatorId)"
           >
             <img
-              v-if="playlist.creatorAvatarUrl && playlist.creatorAvatarUrl !== failedAvatar"
+              v-if="
+                !offline && playlist.creatorAvatarUrl && playlist.creatorAvatarUrl !== failedAvatar
+              "
               :src="playlist.creatorAvatarUrl"
               alt=""
               referrerpolicy="no-referrer"
@@ -114,9 +119,10 @@ function play(event: MouseEvent) {
             <span>标签：</span>
             <template v-for="(tag, index) in playlist.tags" :key="tag">
               <span v-if="index" aria-hidden="true"> / </span>
-              <button type="button" class="text-button" @click="$emit('tag', tag)">
+              <button v-if="!offline" type="button" class="text-button" @click="$emit('tag', tag)">
                 {{ tag }}
               </button>
+              <span v-else>{{ tag }}</span>
             </template>
           </div>
           <span v-if="date" class="playlist-header-date">
@@ -127,10 +133,10 @@ function play(event: MouseEvent) {
         </div>
         <div class="playlist-actions" :aria-busy="preparing">
           <button class="primary" :disabled="!playable || preparing" @click="play">
-            <Icon name="play" />{{ preparing ? '准备中…' : '播放全部' }}
+            <Icon name="play" />{{ preparing ? '准备中…' : offline ? '播放可用曲目' : '播放全部' }}
           </button>
           <button
-            v-if="playlist.owned && playlist.favorite"
+            v-if="!offline && playlist.owned && playlist.favorite"
             class="download-button intelligence-start"
             :aria-pressed="intelligenceActive ?? false"
             :disabled="intelligenceDisabled || intelligenceBusy || intelligenceActive"
@@ -160,7 +166,7 @@ function play(event: MouseEvent) {
             }}
           </button>
           <button
-            v-if="!playlist.owned"
+            v-if="!offline && !playlist.owned"
             class="download-button playlist-subscribe"
             :aria-label="subscribed ? '取消收藏歌单' : '收藏歌单'"
             :title="subscribed ? '取消收藏歌单' : '收藏歌单'"
@@ -171,6 +177,7 @@ function play(event: MouseEvent) {
             <Icon :name="subscribed ? 'check' : 'star'" />{{ subscribed ? '已收藏' : '收藏' }}
           </button>
           <button
+            v-if="!offline"
             class="download-button"
             aria-label="下载当前歌曲列表"
             title="下载当前歌曲列表"
@@ -181,7 +188,7 @@ function play(event: MouseEvent) {
           </button>
           <ActionMenu
             variant="song"
-            v-if="items.length"
+            v-if="!offline && items.length"
             label="更多歌单操作"
             :items="items"
             @select="$emit('action', $event)"

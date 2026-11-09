@@ -132,6 +132,8 @@ export async function playlistDownloadTracks(
     });
     if (!active() || response.epoch !== epoch) throw { code: 'stale', message: '读取已取消' };
     const page = response.value;
+    if (page.playlistOffline)
+      throw { code: 'playlist_offline', message: '请联网后再下载歌单中的歌曲' };
     if (
       page.offset !== offset ||
       (offset > 0 &&

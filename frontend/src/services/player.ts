@@ -519,6 +519,13 @@ export type PlaySelection =
     }
   | { kind: 'daily_recommendations_batch'; revision: string; indices: number[]; quality: Quality }
   | {
+      kind: 'offline_playlist';
+      id: string;
+      revision: string;
+      start_id: string | null;
+      double_click?: boolean;
+    }
+  | {
       kind: 'mixed_playlist';
       id: string;
       revision: string;

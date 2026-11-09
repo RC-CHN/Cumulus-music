@@ -24,6 +24,8 @@ export async function readPlaylistBatch(
     });
     if (!active() || response.epoch !== epoch) throw { code: 'stale', message: '读取已取消' };
     const page = response.value;
+    if (page.playlistOffline)
+      throw { code: 'playlist_offline', message: '离线歌单暂不支持批量操作，请联网后重试' };
     if (!page.revision) throw { code: 'invalid_response', message: '歌单信息不完整，请重新读取' };
     if (
       page.offset !== offset ||

@@ -1,4 +1,5 @@
 import type { AccountDetailKind } from '../services/accountDetail';
+import { samePlaylistReadSource } from '../services/offlinePlaylist.ts';
 import { computed, ref, shallowRef } from 'vue';
 import type {
   AccountData,
@@ -250,6 +251,7 @@ export function useMusic(
     retainDailyCache = false,
     prefix?: TrackPage,
     styleBack?: string,
+    retainOfflinePlaylist = false,
   ) {
     const current = ++request;
     error.value = '';
@@ -257,8 +259,15 @@ export function useMusic(
     const target = page.value;
     const keepingCache =
       retainDailyCache && signedIn.value && target.kind === 'daily' && result.value?.daily?.cached;
-    const offset = more ? (result.value?.tracks.length ?? 0) : 0;
-    if (!more && !keepingCache) result.value = undefined;
+    const previous = result.value;
+    const holdingOffline =
+      retainOfflinePlaylist &&
+      signedIn.value &&
+      target.kind === 'playlist' &&
+      previous?.playlist?.id === target.id &&
+      !!previous.playlistOffline;
+    const offset = more ? (previous?.tracks.length ?? 0) : 0;
+    if (!more && !keepingCache && !holdingOffline) result.value = undefined;
     try {
       if (
         !signedIn.value ||
@@ -341,13 +350,21 @@ export function useMusic(
       if (current !== request) return;
       const value = accept(data);
       if (!value) {
-        if (keepingCache) result.value = undefined;
+        if (keepingCache || holdingOffline) result.value = undefined;
         return;
+      }
+      if (more && previous && !samePlaylistReadSource(previous, value)) {
+        // Never continue showing actionable live rows after native reports
+        // an offline projection. Reopen at page zero for a consistent view.
+        if (value.playlistOffline && !previous.playlistOffline) result.value = undefined;
+        throw { code: 'snapshot_changed', message: '歌单的联网状态已变化，请重新读取后再加载。' };
       }
       result.value =
         more && result.value
           ? mergePlaylistPages(result.value, value, [...result.value.tracks, ...value.tracks])
           : prefix?.revision &&
+              !prefix.playlistOffline &&
+              !value.playlistOffline &&
               prefix.revision === value.revision &&
               prefix.playlistLocal?.revision === value.playlistLocal?.revision &&
               prefix.tracks.length > value.tracks.length
@@ -361,7 +378,12 @@ export function useMusic(
             : value;
     } catch (e) {
       if (current === request) {
-        if (keepingCache) result.value = undefined;
+        if (
+          keepingCache ||
+          holdingOffline ||
+          (more && previous?.playlistOffline && failure(e).code !== 'snapshot_changed')
+        )
+          result.value = undefined;
         handle(e);
       }
     } finally {
@@ -401,6 +423,7 @@ export function useMusic(
           incoming.offset !== offset ||
           !incoming.revision ||
           !incoming.playlistLocal ||
+          !!incoming.playlistOffline ||
           (incoming.more && !incoming.tracks.length) ||
           (next &&
             (incoming.revision !== next.revision ||
@@ -419,6 +442,10 @@ export function useMusic(
     } finally {
       if (current === request) loading.value = false;
     }
+  }
+  function retryOfflinePlaylist() {
+    if (!loading.value && page.value.kind === 'playlist' && result.value?.playlistOffline)
+      return load(false, false, undefined, undefined, true);
   }
   function retryDailyCache() {
     if (!loading.value && page.value.kind === 'daily' && result.value?.daily?.cached)
@@ -700,6 +727,7 @@ export function useMusic(
     mergeVerifiedPlaylistLikes,
     load,
     retryDailyCache,
+    retryOfflinePlaylist,
     reloadReorderedPlaylist,
     bootstrap,
     navigate: (next: Page) => navigate(next),
