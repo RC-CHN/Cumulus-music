@@ -2,7 +2,7 @@
 //! Filesystem opens start at an already validated native volume object.
 use super::{
     identity::{DirectoryId, directory_id},
-    profile_path::{drive_path, first_fixed_device, is_volume_guid_root},
+    profile_path::{drive_path, first_fixed_device, held_volume_path, is_volume_guid_root},
 };
 use std::{
     ffi::OsString,
@@ -40,7 +40,7 @@ use windows_sys::{
             FILE_READ_ATTRIBUTES, FILE_READ_DATA, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE,
             FILE_TYPE_DISK, FILE_WRITE_DATA, GetFileInformationByHandle, GetFileType,
             GetFinalPathNameByHandleW, GetVolumeInformationByHandleW, QueryDosDeviceW, SYNCHRONIZE,
-            VOLUME_NAME_DOS, VOLUME_NAME_GUID,
+            VOLUME_NAME_GUID,
         },
         System::{Com::CoTaskMemFree, IO::IO_STATUS_BLOCK, Ioctl::FILE_DEVICE_DISK_FILE_SYSTEM},
         UI::Shell::{FOLDERID_RoamingAppData, KF_FLAG_DONT_VERIFY, SHGetKnownFolderPath},
@@ -125,13 +125,11 @@ impl Profile {
         }
         let directory = directories.last().expect("held profile directory");
         let id = directory_id(directory)?;
-        // Retain the existing DOS-form state path for the rest of desktop.
-        // This is a handle-derived name, not another filesystem path open.
-        let path = name_by_handle(directory, VOLUME_NAME_DOS)?;
-        let Some(dos) = drive_path(&path) else {
-            return Ok(None);
-        };
-        if dos.drive != input.drive
+        // The application still passes paths to Rust and SQLite. Derive that
+        // path from the held directory and pin its volume, so those later
+        // opens cannot re-resolve the configured DOS drive letter.
+        let path = name_by_handle(directory, VOLUME_NAME_GUID)?;
+        if !held_volume_path(&volume, &path)
             || device_target(input.drive)?.as_deref() != Some(native.as_str())
         {
             return Ok(None);
@@ -369,8 +367,9 @@ mod tests {
         let held = profile(&path);
         assert!(held.same_directory(&path));
         assert!(!held.same_directory(&root.path().join("not-created")));
-        let other = profile(&root.path().join("other"));
-        assert!(!held.same_directory(other.path()));
+        let other = root.path().join("other");
+        let _other = profile(&other);
+        assert!(!held.same_directory(&other));
 
         let mut lock = held.lock_file().unwrap();
         lock.write_all(b"synthetic").unwrap();
@@ -391,6 +390,34 @@ mod tests {
         fs::rename(&path, &moved).unwrap();
         let replacement = profile(&path);
         assert!(!replacement.same_directory(&moved));
+    }
+
+    #[test]
+    fn stable_volume_path_opens_the_same_sqlite_database_and_journal() {
+        let root = tempfile::tempdir().unwrap();
+        let input = root.path().join("合成").join("Cumulus");
+        let held = profile(&input);
+        assert!(held_volume_path(
+            &held.volume,
+            held.path().to_str().unwrap()
+        ));
+        let through_volume = held.path().join("core.sqlite3");
+        let through_drive = input.join("core.sqlite3");
+        let mut database = rusqlite::Connection::open(&through_volume).unwrap();
+        database
+            .execute_batch("PRAGMA journal_mode=DELETE; CREATE TABLE probe (id INTEGER)")
+            .unwrap();
+        let tx = database.transaction().unwrap();
+        tx.execute("INSERT INTO probe VALUES (17)", ()).unwrap();
+        assert!(input.join("core.sqlite3-journal").is_file());
+        tx.commit().unwrap();
+        let through_drive = rusqlite::Connection::open(&through_drive).unwrap();
+        assert_eq!(
+            through_drive
+                .query_row("SELECT id FROM probe", (), |row| row.get::<_, u32>(0))
+                .unwrap(),
+            17,
+        );
     }
 
     #[test]

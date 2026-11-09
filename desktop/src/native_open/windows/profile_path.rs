@@ -16,16 +16,7 @@ pub(super) fn drive_path(value: &str) -> Option<DrivePath<'_>> {
     let relative = value[3..].strip_suffix('\\').unwrap_or(&value[3..]);
     if !drive.is_ascii_alphabetic()
         || value.encode_utf16().count() > MAX_NT_PATH_UNITS
-        || relative.split('\\').count() > MAX_PROFILE_COMPONENTS
-        || relative.split('\\').any(|component| {
-            component.is_empty()
-                || component.ends_with([' ', '.'])
-                || component.encode_utf16().count() > 255
-                || component.chars().any(|character| {
-                    character.is_control()
-                        || matches!(character, ':' | '/' | '<' | '>' | '"' | '|' | '?' | '*')
-                })
-        })
+        || !ordinary_components(relative)
     {
         return None;
     }
@@ -33,6 +24,29 @@ pub(super) fn drive_path(value: &str) -> Option<DrivePath<'_>> {
         drive: drive.to_ascii_uppercase(),
         relative,
     })
+}
+
+fn ordinary_components(relative: &str) -> bool {
+    relative.split('\\').count() <= MAX_PROFILE_COMPONENTS
+        && relative.split('\\').all(|component| {
+            !component.is_empty()
+                && !component.ends_with([' ', '.'])
+                && component.encode_utf16().count() <= 255
+                && !component.chars().any(|character| {
+                    character.is_control()
+                        || matches!(character, ':' | '/' | '<' | '>' | '"' | '|' | '?' | '*')
+                })
+        })
+}
+
+pub(super) fn held_volume_path(volume: &str, path: &str) -> bool {
+    let Some((prefix, relative)) = path.split_at_checked(volume.len()) else {
+        return false;
+    };
+    is_volume_guid_root(volume)
+        && prefix.eq_ignore_ascii_case(volume)
+        && path.encode_utf16().count() <= MAX_NT_PATH_UNITS
+        && ordinary_components(relative)
 }
 
 pub(super) fn first_fixed_device(mapping: &[u16]) -> Option<String> {
@@ -92,6 +106,25 @@ mod tests {
             r"C:\Users/Cumulus",
         ] {
             assert!(drive_path(path).is_none(), "{path}");
+        }
+    }
+
+    #[test]
+    fn held_state_path_must_stay_on_the_verified_volume() {
+        let volume = r"\\?\Volume{f1b44cdc-6170-4598-853a-4ca5d1eb4958}\";
+        assert!(held_volume_path(volume, &format!(r"{volume}用户\Cumulus")));
+        assert!(held_volume_path(
+            volume,
+            &format!(r"{}用户\Cumulus", volume.to_ascii_lowercase())
+        ));
+        for path in [
+            volume.to_owned(),
+            format!(r"{volume}..\Cumulus"),
+            format!(r"{volume}用户\Cumulus:alternate"),
+            r"C:\用户\Cumulus".into(),
+            r"\\?\Volume{f1b44cdc-6170-4598-853a-4ca5d1eb4959}\用户\Cumulus".into(),
+        ] {
+            assert!(!held_volume_path(volume, &path), "{path}");
         }
     }
 
