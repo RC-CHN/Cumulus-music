@@ -368,6 +368,7 @@ fn main() {
                     value["publicationView"]=serde_json::to_value(client.relay_publication_view(&epoch,None).unwrap().value).unwrap();
                     value["publicationCalls"]=serde_json::json!(publication_fixture.publications.lock().unwrap().len());
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
+                    value["relayCalls"]=serde_json::json!(*publication_fixture.relay_calls.lock().unwrap());
                 }
                 let paused_collection = history_collection && value["checkPausedPlayback"]==true;
                 if ((is_live || relays || interactive || history_chapters) && value["playing"]==true) || paused_collection {

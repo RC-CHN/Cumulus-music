@@ -5,9 +5,11 @@ use cumulus_core::{
     Error, Result,
     playback::engine::*,
     protocol::api::{Api, ApiFuture},
+    relay::ALERT_PATH,
 };
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::{
         Mutex,
@@ -23,6 +25,7 @@ pub struct Library {
     publication_mode: Mutex<String>,
     publication_configs: AtomicUsize,
     pub network_calls: AtomicUsize,
+    pub relay_calls: Mutex<BTreeMap<String, usize>>,
     enabled: Mutex<bool>,
     fail_setting_read: std::sync::atomic::AtomicBool,
 }
@@ -37,6 +40,7 @@ impl Default for Library {
             publication_mode: Mutex::new(String::new()),
             publication_configs: AtomicUsize::new(0),
             network_calls: AtomicUsize::new(0),
+            relay_calls: Mutex::new(BTreeMap::new()),
             enabled: Mutex::new(true),
             fail_setting_read: std::sync::atomic::AtomicBool::new(false),
         }
@@ -69,6 +73,17 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, p: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.network_calls.fetch_add(1, Ordering::SeqCst);
+            if path.starts_with("/api/relay/")
+                || path == ALERT_PATH
+                || (path == "/api/rtrs/abt/front/expinfo/list" && p["expNames"] == "device_connect")
+            {
+                *self
+                    .relay_calls
+                    .lock()
+                    .unwrap()
+                    .entry(path.into())
+                    .or_default() += 1;
+            }
             let publication = self.publication_mode.lock().unwrap().clone();
             let mode = self.mode.lock().unwrap().clone();
             if mode == "offline" && (path.starts_with("/api/relay/") || path.contains("expinfo")) {
