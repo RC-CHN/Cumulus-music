@@ -4,6 +4,8 @@ pub(super) use badges::Host as PodcastBadgeHost;
 mod discovery;
 mod dto;
 mod home;
+mod program_menu;
+pub use program_menu::PodcastProgramTarget;
 pub(super) mod profile;
 pub(in crate::client) mod radio_playback;
 mod rankings;

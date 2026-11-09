@@ -39,6 +39,7 @@ pub(crate) enum PlaybackDownloadKind {
 }
 
 pub(crate) struct PlaybackDownloadRow {
+    pub id: String,
     pub status: String,
     pub path: Option<PathBuf>,
     pub moving: bool,
@@ -356,16 +357,17 @@ impl StateTransaction<'_> {
             }
         };
         let mut query = self.connection.prepare_cached(&format!(
-            "SELECT json_extract(value,'$.status'), json_extract(value,'$.target'),
+            "SELECT key, json_extract(value,'$.status'), json_extract(value,'$.target'),
                     json_extract(value,'$.file_operation') IS NOT NULL
              FROM state INDEXED BY {index}
              WHERE owner=? AND {task} AND ({identity})=?"
         ))?;
         let rows = query.query_map([owner, id], |row| {
             Ok(PlaybackDownloadRow {
-                status: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
-                path: row.get::<_, Option<String>>(1)?.map(PathBuf::from),
-                moving: row.get(2)?,
+                id: row.get(0)?,
+                status: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                path: row.get::<_, Option<String>>(2)?.map(PathBuf::from),
+                moving: row.get(3)?,
             })
         })?;
         rows.collect::<std::result::Result<_, _>>()

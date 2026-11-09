@@ -6,14 +6,22 @@ import { time } from '../services/player';
 import type { PodcastModel } from '../composables/usePodcasts';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
 import PodcastRecentList from './PodcastRecentList.vue';
+import PodcastProgramMenu from './PodcastProgramMenu.vue';
 import PodcastSubscriptionRecommendations from './PodcastSubscriptionRecommendations.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import { audiobookSkipSaved, type AudiobookSkipContext } from '../services/audiobookSkip';
-import type { PodcastScope, EpisodeView, PodcastRecommendationAction } from '../services/podcast';
+import type {
+  PodcastScope,
+  EpisodeView,
+  PodcastRecommendationAction,
+  PodcastProgramTarget,
+} from '../services/podcast';
 const props = defineProps<{
   model: PodcastModel;
   recent: PodcastRecentModel;
   playable: boolean;
+  queueable: boolean;
+  queueProgram: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
   currentId?: string;
   currentRadioId?: string;
   playing: boolean;
@@ -44,6 +52,50 @@ watch(
 );
 const scope = computed(() => query.value.scope);
 const detail = computed(() => !recentSelected.value && scope.value.kind === 'radio');
+const menuPage = computed(() => {
+  const displayed = page.value,
+    requested = scope.value;
+  return detail.value &&
+    !loading.value &&
+    displayed?.epoch === props.model.epoch.value &&
+    displayed.scope.kind === 'radio' &&
+    requested.kind === 'radio' &&
+    displayed.scope.id === requested.id &&
+    displayed.scope.ascending === requested.ascending &&
+    displayed.revision === query.value.revision &&
+    displayed.offset === query.value.offset
+    ? displayed
+    : undefined;
+});
+const programMenu = ref<InstanceType<typeof PodcastProgramMenu>>();
+function openProgramMenu(event: MouseEvent | KeyboardEvent, voice: EpisodeView) {
+  if (!menuPage.value || !(event.currentTarget instanceof HTMLElement)) return;
+  const current = event.currentTarget;
+  const anchor =
+    current instanceof HTMLButtonElement
+      ? current
+      : current.querySelector<HTMLButtonElement>('[data-podcast-program-more]');
+  if (!anchor) return;
+  const point =
+    event instanceof MouseEvent && event.button === 2
+      ? { x: event.clientX, y: event.clientY }
+      : undefined;
+  void programMenu.value?.open(voice, anchor, point);
+}
+function programContext(event: MouseEvent, voice: EpisodeView) {
+  if (!menuPage.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openProgramMenu(event, voice);
+}
+function programKeyboard(event: KeyboardEvent, voice: EpisodeView) {
+  if (!menuPage.value || (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')))
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  openProgramMenu(event, voice);
+}
+
 const audiobookSkipContext = computed<AudiobookSkipContext | undefined>(() => {
   const current = page.value;
   if (
@@ -352,8 +404,10 @@ const pending = props.model.pending;
           v-for="(voice, i) in page.episodes"
           :key="voice.id"
           class="episode-row"
-          :class="{ current: currentId === voice.id }"
+          :class="{ current: currentId === voice.id, 'with-more': detail }"
           :data-voice-id="voice.id"
+          @contextmenu="programContext($event, voice)"
+          @keydown="programKeyboard($event, voice)"
           @dblclick="playable && !loading && !voice.unavailable && play(voice.id)"
         >
           <button
@@ -396,9 +450,33 @@ const pending = props.model.pending;
           >
             评论
           </button>
+          <button
+            v-if="detail"
+            type="button"
+            class="icon-button"
+            data-podcast-program-more
+            :aria-label="`更多：${voice.name}`"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            :disabled="!menuPage"
+            @click.stop="openProgramMenu($event, voice)"
+            @dblclick.stop
+          >
+            <Icon name="more" />
+          </button>
           <span class="sr-only">第 {{ page.offset + i + 1 }} 集</span>
         </article>
       </div>
+      <PodcastProgramMenu
+        ref="programMenu"
+        :page="menuPage"
+        :playable="playable"
+        :queueable="queueable"
+        :queue="queueProgram"
+        @play="play"
+        @comments="(id, title) => emit('comments', id, title)"
+        @download="(voices) => emit('download', voices)"
+      />
       <footer v-if="page && page.total > query.limit" class="podcast-pagination">
         <button
           class="secondary"

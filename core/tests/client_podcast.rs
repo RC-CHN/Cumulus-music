@@ -5,6 +5,8 @@ mod badges;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
+#[path = "client_podcast/program_menu.rs"]
+mod program_menu;
 #[path = "client_podcast/recommendations.rs"]
 mod recommendations;
 #[path = "client_podcast/search_playback.rs"]
@@ -29,6 +31,9 @@ use std::sync::{
 #[derive(Default)]
 struct Backend {
     calls: Mutex<Vec<(String, Value)>>,
+    menu_count_hold: AtomicBool,
+    menu_count_started: tokio::sync::Notify,
+    menu_count_release: tokio::sync::Notify,
     count: AtomicUsize,
     resume: AtomicBool,
     liked: Mutex<Vec<u64>>,
@@ -140,6 +145,24 @@ impl Api for Backend {
                         self.recommendation_release.notified().await;
                     }
                     self.recommendation_response.lock().unwrap().clone()
+                }
+                "/api/resource/commentInfo/list" => {
+                    assert!(!cache);
+                    assert_eq!(p["resourceType"], 1);
+                    let ids: Vec<String> =
+                        serde_json::from_str(p["resourceIds"].as_str().unwrap())?;
+                    assert_eq!(ids.len(), 1);
+                    if self.menu_count_hold.swap(false, Ordering::SeqCst) {
+                        self.menu_count_started.notify_one();
+                        self.menu_count_release.notified().await;
+                    }
+                    let id = &ids[0];
+                    let thread = if id == "2" {
+                        format!("R_SO_4_{id}")
+                    } else {
+                        format!("A_DJ_1_{id}")
+                    };
+                    json!({"code":200,"data":[{"threadId":thread,"commentCount":54}]})
                 }
                 "/api/user/setting" => json!({"code":200,"setting":{"personalServiceSetting":
                     if self.personalization_disabled.load(Ordering::SeqCst) {2} else {0}}}),

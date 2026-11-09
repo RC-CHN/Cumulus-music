@@ -464,8 +464,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   ) {
     return queueAction({ kind: 'queue_vertical_zone_playlist_batch', ...selection });
   }
-  function queueVoice(id: string) {
-    return queueAction({ kind: 'queue_voice', id });
+  function queueVoice(id: string, program?: import('../services/podcast').PodcastProgramTarget) {
+    return queueAction({ kind: 'queue_voice', id, ...(program ? { program } : {}) });
   }
   function queueLocal(query: LocalQuery, revision: string, trackId?: string) {
     return queueAction({ kind: 'queue_local', query, revision, track_id: trackId });

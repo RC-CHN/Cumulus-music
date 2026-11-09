@@ -968,13 +968,14 @@ impl MusicClient {
         }
         if let PlayerAction::QueueVoice {
             id,
+            program,
             expected_queue_revision,
         } = action
         {
             return self
                 .queue_collection(
                     epoch,
-                    queue_playlist::QueueCollection::Voice { id },
+                    queue_playlist::QueueCollection::Voice { id, program },
                     expected_queue_revision,
                 )
                 .await;

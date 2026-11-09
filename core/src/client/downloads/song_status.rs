@@ -50,6 +50,42 @@ pub(super) fn download_state(
 }
 
 impl MusicClient {
+    pub(in crate::client) async fn completed_voice_directory(
+        &self,
+        epoch: &str,
+        id: &str,
+    ) -> Result<std::path::PathBuf> {
+        let context = self.downloads.inner.context(epoch)?;
+        let id = identifier(&json!(id))?;
+        tokio::task::spawn_blocking(move || {
+            let mut found = None;
+            for row in context.store.playback_download_rows(
+                &context.owner,
+                &id,
+                PlaybackDownloadKind::Voice,
+            )? {
+                if row.status != "complete" || row.moving {
+                    continue;
+                }
+                let Ok(path) =
+                    context
+                        .service
+                        .completed_voice_directory_for(&context.token, &row.id, &id)
+                else {
+                    continue;
+                };
+                if found.as_ref().is_some_and(|previous| previous != &path) {
+                    return Err(Error::State("program has multiple download directories"));
+                }
+                found = Some(path);
+            }
+            context.guard()?;
+            found.ok_or(Error::DownloadedFileMissing)
+        })
+        .await
+        .map_err(|_| Error::State("program download directory worker stopped"))?
+    }
+
     pub async fn song_download_state(&self, epoch: &str, id: &str) -> Result<SongDownloadState> {
         self.playback_download_state(epoch, id, PlaybackDownloadKind::Song)
             .await

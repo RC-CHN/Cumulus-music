@@ -214,6 +214,9 @@
   padding: 8px 12px;
   border-radius: 8px;
 }
+.episode-row.with-more {
+  grid-template-columns: 32px minmax(0, 1fr) 52px 30px 30px 40px 30px;
+}
 .episode-row:nth-child(odd) {
   background: var(--surface-alt);
 }
@@ -306,6 +309,9 @@
     gap: 5px;
     padding: 8px 4px;
     grid-template-columns: 26px minmax(0, 1fr) 40px 27px 27px 32px;
+  }
+  .episode-row.with-more {
+    grid-template-columns: 26px minmax(0, 1fr) 40px 27px 27px 32px 30px;
   }
   .episode-comment {
     font-size: 12px;

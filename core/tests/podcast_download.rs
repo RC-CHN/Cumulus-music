@@ -367,3 +367,99 @@ fn voice_tag_plan_is_dj_metadata_and_matches_all_supported_plain_audio_container
         assert!(plan.comment_plain.starts_with("dj:"));
     }
 }
+
+#[tokio::test]
+async fn ordinary_program_folder_uses_the_completed_owned_voice_and_never_a_renderer_path() {
+    use cumulus_core::{
+        account::profiles::ProfileRegistry,
+        client::{
+            MusicClient,
+            dto::{PodcastProgramTarget, PodcastQuery},
+        },
+        podcast::PodcastScope,
+        protocol::http::ApiOrigin,
+    };
+    let f = Fixture::new(vec![
+        detail(),
+        detail(),
+        permission(true),
+        resource(),
+        json!({"code":200,"data":{"id":71,"name":"Radio","programCount":1,"subed":false}}).into(),
+        json!({"code":200,"data":{"programs":[program()],"count":1,"more":false,"asc":true}})
+            .into(),
+        json!({"code":200,"data":{"data":[],"hasMore":false}}).into(),
+        json!({"code":200,"data":{"resumePlayValue":0}}).into(),
+    ]);
+    let client = MusicClient::with_session(
+        f.session.clone(),
+        ProfileRegistry::open(&f.root.path().join("state"), ApiOrigin::Pc).unwrap(),
+    );
+    let task = f
+        .service
+        .create_voice(&json!(81), f.destination(), DownloadOptions::default())
+        .await
+        .unwrap();
+    f.service
+        .run(&task.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    let row = f.service.get(&task.id).unwrap();
+    let file = row.target.unwrap();
+    let page = client
+        .podcast_page(
+            "1",
+            PodcastQuery {
+                scope: PodcastScope::Radio {
+                    id: "71".into(),
+                    ascending: true,
+                },
+                offset: 0,
+                limit: 20,
+                keyword: String::new(),
+                revision: None,
+            },
+            true,
+        )
+        .await
+        .unwrap();
+    let target = PodcastProgramTarget {
+        radio_id: "71".into(),
+        ascending: true,
+        revision: page.revision,
+        voice_id: "81".into(),
+    };
+    assert_eq!(
+        client
+            .podcast_program_directory_path("1", target.clone())
+            .await
+            .unwrap(),
+        file.parent().unwrap()
+    );
+    assert!(
+        client
+            .podcast_program_directory_path("9", target.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .podcast_program_directory_path(
+                "1",
+                PodcastProgramTarget {
+                    voice_id: "91".into(),
+                    ..target.clone()
+                }
+            )
+            .await
+            .is_err()
+    );
+    let before = f.api.calls().len();
+    std::fs::remove_file(file).unwrap();
+    assert!(
+        client
+            .podcast_program_directory_path("1", target)
+            .await
+            .is_err()
+    );
+    assert_eq!(f.api.calls().len(), before);
+}

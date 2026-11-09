@@ -258,7 +258,11 @@ import { usePodcastCatalogue } from './composables/usePodcastCatalogue';
 import { usePodcastHome } from './composables/usePodcastHome';
 import { usePodcastRankings } from './composables/usePodcastRankings';
 import { usePodcastTop } from './composables/usePodcastTop';
-import { AUDIOBOOK_CATEGORY, type PodcastScope } from './services/podcast';
+import {
+  AUDIOBOOK_CATEGORY,
+  type PodcastProgramTarget,
+  type PodcastScope,
+} from './services/podcast';
 import {
   failure,
   type PlaylistView,
@@ -1723,6 +1727,27 @@ watch(
 );
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
+}
+async function queuePodcastProgram(epoch: string, program: PodcastProgramTarget): Promise<boolean> {
+  const snapshot = podcasts.page.value,
+    scope = podcasts.query.value.scope;
+  if (
+    page.value.kind !== 'podcasts' ||
+    !ordinaryVoiceQueueable.value ||
+    podcasts.recentSelected.value ||
+    epoch !== account.value.epoch ||
+    !snapshot ||
+    snapshot.epoch !== epoch ||
+    scope.kind !== 'radio' ||
+    scope.id !== program.radioId ||
+    scope.ascending !== program.ascending ||
+    snapshot.revision !== program.revision ||
+    !snapshot.episodes.some((voice) => voice.id === program.voiceId && !voice.unavailable)
+  )
+    return false;
+  const before = player.view.value;
+  const next = await player.queueVoice(program.voiceId, program);
+  return !!before?.queueLen && !!next && next.queueRevision !== before.queueRevision;
 }
 const currentPodcastRadioId = computed(() => {
   const view = player.view.value;
@@ -5567,6 +5592,8 @@ onUnmounted(() => {
                 :playing="player.playing.value"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentVoiceId"
+                :queueable="ordinaryVoiceQueueable"
+                :queue-program="queuePodcastProgram"
                 @play="playPodcast"
                 :current-radio-id="currentPodcastRadioId"
                 @recent-play="playRecentPodcast"

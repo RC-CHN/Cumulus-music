@@ -4,6 +4,29 @@ export type PodcastRecommendationAction = 'overlay' | 'play' | 'next';
 export function podcastPublicLink(id: string): string | null {
   return /^[1-9]\d{0,19}$/.test(id) ? `https://music.163.com/djradio?id=${id}` : null;
 }
+export interface PodcastProgramShare {
+  id: string;
+  name: string;
+  creator: string;
+}
+export function podcastProgramPublicLink(id: string): string | null {
+  return id.length <= 20 && /^[1-9]/.test(id) && !/\D/.test(id)
+    ? `https://music.163.com/dj?id=${id}`
+    : null;
+}
+export interface PodcastProgramTarget {
+  radioId: string;
+  ascending: boolean;
+  revision: string;
+  voiceId: string;
+}
+export interface PodcastProgramMenuClient {
+  podcastProgramCommentCount(
+    epoch: string,
+    target: PodcastProgramTarget,
+  ): Promise<AccountData<number | null>>;
+  podcastOpenProgramDownloadDirectory(epoch: string, target: PodcastProgramTarget): Promise<void>;
+}
 /** Extract only an official radio identifier; this never opens the pasted URL. */
 export function podcastReference(input: string): string | null {
   const value = input.trim();

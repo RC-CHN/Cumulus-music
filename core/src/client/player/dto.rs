@@ -605,6 +605,8 @@ pub enum PlayerAction {
     },
     QueueVoice {
         id: String,
+        #[serde(default)]
+        program: Option<crate::client::dto::PodcastProgramTarget>,
         expected_queue_revision: String,
     },
     QueueDailyRecommendations {

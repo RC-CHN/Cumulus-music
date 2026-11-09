@@ -21,6 +21,46 @@ fn options_valid(options: &DownloadOptions) -> Result<()> {
     Ok(())
 }
 impl DownloadService {
+    /// Expose only the original checked directory of an exact completed program.
+    pub(crate) fn completed_voice_directory_for(
+        &self,
+        token: &crate::account::SessionToken,
+        task_id: &str,
+        voice: &str,
+    ) -> Result<std::path::PathBuf> {
+        let task = self.get_for(token, task_id)?;
+        if task.status != DownloadStatus::Complete
+            || task.file_operation.is_some()
+            || !matches!(&task.origin, DownloadOrigin::Voice { voice_id } if voice_id == voice)
+        {
+            return Err(Error::QueueChanged);
+        }
+        let path = files::target(&task)?;
+        let parent = path
+            .parent()
+            .ok_or(Error::State("download target has no parent"))?;
+        let output = task
+            .output_integrity
+            .as_ref()
+            .ok_or(Error::DownloadedFileMissing)?;
+        let file = std::fs::symlink_metadata(path)?;
+        if !file.is_file() || file.len() != output.bytes || parent.canonicalize()? != parent {
+            return Err(Error::DownloadedFileMissing);
+        }
+        // Recheck the durable row after touching the filesystem, since a file
+        // operation may have started while the folder was being verified.
+        let live = self.get_for(token, task_id)?;
+        if live.origin != task.origin
+            || live.status != task.status
+            || live.target != task.target
+            || live.output_integrity != task.output_integrity
+            || live.file_operation.is_some()
+        {
+            return Err(Error::QueueChanged);
+        }
+        Ok(parent.into())
+    }
+
     async fn voice_detail(&self, id: &Value) -> Result<Episode> {
         let token = self.session.token()?;
         self.guard(&token)?;

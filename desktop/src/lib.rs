@@ -283,6 +283,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 together::together_statistics,
                 together::together_command,
                 podcast::podcast_page,
+                podcast::podcast_program_comment_count,
+                podcast::podcast_open_program_download_directory,
                 podcast::podcast_subscription_recommendations,
                 podcast::podcast_radio_order,
                 podcast::audiobook_skip_settings,

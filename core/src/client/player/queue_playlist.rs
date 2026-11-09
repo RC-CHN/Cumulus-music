@@ -59,6 +59,7 @@ pub(super) enum QueueCollection {
     },
     Voice {
         id: String,
+        program: Option<crate::client::dto::PodcastProgramTarget>,
     },
     Downloads(Vec<String>),
     Local {
@@ -304,15 +305,24 @@ impl MusicClient {
             } => (None, Some(self.album_playback_guard(&token, scope)?)),
             _ => (None, None),
         };
-        if let QueueCollection::Voice { id } = &collection {
+        let program = if let QueueCollection::Voice { id, program } = &collection {
             self.session.with_token(&token, |_| Ok(()))?;
+            if let Some(target) = program {
+                if target.voice_id != *id {
+                    return Err(Error::QueueChanged);
+                }
+                self.require_podcast_program(&token, target, true)?;
+            }
             if queue.selected().is_some_and(|entry| {
                 resource_key(&entry.resource, false)
                     == Some((PlayerResourceKind::Voice, id.as_str()))
             }) {
                 return project(&before, &token);
             }
-        }
+            program.clone()
+        } else {
+            None
+        };
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let (resources, source, downloaded) = match collection {
@@ -519,7 +529,7 @@ impl MusicClient {
                     false,
                 )
             }
-            QueueCollection::Voice { id } => {
+            QueueCollection::Voice { id, .. } => {
                 // M3085: a context-menu next action uses just the selected
                 // program, even when the card requests the surrounding audio.
                 let id = identifier(&json!(id))?;
@@ -589,6 +599,9 @@ impl MusicClient {
             if self.player.selection.load(Ordering::Acquire) != attempt {
                 return Err(Error::StaleResponse);
             }
+        }
+        if let Some(program) = &program {
+            self.require_podcast_program(&token, program, true)?;
         }
         let expected = before.fence();
         let command = PlaybackCommand::UpdateQueue(QueueUpdate {

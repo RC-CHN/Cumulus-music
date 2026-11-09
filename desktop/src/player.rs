@@ -244,6 +244,16 @@ pub async fn player_action<R: tauri::Runtime>(
     {
         return Err(Error::InvalidInput("bottom bar action requires the main window").into());
     }
+    if matches!(
+        &action,
+        PlayerAction::QueueVoice {
+            program: Some(_),
+            ..
+        }
+    ) && window.label() != "main"
+    {
+        return Err(Error::InvalidInput("podcast program queue requires the main window").into());
+    }
     client
         .player_action(&epoch, action)
         .await
