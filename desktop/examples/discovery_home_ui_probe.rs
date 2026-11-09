@@ -1,6 +1,8 @@
 //! Production Tauri/WebKit homepage using only the synthetic read fixture.
 #[path = "support/assets.rs"]
 mod assets;
+#[path = "support/capture_ack.rs"]
+mod capture_ack;
 #[path = "../../core/tests/support/discovery_home.rs"]
 mod fixture;
 // Reuse the existing exact synthetic CDN -> local WAV -> real libmpv null
@@ -50,7 +52,7 @@ fn main() {
             app.add_capability(r#"{"identifier":"discovery-home-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
             let handle = app.handle().clone();
             let webview = root.join("webview");
-            app.listen("discovery-home-proof", move |event| {
+            app.listen(if recall { "ux-proof" } else { "discovery-home-proof" }, move |event| {
                 let mut value: Value = serde_json::from_str(event.payload()).expect("probe payload");
                 let stage = value["stage"].as_str().expect("probe stage").to_owned();
                 match stage.as_str() {
@@ -58,7 +60,7 @@ fn main() {
                         let mode = value["mode"].as_u64().filter(|v| *v <= 6).expect("probe fixture mode");
                         fixture.mode.store(mode as u8, Ordering::SeqCst);
                     }
-                    "complete" | "failed" | "home" | "dark" | "seeded_style" | "ranking" | "recent_style" | "retry" | "privacy" | "recall_ready" | "recall_closed" | "recall_playing" => {
+                    "complete" | "failed" | "home" | "dark" | "seeded_style" | "ranking" | "recent_style" | "retry" | "privacy" | "ux_recall_ready" | "ux_recall_closed" | "ux_recall_playing" => {
                         let calls = fixture.calls.lock().unwrap();
                         value["paths"] = json!(calls.iter().map(|(path, _, _)| path).collect::<Vec<_>>());
                         value["styleCalls"] = json!(calls.iter().filter(|(path, _, _)| matches!(path.as_str(),
@@ -77,6 +79,13 @@ fn main() {
                         fs::write(root.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                         if stage == "complete" || stage == "failed" {
                             handle.exit(i32::from(stage == "failed"));
+                        } else if recall && stage.starts_with("ux_") {
+                            let handle = handle.clone();
+                            let root = root.clone();
+                            let handshake = value["captureHandshake"] == true;
+                            tauri::async_runtime::spawn(async move {
+                                capture_ack::acknowledge(&handle, &root, &stage, handshake).await;
+                            });
                         }
                     }
                     _ => {}
@@ -91,8 +100,13 @@ fn main() {
             if payload.event() == PageLoadEvent::Finished && window.label() == "main" {
                 let override_script = std::env::var_os("CUMULUS_DISCOVERY_HOME_PROOF_SCRIPT")
                     .map(|path| fs::read_to_string(path).expect("local synthetic probe script"));
-                window.eval(override_script.as_deref()
-                    .unwrap_or(if recall { include_str!("home_recall_ui_probe.js") } else { include_str!("discovery_home_ui_probe.js") })).unwrap();
+                let script = override_script.as_deref()
+                    .unwrap_or(if recall { include_str!("home_recall_ui_probe.js") } else { include_str!("discovery_home_ui_probe.js") });
+                if recall && std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
+                    window.eval(capture_ack::script(script)).unwrap();
+                } else {
+                    window.eval(script).unwrap();
+                }
             }
         })
         .run(context)

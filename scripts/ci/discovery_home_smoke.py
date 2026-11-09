@@ -40,7 +40,9 @@ def main():
     captured = set()
     if args.recall:
         env['CUMULUS_DISCOVERY_RECALL_PROOF'] = '1'
-        stages = ('recall_ready', 'recall_closed', 'recall_playing')
+        if args.screenshots:
+            env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
+        stages = ('ux_recall_ready', 'ux_recall_closed', 'ux_recall_playing')
     else:
         stages = ('home', 'dark', 'seeded_style', 'ranking', 'recent_style', 'retry', 'privacy')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
@@ -57,7 +59,11 @@ def main():
                         picture = Gdk.pixbuf_get_from_window(
                             capture_root, 0, 0, capture_root.get_width(), capture_root.get_height())
                         assert picture is not None, 'no GTK frame'
-                        picture.savev(str(output / f'{stage}.png'), 'png', [], [])
+                        png = output / f'{stage}.png'
+                        assert picture.savev(str(png), 'png', [], []), 'GTK screenshot save failed'
+                        if args.recall:
+                            assert png.stat().st_size > 0, 'empty GTK screenshot'
+                            (output / f'{stage}.captured').write_text('captured\n', encoding='utf-8')
                         captured.add(stage)
                 time.sleep(.08)
         finally:
@@ -105,12 +111,14 @@ def verify_recall(output, complete, screenshots):
     def read(stage):
         return json.loads((output / f'{stage}.json').read_text(encoding='utf-8'))
 
-    ready, closed, playing = (read(stage) for stage in ('recall_ready', 'recall_closed', 'recall_playing'))
+    ready, closed, playing = (read(stage) for stage in ('ux_recall_ready', 'ux_recall_closed', 'ux_recall_playing'))
     assert ready['rows'] == [str(row) for row in range(911, 923)]
     assert ready['prefillSaved'] is True and ready['guideShown'] is False
     assert ready['ready']['state'] == closed['closed']['state'] == 'idle'
     assert ready['ready']['playId'] is None and closed['closed']['playId'] is None
     assert ready['mediaCalls'] == closed['mediaCalls'] == []
+    for key in ('state', 'entryId', 'playId', 'queueRevision', 'position'):
+        assert playing['beforePlay'][key] == closed['closed'][key], key
     assert 2700 < closed['visibleMs'] < 3850 and complete['guideShown'] is True
     assert playing['playing']['state'] == 'playing' and playing['playing']['position'] > .25
     assert playing['playing']['entryId'] == ready['ready']['entryId']
@@ -122,7 +130,12 @@ def verify_recall(output, complete, screenshots):
         'HOMEPAGE_BLOCK_STYLE_RCMD', 'HOMEPAGE_MUSIC_PODCAST_RCMD_BLOCK',
         'HOMEPAGE_BLOCK_PLAYLIST_RCMD', 'HOMEPAGE_BLOCK_ALL_LISTEN', 'HOMEPAGE_BLOCK_HOT_RESOURCE',
     ]
-    return dict(ok=True, actualWebView=True, screenshots=screenshots, states=3, realAccount=False,
+    markers = sorted(path.stem for path in output.glob('ux_recall_*.captured'))
+    assert markers == (['ux_recall_closed', 'ux_recall_playing', 'ux_recall_ready'] if screenshots else [])
+    assert all(stage.get('captureHandshake', False) is bool(screenshots)
+               for stage in (ready, closed, playing))
+    return dict(ok=True, actualWebView=True, screenshots=screenshots, captureAcknowledgements=len(markers),
+                states=3, realAccount=False,
                 nativeNullPlaybackVerified=True, physicalAudioOutputVerified=False,
                 prefillRows=ready['rows'], guideVisibleMs=closed['visibleMs'], mediaBeforePlay=0)
 

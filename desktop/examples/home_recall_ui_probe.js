@@ -2,7 +2,7 @@
 (async () => {
   const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
   const emit = (stage, rest = {}) => invoke('plugin:event|emit', {
-    event: 'discovery-home-proof', payload: { stage, ...rest },
+    event: 'ux-proof', payload: { stage, ...rest },
   });
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const paint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -55,8 +55,11 @@
       Math.abs((guideRect.left + guideRect.right - playRect.left - playRect.right) / 2) < 2,
       'guide is painted above and centered on the actual Play button');
     assert(document.activeElement !== play() && document.activeElement !== guide(), 'guide stole focus');
-    await emit('recall_ready', { rows, ready, guide: guide().textContent.trim() });
-    await sleep(900);
+    await emit('ux_recall_ready', { rows, ready, guide: guide().textContent.trim() });
+    assert(guide()?.isConnected, 'visible guide capture missed its display window');
+    // The first screenshot can take time; measure the production guide from
+    // its own appearance rather than adding another delay after capture.
+    await sleep(Math.max(0, 900 - (performance.now() - firstSeen)));
     assert(guide()?.isConnected, 'guide closed too soon');
     await wait(() => !guide(), 'guide closed automatically', 3500);
     const visibleMs = performance.now() - firstSeen;
@@ -65,8 +68,15 @@
     const closed = await player();
     assert(closed.state === 'idle' && closed.queueRevision === ready.queueRevision &&
       closed.entryId === ready.entryId && closed.playId == null, 'closing prompt changed transport');
-    await emit('recall_closed', { closed, visibleMs });
+    assert(play()?.getAttribute('aria-label') === '播放' && !guide(), 'closed guide and idle footer rendered');
+    await emit('ux_recall_closed', { closed, visibleMs });
 
+    // In screenshot mode emit returns only after the host has written the
+    // actual closed-state PNG. Never start Play while that frame is pending.
+    const beforePlay = await player();
+    assert(beforePlay.state === 'idle' && beforePlay.playId == null &&
+      beforePlay.entryId === closed.entryId && beforePlay.queueRevision === closed.queueRevision,
+      'playback changed while the closed frame was awaiting capture');
     const playButton = play();
     playButton.focus({ preventScroll: true });
     playButton.click();
@@ -78,9 +88,9 @@
     assert(playing.entryId === ready.entryId && playing.playId &&
       playing.queueRevision === ready.queueRevision, 'Play opened the exact prefetched selection');
     assert(JSON.stringify((await queue()).tracks) === JSON.stringify(prefill.tracks), 'Play reordered rows');
+    await wait(() => play()?.getAttribute('aria-label') === '暂停', 'playing footer rendered');
     await paint();
-    await emit('recall_playing', { playing });
-    await sleep(350); // The fixture host keeps the painted stage available for GTK screenshot.
+    await emit('ux_recall_playing', { playing, beforePlay });
     await emit('complete', { ok: true, realAccount: false });
   } catch (error) {
     await emit('failed', { ok: false, error: String(error), stack: error?.stack,
