@@ -44,8 +44,13 @@
   const field = () => one('input[aria-label="歌单名称"]', picker());
   const privacy = () => one('input[aria-label="设为隐私歌单"]', picker());
   async function open(id) {
+    await wait(() => !one('dialog[data-download-collect],.action-menu-leave-active'),
+      'previous picker and menu fully closed');
     const current = await wait(() => row(id), 'download source row');
-    current.scrollIntoView({block:'nearest'});
+    current.scrollIntoView({block:'nearest', behavior:'instant'});
+    // The table deliberately closes row menus on scroll. Let that native
+    // scroll dispatch and the virtual row update finish before opening.
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
     click(more(id));
     await wait(() => menu()?.style.visibility === 'visible' && menu().contains(document.activeElement),
       'focused download menu');
