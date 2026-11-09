@@ -552,7 +552,7 @@ impl Api for Library {
                 return signed.client.request(path, args, cached).await;
             }
             assert!(
-                !daily_notification_fixture::copyright_case().is_some()
+                daily_notification_fixture::copyright_case().is_none()
                     || path != "/api/unique/playlist/create",
                 "readonly copyright proof must never dispatch unique playlist creation"
             );
