@@ -353,7 +353,9 @@ async fn ambiguous_creation_survives_reopen_and_blocks_another_create_without_re
 
 #[tokio::test]
 async fn metadata_partial_reply_retains_actual_fields_and_does_not_replay_successful_children() {
-    let before = row(10, "old", 1, &[1, 2]);
+    let mut before = row(10, "old", 1, &[1, 2]);
+    let local_id = "1234abcd0000efab1234abcd0000efab";
+    before["trackIds"][1] = json!({"id":local_id,"v":-1});
     let mut after = before.clone();
     after["tags"] = json!(["电子"]);
     after["description"] = json!("description");
@@ -369,6 +371,10 @@ async fn metadata_partial_reply_retains_actual_fields_and_does_not_replay_succes
     assert_eq!(r.codes["name"], 400);
     assert_eq!(r.observed.as_ref().unwrap()["name"], "old");
     assert_eq!(r.observed.as_ref().unwrap()["tags"], json!(["电子"]));
+    assert_eq!(
+        r.observed.as_ref().unwrap()["tracks"],
+        json!(["1", local_id])
+    );
     let calls = w.api.calls();
     let batch = calls
         .iter()
@@ -382,6 +388,7 @@ async fn metadata_partial_reply_retains_actual_fields_and_does_not_replay_succes
     )
     .unwrap();
     assert_eq!(child, json!({"id":"10","desc":"description"}));
+    assert!(!batch[0].payload.to_string().contains(local_id));
 }
 
 #[tokio::test]
@@ -535,7 +542,7 @@ async fn stale_revision_foreign_owner_system_playlist_and_local_entries_are_reje
             v["specialType"] = json!(5);
         }
         if variant == 3 {
-            v["trackIds"][0]["v"] = json!(-1);
+            v["trackIds"][0] = json!({"id":"1234abcd0000efab1234abcd0000efab","v":-1});
         }
         let w = World::new([detail(&v), detail(&v)]).await;
         let actual = w.revision().await;

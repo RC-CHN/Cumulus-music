@@ -15,5 +15,6 @@ pub use external_input::{
 };
 pub(crate) use service::GroupDownloadPlaylistProof;
 pub use service::PlaylistService;
+pub(crate) use snapshot::playlist_entry_id;
 pub use snapshot::{PlaylistList, PlaylistSnapshot, PlaylistSummary};
 pub use types::*;

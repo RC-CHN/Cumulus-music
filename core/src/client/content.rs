@@ -3,7 +3,7 @@ use crate::{
     Error, Result,
     account::resources::{AccountResources, MutationPhase, MutationRecord, ResourceKind},
     catalog::{CatalogApi, SearchOptions},
-    playlist::PlaylistApi,
+    playlist::{PlaylistApi, playlist_entry_id},
     protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
@@ -73,7 +73,7 @@ pub(super) async fn playlist_track_page(
         tracks.push(match song {
             Some(song) => mapping::track(&song)?,
             None => TrackView {
-                id: identifier(&item["id"])?,
+                id: playlist_entry_id(item)?,
                 voice_id: None,
                 title_names: Default::default(),
                 name: if local {
