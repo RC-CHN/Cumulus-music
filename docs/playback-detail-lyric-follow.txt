@@ -297,3 +297,7 @@ clientSign（core/src/protocol/http/profile/windows.rs:27–31），Linux 回退
 5315daaa 实窗报告及 11 张截图已归档在
 .build/ui-proof/phase221-lyric-bounty/；receipt.json 记录各文件大小及
 SHA-256，对应整合提交 0083b614，未以归档作为其他功能的验证结果。
+
+空态字号的 13 张截图及实窗摘要另归档于
+.build/ui-proof/phase224-empty-lyric-font/receipt.json，分别标记已构建
+前端 30417ac4、复用的原生 Linux 测试宿主 5315daaa 和整合 d8c8d227。

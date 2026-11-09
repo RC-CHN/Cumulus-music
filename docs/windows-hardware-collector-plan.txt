@@ -448,3 +448,27 @@ https://learn.microsoft.com/en-us/windows-hardware/drivers/network/oid-802-3-per
 https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/strlwr-s-strlwr-s-l-mbslwr-s-mbslwr-s-l-wcslwr-s-wcslwr-s-l?view=msvc-170
 https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
 https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostbyname
+
+10. Windows x64 托管虚拟机实测（只读）
+--------------------------------------
+
+GitHub Actions 42706664026 attempt 1（479bb0d4，windows-2022，MSVC）：
+https://github.com/RC-CHN/Cumulus-music/actions/runs/42706664026
+
+同一次运行中，主板策略 2 项、主机数组策略 2 项、网卡 8 项（含系统 CRT
+描述大小写）和磁盘解析 4 项通过，随后分别执行四个独立程序。输出先按固定的
+字段与枚举校验，未输出序列号、主机描述、MAC 或签名材料。
+
+- 主板：系统与线程 ACP 均为 1252；本机 WMI 主板和 BIOS 字段有值，
+  选中通过转换和过滤的主板路径；未触发 BIOS 替补，不能据此证明其真实分支。
+- 主机：Vendor 和 Name 可独立读取并转为非空 ACP；ChassisTypes 返回
+  已核对的数组元数据，VARIANT tag 8195（VT_ARRAY | VT_I4）。未读元素或
+  +8 锁字段与填充，仍未构造官方完整主机描述。
+- 网卡：注册表／NDIS 主路径取得可格式化为 17 字节的永久地址；未输出
+  内容，也未进入 CEFD10 备用路径。
+- 磁盘：16 个候选槽位打开 2 个、其余 14 个不存在；两个设备描述符
+  的序列字段均为空，两个媒体序列请求均返回归为不支持的状态。没有观察
+  到有效序列，也未运行尚未恢复的其他磁盘分支。
+
+仅为一台虚拟机的系统观测，未覆盖实体设备、UTF-8 进程 ACP、驱动拒绝、
+多网卡与旧查询回退。没有发登录请求、组合指纹或变更桌面默认配置。

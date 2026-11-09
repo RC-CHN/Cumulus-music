@@ -55,3 +55,10 @@ https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew
 https://learn.microsoft.com/windows/win32/api/winioctl/ns-winioctl-storage_device_descriptor
 https://learn.microsoft.com/windows/win32/api/winioctl/ni-winioctl-ioctl_storage_get_media_serial_number
 https://learn.microsoft.com/windows/win32/devio/media-serial-number-data-str
+
+Windows 2022 x64 实际运行：42706664026 attempt 1（479bb0d4），
+4 项解析测试通过，随后以 --offline 执行。16 个槽位打开 2 个、14 个不在；
+设备描述符回传 2 个空序列，媒体序列查询 2 个不支持，退出 2
+（no_readable_serial）。虚拟机没有给出可用序列；该结果不证明实体磁盘的
+word swap/转义分支，也不证明所有 Windows 设备均无可读序列。
+https://github.com/RC-CHN/Cumulus-music/actions/runs/42706664026
