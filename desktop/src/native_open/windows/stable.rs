@@ -1,6 +1,6 @@
 //! Event-driven Win32 server: one retained handle and one operation at a time.
-//! This is an isolated native lab adapter, not a desktop runtime.
-use crate::wire;
+//! The native lab exercises this same retained listener.
+use super::wire;
 use std::{
     cell::UnsafeCell,
     fmt, io, mem,
@@ -37,6 +37,7 @@ impl Stop {
     pub(crate) fn new() -> io::Result<Self> {
         event().map(|handle| Self(Arc::new(handle)))
     }
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(crate) fn wait(&self, deadline: Instant) -> io::Result<()> {
         // SAFETY: a live event and bounded non-alertable wait.
         match unsafe { WaitForSingleObject(self.0.as_raw_handle(), wait_ms(deadline)) } {
@@ -95,6 +96,7 @@ impl End {
         io::Error::new(kind, self)
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(crate) fn is(&self, error: &io::Error) -> bool {
         error
             .get_ref()
@@ -192,6 +194,7 @@ impl Server {
         })
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(crate) fn notify_next_pending(&mut self, notice: Stop) {
         self.pending_notice = Some(notice);
     }

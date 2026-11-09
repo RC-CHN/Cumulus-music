@@ -1,11 +1,17 @@
 //! Offline Windows transport research; not linked by the desktop application.
 #[cfg(windows)]
+#[path = "../../../src/native_open/windows/identity.rs"]
 mod identity;
 #[cfg(windows)]
+#[path = "../../../src/native_open/windows/security.rs"]
+mod security;
+#[cfg(windows)]
+#[path = "../../../src/native_open/windows/stable.rs"]
 mod stable;
 #[cfg(windows)]
 mod windows;
 #[cfg(any(test, windows))]
+#[path = "../../../src/native_open/windows/wire.rs"]
 mod wire;
 
 #[cfg(windows)]

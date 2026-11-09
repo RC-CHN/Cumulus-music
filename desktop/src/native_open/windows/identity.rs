@@ -71,10 +71,12 @@ impl Identity {
         })
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(super) fn token_user_matches(&self, token: HANDLE) -> io::Result<bool> {
         Ok(user_sid(token)? == self.user)
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(super) fn token_logon_matches(&self, token: HANDLE) -> io::Result<bool> {
         if logon_sid(token)? != self.logon {
             return Ok(false);
@@ -221,6 +223,7 @@ fn logon_sid(token: HANDLE) -> io::Result<Vec<u8>> {
     logon.sid(group.Sid)
 }
 
+#[allow(dead_code, reason = "exercised by the standalone Windows lab")]
 pub(super) fn token_statistics(token: HANDLE) -> io::Result<TOKEN_STATISTICS> {
     let statistics = TokenBuffer::query(token, TokenStatistics)?;
     if statistics.len < size_of::<TOKEN_STATISTICS>() {
@@ -230,6 +233,7 @@ pub(super) fn token_statistics(token: HANDLE) -> io::Result<TOKEN_STATISTICS> {
     Ok(unsafe { *statistics.words.as_ptr().cast::<TOKEN_STATISTICS>() })
 }
 
+#[allow(dead_code, reason = "exercised by the standalone Windows lab")]
 pub(super) fn only_restricting_sid(token: HANDLE, expected: &[u8]) -> io::Result<bool> {
     let groups = TokenBuffer::query(token, TokenRestrictedSids)?;
     if groups.len < size_of::<TOKEN_GROUPS>() {
