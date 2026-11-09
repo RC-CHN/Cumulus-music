@@ -165,8 +165,7 @@ fn main() {
     let batch_add = std::env::var("CUMULUS_LOCAL_BATCH_ADD_PROOF").as_deref() == Ok("1");
     assert!(!batch_add || (!batch_play && !batch_hide && !group_hide && !folder_reveal));
     assert!(
-        !(batch_hide || batch_play)
-            || (!group_hide && !folder_reveal && !(batch_hide && batch_play))
+        !(batch_hide || batch_play) || !(group_hide || folder_reveal || (batch_hide && batch_play))
     );
     let queue = folder_reveal
         || group_hide
