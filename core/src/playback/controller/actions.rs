@@ -654,6 +654,10 @@ impl Actor {
                     Err(Error::StaleResponse)
                 } else if let Some(entry) = self.queue.selected().filter(|entry| {
                     entry.resource["download_task_id"].is_string()
+                        && entry
+                            .resource
+                            .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                            .is_none()
                         && entry.resource["id"] == resource["id"]
                 }) {
                     self.session

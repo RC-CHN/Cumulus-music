@@ -226,20 +226,10 @@ impl StateStore {
         song: &str,
     ) -> Result<Option<(String, Value)>> {
         let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
-        let mut query = connection.prepare_cached(&format!(
-            "SELECT key, value FROM state INDEXED BY download_song_v1
-             WHERE owner=? AND {DOWNLOAD_SONG_TASK} AND ({DOWNLOAD_SONG_ID})=?
-               AND json_extract(value,'$.status')='complete' LIMIT 2"
-        ))?;
-        let mut rows = query.query([owner, song])?;
-        let Some(first) = rows.next()? else {
-            return Ok(None);
-        };
-        let (key, value): (String, String) = (first.get(0)?, first.get(1)?);
-        if rows.next()?.is_some() {
-            return Ok(None);
+        StateTransaction {
+            connection: &connection,
         }
-        Ok(Some((key, serde_json::from_str(&value)?)))
+        .completed_song_publication(owner, song)
     }
 
     /// Whether this exact ordinary source is represented by a visible task in
@@ -387,6 +377,27 @@ impl StateStore {
 }
 
 impl StateTransaction<'_> {
+    pub(crate) fn completed_song_publication(
+        &self,
+        owner: &str,
+        song: &str,
+    ) -> Result<Option<(String, Value)>> {
+        let mut query = self.connection.prepare_cached(&format!(
+            "SELECT key, value FROM state INDEXED BY download_song_v1
+             WHERE owner=? AND {DOWNLOAD_SONG_TASK} AND ({DOWNLOAD_SONG_ID})=?
+               AND json_extract(value,'$.status')='complete' LIMIT 2"
+        ))?;
+        let mut rows = query.query([owner, song])?;
+        let Some(first) = rows.next()? else {
+            return Ok(None);
+        };
+        let (key, value): (String, String) = (first.get(0)?, first.get(1)?);
+        if rows.next()?.is_some() {
+            return Ok(None);
+        }
+        Ok(Some((key, serde_json::from_str(&value)?)))
+    }
+
     pub(crate) fn playback_download_rows(
         &self,
         owner: &str,

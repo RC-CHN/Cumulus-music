@@ -923,3 +923,57 @@ test('an offline continuation cannot leave actionable live rows on the screen', 
   assert.equal(music.result.value, undefined);
   assert.match(music.error.value, /联网状态/);
 });
+
+test('cached pagination retains per-page download hints only within the same snapshot', async () => {
+  const cached: TrackPage = {
+    ...page,
+    playlist: {
+      id: '73',
+      name: 'cache',
+      coverUrl: null,
+      description: '',
+      creator: '',
+      trackCount: 3,
+      owned: true,
+      private: true,
+      favorite: false,
+    },
+    revision: 'raw',
+    total: 3,
+    more: true,
+    playlistLocal: { revision: 'overlay', hasMembers: false, rows: {} },
+    playlistOffline: { cachedAtMs: 1000, downloadIds: ['701'] },
+    tracks: [{ ...song, id: '701' }],
+  };
+  const music = useMusic(
+    backend({
+      playlistPage: async (_id, request) => {
+        if (request?.offset === 1)
+          return data({
+            ...cached,
+            offset: 1,
+            tracks: [{ ...song, id: '702' }],
+            playlistOffline: { cachedAtMs: 1000, downloadIds: ['702'] },
+          });
+        if (request?.offset === 2)
+          return data({
+            ...cached,
+            offset: 2,
+            more: false,
+            tracks: [{ ...song, id: '703' }],
+            playlistOffline: { cachedAtMs: 2000, downloadIds: ['703'] },
+          });
+        return data(cached);
+      },
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'playlist', id: '73' });
+  await turn();
+  await music.load(true);
+  assert.deepEqual(music.result.value?.playlistOffline?.downloadIds, ['701', '702']);
+  await music.load(true);
+  assert.deepEqual(music.result.value?.playlistOffline?.downloadIds, ['701', '702']);
+  assert.equal(music.result.value?.tracks.length, 2);
+  assert.match(music.error.value, /联网状态/);
+});

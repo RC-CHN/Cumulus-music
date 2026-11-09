@@ -524,6 +524,7 @@ export type PlaySelection =
       id: string;
       revision: string;
       start_id: string | null;
+      start_local?: boolean;
       double_click?: boolean;
     }
   | {

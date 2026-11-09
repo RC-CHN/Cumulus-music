@@ -83,6 +83,31 @@ impl PlaybackQueue {
         Ok(())
     }
 
+    pub(crate) fn verify_offline_playlist_file_target(
+        tx: &crate::storage::StateTransaction<'_>,
+        owner: &str,
+        expected: &QueueEntry,
+        song: &str,
+        download: &crate::download::offline::PlaylistDownload,
+    ) -> Result<()> {
+        let raw = tx.get(owner, "playback", "queue")?;
+        let queue = QueueSnapshot::load(raw.as_ref())?;
+        if queue.fm_source.is_some()
+            || queue.intelligence.is_some()
+            || queue.selected().as_ref() != Some(expected)
+            || expected.resource["id"].as_str() != Some(song)
+            || expected.resource["download_task_id"].as_str() != Some(&download.task_id)
+            || expected.resource[crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD]
+                != serde_json::to_value(download)?
+            || !expected.resource["playback_constraint"].is_null()
+            || expected.source["kind"] != "playlist"
+            || expected.source["offline_playlist"] != true
+        {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
+
     pub(crate) fn install_fm_restore(&mut self, input: &FmRestore) -> Result<FmRestoreOutcome> {
         let restore =
             crate::fm::player::source(&self.state)?.is_some() || self.state.items.is_empty();

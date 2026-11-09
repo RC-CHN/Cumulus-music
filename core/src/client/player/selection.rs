@@ -796,6 +796,7 @@ impl MusicClient {
                 id,
                 revision,
                 start_id,
+                start_local,
                 double_click,
             } => {
                 let offline = self
@@ -803,16 +804,21 @@ impl MusicClient {
                         &token,
                         &id,
                         &revision,
-                        start_id.as_deref(),
+                        start_id.as_deref().map(|id| (id, start_local)),
                         preserve.is_some(),
                     )
                     .await?;
                 if double_click && let Some(lease) = lease {
                     let row = &offline.resources[offline.index];
+                    let song = if row["local_id"].is_string() {
+                        super::queue_click::TableSong::IndexedLocal(row)
+                    } else {
+                        super::queue_click::TableSong::OfflineDownload(row)
+                    };
                     if let Some(state) = self
                         .toggle_active_song_row(
                             &token,
-                            super::queue_click::TableSong::IndexedLocal(row),
+                            song,
                             attempt,
                             lease,
                             &offline.guard,
@@ -832,12 +838,17 @@ impl MusicClient {
                         .into_iter()
                         .next()
                         .ok_or(Error::QueueChanged)?;
+                    let policy = if resource["local_id"].is_string() {
+                        RetainedRow::Local
+                    } else {
+                        RetainedRow::OfflineDownload
+                    };
                     self.play_retained_queue_row_with_source(
                         &token,
                         snapshot,
                         (resource, offline.source),
                         lease,
-                        RetainedRow::Local,
+                        policy,
                         Some(offline.guard),
                     )
                     .await?

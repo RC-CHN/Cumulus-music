@@ -22,6 +22,9 @@ pub(super) fn online_resource(resource: &Value) -> bool {
     resource.get("id").is_some()
         && resource.get("local_id").is_none()
         && resource.get("path").is_none()
+        && resource
+            .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+            .is_none()
 }
 
 pub(super) fn song_resource(resource: &Value) -> bool {

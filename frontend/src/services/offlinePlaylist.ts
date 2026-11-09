@@ -1,7 +1,24 @@
 import type { TrackPage, TrackView } from './contracts';
 import type { PlaySelection } from './player';
 
-/** The offline marker labels a read projection, not a catalogue audio grant. */
+function available(page: TrackPage, track: TrackView, downloads: ReadonlySet<string>): boolean {
+  if (track.missing) return false;
+  const local = page.playlistLocal;
+  return track.local
+    ? !!local && Object.hasOwn(local.rows, track.id)
+    : !track.voiceId && /^(?=[0-9]*[1-9])[0-9]+$/.test(track.id) && downloads.has(track.id);
+}
+
+/** Native hints are for the displayed page only; the actor rechecks file and rights. */
+export function offlinePlaylistPlayableIds(page: TrackPage): Set<string> {
+  const offline = page.playlistOffline;
+  const ids = new Set<string>();
+  if (!offline) return ids;
+  const downloads = new Set(offline.downloadIds);
+  for (const track of page.tracks) if (available(page, track, downloads)) ids.add(track.id);
+  return ids;
+}
+
 export function offlinePlaylistSelection(
   id: string,
   page: TrackPage,
@@ -9,13 +26,11 @@ export function offlinePlaylistSelection(
   doubleClick = false,
 ): Extract<PlaySelection, { kind: 'offline_playlist' }> | undefined {
   const local = page.playlistLocal;
-  if (!page.playlistOffline || page.playlist?.id !== id || !local) return;
+  const offline = page.playlistOffline;
+  if (!offline || page.playlist?.id !== id || !local) return;
   if (
     track &&
-    (!track.local ||
-      track.missing ||
-      !page.tracks.includes(track) ||
-      !Object.hasOwn(local.rows, track.id))
+    (!page.tracks.includes(track) || !available(page, track, new Set(offline.downloadIds)))
   )
     return;
   return {
@@ -23,6 +38,7 @@ export function offlinePlaylistSelection(
     id,
     revision: local.revision,
     start_id: track?.id ?? null,
+    ...(track && !track.local ? { start_local: false } : {}),
     ...(doubleClick && track ? { double_click: true } : {}),
   };
 }

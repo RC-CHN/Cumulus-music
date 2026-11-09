@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { offlinePlaylistSelection } from '../src/services/offlinePlaylist.ts';
+import {
+  offlinePlaylistPlayableIds,
+  offlinePlaylistSelection,
+} from '../src/services/offlinePlaylist.ts';
 import type { TrackPage, TrackView } from '../src/services/contracts.ts';
 
 test('an offline playlist click binds an existing device member, never cached catalog metadata', () => {
@@ -58,6 +61,24 @@ test('an offline playlist click binds an existing device member, never cached ca
   });
   for (const track of [stale, unbound, online, { ...local }])
     assert.equal(offlinePlaylistSelection('73', page, track), undefined);
+  const damaged = make('124', false, true);
+  const voice = { ...make('126', false), voiceId: '126' };
+  const published: TrackPage = {
+    ...page,
+    tracks: [...page.tracks, damaged, voice],
+    playlistOffline: { cachedAtMs: 1000, downloadIds: ['123', '124', '125', '126', 'legacy'] },
+  };
+  assert.deepEqual([...offlinePlaylistPlayableIds(published)], ['local', '123']);
+  assert.deepEqual(offlinePlaylistSelection('73', published, online, true), {
+    kind: 'offline_playlist',
+    id: '73',
+    revision: 'mixed',
+    start_id: '123',
+    start_local: false,
+    double_click: true,
+  });
+  for (const track of [damaged, voice, unbound, make('125', false)])
+    assert.equal(offlinePlaylistSelection('73', published, track), undefined);
   assert.equal(offlinePlaylistSelection('74', page, local), undefined);
   assert.equal(
     offlinePlaylistSelection('73', { ...page, playlistOffline: undefined }, local),

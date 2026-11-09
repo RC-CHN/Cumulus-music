@@ -10,6 +10,10 @@ use super::{
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
+    download::{
+        offline::{OFFLINE_PLAYLIST_DOWNLOAD, PlaylistDownload, SearchPublication},
+        service::DownloadService,
+    },
     library::LocalResource,
     playback::engine::Cancellation,
     playlist::{OFFLINE_DELETED_KIND, OFFLINE_SNAPSHOT_KIND, PlaylistLocalRef, PlaylistLocalStore},
@@ -19,7 +23,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -257,7 +261,7 @@ pub(super) struct OfflineQueue {
     pub guard: Cancellation,
     // Directory membership and current index revision must remain fenced
     // until the native actor commits the queue.
-    pub _local_lease: OperationLock,
+    pub _local_lease: Option<OperationLock>,
 }
 
 impl MusicClient {
@@ -346,6 +350,50 @@ impl MusicClient {
         Ok(Some(snapshot))
     }
 
+    async fn offline_playlist_download_candidates(
+        &self,
+        token: &SessionToken,
+        wanted: impl Iterator<Item = String>,
+    ) -> Result<HashMap<String, (PlaylistDownload, &'static str)>> {
+        let mut ids: Vec<_> = wanted.collect();
+        ids.sort_unstable();
+        ids.dedup();
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let session = self.session.clone();
+        let account = token.clone();
+        let result = tokio::task::spawn_blocking(move || -> Result<_> {
+            let tasks = DownloadService::published_catalog_songs(&session, &account, &ids)?;
+            let mut available = HashMap::new();
+            for (song, task) in tasks {
+                session.check_generation(&account)?;
+                let candidate =
+                    SearchPublication::bind(session.clone(), account.clone(), &task, &song)
+                        .and_then(|file| Ok((file.playlist_candidate()?, file.quality())));
+                match candidate {
+                    Ok(value) => {
+                        available.insert(song, value);
+                    }
+                    Err(
+                        error @ (Error::StaleResponse
+                        | Error::CredentialChanged
+                        | Error::Cancelled
+                        | Error::LockPoisoned),
+                    ) => return Err(error),
+                    // A malformed ledger, missing file or unverified right
+                    // never makes the catalogue row available.
+                    Err(_) => {}
+                }
+            }
+            Ok(available)
+        })
+        .await
+        .map_err(|_| Error::State("offline playlist candidate worker stopped"))??;
+        self.session.check_generation(token)?;
+        Ok(result)
+    }
+
     pub(super) async fn offline_playlist_page(
         &self,
         token: &SessionToken,
@@ -390,13 +438,27 @@ impl MusicClient {
                 .await
                 .map_err(|_| Error::State("offline playlist index worker stopped"))??
         };
+        let downloaded = self
+            .offline_playlist_download_candidates(
+                token,
+                slice.iter().filter_map(|row| match row {
+                    Row::Catalog(track) if !track.missing => Some(track.id.clone()),
+                    _ => None,
+                }),
+            )
+            .await?;
+        let mut download_ids = Vec::new();
         let tracks = slice
             .into_iter()
             .map(|row| match row {
                 Row::Catalog(track) => {
                     let mut row = track.as_ref().clone();
-                    // Cached metadata is not proof of offline playback rights.
-                    row.missing = true;
+                    // Cached metadata alone is never a grant. File hashing is
+                    // reserved for the active native selection.
+                    row.missing = !downloaded.contains_key(&row.id);
+                    if !row.missing && !download_ids.contains(&row.id) {
+                        download_ids.push(row.id.clone());
+                    }
                     row
                 }
                 Row::UnboundLocal { id } => missing_playlist_row(id.clone(), true),
@@ -428,6 +490,7 @@ impl MusicClient {
             }),
             playlist_offline: Some(PlaylistOfflinePage {
                 cached_at_ms: snapshot.cached_at_ms,
+                download_ids,
             }),
             daily: None,
             style_tags: None,
@@ -439,7 +502,7 @@ impl MusicClient {
         token: &SessionToken,
         id: &str,
         revision: &str,
-        start: Option<&str>,
+        start: Option<(&str, bool)>,
         selected_only: bool,
     ) -> Result<OfflineQueue> {
         let snapshot = self
@@ -448,48 +511,75 @@ impl MusicClient {
         if snapshot.local_revision != revision {
             return Err(Error::QueueChanged);
         }
+        let picked = |id: &str, local: bool| !selected_only || start == Some((id, local));
         let refs = snapshot
             .rows
-            .into_iter()
+            .iter()
             .filter_map(|row| match row {
-                Row::Local(reference) if !selected_only || start == Some(reference.id.as_str()) => {
-                    Some(reference)
-                }
+                Row::Local(reference) if picked(&reference.id, true) => Some(reference.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>();
-        if refs.is_empty() {
-            return Err(Error::State("cached playlist has no playable local songs"));
-        }
-        let runtime = self.local.context().await?;
-        let (refs, mut items, local_lease) = tokio::task::spawn_blocking(move || {
-            runtime
-                .library
-                .hold_playlist_items(&refs)
-                .map(|(items, lease)| (refs, items, lease))
-        })
-        .await
-        .map_err(|_| Error::State("offline playlist index worker stopped"))??;
+        let (mut indexed, local_lease) = if refs.is_empty() {
+            (Default::default(), None)
+        } else {
+            let runtime = self.local.context().await?;
+            let (items, lease) =
+                tokio::task::spawn_blocking(move || runtime.library.hold_playlist_items(&refs))
+                    .await
+                    .map_err(|_| Error::State("offline playlist index worker stopped"))??;
+            (items, Some(lease))
+        };
+        let downloaded = self
+            .offline_playlist_download_candidates(
+                token,
+                snapshot.rows.iter().filter_map(|row| match row {
+                    Row::Catalog(track) if !track.missing && picked(&track.id, false) => {
+                        Some(track.id.clone())
+                    }
+                    _ => None,
+                }),
+            )
+            .await?;
         let mut resources = Vec::new();
         let mut index = None;
-        for reference in refs {
-            let Some(item) = items.remove(&reference.id) else {
-                continue;
+        for row in snapshot.rows {
+            let (identity, resource) = match row {
+                Row::Local(reference) => {
+                    let Some(item) = indexed.remove(&reference.id) else {
+                        continue;
+                    };
+                    let resource = serde_json::to_value(LocalResource {
+                        local_id: item.id,
+                        local_revision: item.revision,
+                        metadata: item.metadata,
+                    })?;
+                    ((reference.id, true), resource)
+                }
+                Row::Catalog(track) => {
+                    let Some((download, quality)) = downloaded.get(&track.id) else {
+                        continue;
+                    };
+                    let resource = json!({
+                        "id": track.id, "download_task_id": download.task_id,
+                        OFFLINE_PLAYLIST_DOWNLOAD: download,
+                        "song": super::mapping::projected_song_metadata(&track),
+                        "dt": track.duration_ms, "level": quality,
+                    });
+                    ((track.id, false), resource)
+                }
+                Row::UnboundLocal { .. } => continue,
             };
-            if index.is_none() && start.is_none_or(|id| id == item.id) {
+            if index.is_none() && start.is_none_or(|row| row == (identity.0.as_str(), identity.1)) {
                 index = Some(resources.len());
             }
-            resources.push(serde_json::to_value(LocalResource {
-                local_id: item.id,
-                local_revision: item.revision,
-                metadata: item.metadata,
-            })?);
+            resources.push(resource);
         }
         let index = index.ok_or(Error::State("cached playlist song is unavailable"))?;
         let session = self.session.clone();
         let (token, id) = (token.clone(), id.to_owned());
         let source = json!({
-            "kind":"playlist", "id":id, "name":snapshot.playlist.name,
+            "kind":"playlist", "id":id, "name":snapshot.playlist.name, "offline_playlist":true,
             "history_resource": {"id":id, "name":snapshot.playlist.name},
         });
         let generation = snapshot.local_generation;

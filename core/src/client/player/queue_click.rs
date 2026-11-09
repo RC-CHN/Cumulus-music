@@ -193,6 +193,7 @@ impl MusicClient {
 pub(super) enum RetainedRow {
     Catalog,
     Local,
+    OfflineDownload,
     DailyRecommendation,
     SearchCatalog,
     SearchSong,
@@ -216,6 +217,15 @@ pub(super) struct AlbumTableRows {
 pub(super) enum TableSong<'a> {
     Catalog(&'a str),
     IndexedLocal(&'a Value),
+    OfflineDownload(&'a Value),
+}
+
+fn same_offline_download(entry: &Value, row: &Value) -> bool {
+    let marker = crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD;
+    entry[marker].is_object()
+        && entry[marker] == row[marker]
+        && entry["id"] == row["id"]
+        && entry["download_task_id"] == row["download_task_id"]
 }
 
 fn current_table_song(before: &PlaybackSnapshot, song: TableSong<'_>) -> bool {
@@ -228,6 +238,7 @@ fn current_table_song(before: &PlaybackSnapshot, song: TableSong<'_>) -> bool {
                     && entry.resource["local_revision"] == row["local_revision"]
                     && entry.resource["local_id"].is_string()
             }
+            TableSong::OfflineDownload(row) => same_offline_download(&entry.resource, row),
         })
         && matches!(
             before.state,
@@ -512,10 +523,16 @@ impl MusicClient {
                             && entry.resource["voice_id"].as_str() == Some(id)
                     }
                     RetainedRow::Local => entry.resource["local_id"].as_str() == Some(id),
+                    RetainedRow::OfflineDownload => {
+                        same_offline_download(&entry.resource, &resource)
+                    }
                     _ => online_song(&entry.resource, id),
                 }
         });
-        let search = !matches!(policy, RetainedRow::Catalog | RetainedRow::Local);
+        let search = !matches!(
+            policy,
+            RetainedRow::Catalog | RetainedRow::Local | RetainedRow::OfflineDownload
+        );
         let entry = if let Some(index) = existing {
             let entry = &mut queue.items[index];
             let rebind = search && entry.source != source;
