@@ -1,4 +1,7 @@
 //! Offline Windows scenarios exercising the same Win32 primitives as desktop.
+#[cfg(all(test, windows))]
+#[path = "../../../src/native_open/windows/effective.rs"]
+mod effective;
 #[cfg(windows)]
 #[path = "../../../src/native_open/windows/identity.rs"]
 mod identity;

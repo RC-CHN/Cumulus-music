@@ -50,9 +50,13 @@ impl PlayerStreams {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     pub(crate) fn ready_for_native_open(&self, epoch: &str) -> bool {
         self.0.lock().is_ok_and(|values| {
-            values
-                .get("main")
-                .is_some_and(|current| current.task.is_some() && current.epoch.to_string() == epoch)
+            values.get("main").is_some_and(|current| {
+                current.epoch.to_string() == epoch
+                    && current
+                        .task
+                        .as_ref()
+                        .is_some_and(|task| !task.inner().is_finished())
+            })
         })
     }
 
@@ -573,6 +577,42 @@ pub fn close<R: tauri::Runtime>(window: &tauri::Window<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn warm_file_open_requires_a_live_main_subscription() {
+        let streams = PlayerStreams::default();
+        streams.reserve("main", "player", 42).unwrap();
+        assert!(!streams.ready_for_native_open("42"));
+        let (finish, waiting) = tokio::sync::oneshot::channel::<()>();
+        let task = tauri::async_runtime::spawn(async move {
+            let _ = waiting.await;
+        });
+        streams.0.lock().unwrap().get_mut("main").unwrap().task = Some(task);
+        assert!(streams.ready_for_native_open("42"));
+        assert!(!streams.ready_for_native_open("43"));
+        finish.send(()).unwrap();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while streams.ready_for_native_open("42") {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+        });
+        // The terminated handle is still present until the WebView unbinds.
+        assert!(
+            streams
+                .0
+                .lock()
+                .unwrap()
+                .get("main")
+                .unwrap()
+                .task
+                .is_some()
+        );
+    }
+
     #[test]
     fn old_account_subscription_and_late_unwatch_cannot_remove_the_new_stream() {
         let streams = PlayerStreams::default();

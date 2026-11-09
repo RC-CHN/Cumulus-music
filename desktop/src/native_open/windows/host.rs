@@ -1,5 +1,6 @@
 //! Bounded Win32 transport; only validated paths reach the native player.
 use super::{
+    effective::{AccessShape, Connector, HELLO},
     identity::{Identity, local_path},
     security::{open_handle, wide, with_logon_security},
     stable::{Server, Stop},
@@ -65,7 +66,7 @@ impl Drop for Relay {
 }
 
 pub(crate) fn install<R: Runtime>(app: &AppHandle<R>, listener: Listener) -> io::Result<()> {
-    let identity = Identity::current()?;
+    let access = AccessShape::current()?;
     let Listener { mut pipe, stop } = listener;
     let stopped = Arc::new(AtomicBool::new(false));
     app.manage(Relay {
@@ -87,10 +88,18 @@ pub(crate) fn install<R: Runtime>(app: &AppHandle<R>, listener: Listener) -> io:
                     }
                     Err(_) => break,
                 }
-                if !stopped.load(Ordering::Acquire)
-                    && identity.verify_peer(pipe.as_raw_handle(), true).is_ok()
-                {
-                    let reply = handle(&app, &mut pipe, stopped.clone());
+                let attestation = if stopped.load(Ordering::Acquire) {
+                    Connector::Denied
+                } else {
+                    access.authenticate(&mut pipe, Instant::now() + IO_LIMIT)
+                };
+                if attestation == Connector::RetireWorker {
+                    break;
+                }
+                if attestation == Connector::Verified {
+                    let Some(reply) = handle(&app, &mut pipe, &access, stopped.clone()) else {
+                        break;
+                    };
                     if pipe
                         .write_all(&receipt(reply as u8), Instant::now() + IO_LIMIT)
                         .is_ok()
@@ -109,23 +118,34 @@ pub(crate) fn install<R: Runtime>(app: &AppHandle<R>, listener: Listener) -> io:
     Ok(())
 }
 
-fn handle<R: Runtime>(app: &AppHandle<R>, pipe: &mut Server, stopped: Arc<AtomicBool>) -> Reply {
+fn handle<R: Runtime>(
+    app: &AppHandle<R>,
+    pipe: &mut Server,
+    access: &AccessShape,
+    stopped: Arc<AtomicBool>,
+) -> Option<Reply> {
     let Some(epoch) = ready_epoch(app) else {
-        return Reply::Unavailable;
+        return Some(Reply::Unavailable);
     };
     if pipe
         .write_all(&receipt(READY), Instant::now() + IO_LIMIT)
         .is_err()
     {
-        return Reply::Unavailable;
+        return Some(Reply::Unavailable);
     }
-    match receive(pipe) {
-        Ok(paths) if !stopped.load(Ordering::Acquire) => {
-            dispatch(app, paths, stopped, Some(&epoch))
-        }
+    Some(match receive(pipe) {
+        Ok(paths) if !stopped.load(Ordering::Acquire) => match access
+            .verify_connector(pipe.as_raw_handle())
+        {
+            Connector::Verified if access.verify_process(pipe.as_raw_handle(), true).is_ok() => {
+                dispatch(app, paths, stopped, Some(&epoch))
+            }
+            Connector::RetireWorker => return None,
+            _ => Reply::Unavailable,
+        },
         Ok(_) => Reply::Unavailable,
         Err(_) => Reply::Invalid,
-    }
+    })
 }
 
 fn receive(pipe: &mut Server) -> io::Result<Vec<PathBuf>> {
@@ -165,7 +185,7 @@ async fn read_code(pipe: &mut NamedPipeClient, limit: Duration) -> io::Result<u8
     Ok(bytes[4])
 }
 
-async fn send(address: &str, identity: &Identity, frame: &[u8]) -> Reply {
+async fn send(address: &str, access: &AccessShape, frame: &[u8]) -> Reply {
     let raw = match open_handle(address) {
         Ok(handle) => handle.into_raw_handle(),
         Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => return Reply::Busy,
@@ -175,8 +195,13 @@ async fn send(address: &str, identity: &Identity, frame: &[u8]) -> Reply {
     let Ok(mut pipe) = (unsafe { NamedPipeClient::from_raw_handle(raw) }) else {
         return Reply::Unavailable;
     };
-    if identity.verify_peer(pipe.as_raw_handle(), false).is_err()
+    if access.verify_process(pipe.as_raw_handle(), false).is_err()
+        || !matches!(
+            timeout(IO_LIMIT, pipe.write_all(&[HELLO])).await,
+            Ok(Ok(()))
+        )
         || read_code(&mut pipe, IO_LIMIT).await.ok() != Some(READY)
+        || access.verify_process(pipe.as_raw_handle(), false).is_err()
     {
         return Reply::Unavailable;
     }
@@ -207,6 +232,12 @@ pub(super) fn forward(address: &str, identity: &Identity, paths: &[PathBuf]) -> 
     let Ok(frame) = wire::encode(&paths) else {
         return Reply::Invalid;
     };
+    let Ok(access) = AccessShape::current() else {
+        return Reply::Unavailable;
+    };
+    if !access.matches_identity(identity) {
+        return Reply::Unavailable;
+    }
     let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .enable_time()
@@ -214,7 +245,7 @@ pub(super) fn forward(address: &str, identity: &Identity, paths: &[PathBuf]) -> 
     else {
         return Reply::Unavailable;
     };
-    runtime.block_on(send(address, identity, &frame))
+    runtime.block_on(send(address, &access, &frame))
 }
 
 #[cfg(test)]
@@ -236,12 +267,20 @@ mod tests {
         let (reset, next) = mpsc::channel();
         thread::scope(|scope| {
             scope.spawn(move || {
+                let access = AccessShape::current().unwrap();
                 for outcome in [Reply::Accepted, Reply::Invalid] {
                     pipe.connect(Instant::now() + IO_LIMIT).unwrap();
-                    identity.verify_peer(pipe.as_raw_handle(), true).unwrap();
+                    assert_eq!(
+                        access.authenticate(&mut pipe, Instant::now() + IO_LIMIT),
+                        Connector::Verified
+                    );
                     pipe.write_all(&receipt(READY), Instant::now() + IO_LIMIT)
                         .unwrap();
                     assert_eq!(receive(&mut pipe).unwrap(), server_expected);
+                    assert_eq!(
+                        access.verify_connector(pipe.as_raw_handle()),
+                        Connector::Verified
+                    );
                     pipe.write_all(&receipt(outcome as u8), Instant::now() + IO_LIMIT)
                         .unwrap();
                     let mut done = [0];
@@ -268,7 +307,12 @@ mod tests {
         let Listener { mut pipe, .. } = Listener::bind(&address, &identity).unwrap();
         thread::scope(|scope| {
             scope.spawn(move || {
+                let access = AccessShape::current().unwrap();
                 pipe.connect(Instant::now() + IO_LIMIT).unwrap();
+                assert_eq!(
+                    access.authenticate(&mut pipe, Instant::now() + IO_LIMIT),
+                    Connector::Verified
+                );
                 pipe.write_all(
                     &receipt(Reply::Unavailable as u8),
                     Instant::now() + IO_LIMIT,

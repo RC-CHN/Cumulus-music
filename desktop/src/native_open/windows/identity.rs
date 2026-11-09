@@ -57,17 +57,11 @@ impl Identity {
     }
 
     fn for_process(process: HANDLE) -> io::Result<Self> {
-        let mut raw = ptr::null_mut();
-        // SAFETY: process is live and output points at one writable HANDLE.
-        if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut raw) } == 0 || raw.is_null() {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: OpenProcessToken returned unique ownership of the token handle.
-        let token = unsafe { OwnedHandle::from_raw_handle(raw) };
+        let token = process_token(process)?;
         Self::for_token(token.as_raw_handle())
     }
 
-    fn for_token(token: HANDLE) -> io::Result<Self> {
+    pub(super) fn for_token(token: HANDLE) -> io::Result<Self> {
         Ok(Self {
             user: user_sid(token)?,
             logon: logon_sid(token)?,
@@ -114,7 +108,19 @@ impl Identity {
             && groups.sid(entry.Sid)? == self.logon)
     }
 
+    #[allow(
+        dead_code,
+        reason = "the standalone lab checks the basic process identity"
+    )]
     pub fn verify_peer(&self, pipe: HANDLE, client_is_peer: bool) -> io::Result<()> {
+        self.verified_peer_token(pipe, client_is_peer).map(drop)
+    }
+
+    pub(super) fn verified_peer_token(
+        &self,
+        pipe: HANDLE,
+        client_is_peer: bool,
+    ) -> io::Result<OwnedHandle> {
         let query = if client_is_peer {
             GetNamedPipeClientProcessId
         } else {
@@ -132,7 +138,8 @@ impl Identity {
         }
         // SAFETY: OpenProcess returned a uniquely owned handle.
         let process = unsafe { OwnedHandle::from_raw_handle(raw) };
-        let peer = Self::for_process(process.as_raw_handle()).map_err(|_| denied())?;
+        let token = process_token(process.as_raw_handle()).map_err(|_| denied())?;
+        let peer = Self::for_token(token.as_raw_handle()).map_err(|_| denied())?;
         let mut observed = 0;
         // SAFETY: both handles and the PID buffer stay valid for these calls.
         let live = unsafe {
@@ -143,7 +150,7 @@ impl Identity {
         if !live || peer != *self {
             return Err(denied());
         }
-        Ok(())
+        Ok(token)
     }
 
     pub fn logon_sddl(&self) -> String {
@@ -219,6 +226,16 @@ impl Identity {
         hash.update(&self.logon);
         Ok(format!("{prefix}{:x}", hash.finalize()))
     }
+}
+
+pub(super) fn process_token(process: HANDLE) -> io::Result<OwnedHandle> {
+    let mut raw = ptr::null_mut();
+    // SAFETY: process is live and output points at one writable HANDLE.
+    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut raw) } == 0 || raw.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: OpenProcessToken returned unique ownership of the token handle.
+    Ok(unsafe { OwnedHandle::from_raw_handle(raw) })
 }
 
 fn integrity_sid(token: HANDLE) -> io::Result<Vec<u8>> {
@@ -298,13 +315,13 @@ pub fn local_path(path: &Path) -> bool {
         if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_)))
 }
 
-struct TokenBuffer {
-    words: Vec<usize>,
-    len: usize,
+pub(super) struct TokenBuffer {
+    pub(super) words: Vec<usize>,
+    pub(super) len: usize,
 }
 
 impl TokenBuffer {
-    fn query(token: HANDLE, kind: TOKEN_INFORMATION_CLASS) -> io::Result<Self> {
+    pub(super) fn query(token: HANDLE, kind: TOKEN_INFORMATION_CLASS) -> io::Result<Self> {
         let mut required = 0;
         // SAFETY: documented zero-length sizing request; output is writable.
         let status = unsafe { GetTokenInformation(token, kind, ptr::null_mut(), 0, &mut required) };
@@ -337,7 +354,7 @@ impl TokenBuffer {
         })
     }
 
-    fn sid(&self, sid: PSID) -> io::Result<Vec<u8>> {
+    pub(super) fn sid(&self, sid: PSID) -> io::Result<Vec<u8>> {
         let offset = (sid as usize)
             .checked_sub(self.words.as_ptr() as usize)
             .ok_or_else(denied)?;
