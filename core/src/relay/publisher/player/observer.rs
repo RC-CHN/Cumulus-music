@@ -31,7 +31,11 @@ impl Hint {
                     | PlaybackCommand::ReplaceFollowLatest { .. }
                     | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
             ),
-            from_handoff: matches!(command,PlaybackCommand::UpdateQueue(update) if update.queue.items.iter().any(|item|item.source["scene"]=="playlistHandoff")),
+            from_handoff: matches!(
+                command,
+                PlaybackCommand::UpdateQueue(update) | PlaybackCommand::InsertNext(update)
+                    if update.queue.items.iter().any(|item| item.source["scene"] == "playlistHandoff")
+            ),
             seek: if let PlaybackCommand::Seek(seconds) = command {
                 Some(*seconds)
             } else {
