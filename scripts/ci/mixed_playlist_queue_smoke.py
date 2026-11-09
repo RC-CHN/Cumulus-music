@@ -96,8 +96,8 @@ def main():
         assert queue['current'] == before['entryId'] == queue['rows'][0]['entryId']
         assert [entry['id'] for entry in queue['rows']] == order
         assert [entry['local'] for entry in queue['rows']] == [item in (anchor, local) for item in order]
-        assert all(entry['origin']['kind'] == 'playlist' and entry['origin']['id'] == '11'
-                   for entry in queue['rows'][1:])
+        assert all(entry['origin'] == {'kind': 'playlist', 'id': '11'}
+                   for entry in queue['rows'][1:]), 'only a typed public source is projected'
         assert all(entry['localMenu'] for entry in queue['rows'] if entry['id'] == local)
         revisions.append(queue['revision'])
         native = row['nativeReceipt']
