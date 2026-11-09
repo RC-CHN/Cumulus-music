@@ -22,3 +22,9 @@ core-playlist-contracts.txt。
 其它音源路由、非目录 ID 和无法核实的请求。已有队列预取允许观察下一首目录 ID 的
 一次 /api/song/enhance/player/url/v1 请求，不返回任何音源。真实账号、服务写入、
 实体声卡和 Windows 实窗不由此证明。
+
+实际验收：Linux x86_64，非 C 界面 locale、数字 locale 为 C，e30dfde4
+与本分支纳入的 95cfff7b 为相同内容树。7 个 WebView 状态各保留一张截图；
+原文件逐字节一致、暂停位置和队列不变。回执检查了 6 次歌单读取、零远端
+歌单写入、零真实音乐请求；只允许上文的单次合成预取。
+本机复核回执：.build/ui-proof/phase225-mixed-playlist/receipt.json。
