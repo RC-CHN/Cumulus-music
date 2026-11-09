@@ -24,6 +24,16 @@ Cumulus 桌面主流程验收
   报告：`.build/ui-proof/phase133-offline-menu/{default,https-offline}/report.json`，
   菜单：同根 `menu-present-route/audit.json`；程序和前端哈希见 `sha256.txt`。
 
+2026-11-09 丢失下载后的菜单回归
+  旧托管 Linux 场景只关闭合成传输，系统仍有默认路由，打开下载行菜单会按
+  正常规则预取评论计数。用相同的 WebView 程序在无外联命名空间做对照：
+  虚拟默认路由复现一次计数；只启用回环、让内核暴露可读的空 IPv4 路由表时，
+  原生菜单跳过该读取，22 个阶段通过。文件和账本已删除，无关文件未改变。
+  Windows CI 保留 runner 网络，`--synthetic-offline-route` 只让测试的原生宿主
+  在合成断网后报告缺路由。相同入口在 Linux 实窗、仍有虚拟默认路由时验证了
+  一次原生菜单路由观测、22 个阶段和 21 张截图；两轮离线业务和媒体请求均为零。
+  正式程序仍读取系统路由表；这个替身报告不代表 Windows 系统路由实测。
+
 2026-11-08 正式 Linux 程序冷启动（0041391c）
   使用该精确提交构建的普通 cumulus 可执行文件，开启 custom-protocol，未注入
   应用测试接口或替换网络、账号、媒体。全新默认 XDG 目录，Linux X11、
