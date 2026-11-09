@@ -144,7 +144,7 @@ class StereoPcmContract(unittest.TestCase):
 
     def proof(self):
         return {
-            'ok': True, 'kind': 'stereo_pcm_fixed_local_native_v2',
+            'ok': True, 'kind': 'stereo_pcm_fixed_local_native_v3',
             'graphScope': 'complete_fixed_local_equalizer', 'fixedLocalMaterial': True,
             'generalSdkGraph': False, 'settingWriteApplyOrderVerified': False,
             'productionDesktopStartup': True, 'numericLocaleCompatible': True, 'guiInitialized': True,
@@ -165,15 +165,17 @@ class StereoPcmContract(unittest.TestCase):
             'live': {'nativeEntry': 11, 'failed': False, 'nativeOutputFrame': 10000,
                      'producedFrames': 20000, 'requestedRevision': 2, 'appliedRevision': 2},
             'retired': {'nativeEntry': 11, 'readerClosed': True, 'nativeSinkRetired': True},
-            'seek': {'oldEntry': 11, 'newEntry': 22, 'firstSourceFrame': 22050,
-                     'paused': True, 'sameHeldSource': True},
-            'eof': {'nativeEntry': 22, 'graphEnd': True, 'readerClosed': True,
+            'seek': {'oldSink': 1, 'newSink': 2, 'oldEntry': 11, 'newEntry': 11,
+                     'firstSourceFrame': 22050, 'paused': True, 'sameHeldSource': True,
+                     'oldRetirement': 'native_destroyed'},
+            'eof': {'nativeEntry': 11, 'graphEnd': True, 'readerClosed': True,
                     'nativeSinkRetired': True, 'producedFrames': 110257,
                     'decodedSourceFrame': 88207, 'nativeSourceFrame': 88207},
             'tailFrames': 44100,
             'revoked': {'nativeEntry': 33, 'readerClosed': True,
                         'nativeSinkRetired': True, 'cancelled': True},
-            'revokedEntry': 33, 'bufferedAheadAtRevocation': 3000,
+            'revokedEntry': 33, 'revokedRetirement': 'exact_stop_ack',
+            'bufferedAheadAtRevocation': 3000,
         }
 
     def rejected(self, change):
@@ -213,7 +215,9 @@ class StereoPcmContract(unittest.TestCase):
     def test_close_without_native_retirement_or_bad_seek_source_fail(self):
         self.rejected(lambda p: p['retired'].update(nativeSinkRetired=False))
         self.rejected(lambda p: p['seek'].update(sameHeldSource=False))
-        self.rejected(lambda p: p['seek'].update(newEntry=11))
+        self.rejected(lambda p: p['seek'].update(newSink=1))
+        self.rejected(lambda p: p['seek'].update(newEntry=0))
+        self.rejected(lambda p: p['seek'].update(oldRetirement='timeout'))
         self.rejected(lambda p: p['seek'].update(firstSourceFrame=0))
 
     def test_tail_source_clock_and_buffered_revocation_are_required(self):
@@ -221,6 +225,7 @@ class StereoPcmContract(unittest.TestCase):
         self.rejected(lambda p: p['eof'].update(nativeSourceFrame=110257))
         self.rejected(lambda p: p.update(bufferedAheadAtRevocation=0))
         self.rejected(lambda p: p['revoked'].update(cancelled=False))
+        self.rejected(lambda p: p.update(revokedRetirement='callback_closed'))
 
     def test_missing_stage_or_actual_remote_attempt_cannot_pass(self):
         self.rejected(lambda p: p['stages'].pop())

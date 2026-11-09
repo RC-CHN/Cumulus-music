@@ -326,20 +326,26 @@
     const master = button(eq, '启用均衡器和增强音效');
     const separate = await wait(() => eq?.querySelector('.equalizer-independent[data-parametric-state="configured"]'),
       'equalizer explains the independently configured PEQ');
-    assert(master?.textContent.includes('均衡器与低高音') && separate.textContent.includes('不受上方开关控制'),
-      'the local bypass is not presented as stopping PEQ');
+    const localLabel = '均衡器与增强音效';
+    assert(master?.textContent.trim() === localLabel && separate.textContent.includes('不受上方开关控制'),
+      'the local master names only the equalizer and enhancements; independent PEQ is unaffected');
+    const beforeBypass = await player();
+    const sameProcessing = (state, after) =>
+      state.boundParametric === 'configured' && state.parametricProcessing === true &&
+      state.state === 'playing' && state.playId === baseline.playId && state.entryId === baseline.entryId &&
+      state.position > after;
     click(master);
-    await wait(async () => {
+    const bypassed = await wait(async () => {
       const state = await player();
       return master.getAttribute('aria-checked') === 'false' && state.equalizer.settings.master_bypassed &&
-        state.boundParametric === 'configured' && state.state === 'playing' && state.playId === baseline.playId;
-    }, 'local bypass retains native PEQ and the playing entry');
+        master.textContent.trim() === localLabel + '已暂停' && sameProcessing(state, beforeBypass.position) && state;
+    }, 'local master bypass is displayed while independent PEQ and the same entry keep processing');
     click(master);
     await wait(async () => {
       const state = await player();
       return master.getAttribute('aria-checked') === 'true' && !state.equalizer.settings.master_bypassed &&
-        state.boundParametric === 'configured' && state.playId === baseline.playId;
-    }, 'local bypass restoration retains native PEQ');
+        master.textContent.trim() === localLabel && sameProcessing(state, bypassed.position);
+    }, 'local master restoration is displayed while independent PEQ and the same entry keep processing');
     click(button(separate, '管理独立参数均衡'));
     const fromPanel = await wait(() => one('.effect-directory[open]'), 'EQ panel opens management directly');
     assert(button(fromPanel, '浏览音效目录') && !fromPanel.querySelector('[aria-label="音效分类"]'),

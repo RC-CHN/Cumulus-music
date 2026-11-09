@@ -209,6 +209,8 @@ fn playlist_creator_proof() -> bool {
 }
 static PLAYLIST_CREATOR_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 static SEARCH_PROFILE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+static SEARCH_CARD_ARTIST_SONG_CALLS: std::sync::Mutex<Vec<Value>> =
+    std::sync::Mutex::new(Vec::new());
 
 fn playlist(id: u64) -> Value {
     intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
@@ -626,6 +628,20 @@ impl Api for Library {
             }
             if let Some(result) = search_podcast_playback_fixture::response(path, &args, cached) {
                 return result;
+            }
+            if std::env::var_os("CUMULUS_SEARCH_CARDS_PROOF").is_some()
+                && path == "/api/v2/artist/songs"
+            {
+                if cached || args != json!({"id":"101","limit":50,"offset":0}) {
+                    return Err(cumulus_core::Error::InvalidInput(
+                        "unexpected synthetic search artist queue request",
+                    ));
+                }
+                SEARCH_CARD_ARTIST_SONG_CALLS
+                    .lock()
+                    .unwrap()
+                    .push(args.clone());
+                return fixture::Library::default().request(path, args, false).await;
             }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
@@ -1140,9 +1156,12 @@ fn main() {
             let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER")
                 .expect("trusted synthetic PEQ adapter"));
             let wave = relay_fixture::wave(&root)?;
+            let directory_graphic_eq_unavailable = device_peq_proof && !device_source_bypass_proof;
             client = client
                 .with_effect_material_backend(Arc::new(effect_peq_fixture::Material))
-                .with_audio_factory(move || Ok(Box::new(effect_peq_fixture::Audio::open(wave.clone(), path.clone())?)));
+                .with_audio_factory(move || Ok(Box::new(effect_peq_fixture::Audio::open(
+                    wave.clone(), path.clone(), directory_graphic_eq_unavailable,
+                )?)));
         } else if motion_proof {
             let elapsed = factory_elapsed.clone();
             let count=factory_count.clone();
@@ -1235,18 +1254,13 @@ fn main() {
                 }
                 let main=handle.get_webview_window("main").unwrap();
                 if value["stage"]=="queue-more-tip-focus" {
-                    queue_more_fixture::phase_milestone("focus_enter");
-                    let helper=handle.get_window("queue-tip-focus-helper").unwrap();
-                    if value["focus"]==true { helper.hide().unwrap(); main.set_focus().unwrap(); }
-                    else {helper.show().unwrap(); helper.set_focus().unwrap();}
                     let sequence=value["sequence"].as_u64().unwrap();
-                    main.eval(format!("window.__queueTipFocusAck={sequence};")).unwrap();
-                    queue_more_fixture::phase_milestone("focus_returned");
+                    queue_more_fixture::request_tip_focus(&handle, value["focus"]==true, sequence);
                     return;
                 }
                 let owner=fixture_session.token().unwrap().uid.unwrap_or_default();
                 value["syntheticQueueTip"]=json!({
-                    "nativeFocused":main.is_focused().unwrap(),"nativeVisible":main.is_visible().unwrap(),
+                    "nativeFocused":cumulus_desktop::queue_tip_window_foreground(&main).unwrap(),"nativeVisible":main.is_visible().unwrap(),
                     "seen":proof_store.get(&owner,"queue-more-v1","tip-seen").unwrap()==Some(json!(true))
                 });
             }
@@ -1285,6 +1299,10 @@ fn main() {
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
                 if let Some((_,wire))=guest_search.as_ref() {value["guestSearchCalls"]=json!(wire.report());}
+                if std::env::var_os("CUMULUS_SEARCH_CARDS_PROOF").is_some() {
+                    value["searchCardArtistSongCalls"] =
+                        json!(*SEARCH_CARD_ARTIST_SONG_CALLS.lock().unwrap());
+                }
                 if let Some(calls) = search_fixture::suggestion_match_calls() { value["suggestionMatchCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::default_recovery_calls() { value["defaultRecoveryCalls"] = json!(calls); }
                 if search_artist_top50_fixture::enabled() { value["artistTop50Calls"] = json!(search_artist_top50_fixture::report()); }

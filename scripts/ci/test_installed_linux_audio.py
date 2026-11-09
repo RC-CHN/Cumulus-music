@@ -77,14 +77,22 @@ class AccessibilityObservation(unittest.TestCase):
         lost_app = 'The application no longer exists'
         lost_object = ('No such interface “org.a11y.atspi.Accessible” on object at path '
                        '/org/a11y/atspi/accessible/23c6da36_025a_4ef2_a444_531e89e24899')
+        absent_object = ('Object does not exist at path '
+                         '“/org/a11y/atspi/accessible/f2daf9ee_d60f_41c6_8fcc_513782279b13”')
         self.assertTrue(stale_accessible_lookup(error(0, lost_app)))
         self.assertTrue(stale_accessible_lookup(error(1, lost_object)))
+        self.assertTrue(stale_accessible_lookup(error(1, absent_object)))
+        self.assertTrue(stale_accessible_lookup(error(1, absent_object.replace('“', '"').replace('”', '"'))))
         for unexpected in (
             error(1, lost_app),
             error(0, lost_object),
             error(1, lost_object, domain='g-dbus-error-quark'),
             error(1, lost_object.replace('atspi.Accessible', 'atspi.Component')),
             error(1, lost_object.replace('/org/a11y/atspi/accessible/', '/unrelated/')),
+            error(1, absent_object, domain='g-dbus-error-quark'),
+            error(0, absent_object),
+            error(1, absent_object.replace('/org/a11y/atspi/accessible/', '/unrelated/')),
+            error(1, absent_object.removesuffix('”') + '"'),
             error(1, 'Timeout was reached'),
         ):
             self.assertFalse(stale_accessible_lookup(unexpected))

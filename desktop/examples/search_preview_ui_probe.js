@@ -130,7 +130,15 @@
     assert((await invoke('player_queue',{epoch})).revision===playing.revision,'pause leaves queue intact');
     await capture('paused');
     const like=all('.search-track-card')[1].querySelector('.like-button');like.scrollIntoView({block:'nearest'});click(like);await wait(()=>like.getAttribute('aria-pressed')==='true'&&!like.disabled,'liked feedback');await capture('liked');click(like);await wait(()=>like.getAttribute('aria-pressed')==='false'&&!like.disabled,'unliked feedback');await capture('unliked');
-    click(button('播放全部搜索单曲'));await wait(()=>one('.search-track-card.current .search-track-cover')?.getAttribute('aria-label').startsWith('暂停'),'play all preview');const allQueue=await invoke('player_queue',{epoch});assert(allQueue.tracks.length===9&&!allQueue.tracks.some(row=>baseline.tracks.some(old=>old.entryId===row.entryId)),'explicit Play All replaces the baseline');await capture('play_all');
+    click(button('播放全部搜索单曲'));await wait(()=>one('.search-track-card.current .search-track-cover')?.getAttribute('aria-label').startsWith('暂停'),'play all preview');
+    const allQueue=await invoke('player_queue',{epoch});
+    // M3001 replaces the ordinary block with the six rechecked privileges;
+    // M3095 passes that block, in order, to the explicit Play All action.
+    assert(allQueue.tracks.map(row=>row.track.id).join(',')==='1,2,3,4,5,6'&&
+      allQueue.current===allQueue.tracks[0].entryId&&
+      !allQueue.tracks.some(row=>baseline.tracks.some(old=>old.entryId===row.entryId)),
+      'explicit Play All replaces the baseline with the six privilege-checked songs in order');
+    await capture('play_all');
     assert(images>0,'image outcome injection used');await emit('complete',{ok:true,stageCount:count,previewLayouts:true,nativePointer:true,songControls:true,playbackFocusVerified:true,coverOutcomeInjected:true,realMusicRequests:0,realAccountWrites:0});
   }catch(e){await emit('failed',{step,stageCount:count,message:String(e),stack:e?.stack,body:document.body.innerText.slice(0,2600)});}
 })();

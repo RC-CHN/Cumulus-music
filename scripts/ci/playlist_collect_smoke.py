@@ -45,6 +45,16 @@ def main():
 def verify(root, capture, stall_frames=False):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert (complete['blockedFrames'] > 0) == stall_frames
+    early = complete['openingFrameStall']
+    assert (early is not None) == stall_frames
+    if early is not None:
+        assert early['layoutWidth'] == 442 and round(early['width']) != 442
+        assert 'modal-enter-from' in early['classes']
+    initial = json.loads((root / 'first/ux_01_list_1120_light.json').read_text(encoding='utf-8'))
+    assert initial['openingFrameStall'] == early
+    stable = initial['geometry']
+    assert round(stable['width']) == stable['layoutWidth'] == 442
+    assert stable['opacity'] == '1' and stable['transform'] == 'none'
     assert complete['ok'] and complete['collectionUi'] and complete['creationRetryVerified'] and complete['uncertainReadbackVerified']
     assert complete['sortedPaginationVerified']
     pages = complete['syntheticCollection']['sortedPages']

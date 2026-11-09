@@ -18,7 +18,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
-               CUMULUS_SEARCH_UI_PROOF='1')
+               CUMULUS_SEARCH_UI_PROOF='1', CUMULUS_SEARCH_CARDS_PROOF='1')
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -45,6 +45,7 @@ def verify(root, capture):
     assert complete['ok'] and complete['nativePointer'] and complete['coverOutcomeInjected']
     assert complete['keyboardContextMenu'] and complete['voiceMenuDoubleClickSafe']
     assert complete['directVoiceDownloadVerified']
+    assert complete['searchCardArtistSongCalls'] == [{'id': '101', 'limit': 50, 'offset': 0}]
     assert complete['stageCount'] == 56 and complete['syntheticSearchCalls'] > 20
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']

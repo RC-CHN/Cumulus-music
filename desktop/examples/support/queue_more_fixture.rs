@@ -7,7 +7,9 @@ use std::{
         Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
+    time::Duration,
 };
+use tauri::Manager;
 use tokio::sync::Notify;
 
 const MORE: &str = "/api/homepage/more/rcmd/song";
@@ -57,6 +59,94 @@ pub fn phase_milestone(stage: &'static str) {
     let _ = stderr.flush();
 }
 
+/// Only the test creates this second native window. Neither this request
+/// nor its receipt can change the product's focus or cue predicates.
+pub fn request_tip_focus(app: &tauri::AppHandle, focus: bool, sequence: u64) {
+    let main = app.get_webview_window("main").unwrap();
+    let helper = app.get_window("queue-tip-focus-helper").unwrap();
+    tauri::async_runtime::spawn(async move {
+        phase_milestone("focus_enter");
+        let result = async {
+            if focus {
+                #[cfg(not(windows))]
+                helper.hide().map_err(|_| "focus_window_request_failed")?;
+                main.set_focus()
+                    .map_err(|_| "focus_window_request_failed")?;
+                #[cfg(windows)]
+                {
+                    focus_windows_webview(&main).await?;
+                    // Keep the helper visible until the main HWND owns the
+                    // foreground; hiding the foreground helper earlier can
+                    // activate an unrelated top-level window.
+                    helper.hide().map_err(|_| "focus_window_request_failed")?;
+                }
+            } else {
+                helper.show().map_err(|_| "focus_window_request_failed")?;
+                helper
+                    .set_focus()
+                    .map_err(|_| "focus_window_request_failed")?;
+            }
+
+            let observed = tokio::time::timeout(Duration::from_secs(1), async {
+                loop {
+                    if cumulus_desktop::queue_tip_window_foreground(&main).ok() == Some(focus)
+                        && main.is_visible().ok() == Some(true)
+                        && main.is_minimized().ok() == Some(false)
+                        && (focus || helper.is_focused().ok() == Some(true))
+                    {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await;
+            observed.map_err(|_| "focus_native_mismatch")?;
+            Ok(())
+        }
+        .await;
+        let category = result.err().unwrap_or("focus_native_observed");
+        phase_milestone(category);
+        let receipt = json!({
+            "sequence": sequence,
+            "desired": focus,
+            "outcome": category,
+            "nativeFocused": cumulus_desktop::queue_tip_window_foreground(&main).ok(),
+            "nativeVisible": main.is_visible().ok(),
+            "helperFocused": helper.is_focused().ok(),
+        });
+        main.eval(format!("window.__queueTipFocusAck={receipt};"))
+            .unwrap();
+        phase_milestone("focus_returned");
+    });
+}
+
+#[cfg(windows)]
+async fn focus_windows_webview(
+    main: &tauri::WebviewWindow,
+) -> std::result::Result<(), &'static str> {
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if cumulus_desktop::queue_tip_window_foreground(main)
+                .map_err(|_| "focus_window_request_failed")?
+            {
+                return Ok::<(), &'static str>(());
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .map_err(|_| "focus_foreground_mismatch")??;
+    phase_milestone("focus_foreground_observed");
+    // WebviewWindow::set_focus only activates the top-level Tao window.
+    // The separate Webview dispatcher invokes the existing WebView2
+    // controller's MoveFocus on the UI thread without building a WebView.
+    main.as_ref()
+        .set_focus()
+        .map_err(|_| "focus_controller_request_failed")?;
+    phase_milestone("focus_controller_requested");
+    Ok(())
+}
+
 pub fn renderer_milestone(stage: &str) {
     let stage = match stage {
         "renderer_enter" => "renderer_enter",
@@ -65,6 +155,7 @@ pub fn renderer_milestone(stage: &str) {
         "daily_playing" => "daily_playing",
         "recommendations_loaded" => "recommendations_loaded",
         "focus_observed" => "focus_observed",
+        "focus_renderer_mismatch" => "focus_renderer_mismatch",
         "recommendation_playing" => "recommendation_playing",
         "cue_check_begin" => "cue_check_begin",
         "cue_denied" => "cue_denied",

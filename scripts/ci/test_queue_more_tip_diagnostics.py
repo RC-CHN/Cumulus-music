@@ -42,6 +42,26 @@ class PhaseFailureReceipt(unittest.TestCase):
             self.assertFalse((root / 'first-failure-receipt.tmp').exists())
             self.assertFalse((root / 'reopen-failure-receipt.json').exists())
 
+    def test_native_activation_and_controller_request_remain_distinct_from_dom_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'first.log').write_bytes(
+                b'queue-tip-first:focus_enter\r\n'
+                b'queue-tip-first:focus_foreground_observed\r\n'
+                b'queue-tip-first:focus_controller_requested\r\n'
+                b'queue-tip-first:focus_native_observed\r\n'
+                b'queue-tip-first:focus_returned\r\n'
+                b'queue-tip-first:focus_renderer_mismatch\r\n'
+                b'queue-tip-first:renderer-controlled-focus-details\r\n'
+            )
+            receipt = phase_failure_receipt(root, 'first', 0, 'renderer_failure')
+            self.assertEqual(receipt['milestones'], [
+                'focus_enter', 'focus_foreground_observed', 'focus_controller_requested',
+                'focus_native_observed', 'focus_returned', 'focus_renderer_mismatch',
+            ])
+            self.assertEqual(receipt['lastMilestone'], 'focus_renderer_mismatch')
+            self.assertFalse(receipt['stackOverflow'])
+
     def test_reopen_signed_stack_overflow_preserves_post_capture_phase(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

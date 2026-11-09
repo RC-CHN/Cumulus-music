@@ -184,6 +184,12 @@ def main():
         wet = json.loads((output / 'ux_10b_headphones_comparison_wet.json').read_text(encoding='utf-8'))
         fault = json.loads((output / 'ux_11_headphones_fault.json').read_text(encoding='utf-8'))['nativePeq']
         assert footer['nativePeq']['attaches'] == 2 and footer['nativePeq']['nativeAttached']
+        footer_player = footer['nativePlayer']
+        assert footer_player['state'] == 'playing' and footer_player['parametricProcessing']
+        assert footer_player['deviceParametric']['status'] == 'configured'
+        equalizer = footer_player['equalizer']
+        assert equalizer['status'] == 'unavailable' and not equalizer['source_bypassed']
+        assert equalizer['settings']['enabled'] and equalizer['settings']['gains'] == [3] + [0] * 9
         reapplied = json.loads((output / 'ux_12_headphones_restored.json').read_text(encoding='utf-8'))
         assert len(footer['effectDirectoryCalls']) == len(calls) - 1
         assert dry['nativePeq']['attaches'] == 2 and dry['nativePeq']['detaches'] == 2 and not dry['nativePeq']['nativeAttached']
