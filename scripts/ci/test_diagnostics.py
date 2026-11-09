@@ -1,14 +1,19 @@
+import json
 import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import tarfile
 import tempfile
 import traceback
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from diagnostics import FailureCheckpoints, archive
+from diagnostics import (
+    MAX_RECEIPT_BYTES, FailureCheckpoints, archive, compact_archive, receipt_info,
+)
 
 
 class ProofArchive(unittest.TestCase):
@@ -36,6 +41,111 @@ class ProofArchive(unittest.TestCase):
             with tarfile.open(result) as saved:
                 self.assertEqual(set(names[:-1]) - set(saved.getnames()), set())
                 self.assertNotIn(names[-1], saved.getnames())
+
+    def voice_receipt(self, build, relative, *, case='double', **fields):
+        path = build / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        value = {'stage': path.stem, 'mode': case, 'ok': path.stem != 'failed', **fields}
+        path.write_text(json.dumps(value), encoding='utf-8')
+        return path
+
+    def test_compact_archive_has_only_failure_and_three_numeric_neighbors_in_same_visit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            root = 'ci-voice-songs-windows/double/run/first'
+            names = ['failed.json', 'ux_08_third.json', 'ux_09_second.json', 'ux_010_latest.json']
+            for index, name in enumerate(names):
+                self.voice_receipt(build, f'{root}/{name}', player={'position': index / 2})
+            for other in (
+                f'{root}/ux_02_older.json', f'{root}/ux_01_oldest.json',
+                f'{root}/ux_999_other.png', f'{root}/complete.json',
+                'ci-voice-songs-windows/cover/run/first/ux_99_other_visit.json',
+                'ci-voice-songs-windows/unknown/run/first/failed.json',
+                'ci-voice-songs-windows/double/run/second/failed.json',
+                'ci-voice-songs-linux-extra/double/run/first/failed.json',
+                'ci-local-group-hide-linux/run/failed.json',
+            ):
+                self.voice_receipt(build, other)
+            self.assertEqual(compact_archive(build), 4)
+            target = build / 'diagnostics/failure-checkpoints.tar.gz'
+            with tarfile.open(target) as saved:
+                self.assertEqual(saved.getnames(), [f'{root}/{name}' for name in names])
+                for member in saved.getmembers():
+                    self.assertTrue(member.isfile())
+                    self.assertEqual(saved.extractfile(member).read(), (build / member.name).read_bytes())
+
+    def test_compact_archive_has_no_output_without_a_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            self.voice_receipt(build, 'ci-voice-songs-windows/double/run/first/ux_07_context_next.json')
+            self.assertEqual(compact_archive(build), 0)
+            self.assertFalse((build / 'diagnostics').exists())
+
+    def test_compact_archive_refuses_real_device_identity_even_in_another_archived_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            self.voice_receipt(build, 'ci-voice-songs-windows/double/run/first/failed.json')
+            sentinel = 'synthetic-private-device-facts-must-not-be-reported'
+            self.core_database(build, 'ci-login-notice-windows/run/state/core.sqlite3', [
+                ('device', 'identity', 'last_observed', sentinel),
+            ])
+            with self.assertRaisesRegex(ValueError, 'device identity records') as rejected:
+                compact_archive(build)
+            self.assertNotIn(sentinel, ''.join(traceback.format_exception(rejected.exception)))
+            self.assertFalse((build / 'diagnostics').exists())
+
+    def test_compact_archive_refuses_linked_stage_and_directory_escape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            build = base / '.build'
+            private = self.voice_receipt(base, 'private/ux_07_context_next.json')
+            lane = build / 'ci-voice-songs-windows/double/run/first'
+            self.voice_receipt(build, f'{lane.relative_to(build).as_posix()}/failed.json')
+            stage = lane / private.name
+            os.link(private, stage)
+            with self.assertRaisesRegex(ValueError, 'invalid receipt file'):
+                compact_archive(build)
+            stage.unlink()
+            try:
+                stage.symlink_to(private)
+            except OSError:
+                # A hosted Windows runner may not grant symlink creation.
+                pass
+            else:
+                with self.assertRaisesRegex(ValueError, 'invalid receipt file'):
+                    compact_archive(build)
+                stage.unlink()
+                (lane / 'failed.json').unlink()
+                lane.rmdir()
+                lane.symlink_to(private.parent, target_is_directory=True)
+                with self.assertRaisesRegex(ValueError, 'invalid proof directory'):
+                    compact_archive(build)
+            self.assertFalse((build / 'diagnostics').exists())
+
+    def test_compact_archive_refuses_windows_reparse_metadata(self):
+        with patch.object(Path, 'lstat', return_value=SimpleNamespace(
+            st_mode=stat.S_IFREG, st_nlink=1, st_size=10,
+            st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
+        )):
+            with self.assertRaisesRegex(ValueError, 'invalid receipt file'):
+                receipt_info(Path('unused.json'))
+
+    def test_compact_archive_refuses_invalid_identity_and_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            path = self.voice_receipt(
+                build, 'ci-voice-songs-linux/double/run/first/failed.json', case='cover',
+            )
+            with self.assertRaisesRegex(ValueError, 'unexpected receipt identity'):
+                compact_archive(build)
+            path.write_bytes(b'x' * (MAX_RECEIPT_BYTES + 1))
+            with self.assertRaisesRegex(ValueError, 'receipt size is out of bounds'):
+                compact_archive(build)
+            path = self.voice_receipt(build, 'ci-voice-songs-linux/double/run/first/failed.json')
+            with patch('diagnostics.MAX_COMPACT_BYTES', path.stat().st_size - 1):
+                with self.assertRaisesRegex(ValueError, 'total receipt size is out of bounds'):
+                    compact_archive(build)
+            self.assertFalse((build / 'diagnostics').exists())
 
     def core_database(self, build, relative, entries):
         path = build / relative

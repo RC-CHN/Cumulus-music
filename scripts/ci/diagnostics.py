@@ -7,13 +7,19 @@ inputs or losing the rest of a failed job's evidence.
 Every selected core.sqlite3 must be verifiable and contain no device identity
 records. Refuse the archive instead of silently removing leaked proof data.
 """
+import argparse
 from contextlib import closing
+from heapq import nlargest
+from io import BytesIO
+import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shlex
 import sqlite3
 import stat
 import tarfile
+import tempfile
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -179,10 +185,159 @@ def archive(build: Path, destination: Path, *, checkpoints=None):
     return len(paths)
 
 
-if __name__ == '__main__':
+# These exact lanes use the sealed podcast probe's stage writer. Keep other
+# diagnostics in the broad archive until their receipt producers are reviewed.
+COMPACT_LANES = {
+    'ci-voice-songs-windows': ('cover', 'double'),
+    'ci-voice-songs-linux': ('cover', 'double'),
+    'ci-voice-songs-dense-linux': ('dense',),
+}
+COMPACT_CHECKPOINT = re.compile(r'ux_([0-9]{2,4})_[A-Za-z0-9_-]{1,80}\.json')
+COMPACT_NEIGHBORS = 3
+MAX_RECEIPT_BYTES = 256 * 1024
+MAX_COMPACT_BYTES = 4 * 1024 * 1024
+
+
+def link_or_reparse(info):
+    return stat.S_ISLNK(info.st_mode) or bool(
+        getattr(info, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def plain_directory(path):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    if link_or_reparse(info) or not stat.S_ISDIR(info.st_mode):
+        raise ValueError('Refusing compact diagnostics: invalid proof directory.')
+    return True
+
+
+def receipt_info(path):
+    info = path.lstat()
+    if link_or_reparse(info) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise ValueError('Refusing compact diagnostics: invalid receipt file.')
+    if not 0 < info.st_size <= MAX_RECEIPT_BYTES:
+        raise ValueError('Refusing compact diagnostics: receipt size is out of bounds.')
+    return info
+
+
+def read_receipt(path, case):
+    expected = receipt_info(path)
+    flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_NOFOLLOW', 0)
+    with os.fdopen(os.open(path, flags), 'rb') as stream:
+        actual = os.fstat(stream.fileno())
+        if (link_or_reparse(actual) or not stat.S_ISREG(actual.st_mode)
+                or actual.st_nlink != 1 or not os.path.samestat(expected, actual)
+                or expected.st_size != actual.st_size):
+            raise ValueError('Refusing compact diagnostics: receipt changed before reading.')
+        data = stream.read(MAX_RECEIPT_BYTES + 1)
+    if len(data) != expected.st_size:
+        raise ValueError('Refusing compact diagnostics: receipt changed while reading.')
+    try:
+        value = json.loads(data)
+    except (ValueError, RecursionError):
+        raise ValueError('Refusing compact diagnostics: invalid receipt JSON.') from None
+    if (not isinstance(value, dict) or value.get('stage') != path.stem
+            or value.get('mode') != case
+            or (path.name == 'failed.json' and value.get('ok') is not False)):
+        raise ValueError('Refusing compact diagnostics: unexpected receipt identity.')
+    return data
+
+
+def compact_archive(build):
+    """Collect failed SongCard visits and their three newest sibling JSONs only."""
+    try:
+        return _compact_archive(build)
+    except (OSError, RecursionError):
+        raise ValueError('Refusing compact diagnostics: receipts could not be verified.') from None
+
+
+def _compact_archive(build):
+    if not plain_directory(build):
+        return 0
+    parent = build / 'diagnostics'
+    destination = parent / 'failure-checkpoints.tar.gz'
+    # Exclusive output prevents a failed/empty repeat from uploading stale bytes.
+    if plain_directory(parent):
+        try:
+            destination.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError('Refusing compact diagnostics: archive already exists.')
+
+    lanes = []
+    for root in sorted(workflow_roots() & COMPACT_LANES.keys()):
+        for case in COMPACT_LANES[root]:
+            folder = build
+            for part in (root, case, 'run', 'first'):
+                folder /= part
+                if not plain_directory(folder):
+                    break
+            else:
+                try:
+                    receipt_info(folder / 'failed.json')
+                except FileNotFoundError:
+                    continue
+                lanes.append((folder, case))
+
+    if not lanes:
+        return 0
+    # Identical real-data guard as the full archive, including committed WAL
+    # data. Do not read receipts or create output until it passes.
+    verify_proof_databases(proof_paths(build))
+
+    members = {}
+    total = 0
+    for folder, case in lanes:
+        neighbors = nlargest(COMPACT_NEIGHBORS, (
+            (int(match[1]), path.name)
+            for path in folder.iterdir()
+            if (match := COMPACT_CHECKPOINT.fullmatch(path.name))
+        ))
+        for name in ['failed.json', *(name for _, name in reversed(neighbors))]:
+            path = folder / name
+            data = read_receipt(path, case)
+            total += len(data)
+            if total > MAX_COMPACT_BYTES:
+                raise ValueError('Refusing compact diagnostics: total receipt size is out of bounds.')
+            members[path.relative_to(build).as_posix()] = data
+
+    parent.mkdir(exist_ok=True)
+    plain_directory(parent)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=parent, delete=False) as temporary:
+            temp_path = Path(temporary.name)
+            with tarfile.open(fileobj=temporary, mode='w:gz', compresslevel=3) as output:
+                for name, data in members.items():
+                    member = tarfile.TarInfo(name)
+                    member.size = len(data)
+                    output.addfile(member, BytesIO(data))
+        temp_path.replace(destination)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+    return len(members)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--failure-checkpoints', action='store_true',
+                        help='archive only the bounded SongCard failure and nearby JSON receipts')
+    if parser.parse_args().failure_checkpoints:
+        count = compact_archive(Path('.build'))
+        print(f'Archived {count} compact synthetic failure receipts.')
+        return
     checkpoints = FailureCheckpoints()
     count = archive(Path('.build'), Path('.build/diagnostics/synthetic-proofs.tar.gz'),
                     checkpoints=checkpoints)
     print(f'Archived {count} synthetic CI proof roots (no private research paths).')
     for line in checkpoints.lines():
         print(line)
+
+
+if __name__ == '__main__':
+    main()

@@ -940,6 +940,19 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+      - name: Gather compact SongCard failure checkpoints
+        id: compact-failure-checkpoints
+        if: failure() && matrix.shard == 'catalog'
+        run: python scripts/ci/diagnostics.py --failure-checkpoints
+      - name: Preserve compact SongCard failure checkpoints
+        if: failure() && steps.compact-failure-checkpoints.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: failure-checkpoints-windows-webview-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: .build/diagnostics/failure-checkpoints.tar.gz
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
@@ -1474,6 +1487,19 @@ jobs:
       - name: Measure Linux WebView disk after smoke
         if: always()
         run: df -h .
+      - name: Gather compact SongCard failure checkpoints
+        id: compact-failure-checkpoints
+        if: failure()
+        run: python scripts/ci/diagnostics.py --failure-checkpoints
+      - name: Preserve compact SongCard failure checkpoints
+        if: failure() && steps.compact-failure-checkpoints.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: failure-checkpoints-linux-webview-attempt-${{ github.run_attempt }}
+          path: .build/diagnostics/failure-checkpoints.tar.gz
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
