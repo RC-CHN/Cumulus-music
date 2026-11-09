@@ -65,7 +65,7 @@ Installed runtime and package evidence:
   ffprobe.exe, libogg-0.dll and libwinpthread-1.dll, but neither ffmpeg.exe
   nor libFLAC.dll. A FLAC license file in the archive is not a decoder DLL.
   This is the actual v0.1.0 asset, not a native execution of the current
-  source recipe. Current scripts pin custom FFmpeg 9.0.2-2.2 and collect
+  source recipe. Current scripts pin custom FFmpeg 9.0.2-3.2 and collect
   the import closure of libmpv-2.dll and ffprobe.exe; the candidate FLAC
   library would need its own explicit root if selected.
 * The official MSYS2 UCRT64 FLAC 1.5.0-2 archive and SHA-256

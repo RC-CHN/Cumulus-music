@@ -11,7 +11,7 @@ import io
 
 from windows_media import HERE, configuration, patch_recipe, sha256, verify_cache, native_pcm_report, download
 
-RECIPE = '''pkgrel=2
+RECIPE = '''pkgrel=3
 depends=("${MINGW_PACKAGE_PREFIX}-aom")
 makedepends=("${MINGW_PACKAGE_PREFIX}-cc")
 source=(https://example.invalid/${_realname}-${pkgver}.tar.xz{,.asc})
@@ -133,7 +133,7 @@ class WindowsRuntimeIntegrity(unittest.TestCase):
 
     def test_upstream_recipe_drift_is_an_explicit_failure(self):
         with self.assertRaisesRegex(AssertionError, 'upstream recipe changed'):
-            patch_recipe(RECIPE.replace('pkgrel=2\n', 'pkgrel=3\n'))
+            patch_recipe(RECIPE.replace('pkgrel=3\n', 'pkgrel=4\n'))
 
     def test_rehashed_loader_patch_drift_is_rejected(self):
         (self.cache / 'ffmpeg-ladspa-windows.patch').write_bytes(b'unreviewed loader')
