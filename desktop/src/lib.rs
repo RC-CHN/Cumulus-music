@@ -672,6 +672,9 @@ pub fn run() {
     launch.prepare(&mut context);
     configure(tauri::Builder::default())
         .setup(move |app| {
+            #[cfg(windows)]
+            let root = native_open::platform::profile_root(app.config())?;
+            #[cfg(not(windows))]
             let root = match std::env::var_os("CUMULUS_DATA_DIR") {
                 Some(value) => std::path::PathBuf::from(value),
                 None => app.path().app_data_dir()?,

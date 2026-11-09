@@ -257,7 +257,7 @@ mod tests {
     fn same_logon_uses_the_retained_listener_and_consumes_each_receipt_once() {
         let root = tempfile::tempdir().unwrap();
         let identity = Identity::current().unwrap();
-        let address = identity.product_address(root.path()).unwrap();
+        let address = identity.address(root.path()).unwrap();
         let Listener { mut pipe, .. } = Listener::bind(&address, &identity).unwrap();
         let expected = vec![
             PathBuf::from(r"C:\合成\歌 曲 01.mp3"),
@@ -303,7 +303,7 @@ mod tests {
     fn waiting_for_ready_never_sends_paths_to_an_unready_player() {
         let root = tempfile::tempdir().unwrap();
         let identity = Identity::current().unwrap();
-        let address = identity.product_address(root.path()).unwrap();
+        let address = identity.address(root.path()).unwrap();
         let Listener { mut pipe, .. } = Listener::bind(&address, &identity).unwrap();
         thread::scope(|scope| {
             scope.spawn(move || {

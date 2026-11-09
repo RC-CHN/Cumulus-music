@@ -68,6 +68,8 @@ impl Pending {
 /// may retain the shared fallback. The file itself holds no application data.
 pub(crate) struct ProcessGuard {
     lock: File,
+    #[cfg(windows)]
+    windows_profile: Option<windows::Profile>,
 }
 impl ProcessGuard {
     pub(crate) fn acquire(root: &Path, exclusive: bool) -> io::Result<Self> {
@@ -85,13 +87,21 @@ impl ProcessGuard {
             .create(true)
             .truncate(false)
             .open(path)?;
+        Self::from_file(lock, exclusive)
+    }
+
+    fn from_file(lock: File, exclusive: bool) -> io::Result<Self> {
         if exclusive {
             lock.try_lock()
         } else {
             lock.try_lock_shared()
         }
         .map_err(io::Error::from)?;
-        Ok(Self { lock })
+        Ok(Self {
+            lock,
+            #[cfg(windows)]
+            windows_profile: None,
+        })
     }
 }
 

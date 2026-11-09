@@ -1,7 +1,7 @@
 //! Use only kernel-observed identities; never log or persist them.
 use sha2::{Digest, Sha256};
 use std::{
-    fs::OpenOptions,
+    fs::{File, OpenOptions},
     io,
     mem::{offset_of, size_of},
     os::windows::{
@@ -174,18 +174,6 @@ impl Identity {
 
     #[allow(dead_code, reason = "the standalone lab has a disjoint endpoint")]
     pub fn address(&self, root: &Path) -> io::Result<String> {
-        self.address_for(root, false)
-    }
-
-    #[allow(
-        dead_code,
-        reason = "the standalone lab never reaches the product endpoint"
-    )]
-    pub fn product_address(&self, root: &Path) -> io::Result<String> {
-        self.address_for(root, true)
-    }
-
-    fn address_for(&self, root: &Path, product: bool) -> io::Result<String> {
         let canonical = root.canonicalize()?;
         if !local_path(&canonical) {
             return Err(denied());
@@ -195,36 +183,33 @@ impl Identity {
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
             .open(canonical)?;
-        if !directory.metadata()?.is_dir() {
-            return Err(denied());
-        }
-        let mut id = FILE_ID_INFO::default();
-        // SAFETY: correct information class/length and live directory handle.
-        if unsafe {
-            GetFileInformationByHandleEx(
-                directory.as_raw_handle(),
-                FileIdInfo,
-                (&mut id as *mut FILE_ID_INFO).cast(),
-                size_of::<FILE_ID_INFO>() as u32,
-            )
-        } == 0
-        {
-            return Err(io::Error::last_os_error());
-        }
+        Ok(self.address_for(directory_id(&directory)?, None))
+    }
+
+    #[allow(
+        dead_code,
+        reason = "the standalone lab never reaches the product endpoint"
+    )]
+    pub(super) fn product_address(&self, id: DirectoryId, volume: &str) -> String {
+        self.address_for(id, Some(volume))
+    }
+
+    fn address_for(&self, id: DirectoryId, volume: Option<&str>) -> String {
         let mut hash = Sha256::new();
-        let prefix = if product {
+        let prefix = if let Some(volume) = volume {
             hash.update(b"cumulus-windows-file-open-v1\0");
             hash.update(&self.integrity);
             hash.update([u8::from(self.elevated)]);
+            hash.update(volume.to_ascii_lowercase().as_bytes());
             r"\\.\pipe\io.cumulus.music.open."
         } else {
             hash.update(b"cumulus-windows-file-open-lab-v1\0");
             r"\\.\pipe\io.cumulus.music.open.lab."
         };
-        hash.update(id.VolumeSerialNumber.to_le_bytes());
-        hash.update(id.FileId.Identifier);
+        hash.update(id.serial.to_le_bytes());
+        hash.update(id.file);
         hash.update(&self.logon);
-        Ok(format!("{prefix}{:x}", hash.finalize()))
+        format!("{prefix}{:x}", hash.finalize())
     }
 }
 
@@ -236,6 +221,35 @@ pub(super) fn process_token(process: HANDLE) -> io::Result<OwnedHandle> {
     }
     // SAFETY: OpenProcessToken returned unique ownership of the token handle.
     Ok(unsafe { OwnedHandle::from_raw_handle(raw) })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DirectoryId {
+    serial: u64,
+    file: [u8; 16],
+}
+
+pub(super) fn directory_id(directory: &File) -> io::Result<DirectoryId> {
+    if !directory.metadata()?.is_dir() {
+        return Err(denied());
+    }
+    let mut id = FILE_ID_INFO::default();
+    // SAFETY: correct information class/length and live directory handle.
+    if unsafe {
+        GetFileInformationByHandleEx(
+            directory.as_raw_handle(),
+            FileIdInfo,
+            (&mut id as *mut FILE_ID_INFO).cast(),
+            size_of::<FILE_ID_INFO>() as u32,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(DirectoryId {
+        serial: id.VolumeSerialNumber,
+        file: id.FileId.Identifier,
+    })
 }
 
 fn integrity_sid(token: HANDLE) -> io::Result<Vec<u8>> {
