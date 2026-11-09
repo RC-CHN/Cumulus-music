@@ -465,6 +465,17 @@ jobs:
         with:
           msys-root: ${{ steps.msys2.outputs.msys2-location }}
           save-cache: 'false'
+      - name: Reuse Windows release dependency builds
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          # Package writes only third-party dependencies to this key.
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target/release/.fingerprint
+            .build/target/release/build
+            .build/target/release/deps
+          key: rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
       - name: Stage the exact native files shared with packaging
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
