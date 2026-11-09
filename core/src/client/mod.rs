@@ -17,6 +17,7 @@ mod comments;
 mod community;
 mod content;
 mod daily_experiment;
+pub mod daily_notification;
 pub mod discovery_home;
 mod downloads;
 pub mod dto;
@@ -160,6 +161,7 @@ pub struct MusicClient {
     vertical_zone_detail: vertical_zone::detail::DetailHost,
     quality_experiment: quality_experiment::QualityExperiment,
     daily_experiment: daily_experiment::DailyExperiment,
+    daily_notification: daily_notification::Host,
     latest_releases: catalog::LatestReleasesHost,
 }
 
@@ -332,6 +334,7 @@ impl MusicClient {
             vertical_zone_detail: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
             daily_experiment: daily_experiment::DailyExperiment::default(),
+            daily_notification: Default::default(),
             latest_releases: catalog::LatestReleasesHost::default(),
             together,
             scene_fm: scene_fm::SceneFmHost::default(),

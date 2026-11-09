@@ -78,6 +78,7 @@ pub(super) struct Actor {
     pub generation: Arc<AtomicU64>,
     pub token: SessionToken,
     pub bound: bool,
+    pub(super) startup_played: bool,
     pub revision: u64,
     pub control_revision: u64,
     pub seek_revision: u64,
@@ -187,6 +188,7 @@ impl Actor {
             song_speed_sync_failed: false,
             quality_preferences,
             state: PlaybackStatus::Idle,
+            startup_played: false,
             play_id: None,
             position: None,
             paused_seek: false,
@@ -270,6 +272,7 @@ impl Actor {
                 .is_some_and(|device| device.status == super::DeviceParametricStatus::Configured));
         let catalog_file_source = self.search_catalog_file_active();
         PlaybackSnapshot {
+            startup_played: self.startup_played,
             startup_pending: self.startup_pending,
             startup_autoplay: self.startup_autoplay,
             queue_more_available: self.queue_more_available(),

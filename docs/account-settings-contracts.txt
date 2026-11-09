@@ -42,7 +42,35 @@ personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置�
   修改本地免打扰和打开设置。新建回归歌单的另一条独立写入是
   M15:4843–4852 的 POST /api/unique/playlist/create，带序列化 trackIds、
   uniqueCode:"COPY_RIGHT_SONGS_RETURN"、playlistName:"回归歌单"、playlistDesc:""。
-  通知展示与定时管线仍未接入；本次不加没有消费方的占位开关。
+  已接入传统每日推荐的「启动后首次／主窗前台」一条完整链，见下节。
+  Windows 原生后台通知、沉浸版、系统恢复、整点半点、同日二推和版权回归仍未接入。
+
+每日推荐：启动首次／主窗前台
+  恢复证据：_core/init/utils/app.ts:626–775、1015–1106 (M128)，M1384:4464–4466
+  启动 +3s 后读取 PH-PC-push 组及 preload#push 对应分钟数；M247:148–166
+  默认 day/count/t1/t2/t3 为 0，不激活。Rust 只接受原生 PC 配置和同账号、
+  同 API/凭据的已验证、新鲜分组；不为通知另取实验，不把搜索表现组当授权。
+  只运行 t1/t2/t3 的正延时、非版权优先和非沉浸展示。输入配置无效时保持沉默。
+  官方 GetForegroundWindow + MonitorFromWindow + GetWindowRect/GetMonitorInfoW
+  （3.1.42.205594 x64 cloudmusic.dll E390E0–E3923C）按完整显示器矩形
+  排除全屏。Cumulus 不试图控制别的进程窗口，只在真实可见、聚焦且非最小化的
+  主窗中、能核验完整屏幕几何并确认非全屏时呈现；不可核验的平台不触发。
+  本机 personalizedRecommend 开关默认为开 (M116:372)，首曝检查同日、
+  配置的 N 日限次、七天免打扰，并用 DateSync 服务端时间、不可得时本机时间。
+  需要登录且 /api/user/setting 明确 personalServiceSetting=0：原实现只
+  排除 2；这里对缺值或读取错误也保守不展示。已成功开始过一次播放或正在播放
+  则取消本次候选；即使稍后暂停或停止也不恢复。这条启动路径不伪造系统恢复。
+  非阻塞只读：优先同账号页面的每日推荐缓存；未加载则按已验证 PH-PC-Blacklist
+  取 V3 /api/v3/discovery/recommend/songs 或 V1 /api/discovery/recommend/songs，
+  参数 {"limit":30}，支持既有同账号缓存的传输失败回退。不读版权或现金柜台。
+  主窗卡片显示前三首。实际绘制确认后记录展示并消耗同日资格，自动消失上限为
+  本实现的 30 秒；原生 Windows 的计时、系统通知窗口和曝光日志未移植。
+  M3085:5427–5589 的查看详情进入每日推荐；一键播放明确点击后取得完整每日
+  推荐列表，保留 native dailyPush、sourceData {id:UID,day:ISO} 及试听模式 35。
+  关闭只消耗当前展示，七天免打扰和关闭通知只写本机；设置打开对应设置小节并
+  聚焦标题，重新开启清除静默期。前端收据绑定账号/时间，不能自建通知、提交
+  任意歌曲或触发远端设置写入。测试用隔离的合成用户和 null 音频；不代表
+  Windows 原生通知、后台推送、实服或真实声卡验证。
 
 原研究的联动观察
 playRecordSetting=1 曾使 allowPeopleCanSeeMyPlayRecord=false。

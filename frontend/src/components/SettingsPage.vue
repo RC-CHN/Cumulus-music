@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DailyNotificationSettings from './settings/DailyNotificationSettings.vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { SettingsModel } from '../composables/useSettings';
@@ -494,6 +495,7 @@ function accept(op: SettingsOperation) {
           </template>
         </div>
       </section>
+      <DailyNotificationSettings :epoch="account.epoch" />
       <RelaySettings
         :epoch="account.epoch"
         :model="relay"

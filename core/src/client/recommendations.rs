@@ -70,6 +70,7 @@ struct Snapshot {
     ids: Vec<Value>,
     style_preference: Option<super::style_tags::StylePreference>,
     style_back: Option<StyleBackPage>,
+    daily_preview: Vec<super::dto::TrackView>,
 }
 
 struct StyleBackPage {
@@ -158,6 +159,39 @@ impl MusicClient {
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
         state.start()
+    }
+
+    pub(super) fn daily_notification_cached_preview(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Vec<super::dto::TrackView>> {
+        self.session.with_token(token, |_| {
+            let state = self
+                .daily_recommendations
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?;
+            Ok(state
+                .latest
+                .as_ref()
+                .filter(|page| page.token == *token)
+                .map(|page| page.daily_preview.clone())
+                .unwrap_or_default())
+        })
+    }
+
+    pub(super) fn daily_notification_persisted_preview(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Vec<super::dto::TrackView>> {
+        self.session.with_token(token, |owner| {
+            Ok(self
+                .registry
+                .store()
+                .get(owner, CACHE_KIND, CACHE_KEY)?
+                .and_then(|value| track_page(value.as_array()?).ok())
+                .map(|page| page.tracks.into_iter().take(3).collect())
+                .unwrap_or_default())
+        })
     }
 
     pub async fn daily_songs(&self) -> Result<AccountData<TrackPage>> {
@@ -306,6 +340,11 @@ impl MusicClient {
                     None
                 },
                 style_back,
+                daily_preview: if matches!(source, RecommendationSource::Daily) {
+                    value.tracks.iter().take(3).cloned().collect()
+                } else {
+                    vec![]
+                },
             });
             Ok(AccountData {
                 epoch: token.generation.to_string(),
@@ -465,7 +504,7 @@ fn style_tracks(response: &Value) -> Result<TrackPage> {
     Ok(page)
 }
 
-fn track_page(rows: &[Value]) -> Result<TrackPage> {
+pub(super) fn track_page(rows: &[Value]) -> Result<TrackPage> {
     if rows.len() > MAX_TRACKS {
         return Err(Error::Response("too many recommendation tracks"));
     }
@@ -492,7 +531,7 @@ fn track_page(rows: &[Value]) -> Result<TrackPage> {
     })
 }
 
-fn can_use_daily_cache(error: &Error) -> bool {
+pub(super) fn can_use_daily_cache(error: &Error) -> bool {
     match error.root() {
         Error::Transport(_) | Error::Response(_) => true,
         Error::HttpStatus { status, .. } => {

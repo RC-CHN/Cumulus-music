@@ -1,6 +1,7 @@
 mod account_avatar;
 mod artist_onboarding;
 pub mod audio_diagnostics;
+pub mod daily_notification;
 mod external_import;
 pub use account_avatar::AccountAvatarPicker;
 mod browser;
@@ -102,6 +103,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .manage(together::CloseCoordinator::default())
         .manage(renewal::RenewalPump::default())
         .manage(pc_presentation::Host::default())
+        .manage(daily_notification::Host::default())
         .manage(history::sync_observer::Host::default())
         .manage(search::RightsPump::default())
         .manage(messages::counts::Host::default())
@@ -136,6 +138,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                     if let Some(relay) = window.try_state::<native_open::linux::Relay>() {
                         relay.stop();
                     }
+                    daily_notification::stop(window.app_handle());
                     cold_offline::close(window.app_handle());
                     desktop_lyrics::dismiss(window.app_handle(), None);
                     mini::dismiss(window.app_handle(), None, false);
@@ -530,6 +533,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 audio_diagnostics::system_master_volume,
                 audio_diagnostics::check_volume_diagnosis,
                 audio_diagnostics::dismiss_volume_diagnosis,
+                daily_notification::daily_notification,
+                daily_notification::daily_notification_command,
+                daily_notification::daily_notification_enabled,
+                daily_notification::set_daily_notification_enabled,
                 player::power::playback_power,
                 player::power::set_playback_power,
                 player::player_snapshot,
@@ -720,6 +727,9 @@ pub fn run() {
             if pc_presentation::start(app.handle()).is_err() {
                 eprintln!("Cumulus PC presentation refresh is unavailable.");
             }
+            if daily_notification::start(app.handle()).is_err() {
+                eprintln!("Cumulus daily recommendation notification is unavailable.");
+            }
             if renewal::start_legacy(app.handle()).is_err() {
                 eprintln!("Cumulus scheduled legacy session renewal is unavailable.");
             }
@@ -740,6 +750,7 @@ pub fn run() {
             if matches!(event, tauri::RunEvent::Exit) {
                 renewal::stop(app);
                 pc_presentation::stop(app);
+                daily_notification::stop(app);
             }
             #[cfg(windows)]
             if matches!(event, tauri::RunEvent::Exit)

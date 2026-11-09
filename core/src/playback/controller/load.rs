@@ -783,6 +783,7 @@ impl Actor {
                 let refresh_radio = needs_skip_refresh
                     .then(|| super::audiobook_skip::radio_id(&prepared.item))
                     .flatten();
+                self.startup_played = true;
                 self.loaded = Some(Loaded {
                     audiobook_skip: (!needs_skip_refresh)
                         .then_some(prepared.audiobook_skip)

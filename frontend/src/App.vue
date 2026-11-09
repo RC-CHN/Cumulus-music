@@ -156,6 +156,7 @@ import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
 import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './services/catalog';
+import DailyNotificationCard from './components/DailyNotificationCard.vue';
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
@@ -2868,6 +2869,7 @@ function revealSettingsSection() {
 function openSettingsSection(
   epoch: string,
   section:
+    | 'settings-desktop-notifications'
     | 'settings-audio-output'
     | 'settings-playback'
     | 'settings-privacy'
@@ -2883,6 +2885,12 @@ function openSettingsSection(
   const route: Page = { kind: 'settings' };
   settingsFocus = { epoch, route, section };
   music.navigate(route);
+}
+function dailyNotificationDetails(epoch: string) {
+  if (epoch === music.account.value.epoch) music.navigate({ kind: 'daily' });
+}
+function dailyNotificationSettings(epoch: string) {
+  openSettingsSection(epoch, 'settings-desktop-notifications');
 }
 function openAudioOutput(epoch: string) {
   openSettingsSection(epoch, 'settings-audio-output');
@@ -6354,6 +6362,13 @@ onUnmounted(() => {
         :model="likeRecovery"
       />
     </ModalTransition>
+    <DailyNotificationCard
+      :epoch="account.epoch"
+      @details="dailyNotificationDetails"
+      @settings="dailyNotificationSettings"
+      @played="player.syncPlayback()"
+      @issue="music.notice.value = $event"
+    />
     <PlayerBar
       :account="account"
       :player="player"

@@ -56,6 +56,7 @@ impl CommittedSceneVoice {
 /// Native snapshot; a host must map selected resources to its public DTO.
 #[derive(Clone)]
 pub struct PlaybackSnapshot {
+    pub(crate) startup_played: bool,
     /// Native startup policy state, excluded from the public player DTO.
     pub startup_pending: bool,
     pub startup_autoplay: bool,

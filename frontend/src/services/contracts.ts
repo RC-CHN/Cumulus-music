@@ -72,6 +72,7 @@ import type { AutostartClient, WindowPreferencesClient, WindowLifecycleClient } 
 import type { SystemMediaClient } from './systemMedia';
 import type { ShortcutsClient } from './shortcuts';
 import type { OutputClient } from './output';
+import type { DailyNotificationClient } from './dailyNotification';
 import type { SystemMasterVolumeClient, VolumeDiagnosisClient } from './systemMasterVolume';
 import type { EffectDirectoryClient } from './effectDirectory';
 import type { RelayClient } from './relay';
@@ -187,6 +188,7 @@ export interface CoreClient
     QueueClickPreferencesClient,
     OutputClient,
     SystemMasterVolumeClient,
+    DailyNotificationClient,
     VolumeDiagnosisClient,
     EffectDirectoryClient,
     AutostartClient,

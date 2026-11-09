@@ -90,6 +90,37 @@ impl MusicClient {
         input: PlaySelection,
         prepared: Option<PreparedSelection>,
     ) -> Result<PlayerView> {
+        self.play_selection_with_daily_origin(epoch, input, prepared, None)
+            .await
+    }
+
+    pub(in crate::client) async fn play_daily_notification_selection(
+        &self,
+        epoch: &str,
+        revision: String,
+        quality: crate::membership::Quality,
+        origin: super::super::daily_notification::PlaybackOrigin,
+    ) -> Result<PlayerView> {
+        self.play_selection_with_daily_origin(
+            epoch,
+            PlaySelection::DailyRecommendations {
+                revision,
+                index: 0,
+                quality,
+            },
+            None,
+            Some(origin),
+        )
+        .await
+    }
+
+    async fn play_selection_with_daily_origin(
+        &self,
+        epoch: &str,
+        input: PlaySelection,
+        prepared: Option<PreparedSelection>,
+        daily_origin: Option<super::super::daily_notification::PlaybackOrigin>,
+    ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
         let (input, zone_detail) = match input {
             PlaySelection::VerticalZonePlaylistDetail {
@@ -753,7 +784,10 @@ impl MusicClient {
                     )),
                     PlaySelection::DailyRecommendations { revision, index, quality } => Ok((
                         recommendation_ids.ok_or(Error::StaleResponse)?, index, quality,
-                        daily_source(&revision),
+                        match daily_origin {
+                            Some(origin) => origin.source(&revision, &uid),
+                            None => daily_source(&revision),
+                        },
                     )),
                     PlaySelection::DailyRecommendationsBatch { revision, quality, .. } => Ok((
                         recommendation_ids.ok_or(Error::StaleResponse)?, 0, quality,

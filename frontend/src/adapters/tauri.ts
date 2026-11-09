@@ -2,6 +2,7 @@ import type { HistorySyncState } from '../services/history';
 import type { SearchPrivilegeObservation } from '../services/search';
 import type { PcPresentationView } from '../services/pcPresentation';
 import type { NativeLikeChanged } from '../services/nativeLikes';
+import type { DailyNotification } from '../services/dailyNotification';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createVoiceSongGroupDownloadBridge } from './voiceSongGroupDownload';
@@ -210,6 +211,21 @@ export function createTauriClient(): CoreClient {
     onWindowLifecycle: (handler) =>
       listen<WindowLifecycleView>('cumulus:window-lifecycle', (event) => handler(event.payload)),
     systemMasterVolume: () => invoke('system_master_volume'),
+    dailyNotification: (epoch) => invoke('daily_notification', { epoch }),
+    dailyNotificationCommand: (epoch, receipt, action) =>
+      invoke('daily_notification_command', { epoch, receipt, action }),
+    onDailyNotification: (callback) =>
+      listen<DailyNotification | null>('cumulus:daily-notification', (event) =>
+        callback(event.payload),
+      ),
+    dailyNotificationEnabled: (epoch) => invoke('daily_notification_enabled', { epoch }),
+    setDailyNotificationEnabled: (epoch, enabled) =>
+      invoke('set_daily_notification_enabled', { epoch, enabled }),
+    onDailyNotificationPreference: (callback) =>
+      listen<AccountData<boolean>>('cumulus:daily-notification-preference', (event) =>
+        callback(event.payload),
+      ),
+
     checkVolumeDiagnosis: (visit) => invoke('check_volume_diagnosis', { ...visit }),
     dismissVolumeDiagnosis: (epoch, receipt, action) =>
       invoke('dismiss_volume_diagnosis', { epoch, receipt, action }),
