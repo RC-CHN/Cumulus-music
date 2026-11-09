@@ -544,6 +544,7 @@ jobs:
           key: ${{ steps.release-deps.outputs.cache-primary-key }}
 
   windows-webview-probes:
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
     name: Windows WebView probe build
     needs: frontend
     runs-on: windows-2022
@@ -627,6 +628,7 @@ jobs:
           compression-level: 1
 
   windows-webview:
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
     name: Windows WebView (${{ matrix.shard }})
     needs: [package-windows, windows-webview-probes]
     runs-on: windows-2022
@@ -634,9 +636,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # An explicit manual file-handoff run is diagnostic only. A push
-        # still needs all six Windows shards and the complete CI gate.
-        shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output != 'off' && '["package-runtime"]' || '["playback","library","search-account","catalog","package-media","package-runtime"]') }}
+        shard: [playback, library, search-account, catalog, package-media, package-runtime]
     defaults:
       run:
         shell: bash
@@ -678,7 +678,7 @@ jobs:
           save-cache: 'false'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output != 'off' && 'diagnostic-packages-windows-x64' || 'packages-windows-x64' }}
+          name: packages-windows-x64
           path: .build/packages/windows-x64
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -1043,8 +1043,71 @@ jobs:
             .build/ci-windows-cold-flac/tests.log
           if-no-files-found: error
           retention-days: 14
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Preserve synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-windows-webview-${{ matrix.shard }}
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-native-open:
+    # Static manual diagnostic. It does not feed the required Windows CI gate.
+    if: github.event_name == 'workflow_dispatch' && (inputs.windows_native_file_output == 'default' || inputs.windows_native_file_output == 'null')
+    name: Windows native open diagnostic
+    needs: [frontend, package-windows]
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - name: Verify and seed the pinned MSYS2 installer cache
+        timeout-minutes: 5
+        run: python scripts/ci/windows_msys2_bootstrap.py
+      - name: Windows media dependencies
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
+            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ladspa-sdk
+      - name: Install pinned toolchain
+        run: rustup show
+      - name: Build and verify Windows media runtime
+        uses: ./.github/actions/windows-media
+        with:
+          msys-root: ${{ steps.msys2.outputs.msys2-location }}
+          save-cache: 'false'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: diagnostic-packages-windows-x64
+          path: .build/packages/windows-x64
+      - name: Restore exact Windows diagnostic runtime
+        run: python scripts/ci/windows_webview_inputs.py restore-runtime
       - name: Verify Windows native open tokens, profile and retained decoder inputs
-        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && (inputs.windows_native_file_output == 'default' || inputs.windows_native_file_output == 'null')
         timeout-minutes: 20
         shell: pwsh
         run: |
@@ -1064,7 +1127,6 @@ jobs:
           cargo test --locked -p cumulus-core --lib windows_rooted_actor_loads_held -- --ignored
           if ($LASTEXITCODE -ne 0) { throw 'Packaged held libmpv proof failed' }
       - name: Launch exact Windows package and exercise cold and warm native file open
-        if: matrix.shard == 'package-runtime' && github.event_name == 'workflow_dispatch' && (inputs.windows_native_file_output == 'default' || inputs.windows_native_file_output == 'null')
         timeout-minutes: 10
         shell: pwsh
         env:
@@ -1078,7 +1140,7 @@ jobs:
           python scripts/ci/windows_native_open_smoke.py --packages .build/packages/windows-x64 --fixture-encoder "$env:CUMULUS_LOCAL_FIXTURE_FFMPEG" --root .build/ci-native-open-windows --audio-output "$mode" --endpoint-probe "$probe"
           if ($LASTEXITCODE -ne 0) { throw 'Windows packaged file activation proof failed' }
       - name: Preserve Windows packaged native open evidence
-        if: always() && !cancelled() && matrix.shard == 'package-runtime' && hashFiles('.build/ci-native-open-windows/report.json', '.build/ci-native-open-windows/owner.log') != ''
+        if: always() && !cancelled() && hashFiles('.build/ci-native-open-windows/report.json', '.build/ci-native-open-windows/owner.log') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-packaged-native-open-${{ inputs.windows_native_file_output }}-attempt-${{ github.run_attempt }}
@@ -1086,18 +1148,6 @@ jobs:
             .build/ci-native-open-windows/report.json
             .build/ci-native-open-windows/owner.log
             .build/ci-native-open-windows/sender.log
-          if-no-files-found: error
-          retention-days: 7
-      - name: Archive synthetic failure diagnostics
-        if: failure()
-        run: python scripts/ci/diagnostics.py
-      - name: Preserve synthetic failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: diagnostics-windows-webview-${{ matrix.shard }}
-          include-hidden-files: true
-          path: .build/diagnostics/synthetic-proofs.tar.gz
           if-no-files-found: error
           retention-days: 7
 

@@ -146,10 +146,11 @@ Windows 暖转交候选（尚不进入主线／安装包）
 
 Windows 原生复验入口
 - 在包含候选的 ref 上手动运行 CI，将 windows_native_file_output 设为
-  default 或 null。手动专项仅运行前端、Windows 包和对应的 package-runtime，
+  default 或 null。手动专项仅运行前端、Windows 包和独立的原生文件打开作业，
   不运行发布门禁，且不会取消同一提交的完整 CI。默认 off 运行完整 CI。
-  Windows package-runtime runner 从同次校验后的便携包读取媒体库并运行受限连接令牌、持有资料目录、重解析
-  拒绝、SQLite 日志以及同句柄 FFprobe/libmpv 用例。媒体测试用空输出，
+  独立 runner 不编译无关的 WebView 探针，从同次校验后的便携包读取媒体库，
+  运行受限连接令牌、持有资料目录、重解析拒绝、SQLite 日志以及同句柄
+  FFprobe/libmpv 用例。媒体测试用空输出，
   测量真实解码，不作声卡听感证明。
 - scripts/ci/windows_native_open_smoke.py 复核同一提交、运行及尝试的 portable
   ZIP 及其 FLAC 校验清单，提取全新副本。仅 Windows x64 GitHub 托管 runner
@@ -176,6 +177,8 @@ Windows 原生复验入口
 - Linux 已验证合成 WAV/FLAC/MP3、快照读回和路径拒绝；Windows 候选运行
   42656675830 已通过令牌、资料目录与持有解码检查，但便携包冷启动 WAV 的
   持久时钟未前进，未执行热交接。那次运行未采样默认端点；不能确认失败原因。
+  空输出候选运行 42667945952 已生成并校验便携包，但 Actions 没有创建执行
+  原生文件打开的作业；没有冷启动或热交接回执。
   原生 proof 所在 job 失败即失败，不作为 RC 已通过的依据。
   Windows API 依据：
   https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule
