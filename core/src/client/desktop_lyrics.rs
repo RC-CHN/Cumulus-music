@@ -9,14 +9,19 @@ use super::{
 use crate::{
     Error, Result,
     account::SessionToken,
-    lyrics::desktop::{Frame, Prepared, Source},
+    lyrics::{
+        LyricsService,
+        desktop::{Frame, Prepared, Source},
+    },
     preferences::desktop_lyrics::Appearance,
 };
 use serde::Serialize;
+use std::sync::Weak;
 pub struct DesktopLyricDocument {
     token: SessionToken,
     focus: FocusSnapshot,
     play_id: String,
+    indexed_source: Option<Weak<LyricsService>>,
     revision: String,
     prepared: Prepared,
     info: DesktopLyricInfo,
@@ -50,6 +55,9 @@ impl DesktopLyricDocument {
         client.focus.check_snapshot(self.focus)?;
         if client.native_shortcut_selection()?.audio_play_id.as_deref() != Some(&self.play_id) {
             return Err(Error::StaleResponse);
+        }
+        if let Some(source) = &self.indexed_source {
+            client.check_cached_indexed_lyrics(source)?;
         }
         Ok(())
     }
@@ -91,10 +99,11 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         self.player_lyrics(epoch, play_id).await?;
-        let (revision, value, failed) = self
-            .cached_player_lyrics(epoch, play_id, None)
+        let cached = self
+            .cached_player_lyrics(epoch, play_id, None, None)
             .await?
             .ok_or(Error::StaleResponse)?;
+        let value = cached.value;
         let prepared = Source {
             lines: &value.lines,
             translation: &value.translation,
@@ -110,7 +119,8 @@ impl MusicClient {
             token,
             focus,
             play_id: play_id.into(),
-            revision,
+            indexed_source: cached.indexed_source,
+            revision: cached.revision,
             prepared,
             info: DesktopLyricInfo {
                 scrollable: value.scrollable,
@@ -118,7 +128,7 @@ impl MusicClient {
                 from_cache: value.from_cache,
                 from_sidecar: value.from_sidecar,
                 from_embedded: value.from_embedded,
-                fetch_failed: failed,
+                fetch_failed: cached.failed,
             },
         };
         document.check(self)?;
@@ -136,11 +146,12 @@ impl MusicClient {
                 &document.token.generation.to_string(),
                 &document.play_id,
                 Some(&document.revision),
+                document.indexed_source.as_ref(),
             )
             .await?;
         document.check(self)?;
-        if let Some((revision, value, failed)) = value {
-            document.replace(revision, value, failed);
+        if let Some(cached) = value {
+            document.replace(cached.revision, cached.value, cached.failed);
             Ok(true)
         } else {
             Ok(false)
@@ -187,10 +198,11 @@ impl MusicClient {
         gain: f64,
     ) -> Result<()> {
         document.check(self)?;
-        self.lyric_offset(
+        self.lyric_offset_for_source(
             &document.token.generation.to_string(),
             &document.play_id,
             gain,
+            document.indexed_source.as_ref(),
         )
         .await?;
         self.refresh_desktop_lyric_document(document).await?;

@@ -24,6 +24,28 @@ use std::{
     time::Duration,
 };
 const FLAC: &[u8] = include_bytes!("fixtures/tag_audio/seed.flac");
+
+struct MappedProbe;
+impl cumulus_core::library::probe::AudioProbe for MappedProbe {
+    fn inspect(
+        &self,
+        path: &std::path::Path,
+    ) -> cumulus_core::Result<cumulus_core::library::AudioMetadata> {
+        Ok(cumulus_core::library::AudioMetadata {
+            title: path.file_stem().unwrap().to_string_lossy().into(),
+            duration: 45.0,
+            album: String::new(),
+            artists: Vec::new(),
+            format: Some("flac".into()),
+            container: "flac".into(),
+            bitrate: None,
+            sample_rate: Some(8000),
+            channels: Some(1),
+            cover_bytes: None,
+        })
+    }
+}
+
 struct Fixture {
     root: tempfile::TempDir,
     session: Arc<AccountSession>,
@@ -1190,6 +1212,51 @@ async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_sele
     assert_eq!(f.api.count("player/url"), 0);
 }
 
+#[tokio::test]
+async fn matched_local_lyrics_use_only_the_owned_catalog_download_fallback() {
+    use cumulus_core::library::LocalLibrary;
+
+    let f = Fixture::new();
+    let (_, completed) = f.completed().await;
+    let download = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let download_sidecar = download.with_extension("lrc");
+    fs::write(&download_sidecar, "[00:01]已下载歌曲歌词").unwrap();
+    *f.api.lyric.lock().unwrap() = Ok(json!({"code":200}));
+
+    let local_root = f.root.path().join("mapped");
+    fs::create_dir(&local_root).unwrap();
+    let local_audio = local_root.join("unrelated.flac");
+    fs::write(&local_audio, FLAC).unwrap();
+    fs::write(local_audio.with_extension("lrc"), "[00:01]只属于原文件").unwrap();
+    let library = LocalLibrary::with_probe(f.store.clone(), Arc::new(MappedProbe)).unwrap();
+    library.scan(&local_root).unwrap();
+    let page = f.client.local_page(LocalQuery::default()).await.unwrap();
+    let id = &page.tracks[0].track.id;
+    library.map_online(&f.session, id, &json!(123)).unwrap();
+    let play = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Local {
+                query: LocalQuery::default(),
+                revision: page.revision,
+                start_id: Some(id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(play.download_task_id.is_none());
+    let play_id = play.play_id.as_deref().unwrap();
+    let lyric = f.client.player_lyrics("1", play_id).await.unwrap();
+    assert!(lyric.from_sidecar);
+    assert_eq!(lyric.lines[0].lyric, "已下载歌曲歌词");
+    let device = f.device.state.lock().unwrap();
+    assert!(matches!(&device.last_source, Some(MediaInput::File(path))
+        if path.canonicalize().unwrap() == local_audio.canonicalize().unwrap()));
+    assert_eq!(device.loads, 1);
+    assert_eq!(f.api.count("player/url"), 0);
+}
+
 async fn wait(
     client: &MusicClient,
     epoch: &str,
@@ -1789,26 +1856,7 @@ async fn queued_download_reveals_its_own_publication_without_a_same_song_fallbac
 
 #[tokio::test]
 async fn catalog_queue_location_keeps_the_offered_source_and_rejects_ambiguous_mappings() {
-    use cumulus_core::library::{AudioMetadata, LocalLibrary, probe::AudioProbe};
-    use std::path::Path;
-
-    struct Probe;
-    impl AudioProbe for Probe {
-        fn inspect(&self, path: &Path) -> cumulus_core::Result<AudioMetadata> {
-            Ok(AudioMetadata {
-                title: path.file_stem().unwrap().to_string_lossy().into(),
-                duration: 45.0,
-                album: String::new(),
-                artists: Vec::new(),
-                format: Some("flac".into()),
-                container: "flac".into(),
-                bitrate: None,
-                sample_rate: Some(8000),
-                channels: Some(1),
-                cover_bytes: None,
-            })
-        }
-    }
+    use cumulus_core::library::LocalLibrary;
 
     let f = Fixture::new();
     let (id, view) = f.completed().await;
@@ -1818,7 +1866,7 @@ async fn catalog_queue_location_keeps_the_offered_source_and_rejects_ambiguous_m
     for name in ["mapped original.flac", "alternate local.flac"] {
         fs::write(local_root.join(name), FLAC).unwrap();
     }
-    let library = LocalLibrary::with_probe(f.store.clone(), Arc::new(Probe)).unwrap();
+    let library = LocalLibrary::with_probe(f.store.clone(), Arc::new(MappedProbe)).unwrap();
     library.scan(&local_root).unwrap();
     let files = library.list(Default::default()).unwrap();
     let item = |name| {

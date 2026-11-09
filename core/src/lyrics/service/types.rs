@@ -17,7 +17,7 @@ impl LyricDemand {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LyricTarget {
     Song(String),
     Cloud(String),

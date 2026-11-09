@@ -10,6 +10,8 @@ mod directory_selection;
 mod lyric_reports;
 #[path = "support/lyric_wave.rs"]
 mod lyric_wave;
+#[path = "client_local/matched_lyrics.rs"]
+mod matched_lyrics;
 #[path = "support/native_lyric_wave.rs"]
 mod native_lyric_wave;
 #[path = "client_local/queue_drop.rs"]
