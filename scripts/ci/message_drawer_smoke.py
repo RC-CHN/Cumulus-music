@@ -242,11 +242,12 @@ def run_read_all(args, root, common):
 
 
 def verify_attachments(report, output, screenshots):
-    assert report['ok'] and report['attachmentTargetsVerified'] and report['count'] == 9
+    assert report['ok'] and report['attachmentTargetsVerified'] and report['podcastNoticeVerified']
+    assert report['count'] == 13
     assert report['realAccountWrites'] == report['realMusicRequests'] == 0
     assert not report['messageRequests']['blockedWrite']
-    assert len(list(output.glob('ux_*.json'))) == 9
-    assert len(list(output.glob('ux_*.png'))) == (9 if screenshots else 0)
+    assert len(list(output.glob('ux_*.json'))) == 13
+    assert len(list(output.glob('ux_*.png'))) == (13 if screenshots else 0)
     requests = report['messageRequests']['requests']
     expected = [
         ('/api/v1/resource/comments/R_AL_3_7', '701'),
@@ -256,7 +257,22 @@ def verify_attachments(report, output, screenshots):
     assert [(path, args['commentId']) for path, args in requests
             if path.startswith('/api/v1/resource/comments/')] == expected
     assert sum(path == '/api/msg/private/history' for path, _ in requests) == 1
-    assert sum(path == '/api/msg/notices' for path, _ in requests) == 1
+    assert sum(path == '/api/msg/notices' for path, _ in requests) == 2
+    assert sum(path == '/api/msg/private/users' for path, _ in requests) == 2
+    podcast_reads = [
+        (path, args) for path, args in requests
+        if path in {'/api/djradio/v3/get', '/api/v6/dj/program/byradio',
+                    '/api/dj/user/setting/resumeplay/get'}
+    ]
+    assert podcast_reads == [
+        entry
+        for radio in ['81', '81', '82', '81']
+        for entry in [
+            ('/api/djradio/v3/get', {'id': radio}),
+            ('/api/v6/dj/program/byradio', {'radioId': radio, 'limit': 200, 'offset': 0, 'asc': True}),
+            ('/api/dj/user/setting/resumeplay/get', {'radioId': radio}),
+        ]
+    ], podcast_reads
 
 
 def verify_deletion(report, output, screenshots):

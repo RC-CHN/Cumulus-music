@@ -180,6 +180,55 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             _ => Err(Error::InvalidInput("unexpected synthetic reply request")),
         });
     }
+    if attachments()
+        && matches!(
+            path,
+            "/api/djradio/sub"
+                | "/api/djradio/unsub"
+                | "/api/djradio/newcount/clear/byradio"
+                | "/api/dj/user/setting/resumeplay/update"
+                | "/api/dj/play/url/check"
+                | "/api/dj/program/detail"
+        )
+    {
+        WRITE_ATTEMPT.store(true, Ordering::SeqCst);
+        return Some(Err(Error::State("a podcast notice must only open detail")));
+    }
+    if attachments()
+        && matches!(
+            path,
+            "/api/djradio/v3/get"
+                | "/api/v6/dj/program/byradio"
+                | "/api/dj/user/setting/resumeplay/get"
+        )
+    {
+        REQUESTS.lock().unwrap().push((path.into(), args.clone()));
+        let id = match (args["id"].as_str(), args["radioId"].as_str()) {
+            (Some("81"), None) | (None, Some("81")) => "81",
+            (Some("82"), None) | (None, Some("82")) => "82",
+            _ => return Some(Err(Error::State("unexpected podcast notice identity"))),
+        };
+        let radio = json!({"id":id,"name":format!("通知播客 {id}"),"programCount":1,
+            "subed":true,"dj":{"userId":2,"nickname":"合成主播"}});
+        return Some(match path {
+            "/api/djradio/v3/get" if args == &json!({"id":id}) => {
+                Ok(json!({"code":200,"data":radio}))
+            }
+            "/api/v6/dj/program/byradio"
+                if args == &json!({"radioId":id,"limit":200,"offset":0,"asc":true}) =>
+            {
+                Ok(
+                    json!({"code":200,"data":{"programs":[{"id":401,"name":"合成单集",
+                    "mainSong":{"id":1,"name":"合成声音","duration":30000},
+                    "radio":radio,"duration":30000}],"count":1,"more":false,"asc":true}}),
+                )
+            }
+            "/api/dj/user/setting/resumeplay/get" if args == &json!({"radioId":id}) => {
+                Ok(json!({"code":200,"data":{"resumePlayValue":0}}))
+            }
+            _ => Err(Error::State("unexpected podcast notice arguments")),
+        });
+    }
     if attachments() && path.starts_with("/api/v1/resource/comments/") {
         REQUESTS.lock().unwrap().push((path.into(), args.clone()));
         let (id, wire_id) = match path {
@@ -396,7 +445,10 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             json!({"code":200,"more":false,"notices":[
                 {"id":61,"time":T,"notice":{"type":2,"user":{"nickname":"合成通知者"},"playlist":{"id":2,"name":"合成歌单"}}},
                 {"id":62,"time":T-1,"notice":{"type":6,"comment":{"commentId":702,"threadId":"A_PL_0_2","content":"合成喜欢评论"}}},
-                {"id":63,"time":T-2,"notice":{"type":6,"comment":{"commentId":703,"threadId":"R_MV_5_42","content":"移动端查看的评论"}}}
+                {"id":63,"time":T-2,"notice":{"type":6,"comment":{"commentId":703,"threadId":"R_MV_5_42","content":"移动端查看的评论"}}},
+                {"id":64,"time":T-3,"notice":{"type":8,"user":{"nickname":"合成收藏者"},"djRadio":{"id":81,"name":"通知播客 81"}}},
+                {"id":65,"time":T-4,"notice":{"type":8,"djRadio":{"id":"82","name":"通知播客 82"}}},
+                {"id":66,"time":T-5,"notice":{"type":8,"djRadio":{"id":"https://private.invalid/89","name":"合成不可打开播客"},"program":{"id":401}}}
             ]})
         }
         "/api/msg/notices" if args == &json!({"total":true,"limit":10,"offset":0,"time":-1}) => {

@@ -435,10 +435,50 @@
       click(target(62));
       await destination('attachment_playlist_comment', () => located(702));
       await returnToDrawer(62);
+      const radioHeading = (id) => all('.podcast-cover h2').some((heading) =>
+        heading.textContent.trim() === '通知播客 ' + id && heading.getClientRects().length > 0
+          && !heading.closest('.page-leave-active'));
+      const radioReads = async () => (await fixture()).requests
+        .filter(([path]) => path === '/api/djradio/v3/get').map(([, args]) => args.id);
+      const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+      assert(paused.state === 'paused' && paused.track?.id === '3', 'notice starts from the native paused track');
+      const pausedQueue = await invoke('player_queue', { epoch });
+      assert(target(64) && target(65) && !target(66) && contains('合成不可打开播客') &&
+        !drawer().querySelector('a[href],iframe'), 'only typed canonical radio notices have an action');
+      click(target(64));
+      await destination('attachment_notice_radio', () => radioHeading(81));
+      await returnToDrawer(64);
+      assert((await radioReads()).join(',') === '81', 'opening the first podcast only reads its own detail');
+      await capture('attachment_notice_radio_return');
+
+      click(target(64));
+      await wait(() => !drawer() && radioHeading(81), 'radio 81 before second inbox visit');
+      click(trigger());
+      await wait(() => ready() && contains('私信预览 1'), 'reopened inbox on a radio');
+      pick('notices');
+      await wait(() => ready() && target(64) && target(65), 'notices in the podcast route');
+      click(target(64));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      assert(drawer() && radioHeading(81) && (await radioReads()).join(',') === '81,81',
+        'the already visible same radio does not start another route or detail read');
+      click(target(65));
+      await destination('attachment_notice_other_radio', () => radioHeading(82));
+      await returnToDrawer(65);
+      await wait(() => radioHeading(81), 'Back returns to the prior radio as well as the inbox');
+      const afterRadio = await invoke('player_snapshot', { epoch });
+      const afterQueue = await invoke('player_queue', { epoch });
+      assert(afterRadio.state === 'paused' && afterRadio.track?.id === '3' &&
+        afterRadio.playId === paused.playId && afterRadio.entryId === paused.entryId &&
+        afterQueue.revision === pausedQueue.revision &&
+        afterQueue.tracks.map((item) => item.entryId).join(',') === pausedQueue.tracks.map((item) => item.entryId).join(','),
+      'radio notification navigation preserves the actual paused decoder and queue');
+      assert((await radioReads()).join(',') === '81,81,82,81',
+        'Back restores the exact previous radio, never a substituted id');
+      await capture('attachment_notice_other_radio_return');
       assert(one('[data-message-tab="notices"] .message-drawer-badge')?.textContent.trim() === '4',
         'viewing typed targets never clears unread');
       assert(!(await fixture()).blockedWrite,'no explicit message mutation');
-      await emit('complete',{ok:true,attachmentTargetsVerified:true,count,realAccountWrites:0,realMusicRequests:0});
+      await emit('complete',{ok:true,attachmentTargetsVerified:true,podcastNoticeVerified:true,count,realAccountWrites:0,realMusicRequests:0});
       return;
     }
 
