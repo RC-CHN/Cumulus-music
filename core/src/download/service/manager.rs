@@ -72,6 +72,10 @@ pub(super) fn creation_clock() -> Result<u64> {
 }
 
 impl DownloadService {
+    pub(crate) fn has_transfer_control(&self, id: &str) -> Result<bool> {
+        Ok(self.store.get(&self.owner, CONTROL, id)?.is_some())
+    }
+
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
         Self::with_backend(
             session,

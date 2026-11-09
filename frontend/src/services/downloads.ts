@@ -57,6 +57,7 @@ export interface DownloadTask {
   bytes: number;
   total: number | null;
   progress: number | null;
+  speedBytesPerSecond?: number | null;
   requestedQuality: Quality;
   actualQuality: Quality | null;
   requestedResolution: number | null;
@@ -269,6 +270,21 @@ export function downloadStatus(task: DownloadTask): string {
     cancelling: '正在取消',
     cancelled: '已取消',
   }[task.status];
+}
+
+export function downloadProgressStatus(task: DownloadTask, fresh: boolean): string {
+  const rate = task.speedBytesPerSecond;
+  if (
+    !fresh ||
+    task.status !== 'downloading' ||
+    typeof rate !== 'number' ||
+    !Number.isSafeInteger(rate) ||
+    rate < 0
+  )
+    return downloadStatus(task);
+  if (rate >= 1_000_000) return `${(rate / 1_000_000).toFixed(1)} MB/s`;
+  if (rate >= 1_000) return `${Math.floor(Number((rate / 1_000).toFixed(2)))} KB/s`;
+  return `${rate} B/s`;
 }
 export function bytesLabel(bytes: number | null): string {
   if (bytes === null) return '—';

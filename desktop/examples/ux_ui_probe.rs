@@ -13,6 +13,8 @@ mod daily_notification_fixture;
 mod download_liked_fixture;
 #[path = "support/download_page_fixture.rs"]
 mod download_page_fixture;
+#[path = "support/download_speed_fixture.rs"]
+mod download_speed_fixture;
 #[path = "support/effect_directory_fixture.rs"]
 mod effect_directory_fixture;
 #[path = "support/effect_peq_fixture.rs"]
@@ -717,6 +719,9 @@ impl Api for Library {
             if let Some(result) = download_page_fixture::menu_share_response(path, &args, cached) {
                 return result;
             }
+            if let Some(result) = download_speed_fixture::response(path, &args, cached) {
+                return result;
+            }
             if let Some(result) = download_page_fixture::response(path, &args) {
                 return result;
             }
@@ -1098,6 +1103,14 @@ fn main() {
     queue_more_fixture::phase_milestone("graphics_prepared");
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    let download_speed_proof = download_speed_fixture::enabled();
+    assert!(
+        !download_speed_proof
+            || (motion_proof
+                && !download_page_fixture::enabled()
+                && !voice_download_fixture::enabled()
+                && !search_download_ui_fixture::enabled())
+    );
     let playback_cache_proof = std::env::var_os("CUMULUS_PLAYBACK_CACHE_PROOF").is_some();
     assert!(!playback_cache_proof || motion_proof);
     assert!(!vertical_zone_fixture::enabled() || motion_proof);
@@ -1214,7 +1227,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() {
+        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1304,6 +1317,9 @@ fn main() {
         }
         if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork))
             .with_video_factory(Arc::new(|| Ok(Box::new(cumulus_core::playback::engine::MpvVideoEngine::open(cumulus_core::playback::engine::MpvConfig {null_output:true,..Default::default()},640,360)?)))); }
+        if download_speed_proof {
+            client=client.with_download_backend(Arc::new(download_speed_fixture::Media));
+        }
         if voice_download_fixture::enabled() {
             client=client.with_download_backend(Arc::new(voice_download_fixture::Media));
         }
@@ -1655,6 +1671,17 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval(format!("window.__searchDownloadFixtureAck={ack};")).unwrap();
                 });return;
             }
+            if download_speed_proof && stage=="download-speed-fixture" {
+                let id=value["id"].as_u64().unwrap();
+                let ack=match download_speed_fixture::control(&proof_store,value["action"].as_str().unwrap_or("")) {
+                    Ok(())=>json!({"ok":true,"report":download_speed_fixture::report(&proof_store).unwrap(),
+                        "root":cover_root.join("media")}),
+                    Err(error)=>json!({"ok":false,"error":error.to_string()}),
+                };
+                handle.get_webview_window("main").unwrap()
+                    .eval(format!("window.__downloadSpeedAck[{id}]={ack};")).unwrap();
+                return;
+            }
             if let Some(fixture)=download_page.as_ref() && stage=="download-page-fixture" {
                 let handle=handle.clone();let fixture=fixture.clone();
                 tauri::async_runtime::spawn(async move {
@@ -1819,6 +1846,9 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if download_speed_proof {
+                value["downloadSpeedFixture"]=download_speed_fixture::report(&proof_store).unwrap();
+            }
             if search_download_row_proof { value["searchDownloadFixture"]=search_download_ui_fixture::report(); }
             if download_page_fixture::quality_enabled() {
                 value["downloadQualityFixture"] = download_page_fixture::quality_report(&proof_store).unwrap();

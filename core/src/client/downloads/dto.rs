@@ -93,6 +93,8 @@ pub struct DownloadTaskView {
     pub bytes: u64,
     pub total: Option<u64>,
     pub progress: Option<f64>,
+    /// Native measured bytes per second; absent outside this session's live transfer.
+    pub speed_bytes_per_second: Option<u64>,
     pub requested_quality: String,
     pub actual_quality: Option<String>,
     pub requested_resolution: Option<u32>,

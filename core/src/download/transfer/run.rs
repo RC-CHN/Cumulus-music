@@ -134,6 +134,7 @@ impl TransferManager {
         // business futures do not multiply 64 KiB stack frames in debug hosts.
         let mut buffer = vec![0u8; 65536];
         let mut paused = false;
+        let rate = self.rates.begin(&job.id);
         loop {
             if options.control.checkpoint()? == TransferDirective::Pause
                 || options.byte_budget.is_some_and(|b| received >= b)
@@ -169,6 +170,7 @@ impl TransferManager {
             }
             files::owned_part(job)?;
             file.write_all(&buffer[..n])?;
+            rate.written(n as u64);
             received += n as u64;
             job.bytes = end;
             if received - checkpoint >= 1024 * 1024 {
@@ -177,6 +179,8 @@ impl TransferManager {
                 checkpoint = received;
             }
         }
+        // Hashing, processing, publication, and recovery never report speed.
+        drop(rate);
         file.sync_all()?;
         self.save(job)?;
         if Some(job.bytes) == job.resource.size {

@@ -1489,6 +1489,86 @@ async fn commands_validate_epoch_and_ids_before_any_task_or_request_and_report_p
 }
 
 #[tokio::test]
+async fn active_download_speed_measures_this_body_and_is_retired_on_pause_and_resume() {
+    let f = Fixture::new();
+    let gate = Arc::new(support::transfer::ReadGate::default());
+    {
+        let mut settings = f.backend.audio.settings.lock().unwrap();
+        settings.gate = Some(gate.clone());
+        settings.gate_after = 2048;
+        settings.chunk_limit = 2048;
+    }
+    assert!(FLAC.len() > 2048);
+    let id = f.start().await;
+    tokio::time::timeout(Duration::from_secs(5), gate.reached.notified())
+        .await
+        .unwrap();
+    let active = wait(&f.client, "1", DownloadTab::Active, |v| {
+        v.tasks
+            .first()
+            .is_some_and(|t| t.speed_bytes_per_second.is_some_and(|n| n > 0))
+    })
+    .await;
+    assert_eq!(active.tasks[0].status, DownloadStatus::Downloading);
+    assert_eq!(active.tasks[0].id, id);
+    for kind in ["media_transfers_v1", "download_tasks_v1"] {
+        let raw = f.store.get("1", kind, &id).unwrap().unwrap();
+        assert!(!raw.to_string().contains("speed"));
+    }
+
+    let control = |action| DownloadCommand::Control {
+        task_ids: vec![id.clone()],
+        action,
+    };
+    let pause = f
+        .client
+        .download_command("1", control(TaskControl::Pause))
+        .await
+        .unwrap();
+    assert_eq!(pause.accepted.as_slice(), std::slice::from_ref(&id));
+    let pending = f.client.downloads("1", Default::default()).await.unwrap();
+    // The native network read is still held. A requested pause must already
+    // suppress the old measured rate before the durable status catches up.
+    assert_eq!(pending.tasks[0].status, DownloadStatus::Downloading);
+    assert_eq!(pending.tasks[0].speed_bytes_per_second, None);
+    gate.release.notify_one();
+    let paused = wait(&f.client, "1", DownloadTab::Active, |v| {
+        v.tasks
+            .first()
+            .is_some_and(|t| t.status == DownloadStatus::Paused)
+    })
+    .await;
+    assert_eq!(paused.tasks[0].bytes, 2048);
+    assert_eq!(paused.tasks[0].speed_bytes_per_second, None);
+
+    let resumed = Arc::new(support::transfer::ReadGate::default());
+    {
+        let mut settings = f.backend.audio.settings.lock().unwrap();
+        settings.gate = Some(resumed.clone());
+        settings.gate_after = 0;
+    }
+    let resume = f
+        .client
+        .download_command("1", control(TaskControl::Resume))
+        .await
+        .unwrap();
+    assert_eq!(resume.accepted.as_slice(), std::slice::from_ref(&id));
+    tokio::time::timeout(Duration::from_secs(5), resumed.reached.notified())
+        .await
+        .unwrap();
+    let running = f.client.downloads("1", Default::default()).await.unwrap();
+    assert_eq!(running.tasks[0].speed_bytes_per_second, Some(0));
+    assert_eq!(f.backend.audio.calls().last().unwrap().offset, 2048);
+    resumed.release.notify_one();
+    let complete = wait(&f.client, "1", DownloadTab::Completed, |v| {
+        v.completed_count == 1
+    })
+    .await;
+    assert_eq!(complete.tasks[0].speed_bytes_per_second, None);
+    assert_eq!(complete.tasks[0].progress, Some(1.0));
+}
+
+#[tokio::test]
 async fn paused_download_is_persistent_then_explicitly_resumes_and_complete_rejects_cancel() {
     let f = Fixture::new();
     let gate = Arc::new(support::transfer::ReadGate::default());
