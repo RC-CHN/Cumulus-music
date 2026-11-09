@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import type { Timeline } from '../src/services/player.ts';
 import {
   bufferedSeekSpan,
+  chorusDisplayClock,
   chorusMarkerPercent,
   insidePlayableTrial,
   seekRail,
@@ -70,4 +71,15 @@ test('chorus metadata annotates the visible clock without expanding trial author
     assert.equal(chorusMarkerPercent(full, bad), null);
   assert.equal(chorusMarkerPercent({ ...full, mode: 'cue' }, 45), null);
   assert.equal(chorusMarkerPercent({ ...full, end: null }, 45), null);
+});
+
+test('standard chorus clock uses the native whole-second tick on the track or trial clock', () => {
+  assert.equal(chorusDisplayClock(4.82, 0), 4);
+  assert.equal(chorusDisplayClock(5, 0), 5);
+  assert.equal(chorusDisplayClock(14.82, 10.25), 14.25);
+  assert.equal(chorusDisplayClock(14.68, 10.25, 14.67), 14.67);
+  assert.equal(chorusDisplayClock(14.75, 10.25, 14.75), 14.25);
+  assert.equal(chorusDisplayClock(15.33, 10.25, 14.67), 15.25);
+  assert.equal(chorusDisplayClock(null, 0), null);
+  assert.equal(chorusDisplayClock(Infinity, 0), null);
 });

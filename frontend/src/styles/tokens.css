@@ -11,6 +11,7 @@
   --surface-selected: #ebe5ef;
   /* Official music_pc 0.0.14 colorBlack8 (M/691); scoped to Scene FM. */
   --scene-fm-theme-fallback: rgba(40, 50, 72, 0.3);
+  --chorus-mark-color: rgba(40, 50, 72, 0.3);
   --sidebar-bg: #f8f8fb;
   --input-bg: #f8f7fa;
   --line: #e6e3eb;
@@ -49,6 +50,7 @@
   --surface-hover: #343541;
   --surface-selected: #3c3042;
   --scene-fm-theme-fallback: rgba(255, 255, 255, 0.3);
+  --chorus-mark-color: rgba(255, 255, 255, 0.3);
   --sidebar-bg: #181920;
   --input-bg: #24252f;
   --line: #36343f;

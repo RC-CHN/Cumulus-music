@@ -8,7 +8,7 @@ from motion_smoke import launch
 
 def verify_chorus_queue(root, complete, screenshots):
     stages = sorted((root / 'first').glob('ux_*.json'))
-    assert len(stages) == complete['stageCount'] == 3 and complete['ok']
+    assert len(stages) == complete['stageCount'] == 3 and complete['ok'] and complete['scrubClockVerified']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     entries, plays = [], []
     for stage, track, seconds in zip(stages, ('1', '2', '1'), (4, 13, 4), strict=True):

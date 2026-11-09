@@ -27,7 +27,12 @@ import PlaybackMode from './PlaybackMode.vue';
 import { artistLabel } from '../services/artistLabel';
 import { effectLauncher, equalizerLauncher } from '../services/equalizer';
 import { headphoneTuningLabel } from '../services/effectDirectory';
-import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
+import {
+  bufferedSeekSpan,
+  chorusDisplayClock,
+  insidePlayableTrial,
+  seekRail,
+} from '../services/seekRail';
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
 import { usePlaybackDownloadState } from '../composables/usePlaybackDownloadState';
 import { useQueueMoreTip } from '../composables/useQueueMoreTip';
@@ -348,6 +353,44 @@ const seekStep = computed(() => {
   return Number.isFinite(length) && length > 0 ? length / 1000 : 0.1;
 });
 const seekValue = computed(() => draft.value ?? view.value?.position ?? rail.value.min);
+const chorusOwner = computed(() => {
+  const current = view.value;
+  return current?.playId
+    ? JSON.stringify([current.epoch, current.playId, rail.value.trial?.start])
+    : undefined;
+});
+const chorusNativeClock = computed(() =>
+  chorusDisplayClock(view.value?.position, rail.value.trial?.start ?? 0),
+);
+const chorusConfirmedScrub = shallowRef<{ owner: string; position: number }>();
+watch(
+  [chorusOwner, chorusNativeClock],
+  ([owner, clock]) => {
+    const confirmed = chorusConfirmedScrub.value;
+    if (
+      confirmed &&
+      (confirmed.owner !== owner ||
+        clock === null ||
+        confirmed.position <= clock ||
+        confirmed.position - clock >= 0.5)
+    )
+      chorusConfirmedScrub.value = undefined;
+  },
+  { flush: 'sync' },
+);
+const chorusReached = computed(() => {
+  const marker = chorusMarker.value;
+  if (!marker) return false;
+  // Use the full raw draft, not the fill clipped to the authorized trial.
+  const clock =
+    draft.value ??
+    chorusDisplayClock(
+      view.value?.position,
+      rail.value.trial?.start ?? 0,
+      chorusConfirmedScrub.value?.position,
+    );
+  return clock !== null && clock >= marker.seconds;
+});
 const seekTotalText = computed(() => {
   const total = view.value?.timeline?.total;
   return total == null ? '—' : time(total);
@@ -518,7 +561,21 @@ async function seek(event: Event) {
   const operation = { key };
   seekInFlight.value = operation;
   try {
-    await props.player.seekDisplayed(current, seconds);
+    const next = await props.player.seekDisplayed(current, seconds);
+    const owner = chorusOwner.value;
+    const clock = chorusNativeClock.value;
+    if (
+      next &&
+      owner &&
+      scrubKey.value === key &&
+      next.playId === current.playId &&
+      next.epoch === current.epoch &&
+      next.state !== 'error' &&
+      clock !== null &&
+      seconds > clock &&
+      seconds - clock < 0.5
+    )
+      chorusConfirmedScrub.value = { owner, position: seconds };
   } finally {
     if (seekInFlight.value === operation) {
       seekInFlight.value = undefined;
@@ -756,8 +813,8 @@ watch(
             <span
               v-if="chorusMarker != null"
               class="seek-chorus"
-              :class="{ reached: seekPlayed >= chorusMarker }"
-              :style="{ left: chorusMarker + '%' }"
+              :class="{ reached: chorusReached }"
+              :style="{ left: chorusMarker.percent + '%' }"
             />
             <template v-if="rail.span">
               <span class="trial-seek-start" :style="{ left: rail.span.left + '%' }" />

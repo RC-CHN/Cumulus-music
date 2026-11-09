@@ -31,6 +31,20 @@ export function insidePlayableTrial(
   return !!trial && seconds >= trial.start && seconds <= trial.end;
 }
 
+/** M/110 floors the native relative clock before restoring the trial offset.
+ * Just after a confirmed scrub, it retains a displayed fraction less than 0.5s
+ * ahead so the first coarse observation does not visibly move back. */
+export function chorusDisplayClock(
+  position: number | null | undefined,
+  trialStart: number,
+  confirmed?: number,
+): number | null {
+  if (position == null || !Number.isFinite(position) || !Number.isFinite(trialStart)) return null;
+  const coarse = Math.floor(position - trialStart) + trialStart;
+  const retreat = confirmed === undefined ? Infinity : confirmed - coarse;
+  return confirmed !== undefined && retreat > 0 && retreat < 0.5 ? confirmed : coarse;
+}
+
 /** Optional metadata marker; it never alters the authorization or seek range. */
 export function chorusMarkerPercent(
   timeline: Timeline | null | undefined,

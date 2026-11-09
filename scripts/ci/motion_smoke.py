@@ -35,22 +35,36 @@ def paint_checks(picture, payload):
         rect = dialog['rect']
         samples.append({'x': rect['left'] + 4, 'y': rect['top'] + rect['height'] / 2,
                         'color': dialog['background']})
-    for sample in samples:
-        color = re.fullmatch(r'rgb\((\d+), (\d+), (\d+)\)', sample['color'])
-        if color is None:
-            continue
+    def pixel(point):
         # CSS coordinates name a point inside a physical pixel, not its
         # nearest integer boundary. At 125%, rounding a right-hand outline
-        # sample can move it into the adjacent background pixel.
-        x = math.floor((payload.get('screenX', 0) + sample['x']) * ratio)
-        y = math.floor((payload.get('screenY', 0) + sample['y']) * ratio)
-        expected = tuple(map(int, color.groups()))
+        # sample can move it to the adjacent background pixel.
+        x = math.floor((payload.get('screenX', 0) + point['x']) * ratio)
+        y = math.floor((payload.get('screenY', 0) + point['y']) * ratio)
         if not (0 <= x < picture.get_width() and 0 <= y < picture.get_height()):
             raise AssertionError('paint sample outside captured root window')
         offset = y * picture.get_rowstride() + x * picture.get_n_channels()
-        actual = tuple(picture.get_pixels()[offset:offset + 3])
-        checks.append({'point': [x, y], 'expected': expected, 'actual': actual,
-                       'ok': actual == expected})
+        return [x, y], list(picture.get_pixels()[offset:offset + 3])
+
+    for sample in samples:
+        color = re.fullmatch(r'rgb\((\d+), (\d+), (\d+)\)', sample['color'])
+        alpha = re.fullmatch(r'rgba\((\d+), (\d+), (\d+), (0(?:\.\d+)?|1)\)', sample['color'])
+        under = sample.get('under')
+        if color is not None:
+            expected = list(map(int, color.groups()))
+            tolerance = 0
+        elif alpha is not None and under is not None:
+            # A neighboring point on the same painted rail records its
+            # actual color, including the active track and buffered fill.
+            _, base = pixel(under)
+            opacity = float(alpha[4])
+            expected = [round(int(alpha[i + 1]) * opacity + base[i] * (1 - opacity)) for i in range(3)]
+            tolerance = 1  # 8-bit compositor rounding
+        else:
+            continue
+        point, actual = pixel(sample)
+        checks.append({'point': point, 'expected': expected, 'actual': actual,
+                       'ok': all(abs(a - b) <= tolerance for a, b in zip(actual, expected, strict=True))})
     return checks
 
 

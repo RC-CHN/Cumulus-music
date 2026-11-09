@@ -367,7 +367,7 @@
   height: 4px;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: var(--text-secondary);
+  background: var(--chorus-mark-color);
 }
 .trial-seek-track .seek-chorus.reached {
   background: white;

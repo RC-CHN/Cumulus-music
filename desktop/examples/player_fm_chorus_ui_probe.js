@@ -55,7 +55,7 @@
       if (parked) {
         assert(document.activeElement === input && node.classList.contains('reached'), 'focused thumb overlaps reached marker');
         thumbSample = {center: {x, y}, outsideRail: {x, y: y - 3}, markerColor: color};
-      } else samples.push({x, y, color});
+      } else samples.push({x, y, color, under: {x: x + 5, y}});
     }
     await emit(stage, {
       playId: player.playId, position: Number(player.position), trackId: player.trackId,

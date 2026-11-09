@@ -51,6 +51,8 @@ export function usePlaybackChorus(
   );
   return computed(() => {
     if (!result.value || result.value.key !== target.value) return null;
-    return chorusMarkerPercent(view.value?.timeline, result.value.seconds);
+    const seconds = result.value.seconds;
+    const percent = chorusMarkerPercent(view.value?.timeline, seconds);
+    return percent === null ? null : { seconds, percent };
   });
 }

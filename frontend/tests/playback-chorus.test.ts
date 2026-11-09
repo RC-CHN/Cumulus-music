@@ -27,10 +27,10 @@ test('queue refresh keeps the current chorus point until a fresh reply, never sh
   try {
     requests[0]!.complete(20);
     await nextTick();
-    assert.equal(marker.value, 20);
+    assert.deepEqual(marker.value, { seconds: 20, percent: 20 });
     view.value = { ...view.value, queueRevision: '2', queueLen: 3 };
     await nextTick();
-    assert.equal(marker.value, 20);
+    assert.deepEqual(marker.value, { seconds: 20, percent: 20 });
     assert.equal(requests.length, 2);
 
     view.value = { ...view.value, playId: 'second' };
@@ -40,7 +40,7 @@ test('queue refresh keeps the current chorus point until a fresh reply, never sh
     assert.equal(marker.value, null);
     requests[2]!.complete(50);
     await nextTick();
-    assert.equal(marker.value, 50);
+    assert.deepEqual(marker.value, { seconds: 50, percent: 50 });
 
     view.value = {
       ...view.value,
