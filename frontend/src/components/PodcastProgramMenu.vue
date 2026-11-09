@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onScopeDispose, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onMounted, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { useCore } from '../services/core';
 import { failure } from '../services/contracts';
 import type { MenuItem } from '../services/menu';
@@ -40,6 +40,7 @@ type Selection = {
 const selection = shallowRef<Selection>();
 const shared = shallowRef<Selection>();
 const shareAnchor = shallowRef<HTMLButtonElement>();
+let preparing: Selection | undefined;
 function current(value: Selection) {
   return props.page === value.page && value.anchor.isConnected && !value.anchor.closest('[inert]');
 }
@@ -80,9 +81,18 @@ function clearFeedback() {
   clearTimeout(timer);
   feedback.value = '';
 }
+function abandonPreparation() {
+  if (preparing && selection.value === preparing) selection.value = undefined;
+  preparing = undefined;
+}
+function abandonForFocus(event: FocusEvent) {
+  if (preparing && (!(event.target instanceof Node) || !preparing.anchor.contains(event.target)))
+    abandonPreparation();
+}
 watch(
   () => props.page,
   () => {
+    abandonPreparation();
     selection.value = undefined;
     shared.value = undefined;
     shareAnchor.value = undefined;
@@ -91,9 +101,24 @@ watch(
   },
   { flush: 'sync' },
 );
+onMounted(() => {
+  document.addEventListener('pointerdown', abandonPreparation, true);
+  document.addEventListener('keydown', abandonPreparation, true);
+  document.addEventListener('focusin', abandonForFocus, true);
+  window.addEventListener('scroll', abandonPreparation, true);
+  window.addEventListener('resize', abandonPreparation);
+  window.addEventListener('blur', abandonPreparation);
+});
 onScopeDispose(() => {
+  abandonPreparation();
   selection.value = undefined;
   clearTimeout(timer);
+  document.removeEventListener('pointerdown', abandonPreparation, true);
+  document.removeEventListener('keydown', abandonPreparation, true);
+  document.removeEventListener('focusin', abandonForFocus, true);
+  window.removeEventListener('scroll', abandonPreparation, true);
+  window.removeEventListener('resize', abandonPreparation);
+  window.removeEventListener('blur', abandonPreparation);
 });
 
 async function open(
@@ -114,6 +139,9 @@ async function open(
     menu.value?.close(true);
     return;
   }
+  abandonPreparation();
+  menu.value?.close();
+  anchor.focus({ preventScroll: true });
   const value: Selection = {
     page,
     voice,
@@ -129,28 +157,28 @@ async function open(
   count.value = undefined;
   completed.value = undefined;
   selection.value = value;
-  await nextTick();
-  if (selection.value !== value || !current(value)) return;
-  if (point) void menu.value?.showAt(point.x, point.y, anchor);
-  else void menu.value?.showBelow(anchor);
-  const showing = () => opened.value && selection.value === value && current(value);
-  void client.voiceDownloadState(page.epoch, voice.id).then(
-    (status) => {
-      if (showing()) completed.value = status === 'complete';
-    },
-    () => {
-      if (showing()) completed.value = false;
-    },
-  );
-  void client.podcastProgramCommentCount(page.epoch, value.target).then(
-    (result) => {
-      if (showing() && result.epoch === page.epoch && result.value !== null)
-        count.value = result.value;
-    },
-    () => {
-      /* The plain Comments item remains available. */
-    },
-  );
+  preparing = value;
+  const live = () => preparing === value && selection.value === value && current(value);
+  try {
+    // The official menu prepares the optional count before consulting download
+    // state and presenting the actions. Native returns null on a network miss,
+    // but rejects a retired account or radio revision.
+    const result = await client.podcastProgramCommentCount(page.epoch, value.target);
+    if (!live() || result.epoch !== page.epoch) return;
+    const status = await client.voiceDownloadState(page.epoch, voice.id).catch(() => undefined);
+    if (!live()) return;
+    count.value = result.value ?? undefined;
+    completed.value = status === undefined ? undefined : status === 'complete';
+    await nextTick();
+    if (!live()) return;
+    preparing = undefined;
+    if (point) await menu.value?.showAt(point.x, point.y, anchor);
+    else await menu.value?.showBelow(anchor);
+  } catch {
+    // A rejected scope must not materialize a menu for the old row.
+  } finally {
+    if (preparing === value) abandonPreparation();
+  }
 }
 async function action(key: string) {
   const value = active.value;

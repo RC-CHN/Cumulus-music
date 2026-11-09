@@ -14,7 +14,7 @@
   const assert = (test, label) => { if (!test) throw Error(label); };
   const button = (text, root = document) => [...(root?.querySelectorAll('button') ?? [])]
     .find((el) => el.textContent.trim() === text || el.getAttribute('aria-label') === text);
-  let stageCount = 0, last = 'bootstrap', epoch, hold, release, parked;
+  let stageCount = 0, last = 'bootstrap', epoch, hold, release, holdDownload, releaseDownload, parked;
   const countReceipts = [], copied = [], queueCalls = [];
   async function wait(fn, label) {
     last = label;
@@ -71,7 +71,8 @@
     }, 'sealed account')).epoch;
     const provides = one('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key==='symbol' && key.description==='core-client')];
-    const originalCount=core.podcastProgramCommentCount, originalCopy=core.copyText, originalAction=core.playerAction;
+    const originalCount=core.podcastProgramCommentCount, originalCopy=core.copyText,
+      originalDownloadState=core.voiceDownloadState, originalAction=core.playerAction;
     core.podcastProgramCommentCount = async (owner,target) => {
       const result = await originalCount.call(core,owner,target);
       countReceipts.push({ owner, target, result });
@@ -79,6 +80,11 @@
       return result;
     };
     core.copyText = async (text) => { const result=await originalCopy.call(core,text); copied.push(text); return result; };
+    core.voiceDownloadState = async (owner,id) => {
+      const result=await originalDownloadState.call(core,owner,id);
+      if (holdDownload && id==='501') await new Promise((done) => { releaseDownload=done; });
+      return result;
+    };
     core.playerAction = async (owner,action) => {
       const result = await originalAction.call(core,owner,action);
       if (action.kind==='queue_voice') queueCalls.push({owner,action});
@@ -88,7 +94,13 @@
     await click(() => one('.podcast-card[data-radio-id="8"]'), 'radio card');
     await wait(() => enabled(trigger('501')) && enabled(trigger('503')) && enabled(trigger('504')), 'radio programs');
     assert(countReceipts.length===0,'count not prefetched by the radio page');
+    holdDownload=true;
     await click(() => trigger('501'),'More for first program');
+    await wait(() => releaseDownload && !menu() && trigger('501')?.getAttribute('aria-expanded')==='false',
+      'first menu remains closed while the local download state is held');
+    assert(countReceipts.length===1 && countReceipts[0].target.voiceId==='501','comment count preceded the local state read');
+    holdDownload=false;
+    releaseDownload();
     await menuReady('501',51);
     await capture('more');
     key(menu(),'Escape');
@@ -96,7 +108,8 @@
 
     hold=true;
     key(trigger('501'),'F10',true);
-    await wait(() => release && menu()?.getAttribute('aria-label')?.endsWith('501'),'old menu count awaiting delivery');
+    await wait(() => release && !menu() && trigger('501')?.getAttribute('aria-expanded')==='false',
+      'old menu remains closed while its count awaits delivery');
     const next = row('503');
     next.scrollIntoView({block:'center',behavior:'instant'});
     await frame();
@@ -109,7 +122,8 @@
     hold=false;
     release();
     await frame();
-    assert(item('comments')?.textContent.trim()==='查看评论(53)','late other count did not replace this menu');
+    assert(menu()?.getAttribute('aria-label')?.endsWith('503') &&
+      item('comments')?.textContent.trim()==='查看评论(53)','late count did not reopen the old menu');
     await capture('right_click',{pointerHitVoice:next.dataset.voiceId});
     await click(() => item('share'),'open program share');
     const sharing = await wait(() => dialog('track-share-dialog'),'program share dialog');
