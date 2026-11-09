@@ -4112,6 +4112,7 @@ type PlaylistDropRefresh = {
   page: Extract<Page, { kind: 'playlist' }>;
   epoch: string;
   revision: string;
+  mixedRevision?: string;
   visit: number;
 };
 const stalePlaylistDrop = shallowRef<PlaylistDropRefresh>();
@@ -4142,14 +4143,15 @@ watch(
   { flush: 'sync' },
 );
 watch(
-  () => result.value?.revision,
-  (revision) => {
+  [() => result.value?.revision, () => result.value?.playlistLocal?.revision],
+  ([revision, mixedRevision]) => {
     const ticket = stalePlaylistDrop.value;
     if (
       ticket &&
       refreshingPlaylistDrop.value !== ticket &&
       revision &&
-      revision !== ticket.revision
+      (revision !== ticket.revision ||
+        (ticket.mixedRevision !== undefined && mixedRevision !== ticket.mixedRevision))
     )
       stalePlaylistDrop.value = undefined;
   },
@@ -4162,7 +4164,9 @@ async function refreshPlaylistDropSource(event: MouseEvent) {
   try {
     // This is a new, read-only source load. The old gesture is never retained
     // or sent again. playlistKeyword is scoped to the route, not this read.
-    await music.load();
+    if (ticket.mixedRevision) {
+      if (!(await music.reloadReorderedPlaylist(() => ownsPlaylistDrop(ticket)))) return;
+    } else await music.load();
     if (
       stalePlaylistDrop.value !== ticket ||
       !ownsPlaylistDrop(ticket) ||
@@ -4181,6 +4185,19 @@ async function refreshPlaylistDropSource(event: MouseEvent) {
     if (refreshingPlaylistDrop.value === ticket) refreshingPlaylistDrop.value = undefined;
   }
 }
+const displayedMixedPlaylist = computed(() => {
+  const route = page.value;
+  const shown = result.value;
+  if (
+    route.kind === 'playlist' &&
+    !route.zonePlaylistReceipt &&
+    shown?.playlist?.id === route.id &&
+    shown.playlist.owned &&
+    !shown.playlist.favorite &&
+    shown.playlistLocal?.hasMembers
+  )
+    return shown.playlistLocal;
+});
 const canDropPlaylistSong = computed(
   () =>
     !!playlistSelectionScope.value &&
@@ -4259,6 +4276,7 @@ function startPlaylistQueueDrop(
   if (route.kind !== 'playlist' || !snapshot?.revision || !canDropPlaylistSong.value) return;
   const id = route.id;
   const revision = snapshot.revision;
+  const mixed = displayedMixedPlaylist.value;
   const epoch = account.value.epoch;
   const visit = playlistDropVisit;
   const keyword = playlistKeyword.value;
@@ -4266,6 +4284,7 @@ function startPlaylistQueueDrop(
   const ordinals = rows.map(({ track, index }) => ({
     trackId: track.id,
     trackIndex: position?.[index] ?? index,
+    local: track.local,
   }));
   const current = () =>
     canDropPlaylistSong.value &&
@@ -4276,25 +4295,41 @@ function startPlaylistQueueDrop(
     playlistKeyword.value === keyword &&
     result.value?.revision === revision &&
     result.value.tracks === snapshot.tracks &&
+    (!mixed || result.value.playlistLocal?.revision === mixed.revision) &&
     playlistTrackSearch.value.positions === position;
   if (
     !current() ||
-    !ordinals.every(({ trackId, trackIndex }) => snapshot.tracks[trackIndex]?.id === trackId)
+    !ordinals.every(({ trackId, trackIndex, local }) => {
+      const track = snapshot.tracks[trackIndex];
+      return (
+        track?.id === trackId &&
+        track.local === local &&
+        !track.missing &&
+        (!local || (mixed && Object.hasOwn(mixed.rows, trackId)))
+      );
+    })
   )
     return;
-  queuePanel.value?.beginDrop(event, {
-    kind: 'playlist',
+  const source = {
     id,
-    revision,
-    rows: ordinals,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
     sourceChanged: () => {
-      const ticket = { page: route, epoch, revision, visit };
-      if (ownsPlaylistDrop(ticket) && result.value?.revision === revision)
+      const ticket = { page: route, epoch, revision, mixedRevision: mixed?.revision, visit };
+      if (
+        ownsPlaylistDrop(ticket) &&
+        result.value?.revision === revision &&
+        (!mixed || result.value.playlistLocal?.revision === mixed.revision)
+      )
         stalePlaylistDrop.value = ticket;
     },
     current,
-  });
+  } as const;
+  queuePanel.value?.beginDrop(
+    event,
+    mixed
+      ? { ...source, kind: 'mixed_playlist', revision: mixed.revision, rows: ordinals }
+      : { ...source, kind: 'playlist', revision, rows: ordinals },
+  );
 }
 watch(
   [() => account.value.epoch, () => (page.value.kind === 'playlist' ? page.value.id : null)],
@@ -4424,12 +4459,36 @@ function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection
     fm: player.view.value?.fm,
   });
 }
-function scopedPlaylistQueue(id: string, songId?: string) {
+function scopedPlaylistQueue(id: string, track?: TrackView) {
   const route = page.value;
-  if (route.kind !== 'playlist' || route.id !== id || !route.zonePlaylistReceipt) return;
+  if (route.kind !== 'playlist' || route.id !== id) return;
   const epoch = account.value.epoch;
+  const snapshot = result.value;
+  const mixed = displayedMixedPlaylist.value;
+  if (mixed) {
+    return async () => {
+      const shown = result.value;
+      if (
+        account.value.epoch !== epoch ||
+        page.value !== route ||
+        shown?.playlist?.id !== id ||
+        shown.playlistLocal?.revision !== mixed.revision ||
+        (track &&
+          (track.missing ||
+            !shown.tracks.includes(track) ||
+            (track.local && !Object.hasOwn(mixed.rows, track.id))))
+      )
+        return;
+      return player.queueMixedPlaylist(
+        id,
+        mixed.revision,
+        track ? { id: track.id, local: track.local } : null,
+      );
+    };
+  }
   const receipt = route.zonePlaylistReceipt;
-  const revision = result.value?.revision;
+  if (!receipt) return;
+  const revision = snapshot?.revision;
   return async () => {
     if (
       account.value.epoch !== epoch ||
@@ -4439,7 +4498,7 @@ function scopedPlaylistQueue(id: string, songId?: string) {
       result.value.playlist?.id !== id
     )
       return;
-    return player.queueZonePlaylistDetail({ id, receipt, revision }, songId);
+    return player.queueZonePlaylistDetail({ id, receipt, revision }, track?.id);
   };
 }
 function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
@@ -5080,7 +5139,7 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
             },
           }
         : {}),
-      queueNext: scopedPlaylistQueue(playlist.id, request.track.id),
+      queueNext: scopedPlaylistQueue(playlist.id, request.track),
       play: () => {
         if (
           account.value.epoch !== epoch ||
@@ -6756,6 +6815,7 @@ onUnmounted(() => {
                     :preserve-scroll-on-refresh="!!mixedReorderVisit"
                     @mixed-reorder="reorderVisibleMixed"
                     :queue-drop-enabled="canDropPlaylistSong"
+                    :mixed-queue-drop="!!displayedMixedPlaylist"
                     @queue-drag="startPlaylistQueueDrop"
                     :tracks="playlistTrackSearch.tracks"
                     :match-keyword="

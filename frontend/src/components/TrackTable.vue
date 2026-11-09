@@ -36,6 +36,7 @@ const props = defineProps<{
   navigable?: boolean;
   preserveScrollOnRefresh?: boolean;
   queueDropEnabled?: boolean;
+  mixedQueueDrop?: boolean;
   mixedReorderScope?: object;
   playlistSelectionScope?: string;
   selectionLabel?: string;
@@ -173,7 +174,10 @@ function queueDrag(event: PointerEvent) {
       ? [...selected.value].map((id) => displayedIndexes.value.get(id) ?? -1)
       : [index];
   const rows = indexes.map((index) => ({ track: props.tracks[index], index }));
-  if (rows.some(({ track }) => !track || track.missing || track.local) || rows.length > 10000)
+  if (
+    rows.some(({ track }) => !track || track.missing || (track.local && !props.mixedQueueDrop)) ||
+    rows.length > 10000
+  )
     return;
   emit('queueDrag', event, rows, () => captured === selection.value);
 }

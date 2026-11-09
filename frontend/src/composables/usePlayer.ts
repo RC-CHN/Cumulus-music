@@ -448,6 +448,19 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
+  function queueMixedPlaylist(
+    id: string,
+    revision: string,
+    track: { id: string; local: boolean } | null,
+  ) {
+    return queueAction({
+      kind: 'queue_mixed_playlist',
+      id,
+      revision,
+      track,
+      quality: view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  }
   function queueZonePlaylistDetail(
     origin: { id: string; receipt: string; revision: string },
     song_id?: string,
@@ -577,6 +590,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_downloads'
             | 'queue_local'
             | 'queue_playlist'
+            | 'queue_mixed_playlist'
             | 'queue_voice'
             | 'queue_recent_program'
             | 'queue_daily_recommendations'
@@ -1179,6 +1193,19 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             quality: source.quality,
             ...target,
           };
+        if (source.kind === 'mixed_playlist')
+          return {
+            kind: 'drop_mixed_playlist_songs_into_queue',
+            id: source.id,
+            revision: source.revision,
+            rows: source.rows.map(({ trackId, trackIndex, local }) => ({
+              track_id: trackId,
+              track_index: trackIndex,
+              local,
+            })),
+            quality: source.quality,
+            ...target,
+          };
         const rows = source.rows.map(({ trackId, trackIndex }) => ({
           track_id: trackId,
           track_index: trackIndex,
@@ -1199,7 +1226,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       },
       false,
       (problem) => {
-        if (source.kind !== 'playlist') return false;
+        if (source.kind !== 'playlist' && source.kind !== 'mixed_playlist') return false;
         if (problem.code === 'playlist_drop_source_changed') {
           source.sourceChanged();
           return true;
@@ -1376,6 +1403,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   return {
     queuePlaylist,
+    queueMixedPlaylist,
     queueZonePlaylistBatch,
     queueZonePlaylistDetail,
     queueVoice,
