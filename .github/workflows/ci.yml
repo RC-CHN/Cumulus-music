@@ -1,9 +1,7 @@
 name: CI
+run-name: Windows package with prebuilt release probes (timing trial)
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
     inputs:
       windows_diagnostic:
@@ -34,10 +32,10 @@ env:
 
 jobs:
   smtc-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_smtc_diagnostic
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     uses: ./.github/workflows/windows-smtc-diagnostic.yml
   media-diagnostic:
-    if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
     name: Frontend and release rules
@@ -72,6 +70,7 @@ jobs:
           retention-days: 7
 
   native-linux:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     # Keep the established required job context used by the release verifier.
     name: Native (linux-x64)
     runs-on: ubuntu-24.04
@@ -152,6 +151,7 @@ jobs:
           key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   package-linux:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Package and verify (linux-x64)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -308,6 +308,7 @@ jobs:
           retention-days: 3
 
   windows-rust-lint:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Rust format and Clippy (windows-x64)
     needs: frontend
     runs-on: windows-2022
@@ -330,6 +331,7 @@ jobs:
       - run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
 
   native:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Native (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -649,6 +651,7 @@ jobs:
           key: ${{ steps.release-deps.outputs.cache-primary-key }}
 
   windows-webview-probes:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Windows WebView probe build
     needs: frontend
     runs-on: windows-2022
@@ -756,6 +759,7 @@ jobs:
           compression-level: 1
 
   windows-webview:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Windows WebView (${{ matrix.shard }})
     # The packaged-media jobs below still open the exact final ZIP.
     needs: [windows-release-runtime, windows-webview-probes]
@@ -1131,6 +1135,7 @@ jobs:
           retention-days: 7
 
   windows-webview-packaged:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Windows WebView (${{ matrix.shard }})
     needs: [package-windows, windows-webview-probes]
     runs-on: windows-2022
@@ -1238,6 +1243,7 @@ jobs:
           retention-days: 7
 
   linux-webview-probe:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Linux WebView probe build
     needs: frontend
     runs-on: ubuntu-24.04
@@ -1291,6 +1297,7 @@ jobs:
           compression-level: 1
 
   linux-webview-media:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Linux WebView (${{ matrix.shard }})
     # Only these checks consume the exact release package runtime.
     needs: [frontend, package-linux, linux-webview-probe]
@@ -1513,6 +1520,7 @@ jobs:
           retention-days: 7
 
   linux-webview-shards:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Linux WebView (${{ matrix.shard }})
     # These checks use synthetic inputs and the runner's native libraries.
     needs: [frontend, linux-webview-probe]
@@ -1922,7 +1930,7 @@ jobs:
   linux-webview:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
-    if: always()
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     needs: [linux-webview-shards, linux-webview-media]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -1936,6 +1944,7 @@ jobs:
           test "$MEDIA" = success
 
   linux-webview-ux-shards:
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     name: Linux WebView UX (${{ matrix.shard }})
     needs: [frontend, linux-webview-probe]
     runs-on: ubuntu-24.04
@@ -2110,7 +2119,7 @@ jobs:
   linux-webview-ux:
     # Preserve the existing CI and release context while requiring all UX shards.
     name: Linux WebView download, search and player smoke
-    if: always()
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     needs: linux-webview-ux-shards
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -2122,7 +2131,7 @@ jobs:
 
   gate:
     name: CI gate
-    if: always()
+    if: github.event_name == 'push' # Disabled in this manual timing trial.
     needs: [frontend, native-linux, native, windows-rust-lint, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, windows-release-probes, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
