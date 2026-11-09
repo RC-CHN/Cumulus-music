@@ -1554,6 +1554,11 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_privilege_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-privilege-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_download_row_smoke.py --local-marker --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-download-row-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_download_row_smoke.py --local-marker --held-replacement --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-held-replacement-linux
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
+            CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- \
+            /usr/bin/python3 scripts/ci/download_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe \
+            --frontend-dist frontend/dist --root .build/ci-download-speed-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/member_lifecycle_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-lifecycle-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x960x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_queue_drop_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-drop-linux --screenshots --trusted-pointer
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --search-next --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-next-linux
@@ -1643,6 +1648,11 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-native-sidecar-lyrics-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-vinyl-lyric-credits-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
+            CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- \
+            /usr/bin/python3 scripts/ci/interface_font_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe \
+            --frontend-dist frontend/dist --root .build/ci-interface-font-linux --screenshots
       - name: Verify account, platform shell, catalog and community
         if: matrix.shard == 'account-catalog'
         env:
@@ -1717,6 +1727,11 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-linux
           loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/catalog_smoke.py --listened-books-resume --binary .build/target/debug/examples/catalog_ui_probe --frontend-dist frontend/dist --root .build/ci-listened-books-resume-linux --screenshots
           loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/history_radio_chapter_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --frontend-dist frontend/dist --root .build/ci-history-radio-chapter-linux --screenshots
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
+            CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- \
+            /usr/bin/python3 scripts/ci/history_radio_collection_smoke.py --binary .build/target/debug/examples/catalog_ui_probe \
+            --frontend-dist frontend/dist --root .build/ci-history-radio-collection-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential-actions --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-actions-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential-voice-actions --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-voice-actions-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-album-linux --album
