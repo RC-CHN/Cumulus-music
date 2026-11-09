@@ -122,11 +122,17 @@ fn verify_bytes(path: &Path, expected: &FileIntegrity, facts: &fs::Facts) -> Res
         use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
         options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
     }
-    let mut file = options.open(path)?;
-    let opened = file.metadata()?;
-    check_shape(&opened)?;
+    // Reopen the pathname with the same restrictions for each identity check.
+    // An unguarded reopen could follow a replacement symlink or block on a FIFO.
+    let open = || {
+        let file = options.open(path)?;
+        let metadata = file.metadata()?;
+        check_shape(&metadata)?;
+        Ok::<_, Error>((file, metadata))
+    };
+    let (mut file, opened) = open()?;
     let held = same_file::Handle::from_file(file.try_clone()?)?;
-    if held != same_file::Handle::from_path(path)?
+    if held != same_file::Handle::from_file(open()?.0)?
         || fingerprint_metadata(opened)? != facts.fingerprint
     {
         return Err(Error::State("download publication changed while opening"));
@@ -139,7 +145,7 @@ fn verify_bytes(path: &Path, expected: &FileIntegrity, facts: &fs::Facts) -> Res
     )?;
     if bytes != expected.bytes
         || hex::encode(hash.finalize()) != expected.sha256
-        || held != same_file::Handle::from_path(path)?
+        || held != same_file::Handle::from_file(open()?.0)?
         || fingerprint_metadata(file.metadata()?)? != facts.fingerprint
     {
         return Err(Error::Media(
