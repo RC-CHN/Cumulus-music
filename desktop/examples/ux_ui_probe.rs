@@ -1437,6 +1437,7 @@ fn main() {
                 if search_fixture::carousel_enabled() { value["searchCarouselCalls"] = json!(search_fixture::carousel_calls()); }
                 value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
                 value["audioRankDetails"] = json!(search_fixture::audio_rank_details());
+                value["podcastAroundCalls"] = json!(search_fixture::podcast_around_calls());
                 if let Some(calls) = search_fixture::voice_queue_calls() { value["voiceQueueCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::voice_next_calls() { value["voiceNextCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::podcast_follow_calls() { value["podcastFollowCalls"] = json!(calls); }

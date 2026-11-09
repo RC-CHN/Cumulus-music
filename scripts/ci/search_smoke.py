@@ -16,6 +16,7 @@ def main():
     mode.add_argument('--suggestion-matches', action='store_true')
     mode.add_argument('--history-last', action='store_true')
     mode.add_argument('--podcast-top-classic', action='store_true')
+    mode.add_argument('--podcast-browse-around', action='store_true')
     mode.add_argument('--default-recovery', action='store_true')
     mode.add_argument('--guest-search', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
@@ -41,6 +42,8 @@ def main():
         prefix = 'window.__cumulusSearchSuggestionMatchesProof = true;\n'
     if args.history_last:
         prefix = 'window.__cumulusSearchHistoryLastProof = true;\n'
+    if args.podcast_browse_around:
+        prefix = 'window.__cumulusPodcastBrowseAroundProof = true;\n'
     if args.podcast_top_classic:
         prefix = 'window.__cumulusPodcastTopClassicProof = true;\n'
     if args.default_recovery:
@@ -64,6 +67,9 @@ def main():
     if args.guest_search:
         verify_guest_search(root, args.screenshots)
         return
+    if args.podcast_browse_around:
+        verify_podcast_browse_around(root, args.screenshots)
+        return
     if args.exact_fallback or args.suggestion_matches or args.history_last or args.podcast_top_classic:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         flag = ('podcastTopClassicVerified' if args.podcast_top_classic else
@@ -78,6 +84,21 @@ def main():
         print(json.dumps(dict(ok=True, actualWebView=True, **{flag: True})))
         return
     verify(root, args.screenshots)
+
+
+def verify_podcast_browse_around(root, capture):
+    directory = root / 'first'
+    complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
+    assert complete['ok'] and complete['podcastBrowseAroundVerified'] and complete['stageCount'] == 4
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    assert complete['podcastAroundCalls'] == [
+        {'programId': episode, 'roundNum': 250} for episode in ('407', '404', '407', '408')
+    ]
+    assert len(list(directory.glob('ux_*.png'))) == (4 if capture else 0)
+    report = dict(ok=True, actualWebView=True, nativeAudio=True, captures=4 if capture else 0,
+                  around=complete['podcastAroundCalls'], realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(report))
 
 
 def verify_guest_search(root, capture):
@@ -195,6 +216,9 @@ def verify(root, capture):
     assert complete['podcastRankingsVerified']
     assert complete['podcastTopUpdatedVerified']
     assert complete['audioRankDetails'] == [301, 301, 302, 304, 305]
+    assert complete['podcastAroundCalls'] == [
+        {'programId': episode, 'roundNum': 250} for episode in ('407', '404', '407')
+    ]
     assert complete['stageCount'] == 76 and complete['syntheticSearchCalls'] > 30
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']

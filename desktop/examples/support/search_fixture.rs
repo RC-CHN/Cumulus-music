@@ -324,6 +324,10 @@ static AUDIO_RANK_DETAILS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Ve
 pub fn audio_rank_details() -> Vec<u64> {
     AUDIO_RANK_DETAILS.lock().unwrap().clone()
 }
+static PODCAST_AROUND_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+pub fn podcast_around_calls() -> Vec<Value> {
+    PODCAST_AROUND_CALLS.lock().unwrap().clone()
+}
 pub fn voice_queue_calls() -> Option<Vec<String>> {
     (MODE.lock().unwrap().as_str() == "voice_queue")
         .then(|| VOICE_QUEUE_CALLS.lock().unwrap().clone())
@@ -961,7 +965,34 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         "/api/content/my/liked/voice" => json!({"code":200,"data":{"data":[],"hasMore":false}}),
         "/api/dj/user/setting/resumeplay/get" => json!({"code":200,"data":{"resumePlayValue":0}}),
-        "/api/dj/program/detail" => json!({"code":200,"program":program(number("id",401),301)}),
+        "/api/dj/around/program/v1"
+            if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
+        {
+            let id = number("programId", 0);
+            assert_eq!(*args, json!({"programId":id.to_string(),"roundNum":250}));
+            PODCAST_AROUND_CALLS.lock().unwrap().push(args.clone());
+            match id {
+                404 => {
+                    json!({"code":200,"data":{"asc":true,"list":[program(412,305),program(404,305),program(411,305)]}})
+                }
+                407 => {
+                    json!({"code":200,"data":{"asc":false,"list":[program(409,305),program(407,305),program(410,305)]}})
+                }
+                408 => json!({"code":200,"data":{}}),
+                _ => panic!("unexpected sealed around program {id}"),
+            }
+        }
+        "/api/dj/program/detail" => {
+            let id = number("id", 401);
+            let radio_id = if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled")
+                && (404..=412).contains(&id)
+            {
+                305
+            } else {
+                301
+            };
+            json!({"code":200,"program":program(id,radio_id)})
+        }
         "/api/dj/play/url/check" => {
             let id = number("voiceId", 401);
             json!({"code":200,"data":{"voiceId":id,"songId":id-400,"canPlay":true}})

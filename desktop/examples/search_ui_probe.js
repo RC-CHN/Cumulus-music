@@ -284,6 +284,72 @@
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",
     );
+    if (window.__cumulusPodcastBrowseAroundProof) {
+      await fixture("audio_ranks");
+      const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
+      const { epoch } = await invoke("account_snapshot");
+      const snapshot = () => invoke("player_snapshot", { epoch });
+      const queue = async () => (await invoke("player_queue", { epoch })).tracks.map(row => row.track.voiceId);
+      const waitPlayer = (state, id) => wait(() =>
+        one(".playerbar")?.dataset.state === state && one(".now-playing")?.textContent.includes(id),
+        state + " " + id);
+      const seed = await invoke("play_selection", { epoch, selection: { kind: "voice", id: "401" } });
+      assert(seed.track?.voiceId === "401", "real retained baseline episode");
+      await waitPlayer("playing", "401");
+      await home();
+      await wait(() => button("播客榜：更多"), "podcast discovery navigation");
+      click(button("播客榜：更多"));
+      const preview = () => one('.podcast-top[data-layout="updated"] [data-preview="podcast"]');
+      const weekly = () => one('[data-home-voice="404"] button');
+      const action = (label, scope) => scope && button(label, scope);
+      const row = (prefix, id, scope) => action(`${prefix} 合成声音 ${id}`, scope);
+      await wait(() => preview() && action("最热播客", preview()) && weekly(), "visible rank and weekly cards");
+      click(action("最热播客", preview()));
+      await wait(() => row("播放", 407, preview()) && !row("播放", 407, preview()).disabled, "ready rank preview");
+      click(row("播放", 407, preview()));
+      await waitPlayer("playing", "407");
+      const previewPlayed = await snapshot();
+      assert(previewPlayed.track?.voiceId === "407" && previewPlayed.playId !== seed.playId &&
+        (await queue()).join() === "401,409,407,410", "around retains old row and selects clicked preview");
+      await capture("around_preview");
+      click(row("暂停", 407, preview()));
+      await waitPlayer("paused", "407");
+      const previewPaused = await snapshot();
+      click(row("播放", 407, preview()));
+      await waitPlayer("playing", "407");
+      assert(previewPaused.playId === previewPlayed.playId && (await snapshot()).playId === previewPlayed.playId &&
+        (await snapshot()).queueRevision === previewPlayed.queueRevision, "preview toggles the same decoder and queue");
+      weekly().scrollIntoView({ block: "center" });
+      click(weekly());
+      await waitPlayer("playing", "404");
+      const weeklyPlayed = await snapshot();
+      assert(weeklyPlayed.track?.voiceId === "404" &&
+        (await queue()).join() === "401,409,407,411,404,412,410", "weekly normalizes strict order and inserts after current");
+      await capture("around_weekly");
+      click(action("查看全部", preview()));
+      const full = () => one(".podcast-rankings");
+      await wait(() => row("播放", 407, full()) && !row("播放", 407, full()).disabled, "actual full rank");
+      click(row("播放", 407, full()));
+      await waitPlayer("playing", "407");
+      const fullPlayed = await snapshot();
+      assert(fullPlayed.track?.voiceId === "407" && fullPlayed.playId !== weeklyPlayed.playId &&
+        (await queue()).join() === "401,411,404,409,407,410,412", "full-rank action moves duplicate rows as an ordered window");
+      await capture("around_full_rank");
+      await fixture("podcast_home_disabled");
+      click(action("音乐声音", full()));
+      await wait(() => row("播放", 408, full()) && !row("播放", 408, full()).disabled, "actual category chart");
+      await invoke("player_action", { epoch, action: { kind: "pause", paused: true } });
+      await waitPlayer("paused", "407");
+      click(row("播放", 408, full()));
+      await wait(() => document.body.textContent.includes("无法添加播放"), "successful missing list is explicit");
+      const still = await snapshot();
+      assert(still.playId === fullPlayed.playId && still.entryId === fullPlayed.entryId &&
+        still.queueRevision === fullPlayed.queueRevision && still.state === "paused", "empty result leaves live decoder and queue");
+      await capture("around_empty");
+      await emit("complete", { ok: true, stageCount: count, podcastBrowseAroundVerified: true,
+        realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     if (window.__cumulusPodcastTopClassicProof) {
       await fixture("podcast_top_classic");
       await home();
@@ -906,15 +972,6 @@
       !podcastHome().textContent.includes("不显示推广"), "homepage rejects other destinations, promotion and mismatched voice identity");
     assert(all(".podcast-home-group").map((g) => g.firstElementChild.dataset.homeVoice).join(",") === "404,406",
       "weekly voices retain their nested creative groups and order");
-    const firstHome = await invoke("podcast_home", { epoch });
-    const homeHandle = firstHome.value.continuation;
-    assert(/^[\da-f]{32}$/.test(homeHandle) && !JSON.stringify(firstHome).includes("homePrivate") &&
-      !JSON.stringify(firstHome).includes("ignored.synthetic.invalid"), "homepage withholds the wire cursor and raw resource URL");
-    for (const [command, args] of [
-      ["podcast_home", { epoch, continuation: handle }],
-      ["podcast_home", { epoch: "0", continuation: homeHandle }],
-      ["podcast_catalogue", { epoch, query: { kind: "radios", parentId: "10001", subId: "000", continuation: homeHandle } }],
-    ]) assert(!await invoke(command, args).then(() => true, () => false), "native handles cannot cross account or discovery route");
     await capture("podcast_more_home");
     const updatedTop = () => one('.podcast-top[data-layout="updated"]');
     const preview = (name) => updatedTop()?.querySelector(`[data-preview="${name}"]`);
@@ -986,6 +1043,15 @@
     click(button("刷新播客发现", podcastHome()));
     await wait(() => homeRadio(305) && !homeRadio(306) && button("加载更多播客", podcastHome()),
       "refresh starts a new recommendation feed");
+    const firstHome = await invoke("podcast_home", { epoch });
+    const homeHandle = firstHome.value.continuation;
+    assert(/^[\da-f]{32}$/.test(homeHandle) && !JSON.stringify(firstHome).includes("homePrivate") &&
+      !JSON.stringify(firstHome).includes("ignored.synthetic.invalid"), "homepage withholds the wire cursor and raw resource URL");
+    for (const [command, args] of [
+      ["podcast_home", { epoch, continuation: handle }],
+      ["podcast_home", { epoch: "0", continuation: homeHandle }],
+      ["podcast_catalogue", { epoch, query: { kind: "radios", parentId: "10001", subId: "000", continuation: homeHandle } }],
+    ]) assert(!await invoke(command, args).then(() => true, () => false), "native handles cannot cross account or discovery route");
     await fixture("podcast_home_disabled");
     click(button("加载更多播客", podcastHome()));
     await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭") && button("前往设置", podcastHome()),
