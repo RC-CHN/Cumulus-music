@@ -1357,7 +1357,18 @@
       await capture('voice_next_preserves_playing', {order:ids(added),playId:stillPlaying.playId});
 
       await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
-      const paused=await until(snapshot,v=>v.state==='paused','original native decoder paused');
+      let quietAt=0, firstQuiet;
+      const paused=await until(snapshot,v=>{
+        const sameEntry=v.state==='paused'&&v.playId===original.playId&&v.entryId===original.entryId&&
+          v.queueRevision===added.revision&&!v.nativeSeeking&&!v.error&&Number.isFinite(v.position);
+        const now=performance.now();
+        if(!sameEntry||!firstQuiet||firstQuiet.position!==v.position){
+          firstQuiet=sameEntry?v:undefined;
+          quietAt=now;
+        }
+        // The command reports paused before the final libmpv clock sample.
+        return firstQuiet&&now-quietAt>=450&&BigInt(v.revision)-BigInt(firstQuiet.revision)>=2n;
+      },'same native decoder paused across two clock polls');
       await choose('voices');
       assert(!one('.search-voice-next-notice'),'old category notice does not carry to new results');
       const classified=await openMenu(402,'.search-voice-table');
@@ -1365,8 +1376,8 @@
       const two=await until(queue,v=>ids(v).join(',')==='1,402,401,2,3','classification inserts one program as Next');
       const preserved=await snapshot();
       assert(preserved.state==='paused'&&preserved.playId===paused.playId&&
-        preserved.entryId===paused.entryId&&Math.abs(preserved.position-paused.position)<.05,
-        'classification action preserves paused position and decoder');
+        preserved.entryId===paused.entryId&&preserved.position===paused.position&&!preserved.nativeSeeking&&!preserved.error,
+        `classification action preserves paused position and decoder (${paused.position} → ${preserved.position})`);
       assert(two.tracks[2].entryId===added.tracks[1].entryId,'previously queued episode retained');
       await wait(()=>document.activeElement===classified&&
         one('.search-voice-next-notice')?.textContent.trim()==='已添加至播放列表',
