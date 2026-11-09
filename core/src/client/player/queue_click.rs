@@ -327,7 +327,7 @@ impl MusicClient {
             .ok_or(Error::QueueChanged)?
             .to_owned();
         let expected = before.fence();
-        let command = if current_table_song(&before, &id) {
+        let command = if current_table_song(&before, TableSong::Catalog(&id)) {
             if double_click {
                 PlaybackCommand::Pause(!before.paused)
             } else {
