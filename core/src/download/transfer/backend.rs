@@ -35,14 +35,30 @@ impl ReqwestMediaBackend {
     pub fn with_artwork_metadata(timeout: Duration) -> Result<Self> {
         Self::build(timeout, true)
     }
+
+    #[cfg(all(target_os = "linux", feature = "signed-window-read-proof"))]
+    /// Credential-free media client for the explicit signed desktop proof broker.
+    pub fn for_signed_read_proof(timeout: Duration, broker: std::net::SocketAddr) -> Result<Self> {
+        let builder =
+            crate::protocol::http::proof_proxy::use_broker(Self::builder(timeout)?, broker)?;
+        Self::finish(builder.timeout(timeout), false)
+    }
+
     fn build(timeout: Duration, artwork_metadata: bool) -> Result<Self> {
+        Self::finish(Self::builder(timeout)?, artwork_metadata)
+    }
+
+    fn builder(timeout: Duration) -> Result<reqwest::ClientBuilder> {
         if timeout.is_zero() || timeout > Duration::from_secs(300) {
             return Err(Error::InvalidInput(
                 "media timeout must be within 0..300 seconds",
             ));
         }
-        let client = client_builder(timeout)
-            .https_only(true)
+        Ok(client_builder(timeout).https_only(true))
+    }
+
+    fn finish(builder: reqwest::ClientBuilder, artwork_metadata: bool) -> Result<Self> {
+        let client = builder
             .build()
             .map_err(|_| Error::Transport("media client initialization failed".into()))?;
         Ok(Self {

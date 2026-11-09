@@ -30,11 +30,28 @@ pub struct ReqwestBackend {
 }
 impl ReqwestBackend {
     pub fn new(timeout: Duration) -> Result<Self> {
-        let client = reqwest::Client::builder()
+        Self::finish(Self::builder(timeout))
+    }
+
+    #[cfg(all(target_os = "linux", feature = "signed-window-read-proof"))]
+    /// Use the explicit IPv4 loopback broker of the signed desktop proof.
+    pub fn for_signed_read_proof(timeout: Duration, broker: std::net::SocketAddr) -> Result<Self> {
+        Self::finish(super::proof_proxy::use_broker(
+            Self::builder(timeout),
+            broker,
+        )?)
+    }
+
+    fn builder(timeout: Duration) -> reqwest::ClientBuilder {
+        reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
             .https_only(true)
             .timeout(timeout)
+    }
+
+    fn finish(builder: reqwest::ClientBuilder) -> Result<Self> {
+        let client = builder
             .build()
             .map_err(|_| Error::Transport("HTTPS client initialization failed".into()))?;
         Ok(Self { client })

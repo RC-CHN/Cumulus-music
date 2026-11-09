@@ -1,0 +1,38 @@
+Signed window read proof: bounded TLS broker
+===========================================
+
+The optional Linux-only `signed-window-read-proof` feature exposes explicit
+native transport constructors. They accept only a numeric 127.0.0.1 socket,
+disable ambient proxies, keep the normal TLS certificate checks, and never
+follow redirects or automatically retry. The media transport does not send
+Cookie, API authorization or Range when the single full-body proof calls it.
+Production builds do not enable this feature.
+
+The host Unix broker accepts only same-UID local connections in a private
+directory and has an immutable table: interfacepc.music.163.com:443 plus at
+most one exact, independently reviewed CDN authority. Both map to supplied
+literal public IPv4 pins; the broker does not perform DNS or switch IPs. A
+separate optional preflight checks each reviewed certificate without HTTP.
+The broker checks the CONNECT authority and ClientHello's exact visible SNI
+before dialing. ECH, TLS early data, malformed TLS, alternate authority and
+proxy authorization are rejected. It does not decrypt or log the requests;
+the Rust gate remains responsible for paths, credentials and response checks.
+
+No more than four active clients, 25 PC dial attempts and one CDN attempt are
+admitted. Failed dials consume their allowance. TLS bytes, elapsed time and
+each connect are bounded. Disarming closes admission; leaving the context
+drains all handlers and unlinks the socket. Only aggregate counters are
+exported. Same UID is an additional check, not proof of account authorization.
+The caller must use a private loopback-only sandbox with the broker as its
+sole transport and supply one exact expected UID and fixed read scope.
+
+Closed verification (no real credentials or upstream traffic):
+
+  python3 -m unittest discover -s scripts/research -p 'test_signed_window_broker.py' -v
+  cargo test --locked -p cumulus-core --features signed-window-read-proof --test signed_window_proxy
+
+Tests drive the exact native reqwest CONNECT shape and genuine OpenSSL
+ClientHello bytes over local sockets. They verify intact forwarding, same
+host/one CDN admission, no dial for a wrong SNI or authority, refusal of
+alternate proxy authorization, truncated-handshake timeout and disarming.
+This does not constitute a real service or media result.

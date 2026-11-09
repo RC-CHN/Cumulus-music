@@ -15,6 +15,7 @@ path = "src/main.rs"
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 recognition-monitor-lab = []
+signed-window-read-proof = ["cumulus-core/signed-window-read-proof"]
 
 [[example]]
 name = "ui_probe"
