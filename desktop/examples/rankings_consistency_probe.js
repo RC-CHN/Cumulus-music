@@ -104,7 +104,7 @@
   }
   const globalRankOpen = (root = rank()) =>
     root?.querySelector('[data-rank-id="101"] [data-rank-action="open"]');
-  async function accountRefresh() {
+  async function accountRefresh(lateLayout = false) {
     const provides =
       document.querySelector("#app").__vue_app__._context.provides;
     const core =
@@ -140,6 +140,26 @@
         Math.abs(main().scrollTop - baseline.top) < 1;
     };
     let reads = 0;
+    let held = false, temporaryMax;
+    const originalRanking = core.rankingPage;
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const clamp = document.createElement("style");
+    if (lateLayout) {
+      // The real read still runs. While its reply is held, make the retained
+      // busy layout shorter than the saved offset. The browser must clamp an
+      // early restoration; JS never assigns scrollTop during the refresh.
+      clamp.textContent = `.rankings-page[aria-busy="true"] { max-height: ${before.offsetHeight - 40}px; overflow: clip; }`;
+      document.head.append(clamp);
+      core.rankingPage = async (...args) => {
+        const reply = await originalRanking.call(core, ...args);
+        if (args[1]?.kind === "home") {
+          held = true;
+          await gate;
+        }
+        return reply;
+      };
+    }
     core.accountSnapshot = async () => {
       reads++;
       return original.call(core);
@@ -150,17 +170,32 @@
         event: "cumulus:account-changed",
         payload: { ...account, canSignOut: !account.canSignOut },
       });
+      if (lateLayout) {
+        await wait(
+          () => held && !before.isConnected && !ready() && globalRankOpen(),
+          "real ranking reply held after remount",
+        );
+        await settle();
+        temporaryMax = main().scrollHeight - main().clientHeight;
+        assert(temporaryMax < baseline.top, "busy layout cannot represent the saved offset");
+        release();
+      }
       await wait(
-        () => reads > 0 && restored(),
+        () => reads === 1 && restored(),
         "same-account reading position and focus",
       );
       await settle();
       assert(restored(), "same-account viewport remains restored after paint");
-      return baseline.top;
+      const finalMax = main().scrollHeight - main().clientHeight;
+      if (lateLayout) assert(finalMax === baseline.max, "final layout recovered its full range");
+      return { top: baseline.top, temporaryMax, finalMax };
     } catch (error) {
       throw Error(`${error.message}: baseline=${JSON.stringify(baseline)}, ` +
-        `observed=${JSON.stringify(viewport())}, accountReads=${reads}`);
+        `observed=${JSON.stringify(viewport())}, accountReads=${reads}, temporaryMax=${temporaryMax}`);
     } finally {
+      release();
+      clamp.remove();
+      core.rankingPage = originalRanking;
       core.accountSnapshot = original;
     }
   }
@@ -570,10 +605,16 @@
     });
     await pause();
     await theme("dark");
-    const refreshScroll = await accountRefresh();
+    await accountRefresh();
+    const layout = await accountRefresh(true);
     const global = globalRankOpen();
     sameAccountRefreshVerified = true;
-    await capture("global_dark", { sameAccountRefreshVerified, expectedScrollTop: refreshScroll });
+    await capture("global_dark", {
+      sameAccountRefreshVerified,
+      expectedScrollTop: layout.top,
+      busyScrollMax: layout.temporaryMax,
+      settledScrollMax: layout.finalMax,
+    });
     const globalPlay = rank().querySelector('[data-rank-id="101"] .rank-play');
     click(globalPlay);
     native = await nativePlaying("101");
