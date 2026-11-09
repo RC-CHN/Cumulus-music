@@ -41,15 +41,19 @@ export function useRankingViewport(
   async function restore() {
     const saved = model.restoration.value,
       element = root.value;
-    if (!alive || !element || !owns() || restoring || restored) return;
+    // A remount can still show cached cards while the same-account read
+    // adds a loading row above them. Do not consume the saved position in
+    // that transient layout: removing the row can shift or clamp scroll.
+    if (!alive || !element || !owns() || restoring || restored || (saved && model.loading.value))
+      return;
     restoring = true;
     const valid = () => alive && owns() && root.value === element && element.isConnected;
     try {
       await nextTick();
-      await waitForViewportFrames();
+      await waitForViewportFrames(saved ? 2 : 1);
       if (!valid()) return;
       await waitForViewportAnimations(element.closest('.page-view'), false);
-      if (!valid() || !scroll) return;
+      if (!valid() || !scroll || (saved && model.loading.value)) return;
       const contentReady = !!model.view.value || !!model.error.value;
       restored = contentReady;
       if (saved && contentReady && !userMoved) scroll.scrollTop = saved.scrollTop;
@@ -94,7 +98,7 @@ export function useRankingViewport(
     scroll?.addEventListener('touchmove', moved, { passive: true });
     void restore();
   });
-  watch([model.view, model.error], () => void restore(), { flush: 'post' });
+  watch([model.view, model.error, model.loading], () => void restore(), { flush: 'post' });
   onScopeDispose(() => {
     alive = false;
     scroll?.removeEventListener('wheel', moved);

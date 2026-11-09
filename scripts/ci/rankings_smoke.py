@@ -65,6 +65,8 @@ def main():
     assert states['global_dark']['sameAccountRefreshVerified'] and complete['sameAccountRefreshVerified']
     assert states['global_dark']['focusedCard'] == '101' and states['global_dark']['focusedAction'] == 'open'
     assert states['global_dark']['expectedScrollTop'] > 0
+    assert 0 <= states['global_dark']['busyScrollMax'] < states['global_dark']['expectedScrollTop']
+    assert states['global_dark']['settledScrollMax'] >= states['global_dark']['expectedScrollTop']
     card = states['home_light']['topCard']
     assert card['rowFont'] == '15px' and [image['width'] for image in card['images']] == [78, 58, 38]
     assert max(image['bottom'] for image in card['images'])-min(image['bottom'] for image in card['images']) < .1
