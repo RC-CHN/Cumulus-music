@@ -158,6 +158,15 @@ impl Actor {
         value: super::QueueUpdate,
         reply: Option<&Response>,
     ) -> Result<Option<LoadOptions>> {
+        self.update_queue_with_source(value, reply, None).await
+    }
+
+    pub(super) async fn update_queue_with_source(
+        &mut self,
+        value: super::QueueUpdate,
+        reply: Option<&Response>,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+    ) -> Result<Option<LoadOptions>> {
         value.queue.validate()?;
         if value
             .transport
@@ -176,7 +185,12 @@ impl Actor {
         );
         let position = value.transport.as_ref().and_then(|t| t.position);
         self.save_position()?;
-        self.queue.install(value.queue)?;
+        if first_source.is_some() {
+            self.session
+                .with_token(&self.token, |_| self.queue.install(value.queue))?;
+        } else {
+            self.queue.install(value.queue)?;
+        }
         let after = self.queue.selected();
         if after.is_none() {
             self.stop(false).await?;
@@ -203,7 +217,11 @@ impl Actor {
             }
             return Ok(None);
         }
-        if before != after || self.loaded.is_none() || !self.state.active() {
+        if first_source.is_some()
+            || before != after
+            || self.loaded.is_none()
+            || !self.state.active()
+        {
             return Ok(Some(LoadOptions {
                 paused,
                 position: if before.as_ref().map(|e| &e.entry_id)
@@ -213,7 +231,13 @@ impl Actor {
                 } else {
                     position
                 },
+                // Let the authorized source clamp a stale checkpoint, but do
+                // not fall through to a fresh authorization at this selection.
                 recover: true,
+                source: first_source.map_or_else(
+                    super::load::LoadSource::default,
+                    super::load::LoadSource::Retained,
+                ),
                 ..Default::default()
             }));
         }

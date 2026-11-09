@@ -2,7 +2,10 @@
 use super::super::{
     MusicClient,
     dto::AccountData,
-    podcast::{self, radio_playback::by_radio},
+    podcast::{
+        self,
+        radio_playback::{around_request, around_response, by_radio},
+    },
 };
 use crate::{
     Error, Result,
@@ -13,13 +16,11 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::HashSet, sync::Mutex};
+use std::sync::Mutex;
 
 const PATH: &str = "/api/voice/book/recent";
 const PAGE: usize = 20;
 const MAX_BOOKS: usize = 1000;
-const AROUND: &str = "/api/dj/around/program/v1";
-const AROUND_RADIUS: usize = 250;
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -154,34 +155,8 @@ fn local_chapter(chapter: &mut Chapter, local: latest::LatestVoice) {
 }
 
 async fn around(api: &dyn Api, chapter: &str, ascending: bool) -> Result<Vec<Episode>> {
-    let response = api
-        .call(
-            AROUND,
-            json!({"programId":chapter,"roundNum":AROUND_RADIUS}),
-            false,
-            &[200],
-        )
-        .await?;
-    let data = &response["data"];
-    let rows = data["list"]
-        .as_array()
-        .filter(|rows| rows.len() <= 2 * AROUND_RADIUS + 1)
-        .ok_or(Error::Response("invalid around-program list"))?;
-    let mut seen = HashSet::new();
-    let mut voices = Vec::with_capacity(rows.len());
-    for raw in rows {
-        let voice = Episode::from_official(raw)?;
-        if !seen.insert(voice.id.clone()) {
-            return Err(Error::QueueChanged);
-        }
-        voices.push(voice);
-    }
-    // M/71: in the absence of a saved sort or caller asc, desired is false.
-    // Missing asc is not identical to false in the original strict comparison.
-    if data["asc"] != ascending {
-        voices.reverse();
-    }
-    Ok(voices)
+    around_response(&around_request(api, chapter).await?, ascending)?
+        .ok_or(Error::Response("invalid around-program list"))
 }
 
 struct Snapshot {

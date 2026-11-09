@@ -1,5 +1,10 @@
 //! The recommendation feed of the public podcast homepage, recovered from M/597.
-use super::{EpisodeView, MusicClient, PodcastApi, PodcastCard, discovery::DiscoveryScope, view};
+use super::{
+    EpisodeView, MusicClient, PodcastApi, PodcastCard,
+    browse_playback::{self, Lane},
+    discovery::DiscoveryScope,
+    view,
+};
 use crate::{
     Result,
     account::AccountApi,
@@ -47,7 +52,11 @@ fn label(value: &Value) -> Option<String> {
     (!label.is_empty()).then_some(label)
 }
 
-fn block(row: &Value) -> Option<PodcastHomeBlock> {
+fn block(
+    row: &Value,
+    host: &browse_playback::Host,
+    observation: &browse_playback::Observation,
+) -> Option<PodcastHomeBlock> {
     if matches!(
         row["blockCode"].as_str(),
         Some("VOICE_HOMEPAGE_BLOCK_SCENE_FM" | "PC_HOMEPAGE_VOICEBOOK_RCMD")
@@ -89,6 +98,7 @@ fn block(row: &Value) -> Option<PodcastHomeBlock> {
                             }
                             let mut voice = view::episode(&episode, &[]);
                             voice.name = label(&json!(voice.name))?;
+                            host.bind(observation, &episode, &mut voice)?;
                             Some(voice)
                         })
                         .collect();
@@ -111,6 +121,13 @@ impl MusicClient {
         let cursor =
             self.podcast_discovery
                 .resolve(epoch, &DiscoveryScope::PodcastHome, continuation)?;
+        let api = self.session.native_api(&token)?;
+        let observation = self.podcast_browse_playback.begin(
+            &token,
+            &api,
+            Lane::Weekly,
+            continuation.is_some(),
+        )?;
         let result = self
             .session
             .run_for(&token, |api, _| async {
@@ -122,8 +139,14 @@ impl MusicClient {
                 PodcastApi::new(api).home(&cursor).await.map(Some)
             })
             .await?;
+        self.session.require_api(&token, &api)?;
+        if !observation.current(&token, &api) {
+            return Err(crate::Error::StaleResponse);
+        }
+        let enabled = result.is_some();
         let value = match result {
             None => {
+                self.podcast_browse_playback.retire(&observation)?;
                 self.session.with_token(&token, |_| {
                     self.podcast_discovery
                         .forget(epoch, &DiscoveryScope::PodcastHome)
@@ -136,7 +159,12 @@ impl MusicClient {
             }
             Some(page) => PodcastHomePage {
                 recommendation_enabled: true,
-                blocks: page.records.iter().take(24).filter_map(block).collect(),
+                blocks: page
+                    .records
+                    .iter()
+                    .take(24)
+                    .filter_map(|row| block(row, &self.podcast_browse_playback, &observation))
+                    .collect(),
                 continuation: if page.more {
                     Some(self.session.with_token(&token, |_| {
                         self.podcast_discovery
@@ -147,7 +175,10 @@ impl MusicClient {
                 },
             },
         };
-        self.session.with_token(&token, |_| Ok(()))?;
+        self.session.require_api(&token, &api)?;
+        if enabled && !observation.current(&token, &api) {
+            return Err(crate::Error::StaleResponse);
+        }
         Ok(AccountData {
             epoch: epoch.into(),
             value,

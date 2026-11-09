@@ -1,5 +1,6 @@
 pub(in crate::client) mod audiobook;
 mod badges;
+pub(in crate::client) mod browse_playback;
 pub(super) use badges::Host as PodcastBadgeHost;
 mod discovery;
 mod dto;

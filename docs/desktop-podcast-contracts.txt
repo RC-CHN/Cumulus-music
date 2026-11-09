@@ -174,3 +174,62 @@ main/page底边等于playerTop，最后一集滚入可视区后底边不越过�
 后续真实写入验收：desktop-podcast-mutations-contracts.txt。新增打开播客编号/官方链接入口；
 收藏、单集点赞、续播设置已完成真实UI往返及服务端成功后丢客户端回包的核对场景。
 原列表ID/顺序和设置恢复。上述“本批不写远端”仅指最初的只读/下载批次。
+
+Rank and weekly episode Play — official PC 3.1.42.205594
+-------------------------------------------------------
+Podcast home RankCard.tsx:136–183 and RankCardNew.tsx:188–233 set
+needFetchAudio on the voice triangle. Personality.tsx:282–299 renders
+VOICE_HOMEPAGE_WEEKNEW_VOICE; VoiceGrid.tsx:217–224 and VoiceCard/index.jsx:
+176–218 pass needFetchAudio and the exact clicked voice ID. Ranklist.tsx:
+140–165 and M3096:2888–2905 wire full voice ranks to ToplistVoiceViewer or
+VoiceViewer with needFetchAudio. pldScene=audio is an analytics scene, not
+originalScene=audio, so M3085:586–624 does not make a later by-radio request
+for these gestures.
+
+M3085:400–410 calls M71.d (202–221) / M15.Ke (1683–1686):
+POST /api/dj/around/program/v1, uncached, logical payload
+{programId:<clicked episode ID>,roundNum:250}. No radioId or asc is sent.
+M21.B normalizes data.list; local radio order wins over caller asc (these
+buttons default false), and rows reverse if data.asc is not strictly equal
+to the desired boolean. A resolved missing/empty list yields 无法添加播放
+(M3085:456–459). An eligible thrown read may fall back to the clicked
+episode only. M3085:310–311, 431 and M1384:5270–5298 retain the existing
+queue for plain Play and insert/de-duplicate the ordered window after
+current; M213:86–128 selects the exact clicked ID. The triangle toggles
+an already loaded matching episode without re-reading. Official full
+table double-click has a separate preference-dependent branch (M195:
+399–410, M225:590–602, M405:225–255, M3085:207–242): with replacement off
+it fetches around; with replacement on it uses the visible chart list and
+clears. This patch does not add table/weekly double-click gestures. The
+community full-chart explicit Play button uses the retained-queue path.
+
+M3085:431–453 and M71.c/g only give the latest radio breakpoint priority if
+it belongs to the clicked voice. M308:2251–2288 then uses that exact
+episode’s local or server record, respecting completion, duration and the
+verified Podcast_ResumePlaySwitch t1 setting. Native checks exact program,
+song and known radio identity; unrelated checkpoints cannot select another
+episode or contribute a timestamp. The scoped native read rechecks a known
+t1 setting per fresh selection rather than assuming an old setting is still
+valid. The load never seeks outside its actually authorized timeline.
+
+Weekly and rank reads issue distinct opaque, bounded, account/API/credential
+receipts. A refreshed lane invalidates the old observation; weekly cursor
+continuations retain the current observation until refresh or opt-out.
+Renderer sends only a receipt under the ordinary prepared playback ticket.
+Native verifies the clicked episode detail and exact rights/URL before a
+guarded queue commit, with the original account, native actor fence and
+source still current. A missing/mismatched clicked row, malformed/duplicate
+window, revoked authority, or failed detail/rights preserves the prior
+queue rather than installing unplayable rows. Neighbours lacking a usable
+main-song identity are omitted. Service/authentication boundaries do not
+fall back to another radio. These checked boundaries deliberately tighten
+the recovered engine’s possible queue-only update when a selected ID was
+absent. Search episode playback and radio-card/Play All are unchanged.
+
+Synthetic verification: cargo test -p cumulus-core --locked --test
+client_podcast_browse --test client_podcast --test client_player. The
+search_smoke.py --podcast-browse-around desktop proof uses real Tauri IPC,
+a sealed synthetic account, non-C Linux system locale and real null-output
+libmpv. It checks preview, same-episode toggle, weekly, full chart and
+empty-result preservation, including exact around arguments and order.
+No service, account writes, or sound-device assertions are involved.

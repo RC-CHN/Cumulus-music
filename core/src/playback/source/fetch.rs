@@ -25,6 +25,7 @@ impl SourceResolver {
         key: &Key,
         expected: Option<&Arc<dyn Api>>,
         guard: Option<&Cancellation>,
+        bound_episode: Option<&crate::podcast::Episode>,
     ) -> Result<Fetched> {
         let (info, authorization_api, authorization) = self
             .session
@@ -46,11 +47,17 @@ impl SourceResolver {
                 };
                 let info = if let Some(voice_id) = &key.voice_id {
                     let podcast = crate::podcast::PodcastApi::new(api.clone());
-                    let episode = podcast.episode(&json!(voice_id)).await?;
-                    if episode.media_id()? != key.id {
+                    let fresh;
+                    let episode = if let Some(episode) = bound_episode {
+                        episode
+                    } else {
+                        fresh = podcast.episode(&json!(voice_id)).await?;
+                        &fresh
+                    };
+                    if episode.id != *voice_id || episode.media_id()? != key.id {
                         return Err(Error::Response("queued program main song changed"));
                     }
-                    Some(podcast.play_url_guarded(&episode, options, check).await?)
+                    Some(podcast.play_url_guarded(episode, options, check).await?)
                 } else {
                     CatalogApi::new(api.clone())
                         .play_url(&json!(key.id), options)

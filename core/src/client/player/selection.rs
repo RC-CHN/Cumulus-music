@@ -77,6 +77,9 @@ impl MusicClient {
             PlaySelection::SearchArtistCard { .. } => Err(Error::InvalidInput(
                 "search artist playback requires a preparation ticket",
             )),
+            PlaySelection::PodcastBrowseVoice { .. } => Err(Error::InvalidInput(
+                "podcast browse playback requires a preparation ticket",
+            )),
             PlaySelection::SearchPodcastCard { .. } => Err(Error::InvalidInput(
                 "search podcast playback requires a preparation ticket",
             )),
@@ -375,6 +378,24 @@ impl MusicClient {
                         attempt,
                         lease,
                         prepared.as_ref(),
+                        Some(source_guard),
+                    )
+                    .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+            PlaySelection::PodcastBrowseVoice { receipt } => {
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (command, source_guard) = self
+                    .podcast_browse_selection(&token, &receipt, prepared)
+                    .await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        command,
+                        attempt,
+                        lease,
+                        Some(prepared),
                         Some(source_guard),
                     )
                     .await?;
@@ -865,6 +886,7 @@ impl MusicClient {
                     | PlaySelection::Voice { .. }
                     | PlaySelection::SearchArtistCard { .. }
                     | PlaySelection::SearchPodcastCard { .. }
+                    | PlaySelection::PodcastBrowseVoice { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {
                         unreachable!("cloud handled before song detail requests")

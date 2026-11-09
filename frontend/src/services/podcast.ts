@@ -87,6 +87,7 @@ export interface PodcastCard {
   unavailable: boolean;
 }
 export interface EpisodeView {
+  browsePlaybackReceipt?: string;
   id: string;
   name: string;
   coverUrl: string | null;

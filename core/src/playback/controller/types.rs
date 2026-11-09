@@ -218,6 +218,11 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    /// M71 browse list insertion with the exact freshly authorized first episode.
+    PlayPodcastBrowse {
+        update: QueueUpdate,
+        first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
+    },
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.
     PlaySearchCatalog(Option<QueueUpdate>),

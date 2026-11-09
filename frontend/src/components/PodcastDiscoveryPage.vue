@@ -141,7 +141,7 @@ function scrolled() {
             <button
               type="button"
               class="icon-button"
-              :disabled="!playable || voice.unavailable"
+              :disabled="!playable || voice.unavailable || !voice.browsePlaybackReceipt"
               :aria-label="`${currentVoice === voice.id && playing ? '暂停' : '播放'} ${voice.name}`"
               @click="emit('play', voice)"
             >

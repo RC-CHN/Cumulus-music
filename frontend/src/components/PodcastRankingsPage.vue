@@ -106,7 +106,11 @@ function showMore() {
           <button
             class="icon-button"
             type="button"
-            :disabled="!playable || row.resource.voice.unavailable"
+            :disabled="
+              !playable ||
+              row.resource.voice.unavailable ||
+              !row.resource.voice.browsePlaybackReceipt
+            "
             :aria-label="`${currentVoice === row.resource.voice.id && playing ? '暂停' : '播放'} ${row.resource.voice.name}`"
             @click="emit('play', row.resource.voice)"
           >

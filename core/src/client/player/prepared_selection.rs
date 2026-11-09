@@ -26,7 +26,7 @@ pub(super) struct PreparedSelection {
 }
 
 impl PreparedSelection {
-    fn check(&self, client: &MusicClient, current: &PlaybackSnapshot) -> Result<()> {
+    pub(super) fn check(&self, client: &MusicClient, current: &PlaybackSnapshot) -> Result<()> {
         if client.player.prepared_generation.load(Ordering::Acquire) != self.generation
             || self.issued.elapsed() >= TICKET_LIFETIME
             || current.account != self.token
@@ -41,6 +41,30 @@ impl PreparedSelection {
 }
 
 impl MusicClient {
+    pub(super) fn pending_preparation_guard(
+        &self,
+        prepared: &PreparedSelection,
+        controller: std::sync::Arc<crate::playback::controller::PlaybackController>,
+    ) -> Cancellation {
+        let generation = self.player.prepared_generation.clone();
+        let selection = self.player.selection.clone();
+        let focus = self.focus.clone();
+        let (expected, owner, observed, sequence, issued) = (
+            prepared.fence.clone(),
+            prepared.focus,
+            prepared.observed,
+            prepared.generation,
+            prepared.issued,
+        );
+        Cancellation::new(move || {
+            generation.load(Ordering::Acquire) == sequence
+                && selection.load(Ordering::Acquire) == observed
+                && issued.elapsed() < TICKET_LIFETIME
+                && controller.snapshot().fence() == expected
+                && focus.check_snapshot(owner).is_ok()
+        })
+    }
+
     pub(super) async fn submit_prepared_queue_only(
         &self,
         token: &SessionToken,
@@ -147,6 +171,7 @@ impl MusicClient {
                 | PlaySelection::SearchChart { .. }
                 | PlaySelection::SearchArtistCard { .. }
                 | PlaySelection::SearchPodcastCard { .. }
+                | PlaySelection::PodcastBrowseVoice { .. }
                 | PlaySelection::Songs { .. }
         ) {
             return Err(Error::InvalidInput(

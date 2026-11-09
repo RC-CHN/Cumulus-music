@@ -468,6 +468,18 @@ impl SourceResolver {
         expected: &Arc<dyn Api>,
         guard: &Cancellation,
     ) -> Result<Arc<ResolvedSource>> {
+        self.prepare_scoped_episode(resource, token, expected, guard, None)
+            .await
+    }
+
+    pub(crate) async fn prepare_scoped_episode(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        expected: &Arc<dyn Api>,
+        guard: &Cancellation,
+        episode: Option<&crate::podcast::Episode>,
+    ) -> Result<Arc<ResolvedSource>> {
         guard.check()?;
         let key = self.key(resource, token)?;
         if key.voice_id.is_none()
@@ -479,7 +491,7 @@ impl SourceResolver {
             ));
         }
         let source = self
-            .fetch(resource, &key, Some(expected), Some(guard))
+            .fetch(resource, &key, Some(expected), Some(guard), episode)
             .await?
             .source;
         guard.check()?;
@@ -544,7 +556,7 @@ impl SourceResolver {
             let mut provenance = Provenance::Shared;
             let mut authorization = None;
             let result = self
-                .fetch(resource, &key, expected, None)
+                .fetch(resource, &key, expected, None, None)
                 .await
                 .and_then(|fetched| {
                     self.session.with_token(token, |_| Ok(()))?;

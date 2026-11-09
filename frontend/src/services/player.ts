@@ -402,6 +402,7 @@ export type PlaySelection =
   | { kind: 'song_row_double_click'; selection: SongRowDoubleClickSelection }
   | { kind: 'message_track'; id: string; quality: Quality }
   | { kind: 'search_podcast_card'; id: string; receipt: string }
+  | { kind: 'podcast_browse_voice'; receipt: string }
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'listened_book_chapter'; revision: string; key: number }
   | {

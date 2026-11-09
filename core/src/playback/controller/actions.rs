@@ -36,6 +36,7 @@ impl Actor {
             PlaybackCommand::UseMissingDownloadOnline { .. }
                 | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplacePodcastCollection { .. }
+                | PlaybackCommand::PlayPodcastBrowse { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
@@ -134,6 +135,7 @@ impl Actor {
         }
         if let PlaybackCommand::UpdateQueue(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
+        | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
             && value.expected != self.snapshot().fence()
         {
@@ -252,6 +254,24 @@ impl Actor {
                 .update_queue(value, Some(&request.reply))
                 .await
                 .map(|value| options = value),
+            PlaybackCommand::PlayPodcastBrowse {
+                update,
+                first_source,
+            } => {
+                if self.queue.is_fm()
+                    || first_source.needs_renewal_for_reopen(self.resolver.now())
+                    || request
+                        .guard
+                        .as_ref()
+                        .is_none_or(|(_, guard)| guard.is_cancelled())
+                {
+                    Err(Error::StaleResponse)
+                } else {
+                    self.update_queue_with_source(update, Some(&request.reply), Some(first_source))
+                        .await
+                        .map(|value| options = value)
+                }
+            }
             PlaybackCommand::RetainCurrentQueueAndPlay(queue) => self
                 .retain_current_queue_and_play(queue)
                 .await

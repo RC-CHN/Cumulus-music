@@ -66,6 +66,8 @@ pub struct EpisodeView {
     pub fee_type: i64,
     pub liked: bool,
     pub unavailable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub browse_playback_receipt: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

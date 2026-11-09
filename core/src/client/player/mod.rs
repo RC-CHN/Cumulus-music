@@ -16,6 +16,7 @@ mod next_play;
 pub(in crate::client) mod origin;
 mod output;
 mod playlist_batch;
+mod podcast_browse;
 mod podcast_recommended;
 mod power;
 mod preferences;

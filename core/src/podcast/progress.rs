@@ -117,7 +117,7 @@ pub(crate) async fn position(
     resource: &Value,
     supplied_checkpoint: bool,
 ) -> Result<Option<f64>> {
-    let Some(id) = resource.get("voice_id").filter(|v| !v.is_null()) else {
+    let Some(id) = resource.get("voice_id").filter(|value| !value.is_null()) else {
         return Ok(None);
     };
     let id = identifier(id)?;
@@ -135,13 +135,35 @@ pub(crate) async fn position(
     if !enabled {
         return Ok(None);
     }
+    record_position_for(session, token, resource, supplied_checkpoint, &id, &media)
+}
+
+pub(crate) fn record_position(
+    session: &AccountSession,
+    token: &SessionToken,
+    resource: &Value,
+    supplied_checkpoint: bool,
+) -> Result<Option<f64>> {
+    let id = identifier(&resource["voice_id"])?;
+    let media = identifier(&resource["id"])?;
+    record_position_for(session, token, resource, supplied_checkpoint, &id, &media)
+}
+
+fn record_position_for(
+    session: &AccountSession,
+    token: &SessionToken,
+    resource: &Value,
+    supplied_checkpoint: bool,
+    id: &str,
+    media: &str,
+) -> Result<Option<f64>> {
     let local = if supplied_checkpoint {
         // The official listened-book action supplies its displayed checkpoint
         // for this selection. Do not substitute another generic local clock.
         None
     } else {
         let store = session.persistent_store()?;
-        session.with_token(token, |owner| store.get(owner, KIND, &id))?
+        session.with_token(token, |owner| store.get(owner, KIND, id))?
     };
     let record = local
         .as_ref()

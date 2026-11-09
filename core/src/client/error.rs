@@ -66,6 +66,9 @@ impl From<Error> for ClientError {
                     "这首下载的音频格式暂不支持离线播放",
                     false,
                 ),
+                Error::State("podcast browse around list is empty") => {
+                    ("podcast_browse_empty", "无法添加播放", false)
+                }
                 Error::State("intelligence requires playable liked tracks") => (
                     "intelligence_empty",
                     "我喜欢的音乐中暂无可用于心动模式的歌曲",

@@ -88,7 +88,7 @@ function artwork(resource: PodcastRankResource) {
 }
 function inactive(resource: PodcastRankResource) {
   return resource.kind === 'voice'
-    ? !props.playable || resource.voice.unavailable
+    ? !props.playable || resource.voice.unavailable || !resource.voice.browsePlaybackReceipt
     : resource.kind !== 'radio' || resource.radio.unavailable;
 }
 function activate(resource: PodcastRankResource) {

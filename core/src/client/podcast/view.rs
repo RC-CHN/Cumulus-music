@@ -43,6 +43,7 @@ pub(crate) fn episode(v: &Episode, liked: &[String]) -> EpisodeView {
         fee_type: v.raw["programFeeType"].as_i64().unwrap_or(0),
         liked: liked.contains(&v.id),
         unavailable: v.raw["grayDisplay"] == true,
+        browse_playback_receipt: None,
     }
 }
 pub(super) fn operation(v: PodcastMutation) -> PodcastMutationView {

@@ -1468,8 +1468,21 @@ function playVoiceCard(voice: EpisodeView) {
   else void player.select(selection);
 }
 function playPodcastBrowseVoice(voice: EpisodeView) {
-  const { kind } = page.value;
-  if (kind === 'podcast_discovery' || kind === 'podcast_rankings') playVoiceCard(voice);
+  const route = page.value;
+  const receipt = voice.browsePlaybackReceipt;
+  if (
+    (route.kind !== 'podcast_discovery' && route.kind !== 'podcast_rankings') ||
+    !receipt ||
+    voice.unavailable ||
+    !signedIn.value ||
+    !player.ready.value ||
+    player.busy.value
+  )
+    return;
+  void player.prepareSelection(async () => {
+    if (page.value !== route) throw { code: 'stale', message: '播客列表已更新', retryable: false };
+    return { kind: 'podcast_browse_voice', receipt };
+  });
 }
 function playSearchCard(item: SearchItem) {
   const route = page.value;

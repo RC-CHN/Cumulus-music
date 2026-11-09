@@ -1,5 +1,10 @@
 //! M/3004 and M/597: public voice, podcast, host, and audiobook charts.
-use super::{EpisodeView, MusicClient, PodcastCard, home::podcast_recommendations_enabled, view};
+use super::{
+    EpisodeView, MusicClient, PodcastCard,
+    browse_playback::{self, Lane},
+    home::podcast_recommendations_enabled,
+    view,
+};
 use crate::{
     Error, Result,
     account::login_policy::AB_PATH,
@@ -232,12 +237,20 @@ fn number(raw: &Value) -> Option<u64> {
         .or_else(|| raw.as_str()?.parse().ok())
         .filter(|n| *n > 0)
 }
-fn row(raw: &Value, group: PodcastRankGroup) -> Option<PodcastRankRow> {
+fn row(
+    raw: &Value,
+    group: PodcastRankGroup,
+    authority: Option<(&browse_playback::Host, &browse_playback::Observation)>,
+) -> Option<PodcastRankRow> {
     let chart = &raw["chartMetaVO"];
     let resource = match group {
         PodcastRankGroup::Voice => {
             let raw = &raw["voiceMetaVO"];
-            let mut voice = view::episode(&Episode::from_official(raw).ok()?, &[]);
+            let episode = Episode::from_official(raw).ok()?;
+            let mut voice = view::episode(&episode, &[]);
+            if let Some((host, observation)) = authority {
+                host.bind(observation, &episode, &mut voice)?;
+            }
             voice.name = label(&json!(voice.name))?;
             if voice.radio_name.is_empty() {
                 voice.radio_name = label(&raw["radioName"]).unwrap_or_default();
@@ -284,7 +297,11 @@ async fn top_group(api: &dyn Api) -> Option<String> {
     matching.next().is_none().then(|| group.to_owned())
 }
 
-async fn request(api: Arc<dyn Api>, query: PodcastRankQuery) -> Result<PodcastRanks> {
+async fn request(
+    api: Arc<dyn Api>,
+    query: PodcastRankQuery,
+    authority: Option<(&browse_playback::Host, &browse_playback::Observation)>,
+) -> Result<PodcastRanks> {
     use PodcastRankGroup::*;
     Ok(match query {
         PodcastRankQuery::TopConfig => {
@@ -386,7 +403,7 @@ async fn request(api: Arc<dyn Api>, query: PodcastRankQuery) -> Result<PodcastRa
                 rows: array(list)?
                     .iter()
                     .take(500)
-                    .filter_map(|raw| row(raw, group))
+                    .filter_map(|raw| row(raw, group, authority))
                     .take(if preview { 8 } else { 500 })
                     .collect(),
             }
@@ -433,9 +450,42 @@ impl MusicClient {
                 scene_fm_allowed,
             }
         } else {
-            self.session
-                .run_for(&token, |api, _| async move { request(api, query).await })
-                .await?
+            let api = self.session.native_api(&token)?;
+            let observation = match &query {
+                PodcastRankQuery::Entries {
+                    group: PodcastRankGroup::Voice,
+                    id,
+                    chart_type,
+                    preview,
+                } if valid_part(id) && valid_part(chart_type) => {
+                    Some(self.podcast_browse_playback.begin(
+                        &token,
+                        &api,
+                        Lane::Rank {
+                            id: id.clone(),
+                            chart_type: chart_type.clone(),
+                            preview: *preview,
+                        },
+                        false,
+                    )?)
+                }
+                _ => None,
+            };
+            let authority = observation
+                .as_ref()
+                .map(|value| (&self.podcast_browse_playback, value));
+            let value = self
+                .session
+                .run_for(&token, |api, _| request(api, query, authority))
+                .await?;
+            self.session.require_api(&token, &api)?;
+            if observation
+                .as_ref()
+                .is_some_and(|value| !value.current(&token, &api))
+            {
+                return Err(Error::StaleResponse);
+            }
+            value
         };
         Ok(AccountData {
             epoch: epoch.into(),

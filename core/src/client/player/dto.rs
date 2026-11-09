@@ -393,6 +393,9 @@ pub enum PlaySelection {
         id: String,
         receipt: String,
     },
+    PodcastBrowseVoice {
+        receipt: String,
+    },
     SearchResultVoice {
         id: String,
     },
