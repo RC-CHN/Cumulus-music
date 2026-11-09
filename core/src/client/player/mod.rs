@@ -980,6 +980,24 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueRecentProgram {
+            target,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "recent program queue used as native media command",
+                ));
+            }
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::RecentVoice(target),
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueDailyRecommendations {
             revision,
             indices,
@@ -1720,6 +1738,7 @@ impl MusicClient {
             | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueVoice { .. }
+            | PlayerAction::QueueRecentProgram { .. }
             | PlayerAction::QueueAlbum { .. }
             | PlayerAction::QueueAlbumDetail { .. }
             | PlayerAction::QueueAlbumBatch { .. }

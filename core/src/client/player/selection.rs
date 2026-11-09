@@ -558,11 +558,7 @@ impl MusicClient {
                 let mut selection = self
                     .podcast_recent_resources(&token, &revision, &id, preserve.is_none())
                     .await?;
-                let source = json!({
-                    "kind":"podcast_recent",
-                    "scene":"myRecentUpdateVoice",
-                    "href":"/myAudio/recentUpdate"
-                });
+                let source = super::origin::recent_podcast();
                 let state = if let Some(snapshot) = preserve {
                     self.play_retained_queue_row_with_source(
                         &token,

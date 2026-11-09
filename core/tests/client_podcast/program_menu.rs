@@ -184,3 +184,203 @@ async fn next_is_one_program_and_rejects_foreign_or_retired_radio_scope_before_e
         [("/api/dj/program/detail".into(), json!({"id":"2"}))]
     );
 }
+
+async fn recent_revision(client: &MusicClient, query: PodcastRecentQuery) -> String {
+    serde_json::to_value(client.podcast_recent("1", query).await.unwrap().value).unwrap()["revision"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn recent_target(id: &str, revision: &str) -> PodcastRecentProgramTarget {
+    PodcastRecentProgramTarget {
+        voice_id: id.into(),
+        revision: revision.into(),
+    }
+}
+
+#[tokio::test]
+async fn recent_program_menu_rejects_held_reply_after_pagination_and_rechecks_action_target() {
+    let (_root, api, session, client) = fixture();
+    let revision = recent_revision(&client, PodcastRecentQuery::Open).await;
+    assert!(matches!(
+        client.podcast_recent_program("1", recent_target("1042", &revision)),
+        Err(Error::QueueChanged)
+    ));
+    api.menu_count_hold.store(true, Ordering::SeqCst);
+    let read = client.podcast_recent_program_menu(
+        "1",
+        recent_target("42", &revision),
+        DefaultRoute::Present,
+    );
+    let paginate = async {
+        api.menu_count_started.notified().await;
+        let next = recent_revision(
+            &client,
+            PodcastRecentQuery::Next {
+                revision: revision.clone(),
+            },
+        )
+        .await;
+        api.menu_count_release.notify_one();
+        next
+    };
+    let (old, current) = tokio::join!(read, paginate);
+    assert!(matches!(old, Err(Error::QueueChanged)));
+    assert!(matches!(
+        client.podcast_recent_program("1", recent_target("42", &revision)),
+        Err(Error::QueueChanged)
+    ));
+    let resolved = client
+        .podcast_recent_program("1", recent_target("44", &current))
+        .unwrap();
+    assert_eq!(resolved.value.id, "44");
+    assert_eq!(resolved.value.radio_id.as_deref(), Some("7"));
+    assert!(!serde_json::to_string(&resolved).unwrap().contains("SECRET"));
+    let menu = client
+        .podcast_recent_program_menu("1", recent_target("44", &current), DefaultRoute::Present)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(menu.value).unwrap(),
+        json!({"commentCount":54,"downloadComplete":false})
+    );
+    let calls_before_offline = api.calls.lock().unwrap().len();
+    let menu = client
+        .podcast_recent_program_menu("1", recent_target("44", &current), DefaultRoute::Missing)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(menu.value).unwrap(),
+        json!({"commentCount":null,"downloadComplete":false})
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), calls_before_offline);
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path == COUNT)
+            .map(|(_, body)| body.clone())
+            .collect::<Vec<_>>(),
+        [
+            json!({"resourceType":1,"resourceIds":"[\"42\"]"}),
+            json!({"resourceType":1,"resourceIds":"[\"44\"]"}),
+        ]
+    );
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(
+        client.podcast_recent_program("1", recent_target("44", &current)),
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client.podcast_recent_program("2", recent_target("44", &current)),
+        Err(Error::QueueChanged)
+    ));
+}
+
+#[tokio::test]
+async fn recent_program_menu_next_cancels_held_hydration_then_keeps_paused_source_and_play_is_single()
+ {
+    let (_root, api, _, client) = fixture();
+    api.recent_missing_media.store(true, Ordering::SeqCst);
+    let revision = recent_revision(&client, PodcastRecentQuery::Open).await;
+    client
+        .play_selection("1", PlaySelection::Voice { id: "1".into() })
+        .await
+        .unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: cumulus_core::playback::PlaybackMode::SingleLoop,
+            },
+        )
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    api.calls.lock().unwrap().clear();
+    let next = |target| PlayerAction::QueueRecentProgram {
+        target,
+        expected_queue_revision: paused.queue_revision.clone(),
+    };
+    api.recent_detail_hold.store(true, Ordering::SeqCst);
+    let pending = client.player_action("1", next(recent_target("43", &revision)));
+    let refresh = async {
+        api.recent_detail_started.notified().await;
+        let fresh = recent_revision(&client, PodcastRecentQuery::Refresh).await;
+        api.recent_detail_release.notify_one();
+        fresh
+    };
+    let (stale, fresh) = tokio::join!(pending, refresh);
+    assert!(matches!(stale, Err(Error::QueueChanged)));
+    let after = client.player_snapshot("1").await.unwrap();
+    assert_eq!(after.queue_revision, paused.queue_revision);
+    assert_eq!(after.play_id, paused.play_id);
+    let current = client
+        .player_action("1", next(recent_target("43", &fresh)))
+        .await
+        .unwrap();
+    assert_eq!(current.play_id, paused.play_id);
+    assert_eq!(current.entry_id, paused.entry_id);
+    assert_eq!(current.position, paused.position);
+    assert_eq!(current.state, paused.state);
+    assert_eq!(current.queue_len, 2);
+    assert_ne!(current.queue_revision, paused.queue_revision);
+    assert_eq!(
+        client
+            .player_queue("1")
+            .await
+            .unwrap()
+            .tracks
+            .iter()
+            .map(|row| row.track.voice_id.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("1"), Some("43")]
+    );
+    assert!(matches!(
+        client
+            .player_action("1", next(recent_target("42", &fresh)))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let played = client
+        .play_selection(
+            "1",
+            PlaySelection::PodcastRecent {
+                revision: fresh,
+                id: "42".into(),
+                double_click: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(played.track.unwrap().voice_id.as_deref(), Some("42"));
+    assert_ne!(played.play_id, paused.play_id);
+    assert_eq!(
+        client
+            .player_queue("1")
+            .await
+            .unwrap()
+            .tracks
+            .iter()
+            .map(|row| row.track.voice_id.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("1"), Some("42"), Some("43")]
+    );
+    let trace = api.calls.lock().unwrap();
+    assert_eq!(
+        trace
+            .iter()
+            .filter(|(path, _)| path == "/api/dj/program/detail")
+            .map(|(_, body)| body["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["43", "43", "42"]
+    );
+    assert!(!trace.iter().any(|(path, _)| path.contains("/byradio")));
+}

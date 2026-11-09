@@ -25,6 +25,14 @@ pub enum PodcastRecentQuery {
     Next { revision: String },
 }
 
+/// A row observed in the native recent-updates snapshot, not a radio detail.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PodcastRecentProgramTarget {
+    pub revision: String,
+    pub voice_id: String,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodcastRecentPage {
@@ -277,6 +285,37 @@ impl MusicClient {
                 }
             })
         })
+    }
+
+    pub(in crate::client) fn recent_program_for(
+        &self,
+        token: &SessionToken,
+        target: &PodcastRecentProgramTarget,
+        playable: bool,
+    ) -> Result<(Episode, Cancellation)> {
+        let id = identifier(&json!(target.voice_id))?;
+        self.session.with_token(token, |_| {
+            self.podcast_recent.with_slot(token, |slot| {
+                let snapshot = slot
+                    .snapshot
+                    .as_ref()
+                    .filter(|snapshot| snapshot.revision == target.revision)
+                    .ok_or(Error::QueueChanged)?;
+                let row = snapshot
+                    .rows
+                    .iter()
+                    .find(|row| row.id == id)
+                    .ok_or(Error::QueueChanged)?;
+                if playable && unavailable(row) {
+                    return Err(Error::State("program is unavailable"));
+                }
+                Ok((row.clone(), snapshot.source.clone()))
+            })
+        })
+    }
+
+    pub(super) fn recent_program_view(row: &Episode) -> EpisodeView {
+        project(row).voice
     }
 
     pub(in crate::client) async fn podcast_recent_resources(

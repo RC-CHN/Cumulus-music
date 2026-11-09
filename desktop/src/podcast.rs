@@ -226,6 +226,53 @@ pub async fn podcast_open_program_download_directory<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn podcast_recent_program_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastRecentProgramTarget,
+) -> Result<AccountData<PodcastRecentProgramMenu>, ClientError> {
+    require_program_menu_main(&window)?;
+    client
+        .podcast_recent_program_menu(&epoch, target, crate::network_diagnostics::default_route())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn podcast_recent_program<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastRecentProgramTarget,
+) -> Result<AccountData<EpisodeView>, ClientError> {
+    require_program_menu_main(&window)?;
+    client
+        .podcast_recent_program(&epoch, target)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn podcast_open_recent_program_download_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastRecentProgramTarget,
+) -> Result<(), ClientError> {
+    require_program_menu_main(&window)?;
+    let path = client
+        .podcast_recent_program_directory_path(&epoch, target)
+        .await
+        .map_err(ClientError::from)?;
+    client
+        .validate_download_epoch(&epoch)
+        .map_err(ClientError::from)?;
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn podcast_subscription_recommendations<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

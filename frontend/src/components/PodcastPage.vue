@@ -15,6 +15,7 @@ import type {
   EpisodeView,
   PodcastRecommendationAction,
   PodcastProgramTarget,
+  PodcastRecentProgramTarget,
 } from '../services/podcast';
 const props = defineProps<{
   model: PodcastModel;
@@ -22,6 +23,7 @@ const props = defineProps<{
   playable: boolean;
   queueable: boolean;
   queueProgram: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
+  queueRecentProgram: (epoch: string, program: PodcastRecentProgramTarget) => Promise<boolean>;
   currentId?: string;
   currentRadioId?: string;
   playing: boolean;
@@ -29,6 +31,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   play: [scope: PodcastScope, revision: string, id: string | null];
   recentPlay: [revision: string, id: string, doubleClick: boolean];
+  recentProgramPlay: [epoch: string, program: PodcastRecentProgramTarget];
   recommendedPlay: [id: string, action: PodcastRecommendationAction];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[]];
@@ -232,7 +235,12 @@ const pending = props.model.pending;
       :playable="playable"
       :current-id="currentId"
       :playing="playing"
+      :queueable="queueable"
+      :queue-program="queueRecentProgram"
       @play="(revision, id, doubleClick) => emit('recentPlay', revision, id, doubleClick)"
+      @program-play="(epoch, target) => emit('recentProgramPlay', epoch, target)"
+      @comments="(id, title) => emit('comments', id, title)"
+      @download="(voices) => emit('download', voices)"
       @radio="openRecentRadio"
     />
     <template v-else>

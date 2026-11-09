@@ -6,7 +6,15 @@ use crate::{
     playback::QueueEntry,
     protocol::api::identifier,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
+
+pub(super) fn recent_podcast() -> Value {
+    json!({
+        "kind":"podcast_recent",
+        "scene":"myRecentUpdateVoice",
+        "href":"/myAudio/recentUpdate"
+    })
+}
 
 fn label(name: &str) -> Option<&str> {
     (!name.trim().is_empty() && name.len() <= 4096).then_some(name)

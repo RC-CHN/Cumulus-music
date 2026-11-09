@@ -8,19 +8,27 @@ import {
   type EpisodeView,
   type PodcastPage,
   type PodcastProgramTarget,
+  type PodcastRecentPage,
+  type PodcastRecentProgramTarget,
 } from '../services/podcast';
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
 import TrackShareDialog from './TrackShareDialog.vue';
 
+type RecentMenuPage = PodcastRecentPage & { epoch: string };
+type MenuPage = PodcastPage | RecentMenuPage;
+type MenuTarget = PodcastProgramTarget | PodcastRecentProgramTarget;
+
 const props = defineProps<{
-  page?: PodcastPage;
+  page?: MenuPage;
   playable: boolean;
   queueable: boolean;
-  queue: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
+  queue?: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
+  queueRecent?: (epoch: string, program: PodcastRecentProgramTarget) => Promise<boolean>;
 }>();
 const emit = defineEmits<{
   play: [id: string];
+  recentPlay: [epoch: string, program: PodcastRecentProgramTarget];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[]];
 }>();
@@ -32,9 +40,9 @@ const completed = ref<boolean>();
 const feedback = ref('');
 let timer: ReturnType<typeof setTimeout> | undefined;
 type Selection = {
-  page: PodcastPage;
+  page: MenuPage;
   voice: EpisodeView;
-  target: PodcastProgramTarget;
+  target: MenuTarget;
   anchor: HTMLButtonElement;
 };
 const selection = shallowRef<Selection>();
@@ -129,8 +137,8 @@ async function open(
   const page = props.page;
   if (
     !page?.epoch ||
-    page.scope.kind !== 'radio' ||
-    !page.episodes.includes(voice) ||
+    ('scope' in page && page.scope.kind !== 'radio') ||
+    !page.episodes.some((candidate) => candidate === voice) ||
     !anchor.isConnected ||
     anchor.closest('[inert]')
   )
@@ -142,17 +150,12 @@ async function open(
   abandonPreparation();
   menu.value?.close();
   anchor.focus({ preventScroll: true });
-  const value: Selection = {
-    page,
-    voice,
-    anchor,
-    target: {
-      radioId: page.scope.id,
-      ascending: page.scope.ascending,
-      revision: page.revision,
-      voiceId: voice.id,
-    },
-  };
+  const row = { revision: page.revision, voiceId: voice.id };
+  const target =
+    'scope' in page && page.scope.kind === 'radio'
+      ? { ...row, radioId: page.scope.id, ascending: page.scope.ascending }
+      : row;
+  const value: Selection = { page, voice, anchor, target };
   clearFeedback();
   count.value = undefined;
   completed.value = undefined;
@@ -160,15 +163,20 @@ async function open(
   preparing = value;
   const live = () => preparing === value && selection.value === value && current(value);
   try {
-    // The official menu prepares the optional count before consulting download
-    // state and presenting the actions. Native returns null on a network miss,
-    // but rejects a retired account or radio revision.
-    const result = await client.podcastProgramCommentCount(page.epoch, value.target);
-    if (!live() || result.epoch !== page.epoch) return;
-    const status = await client.voiceDownloadState(page.epoch, voice.id).catch(() => undefined);
-    if (!live()) return;
-    count.value = result.value ?? undefined;
-    completed.value = status === undefined ? undefined : status === 'complete';
+    // Both surfaces prepare the optional count before consulting local state.
+    if ('radioId' in target) {
+      const result = await client.podcastProgramCommentCount(page.epoch, target);
+      if (!live() || result.epoch !== page.epoch) return;
+      const status = await client.voiceDownloadState(page.epoch, voice.id).catch(() => undefined);
+      if (!live()) return;
+      count.value = result.value ?? undefined;
+      completed.value = status === undefined ? undefined : status === 'complete';
+    } else {
+      const result = await client.podcastRecentProgramMenu(page.epoch, target);
+      if (!live() || result.epoch !== page.epoch) return;
+      count.value = result.value.commentCount ?? undefined;
+      completed.value = result.value.downloadComplete ?? undefined;
+    }
     await nextTick();
     if (!live()) return;
     preparing = undefined;
@@ -182,20 +190,39 @@ async function open(
 }
 async function action(key: string) {
   const value = active.value;
-  if (!value) return;
-  const { page, voice, anchor, target } = value;
-  if (key === 'play' && props.playable && !voice.unavailable) emit('play', voice.id);
-  if (key === 'comments') emit('comments', voice.id, voice.name);
-  if (key === 'download' && completed.value === false && !voice.unavailable)
-    emit('download', [voice]);
-  if (key === 'share' && podcastProgramPublicLink(voice.id)) {
-    shareAnchor.value = anchor;
-    shared.value = value;
-  }
+  if (!value || !current(value)) return;
+  const { page, anchor, target } = value;
+  let voice = value.voice;
   let message: string | undefined;
   try {
+    if (!('radioId' in target) && ['comments', 'download', 'share', 'copy'].includes(key)) {
+      const result = await client.podcastRecentProgram(page.epoch, target);
+      if (
+        selection.value !== value ||
+        !current(value) ||
+        result.epoch !== page.epoch ||
+        result.value.id !== target.voiceId
+      )
+        return;
+      voice = result.value;
+    }
+    if (key === 'play' && props.playable && !voice.unavailable) {
+      if ('radioId' in target) emit('play', voice.id);
+      else emit('recentPlay', page.epoch, target);
+    }
+    if (key === 'comments') emit('comments', voice.id, voice.name);
+    if (key === 'download' && completed.value === false && !voice.unavailable)
+      emit('download', [voice]);
+    if (key === 'share' && podcastProgramPublicLink(voice.id)) {
+      shareAnchor.value = anchor;
+      shared.value = { ...value, voice };
+    }
     if (key === 'next' && props.queueable && !voice.unavailable) {
-      if (await props.queue(page.epoch, target)) message = '已添加至播放列表';
+      const queued =
+        'radioId' in target
+          ? await props.queue?.(page.epoch, target)
+          : await props.queueRecent?.(page.epoch, target);
+      if (queued) message = '已添加至播放列表';
     }
     if (key === 'copy') {
       const link = podcastProgramPublicLink(voice.id);
@@ -203,8 +230,10 @@ async function action(key: string) {
       await client.copyText(link);
       message = '链接已复制';
     }
-    if (key === 'folder' && completed.value === true)
-      await client.podcastOpenProgramDownloadDirectory(page.epoch, target);
+    if (key === 'folder' && completed.value === true) {
+      if ('radioId' in target) await client.podcastOpenProgramDownloadDirectory(page.epoch, target);
+      else await client.podcastOpenRecentProgramDownloadDirectory(page.epoch, target);
+    }
   } catch (error) {
     message = failure(error).message;
   }

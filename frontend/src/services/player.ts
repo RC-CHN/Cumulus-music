@@ -616,6 +616,11 @@ export type PlayerAction =
       expected_queue_revision: string;
     }
   | {
+      kind: 'queue_recent_program';
+      target: import('./podcast').PodcastRecentProgramTarget;
+      expected_queue_revision: string;
+    }
+  | {
       kind: 'queue_style_recommendations';
       revision: string;
       quality: Quality;

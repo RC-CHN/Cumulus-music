@@ -262,6 +262,7 @@ import {
   AUDIOBOOK_CATEGORY,
   type EpisodeView,
   type PodcastProgramTarget,
+  type PodcastRecentProgramTarget,
   type PodcastScope,
 } from './services/podcast';
 import {
@@ -1757,6 +1758,33 @@ async function queuePodcastProgram(epoch: string, program: PodcastProgramTarget)
     return false;
   const before = player.view.value;
   const next = await player.queueVoice(program.voiceId, program);
+  return !!before?.queueLen && !!next && next.queueRevision !== before.queueRevision;
+}
+function recentProgramIsLive(epoch: string, program: PodcastRecentProgramTarget) {
+  const snapshot = podcastRecent.page.value;
+  return (
+    page.value.kind === 'podcasts' &&
+    podcasts.recentSelected.value &&
+    epoch === account.value.epoch &&
+    snapshot?.epoch === epoch &&
+    snapshot.revision === program.revision &&
+    snapshot.episodes.some((voice) => voice.id === program.voiceId && !voice.unavailable)
+  );
+}
+function playRecentProgram(epoch: string, program: PodcastRecentProgramTarget) {
+  if (!recentProgramIsLive(epoch, program) || !player.ready.value || player.busy.value) return;
+  // A menu Play is neither the row's playback toggle nor its double-click policy.
+  void player.select({
+    kind: 'podcast_recent',
+    revision: program.revision,
+    id: program.voiceId,
+    double_click: false,
+  });
+}
+async function queueRecentProgram(epoch: string, program: PodcastRecentProgramTarget) {
+  if (!ordinaryVoiceQueueable.value || !recentProgramIsLive(epoch, program)) return false;
+  const before = player.view.value;
+  const next = await player.queueRecentProgram(program);
   return !!before?.queueLen && !!next && next.queueRevision !== before.queueRevision;
 }
 const currentPodcastRadioId = computed(() => {
@@ -5604,6 +5632,8 @@ onUnmounted(() => {
                 :current-id="currentVoiceId"
                 :queueable="ordinaryVoiceQueueable"
                 :queue-program="queuePodcastProgram"
+                :queue-recent-program="queueRecentProgram"
+                @recent-program-play="playRecentProgram"
                 @play="playPodcast"
                 :current-radio-id="currentPodcastRadioId"
                 @recent-play="playRecentPodcast"

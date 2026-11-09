@@ -34,6 +34,10 @@ struct Backend {
     menu_count_hold: AtomicBool,
     menu_count_started: tokio::sync::Notify,
     menu_count_release: tokio::sync::Notify,
+    recent_missing_media: AtomicBool,
+    recent_detail_hold: AtomicBool,
+    recent_detail_started: tokio::sync::Notify,
+    recent_detail_release: tokio::sync::Notify,
     count: AtomicUsize,
     resume: AtomicBool,
     liked: Mutex<Vec<u64>>,
@@ -171,7 +175,11 @@ impl Api for Backend {
                         let mut row = program(42);
                         row["liked"] = json!(true);
                         row["adjustedPlayCount"] = json!(42);
-                        json!({"code":200,"data":{"data":[row,program(43)],
+                        let mut second = program(43);
+                        if self.recent_missing_media.load(Ordering::SeqCst) {
+                            second.as_object_mut().unwrap().remove("mainSong");
+                        }
+                        json!({"code":200,"data":{"data":[row,second],
                             "hasMore":1,"updateTime":"1700000000123","newVoiceCount":7}})
                     } else {
                         assert_eq!(p, json!({"updateTime":"1700000000123"}));
@@ -241,7 +249,12 @@ impl Api for Backend {
                     json!({"code":200,"data":{"resumePlayValue":u8::from(self.resume.load(Ordering::SeqCst))}})
                 }
                 "/api/dj/program/detail" => {
-                    json!({"code":200,"program":self.episode(p["id"].as_str().unwrap().parse().unwrap())})
+                    let id = p["id"].as_str().unwrap().parse().unwrap();
+                    if id == 43 && self.recent_detail_hold.swap(false, Ordering::SeqCst) {
+                        self.recent_detail_started.notify_one();
+                        self.recent_detail_release.notified().await;
+                    }
+                    json!({"code":200,"program":self.episode(id)})
                 }
                 "/api/voice/alg/skip/info/get" if self.audiobook.load(Ordering::SeqCst) => {
                     assert_eq!(p, json!({"programIdsStr":["1"]}));

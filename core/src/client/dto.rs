@@ -75,8 +75,9 @@ pub use super::podcast::{
     PodcastHomeBlock, PodcastHomePage, PodcastMutationView, PodcastPage, PodcastProgramTarget,
     PodcastQuery, PodcastRadioOrder, PodcastRankGroup, PodcastRankMenu, PodcastRankQuery,
     PodcastRankResource, PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastRecentPage,
-    PodcastRecentQuery, PodcastSearchMembership, PodcastState, PodcastSubcategory,
-    PodcastSubscriptionRecommendation, PodcastSubscriptionRecommendations, PodcastTopLayout,
+    PodcastRecentProgramMenu, PodcastRecentProgramTarget, PodcastRecentQuery,
+    PodcastSearchMembership, PodcastState, PodcastSubcategory, PodcastSubscriptionRecommendation,
+    PodcastSubscriptionRecommendations, PodcastTopLayout,
 };
 pub use super::profile_blacklist::{
     ProfileBlacklistCommand, ProfileBlacklistEntry, ProfileBlacklistHeader, ProfileBlacklistList,

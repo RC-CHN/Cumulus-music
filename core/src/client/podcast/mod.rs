@@ -5,7 +5,7 @@ mod discovery;
 mod dto;
 mod home;
 mod program_menu;
-pub use program_menu::PodcastProgramTarget;
+pub use program_menu::{PodcastProgramTarget, PodcastRecentProgramMenu};
 pub(super) mod profile;
 pub(in crate::client) mod radio_playback;
 mod rankings;
@@ -37,7 +37,7 @@ pub use rankings::{
     PodcastRankTab, PodcastRanks, PodcastTopLayout,
 };
 pub(super) use recent::PodcastRecentHost;
-pub use recent::{PodcastRecentPage, PodcastRecentQuery};
+pub use recent::{PodcastRecentPage, PodcastRecentProgramTarget, PodcastRecentQuery};
 use serde_json::{Value, json};
 
 impl MusicClient {

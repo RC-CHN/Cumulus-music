@@ -61,6 +61,7 @@ pub(super) enum QueueCollection {
         id: String,
         program: Option<crate::client::dto::PodcastProgramTarget>,
     },
+    RecentVoice(crate::client::dto::PodcastRecentProgramTarget),
     Downloads(Vec<String>),
     Local {
         query: crate::library::catalog::LocalQuery,
@@ -253,7 +254,10 @@ impl MusicClient {
             }
         );
         let artist_favor = matches!(collection, QueueCollection::ArtistFavor { .. });
-        let voice = matches!(collection, QueueCollection::Voice { .. });
+        let voice = matches!(
+            collection,
+            QueueCollection::Voice { .. } | QueueCollection::RecentVoice(_)
+        );
         let ordinary = daily
             || style
             || local
@@ -303,6 +307,16 @@ impl MusicClient {
                 detail: Some(scope),
                 ..
             } => (None, Some(self.album_playback_guard(&token, scope)?)),
+            QueueCollection::RecentVoice(target) => {
+                let (row, guard) = self.recent_program_for(&token, target, true)?;
+                if queue.selected().is_some_and(|entry| {
+                    resource_key(&entry.resource, false)
+                        == Some((PlayerResourceKind::Voice, row.id.as_str()))
+                }) {
+                    return project(&before, &token);
+                }
+                (None, Some(guard))
+            }
             _ => (None, None),
         };
         let program = if let QueueCollection::Voice { id, program } = &collection {
@@ -550,6 +564,12 @@ impl MusicClient {
                     json!({"kind":"voice","id":id,"pldScene":"audio"}),
                     false,
                 )
+            }
+            QueueCollection::RecentVoice(target) => {
+                let selection = self
+                    .podcast_recent_resources(&token, &target.revision, &target.voice_id, false)
+                    .await?;
+                (selection.resources, super::origin::recent_podcast(), false)
             }
             QueueCollection::Downloads(ids) => (
                 self.download_resources(epoch, ids).await?,

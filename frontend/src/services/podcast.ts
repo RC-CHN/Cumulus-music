@@ -20,7 +20,27 @@ export interface PodcastProgramTarget {
   revision: string;
   voiceId: string;
 }
+export interface PodcastRecentProgramTarget {
+  revision: string;
+  voiceId: string;
+}
+export interface PodcastRecentProgramMenu {
+  commentCount: number | null;
+  downloadComplete: boolean | null;
+}
 export interface PodcastProgramMenuClient {
+  podcastRecentProgramMenu(
+    epoch: string,
+    target: PodcastRecentProgramTarget,
+  ): Promise<AccountData<PodcastRecentProgramMenu>>;
+  podcastRecentProgram(
+    epoch: string,
+    target: PodcastRecentProgramTarget,
+  ): Promise<AccountData<EpisodeView>>;
+  podcastOpenRecentProgramDownloadDirectory(
+    epoch: string,
+    target: PodcastRecentProgramTarget,
+  ): Promise<void>;
   podcastProgramCommentCount(
     epoch: string,
     target: PodcastProgramTarget,

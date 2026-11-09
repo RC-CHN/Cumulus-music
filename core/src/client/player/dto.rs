@@ -609,6 +609,10 @@ pub enum PlayerAction {
         program: Option<crate::client::dto::PodcastProgramTarget>,
         expected_queue_revision: String,
     },
+    QueueRecentProgram {
+        target: crate::client::dto::PodcastRecentProgramTarget,
+        expected_queue_revision: String,
+    },
     QueueDailyRecommendations {
         revision: String,
         #[serde(default)]

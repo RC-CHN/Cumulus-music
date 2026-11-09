@@ -12,7 +12,7 @@ export function usePodcastRecent(
   expired: () => void,
   core: PodcastRecentClient = useCore(),
 ) {
-  const page = shallowRef<PodcastRecentPage>();
+  const page = shallowRef<PodcastRecentPage & { epoch: string }>();
   const pending = ref(false);
   const issue = ref('');
   const scrollTop = ref(0);
@@ -45,7 +45,7 @@ export function usePodcastRecent(
     try {
       const result = await core.podcastRecent(epoch, query);
       if (!live() || result.epoch !== epoch) return;
-      page.value = result.value;
+      page.value = { ...result.value, epoch: result.epoch };
       if (query.kind === 'refresh') scrollTop.value = 0;
     } catch (error) {
       if (!live()) return;

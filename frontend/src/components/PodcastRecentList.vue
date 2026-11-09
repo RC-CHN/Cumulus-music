@@ -1,20 +1,30 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useOuterVirtualRows } from '../composables/useOuterVirtualRows';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
-import type { PodcastRecentEpisode } from '../services/podcast';
+import type {
+  EpisodeView,
+  PodcastRecentEpisode,
+  PodcastRecentProgramTarget,
+} from '../services/podcast';
+import PodcastProgramMenu from './PodcastProgramMenu.vue';
 import { time } from '../services/player';
 import Icon from './Icon.vue';
 
 const props = defineProps<{
   model: PodcastRecentModel;
   playable: boolean;
+  queueable: boolean;
+  queueProgram: (epoch: string, target: PodcastRecentProgramTarget) => Promise<boolean>;
   currentId?: string;
   playing: boolean;
 }>();
 const emit = defineEmits<{
   play: [revision: string, id: string, doubleClick: boolean];
   radio: [id: string, fromVoiceId: string];
+  programPlay: [epoch: string, target: PodcastRecentProgramTarget];
+  comments: [id: string, title: string];
+  download: [voices: EpisodeView[]];
 }>();
 const { page, pending, issue } = props.model;
 const episodes = computed(() => page.value?.episodes ?? []);
@@ -30,6 +40,27 @@ const count = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFract
 function play(episode: PodcastRecentEpisode, doubleClick: boolean) {
   if (page.value && props.playable && !episode.unavailable)
     emit('play', page.value.revision, episode.id, doubleClick);
+}
+const programMenu = ref<InstanceType<typeof PodcastProgramMenu>>();
+function openProgramMenu(event: MouseEvent | KeyboardEvent, voice: PodcastRecentEpisode) {
+  if (!page.value || !(event.currentTarget instanceof HTMLElement)) return;
+  const node = event.currentTarget;
+  const anchor =
+    node instanceof HTMLButtonElement
+      ? node
+      : node.querySelector<HTMLButtonElement>('[data-podcast-recent-more]');
+  if (!anchor) return;
+  const point =
+    event instanceof MouseEvent && event.button === 2
+      ? { x: event.clientX, y: event.clientY }
+      : undefined;
+  void programMenu.value?.open(voice, anchor, point);
+}
+function programKeyboard(event: KeyboardEvent, voice: PodcastRecentEpisode) {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openProgramMenu(event, voice);
 }
 async function focusRadio(voiceId: string) {
   // Scroll restoration changes the mounted window; update it before seeking the row.
@@ -80,6 +111,8 @@ onMounted(props.model.open);
         role="listitem"
         :aria-setsize="episodes.length"
         :aria-posinset="start + offset + 1"
+        @contextmenu.stop.prevent="openProgramMenu($event, voice)"
+        @keydown="programKeyboard($event, voice)"
         @dblclick="play(voice, true)"
       >
         <button
@@ -118,6 +151,18 @@ onMounted(props.model.open);
               <span v-if="voice.feeType">付费内容</span>
             </div>
           </div>
+          <button
+            type="button"
+            class="icon-button recent-program-more"
+            data-podcast-recent-more
+            :aria-label="`更多：${voice.name}`"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            @click.stop="openProgramMenu($event, voice)"
+            @dblclick.stop
+          >
+            <Icon name="more" />
+          </button>
         </div>
         <span>{{ voice.listenerCount === null ? '—' : count.format(voice.listenerCount) }}</span>
         <span>{{ time(voice.durationMs / 1000) }}</span>
@@ -136,6 +181,16 @@ onMounted(props.model.open);
         {{ pending ? '正在读取…' : '加载更多' }}
       </button>
     </footer>
+    <PodcastProgramMenu
+      ref="programMenu"
+      :page="page"
+      :playable="playable"
+      :queueable="queueable"
+      :queue-recent="queueProgram"
+      @recent-play="(epoch, target) => emit('programPlay', epoch, target)"
+      @comments="(id, title) => emit('comments', id, title)"
+      @download="(voices) => emit('download', voices)"
+    />
   </section>
 </template>
 
@@ -231,6 +286,16 @@ onMounted(props.model.open);
   color: var(--muted);
   min-width: 0;
   padding: 0;
+}
+.recent-program-more {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+}
+@media (hover: hover) {
+  .recent-episode:not(:hover, :focus-within) .recent-program-more {
+    opacity: 0;
+  }
 }
 .recent-footer {
   padding: 16px 0;
