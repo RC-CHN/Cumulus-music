@@ -33,6 +33,19 @@
   const item = (name) => menu()?.querySelector(`[data-menu-key="${name}"]`);
   const download = () => one('.download-dialog[open]:not([inert])');
   const states = [];
+  const isAnimating = (node) => node.getAnimations().some(
+    (animation) => animation.pending || animation.playState === 'running',
+  );
+  let contextAnchor;
+  const contextFocus = () => ({
+    anchorConnected: contextAnchor?.isConnected ?? false,
+    currentAnchor: contextAnchor === voice(701, 'menu'),
+    menuOpen: Boolean(menu()),
+    activeOpener: document.activeElement?.dataset.essentialFocus ?? null,
+    activeItem: document.activeElement?.dataset.menuKey ?? null,
+    page: contextAnchor?.closest('.page-view')?.className ?? null,
+    scrollTop: contextAnchor?.closest('.ordinary-essential')?.scrollTop ?? null,
+  });
   let downloads = 0, queueVoiceResponses = 0;
   const fetchIpc = window.fetch;
   window.fetch = function (url, options) {
@@ -50,9 +63,8 @@
   async function capture(name, extra = {}) {
     const stage = 'ux_' + name;
     await sleep(80);
-    await wait(() => all('.page-view,.action-menu,dialog').every((node) =>
-      node.getAnimations().every((animation) => !animation.pending && animation.playState !== 'running')),
-    'settled Choice actions');
+    await wait(() => all('.page-view,.action-menu,dialog').every((node) => !isAnimating(node)),
+      'settled Choice actions');
     await emit(stage, extra);
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'capture ' + stage);
     states.push(name);
@@ -60,8 +72,23 @@
   async function openMenu(id, gesture) {
     const anchor = voice(id, 'menu');
     assert(anchor, 'voice menu trigger ' + id);
+    const page = anchor.closest('.page-view');
+    const ready = () => anchor === voice(id, 'menu') && anchor.isConnected && page &&
+      !anchor.closest('[inert],.page-enter-active,.page-leave-active') && !isAnimating(page);
+    // The menu intentionally closes when a scroll moves its opener. Let the
+    // route transition finish before revealing and opening an off-screen row.
+    await wait(ready, 'Choice page entrance settles');
     anchor.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
-    await sleep(160);
+    let previous;
+    await wait(() => {
+      const bounds = anchor.getBoundingClientRect();
+      const { x, y, width, height } = bounds;
+      const layout = [x, y, width, height].join(':');
+      const settled = layout === previous;
+      previous = layout;
+      return ready() && settled && width > 0 && height > 0 &&
+        x >= 0 && y >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+    }, 'voice menu opener is visible and stable after scrolling');
     if (gesture === 'pointer') {
       const r = anchor.getBoundingClientRect();
       anchor.dispatchEvent(new MouseEvent('contextmenu', {
@@ -86,11 +113,15 @@
     }, 'Choice navigation available'));
     await wait(() => voice(701, 'menu') && !voice(701, 'play').disabled, 'synthetic episode cards and player');
     const menuAnchor = await openMenu(701, 'keyboard');
+    contextAnchor = menuAnchor;
     assert(document.activeElement === item('next'), 'first context item focused');
     assert(all('.action-menu [data-menu-key]').map((node) => node.dataset.menuKey).join(',') ===
       'next,download', 'available operations are the implemented official subset');
     await capture('context_menu');
-    key(document.activeElement, 'Escape');
+    const escapeTarget = item('next');
+    assert(escapeTarget && document.activeElement === escapeTarget,
+      'the first context item still owns focus before Escape');
+    key(escapeTarget, 'Escape');
     await wait(() => !menu() && document.activeElement === menuAnchor, 'Escape restores More');
 
     const { epoch } = await invoke('account_snapshot');
@@ -176,6 +207,6 @@
     await capture('empty_next', { playing: true });
     await emit('complete', { ok: true, states, downloads, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
-    await emit('failed', { ok: false, error: String(error), states });
+    await emit('failed', { ok: false, error: String(error), states, contextFocus: contextFocus() });
   }
 })();
