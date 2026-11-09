@@ -4297,6 +4297,8 @@ const navigationKey = computed(() => {
 const pageMotion = useMotion();
 const pageTransition = createPageTransition(() => pageMotion.reduced.value);
 onUnmounted(pageTransition.dispose);
+// A podcast notification's history marker distinguishes Back destinations,
+// but does not remount the radio view or trigger fresh page-entry focus.
 const pageKey = computed(() =>
   JSON.stringify({
     account:
@@ -4314,8 +4316,8 @@ const pageKey = computed(() =>
             }
           : page.value.kind === 'collections'
             ? { kind: 'collections', collectionVisit: page.value.collectionVisit }
-            : page.value.kind === 'settings'
-              ? { kind: 'settings' }
+            : page.value.kind === 'settings' || page.value.kind === 'podcasts'
+              ? { kind: page.value.kind }
               : page.value.kind === 'playlist'
                 ? {
                     kind: 'playlist',

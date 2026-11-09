@@ -258,7 +258,10 @@ def verify_attachments(report, output, screenshots):
             if path.startswith('/api/v1/resource/comments/')] == expected
     assert sum(path == '/api/msg/private/history' for path, _ in requests) == 1
     assert sum(path == '/api/msg/notices' for path, _ in requests) == 2
-    assert sum(path == '/api/msg/private/users' for path, _ in requests) == 2
+    # Initial inbox, explicit thread Back, then reopening on the first radio.
+    assert [args for path, args in requests if path == '/api/msg/private/users'] == [
+        {'limit': 15, 'offset': 0, 'time': -1},
+    ] * 3
     podcast_reads = [
         (path, args) for path, args in requests
         if path in {'/api/djradio/v3/get', '/api/v6/dj/program/byradio',

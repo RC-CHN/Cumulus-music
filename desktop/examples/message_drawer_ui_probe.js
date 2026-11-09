@@ -461,8 +461,19 @@
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       assert(drawer() && radioHeading(81) && (await radioReads()).join(',') === '81,81',
         'the already visible same radio does not start another route or detail read');
+      target(65).scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      const noticeTop = scroller().scrollTop;
+      assert(noticeTop > 0 && target(65).getBoundingClientRect().bottom <= scroller().getBoundingClientRect().bottom,
+        'the selected notification is visible at a nonzero drawer scroll position');
       click(target(65));
       await destination('attachment_notice_other_radio', () => radioHeading(82));
+      const traceFocus = [];
+      const describeFocus = (node) => node instanceof HTMLElement ? {
+        tag: node.tagName, label: node.getAttribute('aria-label'), row: node.dataset.messageAttachment,
+        text: node.textContent.trim().slice(0, 80), insideDrawer: !!node.closest('.message-drawer')
+      } : null;
+      document.addEventListener('focusin', (event) => traceFocus.push(describeFocus(event.target)));
+      document.addEventListener('focusout', (event) => traceFocus.push({out: describeFocus(event.target)}));
       const localBack = all('.podcast-page button').find((node) =>
         node.textContent.includes('返回播客列表') && node.getClientRects().length > 0);
       click(localBack);
@@ -478,7 +489,10 @@
       assert((await radioReads()).join(',') === '81,81,82,81',
         'Back restores the exact previous radio, never a substituted id');
       await capture('attachment_notice_other_radio_return');
-      assert(focused(65), 'radio settles without stealing the restored notification focus');
+      assert(focused(65) && scroller().scrollTop === noticeTop,
+        'radio settles without stealing notification focus or changing restored scroll: ' +
+        JSON.stringify({ active: describeFocus(document.activeElement), traceFocus, noticeTop,
+          scrollTop: scroller().scrollTop, target: target(65)?.getBoundingClientRect().toJSON() }));
       assert(one('[data-message-tab="notices"] .message-drawer-badge')?.textContent.trim() === '4',
         'viewing typed targets never clears unread');
       assert(!(await fixture()).blockedWrite,'no explicit message mutation');
