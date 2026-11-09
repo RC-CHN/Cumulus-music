@@ -66,7 +66,7 @@ def main():
     first = rows['double_played']['nativePlayer']
     assert old['state'] == 'paused' and old['track']['voiceId'] == '400'
     assert first['state'] == 'playing' and first['track']['voiceId'] == '1'
-    assert first['origin'] == {'kind': 'podcast', 'id': '7'} and first['mode'] == 'single_loop'
+    assert first['origin'] == {'kind': 'podcast', 'id': '7'} and first['mode'] == 'sequential'
     assert first['playId'] != old['playId'] and 18.8 <= first['position'] < 27
     new_queue = rows['double_played']['queue']
     assert [item['track']['voiceId'] for item in new_queue['tracks']] == (
@@ -86,10 +86,16 @@ def main():
     assert [r['entryId'] for r in rows['same_episode_resumed']['queue']['tracks']] == [
         r['entryId'] for r in new_queue['tracks']]
     wire = complete['searchPodcastCalls']
-    for path, expected in ((DETAIL, 3), (CHECK, 3), (URL, 2)):
+    baseline = rows['double_armed']['searchPodcastCalls']
+    activated = rows['double_played']['searchPodcastCalls']
+    before_resume = rows['failed_kept']['searchPodcastCalls']
+    assert [call['path'] for call in activated[len(baseline):]] == [BYRADIO, BYRADIO, DETAIL, CHECK, URL]
+    assert [call['path'] for call in before_resume[len(activated):]] == [BYRADIO]
+    assert [call['path'] for call in wire[len(before_resume):]] == [BYRADIO, BYRADIO, DETAIL, CHECK]
+    for path, expected in ((DETAIL, 4), (CHECK, 3), (URL, 2)):
         calls = [call for call in wire if call['path'] == path]
         assert len(calls) == expected and all(not call['cached'] for call in calls), (path, calls)
-    assert [call['args']['id'] for call in wire if call['path'] == DETAIL] == ['400', '1', '1']
+    assert [call['args']['id'] for call in wire if call['path'] == DETAIL] == ['400', '400', '1', '1']
     assert [call['args']['voiceId'] for call in wire if call['path'] == CHECK] == ['400', '1', '1']
     assert [call['args']['ids'] for call in wire if call['path'] == URL] == ['["1400"]', '["1001"]']
     pagination = [{'radioId': '7', 'offset': offset, 'limit': 250, 'asc': False} for offset in (0, 250)]

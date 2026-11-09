@@ -13,8 +13,9 @@
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const settled = () => !one('.page-enter-active,.page-leave-active,.search-results-enter-active,.search-results-leave-active');
   const ready = (node) => node?.isConnected && !node.disabled && node;
-  const visible = () => settled() && one('.search-results-page h1')?.textContent === query &&
-    tab()?.getAttribute('aria-selected') === 'true' && ready(index());
+  const onSearch = () => settled() && one('.search-results-page h1')?.textContent === query &&
+    tab()?.getAttribute('aria-selected') === 'true';
+  const visible = () => onSearch() && ready(index());
   async function wait(read, message) {
     for (let attempt = 0; attempt < 250; attempt++) {
       const value = await read();
@@ -75,7 +76,7 @@
     one('[aria-label="返回上一页"]').click();
     await wait(visible,'Back restored the same classified search');
     step='paused-baseline';
-    await action({kind:'mode',mode:'single_loop'});
+    await action({kind:'mode',mode:'sequential'});
     await Promise.race([
       invoke('play_selection',{epoch,selection:{kind:'search_result_voice',id:'400'}}),
       sleep(8000).then(()=>{throw Error('baseline native selection did not return');}),
@@ -90,7 +91,7 @@
     step='body-double';
     await capture('double_armed',{pointer:rowPoint(),old});
     const first=await wait(current('1','playing'),'trusted double-click starts stored episode');
-    assert(first.queueLen===252 && first.mode==='single_loop' && first.position>=18.8 && visible(),'kept old queue, mode and resumed checkpoint without navigation');
+    assert(first.queueLen===252 && first.mode==='sequential' && first.position>=18.8 && visible(),'kept old queue, mode and resumed checkpoint without navigation');
     const list=await queue();
     assert(list.tracks[0].entryId===oldQueue.current && list.tracks[1].track.voiceId==='251' &&
       list.tracks.at(-1).track.voiceId==='1' && list.current===first.entryId,'native order is old then whole descending list');
@@ -111,7 +112,8 @@
     step='same-episode-body-resume';
     const resumed=await wait(current('1','playing'),'same retained episode resumes from row body');
     assert(resumed.playId===paused.playId && resumed.entryId===paused.entryId &&
-      resumed.position>=paused.position && visible(),'body replay keeps the same decoder and does not navigate');
+      resumed.position>=paused.position && onSearch(),'body replay keeps the same decoder and does not navigate');
+    await wait(visible,'classified controls settle after the same-decoder reply');
     const advanced=await wait(async()=>{
       const state=await current('1','playing')();
       return state && state.position>paused.position+.12 && state;
