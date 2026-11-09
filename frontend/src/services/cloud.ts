@@ -179,6 +179,7 @@ export interface CloudResult {
   failed: { id: string; message: string }[];
   deletion: CloudDelete | null;
   notStarted?: { id: string; message: string }[];
+  uploadLimit?: 'partial' | 'no_new_tasks';
 }
 export interface CloudUploadRemoval {
   epoch: string;

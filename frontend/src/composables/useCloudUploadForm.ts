@@ -152,7 +152,16 @@ export function useCloudUploadForm(
         .filter((row) => rejected.has(row.input.path))
         .map((row) => ({ ...row, error: rejected.get(row.input.path)! }));
       page.value = 0;
-      message.value = `已登记 ${result.accepted.length} 个任务${result.failed.length ? `，${result.failed.length} 个文件未完成，请检查下方原因。` : '。'}${result.notStarted?.length ? `其中 ${result.notStarted.length} 个尚未开始，请到正在上传中处理。` : ''}`;
+      const registration = `已登记 ${result.accepted.length} 个任务${result.failed.length ? `，${result.failed.length} 个文件未完成，请检查下方原因。` : '。'}${result.notStarted?.length ? `其中 ${result.notStarted.length} 个尚未开始，请到正在上传中处理。` : ''}`;
+      if (result.uploadLimit === 'no_new_tasks') {
+        error.value = '文件超过100M，无法上传';
+        message.value = result.accepted.length ? registration : '';
+      } else {
+        message.value =
+          result.uploadLimit === 'partial'
+            ? `部分文件超过100M，已经过滤。${registration}`
+            : registration;
+      }
       if (result.accepted.length) callbacks.started();
       if (!result.failed.length) callbacks.close();
     } catch (e) {

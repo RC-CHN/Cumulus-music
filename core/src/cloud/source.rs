@@ -17,6 +17,7 @@ pub(super) struct Source {
     pub sha256: String,
 }
 pub(super) type Reader = Arc<Mutex<File>>;
+pub(super) const MAX_RECORDED_BYTES: u64 = 512 * 1024 * 1024;
 impl Source {
     pub fn validate(&self) -> Result<()> {
         super::api::validate_digest(&self.md5)?;
@@ -25,7 +26,7 @@ impl Source {
             sha256: self.sha256.clone(),
         }
         .validate()?;
-        if !self.path.is_absolute() || self.bytes > 512 * 1024 * 1024 {
+        if !self.path.is_absolute() || self.bytes > MAX_RECORDED_BYTES {
             return Err(Error::State("invalid persisted upload source"));
         }
         Ok(())
@@ -33,7 +34,14 @@ impl Source {
     pub fn inspect(path: &Path) -> Result<Self> {
         let path = path.canonicalize()?;
         let mut file = crate::media::open_regular(&path)?;
-        let (bytes, md5, sha256) = digest(&mut file)?;
+        Self::inspect_open(path, &mut file, None)
+    }
+    pub fn inspect_open(
+        path: PathBuf,
+        file: &mut File,
+        admission_limit: Option<u64>,
+    ) -> Result<Self> {
+        let (bytes, md5, sha256) = digest(file, admission_limit)?;
         Ok(Self {
             path,
             bytes,
@@ -47,7 +55,7 @@ impl Source {
         Ok(Arc::new(Mutex::new(file)))
     }
     pub fn verify(&self, file: &mut File) -> Result<()> {
-        let (bytes, md5, sha256) = digest(file)?;
+        let (bytes, md5, sha256) = digest(file, None)?;
         if bytes != self.bytes || md5 != self.md5 || sha256 != self.sha256 {
             return Err(Error::Media("upload source changed"));
         }
@@ -74,9 +82,12 @@ impl Source {
         .map_err(|_| Error::State("upload source worker stopped"))?
     }
 }
-fn digest(file: &mut File) -> Result<(u64, String, String)> {
+fn digest(file: &mut File, admission_limit: Option<u64>) -> Result<(u64, String, String)> {
     let before = file.metadata()?;
-    if !before.is_file() || before.len() == 0 || before.len() > 512 * 1024 * 1024 {
+    if admission_limit.is_some_and(|limit| before.len() > limit) {
+        return Err(Error::CloudUploadTooLarge);
+    }
+    if !before.is_file() || before.len() == 0 || before.len() > MAX_RECORDED_BYTES {
         return Err(Error::InvalidInput(
             "upload requires nonempty regular input up to 512 MiB",
         ));

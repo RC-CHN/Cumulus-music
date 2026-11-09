@@ -68,6 +68,7 @@ impl MusicClient {
             accepted: vec![],
             failed: vec![],
             not_started: vec![],
+            upload_limit: None,
             deletion: None,
         };
         match command {
@@ -204,6 +205,8 @@ async fn add_files(
     if files.is_empty() || files.len() > 500 {
         return Err(Error::InvalidInput("invalid upload selection"));
     }
+    let mut new_task = false;
+    let mut over_limit = false;
     for (request_id, file) in files {
         let label = file.path.to_string_lossy().into_owned();
         let attachments = AttachmentInputs {
@@ -226,6 +229,7 @@ async fn add_files(
         context.guard()?;
         match created {
             Ok((task, fresh)) => {
+                new_task |= fresh;
                 // An old receipt is a read, never implicit resume/retry. In
                 // particular keep old pause/cancel and unknown remote intents.
                 let scheduled = if fresh {
@@ -253,11 +257,21 @@ async fn add_files(
                     });
                 }
             }
-            Err(e) => result.failed.push(CloudFailure {
-                id: label,
-                message: ClientError::from(e).message,
-            }),
+            Err(e) => {
+                over_limit |= matches!(e.root(), Error::CloudUploadTooLarge);
+                result.failed.push(CloudFailure {
+                    id: label,
+                    message: ClientError::from(e).message,
+                });
+            }
         }
+    }
+    if over_limit {
+        result.upload_limit = Some(if new_task {
+            CloudUploadLimit::Partial
+        } else {
+            CloudUploadLimit::NoNewTasks
+        });
     }
     Ok(())
 }

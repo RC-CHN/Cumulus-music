@@ -23,6 +23,10 @@ export function validUploadReceipt(result: CloudResult, rows: CloudUploadRow[], 
     result.accepted.length + result.failed.length === rows.length &&
     new Set(result.accepted).size === result.accepted.length &&
     result.accepted.every((id) => /^[a-f0-9]{32}$/.test(id)) &&
+    (result.uploadLimit === undefined ||
+      (result.failed.length > 0 &&
+        (result.uploadLimit === 'no_new_tasks' ||
+          (result.uploadLimit === 'partial' && result.accepted.length > 0)))) &&
     rejected.size === result.failed.length &&
     [...rejected].every((path) => paths.has(path)) &&
     notStarted.length <= result.accepted.length &&

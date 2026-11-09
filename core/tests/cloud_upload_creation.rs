@@ -144,3 +144,39 @@ async fn reused_creation_ids_never_cross_accounts_or_restart_cancelled_tasks() {
     ));
     assert!(f.api.calls().is_empty());
 }
+
+#[tokio::test]
+async fn admission_accepts_exactly_100_mib_and_replay_precedes_the_actual_descriptor_limit() {
+    const LIMIT: u64 = 100 * 1024 * 1024;
+    let f = Fixture::new();
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&f.source)
+        .unwrap();
+    file.set_len(LIMIT).unwrap();
+    let (task, fresh) = f
+        .manager
+        .create_once(REQUEST, &f.source, AttachmentInputs::default(), true)
+        .await
+        .unwrap();
+    assert!(fresh);
+    assert_eq!(task.total, LIMIT);
+
+    file.set_len(LIMIT + 1).unwrap();
+    assert!(matches!(
+        f.manager
+            .create(&f.source, AttachmentInputs::default())
+            .await,
+        Err(Error::CloudUploadTooLarge)
+    ));
+    let (replayed, fresh) = f
+        .reopened()
+        .create_once(REQUEST, &f.source, AttachmentInputs::default(), true)
+        .await
+        .unwrap();
+    assert!(!fresh);
+    assert_eq!(replayed.id, task.id);
+    assert_eq!(replayed.total, LIMIT);
+    assert_eq!(f.manager.list().unwrap().len(), 1);
+    assert!(f.api.calls().is_empty());
+}

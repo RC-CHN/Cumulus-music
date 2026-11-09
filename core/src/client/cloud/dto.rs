@@ -225,6 +225,13 @@ pub struct CloudFailure {
     pub id: String,
     pub message: &'static str,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudUploadLimit {
+    Partial,
+    NoNewTasks,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudResult {
@@ -232,6 +239,8 @@ pub struct CloudResult {
     pub accepted: Vec<String>,
     pub failed: Vec<CloudFailure>,
     pub not_started: Vec<CloudFailure>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload_limit: Option<CloudUploadLimit>,
     pub deletion: Option<CloudDeleteView>,
 }
 

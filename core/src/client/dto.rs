@@ -347,8 +347,8 @@ pub use super::cloud::{
     CloudCapacityKind, CloudCapacityStatus, CloudCommand, CloudDeleteView, CloudFailure,
     CloudPageView, CloudQuery, CloudRemovalFileState, CloudRemovalFileView, CloudRemovalPhase,
     CloudRemovalView, CloudResourceView, CloudResult, CloudSort, CloudTab, CloudTrackView,
-    CloudUploadInput, CloudUploadRemovalItem, CloudUploadRemovalView, CloudUploadView,
-    PlannedCloudUploadInput,
+    CloudUploadInput, CloudUploadLimit, CloudUploadRemovalItem, CloudUploadRemovalView,
+    CloudUploadView, PlannedCloudUploadInput,
 };
 pub use super::comments::{
     CommentAuthorView, CommentFloorQuery, CommentFloorView, CommentOperationView, CommentPageView,

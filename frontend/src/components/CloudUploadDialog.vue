@@ -87,7 +87,7 @@ function viewTasks() {
     </header>
     <div class="cloud-dialog-body">
       <p class="muted">
-        选择本地音频，上传后可在登录此账号的设备上收听。每个文件最大 512 MB，单次最多添加 500
+        选择本地音频，上传后可在登录此账号的设备上收听。每个音频文件最大 100 MiB，单次最多添加 500
         个文件。
       </p>
       <div class="cloud-source-actions">

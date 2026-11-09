@@ -7,6 +7,8 @@ use crate::{
 use std::{future::Future, path::Path, sync::Arc};
 pub(super) const JOBS: &str = "cloud_uploads_v1";
 pub(super) const CONTROL: &str = "cloud_upload_controls_v1";
+// Official M/318 startup default; only for admission of new local audio.
+const NEW_AUDIO_LIMIT: u64 = 100 * 1024 * 1024;
 #[derive(Clone)]
 pub struct UploadAdapters {
     pub nos: Arc<dyn NosBackend>,
@@ -258,11 +260,10 @@ impl CloudUploads {
     ) -> Result<Task> {
         self.guard()?;
         let path = source.to_owned();
-        let probe = self.probe.clone();
+        let uploads = self.clone();
         tokio::task::spawn_blocking(move || {
-            let source = Source::inspect(&path)?;
-            if source
-                .path
+            let path = path.canonicalize()?;
+            if path
                 .extension()
                 .is_some_and(|s| s.eq_ignore_ascii_case("ncm"))
             {
@@ -270,12 +271,33 @@ impl CloudUploads {
                     "official cloud workflow excludes NCM uploads",
                 ));
             }
+            let mut file = crate::media::open_regular(&path)?;
+            let bytes = file.metadata()?.len();
+            if bytes > NEW_AUDIO_LIMIT {
+                // Check only preexisting oversized tasks here. An exact durable
+                // creation receipt already won before this worker opened a file.
+                if bytes <= super::super::source::MAX_RECORDED_BYTES
+                    && let Some(name) = path.to_str()
+                    && uploads.queued_source(name, bytes, None)?
+                {
+                    let actual = Source::inspect_open(path.clone(), &mut file, None)?;
+                    if actual.bytes == bytes
+                        && uploads.queued_source(name, bytes, Some(&actual.sha256))?
+                    {
+                        return Err(Error::CloudUploadAlreadyQueued);
+                    }
+                }
+                return Err(Error::CloudUploadTooLarge);
+            }
+            let source = Source::inspect_open(path, &mut file, Some(NEW_AUDIO_LIMIT))?;
             types::file_name(&source)?;
-            let info = probe.inspect(&source.path)?;
+            let info = uploads.probe.inspect(&source.path)?;
             if info.container.eq_ignore_ascii_case("ncm") {
                 return Err(Error::Media("encrypted cloud input"));
             }
-            if Source::inspect(&source.path)? != source {
+            let canonical = source.path.canonicalize()?;
+            let mut after = crate::media::open_regular(&canonical)?;
+            if Source::inspect_open(canonical, &mut after, Some(NEW_AUDIO_LIMIT))? != source {
                 return Err(Error::Media("upload input changed during probe"));
             }
             let attachments = attachments::inspect(attachments)?;
@@ -300,6 +322,12 @@ impl CloudUploads {
         })
         .await
         .map_err(|_| Error::State("cloud input worker stopped"))?
+    }
+    fn queued_source(&self, path: &str, bytes: u64, sha256: Option<&str>) -> Result<bool> {
+        self.session.with_token(&self.token, |_| {
+            self.store
+                .visible_cloud_upload_source(&self.owner, path, bytes, sha256)
+        })
     }
     /// Atomically order a remote write intent after any durable user control.
     pub(super) fn begin(&self, task: &mut Task, phase: CloudPhase) -> Result<()> {

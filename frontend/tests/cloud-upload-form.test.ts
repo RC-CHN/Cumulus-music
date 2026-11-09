@@ -249,3 +249,28 @@ test('receipt coverage rejects unknown/duplicate not-started paths and cross-pla
   assert.equal(uploadBasename('/Music/same.flac'), 'same.flac');
   assert.match(uploadRequestId(), /^[a-f0-9]{32}$/);
 });
+
+test('native size filtering distinguishes partial and all-rejected input without resubmitting an admitted file', async () => {
+  const f = fixture();
+  f.backend.pick = async () => ['/large.flac', '/valid.flac'];
+  await f.state.pick('folder');
+  const rejected = [{ id: '/large.flac', message: '文件超过100M，无法上传' }];
+  f.backend.command = async () => ({ ...reply([task], rejected), uploadLimit: 'partial' });
+  await f.state.submit();
+  assert.match(f.state.message.value, /^部分文件超过100M，已经过滤/);
+  assert.equal(f.state.error.value, '');
+  assert.deepEqual(f.counts(), { started: 1, closed: 0 });
+  assert.equal(f.state.rows.value[0]?.error, rejected[0]?.message);
+  f.backend.command = async () => ({ ...reply([], rejected), uploadLimit: 'no_new_tasks' });
+  await f.state.submit();
+  assert.equal(f.state.error.value, '文件超过100M，无法上传');
+  assert.equal(f.state.message.value, '');
+  assert.deepEqual(f.counts(), { started: 1, closed: 0 });
+  const retry = f.calls[1];
+  assert(retry?.kind === 'upload_planned');
+  assert.deepEqual(
+    retry.files.map((v) => v.input.path),
+    ['/large.flac'],
+  );
+  f.scope.stop();
+});

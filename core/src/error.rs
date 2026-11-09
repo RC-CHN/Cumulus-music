@@ -63,6 +63,10 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("local file operation failed")]
     Io(#[from] std::io::Error),
+    #[error("new cloud upload audio exceeds the file-size limit")]
+    CloudUploadTooLarge,
+    #[error("the same oversized source already has a cloud upload task")]
+    CloudUploadAlreadyQueued,
     #[error("the completed catalog download file is missing")]
     DownloadedFileMissing,
     #[error("state lock is poisoned")]

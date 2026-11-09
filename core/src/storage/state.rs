@@ -27,6 +27,8 @@ const DOWNLOAD_VOICE_ID: &str =
     "CASE WHEN json_valid(value) THEN CAST(json_extract(value,'$.origin.voice_id') AS TEXT) END";
 const DOWNLOAD_VOICE_TASK: &str = "kind='download_tasks_v1' AND
     CASE WHEN json_valid(value) THEN json_extract(value,'$.origin.kind')='voice' ELSE 0 END";
+const CLOUD_UPLOAD_SOURCE_PATH: &str =
+    "CASE WHEN json_valid(value) THEN json_extract(value,'$.source.path') END";
 const INDEXED_FLAC_DOWNLOAD_CLAIMS: &str = "kind IN ('offline_music_v1','download_directory_v1',
     'download_tasks_v1','download_file_operations_v1')";
 
@@ -124,7 +126,9 @@ impl StateStore {
              CREATE INDEX IF NOT EXISTS download_voice_v1 ON state(owner,({DOWNLOAD_VOICE_ID}))
              WHERE {DOWNLOAD_VOICE_TASK};
              CREATE INDEX IF NOT EXISTS indexed_flac_download_claims_v1 ON state(kind,key)
-             WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS};"
+             WHERE {INDEXED_FLAC_DOWNLOAD_CLAIMS};
+             CREATE INDEX IF NOT EXISTS cloud_upload_source_path_v1 ON state(owner,({CLOUD_UPLOAD_SOURCE_PATH}))
+             WHERE kind='cloud_uploads_v1';"
         ))?;
         Ok(Self {
             directory,
@@ -190,6 +194,43 @@ impl StateStore {
             return Ok(None);
         }
         Ok(Some((key, serde_json::from_str(&value)?)))
+    }
+
+    /// Whether this exact ordinary source is represented by a visible task in
+    /// the current owner's cloud journal. No tickets or transfer data leave
+    /// SQLite. A hash is required by the caller before reporting a duplicate.
+    pub(crate) fn visible_cloud_upload_source(
+        &self,
+        owner: &str,
+        path: &str,
+        bytes: u64,
+        sha256: Option<&str>,
+    ) -> Result<bool> {
+        let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut query = connection.prepare_cached(&format!(
+            "SELECT EXISTS(
+                 SELECT 1 FROM state AS upload INDEXED BY cloud_upload_source_path_v1
+                 WHERE owner=?1 AND kind='cloud_uploads_v1' AND ({CLOUD_UPLOAD_SOURCE_PATH})=?2
+                 AND CASE WHEN json_valid(value) THEN
+                   json_extract(value,'$.id')=key
+                   AND json_extract(value,'$.phase')<>'cancelled'
+                   AND json_extract(value,'$.source.bytes')=?3
+                   AND (?4 IS NULL OR json_extract(value,'$.source.sha256')=?4)
+                   ELSE 0 END
+                 AND NOT EXISTS (
+                     SELECT 1 FROM state AS schedule WHERE owner=upload.owner
+                     AND kind='cloud_schedule_v1' AND key=upload.key
+                     AND CASE WHEN json_valid(value) THEN
+                         json_extract(value,'$.id') IS NOT key
+                         OR coalesce(json_extract(value,'$.hidden'),0)<>0
+                         OR coalesce(json_extract(value,'$.removing'),0)<>0
+                       ELSE 1 END
+                 )
+             )"
+        ))?;
+        let bytes = i64::try_from(bytes)
+            .map_err(|_| Error::InvalidInput("invalid recorded cloud upload length"))?;
+        Ok(query.query_row(params![owner, path, bytes, sha256], |row| row.get(0))?)
     }
 
     /// Boolean exclusion only: an ordinary indexed source must not take a

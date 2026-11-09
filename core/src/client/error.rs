@@ -253,6 +253,12 @@ impl From<Error> for ClientError {
                     "附件格式不支持或超过 4 MB，请使用 JPG/PNG 封面、LRC 歌词或 CUE 文件",
                     false,
                 ),
+                Error::CloudUploadTooLarge => {
+                    ("cloud_upload_too_large", "文件超过100M，无法上传", false)
+                }
+                Error::CloudUploadAlreadyQueued => {
+                    ("cloud_upload_already_queued", "已经在上传队列中", false)
+                }
                 Error::InvalidInput("upload requires nonempty regular input up to 512 MiB") => (
                     "cloud_input_size",
                     "音频或附件为空、不是普通文件，或超过 512 MB",
