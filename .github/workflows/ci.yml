@@ -465,23 +465,18 @@ jobs:
             mingw-w64-ucrt-x86_64-ladspa-sdk
       - name: Install pinned toolchain
         run: rustup show
-      - name: Identify the checked out source tree for the Rust cache
-        id: rust-cache-source
-        run: |
-          tree="$(git rev-parse 'HEAD^{tree}')"
-          printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        id: rust-cache
+      - name: Restore Windows release dependencies
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        id: release-deps
         with:
+          # The Native job produces debug/test outputs, which cannot warm Release.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .build/target
-          # Restore only. The Native Windows job owns Rust target cache writes.
-          key: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-tree-${{ steps.rust-cache-source.outputs.tree }}
-          restore-keys: |
-            rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
-            rust-${{ runner.os }}-v1-
+            .build/target/release/.fingerprint
+            .build/target/release/build
+            .build/target/release/deps
+          key: rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
       - name: Build and verify Windows media runtime
         if: runner.os == 'Windows'
         uses: ./.github/actions/windows-media
@@ -522,6 +517,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+      - name: Remove workspace outputs before caching release dependencies
+        if: steps.release-deps.outputs.cache-hit != 'true'
+        # Build the application and all media probes again on each exact SHA.
+        run: cargo clean --release --workspace --locked --offline
+      - name: Cache Windows release dependencies
+        if: steps.release-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target/release/.fingerprint
+            .build/target/release/build
+            .build/target/release/deps
+          key: ${{ steps.release-deps.outputs.cache-primary-key }}
 
   windows-webview-probes:
     name: Windows WebView probe build
