@@ -48,7 +48,9 @@
 desktop_lyrics_ui_probe + CUMULUS_FONT_PROOF由fonts_smoke.py运行，使用隔离配置和
 合成账号、真实系统字体。正常枚举/选择/持久化/悬浮窗CSS/进程重启均走真实原生IPC。
 故障与12005目录压力用例只在测试WebView拦截该命令的fetch响应，明确不是系统真实目录。
-独立XTest/SendInput发送Tab/Esc，普通鼠标控件由DOM操作。原有桌面歌词流程另行回归。
+独立 XTest/SendInput 发送 Tab/Esc；错误恢复在当前可命中的“刷新”按钮获得焦点后只发送一次
+Enter，核对受信点击、单次真实原生读取和同一弹窗恢复的字体行。失败记录区分点击、请求和
+IPC 回包；其它普通鼠标控件由 DOM 操作。原有桌面歌词流程另行回归。
 示例（Linux，仓库锁定工具链，先构建frontend与probe）：
   LC_ALL=zh_CN.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py \
     --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/font-proof

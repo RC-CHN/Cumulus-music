@@ -120,7 +120,9 @@ def launch(binary, env, log, output, capture):
                 if reply.exists():
                     continue
                 value = json.loads(path.read_text(encoding='utf-8'))
-                assert value['key'] in ['d', 'Escape', 'Tab'], value
+                assert value['key'] in ['d', 'Escape', 'Tab'] or (
+                    value['key'] == 'Return' and env.get('CUMULUS_FONT_PROOF') == '1'
+                ), value
                 if value['key'] == 'd':
                     if windows:
                         grant_path = path.with_name('foreground-' + path.stem.split('-', 1)[1] + '.json')

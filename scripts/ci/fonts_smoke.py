@@ -45,11 +45,18 @@ def main():
         assert complete['factoryCount'] == 2 and complete['mainVisible']
         assert complete['nativeFamilies'] > 0
         native = json.loads((output / 'native-input.json').read_text(encoding='utf-8'))
-        assert native['keys'] == ([] if phase == 'reopen' else ['Tab', 'Escape'])
+        assert native['keys'] == ([] if phase == 'reopen' else ['Tab', 'Escape', 'Return'])
         states = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
         assert len(states) == complete['stageCount'] == (1 if phase == 'reopen' else 9)
         assert len(complete['checks']) == (2 if phase == 'reopen' else 8)
         assert all(not s['overflow'] and s['rows'] <= 20 for s in states)
+        if phase == 'first':
+            failed, retried = states[5:7]
+            assert failed['stage'] == 'ux_06_read_failed' and failed['rows'] == 0
+            assert retried['stage'] == 'ux_07_retry_native' and retried['rows'] > 0
+            assert retried['fontReads'] == failed['fontReads'] + 1
+            retry = retried['retry']
+            assert retry['trusted'] and retry['clicks'] == retry['reads'] == 1, retry
         if args.screenshots:
             assert len(list(output.glob('ux_*.png'))) == len(states)
         total += len(states)
