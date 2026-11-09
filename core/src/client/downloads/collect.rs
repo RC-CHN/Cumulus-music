@@ -1,4 +1,5 @@
-//! Receipt-bound existing-playlist collection from completed downloads.
+//! Receipt-bound collection from completed downloads.
+mod creation;
 use super::{Context, MusicClient, resource::catalogue_track_id};
 use crate::{
     Error, Result,
@@ -14,6 +15,8 @@ use crate::{
         wire::serialization::js_truthy,
     },
 };
+use creation::CreationAttempt;
+pub use creation::{DownloadCollectCreation, DownloadCollectCreationCommand};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -102,6 +105,7 @@ pub(super) struct Visit {
     destinations: BTreeMap<(&'static str, u32), Destinations>,
     ticket: u64,
     attempt: Option<Attempt>,
+    creation: Option<CreationAttempt>,
     busy: bool,
 }
 
@@ -135,6 +139,7 @@ impl Drop for Lease<'_> {
 #[serde(rename_all = "camelCase")]
 pub struct DownloadCollectPlan {
     pub receipt: String,
+    pub can_create: bool,
 }
 
 impl MusicClient {
@@ -180,6 +185,14 @@ impl MusicClient {
             created: Instant::now(),
         });
         source.require()?;
+        let can_create = source
+            .api
+            .download_collection_create_scope_revision()
+            .ok()
+            .flatten()
+            .as_deref()
+            == Some(source.credentials.as_str());
+        source.require()?;
         let mut slot = self
             .downloads
             .inner
@@ -202,11 +215,15 @@ impl MusicClient {
             destinations: BTreeMap::new(),
             ticket: 0,
             attempt: None,
+            creation: None,
             busy: false,
         });
         Ok(AccountData {
             epoch: epoch.into(),
-            value: DownloadCollectPlan { receipt },
+            value: DownloadCollectPlan {
+                receipt,
+                can_create,
+            },
         })
     }
 
@@ -240,7 +257,7 @@ impl MusicClient {
         let slot = &self.downloads.inner.collect;
         let key = (sort.wire(), page);
         let ticket = with_visit(slot, &source, |visit| {
-            if visit.busy || visit.attempt.is_some() {
+            if visit.busy || visit.attempt.is_some() || visit.creation.is_some() {
                 return Err(Error::MutationBusy);
             }
             visit.ticket = visit
@@ -282,6 +299,9 @@ impl MusicClient {
         let attempt = with_visit(slot, &source, |visit| {
             if visit.busy {
                 return Err(Error::MutationBusy);
+            }
+            if visit.creation.is_some() {
+                return Err(Error::StaleResponse);
             }
             if let Some(attempt) = &visit.attempt {
                 if attempt.playlist != playlist {

@@ -48,6 +48,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "select_login_country",
             "open_login_document",
             "pick_local_directory",
+            "download_collect_creation",
             "player_action",
             "player_vinyl_voice_detail_target",
             "player_voice_songs_download_prepare",
@@ -147,6 +148,40 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
     };
     let card_receipt = "0123456789abcdef0123456789abcdef";
     let selection_receipt = "abcdef0123456789abcdef0123456789";
+    let collect_create = "download_collect_creation";
+    let input = |command| json!({"epoch":"0","receipt":selection_receipt,"command":command});
+    let stale_create = json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false});
+    let invalid_create =
+        json!({"code":"invalid_input","message":"输入内容不符合要求","retryable":false});
+    for command in [
+        json!({"kind":"create","name":"合成","privatePlaylist":true}),
+        json!({"kind":"status","reconcile":true}),
+        json!({"kind":"add_created"}),
+    ] {
+        assert_ipc_response(
+            &window,
+            request(collect_create, input(command)),
+            Err(stale_create.clone()),
+        );
+    }
+    for command in [
+        json!({"kind":"create","name":"合成","privatePlaylist":true,"songId":"301"}),
+        json!({"kind":"status","reconcile":true,"operationId":selection_receipt}),
+        json!({"kind":"add_created","playlistId":"81"}),
+    ] {
+        assert_ipc_response(
+            &window,
+            request(collect_create, input(command)),
+            Err(invalid_create.clone()),
+        );
+    }
+    let mut forged = input(json!({"kind":"add_created"}));
+    forged["taskId"] = json!("not-a-native-task");
+    assert_ipc_response(
+        &window,
+        request(collect_create, forged),
+        Err(invalid_create),
+    );
     let prepare = json!({"epoch":"0","playId":"stale-play","cardReceipt":card_receipt,
                         "anchorIndex":2,"indices":[1,3,2]});
     let prepared = json!({"epoch":"0","playId":"stale-play","cardReceipt":card_receipt,

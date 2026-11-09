@@ -2,9 +2,10 @@ pub use super::account_binding_qr::AccountBindingQrView;
 pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::community::topic::{CommunityTopic, CommunityTopicAction, CommunityTopicSlice};
 pub use super::downloads::{
-    DownloadCategory, DownloadCollectPlan, DownloadCommand, DownloadFailure, DownloadJobView,
-    DownloadQualityPreferences, DownloadQuery, DownloadResult, DownloadShareAccess, DownloadSort,
-    DownloadTab, DownloadTaskView, DownloadsView, SongDownloadState, TaskControl,
+    DownloadCategory, DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan,
+    DownloadCommand, DownloadFailure, DownloadJobView, DownloadQualityPreferences, DownloadQuery,
+    DownloadResult, DownloadShareAccess, DownloadSort, DownloadTab, DownloadTaskView,
+    DownloadsView, SongDownloadState, TaskControl,
 };
 pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};

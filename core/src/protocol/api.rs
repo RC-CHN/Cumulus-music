@@ -513,6 +513,11 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Creation must share the current download picker account and cookie scope.
+    fn download_collection_create_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
     }

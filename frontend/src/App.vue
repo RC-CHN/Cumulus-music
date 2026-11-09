@@ -2282,7 +2282,7 @@ async function openDownloadCollection(task: DownloadTask) {
     playlistDialog.value = {
       kind: 'tracks',
       tracks: [task.track],
-      downloadCollection: { epoch, receipt: result.value.receipt },
+      downloadCollection: { epoch, ...result.value },
     };
   } catch (error) {
     if (!current()) return;
@@ -6469,6 +6469,8 @@ onUnmounted(() => {
         :tracks="playlistDialog.tracks"
         :selection-summary="playlistDialog.selectionSummary"
         :download-collection="playlistDialog.downloadCollection"
+        @download-creation-changed="music.resources()"
+        @download-creation-complete="downloads.notice.value = '已收藏到新歌单。'"
         :playlists="playlists"
         @close="playlistDialog = undefined"
         @expired="music.bootstrap(false)"

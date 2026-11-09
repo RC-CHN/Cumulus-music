@@ -76,6 +76,7 @@ enum GuardedReadback<'a> {
 enum AddDestination<'a> {
     Owned(&'a str),
     DownloadPicker(&'a str),
+    DownloadCreated(&'a str),
     Created(&'a str),
     SystemLiked(&'a str),
 }
@@ -351,6 +352,25 @@ impl PlaylistService {
         .await
     }
 
+    pub(crate) async fn guarded_collect_created_download(
+        &self,
+        token: &SessionToken,
+        creation_operation: &str,
+        song: &str,
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_add_songs(
+            token,
+            AddDestination::DownloadCreated(creation_operation),
+            &[song.into()],
+            operation_id,
+            permission,
+            |api| api.download_collection_scope_revision(),
+        )
+        .await
+    }
+
     /// Resolve the verified create journal under the same lock as the fresh
     /// detail and ordered add. A list-inferred ID is not write authority.
     pub(crate) async fn guarded_collect_created_songs(
@@ -441,12 +461,14 @@ impl PlaylistService {
         let (playlist, revision, before) = match destination {
             owned @ (AddDestination::Owned(_)
             | AddDestination::DownloadPicker(_)
+            | AddDestination::DownloadCreated(_)
             | AddDestination::Created(_)) => {
                 let (playlist, creation) = match owned {
                     AddDestination::Owned(playlist) | AddDestination::DownloadPicker(playlist) => {
                         (identifier(&json!(playlist))?, None)
                     }
-                    AddDestination::Created(operation) => {
+                    AddDestination::Created(operation)
+                    | AddDestination::DownloadCreated(operation) => {
                         let record = records
                             .iter()
                             .find(|record| record.operation_id == operation)
@@ -462,8 +484,15 @@ impl PlaylistService {
                     return Err(Error::MutationUncertain);
                 }
                 let detail = if let Some((name, private)) = creation {
-                    self.read_created_detail(token, &playlist, &uid, name, private)
-                        .await?
+                    self.read_created_detail(
+                        token,
+                        &playlist,
+                        &uid,
+                        name,
+                        private,
+                        matches!(owned, AddDestination::DownloadCreated(_)),
+                    )
+                    .await?
                 } else if matches!(owned, AddDestination::DownloadPicker(_)) {
                     self.read_download_picker_detail(token, &playlist, &uid)
                         .await?
@@ -553,6 +582,7 @@ impl PlaylistService {
         uid: &str,
         name: &str,
         private: bool,
+        require_regular: bool,
     ) -> Result<PlaylistSnapshot> {
         self.session
             .run_for(token, |api, _| async move {
@@ -569,7 +599,9 @@ impl PlaylistService {
                 let special = &row["specialType"];
                 if detail.summary.name != name
                     || detail.summary.private != private
-                    || !special.is_null() && special.as_i64().is_none()
+                    || !special.is_null()
+                        && (special.as_i64().is_none()
+                            || require_regular && special.as_i64() != Some(0))
                 {
                     return Err(Error::StaleResponse);
                 }
@@ -604,6 +636,20 @@ impl PlaylistService {
     ) -> Result<PlaylistMutation> {
         self.guarded_create_playlist(token, operation_id, name, private, permission, |api| {
             api.song_card_collection_create_scope_revision()
+        })
+        .await
+    }
+
+    pub(crate) async fn guarded_create_download_collection(
+        &self,
+        token: &SessionToken,
+        operation_id: &str,
+        name: &str,
+        private: bool,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
+        self.guarded_create_playlist(token, operation_id, name, private, permission, |api| {
+            api.download_collection_create_scope_revision()
         })
         .await
     }

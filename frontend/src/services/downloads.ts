@@ -159,11 +159,29 @@ export interface DownloadQualityPreferences {
   }[];
 }
 export type DownloadShareAccess = 'allowed' | 'unavailable' | 'album_required';
+export interface DownloadCollectScope {
+  epoch: string;
+  receipt: string;
+  canCreate: boolean;
+}
+export type DownloadCollectCreationCommand =
+  | { kind: 'create'; name: string; privatePlaylist: boolean }
+  | { kind: 'status'; reconcile: boolean }
+  | { kind: 'add_created' };
+export interface DownloadCollectCreation {
+  receipt: string;
+  create: PlaylistMutationView;
+  add: PlaylistMutationView | null;
+  canAdd: boolean;
+}
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
   downloadSongCommentCount(epoch: string, taskId: string): Promise<AccountData<number | null>>;
   downloadSongShareAccess(epoch: string, taskId: string): Promise<AccountData<DownloadShareAccess>>;
-  downloadCollectPrepare(epoch: string, taskId: string): Promise<AccountData<{ receipt: string }>>;
+  downloadCollectPrepare(
+    epoch: string,
+    taskId: string,
+  ): Promise<AccountData<Pick<DownloadCollectScope, 'receipt' | 'canCreate'>>>;
   downloadCollectDestinations(
     epoch: string,
     receipt: string,
@@ -175,6 +193,11 @@ export interface DownloadClient {
     receipt: string,
     playlistId: string,
   ): Promise<AccountData<PlaylistMutationView>>;
+  downloadCollectCreation(
+    epoch: string,
+    receipt: string,
+    command: DownloadCollectCreationCommand,
+  ): Promise<AccountData<DownloadCollectCreation>>;
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;

@@ -455,6 +455,19 @@ export function createTauriClient(): CoreClient {
       invoke('download_collect_destinations', { epoch, receipt, sort, page }),
     downloadCollectExisting: (epoch, receipt, playlistId) =>
       invoke('download_collect_existing', { epoch, receipt, playlistId }),
+    downloadCollectCreation: (epoch, receipt, command) => {
+      const { kind } = command;
+      return invoke('download_collect_creation', {
+        epoch,
+        receipt,
+        command:
+          kind === 'create'
+            ? { kind, name: command.name, privatePlaylist: command.privatePlaylist }
+            : kind === 'status'
+              ? { kind, reconcile: command.reconcile }
+              : { kind },
+      });
+    },
     downloadCollectCancel: (epoch, receipt) =>
       invoke('download_collect_cancel', { epoch, receipt }),
     downloadQualityPreferences: (epoch, refresh) =>

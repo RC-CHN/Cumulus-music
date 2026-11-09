@@ -2,6 +2,8 @@ use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, dto::*},
 };
+use serde::Deserialize;
+use tauri::ipc::{InvokeBody, Request};
 use tauri_plugin_dialog::DialogExt;
 
 fn require_collect_window<R: tauri::Runtime>(
@@ -54,6 +56,37 @@ pub async fn download_collect_existing<R: tauri::Runtime>(
     require_collect_window(&window)?;
     client
         .download_collect_existing(&epoch, &receipt, &playlist_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DownloadCollectionCreationInput {
+    epoch: String,
+    receipt: String,
+    command: DownloadCollectCreationCommand,
+}
+
+#[tauri::command]
+pub async fn download_collect_creation<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    request: Request<'_>,
+) -> Result<AccountData<DownloadCollectCreation>, ClientError> {
+    require_collect_window(&window)?;
+    let invalid = || Error::InvalidInput("invalid scoped download collection creation");
+    let input = match request.body() {
+        InvokeBody::Json(body) if body.is_object() => {
+            DownloadCollectionCreationInput::deserialize(body).map_err(|_| invalid())?
+        }
+        _ => return Err(invalid().into()),
+    };
+    if input.receipt.len() != 32 || !input.receipt.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(invalid().into());
+    }
+    client
+        .download_collect_creation(&input.epoch, &input.receipt, input.command)
         .await
         .map_err(Into::into)
 }

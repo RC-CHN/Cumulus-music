@@ -1,3 +1,6 @@
+#[path = "download_collection/creation.rs"]
+mod creation;
+
 use super::Fixture;
 use cumulus_core::{
     Error, Result,

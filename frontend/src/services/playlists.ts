@@ -1,11 +1,12 @@
 import type { AccountData, PlaylistView, TrackView } from './contracts';
+import type { DownloadCollectScope } from './downloads';
 export type PlaylistDialogTarget =
   | { kind: 'remove'; track: TrackView; playlist: PlaylistView }
   | {
       kind: 'tracks';
       tracks: TrackView[];
       selectionSummary?: { total: number; unsupported: number; duplicates: number };
-      downloadCollection?: { epoch: string; receipt: string };
+      downloadCollection?: DownloadCollectScope;
     }
   | { kind: 'create' | 'history' | 'open' }
   | { kind: 'track'; track: TrackView; playlist?: PlaylistView };

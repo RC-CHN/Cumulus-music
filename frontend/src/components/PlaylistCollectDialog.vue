@@ -1,6 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue';
+import { useDownloadCollectCreation } from '../composables/useDownloadCollectCreation';
 import type { PlaylistManager } from '../composables/usePlaylists';
+import type { DownloadCollectScope } from '../services/downloads';
 import { failure, type PlaylistView, type TrackView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { playlistLength, playlistPending, type PlaylistMutationView } from '../services/playlists';
@@ -15,13 +26,38 @@ const props = defineProps<{
   tracks: TrackView[];
   playlists: PlaylistView[];
   selectionSummary?: { total: number; unsupported: number; duplicates: number };
-  downloadCollection?: { epoch: string; receipt: string };
+  downloadCollection?: DownloadCollectScope;
 }>();
-const emit = defineEmits<{ close: []; expired: [] }>();
+const emit = defineEmits<{
+  close: [];
+  expired: [];
+  downloadCreationChanged: [];
+  downloadCreationComplete: [];
+}>();
 const client = useCore();
 const dialog = ref<HTMLDialogElement>();
 const nameInput = ref<HTMLInputElement>();
-const { busy, error, result } = props.manager;
+const closeButton = ref<HTMLButtonElement>();
+const creationDecision = ref<HTMLButtonElement>();
+const { busy: managerBusy, error, result } = props.manager;
+let alive = true;
+const downloadCreation = useDownloadCollectCreation(
+  client,
+  () =>
+    alive && props.downloadCollection?.epoch === props.epoch ? props.downloadCollection : undefined,
+  () => emit('downloadCreationChanged'),
+  () => void props.manager.refreshOperations(),
+  () => emit('expired'),
+);
+const { phase: creationPhase, notice: creationNotice, locked: creationLocked } = downloadCreation;
+const busy = computed(() => managerBusy.value || downloadCreation.busy.value);
+watch(creationPhase, async (phase) => {
+  if (!props.downloadCollection || phase === 'prepared' || phase === 'complete') return;
+  await nextTick();
+  if (alive && creationPhase.value === phase && !busy.value)
+    (creationDecision.value ?? closeButton.value)?.focus({ preventScroll: true });
+});
+
 const interrupted = shallowRef<PlaylistMutationView>();
 const receipt = computed(() => result.value ?? interrupted.value);
 type Sort = 'default' | 'recently';
@@ -60,7 +96,6 @@ const fixedDestination = computed(() => !!props.downloadCollection && !!receipt.
 const invalid = computed(
   () => !name.value.trim() || /[@#]/.test(name.value) || playlistLength(name.value.trim()) > 40,
 );
-let alive = true;
 onBeforeUnmount(() => {
   alive = false;
 });
@@ -145,9 +180,19 @@ function close() {
   if (!busy.value) emit('close');
 }
 function startCreate() {
-  if (props.downloadCollection || busy.value || pending.value) return;
+  if (
+    busy.value ||
+    pending.value ||
+    fixedDestination.value ||
+    (props.downloadCollection && (!props.downloadCollection.canCreate || creationLocked.value))
+  )
+    return;
   props.manager.reset();
   created.value = '';
+  if (props.downloadCollection) {
+    name.value = '';
+    privateList.value = false;
+  }
   creating.value = true;
 }
 function back() {
@@ -210,6 +255,11 @@ async function collect(id: string) {
 }
 async function submit() {
   if (busy.value || pending.value || (!created.value && invalid.value)) return;
+  if (props.downloadCollection) {
+    await downloadCreation.create(name.value.trim(), privateList.value);
+    finishDownloadCreation();
+    return;
+  }
   if (created.value) await collect(created.value);
   else
     await collected(
@@ -223,6 +273,18 @@ async function submit() {
         'create',
       ),
     );
+}
+function finishDownloadCreation() {
+  if (alive && creationPhase.value === 'complete') {
+    emit('downloadCreationComplete');
+    emit('close');
+  }
+}
+async function resolveDownloadCreation(continueAdd: boolean) {
+  if (busy.value) return;
+  if (continueAdd) await downloadCreation.continueAdd();
+  else await downloadCreation.reconcile();
+  finishDownloadCreation();
 }
 async function reconcile() {
   if (!receipt.value || busy.value) return;
@@ -240,7 +302,7 @@ async function reconcile() {
   >
     <header>
       <button
-        v-if="creating"
+        v-if="creating && !downloadCollection"
         class="icon-button collect-back"
         aria-label="返回收藏歌单列表"
         :disabled="busy || pending"
@@ -248,8 +310,11 @@ async function reconcile() {
       >
         <Icon name="back" />
       </button>
-      <h2 id="collect-title">{{ creating ? '创建新歌单' : '收藏到歌单' }}</h2>
+      <h2 id="collect-title">
+        {{ creating ? (downloadCollection ? '创建歌单' : '创建新歌单') : '收藏到歌单' }}
+      </h2>
       <button
+        ref="closeButton"
         class="icon-button collect-close"
         aria-label="关闭歌单操作"
         :disabled="busy"
@@ -285,8 +350,16 @@ async function reconcile() {
       </button>
     </div>
     <BoundedPanelTransition name="collect-step" @after-enter="entered">
-      <form v-if="creating" key="create" class="collect-create" @submit.prevent="submit">
-        <fieldset :disabled="busy || pending || !!created">
+      <form
+        v-if="creating"
+        key="create"
+        class="collect-create"
+        :data-download-create-phase="downloadCollection ? creationPhase : undefined"
+        @submit.prevent="submit"
+      >
+        <fieldset
+          :disabled="busy || pending || !!created || (downloadCollection && creationLocked)"
+        >
           <label
             >歌单名称<input
               ref="nameInput"
@@ -308,8 +381,8 @@ async function reconcile() {
             ><input
               v-model="privateList"
               type="checkbox"
-              aria-label="设为私密歌单"
-            />设为私密歌单</label
+              :aria-label="downloadCollection ? '设为隐私歌单' : '设为私密歌单'"
+            />{{ downloadCollection ? '设为隐私歌单' : '设为私密歌单' }}</label
           >
           <p v-if="!privateList" class="muted">公开歌单可被其他用户查看和收藏。</p>
           <p v-if="name && invalid" class="form-warning">
@@ -317,14 +390,40 @@ async function reconcile() {
           </p>
         </fieldset>
         <p v-if="created" class="muted" role="status">歌单已创建，继续将歌曲收藏到这个歌单。</p>
+        <p v-if="downloadCollection && creationNotice" role="status" data-download-create-notice>
+          {{ creationNotice }}
+        </p>
         <footer>
           <button
+            v-if="downloadCollection && creationPhase === 'pending'"
+            ref="creationDecision"
+            type="button"
+            class="secondary"
+            :disabled="busy"
+            @click="resolveDownloadCreation(false)"
+          >
+            核对结果
+          </button>
+          <button
+            v-else-if="downloadCollection && creationPhase === 'created_ready'"
+            ref="creationDecision"
+            type="button"
+            class="primary"
+            :disabled="busy"
+            @click="resolveDownloadCreation(true)"
+          >
+            继续收藏
+          </button>
+          <button
+            v-else-if="!downloadCollection || creationPhase === 'prepared'"
             type="submit"
             class="primary"
             :disabled="!created && invalid"
             :aria-disabled="busy || pending"
           >
-            {{ busy ? '正在收藏…' : created ? '继续收藏' : '创建并收藏' }}
+            {{
+              busy ? '正在收藏…' : created ? '继续收藏' : downloadCollection ? '创建' : '创建并收藏'
+            }}
           </button>
         </footer>
       </form>
@@ -359,7 +458,7 @@ async function reconcile() {
           :key="sort"
           :playlists="current.rows"
           :disabled="busy || pending || fixedDestination"
-          :include-create="!downloadCollection"
+          :include-create="!downloadCollection || downloadCollection.canCreate"
           :show-working="!downloadCollection || busy"
           :selected-id="selected"
           :scroll-top="current.top"
@@ -380,6 +479,8 @@ async function reconcile() {
         </button>
       </div>
     </BoundedPanelTransition>
-    <p v-if="busy" class="collect-status" role="status">正在收藏，请稍候…</p>
+    <p v-if="busy && !(creating && downloadCollection)" class="collect-status" role="status">
+      正在收藏，请稍候…
+    </p>
   </dialog>
 </template>

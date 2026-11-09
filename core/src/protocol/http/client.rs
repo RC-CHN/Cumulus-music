@@ -249,7 +249,7 @@ impl MusicHttpClient {
         Ok(())
     }
 
-    fn require_song_card_playlist_target<'a>(
+    fn require_playlist_write_target<'a>(
         &self,
         path: &str,
         revision: &str,
@@ -1453,7 +1453,7 @@ impl Api for MusicHttpClient {
         let revision = self
             .song_card_download_scope_revision()?
             .ok_or(Error::CredentialChanged)?;
-        self.require_song_card_playlist_target(
+        self.require_playlist_write_target(
             GuardedPlaylistAdd::PATH,
             &revision,
             [
@@ -1466,7 +1466,7 @@ impl Api for MusicHttpClient {
 
     fn song_card_collection_scope_revision(&self) -> Result<Option<String>> {
         let revision = self.pc_experiment_revision()?;
-        self.require_song_card_playlist_target(
+        self.require_playlist_write_target(
             GuardedPlaylistAdd::PATH,
             &revision,
             [
@@ -1482,7 +1482,7 @@ impl Api for MusicHttpClient {
 
     fn song_card_system_liked_scope_revision(&self) -> Result<Option<String>> {
         let revision = self.pc_experiment_revision()?;
-        self.require_song_card_playlist_target(
+        self.require_playlist_write_target(
             GuardedPlaylistAdd::PATH,
             &revision,
             [
@@ -1515,6 +1515,22 @@ impl Api for MusicHttpClient {
         Ok(Some(current.revision))
     }
 
+    fn download_collection_create_scope_revision(&self) -> Result<Option<String>> {
+        let revision = self
+            .download_collection_scope_revision()?
+            .ok_or(Error::CredentialChanged)?;
+        self.require_playlist_write_target(
+            GuardedPlaylistCreate::PATH,
+            &revision,
+            [
+                "/api/w/nuser/account/get",
+                "/api/user/playlist",
+                "/api/v6/playlist/detail",
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
     fn request_song_card_system_liked<'a>(
         &'a self,
         read: SongCardLikedRead,
@@ -1534,7 +1550,7 @@ impl Api for MusicHttpClient {
         let revision = self
             .song_card_playlist_scope_revision()?
             .ok_or(Error::CredentialChanged)?;
-        self.require_song_card_playlist_target(
+        self.require_playlist_write_target(
             GuardedPlaylistCreate::PATH,
             &revision,
             [
@@ -1549,7 +1565,7 @@ impl Api for MusicHttpClient {
         let revision = self
             .song_card_collection_scope_revision()?
             .ok_or(Error::CredentialChanged)?;
-        self.require_song_card_playlist_target(
+        self.require_playlist_write_target(
             GuardedPlaylistCreate::PATH,
             &revision,
             [
