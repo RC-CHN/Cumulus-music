@@ -54,3 +54,9 @@ Rust 对应
     --screenshots --binary .build/target/debug/examples/local_ui_probe --root .build/offline-playlist-webview
   合成夹具验证在线读取、断网回读、CUE 实际时钟、离线重试、恢复联网、明确
   拒绝以及拒绝后的再次断网。独立脚本核对 SQLite 条目、请求计数、原文件和截图。
+
+最终 Linux 实窗验收：8eb9f638 的实际 WebKitGTK / libmpv，七张截图
+和独立回执见 .build/ui-proof/phase234-offline-playlist/receipt.json。
+CUE 第二段时长 8000ms、原生时钟实际推进；只入队该本机曲目，未尝试
+在线音源或远端写入。在线操作在联网恢复后重新出现；403 清除快照，
+随后模拟断网也不会恢复旧内容。可用曲目按钮标签和图标边界在窗口中核对。
