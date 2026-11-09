@@ -1036,7 +1036,14 @@ jobs:
           python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/main_flow_smoke.py --missing-download --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux
+          # The transport cut alone leaves the host default route visible to the download menu.
+          sudo unshare --net --fork --kill-child sh -ec '
+            target_user=$1
+            shift
+            # Bring up only loopback so procfs exposes the empty IPv4 routing table header.
+            ip link set lo up
+            exec runuser -u "$target_user" -- "$@"
+          ' sh "$(id -un)" env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/main_flow_smoke.py --missing-download --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode recall --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-recall-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode new-uncertain --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-new-uncertain-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
