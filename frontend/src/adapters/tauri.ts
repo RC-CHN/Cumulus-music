@@ -731,6 +731,11 @@ export function createTauriClient(): CoreClient {
     playerLyrics: (epoch, playId, cachedOnly) =>
       invoke('player_lyrics', { epoch, playId, cachedOnly }),
     openLyricContribution: (epoch, playId) => invoke('lyric_contribution_open', { epoch, playId }),
+    lyricBountyActions: (epoch, playId) => invoke('lyric_bounty_actions', { epoch, playId }),
+    lyricBountyPrepare: (epoch, playId, action) =>
+      invoke('lyric_bounty_prepare', { epoch, playId, action }),
+    lyricBountyConfirm: (id) => invoke('lyric_bounty_confirm', { id }),
+    lyricBountyCancel: (id) => invoke('lyric_bounty_cancel', { id }),
     openLyricToolbarContribution: (epoch, playId, action) =>
       invoke('lyric_toolbar_contribution_open', { epoch, playId, action }),
     lyricPreferences: (epoch, playId, preferences) =>

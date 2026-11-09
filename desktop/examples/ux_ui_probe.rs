@@ -41,6 +41,8 @@ mod latest_releases_fixture;
 mod library_fixture;
 #[path = "support/like_recovery_fixture.rs"]
 mod like_recovery_fixture;
+#[path = "support/lyric_bounty_fixture.rs"]
+mod lyric_bounty_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
 #[path = "support/member_lifecycle_fixture.rs"]
@@ -140,6 +142,7 @@ mod fm_chorus_fixture;
 #[derive(Default)]
 struct Library {
     signed_search: Option<Arc<search_signed_fixture::SignedSearch>>,
+    lyric_bounty: Option<Arc<lyric_bounty_fixture::Proof>>,
 }
 #[cfg(target_os = "linux")]
 fn startup_locale(category: libc::c_int) -> String {
@@ -235,6 +238,26 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn lyric_bounty_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self
+            .lyric_bounty
+            .as_ref()
+            .map(|_| lyric_bounty_fixture::REVISION.into()))
+    }
+
+    fn request_lyric_bounty<'a>(
+        &'a self,
+        _: cumulus_core::lyrics::LyricBountyWrite,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::LyricBountyPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            self.lyric_bounty
+                .as_ref()
+                .ok_or(cumulus_core::Error::State("synthetic bounty host absent"))?
+                .submit(revision, permission)
+        })
+    }
     fn observed_playback_chorus_revision(&self) -> Option<String> {
         fm_chorus_fixture::revision()
     }
@@ -1154,6 +1177,7 @@ fn main() {
     queue_more_fixture::phase_milestone("graphics_prepared");
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    assert!(!lyric_bounty_fixture::enabled() || motion_proof);
     let download_speed_proof = download_speed_fixture::enabled();
     assert!(
         !download_speed_proof
@@ -1295,7 +1319,13 @@ fn main() {
         let older_verified=vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || search_artist_top50_fixture::enabled() || vertical_zone_fixture::enabled();
         let guest_search=guest_search_fixture::enabled().then(||guest_search_fixture::Wire::open(proof_store.clone())).transpose()?;
         let signed_search=((search_fixture::enabled() || quality_cards_proof || daily_notification_proof) && !older_verified && guest_search.is_none()).then(||search_signed_fixture::SignedSearch::open(proof_store.clone())).transpose()?;
-        let library=Arc::new(Library { signed_search:signed_search.clone() });
+        let lyric_bounty=lyric_bounty_fixture::enabled().then(|| Arc::new(lyric_bounty_fixture::Proof::new(proof_store.clone())));
+        if let Some(fixture)=lyric_bounty.as_ref() {
+            let route=fixture.clone();
+            app.manage(cumulus_desktop::DefaultRouteObserver::new(move || route.route()));
+            app.manage(cumulus_desktop::LyricBountyProofHost::default());
+        }
+        let library=Arc::new(Library { signed_search:signed_search.clone(), lyric_bounty:lyric_bounty.clone() });
         let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(library.clone())));
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||library.clone());
         let transfer=playlist_cover_transfer_fixture::enabled().then(||Arc::new(playlist_cover_transfer_fixture::Fixture::new(api.clone(),proof_store.clone(),root.clone())));
@@ -1456,6 +1486,15 @@ fn main() {
         let cover_root=root.clone();
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
+            if let Some(fixture)=lyric_bounty.as_ref() {
+                if value["stage"] == "lyric-bounty-route" {
+                    let route=value["route"].as_str().unwrap();
+                    fixture.set_route(route);
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__lyricBountyRoute={};",json!(route))).unwrap();
+                    return;
+                }
+                value["lyricBounty"]=fixture.report();
+            }
             if playback_power_guide_fixture::enabled() {
                 value["playbackPowerGuideFixture"]=playback_power_guide_fixture::report(&proof_store).unwrap();
             }

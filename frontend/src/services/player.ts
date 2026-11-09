@@ -736,6 +736,12 @@ export interface LyricPreferences {
   romaEnable: boolean;
 }
 export type LyricToolbarAction = 'translation' | 'upload';
+export type LyricBountyAction = 'missing_lyrics' | 'scrolling' | 'translation';
+export type LyricBountyStatus = 'accepted' | 'not_sent' | 'unknown';
+export interface LyricBountyOpening {
+  id: string | null;
+  status: LyricBountyStatus | null;
+}
 export interface LyricsView {
   wordTranslation: LyricLine[];
   wordRomanization: LyricLine[];
@@ -926,6 +932,14 @@ export interface PlayerClient
   ): Promise<AccountData<ProfileReportView>>;
   playerLyrics(epoch: string, playId: string, cachedOnly?: boolean): Promise<LyricsView>;
   openLyricContribution(epoch: string, playId: string): Promise<void>;
+  lyricBountyActions(epoch: string, playId: string): Promise<LyricBountyAction[]>;
+  lyricBountyPrepare(
+    epoch: string,
+    playId: string,
+    action: LyricBountyAction,
+  ): Promise<LyricBountyOpening>;
+  lyricBountyConfirm(id: string): Promise<LyricBountyStatus>;
+  lyricBountyCancel(id: string): Promise<void>;
   openLyricToolbarContribution(
     epoch: string,
     playId: string,

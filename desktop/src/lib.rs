@@ -43,6 +43,7 @@ mod platform;
 mod playback_cache;
 pub mod playback_keep_awake;
 mod player;
+pub use player::lyric_bounty::LyricBountyProofHost;
 mod playlist_cover;
 mod playlists;
 mod podcast;
@@ -580,6 +581,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::player_lyrics,
                 player::lyric_contribution_open,
                 player::lyric_toolbar_contribution_open,
+                player::lyric_bounty::lyric_bounty_actions,
+                player::lyric_bounty::lyric_bounty_prepare,
+                player::lyric_bounty::lyric_bounty_confirm,
+                player::lyric_bounty::lyric_bounty_cancel,
                 player::reports::lyric_report_open,
                 player::reports::lyric_report_read,
                 player::reports::lyric_report_types,

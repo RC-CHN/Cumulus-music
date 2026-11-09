@@ -1399,6 +1399,12 @@ input[type='range'] {
   font-weight: 400;
   margin-top: 6px;
 }
+.lyric-missing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
 .lyric-contribution,
 .lyric-contribution-error {
   margin: 0 0 16px;

@@ -1,4 +1,5 @@
 pub mod intelligence;
+pub mod lyric_bounty;
 mod native_authority;
 #[cfg(any(windows, test))]
 mod native_quit;

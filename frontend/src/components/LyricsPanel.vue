@@ -23,6 +23,8 @@ import {
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import LyricFontSize from './LyricFontSize.vue';
 import ActionMenu from './ActionMenu.vue';
+import LyricBountyDialog from './LyricBountyDialog.vue';
+import { useLyricBounty } from '../composables/useLyricBounty';
 import ModalTransition from './ModalTransition.vue';
 import VinylModeSheet from './VinylModeSheet.vue';
 import VinylCommentsPane from './VinylCommentsPane.vue';
@@ -578,6 +580,22 @@ const contribution = computed(() => {
   const option = currentLyric.value?.contribution;
   return contributionVisible.value && option ? contributionCopy[option] : undefined;
 });
+const bountyTarget = computed(() =>
+  contribution.value &&
+  !lyricLoading.value &&
+  (displayMode.value === 'classic' || displayMode.value === 'lyric')
+    ? currentLyric.value
+    : undefined,
+);
+const bounty = useLyricBounty(core, () => bountyTarget.value);
+const bountyLabels = {
+  missing_lyrics: '求歌词',
+  scrolling: '求滚动',
+  translation: '求翻译',
+} as const;
+const bodyBounties = computed(() =>
+  bounty.actions.value.filter((action) => action !== 'missing_lyrics'),
+);
 const toolbarContributions = computed(() =>
   contributionVisible.value && displayMode.value === 'classic'
     ? (currentLyric.value?.toolbarContributions ?? [])
@@ -1238,7 +1256,17 @@ const displayedAuxiliary = computed(() =>
               <template v-else-if="currentLyric">
                 <div v-if="contribution?.[0]" class="lyric-contribution" data-non-selectable>
                   {{ contribution[0]
-                  }}<button
+                  }}<template v-for="action in bodyBounties" :key="action">
+                    <button
+                      type="button"
+                      class="text-button"
+                      :data-lyric-bounty="action"
+                      :disabled="bounty.preparing.value"
+                      @click="bounty.open(action, $event.currentTarget)"
+                    >
+                      {{ bountyLabels[action] }}</button
+                    ><span> / </span> </template
+                  ><button
                     type="button"
                     class="text-button"
                     data-lyric-contribution
@@ -1248,6 +1276,9 @@ const displayedAuxiliary = computed(() =>
                     {{ contribution[1] }}
                   </button>
                 </div>
+                <p v-if="bounty.problem.value" class="lyric-contribution-error" role="alert">
+                  暂时无法确认这项悬赏，请先刷新当前歌词。
+                </p>
                 <p
                   v-if="contributionError === 'body'"
                   class="lyric-contribution-error"
@@ -1305,16 +1336,27 @@ const displayedAuxiliary = computed(() =>
                     >
                       刷新
                     </button>
-                    <button
-                      v-else-if="contribution && !contribution[0]"
-                      type="button"
-                      class="secondary lyric-upload"
-                      data-lyric-contribution
-                      :aria-disabled="contributionOpening"
-                      @click="openContribution()"
-                    >
-                      {{ contribution[1] }}
-                    </button>
+                    <div v-else-if="contribution && !contribution[0]" class="lyric-missing-actions">
+                      <button
+                        v-if="bounty.actions.value.includes('missing_lyrics')"
+                        type="button"
+                        class="secondary lyric-upload"
+                        data-lyric-bounty="missing_lyrics"
+                        :disabled="bounty.preparing.value"
+                        @click="bounty.open('missing_lyrics', $event.currentTarget)"
+                      >
+                        求歌词
+                      </button>
+                      <button
+                        type="button"
+                        class="secondary lyric-upload"
+                        data-lyric-contribution
+                        :aria-disabled="contributionOpening"
+                        @click="openContribution()"
+                      >
+                        {{ contribution[1] }}
+                      </button>
+                    </div>
                   </div>
                 </template>
                 <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
@@ -1553,6 +1595,16 @@ const displayedAuxiliary = computed(() =>
       />
     </ModalTransition>
     <Teleport to="body">
+      <ModalTransition :return-focus="bounty.opener" :fallback-focus="panelCloseFocus">
+        <LyricBountyDialog
+          v-if="bounty.dialog.value"
+          :opening="bounty.dialog.value"
+          :sending="bounty.sending.value"
+          :can-confirm="bounty.canConfirm.value"
+          @close="bounty.close"
+          @confirm="bounty.confirm"
+        />
+      </ModalTransition>
       <ModalTransition :return-focus="() => uncollectOpener" :fallback-focus="panelCloseFocus">
         <VoicePodcastUncollectDialog
           v-if="uncollect"
