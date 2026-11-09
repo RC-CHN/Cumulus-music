@@ -618,7 +618,9 @@ fn suggestion_match_rows(keyword: &str) -> Option<Value> {
     let (suggests, recs) = match keyword {
         "A+B" => (
             json!([
-                {"keyword":"合成精确词","name":"İ A+B 和 a+b <plain>"},
+                {"searchWord":"合成精确词","keyword":"不使用候选备用词",
+                 "name":"İ A+B 和 a+b <plain>","toUserWord":"合成输入栏文案",
+                 "realkeyword":"不使用默认真实词","showKeyword":"不使用默认展示词"},
                 {"keyword":"合成另一个词","name":"aab 不匹配"}
             ]),
             json!([{"keyword":"合成符号推荐","name":"推荐 a+b"}]),
