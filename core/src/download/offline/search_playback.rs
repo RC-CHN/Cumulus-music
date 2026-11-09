@@ -316,9 +316,9 @@ impl SearchPublication {
                     {
                         return Err(Error::State("offline playlist download is moving"));
                     }
-                    if !tx
+                    if tx
                         .completed_song_publication(owner, &self.record.song_id)?
-                        .is_some_and(|(id, _)| id == expected.task_id)
+                        .is_none_or(|(id, _)| id != expected.task_id)
                     {
                         return Err(Error::State(
                             "offline playlist publication is no longer unique",
