@@ -82,7 +82,9 @@
     click(favorite());
     click(await wait(() => row('81'), 'explicit selection of the owned playlist'));
     const recover = () => status() && button('核对结果', status());
-    await wait(recover, 'lost response remains visible and read-only');
+    await wait(() => recover() && document.activeElement === recover(),
+      'lost response focuses the explicit read-only recovery');
+    assertion(!one('.collect-working', dialog()), 'pending status is not still loading');
     assertion(row('81').getAttribute('aria-disabled') === 'true', 'the same row cannot send again');
     await stage('ux_02_local_favorite_pending', recover);
     await emit('reveal_readback');
@@ -95,7 +97,10 @@
     click(favorite());
     click(await wait(() => row('81'), 'separate user action chooses the same playlist'));
     await wait(() => status()?.textContent.includes('歌单内歌曲重复'), 'official duplicate status');
-    assertion(!recover(), 'definite rejection is not ambiguous');
+    await wait(() => document.activeElement === button('关闭歌单操作', dialog()),
+      'definite failure returns keyboard focus to close');
+    assertion(!recover() && !one('.collect-working', dialog()), 'definite rejection is not ambiguous or loading');
+    assertion(one('.collect-count', row('81'))?.textContent === '2首', 'reopened picker reads the observed song count');
     await stage('ux_04_local_favorite_duplicate', status);
 
     const after = await state(epoch);

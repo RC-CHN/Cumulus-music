@@ -62,7 +62,12 @@ impl Api for Collector {
                         payload,
                         json!({"uid":"9","offset":0,"limit":10,"sortType":"default"})
                     );
-                    json!({"code":200,"more":false,"playlist":[target(81,9,0,0),target(98,9,5,0),target(77,4,0,0)]})
+                    let count = if self.reveal.load(Ordering::Acquire) {
+                        2
+                    } else {
+                        0
+                    };
+                    json!({"code":200,"more":false,"playlist":[target(81,9,0,count),target(98,9,5,0),target(77,4,0,0)]})
                 }
                 "/api/v6/playlist/detail" => {
                     assert_eq!(payload["id"], "81");
