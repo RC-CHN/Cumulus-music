@@ -4,6 +4,7 @@ pub mod cover;
 pub(crate) mod external_import;
 mod external_input;
 mod extras;
+mod local_membership;
 mod service;
 mod snapshot;
 mod types;
@@ -12,6 +13,10 @@ pub use api::{PlaylistApi, PlaylistTracks, TrackOperation};
 pub use external_input::{
     ExternalPlaylistInput, ExternalPlaylistSource, MAX_EXTERNAL_PLAYLIST_LINKS,
     preview_external_playlist_inputs,
+};
+pub use local_membership::{
+    PlaylistLocalChange, PlaylistLocalMembership, PlaylistLocalMutation, PlaylistLocalRef,
+    PlaylistLocalRow, PlaylistLocalStore,
 };
 pub(crate) use service::GroupDownloadPlaylistProof;
 pub use service::PlaylistService;

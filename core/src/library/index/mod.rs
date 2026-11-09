@@ -2,6 +2,7 @@ mod cue;
 mod decoded;
 mod held_flac;
 mod mapping;
+mod playlist_membership;
 mod relocate;
 mod scan;
 mod view;
