@@ -11,13 +11,15 @@ def verify_chorus_queue(root, complete, screenshots):
     assert len(stages) == complete['stageCount'] == 3 and complete['ok'] and complete['scrubClockVerified']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     entries, plays = [], []
-    for stage, track, seconds in zip(stages, ('1', '2', '1'), (4, 13, 4), strict=True):
+    for stage, track, seconds, theme in zip(stages, ('1', '2', '1'), (4, 13, 4), ('light', 'dark', 'dark'), strict=True):
         row = json.loads(stage.read_text(encoding='utf-8'))
         player, queue = row['nativePlayer'], row['nativeQueue']
         assert row['chorusQueueFixture'] == {'batches': [['1', '2']], 'singles': 0}
         assert player['track']['id'] == row['trackId'] == track
         assert player['playId'] == row['playId'] and player['state'] == 'playing' and player['position'] > .12
         assert player['timeline']['total'] == 30 and row['markerVisible']
+        assert row['theme'] == theme
+        assert row['markerColor'] == ('rgba(255, 255, 255, 0.3)' if theme == 'dark' else 'rgba(40, 50, 72, 0.3)')
         assert abs(row['markerPercent'] - 100 * seconds / 30) < .01
         assert [item['track']['id'] for item in queue['tracks']] == ['1', '2']
         assert player['entryId'] == queue['current'] and player['queueRevision'] == queue['revision']

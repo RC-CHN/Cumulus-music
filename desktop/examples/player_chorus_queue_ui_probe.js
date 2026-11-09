@@ -21,6 +21,13 @@
     node.focus({preventScroll: true});
     node.click();
   }
+  async function chooseTheme(theme) {
+    click(q('[aria-label="外观主题"]'));
+    await wait(() => q('.action-menu'), 'theme chooser visible');
+    const label = theme === 'dark' ? '深色' : '浅色';
+    click([...document.querySelectorAll('.action-menu button')].find(button => button.textContent.trim() === label));
+    await wait(() => document.documentElement.dataset.theme === theme && !q('.action-menu'), 'native theme applied');
+  }
   async function capture(stage, id, seconds, previous) {
     const ratio = 100 * seconds / 30;
     await wait(() => player()?.dataset.trackId === id
@@ -51,6 +58,7 @@
   try {
     await wait(() => q('.daily-track-actions .primary:not(:disabled)'), 'signed-in synthetic Daily ready');
     assert(document.querySelectorAll('.track-row').length === 2, 'exact two fixture songs');
+    await chooseTheme('light');
     click(q('.daily-track-actions .primary'));
     const a = await capture('ux_01_chorus_a', '1', 4);
     const input = q('.seek-rail input');
@@ -68,6 +76,7 @@
     await wait(() => !mark()?.classList.contains('reached'), 'cancel restores the native clock');
     await invoke('player_action', {epoch, action: {kind: 'pause', paused: false}});
     await wait(() => player()?.dataset.state === 'playing', 'same playback resumed before changing track');
+    await chooseTheme('dark');
     click(q('.playerbar [aria-label="下一首"]'));
     const b = await capture('ux_02_chorus_b', '2', 13, a);
     click(q('.playerbar [aria-label="上一首"]'));
