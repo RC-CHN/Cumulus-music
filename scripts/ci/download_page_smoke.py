@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sqlite3
 from motion_smoke import launch
 
 
@@ -62,14 +63,16 @@ def main():
     parser.add_argument('--batch', action='store_true', help='Verify full-category batch UI and real local file actions')
     parser.add_argument('--navigation', action='store_true', help='Verify download detail return, focus and resized anchors')
     parser.add_argument('--menu', action='store_true', help='Verify resource menus, confirmations and actual file operations')
+    parser.add_argument('--clear-snapshot', action='store_true',
+                        help='Verify native bulk-cancel confirmation does not include later tasks')
     parser.add_argument('--quality-settings', action='store_true', help='Verify native default-download preferences, membership recovery and a separate single download')
     parser.add_argument('--seed-delay-ms', type=int, default=0, help='Inject a bounded synthetic setup delay; never affects the application')
     args = parser.parse_args()
     if not 0 <= args.seed_delay_ms <= 30000:
         parser.error('seed delay must be between 0 and 30000 ms')
-    if sum([args.table, args.batch, args.navigation, args.menu, args.mv_replay, args.quality_settings]) > 1:
+    if sum([args.table, args.batch, args.navigation, args.menu, args.mv_replay, args.quality_settings, args.clear_snapshot]) > 1:
         parser.error('select a single proof')
-    if args.quality_settings and args.seed_delay_ms:
+    if (args.quality_settings or args.clear_snapshot) and args.seed_delay_ms:
         parser.error('--seed-delay-ms is for inventory fixtures')
     expected = 49 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
@@ -86,9 +89,11 @@ def main():
         env[key] = str(directory)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    script = 'download_quality_ui_probe.js' if args.quality_settings else 'mv_replay_ui_probe.js' if args.mv_replay else 'download_menu_ui_probe.js' if args.menu else 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
+    script = 'download_clear_ui_probe.js' if args.clear_snapshot else 'download_quality_ui_probe.js' if args.quality_settings else 'mv_replay_ui_probe.js' if args.mv_replay else 'download_menu_ui_probe.js' if args.menu else 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
     if args.quality_settings:
         env['CUMULUS_DOWNLOAD_QUALITY_UI_PROOF'] = '1'
+    if args.clear_snapshot:
+        env['CUMULUS_DOWNLOAD_CLEAR_PROOF'] = '1'
     if script == 'download_page_ui_probe.js':
         env['CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF'] = '1'
     if args.menu:
@@ -105,6 +110,26 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, f'probe exit {status}'
     result = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+    if args.clear_snapshot:
+        output = root / 'first'
+        assert result['ok'] and result['downloadClearVerified'] and result['stageCount'] == 4
+        assert result['realMusicRequests'] == result['realAccountWrites'] == 0
+        assert len(list(output.glob('ux_*.json'))) == 4
+        assert len(list(output.glob('ux_*.png'))) == (4 if args.screenshots else 0)
+        with sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
+            records = [json.loads(value) for value, in db.execute(
+                "SELECT value FROM state WHERE owner='2' AND kind='download_tasks_v1'")]
+        assert len(records) == 3
+        records = {task['song_id']: task for task in records}
+        assert {key: task['status'] for key, task in records.items()} == {
+            '701': 'cancelled', '702': 'cancelled', '703': 'paused',
+        }
+        for song, task in records.items():
+            work = Path(task['work']).resolve()
+            assert work.is_relative_to(root / 'media')
+            assert work.exists() == (song == '703')
+        print(json.dumps(dict(ok=True, actualWebView=True, stageCount=4, downloadClearVerified=True)))
+        return
     if args.quality_settings:
         verify_download_quality(root / 'first', result, args.screenshots)
         result.update(actualWebView=True, physicalDisplayVerified=False, windowsVisualVerified=False)

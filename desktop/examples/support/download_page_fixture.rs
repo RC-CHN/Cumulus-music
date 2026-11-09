@@ -26,6 +26,9 @@ use std::{
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_DOWNLOAD_PAGE_UI_PROOF").is_some()
 }
+fn clear_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_DOWNLOAD_CLEAR_PROOF").is_some()
+}
 pub fn quality_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_QUALITY_UI_PROOF").is_some()
 }
@@ -330,6 +333,42 @@ impl Fixture {
         eprintln!("download UI fixture {mode}: started");
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
+            "clear_seed" | "clear_late" if clear_enabled() => {
+                use cumulus_core::download::service::DownloadAction;
+                let media = self.root.join("media");
+                if mode == "clear_seed" {
+                    client
+                        .download_command(
+                            &epoch,
+                            DownloadCommand::Configure {
+                                root: media.to_string_lossy().into_owned(),
+                                path_type: 0,
+                                file_type: 1,
+                            },
+                        )
+                        .await?;
+                }
+                let service = DownloadService::with_backend(
+                    self.session.clone(),
+                    Arc::new(NoNetwork),
+                    64 * 1024 * 1024,
+                )?;
+                for id in if mode == "clear_seed" {
+                    &[701, 702][..]
+                } else {
+                    &[703][..]
+                } {
+                    let task = service.create_default(&json!(id), DownloadOptions::default())?;
+                    let mut task = service.request(&task.id, DownloadAction::Pause)?;
+                    task.song = Some(json!({"id":id,"name":format!("合成取消任务 {id}"),"ar":[]}));
+                    self.store.put(
+                        "2",
+                        "download_tasks_v1",
+                        &task.id,
+                        &serde_json::to_value(task)?,
+                    )?;
+                }
+            }
             "menu_comment_hold" if menu_comments_enabled() => {
                 HOLD_MENU_COMMENT.store(true, Ordering::SeqCst);
             }
