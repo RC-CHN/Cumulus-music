@@ -9,8 +9,9 @@ use crate::{
         api::{
             Api, ApiFuture, CopyrightNotificationRead, DailyNotificationRead, GuardedPlaylistAdd,
             GuardedPlaylistCreate, GuardedSongLike, MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH,
-            MessageReadAllPermission, PlaylistAddPermission, SongCardLikedRead, SongLikePermission,
-            SystemLikedRead, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            MessageReadAllPermission, PlaybackChorusPermission, PlaybackChorusRead,
+            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
+            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
             VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
             VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
             VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
@@ -84,6 +85,7 @@ enum RequestBinding<'a> {
         dispatched: &'a AtomicBool,
     },
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
+    PlaybackChorus(&'a PlaybackChorusPermission<'a>),
     PodcastBadge {
         permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -791,6 +793,17 @@ impl MusicHttpClient {
                 }
                 permission()?;
             }
+            if let Some(RequestBinding::PlaybackChorus(permission)) = binding {
+                if origin != super::ApiOrigin::Pc || self.anonymous_store {
+                    return Err(Error::CredentialChanged);
+                }
+                let current = self.credentials.request_credentials(&target)?;
+                if current.revision != snapshot.revision {
+                    return Err(Error::CredentialChanged);
+                }
+                self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])?;
+                permission()?;
+            }
             if let Some(RequestBinding::VinylPodcastSubscriptionWrite {
                 permission,
                 dispatched,
@@ -1046,6 +1059,45 @@ impl Api for MusicHttpClient {
         let target = origin.request_url(route, PATH)?;
         let snapshot = self.credentials.request_credentials(&target)?;
         Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
+    }
+
+    fn playback_chorus_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        if origin != super::ApiOrigin::Pc || self.anonymous_store {
+            return Ok(None);
+        }
+        let path = PlaybackChorusRead::PATH;
+        let route = select_route_with_policy(origin, path, &json!({}), self.options.routing)?;
+        let current = self
+            .credentials
+            .request_credentials(&origin.request_url(route, path)?)?;
+        if current.unique_music_u().is_none() {
+            return Ok(None);
+        }
+        self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])?;
+        Ok(Some(current.revision))
+    }
+
+    fn request_playback_chorus<'a>(
+        &'a self,
+        read: PlaybackChorusRead,
+        revision: &'a str,
+        permission: &'a PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = read.into_request()?;
+            let response = self
+                .execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::PlaybackChorus(permission)),
+                )
+                .await?;
+            crate::protocol::api::validate_response(path, response, &[200])
+        })
     }
 
     fn podcast_progress_revision(&self) -> Result<Option<String>> {
@@ -1790,3 +1842,6 @@ impl Api for MusicHttpClient {
         })
     }
 }
+
+#[cfg(test)]
+mod chorus_tests;

@@ -1,8 +1,189 @@
 //! Optional song progress annotation, independent of source authorization.
 use super::{MusicClient, PlaybackCommand, PlaybackSnapshot, PlayerResourceKind, identity};
-use crate::{Error, Result, playback::TimelineMode, protocol::api::identifier};
+use crate::{
+    Error, Result,
+    account::{AccountSession, SessionToken},
+    playback::{QueueEntry, QueueSnapshot, TimelineMode},
+    protocol::api::{Api, PlaybackChorusRead, identifier},
+};
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{
+        Arc, Mutex, Weak,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
+use tokio::sync::OnceCell;
+
+const DEADLINE: Duration = Duration::from_secs(5);
+
+type Points = BTreeMap<String, f64>;
+type Members = Vec<(String, i32, String)>;
+type Batches = Vec<Vec<Value>>;
+
+struct Plan {
+    members: Members,
+    batches: Batches,
+}
+
+fn eligible(entry: &QueueEntry) -> Option<(i32, String)> {
+    if !entry.visible_in_queue()
+        || identity::kind(&entry.resource) != PlayerResourceKind::Catalog
+        || !entry.resource["url"].is_null()
+        || !entry.resource["path"].is_null()
+        || !entry.resource["download_ledger"].is_null()
+        || !entry.resource["local_revision"].is_null()
+        || !entry.resource["playback_constraint"].is_null()
+        || entry.resource["missing"] == true
+        || entry.source["kind"] == "listen_together"
+    {
+        return None;
+    }
+    let mode = match entry.resource.get("trial_mode") {
+        None => -1,
+        Some(mode) => i32::try_from(mode.as_i64()?).ok()?,
+    };
+    // M91's ordinary playback values. The FM bucket is a separate map in M602.
+    if !matches!(mode, -1 | 35 | 37..=44 | 121) {
+        return None;
+    }
+    let id = identifier(&entry.resource["id"]).ok()?;
+    (id.len() <= 32).then_some((mode, id))
+}
+
+impl Plan {
+    fn from_queue(queue: &QueueSnapshot, selected: &QueueEntry) -> Option<Self> {
+        if eligible(selected).is_none()
+            || queue.items.len() > crate::playback::intelligence::MAX_QUEUE_TRACKS
+        {
+            return None;
+        }
+        let mut members = Vec::new();
+        let mut groups = BTreeMap::<u32, Vec<Value>>::new();
+        let mut includes_current = false;
+        for entry in &queue.items {
+            let Some((mode, id)) = eligible(entry) else {
+                continue;
+            };
+            includes_current |=
+                entry.entry_id == selected.entry_id && entry.resource == selected.resource;
+            members.push((entry.entry_id.clone(), mode, id));
+            // M86 iterates JS object keys: nonnegative integer keys before "-1".
+            groups
+                .entry(mode as u32)
+                .or_default()
+                .push(entry.resource["id"].clone());
+        }
+        if !includes_current || members.len() < 2 {
+            return None;
+        }
+        // Playback selection and reorder do not change the native membership.
+        // An inserted or replaced entry gets a different key even for the same song.
+        members.sort_unstable();
+        let mut batches = Vec::new();
+        for ids in groups.into_values() {
+            batches.extend(ids.chunks(PlaybackChorusRead::LIMIT).map(<[Value]>::to_vec));
+        }
+        Some(Self { members, batches })
+    }
+}
+
+struct Fill {
+    token: SessionToken,
+    api: Weak<dyn Api>,
+    credentials: String,
+    plan: Plan,
+    revision: AtomicU64,
+    points: OnceCell<Points>,
+}
+
+impl Fill {
+    fn matches(&self, token: &SessionToken, api: &Arc<dyn Api>, credentials: &str) -> bool {
+        self.token == *token
+            && self.api.ptr_eq(&Arc::downgrade(api))
+            && self.credentials == credentials
+    }
+}
+
+#[derive(Default)]
+pub(super) struct Host(Mutex<Option<Arc<Fill>>>);
+
+impl Host {
+    fn observe(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        credentials: String,
+        revision: u64,
+        plan: Plan,
+    ) -> Result<Arc<Fill>> {
+        let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        session.require_api(token, api)?;
+        if api.playback_chorus_revision()?.as_deref() != Some(credentials.as_str()) {
+            return Err(Error::StaleResponse);
+        }
+        if let Some(current) = slot
+            .as_ref()
+            .filter(|fill| fill.matches(token, api, &credentials))
+        {
+            if revision < current.revision.load(Ordering::Acquire) {
+                return Err(Error::StaleResponse);
+            }
+            if current.plan.members == plan.members {
+                current.revision.store(revision, Ordering::Release);
+                return Ok(current.clone());
+            }
+        }
+        let fill = Arc::new(Fill {
+            token: token.clone(),
+            api: Arc::downgrade(api),
+            credentials,
+            plan,
+            revision: AtomicU64::new(revision),
+            points: OnceCell::new(),
+        });
+        *slot = Some(fill.clone());
+        Ok(fill)
+    }
+
+    fn is_current(&self, fill: &Arc<Fill>) -> Result<bool> {
+        Ok(self
+            .0
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, fill)))
+    }
+}
+
+fn merge_points(points: &mut Points, request: &[Value], response: &Value) -> Result<()> {
+    let requested: BTreeSet<_> = request.iter().map(identifier).collect::<Result<_>>()?;
+    let rows = response["data"]
+        .as_array()
+        .ok_or(Error::Response("invalid chorus batch response"))?;
+    for row in rows {
+        let Ok(id) = identifier(&row["id"]) else {
+            continue;
+        };
+        if requested.contains(&id) {
+            match row["startTime"]
+                .as_f64()
+                .filter(|time| time.is_finite() && *time > 0.0)
+            {
+                Some(time) => {
+                    points.insert(id, time / 1000.0);
+                }
+                None => {
+                    points.remove(&id);
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 fn selected_song<'a>(snapshot: &'a PlaybackSnapshot, play_id: &str) -> Result<Option<&'a Value>> {
     if snapshot.play_id.as_deref() != Some(play_id) {
@@ -38,19 +219,106 @@ impl MusicClient {
     pub async fn player_chorus(&self, epoch: &str, play_id: &str) -> Result<Option<f64>> {
         let token = self.player_token(epoch)?;
         let controller = self.player.controller().await?;
-        let current = controller
-            .command(&token, PlaybackCommand::Snapshot)
-            .await?;
+        let (current, queue) = controller.queue_with_state(&token).await?;
         let Some(song) = selected_song(&current, play_id)? else {
             return Ok(None);
         };
+        let api = self.session.native_api(&token)?;
+        let room = self.together_detached_guard(&token);
+        if !current.fm
+            && current.intelligence.is_none()
+            && !current.catalog_file_source
+            && !room.is_cancelled()
+            && token.uid.is_some()
+            && let Some(plan) = current
+                .selected
+                .as_ref()
+                .and_then(|item| Plan::from_queue(&queue, item))
+            && let Ok(Some(credentials)) = api.playback_chorus_revision()
+        {
+            let fill = self.player.chorus.observe(
+                &self.session,
+                &token,
+                &api,
+                credentials,
+                current.queue_revision,
+                plan,
+            )?;
+            let mut changes = controller.subscribe();
+            // Queue replies can precede the corresponding watch publication.
+            tokio::time::timeout(
+                DEADLINE,
+                changes.wait_for(|snapshot| {
+                    snapshot.account == token && snapshot.queue_revision >= current.queue_revision
+                }),
+            )
+            .await
+            .map_err(|_| Error::StaleResponse)?
+            .map_err(|_| Error::Cancelled)?;
+            let permission = || {
+                self.session.require_api(&token, &api)?;
+                room.check()?;
+                if !self.player.chorus.is_current(&fill)?
+                    || api.playback_chorus_revision()?.as_deref() != Some(fill.credentials.as_str())
+                {
+                    return Err(Error::StaleResponse);
+                }
+                let snapshot = changes.borrow();
+                if snapshot.account != token
+                    || snapshot.fm
+                    || snapshot.intelligence.is_some()
+                    || snapshot.queue_revision != fill.revision.load(Ordering::Acquire)
+                {
+                    return Err(Error::StaleResponse);
+                }
+                Ok(())
+            };
+            let points = fill
+                .points
+                .get_or_try_init(|| async {
+                    let result = tokio::time::timeout(DEADLINE, async {
+                        let mut points = Points::new();
+                        for ids in &fill.plan.batches {
+                            permission()?;
+                            let read = PlaybackChorusRead::new(ids.clone())?;
+                            let response = api
+                                .request_playback_chorus(read, &fill.credentials, &permission)
+                                .await?;
+                            permission()?;
+                            merge_points(&mut points, ids, &response)?;
+                        }
+                        Result::Ok(points)
+                    })
+                    .await;
+                    // No partial map. A batch failure stays empty for this queue;
+                    // a stale read may not install any result, even an empty one.
+                    permission()?;
+                    Ok::<_, Error>(result.ok().and_then(Result::ok).unwrap_or_default())
+                })
+                .await?;
+            let latest = controller
+                .command(&token, PlaybackCommand::Snapshot)
+                .await?;
+            permission()?;
+            if selected_song(&latest, play_id)? != Some(song)
+                || latest.catalog_file_source
+                || latest.queue_revision != fill.revision.load(Ordering::Acquire)
+            {
+                return Err(Error::StaleResponse);
+            }
+            return Ok(points.get(&identifier(song)?).copied());
+        }
         let ids = serde_json::to_string(&[song])?;
         // This optional decoration must not expire an otherwise working
         // playback session on a failed metadata read.
-        let api = self.session.native_api(&token)?;
         let response = tokio::time::timeout(
-            Duration::from_secs(5),
-            api.call("/api/song/chorus", json!({ "ids": ids }), false, &[200]),
+            DEADLINE,
+            api.call(
+                PlaybackChorusRead::PATH,
+                json!({ "ids": ids }),
+                false,
+                &[200],
+            ),
         )
         .await
         .map_err(|_| Error::State("song chorus request timed out"))??;
@@ -68,6 +336,48 @@ impl MusicClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn original_buckets_and_500_chunks_use_visible_catalog_entries_only() {
+        let track = |n, trial| QueueEntry {
+            entry_id: format!("e{n}"),
+            resource: json!({"id":n,"trial_mode":trial}),
+            source: Value::Null,
+        };
+        let mut queue = QueueSnapshot {
+            items: (1..=501).map(|n| track(n, -1)).collect(),
+            ..Default::default()
+        };
+        queue.items.push(track(700, 42));
+        queue.items.push(track(702, 36));
+        queue.items.push(track(703, 500));
+        for (i, field) in ["local_id", "download_task_id", "voice_id", "cloud_song_id"]
+            .into_iter()
+            .enumerate()
+        {
+            let mut entry = track(704 + i, 42);
+            entry.resource[field] = json!("21");
+            queue.items.push(entry);
+        }
+        let current = queue.items[0].clone();
+        let observed = Plan::from_queue(&queue, &current).unwrap();
+        assert_eq!(observed.members.len(), 502);
+        assert_eq!(
+            observed.batches.iter().map(Vec::len).collect::<Vec<_>>(),
+            [1, 500, 1]
+        );
+        assert_eq!(observed.batches[0], [json!(700)]);
+        assert_eq!(observed.batches[1][0], json!(1));
+        assert_eq!(observed.batches[2], [json!(501)]);
+        queue.items.reverse();
+        let reordered = Plan::from_queue(&queue, &current).unwrap();
+        assert_eq!(observed.members, reordered.members);
+        queue.items[0] = track(999, 42);
+        assert_ne!(
+            observed.members,
+            Plan::from_queue(&queue, &current).unwrap().members
+        );
+    }
 
     #[test]
     fn chorus_requires_positive_milliseconds_for_the_requested_song() {

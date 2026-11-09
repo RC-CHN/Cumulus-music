@@ -11,10 +11,34 @@ pub type VinylPlaybackReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync 
 pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type PlaylistAddPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type PlaybackChorusPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
 pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
 pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
+
+/// One original chorus endpoint batch. The IDs are selected by the native queue.
+pub struct PlaybackChorusRead(Vec<Value>);
+
+impl PlaybackChorusRead {
+    pub(crate) const PATH: &str = "/api/song/chorus";
+    pub(crate) const LIMIT: usize = 500;
+
+    pub(crate) fn new(ids: Vec<Value>) -> Result<Self> {
+        if ids.is_empty() || ids.len() > Self::LIMIT || ids.iter().any(|id| identifier(id).is_err())
+        {
+            return Err(Error::InvalidInput("invalid chorus batch"));
+        }
+        Ok(Self(ids))
+    }
+
+    pub fn into_request(self) -> Result<(&'static str, Value)> {
+        Ok((
+            Self::PATH,
+            json!({ "ids": serde_json::to_string(&self.0)? }),
+        ))
+    }
+}
 
 /// Fixed native reads needed to identify and confirm the system-liked playlist.
 pub struct SystemLikedRead(SystemLikedQuery);
@@ -653,6 +677,20 @@ pub trait Api: Send + Sync + std::any::Any {
     /// transport without scoped credentials cannot authorize stock fallback.
     fn playback_source_credential_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    /// Admits a queue chorus read only with exact native account credentials.
+    fn playback_chorus_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_playback_chorus<'a>(
+        &'a self,
+        _read: PlaybackChorusRead,
+        _revision: &'a str,
+        _permission: &'a PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("queue chorus read is unavailable")) })
     }
 
     /// Scoped native credential revision for the episode progress write.

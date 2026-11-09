@@ -51,6 +51,7 @@ struct Backend {
     quality_release: Notify,
     vinyl_composer: vinyl_composer::Server,
     artist_cover: artist_search_cover::CoverFixture,
+    chorus: chorus::Backend,
     vinyl_comment_group: AtomicU64,
     vinyl_recommendation_group: AtomicU64,
     vinyl_similar: vinyl_similar::Server,
@@ -61,6 +62,17 @@ struct Backend {
     vinyl_comment_release: Notify,
 }
 impl Api for Backend {
+    fn playback_chorus_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self.chorus.revision())
+    }
+    fn request_playback_chorus<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::PlaybackChorusRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.chorus.batch(read, revision, permission))
+    }
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
         if self.artist_cover.is_enabled() {
             return Ok(self.artist_cover.revision());
@@ -293,6 +305,7 @@ impl Api for Backend {
                         });
                     json!({"code":200,"data":{"dailySongs":tracks}})
                 }
+                "/api/song/chorus" => self.chorus.single(&payload),
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
@@ -409,6 +422,9 @@ mod artist_search_cover;
 
 #[path = "client_player/prepared_selection.rs"]
 mod prepared_selection;
+
+#[path = "client_player/chorus.rs"]
+mod chorus;
 
 #[path = "client_player/voice_selection.rs"]
 mod voice_selection;
