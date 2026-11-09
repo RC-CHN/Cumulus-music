@@ -10,11 +10,27 @@ from native_receipts import verify_parametric, verify_pinned
 from release_guard import VERSION, check_release, git, is_prerelease
 
 PLATFORMS = ("linux-x64", "windows-x64")
-REQUIRED_JOBS = {
+# Last reviewed main commit before the CI split; see docs/release-recovery.txt.
+PRE_SHARD_CI_TIP = "db7a319fdb9a0a0c16a62b79ff4d07bc7a1e7774"
+PRE_SHARD_REQUIRED_JOBS = {
     "Frontend and release rules", "Native (linux-x64)", "Native (windows-x64)", "CI gate",
-    "Linux WebView smoke", "Linux WebView probe build", "Linux WebView download, search and player smoke",
+    "Linux WebView smoke",
+}
+REQUIRED_JOBS = PRE_SHARD_REQUIRED_JOBS | {
+    "Linux WebView probe build", "Linux WebView download, search and player smoke",
     "Windows WebView (playback)", "Windows WebView (search-account)", "Windows WebView (catalog)",
 }
+
+
+def draft_required_jobs(sha):
+    # Only an already verified draft may use the source's historical gate.
+    # A new commit cannot regain it by reverting the workflow or missing jobs.
+    ancestry = subprocess.run(["git", "merge-base", "--is-ancestor", sha, PRE_SHARD_CI_TIP],
+                              check=False)
+    if ancestry.returncode == 1:
+        return REQUIRED_JOBS
+    ancestry.check_returncode()
+    return PRE_SHARD_REQUIRED_JOBS
 
 
 def api(path, *args):
@@ -105,6 +121,7 @@ def main():
     assert git("rev-parse", "HEAD") == os.environ["GITHUB_SHA"], "checkout differs from CD commit"
     tag = f"v{args.version}"
     prerelease = is_prerelease(args.version)
+    required_jobs = REQUIRED_JOBS
     if args.resume_draft:
         reference = api(f"repos/{repository}/git/ref/tags/{tag}")
         sha = check_release(args.version, reference["object"]["sha"])
@@ -115,6 +132,7 @@ def main():
         draft = find_release(repository, tag)
         assert draft is not None, "unpublished draft missing"
         validate_draft(draft, tag)
+        required_jobs = draft_required_jobs(sha)
     else:
         sha = check_release(args.version)
         assert sha == os.environ["GITHUB_SHA"], "release must target the CD commit"
@@ -126,7 +144,7 @@ def main():
         validate_run(run, repository, sha, args.run_id, workflow["id"])
         jobs = api(f"repos/{repository}/actions/runs/{args.run_id}/attempts/{run['run_attempt']}/jobs?per_page=100")["jobs"]
         successes = {job["name"] for job in jobs if job["conclusion"] == "success" and job["status"] == "completed"}
-        assert REQUIRED_JOBS <= successes, "required CI jobs have not all succeeded"
+        assert required_jobs <= successes, "required CI jobs have not all succeeded"
         return run
 
     run = verified_run()

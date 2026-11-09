@@ -1,8 +1,10 @@
 import copy
+from contextlib import chdir
 import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -110,11 +112,47 @@ class RequiredJobs(unittest.TestCase):
 class ResumeFlow(unittest.TestCase):
     def test_recovery_only_publishes_existing_draft_and_preserves_target_ci(self):
         for version, prerelease in (("0.1.0", False), ("0.2.0-rc.1", True)):
-            with self.subTest(version=version):
-                self.check_resume(version, prerelease)
+            for historical in (False, True):
+                with self.subTest(version=version, historical=historical):
+                    self.check_resume(version, prerelease, historical=historical)
 
-    def check_resume(self, version, prerelease):
+    def test_each_modern_shard_is_required_for_a_post_split_draft(self):
+        for missing in publish.REQUIRED_JOBS - publish.PRE_SHARD_REQUIRED_JOBS:
+            with self.subTest(missing=missing):
+                self.check_resume("0.2.0-rc.1", True, historical=False, missing=missing)
+
+    def test_historical_draft_still_requires_its_original_gate(self):
+        for missing in ("Linux WebView smoke", "CI gate"):
+            with self.subTest(missing=missing):
+                self.check_resume("0.2.0-rc.1", True, historical=True, missing=missing)
+
+    def test_only_ancestors_of_the_trusted_cutoff_get_the_historical_gate(self):
+        with tempfile.TemporaryDirectory() as temporary, chdir(temporary):
+            publish.git("init", "--quiet")
+
+            def commit(name):
+                publish.git("-c", "user.name=Synthetic", "-c", "user.email=fixture@example.invalid",
+                            "-c", "commit.gpgSign=false", "commit", "--quiet", "--allow-empty", "-m", name)
+                return publish.git("rev-parse", "HEAD")
+
+            earlier = commit("earlier")
+            cutoff = commit("last pre-split")
+            later = commit("after split with identical tree")
+            self.assertEqual(publish.git("rev-parse", f"{earlier}^{{tree}}"),
+                             publish.git("rev-parse", f"{later}^{{tree}}"))
+            with patch.object(publish, "PRE_SHARD_CI_TIP", cutoff):
+                self.assertEqual(publish.draft_required_jobs(earlier), publish.PRE_SHARD_REQUIRED_JOBS)
+                self.assertEqual(publish.draft_required_jobs(cutoff), publish.PRE_SHARD_REQUIRED_JOBS)
+                self.assertEqual(publish.draft_required_jobs(later), publish.REQUIRED_JOBS)
+
+    def test_ancestry_command_errors_never_grant_the_historical_gate(self):
+        with patch("publish.subprocess.run", return_value=subprocess.CompletedProcess([], 128)):
+            with self.assertRaises(subprocess.CalledProcessError):
+                publish.draft_required_jobs("a" * 40)
+
+    def check_resume(self, version, prerelease, *, historical, missing=None):
         tag = f"v{version}"
+        expected = publish.PRE_SHARD_REQUIRED_JOBS if historical else publish.REQUIRED_JOBS
         previous = Path.cwd()
         with tempfile.TemporaryDirectory() as tmp:
             os.chdir(tmp)
@@ -148,8 +186,16 @@ class ResumeFlow(unittest.TestCase):
                     if path.endswith("/actions/runs/12"):
                         return run
                     if path.endswith("/attempts/1/jobs?per_page=100"):
-                        return {"jobs": [{"name": name, "status": "completed", "conclusion": "success"} for name in publish.REQUIRED_JOBS]}
+                        return {"jobs": [{"name": name, "status": "completed", "conclusion": "success"}
+                                         for name in expected - {missing}]}
                     raise AssertionError(f"unexpected API: {path} {args}")
+
+                def run_command(argv, *, check):
+                    if argv[-1] == publish.PRE_SHARD_CI_TIP:
+                        self.assertFalse(check)
+                        return subprocess.CompletedProcess(argv, 0 if historical else 1)
+                    self.assertTrue(check)
+                    return subprocess.CompletedProcess(argv, 0)
 
                 def manifest(directory, expected, sha, platform, run_id, attempt):
                     self.assertEqual((expected, sha, run_id, attempt), (version, "release-sha", "12", 1))
@@ -163,16 +209,28 @@ class ResumeFlow(unittest.TestCase):
                      patch("publish.git", return_value="recovery-sha"), \
                      patch("publish.check_release", return_value="release-sha") as marker, \
                      patch("publish.api", side_effect=api), \
-                     patch("publish.subprocess.run") as command, \
+                     patch("publish.subprocess.run", side_effect=run_command) as command, \
                      patch("publish.validate_manifest", side_effect=manifest), \
                      patch("publish.validate_uploaded") as uploaded:
-                    publish.main()
+                    if missing is None:
+                        publish.main()
+                    else:
+                        with self.assertRaisesRegex(AssertionError, "required CI jobs"):
+                            publish.main()
                 marker.assert_called_once_with(version, "release-sha")
-                self.assertEqual(uploaded.call_count, 2)
                 commands = [call.args[0] for call in command.call_args_list]
-                self.assertEqual(commands[0], ["git", "merge-base", "--is-ancestor", "release-sha", "HEAD"])
-                self.assertEqual(len(commands), 3)  # ancestry and two CI artifact downloads
-                self.assertTrue(all(command[:3] == ["gh", "run", "download"] for command in commands[1:]))
+                self.assertEqual(commands[:2], [
+                    ["git", "merge-base", "--is-ancestor", "release-sha", "HEAD"],
+                    ["git", "merge-base", "--is-ancestor", "release-sha", publish.PRE_SHARD_CI_TIP],
+                ])
+                if missing is not None:
+                    self.assertEqual(len(commands), 2)
+                    self.assertFalse(any("--method" in args for _, args in calls))
+                    uploaded.assert_not_called()
+                    return
+                self.assertEqual(uploaded.call_count, 2)
+                self.assertEqual(len(commands), 4)  # ancestry checks and two CI artifact downloads
+                self.assertTrue(all(command[:3] == ["gh", "run", "download"] for command in commands[2:]))
                 self.assertEqual(sum("--method" in args for _, args in calls), 1)
                 evidence = json.loads(Path(".build/cd/release-provenance.json").read_text())
                 self.assertEqual(evidence["commit"], "release-sha")

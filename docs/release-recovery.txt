@@ -28,6 +28,16 @@ CI 已通过。Release workflow 从指定的 CI run/attempt 下载两个平台�
 恢复不会绕过失败 CI，也不能修补已发布版本。普通发布没有开启恢复参数时，
 遇到已存在的标签或草稿仍直接拒绝。
 
+CI 拆分后，普通发布仍要求所有新分组通过。只有已验证的同版本草稿，其精确
+标签目标是 PRE_SHARD_CI_TIP 本身或其祖先时，恢复才核对拆分前的必需 job。
+仍要求目标 CI 自身成功及原 attempt、包和草稿附件校验；不会根据缺少的 job
+选择旧门禁。拆分之后的提交即使恢复旧工作流文件，也不能使用旧门禁。
+候选的边界暂为 db7a319f。若 RC 验证期间 main 继续前进，合入拆分前用
+git show <提交>:.github/workflows/ci.yml 核对最后一条仍使用旧完整门禁的 main
+提交，将 scripts/ci/publish.py 中的边界固定为该完整 SHA；不能移到含拆分
+工作流的提交，也不能改成可移动的分支名。单独的 Windows 安装诊断继续要求
+当前分组，不通过草稿恢复入口选择历史产物。
+
 自动验证
   python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
 test_release_draft.py 覆盖草稿分页和精确匹配、身份变化、附件缺失/重复/摘要变化、
