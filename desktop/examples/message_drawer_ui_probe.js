@@ -380,6 +380,11 @@
       const destination = async (label, predicate) => {
         stage = label;
         await wait(() => !drawer() && predicate(), label);
+        if (label === 'attachment_notice_radio' || label === 'attachment_notice_other_radio') {
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          await sleep(120);
+          assert(!drawer() && predicate(), 'painted radio destination still matches: ' + label);
+        }
         await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, { label });
         await sleep(170);
       };
@@ -461,10 +466,13 @@
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       assert(drawer() && radioHeading(81) && (await radioReads()).join(',') === '81,81',
         'the already visible same radio does not start another route or detail read');
-      target(65).scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      target(65).scrollIntoView({ block: 'center', behavior: 'instant' });
       const noticeTop = scroller().scrollTop;
-      assert(noticeTop > 0 && target(65).getBoundingClientRect().bottom <= scroller().getBoundingClientRect().bottom,
-        'the selected notification is visible at a nonzero drawer scroll position');
+      const rowBounds = target(65).getBoundingClientRect();
+      const drawerBounds = scroller().getBoundingClientRect();
+      assert(noticeTop > 0 && rowBounds.top >= drawerBounds.top + 8 &&
+        rowBounds.bottom <= drawerBounds.bottom - 8,
+      'the selected notification and its focus ring have room within the scrolled drawer');
       click(target(65));
       await destination('attachment_notice_other_radio', () => radioHeading(82));
       const traceFocus = [];
