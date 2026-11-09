@@ -209,6 +209,8 @@
 .seek-rail-layered input::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
+  position: relative;
+  z-index: 2;
   width: 10px;
   height: 10px;
   border: 0;
@@ -217,7 +219,7 @@
 }
 .seek-time-preview {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   bottom: calc(100% + 33px);
   left: clamp(min(54px, 50%), var(--seek-preview-position), max(50%, calc(100% - 54px)));
   width: min(108px, 100%);
@@ -247,6 +249,7 @@
 }
 .seek-load-rail {
   position: absolute;
+  z-index: 2;
   inset: 0 5px;
   pointer-events: none;
 }
@@ -304,6 +307,9 @@
   background: var(--accent);
 }
 .trial-seek-track .seek-chorus {
+  /* WebKitGTK can paint its range track above the separate rail. Keep
+     the dot above that track and below the input thumb and time preview. */
+  z-index: 1;
   top: 0;
   bottom: auto;
   width: 4px;
