@@ -1053,10 +1053,13 @@ impl MusicClient {
                         let detail = PlaylistApi::new(api).detail(&json!(id)).await?;
                         let ids =
                             super::playlist_batch::selected_ids(&id, &detail, &ids, &revision)?;
-                        let source = super::origin::named(
+                        let mut source = super::origin::named(
                             json!({"kind":"playlist","id":id}),
                             super::origin::resource_name(&detail, &id),
                         );
+                        if let Some(trial) = self.ordinary_playlist_trial(&selection_token, &id, &detail)? {
+                            source["trial_mode"] = json!(trial);
+                        }
                         Ok((ids, 0, quality, source))
                     }
                     PlaySelection::Playlist {
@@ -1106,7 +1109,11 @@ impl MusicClient {
                             json!({"kind":"playlist","id":id,"history_resource":history}),
                             super::origin::resource_name(detail, &id),
                         );
-                        if let Some(trial) = zone_trial {
+                        let trial = match zone_trial {
+                            Some(trial) => Some(trial),
+                            None => self.ordinary_playlist_trial(&selection_token, &id, detail)?,
+                        };
+                        if let Some(trial) = trial {
                             source["trial_mode"] = json!(trial);
                         }
                         if clears_playlist {

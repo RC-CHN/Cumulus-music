@@ -163,7 +163,7 @@ impl MusicClient {
         quality: Quality,
         selection: Option<(Vec<String>, String)>,
         attempt: u64,
-    ) -> Result<(Vec<Value>, Option<String>)> {
+    ) -> Result<(Vec<Value>, Value)> {
         let detail = self
             .session
             .run_for(token, |api, _| async {
@@ -190,11 +190,20 @@ impl MusicClient {
                 .map(Value::from)
                 .collect::<Vec<_>>()
         };
-        let name = super::origin::resource_name(&detail, id).map(str::to_owned);
-        let resources = self
+        let mut source = super::origin::named(
+            json!({"kind":"playlist","id":id}),
+            super::origin::resource_name(&detail, id),
+        );
+        let mut resources = self
             .online_queue_resources(token, &ids, quality, attempt)
             .await?;
-        Ok((resources, name))
+        if let Some(trial) = self.ordinary_playlist_trial(token, id, &detail)? {
+            source["trial_mode"] = json!(trial);
+            for resource in &mut resources {
+                resource["trial_mode"] = json!(trial);
+            }
+        }
+        Ok((resources, source))
     }
     async fn online_queue_resources(
         &self,
@@ -531,17 +540,13 @@ impl MusicClient {
             } => {
                 self.session.with_token(&token, |_| Ok(()))?;
                 let id = identifier(&json!(id))?;
-                let (resources, name) = self
+                let (resources, source) = self
                     .playlist_queue_resources(&token, &id, quality, selection, attempt)
                     .await?;
                 if resources.is_empty() {
                     return Err(Error::State("playlist has no online tracks"));
                 }
-                (
-                    resources,
-                    super::origin::named(json!({"kind":"playlist","id":id}), name.as_deref()),
-                    false,
-                )
+                (resources, source, false)
             }
             QueueCollection::Voice { id, .. } => {
                 // M3085: a context-menu next action uses just the selected
@@ -679,7 +684,8 @@ fn insert_collection(
     source: Value,
     downloaded: bool,
 ) -> QueueSnapshot {
-    insert_collection_bound(queue, resources, source, downloaded, false, false)
+    let rebind = super::playlist_trial::inferred_playlist_source(&source);
+    insert_collection_bound(queue, resources, source, downloaded, rebind, false)
 }
 
 pub(super) fn insert_zone_batch(

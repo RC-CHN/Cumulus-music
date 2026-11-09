@@ -506,7 +506,15 @@ impl MusicClient {
         let entry = if let Some(index) = existing {
             let entry = &mut queue.items[index];
             let rebind = search && entry.source != source;
-            if rebind || entry.resource["missing"] == true {
+            let qualified_playlist = super::playlist_trial::inferred_playlist_source(&source);
+            // When retaining the queue, selecting an already queued *other*
+            // song from this verified playlist keeps its slot but uses the
+            // newly selected playlist authorization context. Never reload the
+            // currently selected decoder just to change its annotation.
+            let rebind_playlist = qualified_playlist
+                && queue.current.as_ref() != Some(&entry.entry_id)
+                && (entry.source != source || entry.resource["trial_mode"] != source["trial_mode"]);
+            if rebind || rebind_playlist || entry.resource["missing"] == true {
                 entry.resource = resource;
                 entry.source = source;
             }
