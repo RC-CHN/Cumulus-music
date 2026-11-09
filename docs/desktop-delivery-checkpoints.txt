@@ -145,9 +145,12 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     交接，无真实上游写入，见 .build/ui-proof/phase217-lyric-toolbar/。
     79b73996 的正文基础回归另有 7 项歌词单元、144 项播放器测试和定向
     严格 Clippy；合并正文/工具栏/云贝核心的 83def1d9 又独立通过 24 项
-    相关 Rust 用例和严格 Clippy。悬赏请求及不明回执在 Rust 持久化，
-    正式桌面尚未开启扣费；Windows 缺真实本机 clientSign，且服务端实际
-    受理、扣费、重复和退款没有证据。见 playback-detail-lyric-follow.txt。
+    相关 Rust 用例和严格 Clippy。5315daaa 的普通与隔离合成宿主在实际
+    Linux WebView 通过 11 态，已合入候选 0083b614；截图及摘要存于
+    .build/ui-proof/phase221-lyric-bounty/receipt.json。三次合成回执经
+    Rust 持久化，零真实请求、零云贝消费。正式入口仍关闭：当前 Windows
+    配置无 clientSign，实服受理、重复、扣费和退款均未验证。
+    见 playback-detail-lyric-follow.txt。
   - 普通播放栏副歌标记按官方默认栏使用 4px、主题透明色和取整时钟；
     f0d9d8db 的生产前端及实际 Linux WebView 通过普通队列 3 态与 FM
     5 态，截图/像素与真实原生队列证据见 .build/ui-proof/phase219-chorus-clock/。

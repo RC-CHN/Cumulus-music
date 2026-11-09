@@ -275,3 +275,6 @@ clientSign（core/src/protocol/http/profile/windows.rs:27–31），Linux 回退
 伪造编号拒绝。三次合成发送在原生记录中按 1:6、2:8、2:7 留痕，确认前及取消后
 均未进入后端；零真实请求、零云贝消耗。Rust 的签名 EAPI 与 SQLite 重开测试独立
 确认负面边界。未测试 Windows 图形窗口或实服回执。
+5315daaa 实窗报告及 11 张截图已归档在
+.build/ui-proof/phase221-lyric-bounty/；receipt.json 记录各文件大小及
+SHA-256，对应整合提交 0083b614，未以归档作为其他功能的验证结果。
