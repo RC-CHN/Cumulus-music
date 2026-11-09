@@ -5,6 +5,7 @@ from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
+import re
 import sys
 
 from motion_smoke import launch
@@ -70,8 +71,14 @@ def main():
     states = [read(run / f'{label}.json') for label in STAGES]
     done = read(run / 'complete.json')
     assert done['ok'] and done['states'] == len(STAGES)
+    frontend_entry = done['frontendEntry']
+    assert re.fullmatch(r'index-[a-zA-Z0-9_-]+\.js', frontend_entry)
     if args.expected_app:
-        assert done.get('frontendApp') == args.expected_app, ('wrong embedded frontend', done.get('frontendApp'))
+        assets = Path(__file__).resolve().parents[2] / 'frontend/dist/assets'
+        entry_contents = (assets / frontend_entry).read_text(encoding='utf-8')
+        imports = set(re.findall(r'App-[a-zA-Z0-9_-]+\.js', entry_contents))
+        assert imports == {args.expected_app}, ('wrong embedded frontend entry', frontend_entry, imports)
+        assert (assets / args.expected_app).is_file()
     assert states[6]['trustedDown'] and states[6]['insertBefore'] == 3 and states[7]['trustedUp']
     assert done['trustedDown'] and done['trustedUp']
     paint = read(run / f'paint-{STAGES[6]}.json')
@@ -124,7 +131,7 @@ def main():
     assert locale['numericLocale'] == 'C' and locale['messageLocale'] not in ('C', 'POSIX')
     result = dict(ok=True, actualWebView=True, actualNativePlayback=True,
                   trustedPointer=True, states=len(STAGES), screenshots=len(STAGES),
-                  frontendApp=done.get('frontendApp'),
+                  frontendEntry=frontend_entry, frontendApp=args.expected_app,
                   pausedPlaybackPreserved=True, originalFilesPreserved=True,
                   localQueueSourceNavigated=True, sourceLabel=states[8]['sourceLabel'],
                   menuQueueOrders=[['anchor', 'local'], ['anchor', '702', 'local'],

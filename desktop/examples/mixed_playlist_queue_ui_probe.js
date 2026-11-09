@@ -258,11 +258,13 @@
       !one('.page-enter-active,.page-leave-active'), 'source menu returns to the originating mixed playlist');
     await checkpoint('ux_10_followed_playlist_source', dropped);
     require(!originMismatches.length, 'mixed queue provenance changed while following its source');
-    const frontendApp = performance.getEntriesByType('resource')
-      .map(({ name }) => new URL(name).pathname.split('/').pop())
-      .find((name) => /^App-[a-zA-Z0-9_-]+\.js$/.test(name));
+    // WebKit does not report custom-protocol dynamic chunks via resource
+    // timing. Record the content-addressed entry it actually loaded instead.
+    const entryUrl = one('script[type="module"][src]')?.src;
+    const frontendEntry = entryUrl && new URL(entryUrl).pathname.split('/').pop();
+    require(/^index-[a-zA-Z0-9_-]+\.js$/.test(frontendEntry ?? ''), 'production Vite entry is loaded');
     await emit('complete', { ok: true, localId, anchorId, trustedDown, trustedUp, states: 10,
-      frontendApp, ...compact(await state(), await queue()) });
+      frontendEntry, ...compact(await state(), await queue()) });
   } catch (error) {
     await emit('failed', { step, error: String(error), setupIssue, originMismatches, playlist: visibleRows(),
       menus: all('.action-menu button').map((button) => ({ text: button.textContent.trim(), disabled: button.disabled })) });
