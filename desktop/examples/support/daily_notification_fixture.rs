@@ -54,7 +54,7 @@ pub fn signed_reply(path: &str, args: &Value) -> Result<Value> {
             assert_eq!(args, &json!({}));
             let data = match mode.as_str() {
                 "empty" => json!({"songIdList":[],"songNum":0,"returnSongPlaylistId":0}),
-                "create_only" => json!({"songIdList":[3,5],"songNum":2,"returnSongPlaylistId":0}),
+                mode if mode.starts_with("no_id_") => json!({"songIdList":[3,5],"songNum":2}),
                 _ => {
                     json!({"songIdList":[3,5],"songNum":2,"returnSongPlaylistId":COPYRIGHT_PLAYLIST})
                 }
@@ -83,7 +83,7 @@ pub fn signed_reply(path: &str, args: &Value) -> Result<Value> {
 }
 
 pub fn seed_playback(client: &MusicClient) -> Result<()> {
-    if copyright_case().as_deref() != Some("play") {
+    if !matches!(copyright_case().as_deref(), Some("play" | "no_id_play")) {
         return Ok(());
     }
     tauri::async_runtime::block_on(async {
@@ -109,7 +109,10 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Value> {
         "/api/user/setting" => {
             assert_eq!(args, &json!({}));
             assert!(!cached);
-            let privacy = if mode == "privacy" || mode == "copyright_play" {
+            let privacy = if matches!(
+                mode.as_str(),
+                "privacy" | "copyright_play" | "copyright_no_id_play"
+            ) {
                 2
             } else {
                 0

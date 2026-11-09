@@ -8,7 +8,8 @@ from daily_notification_smoke import read, signed_ready_before_page
 from motion_smoke import launch
 from search_signed_trace import assignment_arguments
 
-CASES = ("existing", "play", "settings", "snooze", "empty", "error", "create_only", "fullscreen")
+CASES = ("no_id_play", "no_id_snooze", "no_id_settings", "no_id_close",
+         "existing", "play", "settings", "snooze", "empty", "error", "fullscreen")
 POPUP = "/api/pc/popup/copyright"
 SONGS = "/api/v3/song/detail"
 DAILY = "/api/v3/discovery/recommend/songs"
@@ -21,9 +22,11 @@ def verify(directory, mode, expected, screenshots):
     output = directory / "first"
     complete = read(output / "complete.json")
     assert complete["ok"] and complete["copyrightMode"] == mode
-    labels = (["daily_fallback"] if mode in {"empty", "error"} else
-              ["suppressed"] if mode in {"create_only", "fullscreen"} else
-              ["offered", "playing" if mode == "play" else mode])
+    no_id = mode.startswith("no_id_")
+    action = mode.removeprefix("no_id_")
+    labels = (["daily_fallback"] if action in {"empty", "error"} else
+              ["suppressed"] if action == "fullscreen" else
+              ["offered", "playing" if action == "play" else action])
     files = sorted(output.glob("ux_*.json"))
     assert [path.stem for path in files] == [f"ux_{i:02}_{label}" for i, label in enumerate(labels, 1)]
     stages = dict(zip(labels, map(read, files)))
@@ -33,40 +36,42 @@ def verify(directory, mode, expected, screenshots):
         signed_ready_before_page(frame["signedSearch"], expected)
     fixture = complete["dailyNotificationFixture"]
     wire = fixture["copyrightWire"]
-    expected_paths = [] if mode == "fullscreen" else [POPUP] if mode in {"empty", "error"} else [POPUP, SONGS]
+    expected_paths = [] if action == "fullscreen" else [POPUP] if action in {"empty", "error"} else [POPUP, SONGS]
     assert [row["path"] for row in wire] == expected_paths, wire
     assert all(row["signedPcContextVerified"] and row["sameAccountCredential"] for row in wire)
     if wire:
         assert wire[0]["args"] == {}
-        assert wire[0]["responseCode"] == (500 if mode == "error" else 200)
+        assert wire[0]["responseCode"] == (500 if action == "error" else 200)
     if len(wire) == 2:
         assert wire[1]["args"] == {"c": '[{"id":"3","v":0},{"id":"5","v":0}]', "trialMode": "-1"}
         assert wire[1]["responseCode"] == 200
     calls = fixture["calls"]
     assert all(row["path"] in {DAILY, SETTINGS, MEDIA, PLAYLIST} for row in calls), calls
     settings = [row for row in calls if row["path"] == SETTINGS]
-    assert len(settings) == (1 if mode in {"settings", "empty", "error"} else 0), settings
-    if mode in {"empty", "error"}:
+    assert len(settings) == (1 if action in {"settings", "empty", "error"} else 0), settings
+    if action in {"empty", "error"}:
         assert stages["daily_fallback"]["noticeKind"] == "daily"
         assert len(fixture["history"]["shown"]) == 1 and fixture["copyrightHistory"] is None
-    elif mode in {"create_only", "fullscreen"}:
+    elif action == "fullscreen":
         assert stages["suppressed"]["noticeKind"] is None
         assert fixture["history"] is None and fixture["copyrightHistory"] is None
     else:
         first = stages["offered"]
         assert first["noticeKind"] == "copyright" and first["songs"] == ["合成歌曲 3", "合成歌曲 5"]
         assert first["safeArt"] == "https://p1.music.126.net/fixture-copyright.jpg?param=320y320"
+        assert first["hasPlaylistAction"] is (not no_id) and not first["hasCreateAction"]
+        assert first["unsupportedDetailsRejected"] is no_id
         history = fixture["copyrightHistory"]
         assert len(history["shown"]) == 1 and fixture["history"] is None
-        assert (history["snoozed_at"] is not None) is (mode == "snooze")
-        assert history["enabled"] is (mode != "settings")
+        assert (history["snoozed_at"] is not None) is (action == "snooze")
+        assert history["enabled"] is (action != "settings")
         assert stages[labels[-1]]["noticeKind"] is None
-    if mode == "existing":
-        assert [row["args"]["id"] for row in calls if row["path"] == PLAYLIST] == ["81"]
-        assert stages[mode]["heading"] == "合成回归歌单"
-    if mode == "settings":
-        assert stages[mode]["hasCopyrightSetting"] is False and stages[mode]["hasDailySetting"] is True
-    if mode == "play":
+    assert [row["args"]["id"] for row in calls if row["path"] == PLAYLIST] == (["81"] if action == "existing" else [])
+    if action == "existing":
+        assert stages[action]["heading"] == "合成回归歌单"
+    if action == "settings":
+        assert stages[action]["hasCopyrightSetting"] is False and stages[action]["hasDailySetting"] is True
+    if action == "play":
         initial, result = stages["offered"], stages["playing"]
         assert [row["track"]["id"] for row in initial["nativeQueue"]["tracks"]] == ["1", "2", "3", "4"]
         assert initial["nativePlayer"]["state"] == "playing" and initial["nativePlayer"]["track"]["id"] == "2"
@@ -77,12 +82,12 @@ def verify(directory, mode, expected, screenshots):
         assert [i for i, source in enumerate(fixture["sources"]) if source.get("scene") == "copyrightReversionPush"] == [2,3]
         assert any(call["path"] == MEDIA and call["args"]["trialMode"] == -1
                    and json.loads(call["args"]["ids"]) in ([3],["3"]) for call in calls), calls
-    elif mode != "play":
+    else:
         assert complete["nativePlayer"]["state"] == "idle"
         assert not any(row["path"] == MEDIA for row in calls)
     preflight = read(output / "daily-preflight.json")
     assert preflight[0]["armed"] is True, preflight
-    if mode == "fullscreen":
+    if action == "fullscreen":
         assert preflight[-1]["fullscreen"] or preflight[-1]["fullscreenGeometry"], preflight
     else:
         assert preflight[-1]["focused"] and not preflight[-1]["fullscreen"], preflight
@@ -93,7 +98,8 @@ def verify(directory, mode, expected, screenshots):
     assert images == (len(labels) if screenshots else 0)
     return dict(mode=mode, states=labels, screenshots=images, copyrightWire=wire,
                 calls=[row["path"] for row in calls], actualWebView=True,
-                nativeNullPlayback=mode=="play", realMusicRequests=0, realAccountWrites=0)
+                nativeNullPlayback=action=="play", noPlaylistIdFixture=no_id,
+                realMusicRequests=0, realAccountWrites=0)
 
 
 def main():
