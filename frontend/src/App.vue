@@ -298,6 +298,8 @@ import type {
   VoiceSongSelectionAction,
 } from './services/voiceSongs';
 import { usePlaylists } from './composables/usePlaylists';
+import { useMixedPlaylistReorder } from './composables/useMixedPlaylistReorder';
+import { mixedDraggedRows } from './services/playlistMixedOrder';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { createPlayerResume } from './services/playerResume';
@@ -4019,9 +4021,93 @@ const playlistSelectionScope = computed(() =>
   playlistSongsActive.value &&
   result.value?.playlist?.id === page.value.id &&
   result.value.revision
-    ? `${account.value.epoch}:${page.value.id}:${result.value.revision}`
+    ? `${account.value.epoch}:${page.value.id}:${result.value.revision}:${result.value.playlistLocal?.revision ?? ''}`
     : undefined,
 );
+const mixedReorderVisit = computed<
+  { id: string; epoch: string; route: Extract<Page, { kind: 'playlist' }> } | undefined
+>((previous) => {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  if (
+    !signedIn.value ||
+    route.kind !== 'playlist' ||
+    route.zonePlaylistReceipt ||
+    !playlistSongsActive.value
+  )
+    return;
+  const shown = result.value;
+  if (!shown) return previous?.route === route && previous.epoch === epoch ? previous : undefined;
+  if (
+    shown.playlist?.id !== route.id ||
+    !shown.playlist.owned ||
+    shown.playlist.favorite ||
+    !shown.playlistLocal?.hasMembers
+  )
+    return;
+  return previous?.route === route && previous.epoch === epoch
+    ? previous
+    : { id: route.id, epoch, route };
+});
+const mixedReorder = useMixedPlaylistReorder(
+  core,
+  () => mixedReorderVisit.value,
+  async (visit, focusId) => {
+    const active = () => mixedReorderVisit.value === visit;
+    const before = document.activeElement;
+    const ownsFocus =
+      !!focusId && before?.closest('.track-row')?.getAttribute('data-track-id') === focusId;
+    const updated = await music.reloadReorderedPlaylist(active);
+    if (updated && ownsFocus && focusId) {
+      await nextTick();
+      if (
+        active() &&
+        (document.activeElement === document.body || document.activeElement === before)
+      )
+        playlistTrackTable.value?.focusAfterReorder(focusId);
+    }
+    return updated;
+  },
+  () => void music.bootstrap(false),
+);
+const mixedReorderScope = computed(() => {
+  const visit = mixedReorderVisit.value;
+  const shown = result.value;
+  const tracks = playlistTrackSearch.value.tracks;
+  if (
+    !visit ||
+    !shown?.playlistLocal ||
+    shown.playlistLocal.hasUnboundLegacy ||
+    !mixedReorder.ready.value ||
+    loading.value ||
+    !tracks.length ||
+    localPlaylistMember.value ||
+    playlistDialog.value
+  )
+    return;
+  return { visit, shown, tracks };
+});
+function reorderVisibleMixed(
+  scope: object,
+  picked: ReadonlySet<string>,
+  dragged: string,
+  gap: number,
+) {
+  const current = mixedReorderScope.value;
+  if (
+    !current ||
+    scope !== current ||
+    !Number.isInteger(gap) ||
+    gap < 0 ||
+    gap > current.tracks.length
+  )
+    return;
+  const displayed = new Map(current.tracks.map((track) => [track.id, track]));
+  if (displayed.size !== current.tracks.length) return;
+  const selected = mixedDraggedRows(current.shown, displayed, picked, dragged);
+  const revision = current.shown.playlistLocal?.revision;
+  if (selected && revision) void mixedReorder.send(revision, selected, gap, dragged);
+}
 type PlaylistDropRefresh = {
   page: Extract<Page, { kind: 'playlist' }>;
   epoch: string;
@@ -6612,6 +6698,49 @@ onUnmounted(() => {
                       <Icon name="list-add" />
                     </button>
                   </div>
+                  <div
+                    v-if="
+                      mixedReorderVisit &&
+                      (mixedReorder.pending.value ||
+                        mixedReorder.busy.value === 'send' ||
+                        mixedReorder.message.value)
+                    "
+                    class="playlist-mixed-order-status"
+                    role="status"
+                  >
+                    <span v-if="mixedReorder.busy.value === 'send'">正在保存歌单顺序…</span>
+                    <span v-else-if="mixedReorder.pending.value">
+                      排序结果待确认，本机曲目位置未更新。{{ mixedReorder.message.value }}
+                    </span>
+                    <span v-else>{{ mixedReorder.message.value }}</span>
+                    <button
+                      v-if="mixedReorder.pending.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedReorder.busy.value"
+                      @click="mixedReorder.verify"
+                    >
+                      {{ mixedReorder.busy.value === 'verify' ? '正在核对…' : '核对结果' }}
+                    </button>
+                    <button
+                      v-else-if="mixedReorder.needsRefresh.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedReorder.busy.value"
+                      @click="mixedReorder.retryRefresh"
+                    >
+                      重新读取歌单
+                    </button>
+                    <button
+                      v-else-if="!mixedReorder.known.value && mixedReorder.message.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedReorder.busy.value"
+                      @click="mixedReorder.read()"
+                    >
+                      读取排序状态
+                    </button>
+                  </div>
                   <TrackTable
                     v-if="playlistTrackSearch.tracks.length"
                     :key="recommendationScrollScope"
@@ -6623,6 +6752,9 @@ onUnmounted(() => {
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"
                     :playlist-selection-scope="playlistSelectionScope"
+                    :mixed-reorder-scope="mixedReorderScope"
+                    :preserve-scroll-on-refresh="!!mixedReorderVisit"
+                    @mixed-reorder="reorderVisibleMixed"
                     :queue-drop-enabled="canDropPlaylistSong"
                     @queue-drag="startPlaylistQueueDrop"
                     :tracks="playlistTrackSearch.tracks"

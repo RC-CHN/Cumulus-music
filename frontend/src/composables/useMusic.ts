@@ -368,6 +368,58 @@ export function useMusic(
       if (current === request) loading.value = false;
     }
   }
+  async function reloadReorderedPlaylist(owns: () => boolean) {
+    const target = page.value;
+    const before = result.value;
+    if (
+      !owns() ||
+      target.kind !== 'playlist' ||
+      target.zonePlaylistReceipt ||
+      before?.playlist?.id !== target.id
+    )
+      return false;
+    const current = ++request;
+    const epoch = account.value.epoch;
+    const live = () =>
+      current === request && page.value === target && account.value.epoch === epoch && owns();
+    loading.value = true;
+    error.value = '';
+    try {
+      let next: TrackPage | undefined;
+      do {
+        const offset = next?.tracks.length ?? 0;
+        const response = await core.playlistPage(target.id, {
+          offset,
+          limit: 100,
+          revision: next?.revision ?? null,
+          ...(next?.playlistLocal ? { localRevision: next.playlistLocal.revision } : {}),
+        });
+        if (!live() || response.epoch !== epoch) return false;
+        const incoming = response.value;
+        if (
+          incoming.playlist?.id !== target.id ||
+          incoming.offset !== offset ||
+          !incoming.revision ||
+          !incoming.playlistLocal ||
+          (incoming.more && !incoming.tracks.length) ||
+          (next &&
+            (incoming.revision !== next.revision ||
+              incoming.playlistLocal.revision !== next.playlistLocal?.revision))
+        )
+          throw { code: 'snapshot_changed', message: '歌单已变化，请重新读取' };
+        next = next
+          ? mergePlaylistPages(next, incoming, [...next.tracks, ...incoming.tracks])
+          : incoming;
+      } while (next.more && next.tracks.length < before.tracks.length);
+      result.value = next;
+      return true;
+    } catch (e) {
+      if (live()) handle(e);
+      return false;
+    } finally {
+      if (current === request) loading.value = false;
+    }
+  }
   function retryDailyCache() {
     if (!loading.value && page.value.kind === 'daily' && result.value?.daily?.cached)
       return load(false, true);
@@ -648,6 +700,7 @@ export function useMusic(
     mergeVerifiedPlaylistLikes,
     load,
     retryDailyCache,
+    reloadReorderedPlaylist,
     bootstrap,
     navigate: (next: Page) => navigate(next),
     openSubscriberProfile: (id: string, token: number) =>

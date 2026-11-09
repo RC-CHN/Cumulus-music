@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { QueueDropSource, QueueView } from '../services/player';
 import { rowBoundary, rowTop, type RowExpansion } from '../services/virtualWindow';
 
-function suppressReleasedClick(owner: Element, pointerId: number) {
+export function suppressReleasedClick(owner: Element, pointerId: number) {
   const row = owner.closest('tr, .track-row');
   if (!row) return;
   function click(event: MouseEvent) {

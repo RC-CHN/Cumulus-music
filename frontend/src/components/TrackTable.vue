@@ -13,7 +13,8 @@ import {
   playlistSelectionNeighbor,
 } from '../services/playlistDragSelection';
 import { useVirtualRows } from '../composables/useVirtualRows';
-import { expandedRows, rowExtent, rowTop } from '../services/virtualWindow';
+import { useMixedPlaylistDrag } from '../composables/useMixedPlaylistDrag';
+import { expandedRows, rowBoundary, rowExtent, rowTop } from '../services/virtualWindow';
 import type { TrackView } from '../services/contracts';
 import type { AlbumDurationOrder } from '../services/albumDurationSort';
 import type { SearchSongTableHint } from '../services/search';
@@ -35,6 +36,7 @@ const props = defineProps<{
   navigable?: boolean;
   preserveScrollOnRefresh?: boolean;
   queueDropEnabled?: boolean;
+  mixedReorderScope?: object;
   playlistSelectionScope?: string;
   selectionLabel?: string;
   locateIndex?: number;
@@ -50,6 +52,7 @@ const emit = defineEmits<{
   artist: [id: string];
   album: [id: string];
   scrollEdge: [scope: string, scrolled: boolean, overflow: number];
+  mixedReorder: [scope: object, selected: ReadonlySet<string>, dragged: string, gap: number];
   queueDrag: [
     event: PointerEvent,
     rows: { track: TrackView; index: number }[],
@@ -94,6 +97,12 @@ const displayedIndexes = computed(() => {
   return indexes;
 });
 let collapse: string | undefined;
+const mixedDrag = useMixedPlaylistDrag({
+  container: () => scroller.value,
+  scope: () => props.mixedReorderScope,
+  boundary: (offset) => rowBoundary(offset, props.tracks.length, rowHeight, searchRows.value),
+  scroll,
+});
 watch(
   () => props.playlistSelectionScope,
   () => {
@@ -145,8 +154,20 @@ function queueDrag(event: PointerEvent) {
     event.button === 2,
   );
   if (event.button === 0) element.focus({ preventScroll: true });
-  if (event.button !== 0 || !props.queueDropEnabled) return;
+  if (event.button !== 0) return;
   const captured = selection.value;
+  const scope = props.mixedReorderScope;
+  const shown = props.tracks;
+  if (scope) {
+    // Register first so Escape cancels this gesture as well as the queue
+    // destination, which can stop the other key listeners.
+    mixedDrag.start(
+      event,
+      () => captured === selection.value && shown === props.tracks,
+      (gap) => emit('mixedReorder', scope, captured.ids, track.id, gap),
+    );
+  }
+  if (!props.queueDropEnabled) return;
   const indexes =
     selected.value.size > 1
       ? [...selected.value].map((id) => displayedIndexes.value.get(id) ?? -1)
@@ -226,7 +247,7 @@ function selectionKey(event: KeyboardEvent) {
 }
 function preventNativeDrag(event: DragEvent) {
   if (
-    props.queueDropEnabled &&
+    (props.queueDropEnabled || props.mixedReorderScope) &&
     event.target instanceof Element &&
     event.target.closest('.track-row')
   )
@@ -263,7 +284,16 @@ async function locate() {
     ?.querySelector<HTMLElement>(`[aria-rowindex="${index + 2}"]`)
     ?.focus({ preventScroll: true });
 }
-defineExpose({ locate, restoreScroll });
+function focusAfterReorder(id: string) {
+  const index = displayedIndexes.value.get(id);
+  if (index === undefined) {
+    scroller.value?.focus({ preventScroll: true });
+    return;
+  }
+  selection.value = playlistRowRelease(id);
+  void focusRow(index);
+}
+defineExpose({ locate, restoreScroll, focusAfterReorder });
 </script>
 <template>
   <div
@@ -295,6 +325,7 @@ defineExpose({ locate, restoreScroll });
     <div
       ref="scroller"
       class="track-scroll"
+      :class="{ 'playlist-reorder-scroll': mixedReorderScope }"
       @scroll.passive="scroll"
       :tabindex="playlistSelectionScope ? 0 : undefined"
       @focus.self="focusSelection"
@@ -303,6 +334,12 @@ defineExpose({ locate, restoreScroll });
       @click="plainRelease"
       @dragstart="preventNativeDrag"
     >
+      <div
+        v-if="mixedDrag.gap.value !== undefined"
+        class="playlist-reorder-marker"
+        :style="{ top: `${Math.max(0, rowOffset(mixedDrag.gap.value) - 2)}px` }"
+        aria-hidden="true"
+      />
       <div :style="{ height: `${rowOffset(start)}px` }" aria-hidden="true" />
       <TrackRow
         v-for="(track, index) in rows"
@@ -377,6 +414,18 @@ defineExpose({ locate, restoreScroll });
 </template>
 
 <style scoped>
+.playlist-reorder-scroll {
+  position: relative;
+}
+.playlist-reorder-marker {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
 .track-duration-sort {
   display: inline-flex;
   gap: 3px;

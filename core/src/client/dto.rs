@@ -300,6 +300,7 @@ pub struct TrackPage {
 pub struct PlaylistLocalPage {
     pub revision: String,
     pub has_members: bool,
+    pub has_unbound_legacy: bool,
     pub rows: std::collections::BTreeMap<String, String>,
 }
 
