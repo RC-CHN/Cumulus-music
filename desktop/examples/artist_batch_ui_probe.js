@@ -7,6 +7,8 @@
   const button = (text, root = document) => [...root.querySelectorAll('button')]
     .find((node) => node.textContent.trim() === text);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const paint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const queueButton = '添加所选至播放列表';
   async function wait(test, label) {
     for (let index = 0; index < 210; index++) {
       const result = await test();
@@ -14,6 +16,11 @@
       await sleep(70);
     }
     throw Error(label);
+  }
+  async function capture(stage, facts) {
+    await paint();
+    await emit(stage, facts);
+    await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'capture ' + stage);
   }
   try {
     (await wait(() => one('.track-credit-links button'), 'synthetic artist credit')).click();
@@ -27,11 +34,14 @@
     async function open() {
       more.focus();
       more.click();
-      (await wait(() => button('批量操作'), 'artist batch action')).click();
+      (await wait(() => {
+        const menu = one('.action-menu:not([inert])');
+        return menu && button('批量操作', menu);
+      }, 'artist batch action')).click();
       return wait(() => one('dialog.artist-track-batch[open]'), 'batch dialog');
     }
     let batch = await open();
-    if (['播放所选歌曲', '添加到歌单', '下载所选歌曲'].some((name) => !button(name, batch).disabled))
+    if (['播放所选歌曲', queueButton, '添加到歌单', '下载所选歌曲'].some((name) => !button(name, batch)?.disabled))
       throw Error('empty selection allowed an operation');
     const rows = batch.querySelectorAll('[data-batch-index]');
     if (rows.length < 3 || rows.length > 20) throw Error('bounded loaded track selection');
@@ -87,22 +97,59 @@
     });
     await wait(async () => {
       const snapshot = await invoke('player_snapshot', { epoch });
-      return snapshot.state === 'playing' && snapshot.track?.id === '3';
+      return snapshot.state === 'playing' && snapshot.track?.id === '3' && snapshot.position > .35;
     }, 'loaded queue baseline');
-    const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
-    if (paused.state !== 'paused') throw Error('queue baseline must be paused');
+    await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    let prior;
+    const paused = await wait(async () => {
+      const view = await invoke('player_snapshot', { epoch });
+      const settled = prior && prior.position === view.position && prior.playId === view.playId;
+      prior = view;
+      return view.state === 'paused' && view.position > .3 && settled && view;
+    }, 'native paused baseline clock settles');
     const queueBefore = await invoke('player_queue', { epoch });
     let staleAccepted = true;
     try {
       await invoke('player_action', { epoch, action: {
-        kind: 'queue_artist_songs', quality: 'standard', expected_queue_revision: paused.queueRevision,
-        pages: [{ query: { kind: 'artist_songs', id: '12', offset: 0, limit: 20 }, revision: 'stale' }],
+        kind: 'queue_artist_songs_batch', ids: ['2'], quality: 'standard',
+        expected_queue_revision: paused.queueRevision, pages: [{ query: { kind: 'artist_songs', id: '12', offset: 0, limit: 20 }, revision: 'stale' }],
       } });
     } catch {
       staleAccepted = false;
     }
     if (staleAccepted || (await invoke('player_queue', { epoch })).revision !== queueBefore.revision)
       throw Error('stale catalog page changed the queue');
+    const prepareSelectedQueue = async () => {
+      const dialog = await open();
+      for (const index of [3, 1]) dialog.querySelector(`[data-batch-index="${index}"] input`).click();
+      await wait(() => dialog.textContent.includes('已选 2 首'), 'reversed selected songs');
+      const order = [...dialog.querySelectorAll('footer button')].map((item) => item.textContent.trim());
+      if (order.join(',') !== ['播放所选歌曲', queueButton, '下载所选歌曲', '添加到歌单'].join(','))
+        throw Error('artist batch action order changed');
+      return wait(() => {
+        const action = button(queueButton, dialog);
+        const animations = dialog.getAnimations();
+        return action && !action.disabled && !dialog.inert &&
+          !animations.some((animation) => animation.pending || animation.playState === 'running') && action;
+      }, 'selected queue action available');
+    };
+    let queueSelected = await prepareSelectedQueue();
+    await capture('ux_artist_batch_queue_selection', { count: 2 });
+    queueSelected.click();
+    const selectedQueue = await wait(async () => {
+      const queue = await invoke('player_queue', { epoch });
+      return queue.tracks.map((entry) => entry.track.id).join(',') === '91,3,2,4,1,92' && queue;
+    }, 'only selected songs insert in page order after the current song');
+    const selectedPaused = await invoke('player_snapshot', { epoch });
+    if (selectedPaused.state !== 'paused' || selectedPaused.playId !== paused.playId ||
+        selectedPaused.position !== paused.position || selectedQueue.current !== queueBefore.current ||
+        selectedQueue.tracks[4].entryId !== queueBefore.tracks[2].entryId)
+      throw Error('selected artist queue changed the paused decoder, clock or original row identity');
+    await wait(() => document.activeElement === more, 'selected queue restores the exact More trigger');
+    await capture('ux_artist_batch_queued', {
+      queue: selectedQueue.tracks.map((entry) => entry.track.id),
+      position: selectedPaused.position, retainedPlayId: true, restoredFocus: true,
+    });
     more.focus();
     more.click();
     const add = await wait(() => {
@@ -126,9 +173,23 @@
         unchanged.position !== paused.position || queueAfter.current !== queueBefore.current ||
         queueAfter.tracks[2].entryId !== queueBefore.tracks[2].entryId)
       throw Error('artist insertion changed transport or duplicated an existing song');
+    await invoke('player_action', { epoch, action: {
+      kind: 'queue_for', expected_queue_revision: queueAfter.revision, edit: { kind: 'clear' },
+    } });
+    await wait(async () => !(await invoke('player_queue', { epoch })).tracks.length,
+      'clear only the synthetic queue');
+    queueSelected = await prepareSelectedQueue();
+    queueSelected.click();
+    const first = await wait(async () => {
+      const player = await invoke('player_snapshot', { epoch });
+      const queue = await invoke('player_queue', { epoch });
+      return player.state === 'playing' && player.track?.id === '2' && player.position > .2 &&
+        queue.tracks.map((row) => row.track.id).join(',') === '2,4' && player;
+    }, 'empty queue starts only the first of the selected songs');
+    await capture('ux_artist_batch_queue_empty', { playing: true, position: first.position });
     await emit('complete', {
       ok: true, artistBatchVerified: true, selectedPlayback: true, loadedQueueInsertion: true,
-      writesSubmitted: false,
+      selectedQueueInsertion: true, selectedEmptyQueueStarted: true, writesSubmitted: false,
     });
   } catch (error) {
     await emit('failed', { error: String(error?.message ?? error) });
