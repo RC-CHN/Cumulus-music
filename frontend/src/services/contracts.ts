@@ -438,7 +438,12 @@ export interface TrackPage {
   offset: number;
   more: boolean;
   playlist: PlaylistView | null;
-  playlistLocal?: { revision: string; hasMembers: boolean; rows: Record<string, string> };
+  playlistLocal?: {
+    revision: string;
+    hasMembers: boolean;
+    hasUnboundLegacy?: boolean;
+    rows: Record<string, string>;
+  };
   daily?: { cached: boolean; showFreeTag: boolean; birthdayToday?: boolean };
   styleTags?: StyleCategory;
 }

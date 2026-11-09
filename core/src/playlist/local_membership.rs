@@ -1,5 +1,6 @@
 //! Device-only membership for regular owned playlists. Remote details still
 //! own catalogue membership and never authorize a local file by numeric ID.
+pub(super) mod reorder;
 use super::{PlaylistApi, snapshot};
 use crate::{
     Error, Result,
@@ -7,6 +8,9 @@ use crate::{
     library::LocalLibrary,
     protocol::api::identifier,
     storage::{OperationLock, StateStore},
+};
+pub use reorder::{
+    PlaylistMixedOrderRow, PlaylistMixedReorderEvidence, PlaylistMixedReorderReceipt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -16,7 +20,7 @@ const RECORDS: &str = "playlist-local-membership-v1";
 const MAX_REMOTE: usize = 100_000; // Complete PC v6 detail contract.
 const MAX_LOCAL: usize = 50_000;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaylistLocalRef {
     pub id: String,
@@ -63,7 +67,7 @@ pub struct PlaylistLocalMutation {
     pub membership: PlaylistLocalMembership,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct LocatedLocal {
     position: usize,
@@ -239,6 +243,7 @@ impl PlaylistLocalStore {
         // in this profile cannot race the fresh ownership/order check.
         let playlist_lock =
             OperationLock::acquire(self.store.directory(), &owner, super::service::JOURNAL)?;
+        reorder::require_settled(&self.store, &owner, id)?;
         let detail = self
             .session
             .run_for(token, |api, _| async move {

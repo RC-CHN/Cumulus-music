@@ -131,6 +131,7 @@ impl MusicClient {
                 playlist_local: Some(PlaylistLocalPage {
                     revision: membership.revision,
                     has_members: total != tracks.len(),
+                    has_unbound_legacy: tracks.iter().any(|row| row["v"].as_i64() == Some(-1)),
                     rows: refs,
                 }),
                 daily: None,

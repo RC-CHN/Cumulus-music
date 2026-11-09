@@ -16,7 +16,8 @@ pub use external_input::{
 };
 pub use local_membership::{
     PlaylistLocalChange, PlaylistLocalMembership, PlaylistLocalMutation, PlaylistLocalRef,
-    PlaylistLocalRow, PlaylistLocalStore,
+    PlaylistLocalRow, PlaylistLocalStore, PlaylistMixedOrderRow, PlaylistMixedReorderEvidence,
+    PlaylistMixedReorderReceipt,
 };
 pub(crate) use service::GroupDownloadPlaylistProof;
 pub use service::PlaylistService;

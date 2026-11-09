@@ -1,3 +1,6 @@
+#[path = "playlist_local_membership/reorder.rs"]
+mod reorder;
+
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback_support;
@@ -94,7 +97,7 @@ impl Api for Server {
 
 fn open(
     path: &Path,
-    api: Arc<Server>,
+    api: Arc<dyn Api>,
     uid: Option<u32>,
 ) -> (MusicClient, Arc<AccountSession>, LocalLibrary) {
     let registry = ProfileRegistry::open(path, ApiOrigin::Pc).unwrap();
