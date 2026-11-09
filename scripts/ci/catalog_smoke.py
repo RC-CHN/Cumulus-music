@@ -542,6 +542,13 @@ def main():
         appended = stages['paused_append']
         assert appended['player']['state'] == 'paused' and appended['player']['track']['id'] == '900'
         assert appended['player']['position'] > 4
+        baseline, immediate = appended['appendBefore'], appended['appendAfter']
+        assert baseline['state'] == 'paused' and baseline['trackId'] == '900'
+        assert not baseline['nativeSeeking'] and baseline['error'] is None
+        assert immediate['trackId'] == '900'
+        assert baseline['queueRevision'] != immediate['queueRevision'] == appended['player']['queueRevision']
+        assert all(baseline[key] == immediate[key] == appended['player'][key]
+                   for key in ('state', 'position', 'entryId', 'playId', 'nativeSeeking', 'error'))
         assert [entry['track']['id'] for entry in appended['queue']['tracks']] == ['900','12','14','11','13','901']
         assert stages['queue_source_ready']['sourceFocused'] is True
         focus = stages['queue_source_opened']['focus']

@@ -38,8 +38,13 @@
   const act = (action) => invoke('player_action', { epoch, action });
   const queueIds = (view) => view.tracks.map((entry) => entry.track.id).join(',');
   const states = [];
-  let transportAttempt, sourceFocus;
-  async function capture(name, playing = false) {
+  let transportAttempt, sourceFocus, appendBefore, appendAfter;
+  const clock = (state) => ({
+    state: state.state, trackId: state.track?.id, playId: state.playId, entryId: state.entryId,
+    queueRevision: state.queueRevision, position: state.position, nativeSeeking: state.nativeSeeking,
+    error: state.error,
+  });
+  async function capture(name, playing = false, extra = {}) {
     await wait(() => !one('.page-enter-active,.page-leave-active,.catalog-tab-enter-active,.menu-leave-active'), 'layout settled');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const target = header(), box = target.getBoundingClientRect();
@@ -52,7 +57,7 @@
     window.__CUMULUS_ALBUM_CAPTURE_ACK__ = '';
     await emit(stage, {
       name, playing, order: order(), rows: rows(), focused: document.activeElement === target,
-      player: await player(), queue: await queue(),
+      player: await player(), queue: await queue(), ...extra,
     });
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'native capture acknowledgement');
   }
@@ -149,15 +154,40 @@
     await invoke('play_selection', { epoch, selection: {
       kind: 'songs', ids: ['900', '901'], index: 0, quality: 'standard',
     } });
+    const loaded = await wait(async () => {
+      const state = await player();
+      return state.state === 'playing' && state.track?.id === '900' && state.playId && state.entryId &&
+        !state.nativeSeeking && !state.error && state.position > .2 && state;
+    }, 'unrelated native entry is playing');
+    await act({ kind: 'pause', paused: true });
     await act({ kind: 'seek', seconds: 5 });
-    const before = await act({ kind: 'pause', paused: true });
+    let stableAt, stablePosition;
+    const before = await wait(async () => {
+      const state = await player();
+      if (state.state !== 'paused' || state.playId !== loaded.playId || state.entryId !== loaded.entryId ||
+          state.queueRevision !== loaded.queueRevision || state.nativeSeeking || state.error ||
+          !Number.isFinite(state.position) || Math.abs(state.position - 5) > .15) {
+        stableAt = undefined;
+        return false;
+      }
+      if (stableAt === undefined || stablePosition !== state.position) {
+        stablePosition = state.position;
+        stableAt = performance.now();
+      }
+      // The seek command can return before libmpv's next poll; require the
+      // same paused clock across more than two 200 ms native polling ticks.
+      return performance.now() - stableAt >= 450 && state;
+    }, 'unrelated entry is paused with a settled native seek');
+    appendBefore = clock(before);
     click(one('.album-header:not(.album-header-compact) [aria-label="更多专辑操作"]'));
     click(await wait(() => button('添加全部至播放列表'), 'whole album queue action'));
     await wait(async () => queueIds(await queue()) === '900,12,14,11,13,901', 'whole album queue insertion');
     const after = await player();
-    assert(after.state === 'paused' && after.track.id === '900' && after.entryId === before.entryId &&
-      after.playId === before.playId && after.position === before.position, 'append changed paused source/clock');
-    await capture('paused_append');
+    appendAfter = clock(after);
+    assert(after.state === 'paused' && after.track?.id === '900' && after.entryId === before.entryId &&
+      after.playId === before.playId && after.position === before.position && !after.nativeSeeking && !after.error,
+      'append changed paused source/clock');
+    await capture('paused_append', false, { appendBefore, appendAfter });
     const queued = await queue();
     const unbound = queued.tracks.find((row) => row.track.id === '900');
     const fromAlbum = queued.tracks.find((row) => row.track.id === '14');
@@ -445,7 +475,7 @@
   } catch (error) {
     const snapshot = transportAttempt ? await player().catch(() => null) : null;
     await emit('failed', { ok: false, error: String(error), stack: error?.stack, states,
-      sourceFocus, transportAttempt, transportSnapshot: snapshot && {
+      sourceFocus, appendBefore, appendAfter, transportAttempt, transportSnapshot: snapshot && {
         state: snapshot.state, playId: snapshot.playId, entryId: snapshot.entryId,
         queueRevision: snapshot.queueRevision, position: snapshot.position, errorCode: snapshot.errorCode,
       },
