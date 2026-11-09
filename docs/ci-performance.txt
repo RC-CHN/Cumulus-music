@@ -70,3 +70,22 @@ Windows WebView 探针预编译候选
   临时编译；并行作业的探针产物不进入发布。完整 CI 门禁保持不变。
 - 首次 hosted 比较记录共享编译和产物大小/传输、正式包完成至分组首条验证、
   分组自身耗时及 CI gate。未在 hosted runner 验证前不声明节省了多少时间。
+
+第三次观测与下一轮分组
+- 42615135881 attempt 1 从 push 到门禁 72 分 45 秒。Windows native
+  62 分 46 秒，其中 Cargo 全目标测试步骤 45 分 12 秒：编译 16 分 19 秒，
+  执行约 29 分钟。Windows 打包 40 分 18 秒，其中发行包步骤 24 分半。
+  Windows 探针已在打包期间就绪，回归组仍等待正式包；另一次成功的
+  Windows playback 回归步骤用时约 46 分半。Linux library-search
+  的验收步骤约 39 分钟。最慢的路径是构建和验收，首批 runner 未见长排队。
+- Windows 保留冷 FLAC、便携 ZIP 和需要 MSYS2 编码器的本地队列验收。
+  自然结束、历史设置、有声书、下载音质和空间音效移到独立 package-media
+  runner；仍使用同提交、同运行、同尝试验证过的便携包运行库。共享 UX
+  探针与各组探针在另一台 runner 统一编译。原 playback 中下载、本地资源、
+  迷你播放器和歌词后半段另开 library runner。所有组均由 CI gate 要求通过；
+  Windows/Linux 全量 Rust 测试和发布来源校验不变。
+- Linux 将 library-search 分成独立的 library-search 和 local-desktop；
+  两组均保留原有同次打包运行库校验、桌面隔离与失败诊断。按历史日志
+  估算，验收较长一组约 22 分钟，实际启动、编译与镜像耗时另计。
+- 各验收命令和完整参数做过逐条对照。下一轮记录门禁、打包、各新分组
+  和 Windows native 的耗时；历史失败和分组估算不是完整 CI 的实测提速。

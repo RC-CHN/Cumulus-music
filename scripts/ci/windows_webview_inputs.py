@@ -1,4 +1,4 @@
-"""Bind Windows WebView inputs to the package job's commit and CI attempt."""
+"""Verify the shared probe and portable Windows runtime against the same CI attempt."""
 import argparse
 import hashlib
 import json
@@ -110,8 +110,7 @@ def restore(repo, identity):
         portable.rename(native)
     shutil.copytree(artifact / DIST, dist)
     ux.parent.mkdir(parents=True, exist_ok=True)
-    # The Rust cache may hold a binary from another commit. Use the verified
-    # package job's executable, replacing the cache entry without following it.
+    # Use the verified shared executable, replacing any stale entry without following it.
     (artifact / UX.name).replace(ux)
     return native
 

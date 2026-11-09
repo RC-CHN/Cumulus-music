@@ -510,40 +510,11 @@ jobs:
         shell: pwsh
         run: |
           python scripts/ci/windows_zip_smoke.py --packages .build/packages/windows-x64 --commit "$env:GITHUB_SHA" --root .build/ci-windows-zip
-      - name: Verify natural playback completion and live history settings on Windows
-        run: |
-          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
-          python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
-      - name: Verify audiobook intro and tail controls in Windows WebView2
-        run: |
-          cargo build -p cumulus-desktop --example audiobook_skip_ui_probe --features custom-protocol --locked
-          python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
-      - name: Verify default and single-download quality in Windows WebView2
-        run: |
-          python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
-      - name: Verify local WAV and 48 kHz FLAC spatial controls in Windows WebView2
-        run: |
-          cargo build -p cumulus-desktop --example native_local_equalizer_probe --features custom-protocol --locked
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-windows
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
-          flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
       - name: Verify local queue with the Windows media fixture encoder
         if: runner.os == 'Windows'
         run: |
           cargo build -p cumulus-desktop --example local_ui_probe --features custom-protocol --locked
           python scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe.exe --root .build/ci-local-queue-windows --runtime .build/package-stage/windows-x64/native
-      - name: Bind shared Windows WebView inputs to this CI attempt
-        run: python scripts/ci/windows_webview_inputs.py stage
-      - name: Preserve shared Windows WebView inputs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: windows-webview-inputs-attempt-${{ github.run_attempt }}
-          path: .build/windows-webview-inputs/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
@@ -589,6 +560,17 @@ jobs:
           path: frontend/dist
       - name: Build and bind the Windows test probes once
         run: python scripts/ci/windows_webview_probes.py build
+      # The package job no longer waits for GUI-only probe linking.
+      - name: Bind shared Windows WebView inputs to this CI attempt
+        run: python scripts/ci/windows_webview_inputs.py stage
+      - name: Preserve shared Windows WebView inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-webview-inputs-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-inputs/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-webview-probes-playback-attempt-${{ github.run_attempt }}
@@ -613,6 +595,22 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-webview-probes-library-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-probes/library/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-webview-probes-package-media-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-probes/package-media/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
 
   windows-webview:
     name: Windows WebView (${{ matrix.shard }})
@@ -622,7 +620,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, search-account, catalog]
+        shard: [playback, library, search-account, catalog, package-media]
     defaults:
       run:
         shell: bash
@@ -693,6 +691,9 @@ jobs:
           python scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-collection-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_row_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-row-collection-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe.exe --root .build/ci-queue-room-windows --runtime .build/package-stage/windows-x64/native
+      - name: Windows WebView regression (library)
+        if: runner.os == 'Windows' && matrix.shard == 'library'
+        run: |
           python scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-page-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-table-windows --runtime .build/package-stage/windows-x64/native
@@ -938,6 +939,17 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-settings-windows --runtime .build/package-stage/windows-x64/native --relay-settings
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-recovery-windows --runtime .build/package-stage/windows-x64/native --relay-recovery
+      - name: Windows WebView regression (package-media)
+        if: runner.os == 'Windows' && matrix.shard == 'package-media'
+        run: |
+          python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-windows
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
+          flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
       - name: Preserve Windows queue tip failure receipts
         if: failure() && matrix.shard == 'playback'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -1739,7 +1751,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native-linux, native, package-linux, package-windows, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, native, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -1753,6 +1765,7 @@ jobs:
           LINUX_WEBVIEW_PROBE: ${{ needs.linux-webview-probe.result }}
           LINUX_WEBVIEW: ${{ needs.linux-webview.result }}
           LINUX_WEBVIEW_UX: ${{ needs.linux-webview-ux.result }}
+          WINDOWS_WEBVIEW_PROBES: ${{ needs.windows-webview-probes.result }}
           WINDOWS_WEBVIEW: ${{ needs.windows-webview.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
@@ -1767,6 +1780,7 @@ jobs:
           test "$LINUX_WEBVIEW_PROBE" = success
           test "$LINUX_WEBVIEW" = success
           test "$LINUX_WEBVIEW_UX" = success
+          test "$WINDOWS_WEBVIEW_PROBES" = success
           test "$WINDOWS_WEBVIEW" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success

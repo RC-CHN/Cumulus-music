@@ -1,4 +1,4 @@
-"""The Windows WebView runners only consume their package job's inputs."""
+"""The Windows WebView runners only consume inputs bound to their CI attempt."""
 from pathlib import Path
 import tempfile
 import unittest
@@ -19,7 +19,7 @@ class WindowsWebViewInputs(unittest.TestCase):
         self.identity = ci_identity(dict(GITHUB_SHA='a' * 40, GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2'))
         for path, content in ((FRONTEND / 'index.html', b'<title>synthetic</title>'),
                               (FRONTEND / 'assets/runtime.js', b'asset'),
-                              (UX, b'package probe')):
+                              (UX, b'shared probe')):
             path = self.producer / path
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
@@ -65,7 +65,7 @@ class WindowsWebViewInputs(unittest.TestCase):
 
         with patch('windows_webview_inputs.portable_runtime', side_effect=fixture_extract):
             self.assertEqual(restore(self.consumer, self.identity), self.consumer / NATIVE)
-        self.assertEqual(cached.read_bytes(), b'package probe')
+        self.assertEqual(cached.read_bytes(), b'shared probe')
         self.assertEqual((self.consumer / FRONTEND / 'assets/runtime.js').read_bytes(), b'asset')
         self.assertEqual((self.consumer / NATIVE / 'libmpv-2.dll').read_bytes(), b'portable bytes')
 

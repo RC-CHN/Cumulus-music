@@ -6,7 +6,7 @@ from pathlib import Path
 import stat
 import subprocess
 
-from windows_webview_inputs import ci_identity, file_receipt, frontend_receipts, plain_stat
+from windows_webview_inputs import UX, ci_identity, file_receipt, frontend_receipts, plain_stat
 
 
 ARTIFACT = Path('.build/windows-webview-probes')
@@ -15,10 +15,16 @@ FRONTEND = Path('frontend/dist')
 MANIFEST = 'manifest.json'
 PROBES = {
     'playback': (
-        'desktop_lyrics_ui_probe', 'equalizer_ui_probe', 'local_ui_probe',
-        'login_interception_ui_probe', 'loudness_ui_probe', 'main_flow_ui_probe',
-        'mini_ui_probe', 'native_audio_probe', 'output_ui_probe', 'playback_power_ui_probe',
-        'queue_room_ui_probe', 'scroll_ui_probe', 'search_playback_read', 'startup_ui_probe',
+        'equalizer_ui_probe', 'login_interception_ui_probe', 'loudness_ui_probe',
+        'main_flow_ui_probe', 'native_audio_probe', 'playback_power_ui_probe',
+        'queue_room_ui_probe', 'scroll_ui_probe', 'search_playback_read',
+    ),
+    'library': (
+        'desktop_lyrics_ui_probe', 'local_ui_probe', 'mini_ui_probe', 'output_ui_probe',
+        'startup_ui_probe',
+    ),
+    'package-media': (
+        'audiobook_skip_ui_probe', 'minibar_skip_ui_probe', 'native_local_equalizer_probe',
     ),
     'search-account': (
         'account_login_ui_probe', 'auth_ui_probe', 'device_login_ui_probe', 'email_login_ui_probe',
@@ -81,7 +87,7 @@ def restore(repo, identity, shard):
 
 def build(repo, identity):
     frontend = frontend_receipts(repo / FRONTEND)
-    examples = sorted({example for names in PROBES.values() for example in names})
+    examples = sorted({UX.stem, *(example for names in PROBES.values() for example in names)})
     command = ['cargo', 'build', '-p', 'cumulus-desktop', '--features', 'custom-protocol', '--locked']
     for example in examples:
         command.extend(['--example', example])

@@ -37,14 +37,14 @@ class WindowsWebViewProbes(unittest.TestCase):
         self.staged.parent.mkdir(parents=True)
         (self.producer / ARTIFACT / self.shard).rename(self.staged)
 
-    def test_restores_only_verified_shard_and_leaves_package_owned_ux(self):
+    def test_restores_only_verified_shard_and_leaves_shared_ux(self):
         ux = self.consumer / UX
         ux.parent.mkdir(parents=True)
-        ux.write_bytes(b'package-owned probe')
+        ux.write_bytes(b'shared probe')
         restore(self.consumer, self.identity, self.shard)
         examples = self.consumer / EXAMPLES
         self.assertEqual({p.name for p in examples.iterdir()}, {UX.name, *binary_names(self.shard)})
-        self.assertEqual(ux.read_bytes(), b'package-owned probe')
+        self.assertEqual(ux.read_bytes(), b'shared probe')
         self.assertEqual({p.name for p in self.staged.iterdir()}, {MANIFEST})
         for name in binary_names(self.shard):
             self.assertEqual((examples / name).read_bytes(), name.encode())
