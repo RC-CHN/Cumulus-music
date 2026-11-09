@@ -79,11 +79,13 @@ Windows 真实本机硬件 collector：下一批实施方案与证据边界
   `invalid`、`diy`（CEEB8A–CEEC68；只读常量 VA 0x181B9EBB0–0x181B9EBEF）。
   命中清空原值，未命中保留原大小写。不得添加其它 OEM 词并称为官方判断。
 - CF9C10(type=0) -> D01400：主机说明来源是 Win32_ComputerSystemProduct 的 Vendor/Name，
-  并非机器 hostname。机型判断另取 Win32_SystemEnclosure.ChassisTypes。
-  WMI 失败时 CFD2D0 读取 HKLM\HARDWARE\DESCRIPTION\System\BIOS 下的
-  SystemManufacturer/SystemProductName，D01F40 另有 SetupAPI 机型路径。
-  “主机:”和两种机型描述在 DLL 内是 GBK 窄字节常量；失败可能得到整个空说明。
-  WMI 文本到窄字节的完整转换、SAFEARRAY/机型异常分支仍须恢复并以 Windows 对照确认。
+  并非机器 hostname。D01400 对两个字段分别重做同一 WQL 查询、只取各自首对象，
+  用 D02970 的 CP_ACP 转换，不经过主板的 CF7680。机型另取 Win32_SystemEnclosure
+  的 ChassisTypes；实际条件是 VARIANT union 指针 +8 的 qword 与 9 比较，
+  不能当作读数组首元素。WMI 上下文未启用或 D01400 返回 0 才走 CFD2D0：
+  HKLM\HARDWARE\DESCRIPTION\System\BIOS 的 SystemManufacturer/SystemProductName
+  及 D01F40 的 SetupAPI 机型路径。个别 WMI 字段无值不会自动触发注册表回退。
+  “主机:”和两种机型描述是 GBK 窄字节常量；总失败分支会清空整个输出。详见第 9 节。
 - 副设备文件的硬件绑定字节另走 CF1510(codePage=3，即 CP_THREAD_ACP)，
   不能把它与上述 CP_ACP 摘要路径合并。本方案不实现副文件绑定或自动修复。
 
@@ -318,6 +320,46 @@ Board/Bios/None；无设备序列、长度、主机名、MAC、摘要或签名�
 超时另报。Linux 本地能运行两项选择/短缓冲规则测试并交叉链接 Windows
 程序；尚未在真实 Windows 上执行新探针，也无原官方 DLL 对同一台机器的
 主板/BIOS 输出对照。该探针不改变当前默认配置。
+
+9. 独立主机说明源探针
+
+官方 CF9C10 type=0 的跳转表分支 CF9D4D 先写前缀 d6 f7 bb fa 3a
+（“主机:”），D01400 成功才附加 WMI 说明；CFD2D0 也失败时
+CFA255/29C 连前缀一起清空。D01400:0xD01447–0xD01601 分别执行
+`SELECT * FROM Win32_ComputerSystemProduct`（无末尾空格），顺序为
+Vendor、Name；每次走 CFE940 的 WQL/0x30/首对象，仅向该对象读取一个
+属性。D02970 用 CP_ACP、flags=0、输入 -1、两个 null 默认字符参数，
+先探测长度再写入，不经过 CF7680 或主板清理。结果分别追加 U+0020
+对应的窄字节 0x20；即使字段获取失败成空段，两个空格也存在。
+WMI 上下文已启用时，D01400:0xD016DD 返回 1，与字段非空无关。
+附加的机型是 DLL 固定窄字节（末尾 NUL 不计入），并不随系统 ACP
+改写：
+
+  笔记本电脑  b1 ca bc c7 b1 be b5 e7 c4 d4
+  台式电脑    cc a8 ca bd b5 e7 c4 d4
+
+D020B0:0xD020F1–0xD022A8 查询 `SELECT * FROM Win32_SystemEnclosure`
+（无末尾空格），首对象 ChassisTypes。其 0xD022AB–0xD022BC 只排除
+VT_NULL，随后取 VARIANT union 指针，对指针 +8 的整个 64 位值
+比较 9；D01400:0xD01642–0xD01651 仅在返回 1 时选择笔记本。
+常规 x64 SAFEARRAY 的 cLocks 在 +8、pvData 在 +16，因此这一读取
+既不是 SafeArrayGetElement，也不是元素数据指针。还不能确定原版
+此处遇到的运行时表示及是否有其它边界；不把“第一个机箱编号为 9”
+或 Linux 的编号集合移植进来，也不复刻对未初始化填充字节的读取。
+
+同一离线 crate 的第二个程序只读取并验证 WMI 属性形状：
+
+    cargo run --locked --manifest-path desktop/probes/windows-board-identity/Cargo.toml --bin windows-host-description-probe
+
+主板探针的默认命令不变。新程序共用 MTA、首对象、VARIANT 生命周期和
+D02970 ACP 转换，Vendor/Name 只在进程内转换并丢弃。ChassisTypes
+只检查确切非 BYREF 的 I4/UI2 数组标签、一维、元素类型/宽度和有限
+的有符号上下界，不读取元素、锁数或布局填充。只输出三项查询/编码
+类别、错误码和 ACP 编号，不输出值、哈希、序列、真实型号或描述。
+`host_description_complete=false` 是固定边界：不选择机型、不组装
+真实主机说明、不读注册表/SetupAPI、不派生签名或持久 ID。Linux
+可以运行数组元数据的合成测试；Windows 实际 VARIANT 形状和原 DLL
+同机结果仍需离线实跑。未改桌面默认或 CI。
 
 Microsoft 主文档核对（只支持 API 语义，不能替代网易字段选择的本地恢复证据）：
 GetAdaptersInfo / IP_ADAPTER_INFO：
