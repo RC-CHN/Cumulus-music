@@ -1,4 +1,4 @@
-//! Explicit Windows x64 registry/NDIS probe. Output is availability only.
+//! Explicit Windows x64 MAC observations. Output is availability only.
 
 use std::process::ExitCode;
 
@@ -7,14 +7,17 @@ use std::process::ExitCode;
 mod mac;
 
 fn main() -> ExitCode {
-    if !std::env::args_os()
-        .skip(1)
-        .eq([std::ffi::OsStr::new("--collect")])
-    {
-        eprintln!("Usage: windows_mac_probe --collect (Windows x64; status only)");
-        return ExitCode::from(2);
+    let mut args = std::env::args_os().skip(1);
+    match (args.next(), args.next()) {
+        (Some(arg), None) if arg == "--collect" => collect(),
+        (Some(arg), None) if arg == "--collect-fallback" => collect_fallback(),
+        _ => {
+            eprintln!(
+                "Usage: windows_mac_probe --collect | --collect-fallback (Windows x64; status only)"
+            );
+            ExitCode::from(2)
+        }
     }
-    collect()
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
@@ -50,8 +53,54 @@ fn collect() -> ExitCode {
     }
 }
 
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+fn collect_fallback() -> ExitCode {
+    use mac::{FallbackError, FallbackObservation, FallbackSource};
+    match mac::collect_fallback_mac() {
+        Ok(FallbackObservation::Available(source, address)) => {
+            let label = match source {
+                FallbackSource::Ndis => "ndis",
+                FallbackSource::AdapterRecord => "adapter_record",
+            };
+            println!(
+                "status=fallback_available source={label} formatted_bytes={}",
+                address.official_ascii().len()
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(FallbackObservation::NoMatch) => {
+            println!("status=fallback_unavailable reason=no_matching_adapter");
+            ExitCode::from(3)
+        }
+        Ok(FallbackObservation::RejectedByOuterFilter) => {
+            println!("status=fallback_unavailable reason=outer_filter_rejected");
+            ExitCode::from(3)
+        }
+        Err(reason) => {
+            let label = match reason {
+                FallbackError::WinsockStartup => "winsock_startup",
+                FallbackError::HostName => "host_name",
+                FallbackError::HostIpv4 => "host_ipv4",
+                FallbackError::AdapterList => "adapter_list",
+                FallbackError::AdapterIp => "adapter_ip",
+                FallbackError::NameConversion => "name_conversion",
+                FallbackError::DeviceName => "device_name",
+                FallbackError::DriverReply => "driver_reply",
+                FallbackError::AddressLength => "address_length",
+            };
+            println!("status=inconclusive reason={label}");
+            ExitCode::from(4)
+        }
+    }
+}
+
 #[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
 fn collect() -> ExitCode {
     println!("status=windows_x64_required");
     ExitCode::from(2)
+}
+
+#[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
+fn collect_fallback() -> ExitCode {
+    collect()
 }

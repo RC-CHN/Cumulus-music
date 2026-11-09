@@ -168,7 +168,7 @@ fn outer_filter_rejects_first_nonempty_value_without_resuming_registry_scan() {
 }
 
 #[test]
-fn exhausted_path_requests_only_the_unimplemented_fallback() {
+fn exhausted_registry_path_requests_fallback_without_running_it() {
     let source = fixture(vec![Entry::Card(Card {
         reply: (false, 0, OK),
         ..ORDINARY

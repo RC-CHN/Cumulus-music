@@ -1,9 +1,17 @@
-//! The recovered registry/NDIS path, used only by the explicit offline probe.
-//! This module never resolves a hostname, constructs an identity or writes state.
+//! Recovered Windows MAC observations, used only by the explicit probe.
+//! No observation constructs an identity or writes state.
+
+#[cfg(any(test, all(target_os = "windows", target_arch = "x86_64")))]
+#[path = "mac/fallback.rs"]
+mod fallback;
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 #[path = "mac/native.rs"]
 mod native;
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+pub(crate) use fallback::{
+    FallbackError, FallbackObservation, FallbackSource, collect_fallback_mac,
+};
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 pub(crate) use native::collect_registry_mac;
 

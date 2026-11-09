@@ -170,42 +170,50 @@ impl NetworkCards for WindowsNetworkCards {
     }
 
     fn permanent_address(&self, path: &[u16]) -> DriverReply {
-        // SAFETY: scan passes only a terminated Win32 device name built from
-        // the fixed registry key's leaf. No overlapped or inherited handle.
-        let raw = unsafe {
-            CreateFileW(
-                path.as_ptr(),
-                GENERIC_READ,
-                FILE_SHARE_READ,
-                ptr::null(),
-                OPEN_EXISTING,
-                0,
-                ptr::null_mut(),
-            )
-        };
-        if raw == INVALID_HANDLE_VALUE || raw.is_null() {
-            return DriverReply::Failed;
-        }
-        let device = Device(raw);
-        let oid = OID_802_3_PERMANENT_ADDRESS;
-        let mut output = [0; NDIS_OUTPUT];
-        let mut reported = 0;
-        // SAFETY: the valid device handle and both bounded buffers live until
-        // this synchronous query returns; no OVERLAPPED survives this call.
-        let success = unsafe {
-            DeviceIoControl(
-                device.0,
-                IOCTL_NDIS_QUERY_GLOBAL_STATS,
-                (&raw const oid).cast(),
-                size_of_val(&oid) as u32,
-                output.as_mut_ptr().cast(),
-                NDIS_OUTPUT as u32,
-                &mut reported,
-                ptr::null_mut(),
-            )
-        };
-        driver_reply(success != 0, reported, &output)
+        permanent_address(path)
     }
+}
+
+pub(super) fn permanent_address(path: &[u16]) -> DriverReply {
+    if path.last() != Some(&0) || path[..path.len() - 1].contains(&0) {
+        return DriverReply::Malformed;
+    }
+    // SAFETY: the name is terminated within its slice. Its leaf comes from
+    // the fixed registry key or the selected IP Helper record via device_path.
+    // No overlapped or inherited handle.
+    let raw = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ,
+            ptr::null(),
+            OPEN_EXISTING,
+            0,
+            ptr::null_mut(),
+        )
+    };
+    if raw == INVALID_HANDLE_VALUE || raw.is_null() {
+        return DriverReply::Failed;
+    }
+    let device = Device(raw);
+    let oid = OID_802_3_PERMANENT_ADDRESS;
+    let mut output = [0; NDIS_OUTPUT];
+    let mut reported = 0;
+    // SAFETY: the valid device handle and both bounded buffers live until
+    // this synchronous query returns; no OVERLAPPED survives this call.
+    let success = unsafe {
+        DeviceIoControl(
+            device.0,
+            IOCTL_NDIS_QUERY_GLOBAL_STATS,
+            (&raw const oid).cast(),
+            size_of_val(&oid) as u32,
+            output.as_mut_ptr().cast(),
+            NDIS_OUTPUT as u32,
+            &mut reported,
+            ptr::null_mut(),
+        )
+    };
+    driver_reply(success != 0, reported, &output)
 }
 
 pub(crate) fn collect_registry_mac() -> Observation {

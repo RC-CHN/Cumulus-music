@@ -422,21 +422,34 @@ https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-canceli
 异常或触及限制；2 是平台/参数不适用。探针本身是同步的，命令的独立进程用于给可能
 卡住的驱动设置调用端期限，不能把编译、合成输入或 Wine 当真实 Windows NDIS 证明。
 独立 Cargo 清单只依赖锁定的 windows-sys，复用同一桌面示例源码，不编译 Tauri 或 WebView。
-本地 Rust 1.96.0 通过 7 项纯合成测试；Windows GNU 的发行 PE 和测试程序已交叉链接，
-发行导入表核对了上述注册表、设备控制和 CRT 入口，无 Winsock/IpHelper 入口。
-独立清单的 Windows 目标全目标 Clippy 和桌面示例的 Windows 目标 Clippy 均通过。
-Windows 上的额外 CRT 合成测试及真实普通用户网卡探针尚未运行。
+主路径的 Windows 普通用户实测见第 10 节；`--collect` 仍只运行主路径。
 
-CEFD10 尚未实现。已定位的完整顺序为 WSAStartup(2) → gethostname → gethostbyname
-首 IPv4 → GetAdaptersInfo（初始 0x2c0 字节，ERROR_BUFFER_OVERFLOW 时重分配，
-随后仍调用一次）→ 链表原顺序匹配 Type=6 与首 IpAddressList → 以 AdapterName 经
-CEE4D0 后尝试 CEFA40，空才采用记录首六个 Address 字节 → CEF5E0 再过滤。
-CEE4D0 两次都用 CP_THREAD_ACP；第二次仍传 -1 输入，但目标容量少一个终止单元，
-返回值被忽略。Microsoft 的长度契约不能推断失败是否已改写目的缓冲区，不能直接
-用正常转换成功的 AdapterName 或当前地址替代。还需实测传统及 UTF-8 ACP 的短缓冲区、
-无 DNS 与多个 IPv4、驱动拒绝/永久与当前地址、输出字节数及非六字节回包；随后才可
-确定备用路径。磁盘 SMART/SCSI 顺序、主板/BIOS WMI、主机 ACP 字节及持久 ID
-接纳规则仍按前述阶段核对；即使 Windows 实际探针返回 0，也不开放默认设备签名。
+要单独观测 CEFD10，把上面的进程参数改为 `--collect-fallback`，保留 15 秒上限。
+此显式入口可在注册表主路径成功的机器上独立验证备用分支。查询本机名使用 Windows
+配置的名称解析器，可能发出 DNS 查询；没有外部主机名参数、业务请求、登录或配置写入。
+输出仅含状态、来源枚举（ndis 或 adapter_record）和固定格式长度，不含名称、IP 或地址。
+0/fallback_available 为通过过滤；3/fallback_unavailable 为无匹配或被外层过滤；
+4/inconclusive 为系统输入、名称转换、缓冲区或驱动证据不足。
+
+CEFD10 原顺序为 WSAStartup(2) → gethostname → gethostbyname 的首 IPv4 →
+GetAdaptersInfo（初始 0x2c0，ERROR_BUFFER_OVERFLOW 时重分配，随后总再调用一次）→
+按原链表顺序匹配 Type=6 和首 IpAddressList → AdapterName 经 CEE4D0 后尝试 CEFA40 →
+仅当驱动打开或查询明确失败时采用该记录前六个 Address 字节 → CEF5E0 再过滤。
+探针要求 HOSTENT 为 IPv4、长度为四、首项非空，并在下一次 Winsock 调用前复制四字节。
+IP Helper 缓冲区清零、有 1 MiB 上限；拒绝对齐不符、越界、重叠或循环的记录。
+不会用第二个主机地址、后续 IP、任意第一块网卡、短地址或未核验的名称代替。
+NDIS 若返回不完整的成功结果，或第一个完整地址被外层过滤，不能改用当前地址或后续网卡。
+
+CEE4D0 两次使用 CP_THREAD_ACP。其第二次调用仍传 -1 输入长度，目标容量少一个终止单元。
+依据第 11 节两种进程代码页的实测，探针先读取完整控制组，再以有守卫的已初始化缓冲区
+执行官方的短调用。只有返回 0/ERROR_INSUFFICIENT_BUFFER 且每个正文单元确实写入并与
+控制组相等才使用短调用的结果。未知系统的短写语义仍按每次实际调用核验。
+
+本地 13 项合成测试通过；Windows x64 GNU 全目标 Clippy、测试程序和发行 PE 交叉链接
+通过。当前 Windows 测试程序含一条用系统线程 ACP 实际转换固定合成网卡名的测试，
+尚未在 Windows 执行。真实 CEFD10（无 DNS、多个 IPv4、驱动拒绝/永久与当前地址）
+及实体设备仍待独立 Windows 实测；不能把旧的注册表或 ACP 证明当成此分支通过。
+本补充未开启默认签名路径，也不填补其他硬件分支。
 
 Microsoft API 语义（网易选择顺序来自上述反汇编）：
 https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopenkeyw
@@ -447,7 +460,10 @@ https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-devicei
 https://learn.microsoft.com/en-us/windows-hardware/drivers/network/oid-802-3-permanent-address
 https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/strlwr-s-strlwr-s-l-mbslwr-s-mbslwr-s-l-wcslwr-s-wcslwr-s-l?view=msvc-170
 https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
+https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostname
 https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostbyname
+https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersinfo
+https://learn.microsoft.com/en-us/windows/win32/api/iptypes/ns-iptypes-ip_adapter_info
 
 10. Windows x64 托管虚拟机实测（只读）
 --------------------------------------
