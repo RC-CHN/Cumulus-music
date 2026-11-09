@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 
+from cargo_core_test_harness import build_core_test_executable
 from windows_media import download, sha256, write_json
 from windows_flac import (
     FLAC, FLAC_ARCHIVE, FLAC_ARCHIVE_SHA256, FLAC_DLL_SHA256, FLAC_IMPORTS,
@@ -93,25 +94,7 @@ def stage_runtime(package, msys, working, *, require_package_flac=False):
 
 
 def test_executable(log, *, repo=ROOT):
-    args = ['cargo', 'test', '--locked', '-p', 'cumulus-core', '--lib', '--no-run',
-            '--message-format=json']
-    result = subprocess.run(args, cwd=repo, capture_output=True, encoding='utf-8',
-                            errors='replace', check=False, timeout=600)
-    log.write(result.stderr)
-    if result.returncode:
-        log.write(result.stdout)
-        raise RuntimeError(f'could not build cold FLAC Rust tests (exit {result.returncode})')
-    log.flush()
-    artifacts = [json.loads(line) for line in result.stdout.splitlines()]
-    paths = {
-        (repo / item['executable']).resolve(strict=True)
-        for item in artifacts
-        if item.get('reason') == 'compiler-artifact' and item.get('executable')
-        and item['target']['name'] == 'cumulus_core' and item['profile']['test']
-    }
-    if len(paths) != 1:
-        raise ValueError('expected exactly one cargo-produced core test executable')
-    return paths.pop()
+    return build_core_test_executable(log, repo=repo)
 
 
 def case_result(result, case):

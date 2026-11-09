@@ -58,18 +58,22 @@ def frontend_digest(root):
     return hashlib.sha256(json.dumps(sorted(files), ensure_ascii=True).encode()).hexdigest()
 
 
-def receipt(binary, dist, identity):
+def binary_receipt(binary, name):
     size = checked_size(binary, MAX_BINARY)
     with binary.open('rb') as file:
         header = file.read(64)
     if (len(header) != 64 or header[:7] != b'\x7fELF\x02\x01\x01'
             or header[16:18] not in (b'\x02\x00', b'\x03\x00') or header[18:20] != b'\x3e\x00'):
         raise ValueError('Linux WebView probe must be a Linux x86_64 ELF executable')
+    return {'name': name, 'bytes': size, 'sha256': digest(binary)}
+
+
+def receipt(binary, dist, identity):
     result = {
         'kind': 'linux-webview-ux-probe-v1',
         **identity,
         'frontendSha256': frontend_digest(dist),
-        'binary': {'name': BINARY, 'bytes': size, 'sha256': digest(binary)},
+        'binary': binary_receipt(binary, BINARY),
     }
     return (json.dumps(result, sort_keys=True) + '\n').encode()
 
