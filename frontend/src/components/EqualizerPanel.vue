@@ -20,11 +20,13 @@ import { failure } from '../services/contracts';
 import type { AccountView } from '../services/contracts';
 import EffectDirectory from './EffectDirectory.vue';
 import Icon from './Icon.vue';
+import LocalEqualizerMaster from './LocalEqualizerMaster.vue';
 const props = defineProps<{
   player: PlayerModel;
   account: AccountView;
   initialEffectManagement?: boolean;
   embedded?: boolean;
+  masterInHeader?: boolean;
 }>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const { view, ready, equalizerDraft } = props.player;
@@ -161,11 +163,9 @@ function change(
     selected,
   );
 }
-function toggleMaster() {
-  if (disabled.value || !settings.value) return;
+function clearMessages() {
   commandError.value = '';
   savedMessage.value = '';
-  stage({ ...settings.value, master_bypassed: !settings.value.master_bypassed });
 }
 function toggleGeq() {
   change(
@@ -300,18 +300,12 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     </header>
     <div class="equalizer-body">
       <div class="equalizer-master">
-        <button
-          class="equalizer-switch"
-          type="button"
-          role="switch"
-          aria-label="启用均衡器和增强音效"
-          :aria-checked="!!settings && !settings.master_bypassed"
+        <LocalEqualizerMaster
+          v-if="!masterInHeader"
+          :player="player"
           :disabled="disabled"
-          @click="toggleMaster"
-        >
-          <span></span
-          >{{ settings?.master_bypassed ? '均衡器与增强音效已暂停' : '均衡器与增强音效' }}
-        </button>
+          @change="clearMessages"
+        />
         <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
         <template v-if="!embedded">
           <button ref="directoryOpener" type="button" @click="openDirectory()">音效目录</button>
