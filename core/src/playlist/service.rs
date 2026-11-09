@@ -186,6 +186,18 @@ impl PlaylistService {
     pub fn operations(&self, token: &SessionToken) -> Result<Vec<PlaylistMutation>> {
         self.session.with_token(token, |uid| self.records(uid))
     }
+
+    /// Caller already holds the common playlist writer lease.
+    pub(super) fn require_no_pending_playlist(&self, uid: &str, id: &str) -> Result<()> {
+        if self.records(uid)?.iter().any(|record| {
+            record.phase.pending()
+                && (record.playlist_id.as_deref() == Some(id)
+                    || record.command.playlist_id() == Some(id))
+        }) {
+            return Err(Error::MutationUncertain);
+        }
+        Ok(())
+    }
     pub async fn list(&self, token: &SessionToken) -> Result<PlaylistList> {
         let value = self.read_list(token).await?;
         self.session.save_result(
@@ -275,6 +287,9 @@ impl PlaylistService {
             return Err(Error::InvalidInput("clear takes no caller-supplied ids"));
         }
         let _lock = OperationLock::acquire(self.store.directory(), &uid, JOURNAL)?;
+        if let PlaylistCommand::Tracks { id, .. } | PlaylistCommand::Delete { id, .. } = &command {
+            super::local_membership::reorder::require_settled(&self.store, &uid, id)?;
+        }
         let records = self.records(&uid)?;
         if let Some(record) = records.iter().find(|r| r.operation_id == operation_id) {
             if serde_json::to_value(&record.command)? != serde_json::to_value(&command)? {
