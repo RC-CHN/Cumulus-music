@@ -1048,7 +1048,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [media, playback, library-search, account-catalog]
+        shard: [media, playback, library-search, local-desktop, account-catalog]
     defaults:
       run:
         shell: bash
@@ -1353,16 +1353,6 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          # A bare namespace leaves loopback down and /proc/net/route empty.
-          # Bring up only loopback so proofs see an initialized, route-free table.
-          loopback_only() {
-            sudo unshare --net --fork --kill-child sh -ec '
-              target_user=$1
-              shift
-              ip link set lo up
-              exec runuser -u "$target_user" -- "$@"
-            ' sh "$(id -un)" "$@"
-          }
           cargo build -p cumulus-desktop --example audiobook_skip_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe --root .build/ci-audiobook-skip-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --mv-play --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-mv-play-linux
@@ -1407,6 +1397,24 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
+      - name: Verify local files, cloud, mini player and lyrics
+        if: matrix.shard == 'local-desktop'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
+          # A bare namespace leaves loopback down and /proc/net/route empty.
+          # Bring up only loopback so proofs see an initialized, route-free table.
+          loopback_only() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              target_user=$1
+              shift
+              ip link set lo up
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$(id -un)" "$@"
+          }
           cargo build -p cumulus-desktop --example mini_ui_probe --example local_ui_probe --example local_batch_favorite_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-intelligence-linux
