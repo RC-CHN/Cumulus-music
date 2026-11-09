@@ -1,4 +1,4 @@
-import type { AccountData, PlaylistView, TrackView } from './contracts';
+import type { AccountData, PlaylistLocalReference, PlaylistView, TrackView } from './contracts';
 import type { DownloadCollectScope } from './downloads';
 export type PlaylistDialogTarget =
   | { kind: 'remove'; track: TrackView; playlist: PlaylistView }
@@ -67,6 +67,16 @@ export interface PlaylistMutationView {
   observed: PlaylistEditor | null;
   verifiedLikedTrackIds?: string[];
 }
+export type PlaylistMixedOrderRow =
+  | { kind: 'online'; id: string }
+  | ({ kind: 'local' } & PlaylistLocalReference);
+export interface PlaylistMixedReorderReceipt {
+  playlistId: string;
+  operationId: string;
+  phase: Extract<PlaylistPhase, 'sending' | 'uncertain' | 'confirmed' | 'rejected'>;
+  evidence: 'acknowledged' | 'changed_readback' | 'explicit_rejection' | 'not_sent' | null;
+  serviceCode: number | null;
+}
 export type ExternalPlaylistSource = 'qq' | 'kugou' | 'kuwo' | 'xiaomi';
 export type ExternalPlaylistInput =
   | { kind: 'empty' }
@@ -84,6 +94,21 @@ export interface PlaylistClient {
   ): Promise<AccountData<PlaylistMutationView>>;
   reconcilePlaylist(epoch: string, operationId: string): Promise<AccountData<PlaylistMutationView>>;
   playlistOperations(epoch: string): Promise<AccountData<PlaylistMutationView[]>>;
+  reorderPlaylistMixed(
+    epoch: string,
+    id: string,
+    revision: string,
+    rows: PlaylistMixedOrderRow[],
+  ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
+  playlistMixedReorderReceipt(
+    epoch: string,
+    id: string,
+  ): Promise<AccountData<PlaylistMixedReorderReceipt | null>>;
+  reconcilePlaylistMixedReorder(
+    epoch: string,
+    id: string,
+    operationId: string,
+  ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
 }
 export const playlistPending = (phase: PlaylistPhase) =>
   ['sending', 'verifying', 'uncertain'].includes(phase);
