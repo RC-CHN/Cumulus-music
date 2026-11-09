@@ -1048,13 +1048,18 @@ async fn guest_adds_the_complete_local_filter_after_the_current_song_without_rel
 }
 
 #[tokio::test]
-async fn local_track_directory_uses_current_index_and_original_cue_source() {
+async fn local_file_reveal_uses_current_index_and_original_cue_and_ncm_sources() {
     let root = tempfile::tempdir().unwrap();
     let media = root.path().join("media");
     std::fs::create_dir_all(media.join("sources")).unwrap();
     let source = media.join("sources/album.wav");
     std::fs::write(&source, "synthetic audio").unwrap();
-    std::fs::write(media.join("ordinary.wav"), "ordinary synthetic audio").unwrap();
+    let ordinary_path = media.join("普通音乐.wav");
+    std::fs::write(&ordinary_path, "ordinary synthetic audio").unwrap();
+    let seed = root.path().join("seed.flac");
+    std::fs::write(&seed, include_bytes!("fixtures/tag_audio/seed.flac")).unwrap();
+    let ncm_path = media.join("归途.ncm");
+    cumulus_core::media::ncm::write_file(&seed, &ncm_path, Default::default()).unwrap();
     std::fs::write(
         media.join("album.cue"),
         "FILE \"sources/album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"Cue track\"\nINDEX 01 00:00:00\n",
@@ -1067,33 +1072,38 @@ async fn local_track_directory_uses_current_index_and_original_cue_source() {
     let ordinary = page
         .tracks
         .iter()
-        .find(|row| row.track.name == "ordinary")
+        .find(|row| row.track.name == "普通音乐")
         .unwrap();
-    for (row, expected) in [(cue, media.join("sources")), (ordinary, media.clone())] {
+    let ncm = page
+        .tracks
+        .iter()
+        .find(|row| row.track.name == "归途")
+        .unwrap();
+    for (row, expected) in [(cue, &source), (ordinary, &ordinary_path), (ncm, &ncm_path)] {
         assert_eq!(
             client
-                .local_track_directory(row.track.id.clone(), row.revision.clone())
+                .local_track_file(row.track.id.clone(), row.revision.clone())
                 .await
                 .unwrap(),
             expected.canonicalize().unwrap()
         );
         assert!(
             client
-                .local_track_directory(row.track.id.clone(), "0".repeat(64))
+                .local_track_file(row.track.id.clone(), "0".repeat(64))
                 .await
                 .is_err()
         );
     }
     assert!(
         client
-            .local_track_directory(media.to_string_lossy().into_owned(), cue.revision.clone())
+            .local_track_file(media.to_string_lossy().into_owned(), cue.revision.clone())
             .await
             .is_err()
     );
     std::fs::write(source, "different source bytes").unwrap();
     assert!(
         client
-            .local_track_directory(cue.track.id.clone(), cue.revision.clone())
+            .local_track_file(cue.track.id.clone(), cue.revision.clone())
             .await
             .is_err()
     );

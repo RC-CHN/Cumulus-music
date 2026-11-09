@@ -1,42 +1,61 @@
-//! Reveal one native-validated folder as an item in its containing directory.
+//! Reveal one native-validated item in its containing directory.
 use cumulus_core::{Error, Result};
 #[cfg(any(target_os = "linux", windows))]
 use std::path::Path;
 use std::path::PathBuf;
 
+#[derive(Clone, Copy)]
+enum ItemKind {
+    Directory,
+    File,
+}
+
+pub(crate) async fn reveal_directory(path: PathBuf) -> Result<()> {
+    reveal_item(path, ItemKind::Directory).await
+}
+
+pub(crate) async fn reveal_file(path: PathBuf) -> Result<()> {
+    reveal_item(path, ItemKind::File).await
+}
+
 #[cfg(any(target_os = "linux", windows))]
-fn checked_parent(path: &Path) -> Result<&Path> {
-    if !path.is_absolute() || !path.is_dir() || path.canonicalize()? != path {
+fn checked_parent(path: &Path, kind: ItemKind) -> Result<&Path> {
+    if !path.is_absolute() {
+        return Err(Error::QueueChanged);
+    }
+    let expected_kind = match kind {
+        ItemKind::Directory => path.is_dir(),
+        ItemKind::File => path.is_file(),
+    };
+    if !expected_kind || path.canonicalize()? != path {
         return Err(Error::QueueChanged);
     }
     path.parent()
-        .ok_or(Error::State("folder has no containing directory"))
+        .ok_or(Error::State("item has no containing directory"))
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) async fn reveal_directory(path: PathBuf) -> Result<()> {
+async fn reveal_item(path: PathBuf, kind: ItemKind) -> Result<()> {
     use gio::prelude::CancellableExt;
     use std::time::Duration;
 
     let cancel = gio::Cancellable::new();
     let guard = cancel.clone();
     let worker = tauri::async_runtime::spawn_blocking(move || -> Result<Option<PathBuf>> {
-        checked_parent(&path)?;
+        checked_parent(&path, kind)?;
         if linux_show_item(&path, &guard)? {
             Ok(None)
         } else {
             // The session bus or method was definitively unavailable. Keep
             // the meaning of “所在目录” even without item selection support.
-            Ok(Some(checked_parent(&path)?.to_path_buf()))
+            Ok(Some(checked_parent(&path, kind)?.to_path_buf()))
         }
     });
     let parent = match tokio::time::timeout(Duration::from_secs(4), worker).await {
-        Ok(reply) => reply.map_err(|_| Error::State("folder reveal worker stopped"))??,
+        Ok(reply) => reply.map_err(|_| Error::State("file manager reveal worker stopped"))??,
         Err(_) => {
             cancel.cancel();
-            return Err(Error::State(
-                "file manager did not acknowledge folder reveal",
-            ));
+            return Err(Error::State("file manager did not acknowledge item reveal"));
         }
     };
     if let Some(parent) = parent {
@@ -83,7 +102,7 @@ fn linux_show_item(path: &Path, cancel: &gio::Cancellable) -> Result<bool> {
     ) {
         Ok(_) => Ok(true),
         Err(error) if dbus_reveal_unavailable(&error) => Ok(false),
-        Err(_) => Err(Error::State("file manager could not reveal folder")),
+        Err(_) => Err(Error::State("file manager could not reveal item")),
     }
 }
 
@@ -111,20 +130,20 @@ fn dbus_reveal_unavailable(error: &gio::glib::Error) -> bool {
 }
 
 #[cfg(windows)]
-pub(crate) async fn reveal_directory(path: PathBuf) -> Result<()> {
+async fn reveal_item(path: PathBuf, kind: ItemKind) -> Result<()> {
     tauri::async_runtime::spawn_blocking(move || {
         // The shell uses an owned STA; leave Tauri's/runtime's COM mode alone.
         std::thread::Builder::new()
             .name("file-manager-reveal".into())
             .spawn(move || {
-                let parent = checked_parent(&path)?.to_path_buf();
+                let parent = checked_parent(&path, kind)?.to_path_buf();
                 windows_show_item(path, parent)
             })?
             .join()
             .map_err(|_| Error::State("file manager shell stopped"))?
     })
     .await
-    .map_err(|_| Error::State("folder reveal worker stopped"))?
+    .map_err(|_| Error::State("file manager reveal worker stopped"))?
 }
 
 #[cfg(windows)]
@@ -161,7 +180,7 @@ fn windows_show_item(path: PathBuf, parent: PathBuf) -> Result<()> {
         let path = super::windows_shell_path(path);
         let mut wide: Vec<_> = path.as_os_str().encode_wide().collect();
         if wide.contains(&0) {
-            return Err(Error::State("folder path is invalid"));
+            return Err(Error::State("file manager path is invalid"));
         }
         wide.push(0);
         let mut pidl = Pidl(ptr::null_mut());
@@ -177,7 +196,7 @@ fn windows_show_item(path: PathBuf, parent: PathBuf) -> Result<()> {
             )
         };
         if hr < 0 || pidl.0.is_null() {
-            Err(Error::State("file manager could not parse folder"))
+            Err(Error::State("file manager could not parse path"))
         } else {
             Ok(pidl)
         }
@@ -199,20 +218,22 @@ fn windows_show_item(path: PathBuf, parent: PathBuf) -> Result<()> {
     // SAFETY: the child aliases the tail of the still-owned absolute PIDL.
     let child = unsafe { ILFindLastID(item.0) };
     if child.is_null() {
-        return Err(Error::State("file manager could not locate folder"));
+        return Err(Error::State("file manager could not locate item"));
     }
     let children = [child.cast_const()];
     // SAFETY: one relative child PIDL and its containing absolute PIDL remain
     // valid for this synchronous Shell call; no command line is built.
     let hr = unsafe { SHOpenFolderAndSelectItems(parent.0, 1, children.as_ptr(), 0) };
     if hr < 0 {
-        Err(Error::State("file manager could not reveal folder"))
+        Err(Error::State("file manager could not reveal item"))
     } else {
         Ok(())
     }
 }
 
 #[cfg(not(any(target_os = "linux", windows)))]
-pub(crate) async fn reveal_directory(_: PathBuf) -> Result<()> {
-    Err(Error::State("folder reveal not supported on this platform"))
+async fn reveal_item(_: PathBuf, _: ItemKind) -> Result<()> {
+    Err(Error::State(
+        "file manager reveal not supported on this platform",
+    ))
 }

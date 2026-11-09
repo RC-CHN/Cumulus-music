@@ -101,7 +101,7 @@ impl MusicClient {
     }
     /// Resolve a current indexed file for a native file-manager request. CUE
     /// resolves its physical audio source; NCM resolves the original, not cache.
-    pub async fn local_track_directory(
+    pub async fn local_track_file(
         &self,
         id: String,
         revision: String,
@@ -117,11 +117,7 @@ impl MusicClient {
             if item.path.canonicalize()? != item.path {
                 return Err(Error::QueueChanged);
             }
-            let parent = item
-                .path
-                .parent()
-                .ok_or(Error::State("local source has no parent directory"))?;
-            Ok(parent.to_path_buf())
+            Ok(item.path)
         })
         .await
         .map_err(|_| Error::State("local library worker stopped"))?

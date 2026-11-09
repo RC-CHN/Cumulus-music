@@ -1,8 +1,12 @@
 """Local query ownership and cloud/download/library/queue consistency in the real WebView."""
 import argparse
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
+from local_folder_reveal_smoke import fake_file_manager
 from window_manager import launch
 
 LABELS = ['library_light', 'local_directory_menu_light', 'local_directory_light', 'composition_pending_light', 'composition_complete_dark', 'search_live_dark', 'search_returned_light', 'query_pending_dark',
@@ -20,7 +24,15 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--private-child', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if sys.platform == 'linux' and not args.private_child:
+        # The fake FileManager1 must never acquire a name on the user's bus.
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('DBUS_SESSION_BUS_ADDRESS', 'AT_SPI_BUS_ADDRESS', 'AT_SPI_DISPLAY')}
+        subprocess.run(['dbus-run-session', '--', sys.executable, __file__, *sys.argv[1:],
+                        '--private-child'], env=env, check=True, timeout=195)
+        return
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -35,7 +47,7 @@ def main():
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve())+os.pathsep+env.get('PATH', '')
-    if os.name != 'nt':
+    if sys.platform == 'linux':
         launcher = root / 'test-launcher'
         launcher.mkdir()
         shim = launcher / 'xdg-open'
@@ -45,10 +57,11 @@ def main():
         env['PATH'] = str(launcher) + os.pathsep + env.get('PATH', '')
     source = Path(env['CUMULUS_MINI_SCRIPT']).read_text(encoding='utf-8')
     script = root / 'local-resource.js'
-    script.write_text(f'window.__localDirectoryLauncherProof = {json.dumps(os.name != "nt")};\n' + source, encoding='utf-8')
+    script.write_text(f'window.__localDirectoryLauncherProof = {json.dumps(sys.platform == "linux")};\n' + source, encoding='utf-8')
     env['CUMULUS_MINI_SCRIPT'] = str(script)
 
-    with (root/'host.log').open('x', encoding='utf-8') as log:
+    shell = fake_file_manager(root, env, once=True) if sys.platform == 'linux' else nullcontext()
+    with shell, (root/'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root/'first', args.screenshots)
     failed = root/'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
@@ -71,11 +84,13 @@ def main():
     assert states['local_directory_menu_light']['focusLabel'] == '播放'
     assert states['local_directory_light']['directoryRequests'] == 1
     assert states['local_directory_light']['directoryAccepted']
-    if os.name != 'nt':
-        opened = (root/'opened-directory').read_text(encoding='utf-8').splitlines()
+    if sys.platform == 'linux':
+        requests = [json.loads(line) for line in
+                    (root/'show-items.jsonl').read_text(encoding='utf-8').splitlines()]
         physical_source = Path(json.loads((root/'removal-path-1004.json').read_text(encoding='utf-8')))
         assert physical_source.is_relative_to(root / 'menu-originals')
-        assert opened == [str(physical_source.parent)]
+        assert requests == [[[physical_source.as_uri()], '']]
+        assert not (root/'opened-directory').exists(), 'a successful reveal must not open the parent separately'
 
     assert states['composition_pending_light']['localSearch'] == 'zhong' and states['composition_pending_light']['imePending']
     assert states['composition_complete_dark']['localSearch'] == '合成' and states['composition_complete_dark']['imeCommitted']
@@ -103,7 +118,8 @@ def main():
     report = dict(ok=True, states=len(LABELS), screenshots=len(LABELS) if args.screenshots else 0,
                   actualWebViews=1, deletedSyntheticFiles=1, remainingDownloads=2, remainingLocalTracks=2,
                   exactCloudDeleteRequests=2, queryOwnershipVerified=True, retainedCueIdentityVerified=True,
-                  localDirectoryActionVerified=True, localIndexOnlyRemovalVerified=True, localGroupResizeVerified=True, nativeDirectoryLauncherIntercepted=os.name != 'nt',
+                  localDirectoryActionVerified=True, localIndexOnlyRemovalVerified=True, localGroupResizeVerified=True,
+                  nativeFileSelectionIntercepted=sys.platform == 'linux',
                   realAccountWrites=0, realMusicRequests=0, physicalAudioOutputVerified=False)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))

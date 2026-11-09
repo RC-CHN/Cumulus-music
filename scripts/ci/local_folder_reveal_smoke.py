@@ -1,5 +1,6 @@
 """Real Linux WebView folder menu against a private fake FileManager1/xdg-open."""
 import argparse
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -16,7 +17,7 @@ XML = '''<node><interface name="org.freedesktop.FileManager1">
 </interface></node>'''
 
 
-def serve(root):
+def serve(root, once=False):
     import gi
     gi.require_version('Gio', '2.0')
     from gi.repository import Gio, GLib
@@ -39,6 +40,8 @@ def serve(root):
             output.write(json.dumps(parameters.unpack()) + '\n')
         if calls == 1:
             invocation.return_value(GLib.Variant('()', ()))
+        elif once:
+            invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'unexpected retry')
         elif calls == 2:
             invocation.return_dbus_error('org.freedesktop.DBus.Error.UnknownMethod', 'synthetic absence')
         elif calls == 3:
@@ -56,6 +59,25 @@ def serve(root):
     assert connection.register_object(OBJECT, info.interfaces[0], receive)
     (root / 'fake-shell.ready').write_text('ready\n', encoding='utf-8')
     GLib.MainLoop().run()
+
+
+@contextmanager
+def fake_file_manager(root, env, *, once=False):
+    """Start the test service on the caller's private D-Bus session."""
+    with (root / 'shell.log').open('x', encoding='utf-8') as log:
+        mode = '--serve-once' if once else '--serve'
+        service = subprocess.Popen(['/usr/bin/python3', __file__, mode, str(root)],
+                                   env=env, stdout=log, stderr=log)
+        try:
+            limit = time.monotonic() + 5
+            while not (root / 'fake-shell.ready').is_file():
+                assert service.poll() is None and time.monotonic() < limit, 'fake shell did not start'
+                time.sleep(.05)
+            yield
+            assert service.poll() is None
+        finally:
+            service.terminate()
+            service.wait(timeout=5)
 
 
 def verify(binary, root, screenshots):
@@ -81,22 +103,12 @@ def verify(binary, root, screenshots):
     fake_open.chmod(0o700)
     env['PATH'] = str(fixture_bin) + os.pathsep + env.get('PATH', '')
     assert which('xdg-open', path=env['PATH']) == str(fake_open)
-    with (root / 'shell.log').open('x', encoding='utf-8') as shell_log:
-        service = subprocess.Popen([sys.executable, __file__, '--serve', str(root)],
-                                   env=env, stdout=shell_log, stderr=shell_log)
-        try:
-            limit = time.monotonic() + 5
-            while not (root / 'fake-shell.ready').is_file():
-                assert service.poll() is None and time.monotonic() < limit, 'fake shell did not start'
-                time.sleep(.05)
-            with (root / 'host.log').open('x', encoding='utf-8') as log:
-                code = launch(binary, env, log, run, screenshots)
-            failed = run / 'failed.json'
-            assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
-            assert code == 0 and service.poll() is None
-        finally:
-            service.terminate()
-            service.wait(timeout=5)
+    with fake_file_manager(root, env):
+        with (root / 'host.log').open('x', encoding='utf-8') as log:
+            code = launch(binary, env, log, run, screenshots)
+        failed = run / 'failed.json'
+        assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+        assert code == 0
     completed = json.loads((run / 'complete.json').read_text(encoding='utf-8'))
     assert completed['ok'] and completed['focusRestored'] and not completed['selectedFolderChanged']
     assert completed['outcomes'] == ['reveal', 'fallback', 'deny', 'timeout']
@@ -117,8 +129,8 @@ def verify(binary, root, screenshots):
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == '--serve':
-        serve(Path(sys.argv[2]))
+    if len(sys.argv) == 3 and sys.argv[1] in ('--serve', '--serve-once'):
+        serve(Path(sys.argv[2]), once=sys.argv[1] == '--serve-once')
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)

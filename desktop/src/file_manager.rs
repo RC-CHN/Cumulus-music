@@ -1,9 +1,9 @@
-//! Native directory launcher shared by download and cloud resource menus.
+//! Native file and directory actions for media menus.
 use cumulus_core::Error;
 use std::path::PathBuf;
 
 mod reveal;
-pub(crate) use reveal::reveal_directory;
+pub(crate) use reveal::{reveal_directory, reveal_file};
 
 pub async fn open_directory(path: PathBuf) -> cumulus_core::Result<()> {
     tauri::async_runtime::spawn_blocking(move || {
