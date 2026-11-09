@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { useLocalBatchFavorite } from '../composables/useLocalBatchFavorite';
 import type { LocalCollectSort } from '../services/local';
 import { modalEntered, modalLeft } from '../services/modal';
@@ -11,6 +11,17 @@ const props = defineProps<{ model: ReturnType<typeof useLocalBatchFavorite>; cou
 const emit = defineEmits<{ close: [] }>();
 const { sort, current, busy, target, pending, status } = props.model;
 const dialog = ref<HTMLDialogElement>();
+const closeButton = ref<HTMLButtonElement>();
+const reconcileButton = ref<HTMLButtonElement>();
+watch(
+  [busy, status],
+  ([working, message]) => {
+    if (working || !message || !dialog.value?.open) return;
+    if (!dialog.value.querySelector('.collect-selected:focus')) return;
+    (pending.value ? reconcileButton.value : closeButton.value)?.focus({ preventScroll: true });
+  },
+  { flush: 'post' },
+);
 const options = [
   { value: 'default', label: '默认排序' },
   { value: 'recently', label: '常用优先' },
@@ -57,6 +68,7 @@ function sortKey(event: KeyboardEvent) {
     <header>
       <h2 id="local-batch-favorite-title">收藏到歌单</h2>
       <button
+        ref="closeButton"
         class="icon-button collect-close"
         type="button"
         aria-label="关闭歌单操作"
@@ -77,6 +89,7 @@ function sortKey(event: KeyboardEvent) {
       {{ status }}
       <button
         v-if="pending"
+        ref="reconcileButton"
         type="button"
         class="text-button"
         :disabled="busy"
@@ -118,6 +131,7 @@ function sortKey(event: KeyboardEvent) {
         :playlists="current.rows"
         :disabled="busy || !!target"
         :include-create="false"
+        :show-working="busy"
         :selected-id="target"
         :scroll-top="current.top"
         :loading="current.loading || !!current.error || current.next !== null"
