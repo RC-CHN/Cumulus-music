@@ -118,7 +118,7 @@ async function submit() {
       </fieldset>
       <p v-if="pending || error" role="status">{{ error || '上次设置尚未确认' }}</p>
       <footer>
-        <button class="primary" type="submit" :disabled="busy">
+        <button class="primary" type="submit" :aria-disabled="busy">
           {{ pending ? '确认设置结果' : '确定' }}
         </button>
       </footer>
@@ -189,7 +189,7 @@ footer button {
   color: var(--on-accent);
   background: var(--accent);
 }
-footer button:disabled {
+footer button[aria-disabled='true'] {
   opacity: 0.55;
 }
 </style>
