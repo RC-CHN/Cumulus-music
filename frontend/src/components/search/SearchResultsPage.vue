@@ -78,7 +78,7 @@ const props = defineProps<{
   queueable: boolean;
   queueDropEnabled: boolean;
   voiceQueueable: boolean;
-  voiceQueueFeedback: string;
+  cardQueueFeedback: string;
   playlistActionBusy: boolean;
   knownPlaylistIds?: ReadonlySet<string>;
   observedAlbumMembership: ReadonlyMap<string, boolean>;
@@ -769,8 +769,8 @@ onBeforeUnmount(() => {
                 : '综合结果'
         }}
       </p>
-      <p v-if="voiceQueueFeedback" class="search-voice-next-notice" role="status">
-        {{ voiceQueueFeedback }}
+      <p v-if="cardQueueFeedback" class="search-voice-next-notice" role="status">
+        {{ cardQueueFeedback }}
       </p>
       <p
         v-if="voiceLinkStatus"
@@ -1139,6 +1139,12 @@ onBeforeUnmount(() => {
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"
+                :podcast-next-enabled="
+                  category === 'podcasts' &&
+                  voiceQueueable &&
+                  playbackState !== 'preparing' &&
+                  playbackState !== 'loading'
+                "
                 :voice-next="
                   category === 'voices' || (category === 'all' && section.category === 'voices')
                     ? voiceQueueable

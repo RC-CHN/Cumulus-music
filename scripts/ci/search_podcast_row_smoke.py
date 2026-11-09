@@ -12,7 +12,7 @@ from search_queue_drop_smoke import TrustedDrag
 from window_manager import launch
 
 STAGES = ('single_armed', 'single_detail', 'double_armed', 'double_played', 'index_paused', 'failed_kept',
-          'same_episode_resumed')
+          'same_episode_resumed', 'next_armed', 'next_menu', 'next_inserted')
 
 
 def main():
@@ -41,7 +41,8 @@ def main():
 
     with closing(TrustedDrag()) as pointer, (root / 'host.log').open('x', encoding='utf-8') as log:
         def input_at_capture(path, payload, _pid):
-            if path.stem not in ('ux_01_single_armed', 'ux_03_double_armed', 'ux_04_double_played', 'ux_06_failed_kept'):
+            if path.stem not in ('ux_01_single_armed', 'ux_03_double_armed', 'ux_04_double_played', 'ux_06_failed_kept',
+                                 'ux_08_next_armed', 'ux_09_next_menu'):
                 return
             pointer.move(payload['pointer'])
             for _ in range(2 if path.stem in ('ux_03_double_armed', 'ux_06_failed_kept') else 1):
@@ -85,27 +86,51 @@ def main():
     assert resumed['playId'] == paused['playId'] and resumed['entryId'] == paused['entryId']
     assert [r['entryId'] for r in rows['same_episode_resumed']['queue']['tracks']] == [
         r['entryId'] for r in new_queue['tracks']]
+    assert rows['next_menu']['menuLabels'] == ['查看播客', '播放', '下一首播放']
+    assert rows['next_inserted']['triggerFocused'] and complete['trustedNextClicks'] == 1
+    before_next = rows['next_armed']['nativePlayer']
+    after_next = rows['next_inserted']['nativePlayer']
+    assert before_next['state'] == after_next['state'] == 'paused'
+    assert before_next['queueRevision'] != after_next['queueRevision']
+    for field in ('playId', 'entryId', 'position', 'mode', 'queueLen'):
+        assert before_next[field] == after_next[field], field
+    assert rows['next_inserted']['queue']['current'] == before_next['entryId']
+    assert [r['entryId'] for r in rows['next_inserted']['queue']['tracks']] == [
+        new_queue['tracks'][0]['entryId'], new_queue['tracks'][-1]['entryId'],
+        *(r['entryId'] for r in new_queue['tracks'][1:-1]),
+    ]
     wire = complete['searchPodcastCalls']
     baseline = rows['double_armed']['searchPodcastCalls']
     activated = rows['double_played']['searchPodcastCalls']
     before_resume = rows['failed_kept']['searchPodcastCalls']
     assert [call['path'] for call in activated[len(baseline):]] == [BYRADIO, BYRADIO, DETAIL, CHECK, URL]
     assert [call['path'] for call in before_resume[len(activated):]] == [BYRADIO]
-    assert [call['path'] for call in wire[len(before_resume):]] == [BYRADIO, BYRADIO, DETAIL, CHECK]
+    next_baseline = rows['next_armed']['searchPodcastCalls']
+    assert [call['path'] for call in next_baseline[len(before_resume):]] == [BYRADIO, BYRADIO, DETAIL, CHECK]
+    assert rows['next_menu']['searchPodcastCalls'] == next_baseline
+    next_paths = [call['path'] for call in wire[len(next_baseline):]]
+    assert next_paths[:2] == [BYRADIO, BYRADIO]
+    # The settled paused decoder may prefetch its new neighbour. This is not a load.
+    prefetch = next_paths[2:]
+    assert prefetch in ([], [DETAIL], [DETAIL, CHECK], [DETAIL, CHECK, URL]), prefetch
     for path, expected in ((DETAIL, 4), (CHECK, 3), (URL, 2)):
         calls = [call for call in wire if call['path'] == path]
-        assert len(calls) == expected and all(not call['cached'] for call in calls), (path, calls)
-    assert [call['args']['id'] for call in wire if call['path'] == DETAIL] == ['400', '400', '1', '1']
-    assert [call['args']['voiceId'] for call in wire if call['path'] == CHECK] == ['400', '1', '1']
-    assert [call['args']['ids'] for call in wire if call['path'] == URL] == ['["1400"]', '["1001"]']
+        assert len(calls) == expected + int(path in prefetch) and all(not call['cached'] for call in calls), (path, calls)
+    assert [call['args']['id'] for call in wire if call['path'] == DETAIL] == (
+        ['400', '400', '1', '1'] + (['251'] if DETAIL in prefetch else []))
+    assert [call['args']['voiceId'] for call in wire if call['path'] == CHECK] == (
+        ['400', '1', '1'] + (['251'] if CHECK in prefetch else []))
+    assert [call['args']['ids'] for call in wire if call['path'] == URL] == (
+        ['["1400"]', '["1001"]'] + (['["1251"]'] if URL in prefetch else []))
     pagination = [{'radioId': '7', 'offset': offset, 'limit': 250, 'asc': False} for offset in (0, 250)]
     assert [call['args'] for call in wire if call['path'] == BYRADIO and call['args']['limit'] == 250] == (
-        pagination + [{'radioId': '8', 'offset': 0, 'limit': 250}] + pagination)
+        pagination + [{'radioId': '8', 'offset': 0, 'limit': 250}] + pagination * 2)
     assert all(call['path'] != '/api/dj/around/program/v1' for call in wire)
     locale = read(out / 'locale.json')
     assert locale == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}
     assert len(list(out.glob('ux_*.png'))) == len(STAGES)
-    report = dict(ok=True, actualWebView=True, trustedX11BodyGestures=True, trustedX11IndexPause=True, nullOutput=True,
+    report = dict(ok=True, actualWebView=True, trustedX11BodyGestures=True, trustedX11IndexPause=True,
+                  trustedX11NextMenu=True, nextPreservedPausedDecoder=True, nextRestoredMenuFocus=True, nullOutput=True,
                   states=STAGES, screenshots=len(STAGES), locale=locale, classifiedReceipt=True,
                   oldEntryRetained=True, singleDetailWithoutPlayback=True, sameNativePause=True,
                   failedReadPreservedClock=True, sameEpisodeBodyResumed=True, realAccountWrites=0, networkNamespaceWithoutRoutes=True,

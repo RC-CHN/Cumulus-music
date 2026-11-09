@@ -118,6 +118,7 @@ pub enum SearchPodcastRowGesture {
     Index,
     DoubleClick,
     Menu,
+    Next,
 }
 
 /// Public resource identity only; queue source metadata never crosses IPC.

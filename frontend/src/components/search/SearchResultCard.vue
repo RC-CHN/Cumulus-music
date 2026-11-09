@@ -42,6 +42,7 @@ const props = defineProps<{
   matchKeyword: string;
   playable: boolean;
   queueable: boolean;
+  podcastNextEnabled?: boolean;
   voiceNext?: 'ready' | 'disabled';
   voiceLinks?: boolean;
   playlistActionBusy: boolean;
@@ -73,8 +74,10 @@ const emit = defineEmits<{
 const menu = ref<InstanceType<typeof ActionMenu>>();
 const element = ref<HTMLElement>();
 let voiceLinkMenuItem: SearchItem | undefined;
-function captureVoiceLinkMenu() {
+let podcastMenuItem: SearchItem | undefined;
+function captureActionMenu() {
   voiceLinkMenuItem = props.voiceLinks && props.item.kind === 'voice' ? props.item : undefined;
+  podcastMenuItem = podcastRow.value && props.item.kind === 'podcast' ? props.item : undefined;
 }
 watch(
   [() => props.item, () => props.voiceLinks],
@@ -82,6 +85,15 @@ watch(
     if (!voiceLinkMenuItem) return;
     voiceLinkMenuItem = undefined;
     menu.value?.close();
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => props.item,
+  () => {
+    if (!podcastMenuItem) return;
+    podcastMenuItem = undefined;
+    menu.value?.close(true);
   },
   { flush: 'sync' },
 );
@@ -192,6 +204,17 @@ const markedTitle = computed(
 );
 const items = computed<MenuItem[]>(() => {
   if (props.item.kind === 'artist') return artistCardMenu();
+  if (podcastRow.value && props.item.kind === 'podcast')
+    return [
+      { key: 'open', label: '查看播客', icon: 'forward', disabled: unavailable.value },
+      { key: 'play', label: '播放', icon: 'play', disabled: !props.playable || !canPlay.value },
+      {
+        key: 'next',
+        label: '下一首播放',
+        icon: 'next',
+        disabled: !props.podcastNextEnabled || !canPlay.value,
+      },
+    ];
   return [
     ...(canPlay.value || props.item.kind === 'playlist'
       ? [
@@ -336,6 +359,16 @@ function action(key: string, gesture: SearchPodcastRowGesture = 'menu') {
     emit('artistAction', { artist: props.item.artist, action: key, anchor: actionAnchor() });
   } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
     emit('queue', { item: props.item, anchor: actionAnchor() });
+  } else if (
+    key === 'next' &&
+    podcastRow.value &&
+    props.item.kind === 'podcast' &&
+    podcastMenuItem === props.item &&
+    props.podcastNextEnabled &&
+    canPlay.value &&
+    !element.value?.closest('.page-leave-active,.search-results-leave-active')
+  ) {
+    emit('play', props.item, 'next');
   } else if (
     key === 'next' &&
     props.item.kind === 'voice' &&
@@ -748,7 +781,7 @@ watch(
             class="search-card-menu"
             :label="`更多操作：${card.name}`"
             :items="items"
-            @opened="captureVoiceLinkMenu"
+            @opened="captureActionMenu"
             @select="action"
           />
         </div>
@@ -775,6 +808,7 @@ watch(
             class="search-card-menu"
             :label="`更多操作：${card.name}`"
             :items="items"
+            @opened="captureActionMenu"
             @select="action"
           />
         </div>
@@ -784,6 +818,7 @@ watch(
           class="search-card-menu"
           :label="`更多操作：${card.name}`"
           :items="items"
+          @opened="captureActionMenu"
           @select="action"
         />
       </div>
@@ -1042,7 +1077,7 @@ watch(
         class="search-card-menu"
         :label="`更多操作：${card.name}`"
         :items="items"
-        @opened="captureVoiceLinkMenu"
+        @opened="captureActionMenu"
         @select="action"
       />
     </template>

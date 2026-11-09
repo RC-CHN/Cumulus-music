@@ -1505,6 +1505,22 @@ function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
           ? searchPodcastRowSelection(item, gesture)
           : undefined;
     if (!selection || !signedIn.value || player.busy.value) return;
+    if (gesture === 'next') {
+      if (
+        !ordinaryVoiceQueueable.value ||
+        player.view.value?.state === 'preparing' ||
+        player.view.value?.state === 'loading'
+      )
+        return;
+      void queueSearchResult(() =>
+        player.prepareSelectionForPage(async () => {
+          if (page.value !== route)
+            throw { code: 'stale', message: '搜索结果已更新', retryable: false };
+          return selection;
+        }),
+      );
+      return;
+    }
     void player.prepareSelection(async () => {
       if (page.value !== route)
         throw { code: 'stale', message: '搜索结果已更新', retryable: false };
@@ -1538,28 +1554,31 @@ function queueSearchCard({ item, anchor }: SearchQueueRequest) {
   if (item.kind === 'album') albumAction({ album: item.album, action: 'next', anchor });
   else playlistActions.value?.show(item.playlist, 'next');
 }
-const searchVoiceQueueFeedback = ref('');
-let searchVoiceQueueAttempt = 0;
+const searchCardQueueFeedback = ref('');
+let searchCardQueueAttempt = 0;
 watch([music.page, () => music.account.value.epoch], () => {
-  searchVoiceQueueFeedback.value = '';
-  searchVoiceQueueAttempt++;
+  searchCardQueueFeedback.value = '';
+  searchCardQueueAttempt++;
 });
-async function queueSearchVoice(id: string) {
+async function queueSearchResult(run: () => Promise<PlayerView | undefined>) {
   const route = page.value;
   const epoch = account.value.epoch;
   if (route.kind !== 'search' || !ordinaryVoiceQueueable.value) return;
-  const attempt = ++searchVoiceQueueAttempt;
+  const attempt = ++searchCardQueueAttempt;
   const current = () =>
-    attempt === searchVoiceQueueAttempt && page.value === route && account.value.epoch === epoch;
+    attempt === searchCardQueueAttempt && page.value === route && account.value.epoch === epoch;
   const previous = player.view.value;
-  searchVoiceQueueFeedback.value = '';
+  searchCardQueueFeedback.value = '';
   try {
-    const next = await player.queueVoice(id);
+    const next = await run();
     if (current() && previous?.queueLen && next && next.queueRevision !== previous.queueRevision)
-      searchVoiceQueueFeedback.value = '已添加至播放列表';
+      searchCardQueueFeedback.value = '已添加至播放列表';
   } catch (error) {
-    if (current()) searchVoiceQueueFeedback.value = failure(error).message;
+    if (current()) searchCardQueueFeedback.value = failure(error).message;
   }
+}
+function queueSearchVoice(id: string) {
+  void queueSearchResult(() => player.queueVoice(id));
 }
 function searchCardComments(item: SearchItem) {
   if (item.kind === 'playlist')
@@ -5486,7 +5505,7 @@ onUnmounted(() => {
                 :queueable="searchCollectionQueueable"
                 :queue-drop-enabled="canDropSearchSong"
                 :voice-queueable="ordinaryVoiceQueueable"
-                :voice-queue-feedback="searchVoiceQueueFeedback"
+                :card-queue-feedback="searchCardQueueFeedback"
                 :playlist-action-busy="
                   playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
                 "

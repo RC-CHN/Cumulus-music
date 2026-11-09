@@ -381,7 +381,7 @@ export type ZonePlaylistBatchSelection = {
   quality: Quality;
 };
 
-export type SearchPodcastRowGesture = 'index' | 'double_click' | 'menu';
+export type SearchPodcastRowGesture = 'index' | 'double_click' | 'menu' | 'next';
 
 export type PlaySelection =
   | (AlbumDetailSelection & { row: import('./albumDurationSort').AlbumPlaybackRow | null })

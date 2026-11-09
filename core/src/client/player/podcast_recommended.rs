@@ -39,6 +39,7 @@ pub(super) struct RadioPlaybackTarget {
 pub(super) enum RadioPlaybackStart {
     Overlay { select_checkpoint: bool },
     Table { mode: crate::playback::PlaybackMode },
+    QueueNext,
 }
 
 pub(super) fn same_radio_transport(
@@ -246,7 +247,7 @@ impl MusicClient {
                 policy,
                 RadioPlaybackStart::Overlay {
                     select_checkpoint: false
-                }
+                } | RadioPlaybackStart::QueueNext
             ) {
             let store = self.session.persistent_store()?;
             self.session.with_token(token, |owner| {
@@ -256,6 +257,7 @@ impl MusicClient {
             None
         };
         let table = matches!(policy, RadioPlaybackStart::Table { .. });
+        let queue_next = matches!(policy, RadioPlaybackStart::QueueNext);
         if table {
             episodes.truncate(super::queue_playlist::QUEUE_LIMIT);
         }
@@ -284,13 +286,14 @@ impl MusicClient {
             (None, RadioPlaybackStart::Table { .. }) => episodes
                 .iter()
                 .position(|voice| voice.raw["grayDisplay"] != true),
+            (None, RadioPlaybackStart::QueueNext) => None,
             (None, _) => Some(0),
         };
         let mut resources = Vec::with_capacity(episodes.len());
         let mut start = None;
         for (index, mut voice) in episodes.drain(..).enumerate() {
             guard.check()?;
-            if table && voice.raw["grayDisplay"] == true {
+            if (table || queue_next) && voice.raw["grayDisplay"] == true {
                 if Some(index) == selected {
                     return Err(Error::State("selected podcast episode is unavailable"));
                 }

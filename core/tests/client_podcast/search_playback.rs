@@ -521,3 +521,200 @@ async fn classified_podcast_no_checkpoint_chooses_the_batch_and_preserves_random
         ["5", "1", "2", "3"]
     );
 }
+
+#[tokio::test]
+async fn classified_podcast_next_inserts_all_pages_after_the_paused_entry_without_loading() {
+    let (dir, api, _session, client, device) = fixture_with_device();
+    seed_search(&api);
+    store_checkpoint(dir.path());
+    api.count.store(251, Ordering::SeqCst);
+    let row = row_receipt(&client).await;
+    let (card, _) = receipts(&client).await;
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Sequential,
+            },
+        )
+        .await
+        .unwrap();
+    let start = prepared(&client, PlaySelection::Voice { id: "1".into() })
+        .await
+        .unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::QueueVoice {
+                id: "400".into(),
+                program: None,
+                expected_queue_revision: start.queue_revision,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let previous = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let prior_queue = client.player_queue("1").await.unwrap();
+    replace_preference(&client, true);
+    api.calls.lock().unwrap().clear();
+    let next = SearchPodcastRowGesture::Next;
+    assert!(matches!(
+        prepared(&client, select_row(&card, next)).await,
+        Err(Error::QueueChanged)
+    ));
+    let list_calls = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path == "/api/v6/dj/program/byradio")
+            .map(|(_, args)| args.clone())
+            .collect::<Vec<_>>()
+    };
+    assert!(list_calls().is_empty());
+
+    let changed = prepared(&client, select_row(&row, next)).await.unwrap();
+    assert_ne!(changed.queue_revision, previous.queue_revision);
+    assert_eq!(changed.state, PlaybackStatus::Paused);
+    assert_eq!(changed.play_id, previous.play_id);
+    assert_eq!(changed.entry_id, previous.entry_id);
+    assert_eq!(changed.position, previous.position);
+    assert_eq!(changed.mode, previous.mode);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(queue.current, prior_queue.current);
+    assert_eq!(queue.tracks[0].entry_id, prior_queue.tracks[0].entry_id);
+    assert_eq!(queue.tracks[251].entry_id, prior_queue.tracks[1].entry_id);
+    let expected: Vec<_> = std::iter::once(1)
+        .chain((2..=251).rev())
+        .chain(std::iter::once(400))
+        .map(|id| id.to_string())
+        .collect();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|entry| entry.track.voice_id.as_ref().unwrap())
+            .collect::<Vec<_>>(),
+        expected.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        list_calls(),
+        [0, 250].map(|offset| json!({"radioId":"7","offset":offset,"limit":250,"asc":false}))
+    );
+    // A background read for a neighbouring entry does not reload the current one.
+    assert!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(path, args)| match path.as_str() {
+                "/api/v6/dj/program/byradio" => true,
+                "/api/dj/program/detail" => matches!(args["id"].as_str(), Some("251" | "400")),
+                "/api/dj/play/url/check" => matches!(args["voiceId"].as_str(), Some("251" | "400")),
+                "/api/song/enhance/player/url/v1" =>
+                    matches!(args["ids"].as_str(), Some("[\"1251\"]" | "[\"1400\"]")),
+                _ => false,
+            })
+    );
+
+    let stepped = client.player_action("1", PlayerAction::Next).await.unwrap();
+    assert_eq!(stepped.track.unwrap().voice_id.as_deref(), Some("251"));
+    let stepped = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    api.search_playback_list_hold.store(true, Ordering::SeqCst);
+    let client = Arc::new(client);
+    let pending = tokio::spawn({
+        let client = client.clone();
+        async move { prepared(&client, select_row(&row, next)).await }
+    });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        api.search_playback_started.notified(),
+    )
+    .await
+    .unwrap();
+    let newest = client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Sequential,
+            },
+        )
+        .await
+        .unwrap();
+    api.search_playback_release.notify_one();
+    assert!(pending.await.unwrap().is_err());
+    let after = client.player_snapshot("1").await.unwrap();
+    assert_eq!(after.state, PlaybackStatus::Paused);
+    assert_eq!(after.mode, PlaybackMode::Sequential);
+    assert_eq!(after.play_id, stepped.play_id);
+    assert_eq!(after.queue_revision, newest.queue_revision);
+    assert_eq!(list_calls().len(), 3, "no stale second page");
+}
+
+#[tokio::test]
+async fn classified_podcast_next_starts_an_empty_queue_at_the_checkpoint_without_forcing_order() {
+    let (dir, api, _session, client, device) = fixture_with_device();
+    store_checkpoint(dir.path());
+    api.count.store(2, Ordering::SeqCst);
+    let row = row_receipt(&client).await;
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    api.calls.lock().unwrap().clear();
+    let started = prepared(&client, select_row(&row, SearchPodcastRowGesture::Next))
+        .await
+        .unwrap();
+    assert_eq!(started.state, PlaybackStatus::Playing);
+    assert_eq!(started.mode, PlaybackMode::Random);
+    assert_eq!(started.position, Some(19.0));
+    assert_eq!(started.queue_len, 2);
+    assert_eq!(started.track.unwrap().voice_id.as_deref(), Some("1"));
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let calls = api.calls.lock().unwrap();
+    let expected = [
+        (
+            "/api/v6/dj/program/byradio",
+            json!({"radioId":"7","offset":0,"limit":250,"asc":false}),
+        ),
+        ("/api/dj/program/detail", json!("1")),
+        ("/api/dj/play/url/check", json!("1")),
+        ("/api/song/enhance/player/url/v1", json!("[\"1001\"]")),
+        // The controller can prefetch the other episode as soon as playback starts.
+        ("/api/dj/program/detail", json!("2")),
+        ("/api/dj/play/url/check", json!("2")),
+        ("/api/song/enhance/player/url/v1", json!("[\"1002\"]")),
+    ];
+    assert!((4..=expected.len()).contains(&calls.len()));
+    for ((path, args), (expected_path, expected_args)) in calls.iter().zip(expected) {
+        assert_eq!(path, expected_path);
+        let actual = match path.as_str() {
+            "/api/dj/program/detail" => &args["id"],
+            "/api/dj/play/url/check" => &args["voiceId"],
+            "/api/song/enhance/player/url/v1" => &args["ids"],
+            _ => args,
+        };
+        assert_eq!(actual, &expected_args);
+    }
+}
