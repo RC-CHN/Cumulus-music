@@ -918,6 +918,7 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-windows --runtime .build/package-stage/windows-x64/native --artist
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-mv-windows --runtime .build/package-stage/windows-x64/native --artist-mv
           python scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe.exe --root .build/ci-discovery-home-windows
+          python scripts/ci/discovery_home_smoke.py --recall --binary .build/target/debug/examples/discovery_home_ui_probe.exe --root .build/ci-discovery-recall-windows
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-artist-batch-windows --runtime .build/package-stage/windows-x64/native --artist-batch
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-navigation-windows --runtime .build/package-stage/windows-x64/native --navigation
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-playback-credit-windows --runtime .build/package-stage/windows-x64/native --playback-credit
@@ -1056,6 +1057,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
           sudo locale-gen en_US.UTF-8
+      - name: Native GTK folder chooser accessibility
+        if: matrix.shard == 'library-search'
+        run: sudo apt-get install -y gir1.2-atspi-2.0 at-spi2-core
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -1429,6 +1433,7 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-local-delete-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-local-resource-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-cold-start-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_directory_selection_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-directory-selection-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_folder_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-folder-reveal-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_group_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-group-hide-linux --screenshots
@@ -1526,6 +1531,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-mv-linux --artist-mv
           cargo build -p cumulus-desktop --example discovery_home_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-home-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/discovery_home_smoke.py --recall --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-recall-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-batch-linux --artist-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-navigation-linux --navigation
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-playback-credit-linux --playback-credit
