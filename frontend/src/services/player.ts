@@ -257,6 +257,7 @@ export interface QueueTrack {
   likeSongId?: string;
   catalogMenu?: boolean;
   voiceMenu?: boolean;
+  localMenu?: boolean;
   collectible?: boolean;
 }
 export interface QueueCatalogMenu {
@@ -887,6 +888,7 @@ export interface PlayerClient
   ): Promise<QueueCatalogMenu>;
   playerQueueVoiceMenu(epoch: string, revision: string, entryId: string): Promise<QueueVoiceMenu>;
   playerQueueOpenVoiceDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
+  playerQueueOpenLocalDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
   playerVinylCommentsAvailable(epoch: string): Promise<boolean>;

@@ -169,7 +169,19 @@ fn main() {
     assert!(
         !(batch_hide || batch_play) || !(group_hide || folder_reveal || (batch_hide && batch_play))
     );
-    let queue = folder_reveal
+    let queue_reveal = std::env::var("CUMULUS_LOCAL_QUEUE_REVEAL_PROOF").as_deref() == Ok("1");
+    assert!(
+        !queue_reveal
+            || (cfg!(target_os = "linux")
+                && !folder_reveal
+                && !group_hide
+                && !batch_hide
+                && !batch_play
+                && !batch_add
+                && std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_none())
+    );
+    let queue = queue_reveal
+        || folder_reveal
         || group_hide
         || batch_hide
         || batch_play
@@ -254,6 +266,27 @@ fn main() {
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
+            if queue_reveal && stage=="await_queue_file_call" {
+                let expected=value["count"].as_u64().filter(|count| (1..=2).contains(count)).unwrap() as usize;
+                let calls=output.parent().unwrap().join("show-items.jsonl");
+                let handle=handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if tokio::time::timeout(std::time::Duration::from_secs(3),async {
+                        while fs::read_to_string(&calls).map_or(0, |log| log.lines().count()) != expected {
+                            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                        }
+                    }).await.is_ok() {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__queueFileCalls={expected};")).unwrap();
+                    }
+                });
+                return;
+            }
+            if queue_reveal && stage=="replace_queue_ncm" {
+                fs::OpenOptions::new().append(true).open(output.join("media/归途.ncm")).unwrap()
+                    .write_all(b"changed synthetic file").unwrap();
+                handle.get_webview_window("main").unwrap().eval("window.__queueNcmChanged=true;").unwrap();
+                return;
+            }
             let folder_capture = folder_reveal && ["ux_01_folder_menu", "ux_02_folder_focus", "ux_03_folder_failure"].contains(&stage);
             let hide_capture = group_hide && ["ux_01_group_hide_menu", "ux_02_group_hidden", "ux_03_group_restored"].contains(&stage);
             let batch_capture = batch_hide && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_hidden", "ux_04_batch_restored"].contains(&stage);
@@ -263,7 +296,9 @@ fn main() {
                 "ux_01_picker_requested", "ux_02_unchecked_after_cancel", "ux_03_checked",
                 "ux_04_paused_root", "ux_05_deselected", "ux_06_rechecked",
             ].contains(&stage);
-            if folder_capture || hide_capture || batch_capture || batch_play_capture || batch_add_capture || directory_capture {
+            let queue_reveal_capture = queue_reveal && ["ux_01_queue_local_cue", "ux_02_queue_local_ncm",
+                "ux_03_queue_local_changed"].contains(&stage);
+            if folder_capture || hide_capture || batch_capture || batch_play_capture || batch_add_capture || directory_capture || queue_reveal_capture {
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -344,6 +379,8 @@ fn main() {
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
             webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
+            } else if queue_reveal {
+                include_str!("local_queue_file_reveal_ui_probe.js")
             } else if folder_reveal {
                 include_str!("local_folder_reveal_ui_probe.js")
             } else if group_hide {

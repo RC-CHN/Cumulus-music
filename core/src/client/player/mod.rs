@@ -29,6 +29,8 @@ mod queue_collection;
 mod queue_drop;
 mod queue_edit;
 mod queue_like;
+mod queue_local_menu;
+pub use queue_local_menu::QueueLocalFileReveal;
 mod queue_menu;
 mod queue_more_playlist;
 pub(super) mod queue_playlist;
@@ -2003,6 +2005,9 @@ impl MusicClient {
                             && token.uid.is_some()
                             && queue.intelligence.is_none()
                             && queue_voice_menu::eligible(&i.resource),
+                        local_menu: ordinary_queue
+                            && queue.intelligence.is_none()
+                            && queue_local_menu::eligible(i),
                         collectible,
                     })
                 })

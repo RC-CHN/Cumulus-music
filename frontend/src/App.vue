@@ -2554,6 +2554,15 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
     }
     return;
   }
+  if (input.kind === 'local') {
+    const { epoch, revision, entryId, origin } = input.info;
+    if (key === 'source' && origin?.kind === 'local') navigateFromQueue(origin);
+    else if (key === 'directory')
+      void core.playerQueueOpenLocalDirectory(epoch, revision, entryId).catch((error) => {
+        if (input.live()) input.report(failure(error).message);
+      });
+    return;
+  }
   if (key === 'comments') trackComments(track);
   else if (key === 'download') {
     if (!signedIn.value) loginOpen.value = true;

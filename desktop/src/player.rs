@@ -537,6 +537,35 @@ pub async fn player_queue_open_voice_directory<R: tauri::Runtime>(
     .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_queue_open_local_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue local directory requires the main window").into());
+    }
+    let reveal = client
+        .player_queue_local_file_reveal(&epoch, &revision, &entry_id)
+        .await?;
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        let client = app.state::<MusicClient>();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                reveal.check_current(&client),
+            )
+            .await
+            .map_err(|_| Error::State("queue local file validation timed out"))?
+        })
+    })
+    .await
+    .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_chorus(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

@@ -5,6 +5,7 @@ import { failure, type TrackView, type PlaylistView } from '../services/contract
 import type { PlayerModel } from '../composables/usePlayer';
 import type { MenuItem } from '../services/menu';
 import {
+  queueLocalMenuItems,
   queueSongMenuItems,
   queueVoiceMenuItems,
   songLink,
@@ -51,6 +52,7 @@ const items = computed<MenuItem[]>(() => {
     const locked =
       !props.player.ready.value || props.player.busy.value || props.player.queueBusy.value;
     if (queue.kind === 'voice') return queueVoiceMenuItems(queue.info, group, playing, locked);
+    if (queue.kind === 'local') return queueLocalMenuItems(queue, playing, locked);
     return queueSongMenuItems(queue.info, group, playing, locked).map((item) =>
       item.key === 'collect' ? { ...item, disabled: queue.collectionLocked() } : item,
     );
@@ -252,7 +254,7 @@ async function select(key: string) {
     const action = items.value.find((item) => item.key === key);
     if (!queue.live() || !action || action.disabled || action.separator) return;
     if (key === 'play') queue.play();
-    else if (key === 'collect' && queue.kind === 'catalog') queue.collect();
+    else if (key === 'collect' && queue.kind !== 'voice') queue.collect();
     else if (key === 'remove') queue.remove();
     else if (key === 'copy') await copy();
     else if (key === 'share') {

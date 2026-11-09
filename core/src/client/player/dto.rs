@@ -183,6 +183,8 @@ pub struct QueueTrack {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub voice_menu: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub local_menu: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub collectible: bool,
 }
 #[derive(Serialize)]

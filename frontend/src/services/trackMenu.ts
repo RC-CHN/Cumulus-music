@@ -1,5 +1,5 @@
 import type { TrackView } from './contracts';
-import type { PlayerView, QueueCatalogMenu, QueueVoiceMenu } from './player';
+import type { PlayerView, QueueCatalogMenu, QueueOrigin, QueueVoiceMenu } from './player';
 import type { MenuItem } from './menu';
 import { podcastProgramPublicLink } from './podcast.ts';
 
@@ -71,7 +71,49 @@ export interface QueueVoiceMenuRequest extends QueueRowMenuRequest {
   info: QueueVoiceMenu;
   report(message: string): void;
 }
-export type QueueMenuRequest = QueueTrackMenuRequest | QueueVoiceMenuRequest;
+export interface QueueLocalMenuRequest extends QueueRowMenuRequest {
+  kind: 'local';
+  info: {
+    epoch: string;
+    revision: string;
+    entryId: string;
+    track: TrackView;
+    origin?: QueueOrigin;
+  };
+  collect(): void;
+  collectionLocked(): boolean;
+  report(message: string): void;
+}
+export type QueueMenuRequest =
+  | QueueTrackMenuRequest
+  | QueueVoiceMenuRequest
+  | QueueLocalMenuRequest;
+
+export function queueLocalMenuItems(
+  input: QueueLocalMenuRequest,
+  playing: boolean,
+  transportLocked: boolean,
+): MenuItem[] {
+  const { track, origin } = input.info;
+  const artist = track.artists[0];
+  return [
+    {
+      key: 'play',
+      label: playing ? '暂停' : '播放',
+      icon: playing ? 'pause' : 'play',
+      disabled: transportLocked || track.missing,
+    },
+    { key: 'collect', label: '收藏', icon: 'star', disabled: input.collectionLocked() },
+    { key: 'artist', label: `歌手: ${artist || '未知'}`, icon: 'user', disabled: true },
+    { key: 'album', label: `专辑: ${track.album || '未知'}`, icon: 'album', disabled: true },
+    ...(origin?.kind === 'local'
+      ? [{ key: 'source', label: '来自：本地音乐', icon: 'source' }]
+      : []),
+    { key: 'directory', label: '打开文件所在目录', icon: 'folder' },
+    { key: 'remove-divider', label: '', separator: true },
+    { key: 'remove', label: '从列表中删除', icon: 'trash', disabled: transportLocked },
+  ];
+}
 
 export function queueVoiceMenuItems(
   input: QueueVoiceMenu,

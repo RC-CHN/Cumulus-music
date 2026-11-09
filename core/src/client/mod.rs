@@ -11,7 +11,7 @@ pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
 pub use cloud::CloudFileReveal;
-pub use player::QueueVoiceFileReveal;
+pub use player::{QueueLocalFileReveal, QueueVoiceFileReveal};
 mod cold_offline;
 pub use cold_offline::{ColdOfflinePageView, ColdOfflinePlayerView};
 mod collections;
