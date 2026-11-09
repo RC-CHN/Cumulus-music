@@ -1,3 +1,4 @@
+mod clear;
 mod collect;
 mod commands;
 mod comments;
@@ -107,6 +108,7 @@ struct Host {
     worker: Mutex<Option<Worker>>,
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
     collect: Mutex<Option<collect::Visit>>,
+    clear: Mutex<Option<clear::ClearVisit>>,
 }
 struct Worker {
     token: SessionToken,
@@ -163,6 +165,7 @@ impl DownloadHost {
                 worker: Mutex::new(None),
                 jobs: Mutex::new(HashMap::new()),
                 collect: Mutex::new(None),
+                clear: Mutex::new(None),
             }),
         }
     }
@@ -242,6 +245,15 @@ impl MusicClient {
                 // Do not abort a task in the middle of file recovery.
                 worker.scheduler.stop();
                 worker.notify.notify_one();
+            }
+        }
+        {
+            let mut clear = host.clear.lock().map_err(|_| Error::LockPoisoned)?;
+            if clear
+                .as_ref()
+                .is_some_and(|visit| visit.belongs_to(previous))
+            {
+                *clear = None;
             }
         }
         let jobs = host.jobs.lock().map_err(|_| Error::LockPoisoned)?;

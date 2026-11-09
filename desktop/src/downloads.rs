@@ -219,6 +219,34 @@ pub async fn voice_download_state<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn download_clear_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<DownloadClearPlan, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download clearing requires main window").into());
+    }
+    client
+        .download_clear_prepare(&epoch)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub fn download_clear_discard<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download clearing requires main window").into());
+    }
+    client
+        .download_clear_discard(&epoch, &receipt)
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn download_command<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
@@ -227,6 +255,9 @@ pub async fn download_command<R: tauri::Runtime>(
 ) -> Result<DownloadResult, ClientError> {
     if matches!(command, DownloadCommand::Preferences { .. }) && window.label() != "main" {
         return Err(Error::InvalidInput("download quality settings require main window").into());
+    }
+    if matches!(command, DownloadCommand::ConfirmClear { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("download clearing requires main window").into());
     }
     client
         .download_command(&epoch, command)

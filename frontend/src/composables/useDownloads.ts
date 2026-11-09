@@ -5,6 +5,7 @@ import { useCore } from '../services/core.ts';
 import { downloadCommandLabel } from '../services/downloadFeedback.ts';
 import { downloadViewportKey, type DownloadViewport } from '../services/downloadViewport.ts';
 import type {
+  DownloadClearPlan,
   DownloadClient,
   DownloadCommand,
   DownloadQuery,
@@ -174,6 +175,27 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       if (version === generation) throw value;
     }
   }
+  async function discardClear(plan: DownloadClearPlan) {
+    if (!plan.receipt) return;
+    try {
+      await core.downloadClearDiscard(plan.epoch, plan.receipt);
+    } catch {
+      // Another visit, account or confirmation may already have retired it.
+    }
+  }
+  async function prepareClear() {
+    if (!epoch) return;
+    const captured = epoch,
+      current = captureVisit();
+    try {
+      const plan = await core.downloadClearPrepare(captured);
+      if (plan.epoch !== captured) return;
+      if (current()) return plan;
+      void discardClear(plan);
+    } catch (value) {
+      if (current()) throw value;
+    }
+  }
   async function command(input: DownloadCommand): Promise<DownloadResult | undefined> {
     if (!epoch || busy.value) return;
     const version = generation,
@@ -191,6 +213,8 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
           (result.failed.length
             ? `，${result.failed.length} 项未完成：${result.failed[0]?.message}`
             : '');
+      else if (input.kind === 'confirm_clear' && !result.accepted.length && !result.failed.length)
+        notice.value = '确认范围内已没有需要取消的任务';
       else if (result.failed.length)
         notice.value = `已受理 ${result.accepted.length} 项，${result.failed.length} 项未完成：${result.failed[0]?.message}`;
       else
@@ -304,6 +328,8 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     notice,
     connect,
     qualityPreferences,
+    prepareClear,
+    discardClear,
     refresh,
     show,
     filter,

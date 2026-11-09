@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { DownloadModel } from '../composables/useDownloads';
 import type {
+  DownloadClearPlan,
   DownloadDialogTarget,
   DownloadCommand,
   DownloadQualityPreferences,
@@ -22,6 +23,31 @@ const quality = shallowRef<DownloadQualityPreferences>();
 const loadingQuality = ref(false);
 const qualityError = ref('');
 let dialogOpen = true;
+const clearPlan = shallowRef<DownloadClearPlan>();
+const clearIsCurrent = props.model.captureVisit();
+const preparingClear = ref(false),
+  clearSubmitted = ref(false);
+const clearPreparationError = ref('');
+async function prepareClear() {
+  preparingClear.value = true;
+  try {
+    const plan = await props.model.prepareClear();
+    if (dialogOpen) {
+      if (plan) clearPlan.value = plan;
+      else clearPreparationError.value = '下载列表已变化，请返回后重新打开。';
+    } else if (plan) void props.model.discardClear(plan);
+  } catch (value) {
+    if (dialogOpen) clearPreparationError.value = failure(value).message;
+  } finally {
+    if (dialogOpen) preparingClear.value = false;
+  }
+}
+async function confirmClear() {
+  const receipt = clearPlan.value?.receipt;
+  if (!receipt || blocked.value || clearSubmitted.value || !clearIsCurrent()) return;
+  clearSubmitted.value = true;
+  await perform({ kind: 'confirm_clear', receipt });
+}
 async function loadQuality(refresh = false) {
   if (loadingQuality.value) return;
   loadingQuality.value = true;
@@ -111,6 +137,7 @@ onMounted(() => {
   focus = document.activeElement as HTMLElement;
   dialog.value?.showModal();
   if (props.target.kind === 'settings') void loadQuality();
+  if (props.target.kind === 'clear') void prepareClear();
   rename.value =
     task.value?.path
       ?.split(/[\\/]/)
@@ -123,6 +150,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   dialogOpen = false;
+  if (clearPlan.value) void props.model.discardClear(clearPlan.value);
   focus?.focus();
 });
 async function focusForm() {
@@ -464,19 +492,28 @@ async function fileAction() {
         </button>
       </footer>
     </template>
-    <template v-else-if="target.kind === 'clear'"
-      ><p>取消本账号全部未完成的下载，并清理这些任务创建的临时文件。已完成的歌曲会保留。</p>
+    <template v-else-if="target.kind === 'clear'">
+      <p>确定清空全部下载任务？</p>
+      <p v-if="preparingClear" class="muted" role="status">正在核对未完成的下载…</p>
+      <p v-else-if="clearPreparationError" class="error" role="alert">
+        {{ clearPreparationError }}
+      </p>
+      <p v-else-if="clearPlan?.count" class="muted" data-download-clear-count>
+        取消已确认范围内的
+        {{ clearPlan.count }} 项下载，并清理对应临时文件。已完成和之后新增的下载会保留。
+      </p>
+      <p v-else class="muted">没有可取消的下载任务。</p>
       <footer>
-        <button class="text-button" :disabled="busy" @click="close">返回</button
-        ><button
+        <button class="text-button" autofocus :disabled="busy" @click="close">返回</button>
+        <button
           class="primary"
-          :disabled="blocked"
-          @click="perform({ kind: 'all', action: 'cancel' })"
+          :disabled="blocked || !clearPlan?.receipt || clearSubmitted || !clearIsCurrent()"
+          @click="confirmClear"
         >
           清空正在下载
         </button>
-      </footer></template
-    >
+      </footer>
+    </template>
     <template v-else-if="task">
       <h3>{{ task.track.name }}</h3>
       <p class="muted">{{ downloadStatus(task) }}</p>

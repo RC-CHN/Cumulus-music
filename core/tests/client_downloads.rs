@@ -1896,41 +1896,164 @@ async fn forgetting_a_download_keeps_suspended_ordinary_queues_playable() {
 }
 
 #[tokio::test]
-async fn bulk_cancel_covers_tasks_outside_visible_page_and_removes_owned_temporary_files() {
+async fn confirmed_clear_covers_its_full_snapshot_and_does_not_cancel_a_late_task() {
     use cumulus_core::download::service::{DownloadAction, DownloadService};
     let f = Fixture::new();
     f.configure().await;
     let service =
         DownloadService::with_backend(f.session.clone(), f.backend.clone(), 512 * 1024 * 1024)
             .unwrap();
-    for _ in 0..103 {
+    let paused = || {
         let task = service.create_default(&json!(123), options()).unwrap();
-        service.request(&task.id, DownloadAction::Pause).unwrap();
+        service.request(&task.id, DownloadAction::Pause).unwrap()
+    };
+    for _ in 0..103 {
+        paused();
     }
     let before = f.client.downloads("1", Default::default()).await.unwrap();
     assert_eq!(before.active_count, 103);
     assert_eq!(before.tasks.len(), 100);
+
+    let plan = f.client.download_clear_prepare("1").await.unwrap();
+    assert_eq!(plan.count, 103);
+    let receipt = plan.receipt.unwrap();
+    assert!(
+        service
+            .list()
+            .unwrap()
+            .iter()
+            .all(|t| t.status == DownloadStatus::Paused)
+    );
+    let late = paused();
+
+    // Reject the old all/cancel command even if a renderer supplies it.
+    assert!(matches!(
+        f.client
+            .download_command(
+                "1",
+                DownloadCommand::All {
+                    action: TaskControl::Cancel
+                }
+            )
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
     let result = f
         .client
         .download_command(
             "1",
-            DownloadCommand::All {
-                action: TaskControl::Cancel,
+            DownloadCommand::ConfirmClear {
+                receipt: receipt.clone(),
             },
         )
         .await
         .unwrap();
     assert!(result.failed.is_empty());
     assert_eq!(result.accepted.len(), 103);
-    wait(&f.client, "1", DownloadTab::Active, |v| v.active_count == 0).await;
+    assert!(!result.accepted.contains(&late.id));
+    assert!(
+        f.client
+            .download_command("1", DownloadCommand::ConfirmClear { receipt })
+            .await
+            .is_err()
+    );
+    wait(&f.client, "1", DownloadTab::Active, |v| v.active_count == 1).await;
     let tasks = service.list().unwrap();
-    assert_eq!(tasks.len(), 103);
+    assert_eq!(tasks.len(), 104);
     assert!(
         tasks
             .iter()
+            .filter(|t| t.id != late.id)
             .all(|t| t.status == DownloadStatus::Cancelled && !t.work.exists())
     );
+    let preserved = service.get(&late.id).unwrap();
+    assert_eq!(preserved.status, DownloadStatus::Paused);
+    assert!(preserved.work.is_dir());
     assert!(f.backend.audio.calls().is_empty());
+}
+
+#[tokio::test]
+async fn clear_receipt_is_one_visit_and_skips_a_task_completed_before_confirmation() {
+    use cumulus_core::download::service::{DownloadAction, DownloadRunOptions, DownloadService};
+    let f = Fixture::new();
+    f.configure().await;
+    let service =
+        DownloadService::with_backend(f.session.clone(), f.backend.clone(), 512 * 1024 * 1024)
+            .unwrap();
+    let task = service.create_default(&json!(123), options()).unwrap();
+    service.request(&task.id, DownloadAction::Pause).unwrap();
+    let first = f
+        .client
+        .download_clear_prepare("1")
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    let current = f
+        .client
+        .download_clear_prepare("1")
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    f.client.download_clear_discard("1", &first).unwrap();
+    let command = |receipt| DownloadCommand::ConfirmClear { receipt };
+    assert!(
+        f.client
+            .download_command("1", command(first))
+            .await
+            .is_err()
+    );
+    assert!(
+        f.client
+            .download_command("2", command(current.clone()))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service.get(&task.id).unwrap().status,
+        DownloadStatus::Paused
+    );
+
+    f.client.download_clear_discard("1", &current).unwrap();
+    assert!(
+        f.client
+            .download_command("1", command(current))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service.get(&task.id).unwrap().status,
+        DownloadStatus::Paused
+    );
+
+    let ready = f
+        .client
+        .download_clear_prepare("1")
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    service.enqueue(&task.id).unwrap();
+    let complete = service
+        .run(&task.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(complete.status, DownloadStatus::Complete);
+    let result = f
+        .client
+        .download_command("1", command(ready))
+        .await
+        .unwrap();
+    assert!(result.accepted.is_empty() && result.failed.is_empty());
+    assert_eq!(
+        service.get(&task.id).unwrap().status,
+        DownloadStatus::Complete
+    );
+    assert_eq!(fs::read(complete.target.unwrap()).unwrap(), FLAC);
+    let empty = f.client.download_clear_prepare("1").await.unwrap();
+    assert_eq!(empty.count, 0);
+    assert!(empty.receipt.is_none());
 }
 
 #[tokio::test]
