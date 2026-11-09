@@ -266,11 +266,7 @@ unsafe fn query_fixed<T>(
 
 fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {
     if class == TokenHasRestrictions {
-        // The Windows x64 lab observed this class writing a one-byte BOOLEAN,
-        // despite its DWORD description. A sentinel rejects an unwritten byte.
-        let mut value = u8::MAX;
-        // SAFETY: this class returned exactly one byte in the native lab.
-        let (success, actual) = unsafe { query_fixed(token, class, &mut value) };
+        let (success, actual, value) = query_restriction_boolean(token);
         return restriction_boolean(success, actual, value);
     }
     if class == TokenMandatoryPolicy {
@@ -303,6 +299,16 @@ fn scalar(token: HANDLE, class: TOKEN_INFORMATION_CLASS) -> io::Result<u32> {
     } else {
         Err(denied())
     }
+}
+
+fn query_restriction_boolean(token: HANDLE) -> (bool, u32, u8) {
+    // Hosted Windows x64 rejected the one-byte buffer but accepted a DWORD
+    // buffer, reported length one, and wrote only its first byte. Preserve the
+    // accepted alignment/capacity; the sentinel rejects an unwritten result.
+    let mut buffer = u32::MAX;
+    // SAFETY: the DWORD is writable and the API receives its full capacity.
+    let (success, actual) = unsafe { query_fixed(token, TokenHasRestrictions, &mut buffer) };
+    (success, actual, buffer.to_ne_bytes()[0])
 }
 
 fn restriction_boolean(success: bool, actual: u32, value: u8) -> io::Result<u32> {

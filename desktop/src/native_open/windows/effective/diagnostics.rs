@@ -138,9 +138,7 @@ fn snapshot(token: HANDLE) -> String {
             "value_not_reported",
         ),
     ));
-    let mut value = u8::MAX;
-    // SAFETY: the tested class's native result is the one-byte BOOLEAN.
-    let (success, actual) = unsafe { query_fixed(token, TokenHasRestrictions, &mut value) };
+    let (success, actual, value) = query_restriction_boolean(token);
     let error = status_error(success);
     let shape = if restriction_boolean(success, actual, value).is_ok() {
         "valid_boolean"
