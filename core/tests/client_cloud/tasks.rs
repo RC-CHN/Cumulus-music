@@ -20,12 +20,28 @@ async fn complete_task_selection_ignores_display_page_and_filter_and_never_expan
     let f = Fixture::new(0);
     let manager = manager(&f);
     let input = f.input();
-    for _ in 0..205 {
-        manager
-            .create(&input.path, Default::default())
-            .await
-            .unwrap();
-    }
+    let first = manager
+        .create(&input.path, Default::default())
+        .await
+        .unwrap();
+    let store = cumulus_core::storage::StateStore::open(f.root.path()).unwrap();
+    const JOBS: &str = "cloud_uploads_v1";
+    let queued = store.get("1", JOBS, &first.id).unwrap().unwrap();
+    // The prefix only establishes the off-page population. Copy a real queued
+    // row in one fixture transaction; the late create and every cancellation
+    // below still run through the production service and durable journal.
+    store
+        .transaction(|tx| {
+            for n in 1..205 {
+                // A low deterministic ID cannot collide with the real UUIDv4.
+                let id = format!("{n:032x}");
+                let mut row = queued.clone();
+                row["id"] = json!(id);
+                tx.put("1", JOBS, &id, &row)?;
+            }
+            Ok(())
+        })
+        .unwrap();
     let client = f.client();
     let mut q = query(CloudTab::Uploading);
     q.offset = 200;
