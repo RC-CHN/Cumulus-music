@@ -17,7 +17,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const JOURNAL: &str = "playlist-mutations";
+pub(super) const JOURNAL: &str = "playlist-mutations";
 
 pub(crate) struct GroupDownloadPlaylistProof {
     pub operation: String,
@@ -583,7 +583,9 @@ impl PlaylistService {
                 };
                 check()?;
                 detail.writable(&uid)?;
-                if detail.has_local {
+                if detail.has_local
+                    || super::local_membership::has_entries(&self.store, &uid, &playlist)?
+                {
                     return Err(Error::State(
                         "local-only playlist entries require native matching before editing",
                     ));
@@ -1229,7 +1231,13 @@ impl PlaylistService {
                     return Err(Error::QueueChanged);
                 }
                 if let PlaylistCommand::Tracks { change, ids, .. } = command {
-                    if detail.has_local {
+                    if detail.has_local
+                        || super::local_membership::has_entries(
+                            &self.store,
+                            &uid,
+                            &detail.summary.id,
+                        )?
+                    {
                         return Err(Error::State(
                             "local-only playlist entries require native matching before editing",
                         ));

@@ -1,0 +1,24 @@
+自建歌单本地成员桌面验收
+========================
+
+官方 3.1.42.205594 恢复证据：M/2997:46–119 先读服务端完整详情，再将
+已登记的本地项按绝对位置插入；M/3160:1143–1230、1871–1965 中，纯本地
+添加和移除不提交线上歌单变更，移除不会删除原文件。未绑定的服务端 v=-1
+只作占位，不猜测本机文件或把该 ID 当作在线曲目。完整证据和限制见
+core-playlist-contracts.txt。
+
+在隔离 Linux WebView 可运行：
+  cargo build --locked -p cumulus-desktop --example local_ui_probe --features custom-protocol
+  sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+    /usr/bin/python3 scripts/ci/mixed_playlist_smoke.py --screenshots \
+    --binary .build/target/debug/examples/local_ui_probe --root .build/mixed-playlist-webview
+
+专用夹具仅创建一个 PCM 文件和本机状态目录。服务合成两条在线曲目、一条
+未绑定 v=-1 及自建、喜欢、收藏三类歌单。通过正式菜单打开两种确认窗口，
+核对可选歌单、两次取消、显式添加和移除。每个阶段读取持久成员记录：取消添加时
+仍没有记录，添加后代次为 1，取消移除保持 1，最后移除为 2 且成员为空。
+原始文件逐字节核对不变。正式播放只选本地成员，以真实 libmpv null 时钟推进
+及队列的本地/目录身份验证，移除后原暂停实例和队列保持。夹具拒绝远端歌单写入、
+其它音源路由、非目录 ID 和无法核实的请求。已有队列预取允许观察下一首目录 ID 的
+一次 /api/song/enhance/player/url/v1 请求，不返回任何音源。真实账号、服务写入、
+实体声卡和 Windows 实窗不由此证明。

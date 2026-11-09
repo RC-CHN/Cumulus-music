@@ -57,6 +57,7 @@ mod player;
 mod playlist_cover;
 mod playlist_creator;
 mod playlist_essential;
+mod playlist_local_membership;
 mod playlist_square;
 mod playlist_tags_browse;
 mod playlists;

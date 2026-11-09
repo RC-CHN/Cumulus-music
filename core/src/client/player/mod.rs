@@ -7,6 +7,7 @@ mod dto;
 mod identity;
 mod intelligence;
 mod local_batch;
+mod mixed_playlist;
 pub use lyrics::LyricBountyIntent;
 mod lyrics;
 mod minibar_skip;

@@ -294,6 +294,13 @@ pub enum SongRowSelection {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MixedPlaylistStart {
+    pub id: String,
+    pub local: bool,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
     AlbumDetail {
@@ -502,6 +509,13 @@ pub enum PlaySelection {
         id: String,
         ids: Vec<String>,
         revision: String,
+        quality: Quality,
+    },
+    MixedPlaylist {
+        id: String,
+        revision: String,
+        start: Option<MixedPlaylistStart>,
+        double_click: bool,
         quality: Quality,
     },
 }

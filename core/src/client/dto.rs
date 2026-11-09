@@ -40,23 +40,23 @@ pub use super::mv::{
 pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
 pub use super::pc_experiments::PcPresentationView;
 pub use super::player::{
-    IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
-    OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
-    PlayerPodcastResumeAction, PlayerPodcastResumeView, PlayerResourceKind, PlayerView,
-    PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount, PlayerVoiceRadio,
-    PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction, QualityChoiceView,
-    QualityDetailsView, QualityMenuPresentation, QualityTrialCommand, QualityTrialOutcome,
-    QualityTrialView, QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand,
-    QueueClickPreferencesView, QueueCollectionView, QueueDownloadMenuKind, QueueEdit,
-    QueueMoreTipAction, QueueTrack, QueueView, QueueVoiceMenu, SearchPodcastRowGesture,
-    SearchResultPlayback, SongRowSelection, StartupPreferencesCommand, StartupPreferencesView,
-    VoiceSongAction, VoiceSongCollectCreation, VoiceSongCollectPlan, VoiceSongCollectResult,
-    VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
-    VoiceSongDownloadPlan, VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision,
-    VoiceSongGroupDownloadHint, VoiceSongGroupDownloadPlan, VoiceSongGroupPlaylistCreation,
-    VoiceSongGroupPlaylistResult, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
-    VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability, VoiceSongSelectionAction,
-    VoiceSongSelectionKind,
+    IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView,
+    MixedPlaylistStart, OutputCommand, OutputEngineView, OutputView, PlaySelection,
+    PlaybackPowerView, PlayerAction, PlayerOrigin, PlayerPodcastResumeAction,
+    PlayerPodcastResumeView, PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail,
+    PlayerVoicePlayCount, PlayerVoiceRadio, PlayerVoiceSongsView, PlaylistDropRow,
+    PodcastRecommendationAction, QualityChoiceView, QualityDetailsView, QualityMenuPresentation,
+    QualityTrialCommand, QualityTrialOutcome, QualityTrialView, QueueCatalogMenu,
+    QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,
+    QueueCollectionView, QueueDownloadMenuKind, QueueEdit, QueueMoreTipAction, QueueTrack,
+    QueueView, QueueVoiceMenu, SearchPodcastRowGesture, SearchResultPlayback, SongRowSelection,
+    StartupPreferencesCommand, StartupPreferencesView, VoiceSongAction, VoiceSongCollectCreation,
+    VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongDownloadCreation,
+    VoiceSongDownloadDecision, VoiceSongDownloadPicker, VoiceSongDownloadPlan,
+    VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint,
+    VoiceSongGroupDownloadPlan, VoiceSongGroupPlaylistCreation, VoiceSongGroupPlaylistResult,
+    VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult,
+    VoiceSongRowAvailability, VoiceSongSelectionAction, VoiceSongSelectionKind,
 };
 pub use super::player::{LyricContribution, LyricToolbarAction};
 pub use super::player::{
@@ -286,9 +286,21 @@ pub struct TrackPage {
     pub more: bool,
     pub playlist: Option<PlaylistView>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub playlist_local: Option<PlaylistLocalPage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub daily: Option<DailyRecommendationState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style_tags: Option<super::style_tags::StyleCategory>,
+}
+
+/// Display-only local membership fence. TrackPage::revision continues to
+/// refer to the raw online order for existing queue and batch callers.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistLocalPage {
+    pub revision: String,
+    pub has_members: bool,
+    pub rows: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Clone, Serialize)]

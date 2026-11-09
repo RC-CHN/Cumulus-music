@@ -276,6 +276,14 @@ impl MusicClient {
                 };
                 (input, keep_queue.then_some(policy))
             }
+            input @ PlaySelection::MixedPlaylist {
+                double_click: true,
+                start: Some(_),
+                ..
+            } => {
+                let keep_queue = !self.replace_queue_on_double_click(&token)?;
+                (input, keep_queue.then_some(RetainedRow::Catalog))
+            }
             input @ PlaySelection::AlbumDetail { row: Some(_), .. } => {
                 (input, Some(RetainedRow::Catalog))
             }
@@ -779,6 +787,90 @@ impl MusicClient {
                 self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
+            PlaySelection::MixedPlaylist {
+                id,
+                revision,
+                start,
+                quality,
+                double_click,
+            } => {
+                let mixed = self
+                    .mixed_playlist_selection(
+                        &token,
+                        super::mixed_playlist::MixedRequest {
+                            id: &id,
+                            revision: &revision,
+                            start,
+                            quality,
+                            selected_only: preserve.is_some(),
+                            attempt,
+                        },
+                    )
+                    .await?;
+                if double_click && let Some(lease) = lease {
+                    let row = &mixed.resources[mixed.index];
+                    let song = if row["local_id"].is_string() {
+                        super::queue_click::TableSong::IndexedLocal(row)
+                    } else {
+                        super::queue_click::TableSong::Catalog(
+                            row["id"].as_str().ok_or(Error::QueueChanged)?,
+                        )
+                    };
+                    if let Some(state) = self
+                        .toggle_active_song_row(
+                            &token,
+                            song,
+                            attempt,
+                            lease,
+                            &mixed.guard,
+                            preserve.as_ref(),
+                        )
+                        .await?
+                    {
+                        self.session.check_generation(&token)?;
+                        return project(&state, &token);
+                    }
+                }
+                let state = if let Some(snapshot) = preserve {
+                    let lease = lease.ok_or(Error::StaleResponse)?;
+                    self.focus.check(lease, Owner::Audio)?;
+                    let resource = mixed
+                        .resources
+                        .into_iter()
+                        .next()
+                        .ok_or(Error::QueueChanged)?;
+                    let policy = if resource["local_id"].is_string() {
+                        RetainedRow::Local
+                    } else {
+                        RetainedRow::Catalog
+                    };
+                    self.play_retained_queue_row_with_source(
+                        &token,
+                        snapshot,
+                        (resource, mixed.source),
+                        lease,
+                        policy,
+                        Some(mixed.guard),
+                    )
+                    .await?
+                } else {
+                    self.submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources: mixed.resources,
+                            index: mixed.index,
+                            source: mixed.source,
+                        },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
+                        Some(mixed.guard),
+                    )
+                    .await?
+                };
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
             PlaySelection::MvRelated {
                 mv_id,
                 song_id,
@@ -1000,6 +1092,7 @@ impl MusicClient {
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }
+                    | PlaySelection::MixedPlaylist { .. }
                     | PlaySelection::LocalBatch { .. }
                     | PlaySelection::LocalBatchAdd { .. }
                     | PlaySelection::Podcast { .. }
@@ -1188,7 +1281,7 @@ impl MusicClient {
             if let Some(state) = self
                 .toggle_active_song_row(
                     &token,
-                    id,
+                    super::queue_click::TableSong::Catalog(id),
                     attempt,
                     lease.ok_or(Error::StaleResponse)?,
                     guard,

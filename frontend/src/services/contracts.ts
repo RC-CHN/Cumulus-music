@@ -260,6 +260,12 @@ export interface CoreClient
     offset: number,
   ): Promise<AccountData<PlaylistSubscribersPage>>;
   playlistPage(id: string, page: PageRequest): Promise<AccountData<TrackPage>>;
+  mutatePlaylistLocal(
+    epoch: string,
+    id: string,
+    revision: string,
+    change: PlaylistLocalChange,
+  ): Promise<AccountData<{ changed: boolean }>>;
   searchSongs(keyword: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   dailySongs(): Promise<AccountData<TrackPage>>;
   styleRecommendations(epoch: string): Promise<AccountData<TrackPage>>;
@@ -317,6 +323,15 @@ export interface PageRequest {
   offset: number;
   limit: number;
   revision?: string | null;
+  localRevision?: string;
+}
+export interface PlaylistLocalReference {
+  id: string;
+  revision: string;
+}
+export interface PlaylistLocalChange {
+  op: 'add' | 'remove';
+  rows: PlaylistLocalReference[];
 }
 export interface PlaylistCreatorProfile {
   id: string;
@@ -423,6 +438,7 @@ export interface TrackPage {
   offset: number;
   more: boolean;
   playlist: PlaylistView | null;
+  playlistLocal?: { revision: string; hasMembers: boolean; rows: Record<string, string> };
   daily?: { cached: boolean; showFreeTag: boolean; birthdayToday?: boolean };
   styleTags?: StyleCategory;
 }

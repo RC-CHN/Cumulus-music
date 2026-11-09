@@ -311,7 +311,9 @@ defineExpose({ locate, restoreScroll });
           track,
           start + index,
           currentId === track.id,
-          currentToggle?.trackId === track.id ? currentToggle : undefined,
+          currentToggle?.trackId === track.id && !!currentToggle.local === track.local
+            ? currentToggle
+            : undefined,
           toggleBusy,
           pendingToggle?.trackId === track.id ? pendingToggle : undefined,
           liked.has(track.id),
@@ -339,9 +341,9 @@ defineExpose({ locate, restoreScroll });
         :current-id="currentId"
         :current-toggle="
           !track.missing &&
-          !track.local &&
           (playableIds?.has(track.id) ?? true) &&
-          currentToggle?.trackId === track.id
+          currentToggle?.trackId === track.id &&
+          !!currentToggle.local === track.local
             ? currentToggle
             : undefined
         "
@@ -354,7 +356,7 @@ defineExpose({ locate, restoreScroll });
             : undefined
         "
         :toggle-busy="toggleBusy"
-        :liked="liked.has(track.id)"
+        :liked="!track.local && liked.has(track.id)"
         :busy="busy.has(track.id)"
         :playable="playable && (playableIds?.has(track.id) ?? true)"
         :navigable="navigable"

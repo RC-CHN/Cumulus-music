@@ -208,6 +208,7 @@ import {
   type VinylComposerTarget,
 } from './composables/useVinylCommentComposer';
 import PlaylistDialog from './components/PlaylistDialog.vue';
+import PlaylistLocalMemberDialog from './components/PlaylistLocalMemberDialog.vue';
 import PlaylistImportPreview from './components/playlist/PlaylistImportPreview.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
 import DownloadPage from './components/DownloadPage.vue';
@@ -2456,6 +2457,57 @@ watch(
 const trackActions = ref<InstanceType<typeof TrackActions>>();
 watch(music.page, () => trackActions.value?.close());
 const playlistDialog = ref<PlaylistDialogTarget>();
+type LocalMemberTarget = InstanceType<typeof PlaylistLocalMemberDialog>['$props']['target'];
+const localPlaylistMember = shallowRef<{
+  epoch: string;
+  page: Page;
+  target: LocalMemberTarget;
+  anchor: HTMLElement | null;
+  live: () => boolean;
+}>();
+function localMemberLive() {
+  const current = localPlaylistMember.value;
+  return (
+    !!current &&
+    signedIn.value &&
+    current.epoch === account.value.epoch &&
+    current.page === page.value
+  );
+}
+watch(
+  () => [signedIn.value, account.value.epoch, page.value] as const,
+  () => {
+    if (!localMemberLive()) localPlaylistMember.value = undefined;
+  },
+);
+function openLocalPlaylistMember(target: LocalMemberTarget, anchor: HTMLElement | null) {
+  if (!signedIn.value) return;
+  const visit: NonNullable<typeof localPlaylistMember.value> = {
+    epoch: account.value.epoch,
+    page: page.value,
+    target,
+    anchor,
+    live: () => localPlaylistMember.value === visit && localMemberLive(),
+  };
+  localPlaylistMember.value = visit;
+}
+function closeLocalPlaylistMember() {
+  const origin = localPlaylistMember.value?.anchor;
+  localPlaylistMember.value = undefined;
+  void nextTick(() => {
+    if (origin?.isConnected) origin.focus({ preventScroll: true });
+  });
+}
+function localPlaylistMemberSaved(id: string, changed: boolean) {
+  const kind = localPlaylistMember.value?.target.kind;
+  closeLocalPlaylistMember();
+  if (!changed) {
+    if (kind === 'add') notice.value = '这首本地歌曲已在歌单中。';
+    return;
+  }
+  notice.value = kind === 'add' ? '已添加到歌单。' : '已从歌单中移除。';
+  if (page.value.kind === 'playlist' && page.value.id === id) void music.load();
+}
 let downloadCollectionIntent = 0;
 async function openDownloadCollection(task: DownloadTask) {
   if (!signedIn.value || !task.collectionAvailable || music.page.value.kind !== 'downloads') return;
@@ -4317,7 +4369,8 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
       page.value.zonePlaylistReceipt
     )
       playZonePlaylistDetail(null);
-    else playMemberPlaylist(list.id, null);
+    else if (page.value.kind !== 'playlist' || page.value.id !== list.id || !playMixedPlaylist())
+      playMemberPlaylist(list.id, null);
   } else if (key === 'edit') editPlaylist(list.id);
   else if (key === 'up' || key === 'down')
     void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
@@ -4912,9 +4965,35 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
     return;
   }
   const epoch = account.value.epoch;
+  const membership = result.value?.playlistLocal;
+  const localRevision = request.track.local ? membership?.rows[request.track.id] : undefined;
   trackActions.value?.show(
     {
       ...request,
+      mixedLocal: membership?.hasMembers,
+      ...(membership && localRevision
+        ? {
+            removeLocalMember: (anchor) => {
+              if (
+                account.value.epoch !== epoch ||
+                page.value.kind !== 'playlist' ||
+                page.value.id !== playlist.id ||
+                result.value?.playlistLocal?.revision !== membership.revision
+              )
+                return;
+              openLocalPlaylistMember(
+                {
+                  kind: 'remove',
+                  title: request.track.name,
+                  playlist,
+                  row: { id: request.track.id, revision: localRevision },
+                  revision: membership.revision,
+                },
+                anchor ?? null,
+              );
+            },
+          }
+        : {}),
       queueNext: scopedPlaylistQueue(playlist.id, request.track.id),
       play: () => {
         if (
@@ -4938,10 +5017,18 @@ function playVisibleTrack(index: number, gesture?: TrackPlayGesture) {
 }
 const visibleTrackToggle = computed<TrackCurrentToggle | undefined>((previous) => {
   const current = player.view.value;
+  const local = current?.resourceKind === 'local';
+  const shown = result.value;
+  const localMember =
+    local &&
+    page.value.kind === 'playlist' &&
+    shown?.playlist?.id === page.value.id &&
+    !!current.track?.id &&
+    !!shown.playlistLocal?.rows[current.track.id];
   if (
     !current?.playId ||
     !current.track ||
-    current.resourceKind !== 'catalog' ||
+    (current.resourceKind !== 'catalog' && !localMember) ||
     current.fm ||
     current.epoch !== account.value.epoch ||
     !player.loaded.value
@@ -4953,11 +5040,13 @@ const visibleTrackToggle = computed<TrackCurrentToggle | undefined>((previous) =
     previous.epoch === current.epoch &&
     previous.queueRevision === current.queueRevision &&
     previous.trackId === current.track.id &&
+    !!previous.local === local &&
     previous.pause === pause
   )
     return previous;
   return {
     trackId: current.track.id,
+    ...(local ? { local: true } : {}),
     epoch: current.epoch,
     playId: current.playId,
     queueRevision: current.queueRevision,
@@ -5022,10 +5111,32 @@ function playZonePlaylistDetail(startId: string | null, doubleClick = false) {
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
+function playMixedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
+  const current = page.value;
+  const shown = result.value;
+  if (
+    current.kind !== 'playlist' ||
+    current.zonePlaylistReceipt ||
+    shown?.playlist?.id !== current.id ||
+    !shown.playlistLocal?.hasMembers
+  )
+    return false;
+  if (!track || (!track.missing && (!track.local || shown.playlistLocal.rows[track.id])))
+    void player.select({
+      kind: 'mixed_playlist',
+      id: current.id,
+      revision: shown.playlistLocal.revision,
+      start: track ? { id: track.id, local: track.local } : null,
+      double_click: gesture === 'double_click',
+      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  return true;
+}
 function playPlaylistHeader() {
   const current = page.value;
   if (current.kind === 'playlist' && current.zonePlaylistReceipt) playZonePlaylistDetail(null);
-  else play(result.value?.tracks.findIndex((track) => !track.missing) ?? -1);
+  else if (!playMixedPlaylist())
+    play(result.value?.tracks.findIndex((track) => !track.missing) ?? -1);
 }
 function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
@@ -5056,6 +5167,7 @@ function play(index = 0, gesture?: TrackPlayGesture) {
       playZonePlaylistDetail(tracks[index].id, gesture === 'double_click');
       return;
     }
+    if (playMixedPlaylist(tracks[index], gesture)) return;
     const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',
       id: page.value.id,
@@ -5083,6 +5195,7 @@ function keyboard(event: KeyboardEvent) {
         loginOpen.value ||
         accountsOpen.value ||
         playlistDialog.value ||
+        localPlaylistMember.value ||
         downloadDialog.value ||
         cloudDialogOpen.value
       ),
@@ -5383,6 +5496,18 @@ onUnmounted(() => {
                 v-if="page.kind === 'local'"
                 :model="local"
                 :matching="localMatching"
+                :can-add-to-playlist="signedIn"
+                @add-to-playlist="
+                  (row, anchor) =>
+                    openLocalPlaylistMember(
+                      {
+                        kind: 'add',
+                        title: row.track.name,
+                        row: { id: row.track.id, revision: row.revision },
+                      },
+                      anchor,
+                    )
+                "
                 :playable="player.ready.value"
                 :queueable="
                   player.ready.value &&
@@ -6829,6 +6954,15 @@ onUnmounted(() => {
         "
       />
     </ModalTransition>
+    <PlaylistLocalMemberDialog
+      v-if="localPlaylistMember"
+      :epoch="localPlaylistMember.epoch"
+      :target="localPlaylistMember.target"
+      :playlists="playlists"
+      :live="localPlaylistMember.live"
+      @close="closeLocalPlaylistMember"
+      @done="localPlaylistMemberSaved"
+    />
     <PlaylistImportPreview
       ref="importDialog"
       :account-epoch="account.epoch"
