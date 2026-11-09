@@ -361,3 +361,10 @@ Linux WebView 八个检查点和截图：.build/search-album-metadata-webview/fi
   替换；已有活跃/暂停解码器时，清队列会在原生模型中移除唯一可绑定
   当前媒体的条目，因此拒绝该清空分支并保留旧队列，不伪造后台当前项。
   仅处理普通单行，FM、心动、一起听及跨账号来源不借此入口。
+- Linux 真实 WebView：使用仓库的 custom-protocol ux_ui_probe，运行
+  scripts/ci/search_podcast_row_smoke.py --binary … --frontend-dist … --root …，
+  在隔离无默认路由的 Xvfb/DBus 环境里用可信鼠标单击、双击和序号暂停。
+  分类 7 态通过：单击详情且不播放、返回同分类、251 集保留旧条目、暂停失败
+  时钟不变、同一期再次双击继续且不重新申请音源。综合 V1/V3 同一程序各 4 态
+  回归通过。仅合成账号及 libmpv null 输出，未验证 Windows 或物理声卡；
+  本机报告在 .build/ui-proof/phase162-search-podcast-row/。
