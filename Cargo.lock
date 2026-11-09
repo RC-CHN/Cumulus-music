@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "cumulus-audio-filter"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "cumulus-core",
  "libloading",
@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "cumulus-core"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -763,7 +763,7 @@ dependencies = [
 
 [[package]]
 name = "cumulus-desktop"
-version = "0.2.0-rc.1"
+version = "0.2.0-rc.2"
 dependencies = [
  "cumulus-core",
  "dirs",
