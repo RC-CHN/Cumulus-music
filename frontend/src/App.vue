@@ -300,7 +300,7 @@ import type {
 import { usePlaylists } from './composables/usePlaylists';
 import { useMixedPlaylistReorder } from './composables/useMixedPlaylistReorder';
 import { mixedDraggedRows } from './services/playlistMixedOrder';
-import { offlinePlaylistSelection } from './services/offlinePlaylist';
+import { offlinePlaylistPlayableIds, offlinePlaylistSelection } from './services/offlinePlaylist';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { createPlayerResume } from './services/playerResume';
@@ -3848,13 +3848,7 @@ const cachedPlaylist = computed(() => {
 });
 const cachedPlayableIds = computed(() => {
   const shown = result.value;
-  if (!cachedPlaylist.value || !shown) return;
-  const rows = shown.playlistLocal?.rows;
-  return new Set(
-    shown.tracks
-      .filter((track) => track.local && !track.missing && rows && Object.hasOwn(rows, track.id))
-      .map((track) => track.id),
-  );
+  if (cachedPlaylist.value && shown) return offlinePlaylistPlayableIds(shown);
 });
 const playlistPanelId = () =>
   page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
@@ -5205,10 +5199,21 @@ const visibleTrackToggle = computed<TrackCurrentToggle | undefined>((previous) =
     shown?.playlist?.id === page.value.id &&
     !!current.track?.id &&
     !!shown.playlistLocal?.rows[current.track.id];
+  const cachedDownload =
+    cachedPlaylist.value &&
+    current?.resourceKind === 'downloaded' &&
+    !!current.downloadTaskId &&
+    current.origin?.kind === 'playlist' &&
+    current.origin.id === shown?.playlist?.id &&
+    !!current.track &&
+    shown?.playlistOffline?.downloadIds?.includes(current.track.id);
+  const eligible = cachedPlaylist.value
+    ? localMember || cachedDownload
+    : current?.resourceKind === 'catalog' || localMember;
   if (
     !current?.playId ||
     !current.track ||
-    (current.resourceKind !== 'catalog' && !localMember) ||
+    !eligible ||
     current.fm ||
     current.epoch !== account.value.epoch ||
     !player.loaded.value
@@ -6587,7 +6592,7 @@ onUnmounted(() => {
                   role="status"
                   :aria-busy="loading"
                 >
-                  <span>正在显示本机缓存的歌单。可播放此设备上仍可用的本地曲目。</span>
+                  <span>正在显示本机缓存的歌单。可播放本地曲目和符合离线条件的已下载歌曲。</span>
                   <button
                     type="button"
                     class="text-button"
@@ -6897,7 +6902,9 @@ onUnmounted(() => {
                     :liked="liked"
                     :busy="busyLikes"
                     :playable="player.ready.value"
-                    :current-id="currentCatalogSongId"
+                    :current-id="
+                      cachedPlaylist ? visibleTrackToggle?.trackId : currentCatalogSongId
+                    "
                     :current-toggle="visibleTrackToggle"
                     :toggle-busy="player.busy.value"
                     @play="playVisibleTrack"

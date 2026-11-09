@@ -119,9 +119,19 @@ export type Page = Destination & { choice?: true };
 
 function mergePlaylistPages(before: TrackPage, page: TrackPage, tracks: TrackView[]): TrackPage {
   const incoming = page.playlistLocal;
+  const offline = page.playlistOffline;
+  const beforeDownloads = before.playlistOffline?.downloadIds;
   return {
     ...page,
     tracks,
+    ...(offline && beforeDownloads?.length && samePlaylistReadSource(before, page)
+      ? {
+          playlistOffline: {
+            ...offline,
+            downloadIds: [...new Set([...beforeDownloads, ...(offline.downloadIds ?? [])])],
+          },
+        }
+      : {}),
     ...(incoming && before.playlistLocal?.revision === incoming.revision
       ? { playlistLocal: { ...incoming, rows: { ...before.playlistLocal.rows, ...incoming.rows } } }
       : {}),
