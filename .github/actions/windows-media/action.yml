@@ -8,6 +8,10 @@ inputs:
     description: Save the verified dependency cache when this runner owns the cache key
     required: false
     default: 'true'
+  cargo-profile:
+    description: Build and verify the debug or release filter and player probe
+    required: false
+    default: debug
 runs:
   using: composite
   steps:
@@ -24,7 +28,15 @@ runs:
         key: ${{ steps.plan.outputs.cache-key }}
     - name: Build the current native DSP for runtime verification
       shell: bash
-      run: cargo build --locked -p cumulus-audio-filter --lib --example player_probe
+      env:
+        CUMULUS_MEDIA_CARGO_PROFILE: ${{ inputs.cargo-profile }}
+      run: |
+        case "$CUMULUS_MEDIA_CARGO_PROFILE" in
+          debug) args=() ;;
+          release) args=(--release) ;;
+          *) exit 1 ;;
+        esac
+        cargo build "${args[@]}" --locked -p cumulus-audio-filter --lib --example player_probe
     - name: Select the explicit Windows libmpv directory
       shell: pwsh
       env:
@@ -36,7 +48,8 @@ runs:
       shell: bash
       env:
         CUMULUS_MSYS2_ROOT: ${{ inputs.msys-root }}
-      run: python scripts/ci/windows_media.py install --msys "$CUMULUS_MSYS2_ROOT"
+        CUMULUS_MEDIA_CARGO_PROFILE: ${{ inputs.cargo-profile }}
+      run: python scripts/ci/windows_media.py install --msys "$CUMULUS_MSYS2_ROOT" --profile "$CUMULUS_MEDIA_CARGO_PROFILE"
     - name: Export the verified FFmpeg for synthetic local fixtures
       shell: pwsh
       env:
@@ -46,7 +59,9 @@ runs:
         "CUMULUS_LOCAL_FIXTURE_FFMPEG=$ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
     - name: Reject implicit libmpv lookup from Windows PATH and working directory
       shell: bash
-      run: python scripts/ci/windows_mpv_lookup.py
+      env:
+        CUMULUS_MEDIA_CARGO_PROFILE: ${{ inputs.cargo-profile }}
+      run: python scripts/ci/windows_mpv_lookup.py --profile "$CUMULUS_MEDIA_CARGO_PROFILE"
     - name: Authenticate completed dependency build for caching
       id: package-cache
       if: always() && steps.media-cache.outputs.cache-hit != 'true' && hashFiles('.build/windows-media/cache/build.json') != ''
