@@ -46,12 +46,23 @@ async fn next(client: &MusicClient, page: &PodcastLikedPage) -> PodcastLikedPage
 
 fn selection(page: &PodcastLikedPage, voice_id: &str, double_click: bool) -> PlaySelection {
     PlaySelection::PodcastLikedPageEpisode {
-        target: PodcastLikedPageTarget {
-            visit: page.visit.clone(),
-            revision: page.revision.clone(),
-            voice_id: voice_id.into(),
-        },
+        target: target(page, voice_id),
         double_click,
+    }
+}
+
+fn target(page: &PodcastLikedPage, voice_id: &str) -> PodcastLikedPageTarget {
+    PodcastLikedPageTarget {
+        visit: page.visit.clone(),
+        revision: page.revision.clone(),
+        voice_id: voice_id.into(),
+    }
+}
+
+fn queue_next(page: &PodcastLikedPage, voice_id: &str, expected: &str) -> PlayerAction {
+    PlayerAction::QueueLikedPageProgram {
+        target: target(page, voice_id),
+        expected_queue_revision: expected.into(),
     }
 }
 
@@ -281,4 +292,185 @@ async fn paged_liked_hydrates_the_clicked_missing_media_before_permission_and_co
         .unwrap();
     assert_eq!(played.track.unwrap().voice_id.as_deref(), Some("503"));
     assert_eq!(queue(&client).await, ["501", "503", "504"]);
+}
+
+#[tokio::test]
+async fn paged_liked_next_inserts_only_the_row_and_keeps_the_paused_incumbent() {
+    let (_root, api, _session, client, device) = fixture_with_device();
+    setup_pages(&api);
+    let page = open(&client).await;
+    let before = incumbent(&client).await;
+    api.calls.lock().unwrap().clear();
+    for (id, revision) in [("506", before.queue_revision.as_str()), ("504", "invalid")] {
+        assert!(matches!(
+            client
+                .player_action("1", queue_next(&page, id, revision))
+                .await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    assert!(matches!(
+        client
+            .player_action("1", queue_next(&page, "502", &before.queue_revision))
+            .await,
+        Err(Error::State("liked voice withdrawn"))
+    ));
+    assert!(api.calls.lock().unwrap().is_empty());
+    let old_loads = device.state.lock().unwrap().loads;
+    let after = client
+        .player_action("1", queue_next(&page, "504", &before.queue_revision))
+        .await
+        .unwrap();
+    assert_eq!(queue(&client).await, ["900", "504"]);
+    let inserted = client
+        .player_action("1", queue_next(&page, "501", &after.queue_revision))
+        .await
+        .unwrap();
+    assert_eq!(queue(&client).await, ["900", "501", "504"]);
+    assert_eq!(
+        (
+            inserted.play_id,
+            inserted.entry_id,
+            inserted.position,
+            inserted.state,
+            inserted.mode
+        ),
+        (
+            before.play_id,
+            before.entry_id,
+            before.position,
+            PlaybackStatus::Paused,
+            before.mode
+        )
+    );
+    assert_eq!(device.state.lock().unwrap().loads, old_loads);
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(path, _)| path == "/api/content/my/liked/voice")
+    );
+}
+
+#[tokio::test]
+async fn paged_liked_next_on_empty_queue_authorizes_only_the_clicked_episode() {
+    let (_root, api, _session, client) = fixture();
+    setup_pages(&api);
+    let page = open(&client).await;
+    let before = client.player_snapshot("1").await.unwrap();
+    api.calls.lock().unwrap().clear();
+    api.search_playback_deny.store(504, Ordering::SeqCst);
+    assert!(matches!(
+        client
+            .player_action("1", queue_next(&page, "504", &before.queue_revision))
+            .await,
+        Err(Error::State("program playback entitlement unavailable"))
+    ));
+    assert!(queue(&client).await.is_empty());
+    assert_eq!(
+        client.player_snapshot("1").await.unwrap().queue_revision,
+        before.queue_revision
+    );
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        [("/api/dj/play/url/check".into(), json!({"voiceId":"504"}))]
+    );
+    api.search_playback_deny.store(0, Ordering::SeqCst);
+    let after = client
+        .player_action("1", queue_next(&page, "504", &before.queue_revision))
+        .await
+        .unwrap();
+    assert_eq!(queue(&client).await, ["504"]);
+    assert_eq!(after.track.unwrap().voice_id.as_deref(), Some("504"));
+    assert_eq!(after.state, PlaybackStatus::Playing);
+    assert_eq!(after.position, Some(15.0));
+    assert_eq!(after.mode, before.mode);
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(path, _)| path == "/api/content/my/liked/voice")
+    );
+}
+
+#[tokio::test]
+async fn paged_liked_next_during_incumbent_load_does_not_restart_it() {
+    let (_root, api, _session, client, device) = fixture_with_device();
+    setup_pages(&api);
+    let page = open(&client).await;
+    device.hold_load.store(true, Ordering::SeqCst);
+    let (played, opening) = tokio::join!(
+        client.play_selection("1", PlaySelection::Voice { id: "900".into() }),
+        async {
+            tokio::time::timeout(Duration::from_secs(5), device.started.notified())
+                .await
+                .unwrap();
+            let before = client.player_snapshot("1").await.unwrap();
+            let after = tokio::time::timeout(
+                Duration::from_secs(5),
+                client.player_action("1", queue_next(&page, "504", &before.queue_revision)),
+            )
+            .await;
+            device.hold_load.store(false, Ordering::SeqCst);
+            let after = after
+                .expect("queue-only Next must return before load completes")
+                .unwrap();
+            assert!(matches!(
+                before.state,
+                PlaybackStatus::Preparing | PlaybackStatus::Loading
+            ));
+            assert_eq!(
+                (after.entry_id, after.play_id.as_ref(), after.state),
+                (before.entry_id, before.play_id.as_ref(), before.state)
+            );
+            before.play_id
+        }
+    );
+    let played = played.unwrap();
+    assert_eq!(played.play_id, opening);
+    assert_eq!(played.track.unwrap().voice_id.as_deref(), Some("900"));
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(queue(&client).await, ["900", "504"]);
+}
+
+#[tokio::test]
+async fn paged_liked_next_discards_hydration_after_a_new_visit() {
+    let (_root, api, _session, client) = fixture();
+    setup_pages(&api);
+    let page = open(&client).await;
+    let before = incumbent(&client).await;
+    api.calls.lock().unwrap().clear();
+    api.liked_page_detail_hold.store(true, Ordering::SeqCst);
+    let (result, _) = tokio::join!(
+        client.player_action("1", queue_next(&page, "503", &before.queue_revision)),
+        async {
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                api.search_playback_started.notified(),
+            )
+            .await
+            .unwrap();
+            client
+                .podcast_liked_page("1", PodcastLikedQuery::Open {})
+                .await
+                .unwrap();
+            api.search_playback_release.notify_one();
+        }
+    );
+    assert!(matches!(
+        result,
+        Err(Error::Cancelled | Error::QueueChanged | Error::StaleResponse)
+    ));
+    assert_eq!(queue(&client).await, ["900"]);
+    let after = client.player_snapshot("1").await.unwrap();
+    assert_eq!(
+        (after.play_id, after.queue_revision, after.state),
+        (before.play_id, before.queue_revision, before.state)
+    );
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        [("/api/dj/program/detail".into(), json!({"id":"503"}))]
+    );
 }

@@ -33,6 +33,14 @@ pub(super) enum ScopedProgram<'a> {
     Liked(&'a PodcastLikedProgramTarget),
     PagedLiked(&'a PodcastLikedPageTarget),
 }
+
+pub(super) struct PagedLikedProgram {
+    pub row: Episode,
+    pub prefix: Option<Vec<Episode>>,
+    pub api: Arc<dyn Api>,
+    pub guard: Cancellation,
+}
+
 impl ScopedProgram<'_> {
     pub(super) fn origin(&self) -> Value {
         match self {
@@ -76,6 +84,39 @@ fn same_online_voice(value: &Value, episode: &Episode) -> bool {
 }
 
 impl MusicClient {
+    pub(super) fn paged_liked_episode_scope(
+        &self,
+        token: &SessionToken,
+        target: &PodcastLikedPageTarget,
+        limit: Option<usize>,
+    ) -> Result<PagedLikedProgram> {
+        let api = self.session.native_api(token)?;
+        let credential = api.playback_source_credential_revision()?;
+        let selected = self.liked_page_playback(token, target, limit)?;
+        let session = self.session.clone();
+        let owner = token.clone();
+        let expected = api.clone();
+        let login = self.auth.pending_guard();
+        let room = self.together_detached_guard(token);
+        let authority = selected.authority;
+        let guard = Cancellation::new(move || {
+            !authority.is_cancelled()
+                && login().is_ok()
+                && !room.is_cancelled()
+                && session.require_api(&owner, &expected).is_ok()
+                && expected
+                    .playback_source_credential_revision()
+                    .is_ok_and(|value| value == credential)
+        });
+        guard.check()?;
+        Ok(PagedLikedProgram {
+            row: selected.row,
+            prefix: selected.prefix,
+            api,
+            guard,
+        })
+    }
+
     pub(super) fn liked_episode_scope(
         &self,
         token: &SessionToken,
@@ -152,6 +193,32 @@ impl MusicClient {
         Ok(detail)
     }
 
+    pub(super) async fn hydrate_paged_liked_episode(
+        &self,
+        token: &SessionToken,
+        card: Episode,
+        guard: &Cancellation,
+    ) -> Result<Episode> {
+        guard.check()?;
+        let episode = if identifier(&card.raw["mainSong"]["id"]).is_ok() {
+            card
+        } else {
+            match self.read_scoped_program_detail(token, &card, guard).await {
+                Err(error)
+                    if error.is_service_code(404)
+                        || matches!(error.root(), Error::HttpStatus { status: 404, .. }) =>
+                {
+                    return Err(Error::State("liked voice media unavailable"));
+                }
+                reply => reply?,
+            }
+        };
+        if episode.song_id.is_none() {
+            return Err(Error::State("liked voice media unavailable"));
+        }
+        Ok(episode)
+    }
+
     pub(super) async fn scoped_program_selection(
         &self,
         token: &SessionToken,
@@ -172,27 +239,9 @@ impl MusicClient {
                 (row, api, guard, None)
             }
             ScopedProgram::PagedLiked(target) => {
-                let api = self.session.native_api(token)?;
-                let credential = api.playback_source_credential_revision()?;
                 let selected =
-                    self.liked_page_playback(token, target, replace.then_some(QUEUE_LIMIT))?;
-                let session = self.session.clone();
-                let owner = token.clone();
-                let expected = api.clone();
-                let login = self.auth.pending_guard();
-                let room = self.together_detached_guard(token);
-                let authority = selected.authority;
-                let guard = Cancellation::new(move || {
-                    !authority.is_cancelled()
-                        && login().is_ok()
-                        && !room.is_cancelled()
-                        && session.require_api(&owner, &expected).is_ok()
-                        && expected
-                            .playback_source_credential_revision()
-                            .is_ok_and(|value| value == credential)
-                });
-                guard.check()?;
-                (selected.row, api, guard, selected.prefix)
+                    self.paged_liked_episode_scope(token, target, replace.then_some(QUEUE_LIMIT))?;
+                (selected.row, selected.api, selected.guard, selected.prefix)
             }
         };
         let controller = self.player.controller().await?;
@@ -247,22 +296,14 @@ impl MusicClient {
             return Ok((current_command(&cached), guard));
         }
 
-        let detail = if matches!(target, ScopedProgram::Purchased(_))
+        let detail = if matches!(target, ScopedProgram::PagedLiked(_)) {
+            self.hydrate_paged_liked_episode(token, cached, &preparing)
+                .await?
+        } else if matches!(target, ScopedProgram::Purchased(_))
             || identifier(&cached.raw["mainSong"]["id"]).is_err()
         {
-            match self
-                .read_scoped_program_detail(token, &cached, &preparing)
-                .await
-            {
-                Err(error)
-                    if matches!(target, ScopedProgram::PagedLiked(_))
-                        && (error.is_service_code(404)
-                            || matches!(error.root(), Error::HttpStatus { status: 404, .. })) =>
-                {
-                    return Err(Error::State("liked voice media unavailable"));
-                }
-                reply => reply?,
-            }
+            self.read_scoped_program_detail(token, &cached, &preparing)
+                .await?
         } else {
             cached
         };
@@ -270,9 +311,6 @@ impl MusicClient {
             return Ok((current_command(&detail), guard));
         }
 
-        if matches!(target, ScopedProgram::PagedLiked(_)) && detail.song_id.is_none() {
-            return Err(Error::State("liked voice media unavailable"));
-        }
         let selected = resource(&detail)?;
         let resources = match prefix {
             Some(rows) => {

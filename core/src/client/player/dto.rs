@@ -782,6 +782,10 @@ pub enum PlayerAction {
         target: crate::client::dto::PodcastLikedProgramTarget,
         expected_queue_revision: String,
     },
+    QueueLikedPageProgram {
+        target: crate::client::dto::PodcastLikedPageTarget,
+        expected_queue_revision: String,
+    },
     QueueDailyRecommendations {
         revision: String,
         #[serde(default)]

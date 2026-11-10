@@ -47,6 +47,7 @@ struct Backend {
     liked: Mutex<Vec<u64>>,
     liked_cards: Mutex<Option<Vec<Value>>>,
     liked_page_replies: Mutex<Vec<(Value, Value)>>,
+    liked_page_detail_hold: AtomicBool,
     liked_details: Mutex<std::collections::BTreeMap<u64, Value>>,
     lost: AtomicBool,
     offline: AtomicBool,
@@ -310,6 +311,10 @@ impl Api for Backend {
                 }
                 "/api/dj/program/detail" => {
                     let id = p["id"].as_str().unwrap().parse().unwrap();
+                    if id == 503 && self.liked_page_detail_hold.swap(false, Ordering::SeqCst) {
+                        self.search_playback_started.notify_one();
+                        self.search_playback_release.notified().await;
+                    }
                     if let Some(reply) = self.liked_details.lock().unwrap().get(&id) {
                         return Ok(reply.clone());
                     }

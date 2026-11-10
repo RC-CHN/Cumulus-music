@@ -284,6 +284,8 @@ pub enum PlaybackCommand {
         update: QueueUpdate,
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
     },
+    /// Add a scoped programme without changing the selected entry or transport.
+    QueuePodcastBrowse(QueueUpdate),
     /// Double click on an already loaded rank episode changes mode if
     /// required, then toggles transport without reopening or seeking.
     TogglePodcastRank {

@@ -37,6 +37,7 @@ impl Actor {
                 | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::PlayPodcastBrowse { .. }
+                | PlaybackCommand::QueuePodcastBrowse(_)
                 | PlaybackCommand::TogglePodcastRank { .. }
                 | PlaybackCommand::ApplySearchGroupNext { .. }
                 | PlaybackCommand::ApplySearchGroupPlay { .. }
@@ -170,6 +171,7 @@ impl Actor {
         | PlaybackCommand::InsertNext(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
+        | PlaybackCommand::QueuePodcastBrowse(value)
         | PlaybackCommand::ApplySearchGroupNext { update: value, .. }
         | PlaybackCommand::ApplySearchGroupPlay { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
@@ -367,6 +369,10 @@ impl Actor {
                         .await
                         .map(|value| options = value)
                 }
+            }
+            PlaybackCommand::QueuePodcastBrowse(update) => {
+                let authority = &request.guard.as_ref().expect("guarded podcast next").1;
+                self.queue_scoped_podcast(update, &request.reply, authority)
             }
             PlaybackCommand::TogglePodcastRank { paused, mode, .. } => {
                 let authority = &request.guard.as_ref().expect("guarded podcast row").1;

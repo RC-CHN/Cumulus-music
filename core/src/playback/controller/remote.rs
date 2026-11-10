@@ -374,6 +374,32 @@ impl Actor {
         .await
     }
 
+    pub(super) fn queue_scoped_podcast(
+        &mut self,
+        value: super::QueueUpdate,
+        reply: &Response,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<()> {
+        value.queue.validate()?;
+        if self.queue.is_empty()
+            || self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || value.queue.fm_source.is_some()
+            || value.queue.intelligence.is_some()
+            || value.transport.is_some()
+            || value.queue.mode != self.queue.mode()
+            || value.queue.selected() != self.queue.selected()
+            || reply.is_closed()
+        {
+            return Err(Error::StaleResponse);
+        }
+        // Queue-only Next must not reload even when the incumbent is still
+        // opening. Check the visit again immediately before queue CAS.
+        authority.check()?;
+        self.session
+            .with_token(&self.token, |_| self.queue.install(value.queue))
+    }
+
     pub(super) async fn apply_search_group_next(
         &mut self,
         value: super::QueueUpdate,
