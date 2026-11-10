@@ -20,6 +20,8 @@ CI (.github/workflows/ci.yml)
    两端在真实桌面初始化后运行原生媒体测试；Linux 强制使用 en_US.UTF-8，检查 GTK 数字 locale 冲突及保留界面语言。Linux 另运行真实 FFmpeg LADSPA 音效链和 WebKitGTK 登录失效/重新登录 UI 截图测试。Windows 在真实 WebView2 中验证相同生产 UI/IPC 的 DOM 状态、凭据失效及旧策略队列清理；不声称有 Windows 截图验证。两端 UI 均只使用合成 HTTP。
 4. CI gate 同时要求前端、两端原生检查、两端发行打包、Linux 共用探针和两组
    WebView、Windows 三组 WebView 全部成功。失败/取消/跳过均不能发布；CD 独立核对各 job 名称。
+   Linux 安装包播放使用同提交、运行和尝试下载的 .deb／便携包，独立验收；
+   只有它和其他 Linux 实窗分组全部通过，Linux WebView smoke 才通过。
    两端还运行长列表/自定义窗口、启动渲染自动回退及 29 项主题/菜单/弹窗/重启记忆的实际 WebView 检查。
 5. 输出 packages-linux-x64 / packages-windows-x64 两组产物，包含包、精确提交/CI run/attempt/大小/SHA256 清单。保留 14 天。
 研究用官方 JS 对照生成脚本要求忽略的 references；公开 CI 使用已提交的合成冻结向量，不假装在 runner 上重新执行了不存在的原始材料。
