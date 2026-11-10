@@ -337,15 +337,29 @@ impl PodcastSnapshot {
             ))?));
             return Ok(());
         }
-        self.revision = hex::encode(Sha256::digest(serde_json::to_vec(&json!([
-            self.scope,
-            self.source_ids,
-            self.voices
-                .iter()
-                .map(|v| (&v.id, &v.song_id, v.duration_ms))
-                .collect::<Vec<_>>(),
-            self.remote_total
-        ]))?));
+        let mut authority = vec![
+            json!(self.scope),
+            json!(self.source_ids),
+            json!(
+                self.voices
+                    .iter()
+                    .map(|v| (&v.id, &v.song_id, v.duration_ms))
+                    .collect::<Vec<_>>()
+            ),
+            json!(self.remote_total),
+        ];
+        if self.scope == PodcastScope::Liked {
+            authority.push(json!(
+                self.voices
+                    .iter()
+                    .map(|voice| (
+                        voice.display_status_withdrawn(),
+                        voice.raw["grayDisplay"] == true
+                    ))
+                    .collect::<Vec<_>>()
+            ));
+        }
+        self.revision = hex::encode(Sha256::digest(serde_json::to_vec(&authority)?));
         Ok(())
     }
 }

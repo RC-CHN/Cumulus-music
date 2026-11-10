@@ -69,6 +69,15 @@ impl From<Error> for ClientError {
                 Error::State("podcast browse around list is empty") => {
                     ("podcast_browse_empty", "无法添加播放", false)
                 }
+                Error::State("liked voice withdrawn") => {
+                    ("liked_voice_withdrawn", "该声音已下线不可收听", false)
+                }
+                Error::State("liked voice media unavailable") => {
+                    ("liked_voice_unavailable", "该声音暂不可收听", false)
+                }
+                Error::State("liked voice queue has no playable entries") => {
+                    ("liked_voice_queue_empty", "暂无可播放的声音", false)
+                }
                 Error::State("local batch has no playable plain audio") => (
                     "local_batch_empty",
                     "所选曲目中没有可播放的普通本地音频",

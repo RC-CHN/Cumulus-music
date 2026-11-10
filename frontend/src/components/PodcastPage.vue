@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import Icon from './Icon.vue';
 import { time } from '../services/player';
@@ -69,6 +69,27 @@ watch(
   (v) => (keyword.value = v),
 );
 const scope = computed(() => query.value.scope);
+const withdrawnNotice = ref(false);
+let withdrawnTimer: ReturnType<typeof setTimeout> | undefined;
+function clearWithdrawnNotice() {
+  clearTimeout(withdrawnTimer);
+  withdrawnNotice.value = false;
+}
+watch(
+  [() => props.model.epoch.value, () => scope.value.kind, () => page.value?.revision],
+  clearWithdrawnNotice,
+);
+onBeforeUnmount(clearWithdrawnNotice);
+function announceWithdrawn() {
+  clearTimeout(withdrawnTimer);
+  withdrawnNotice.value = true;
+  withdrawnTimer = setTimeout(clearWithdrawnNotice, 3000);
+}
+function episodeGesture(event: Event, voice: EpisodeView, double = false) {
+  if (voice.withdrawn) {
+    if (!(event.target instanceof Element && event.target.closest('button'))) announceWithdrawn();
+  } else if (double && props.playable && !loading.value && !voice.unavailable) play(voice.id);
+}
 const detail = computed(() => !recentSelected.value && scope.value.kind === 'radio');
 const menuPage = computed(() => {
   const displayed = page.value,
@@ -101,13 +122,16 @@ function openProgramMenu(event: MouseEvent | KeyboardEvent, voice: EpisodeView) 
   void programMenu.value?.open(voice, anchor, point);
 }
 function programContext(event: MouseEvent, voice: EpisodeView) {
-  if (!menuPage.value) return;
+  if (!menuPage.value && !voice.withdrawn) return;
   event.preventDefault();
   event.stopPropagation();
   openProgramMenu(event, voice);
 }
 function programKeyboard(event: KeyboardEvent, voice: EpisodeView) {
-  if (!menuPage.value || (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')))
+  if (
+    (!menuPage.value && !voice.withdrawn) ||
+    (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10'))
+  )
     return;
   event.preventDefault();
   event.stopPropagation();
@@ -441,11 +465,18 @@ const pending = props.model.pending;
           v-for="(voice, i) in page.episodes"
           :key="voice.id"
           class="episode-row"
-          :class="{ current: currentId === voice.id, 'with-more': detail }"
+          :class="{
+            current: currentId === voice.id,
+            'with-more': detail,
+            'episode-withdrawn': voice.withdrawn,
+          }"
           :data-voice-id="voice.id"
+          :tabindex="voice.withdrawn ? 0 : undefined"
           @contextmenu="programContext($event, voice)"
           @keydown="programKeyboard($event, voice)"
-          @dblclick="playable && !loading && !voice.unavailable && play(voice.id)"
+          @keydown.enter.self="voice.withdrawn && announceWithdrawn()"
+          @click="episodeGesture($event, voice)"
+          @dblclick="episodeGesture($event, voice, true)"
         >
           <button
             class="icon-button"
@@ -459,7 +490,8 @@ const pending = props.model.pending;
             <strong :title="voice.name">{{ voice.name }}</strong
             ><small
               >{{ voice.creator || voice.radioName || '单集' }}
-              <span v-if="voice.feeType"> · 付费内容</span></small
+              <span v-if="voice.withdrawn"> · 已下线</span>
+              <span v-else-if="voice.feeType"> · 付费内容</span></small
             >
           </div>
           <span class="episode-time">{{ time(voice.durationMs / 1000) }}</span>
@@ -483,6 +515,7 @@ const pending = props.model.pending;
           ><button
             class="text-button episode-comment"
             aria-label="单集评论"
+            :disabled="voice.withdrawn"
             @click="emit('comments', voice.id, voice.name)"
           >
             评论
@@ -503,6 +536,9 @@ const pending = props.model.pending;
           </button>
           <span class="sr-only">第 {{ page.offset + i + 1 }} 集</span>
         </article>
+      </div>
+      <div v-if="withdrawnNotice" class="podcast-withdrawn-notice" role="status">
+        该声音已下线不可收听
       </div>
       <PodcastProgramMenu
         ref="programMenu"

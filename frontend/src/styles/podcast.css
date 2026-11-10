@@ -227,6 +227,22 @@
 .episode-row .liked {
   color: var(--accent);
 }
+.episode-row.episode-withdrawn .episode-info strong {
+  color: var(--muted);
+}
+.podcast-withdrawn-notice {
+  position: sticky;
+  bottom: 12px;
+  z-index: 1;
+  width: fit-content;
+  margin: 8px auto;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--text);
+  pointer-events: none;
+}
 .episode-info {
   display: flex;
   flex-direction: column;

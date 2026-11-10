@@ -48,9 +48,7 @@ pub(super) fn row(item: &PurchasedItem, liked: &[String]) -> PodcastPurchasedRow
         }),
         PurchasedItem::Episode(episode) => {
             let mut result = view::episode(episode, liked);
-            result.unavailable |= episode.raw["displayStatus"]
-                .as_str()
-                .is_some_and(|status| !status.is_empty() && status != "NORMAL");
+            result.unavailable |= episode.display_status_withdrawn();
             PodcastPurchasedRow::Episode(result)
         }
     }

@@ -96,6 +96,14 @@ pub struct Episode {
     pub raw: Value,
 }
 impl Episode {
+    /// M405/M59: a nonempty non-NORMAL display status is a withdrawn voice in
+    /// the liked lane. It is not a rights response for other programme lanes.
+    pub(crate) fn display_status_withdrawn(&self) -> bool {
+        self.raw["displayStatus"]
+            .as_str()
+            .is_some_and(|status| !status.is_empty() && status != "NORMAL")
+    }
+
     pub fn from_official(v: &Value) -> Result<Self> {
         if !v.is_object() {
             return Err(Error::Response("program metadata missing"));

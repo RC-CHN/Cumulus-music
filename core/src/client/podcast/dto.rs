@@ -67,6 +67,8 @@ pub struct EpisodeView {
     pub liked: bool,
     pub unavailable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub withdrawn: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub browse_playback_receipt: Option<String>,
 }
 #[derive(Clone, Deserialize)]

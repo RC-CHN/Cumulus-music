@@ -5,6 +5,7 @@ pub(super) use badges::Host as PodcastBadgeHost;
 mod discovery;
 mod dto;
 mod home;
+mod liked_playback;
 mod program_menu;
 pub(in crate::client) mod purchased;
 pub use program_menu::{PodcastProgramTarget, PodcastRecentProgramMenu};
@@ -330,6 +331,11 @@ impl MusicClient {
             .await?;
         if snapshot.revision != revision {
             return Err(Error::QueueChanged);
+        }
+        if *scope == PodcastScope::Liked {
+            return self
+                .liked_podcast_resources(&token, snapshot.voices, start_id)
+                .await;
         }
         let index = if let Some(id) = start_id {
             snapshot

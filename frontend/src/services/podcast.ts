@@ -96,6 +96,7 @@ export interface PodcastCard {
 }
 export interface EpisodeView {
   browsePlaybackReceipt?: string;
+  withdrawn?: boolean;
   id: string;
   name: string;
   coverUrl: string | null;

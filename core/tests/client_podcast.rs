@@ -5,6 +5,8 @@ mod badges;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
+#[path = "client_podcast/liked_playback.rs"]
+mod liked_playback;
 #[path = "client_podcast/program_menu.rs"]
 mod program_menu;
 #[path = "client_podcast/recommendations.rs"]
@@ -41,6 +43,8 @@ struct Backend {
     count: AtomicUsize,
     resume: AtomicBool,
     liked: Mutex<Vec<u64>>,
+    liked_cards: Mutex<Option<Vec<Value>>>,
+    liked_details: Mutex<std::collections::BTreeMap<u64, Value>>,
     lost: AtomicBool,
     offline: AtomicBool,
     personalization_disabled: AtomicBool,
@@ -283,6 +287,10 @@ impl Api for Backend {
                     }).collect::<Vec<_>>(),"count":count,"more":offset+limit<count,"asc":p["asc"]}})
                 }
                 "/api/content/my/liked/voice" => {
+                    if let Some(cards) = self.liked_cards.lock().unwrap().as_ref() {
+                        assert_eq!(p, json!({"limit":100,"likeTime":0}));
+                        return Ok(json!({"code":200,"data":{"data":cards,"hasMore":false}}));
+                    }
                     json!({"code":200,"data":{"data":self.liked.lock().unwrap().iter().map(|id|json!({"voiceId":id,"voiceName":"Liked","likeTime":1234})).collect::<Vec<_>>(),"hasMore":false}})
                 }
                 "/api/dj/user/setting/resumeplay/get" => {
@@ -290,6 +298,9 @@ impl Api for Backend {
                 }
                 "/api/dj/program/detail" => {
                     let id = p["id"].as_str().unwrap().parse().unwrap();
+                    if let Some(reply) = self.liked_details.lock().unwrap().get(&id) {
+                        return Ok(reply.clone());
+                    }
                     if id == 43 && self.recent_detail_hold.swap(false, Ordering::SeqCst) {
                         self.recent_detail_started.notify_one();
                         self.recent_detail_release.notified().await;

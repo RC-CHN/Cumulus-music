@@ -43,6 +43,7 @@ pub(crate) fn episode(v: &Episode, liked: &[String]) -> EpisodeView {
         fee_type: v.raw["programFeeType"].as_i64().unwrap_or(0),
         liked: liked.contains(&v.id),
         unavailable: v.raw["grayDisplay"] == true,
+        withdrawn: None,
         browse_playback_receipt: None,
     }
 }
@@ -84,7 +85,14 @@ pub(super) fn page(
     let episodes = snapshot
         .voices
         .iter()
-        .map(|v| episode(v, &liked_ids))
+        .map(|v| {
+            let mut row = episode(v, &liked_ids);
+            if query.scope == PodcastScope::Liked && v.display_status_withdrawn() {
+                row.withdrawn = Some(true);
+                row.unavailable = true;
+            }
+            row
+        })
         .filter(|v| {
             format!("{} {}", v.name, v.creator)
                 .to_lowercase()
