@@ -46,3 +46,19 @@ reconcile_playlist_mixed_remove；返回只含阶段、操作 ID、业务状态�
 重开同一歌单只读本机回执；按「核对结果」才读取完整线上顺序，不重发。
 确认后按原已加载范围重新取页，最后一个本地成员移除时仍保留本次提示；
 不删除实际文件、不变更当前解码和播放队列。无法刷新时提供只读重读入口。
+
+隔离 Linux 实窗验收（合成服务）
+
+  npm --prefix frontend run build
+  cargo build --locked -p cumulus-desktop --example local_ui_probe --features custom-protocol
+  sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 \
+    CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
+    dbus-run-session -- /usr/bin/python3 scripts/ci/mixed_remove_smoke.py \
+    --binary .build/target/debug/examples/local_ui_probe --root .build/mixed-remove-proof
+
+7 个实窗状态和截图、两次可信 X11 右键均通过。Ctrl 多选线上 701 和设备成员，
+取消不提交；明确确认后只发送 {pid:"11",op:"del",trackIds:"[\"701\"]"}。
+合成服务删除线上 701 后丢弃确认；页面保留本机成员并显示待核对。离开再打开
+歌单仍显示相同未决记录；明确只读核对后只剩线上 702。原始 WAV 字节、暂停的
+libmpv 播放标识、位置和队列保持；初始化后数字 locale 为 C，消息为 en_US.UTF-8。
+未访问真实账号或上游服务，也未验证 Windows 实窗或实体声卡。

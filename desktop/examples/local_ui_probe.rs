@@ -210,7 +210,13 @@ fn main() {
     );
     let mixed_membership = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
     let mixed_queue = std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF").is_some();
-    let reorder = std::env::var_os("CUMULUS_MIXED_REORDER_PROOF").is_some();
+    let mixed_remove = std::env::var_os("CUMULUS_MIXED_REMOVE_PROOF").is_some();
+    let mixed_reorder = std::env::var_os("CUMULUS_MIXED_REORDER_PROOF").is_some();
+    assert!(
+        !(mixed_remove && mixed_reorder),
+        "select one mixed edit mode"
+    );
+    let reorder = mixed_remove || mixed_reorder;
     let cached_playlist_only = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_PROOF").is_some();
     let cached_download = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_DOWNLOAD_PROOF").is_some();
     assert!(
@@ -259,7 +265,10 @@ fn main() {
     });
     let reorder_fixture = reorder.then(|| {
         fs::create_dir(&root).expect("new synthetic mixed reorder root");
-        Arc::new(mixed_reorder_fixture::Fixture::new(&root).expect("mixed reorder audio"))
+        Arc::new(
+            mixed_reorder_fixture::Fixture::new(&root, mixed_remove)
+                .expect("mixed playlist edit audio"),
+        )
     });
     let cached_fixture = cached_playlist.then(|| {
         fs::create_dir(&root).expect("new synthetic offline playlist root");
@@ -369,8 +378,8 @@ fn main() {
             if mixed || reorder {
                 let terminal=matches!(stage,"complete"|"failed");
                 if let Some(fixture)=&reorder_fixture {
-                    if stage=="release_reorder_ack" {fixture.release();return;}
-                    if stage=="await_reorder_write" {
+                    if !mixed_remove && stage=="release_reorder_ack" {fixture.release();return;}
+                    if !mixed_remove && stage=="await_reorder_write" {
                         let fixture=fixture.clone();let handle=handle.clone();
                         tauri::async_runtime::spawn(async move {
                             if fixture.first_send().await {
@@ -379,7 +388,8 @@ fn main() {
                         });
                         return;
                     }
-                    if !terminal && !mixed_reorder_fixture::STAGES.contains(&stage) {return;}
+                    let stages = if mixed_remove { mixed_reorder_fixture::REMOVE_STAGES } else { mixed_reorder_fixture::STAGES };
+                    if !terminal && !stages.contains(&stage) {return;}
                     value["nativeReceipt"]=fixture.receipt(&store).expect("mixed reorder receipt");
                 } else if let Some(fixture)=&mixed_fixture {
                     let stages = if mixed_queue {

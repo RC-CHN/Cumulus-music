@@ -2,17 +2,25 @@
 //! playlist and a closed two-write server for reorder.
 use cumulus_core::{
     Error, Result,
-    protocol::api::{Api, ApiFuture, identifier},
+    protocol::api::{Api, ApiFuture, GuardedPlaylistRemove, PlaylistAddPermission, identifier},
     storage::StateStore,
 };
 use serde_json::{Value, json};
-use std::{path::Path, sync::Mutex, time::Duration};
+use std::{
+    path::Path,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 use tokio::sync::Notify;
 
 const TARGET: &str = "11";
 const REORDER: &str = "/api/v1/playlist/manipulate/tracks";
 const SOURCE: &str = "/api/song/enhance/player/url/v1";
 const JOURNAL: &str = "playlist-local-reorders-v1";
+const REMOVE_JOURNAL: &str = "playlist-local-removals-v1";
 
 pub const STAGES: &[&str] = &[
     "ux_01_outside_ready",
@@ -28,27 +36,51 @@ pub const STAGES: &[&str] = &[
     "ux_11_readback",
 ];
 
+pub const REMOVE_STAGES: &[&str] = &[
+    "ux_01_selection_ready",
+    "ux_02_remove_menu",
+    "ux_03_confirm",
+    "ux_04_cancelled",
+    "ux_05_uncertain",
+    "ux_06_reopened",
+    "ux_07_readback",
+];
+
 struct Server {
     order: [&'static str; 2],
+    removed: bool,
     writes: Vec<Value>,
     reads: usize,
     unexpected: usize,
     audio_checks: Vec<String>,
 }
 
+impl Server {
+    fn visible_order(&self) -> &[&'static str] {
+        if self.removed {
+            &self.order[1..]
+        } else {
+            &self.order
+        }
+    }
+}
+
 pub struct Fixture {
     base: super::mixed_playlist_fixture::Fixture,
+    remove: bool,
     server: Mutex<Server>,
     acknowledge: Notify,
     entered: Notify,
 }
 
 impl Fixture {
-    pub fn new(root: &Path) -> std::io::Result<Self> {
+    pub fn new(root: &Path, remove: bool) -> std::io::Result<Self> {
         Ok(Self {
             base: super::mixed_playlist_fixture::Fixture::new(root)?,
+            remove,
             server: Mutex::new(Server {
                 order: ["701", "702"],
+                removed: false,
                 writes: Vec::new(),
                 reads: 0,
                 unexpected: 0,
@@ -74,13 +106,14 @@ impl Fixture {
     }
 
     pub fn receipt(&self, store: &StateStore) -> Result<Value> {
-        let journal = store.get("2", JOURNAL, TARGET)?.unwrap_or(Value::Null);
+        let kind = if self.remove { REMOVE_JOURNAL } else { JOURNAL };
+        let journal = store.get("2", kind, TARGET)?.unwrap_or(Value::Null);
         let server = self.server.lock().unwrap();
         Ok(json!({
             "membership":self.base.receipt(store)?,
             "writes":server.writes,
             "detailReads":server.reads,
-            "onlineOrder":server.order,
+            "onlineOrder":server.visible_order(),
             "unexpected":server.unexpected,
             "audioChecks":server.audio_checks,
             "journal":{
@@ -96,6 +129,23 @@ impl Fixture {
     }
 
     async fn update(&self, args: Value, cache: bool) -> Result<Value> {
+        if self.remove {
+            let mut server = self.server.lock().unwrap();
+            if cache
+                || !server.writes.is_empty()
+                || args != json!({"pid":TARGET,"op":"del","trackIds":"[\"701\"]"})
+            {
+                server.unexpected += 1;
+                return Err(Error::Response(
+                    "unsafe or replayed synthetic mixed removal",
+                ));
+            }
+            server.writes.push(args);
+            server.removed = true;
+            return Err(Error::Transport(
+                "synthetic mixed removal lost response".into(),
+            ));
+        }
         let step = {
             let mut server = self.server.lock().unwrap();
             let (wanted, step) = match server.writes.len() {
@@ -141,14 +191,36 @@ fn playlist(id: u64, owner: u64, special: u8, name: &str, order: &[&str]) -> Val
 }
 
 impl Api for Fixture {
+    fn local_collection_scope_revision(&self) -> Result<Option<String>> {
+        Ok(self.remove.then(|| "synthetic-mixed-remove".into()))
+    }
+
+    fn request_guarded_playlist_remove<'a>(
+        &'a self,
+        write: GuardedPlaylistRemove,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if !self.remove || revision != "synthetic-mixed-remove" {
+                return Err(Error::CredentialChanged);
+            }
+            let (path, args) = write.into_request()?;
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            self.request(path, args, false).await
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             match path {
                 "/api/user/playlist" => {
-                    let order = self.server.lock().unwrap().order;
+                    let server = self.server.lock().unwrap();
                     Ok(json!({"code":200,"more":false,"playlist":[
                         playlist(10,2,5,"我喜欢的音乐",&[]),
-                        playlist(11,2,0,"合成自建混排歌单",&order),
+                        playlist(11,2,0,"合成自建混排歌单",server.visible_order()),
                         playlist(12,3,0,"合成收藏歌单",&[])
                     ]}))
                 }
@@ -158,7 +230,7 @@ impl Api for Fixture {
                     let mut server = self.server.lock().unwrap();
                     server.reads += 1;
                     Ok(
-                        json!({"code":200,"playlist":playlist(11,2,0,"合成自建混排歌单",&server.order)}),
+                        json!({"code":200,"playlist":playlist(11,2,0,"合成自建混排歌单",server.visible_order())}),
                     )
                 }
                 REORDER => self.update(args, cache).await,
