@@ -1,17 +1,28 @@
 use super::*;
 use crate::{
     account::AccountSession,
-    download::{directory::DownloadDirectory, service::DownloadScheduler},
+    download::{
+        directory::DownloadDirectory,
+        service::DownloadScheduler,
+        transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
+    },
     membership::Quality,
     protocol::api::{Api, ApiFuture},
     storage::StateStore,
 };
-use std::sync::Mutex;
+use std::{
+    future::{Future, poll_fn},
+    pin::pin,
+    sync::Mutex,
+    task::Poll,
+    time::Duration,
+};
+use tokio::sync::Notify;
 
 const AUTH: &str = "/api/song/enhance/download/url/v1";
 
 #[derive(Default)]
-struct Wire(Mutex<Vec<(String, String)>>);
+struct Wire(Mutex<Vec<(String, String)>>, Notify, bool);
 impl Api for Wire {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
@@ -22,8 +33,19 @@ impl Api for Wire {
                         args["id"].as_str().unwrap().into(),
                         args["level"].as_str().unwrap().into(),
                     ));
-                    Ok(json!({"code":200,"data":{"code":403}}))
+                    self.1.notify_one();
+                    if self.2 && args["id"] == "99" {
+                        Ok(json!({"code":200,"data":{"code":200,"id":99,
+                            "url":"https://m1.music.126.net/scheduler-wake.flac",
+                            "size":2048,"type":"flac","level":"standard"}}))
+                    } else {
+                        Ok(json!({"code":200,"data":{"code":403}}))
+                    }
                 }
+                "/api/v3/song/detail" if self.2 => Ok(json!({
+                    "code":200,"songs":[{"id":99,"name":"held","ar":[],"al":{"id":2,"name":"sealed"}}],
+                    "privileges":[{"id":99,"st":0,"fee":0,"dl":320000}]
+                })),
                 _ => panic!("unexpected synthetic route {path}"),
             }
         })
@@ -37,9 +59,13 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_media(None).await
+    }
+
+    async fn with_media(media: Option<Arc<BlockedMedia>>) -> Self {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(StateStore::open(root.path().join("state")).unwrap());
-        let wire = Arc::new(Wire::default());
+        let wire = Arc::new(Wire(Mutex::default(), Notify::new(), media.is_some()));
         let session = Arc::new(AccountSession::new(wire.clone(), Some(store)));
         session
             .adopt(
@@ -59,7 +85,10 @@ impl Fixture {
             .unwrap();
         Self {
             root,
-            service: DownloadService::new(session).unwrap(),
+            service: match media {
+                Some(media) => DownloadService::with_backend(session, media, 4_096).unwrap(),
+                None => DownloadService::new(session).unwrap(),
+            },
             wire,
         }
     }
@@ -267,4 +296,114 @@ async fn delayed_pause_settlement_cannot_reapply_a_consumed_control() {
     assert_eq!(settled.status, DownloadStatus::Queued);
     assert!(!f.service.has_transfer_control(&old.id).unwrap());
     assert!(f.wire.0.lock().unwrap().is_empty());
+}
+
+#[derive(Default)]
+struct BlockedMedia {
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+impl MediaBackend for BlockedMedia {
+    fn get(&self, request: MediaRequest) -> ApiFuture<'_, MediaReply> {
+        Box::pin(async move {
+            assert_eq!(
+                request.url.as_str(),
+                "https://m1.music.126.net/scheduler-wake.flac"
+            );
+            assert_eq!(request.offset, 0);
+            Ok(MediaReply {
+                status: 200,
+                headers: BTreeMap::from([("content-length".into(), "2048".into())]),
+                body: Box::new(BlockedBody(self.entered.clone(), self.release.clone())),
+            })
+        })
+    }
+}
+
+struct BlockedBody(Arc<Notify>, Arc<Notify>);
+impl MediaBody for BlockedBody {
+    fn read<'a>(&'a mut self, _output: &'a mut [u8]) -> ApiFuture<'a, usize> {
+        Box::pin(async move {
+            self.0.notify_one();
+            self.1.notified().await;
+            Err(Error::Transport("synthetic blocked body released".into()))
+        })
+    }
+}
+
+#[tokio::test]
+async fn live_drain_observes_commit_wake_behind_a_held_head_without_waiting_for_active_body() {
+    let media = Arc::new(BlockedMedia::default());
+    let f = Fixture::with_media(Some(media.clone())).await;
+    let old = f.paused("41");
+    let blocker = f
+        .service
+        .create_default(&json!(99), DownloadOptions::default())
+        .unwrap();
+    let scheduler = DownloadScheduler::new(f.service.clone(), 2).unwrap();
+    let wake = Notify::new();
+    let mut draining = pin!(scheduler.run_pending_notified(&wake));
+    poll_fn(|cx| {
+        assert!(draining.as_mut().poll(cx).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    tokio::time::timeout(Duration::from_secs(3), media.entered.notified())
+        .await
+        .unwrap();
+    assert_eq!(
+        f.service.get(&blocker.id).unwrap().status,
+        DownloadStatus::Downloading
+    );
+
+    let ids = f
+        .admit(f.observe(&old).unwrap(), "wake-behind-held-head")
+        .unwrap();
+    // Hold the already-committed FIFO head, the exact state visible between
+    // the SQL commit and release of the staging locks. Poll directly so the
+    // drain observes that state before we send its postcommit notification.
+    let head = f.service.lock(&ids[0]).unwrap();
+    wake.notify_one();
+    poll_fn(|cx| {
+        assert!(draining.as_mut().poll(cx).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    assert!(
+        f.service.lock(&ids[1]).is_ok(),
+        "the held head was bypassed"
+    );
+    assert_eq!(f.wire.0.lock().unwrap().len(), 1);
+    drop(head);
+    wake.notify_one();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if f.wire.0.lock().unwrap().len() == 4 {
+                break;
+            }
+            tokio::select! {
+                _ = f.wire.1.notified() => (),
+                _ = &mut draining => panic!("drain ended with the blocker still held"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        f.service.get(&blocker.id).unwrap().status,
+        DownloadStatus::Downloading
+    );
+    media.release.notify_one();
+    let result = draining.await.unwrap();
+    assert_eq!(result.len(), 4);
+    assert_eq!(
+        *f.wire.0.lock().unwrap(),
+        [
+            ("99".into(), "standard".into()),
+            ("31".into(), "standard".into()),
+            ("41".into(), "lossless".into()),
+            ("32".into(), "standard".into()),
+        ]
+    );
 }

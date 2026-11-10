@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use tokio::task::JoinSet;
+use tokio::{sync::Notify, task::JoinSet};
 
 pub struct DownloadScheduler {
     service: DownloadService,
@@ -51,17 +51,26 @@ impl DownloadScheduler {
     /// Finite drain. Each task is attempted once; paused/errors need enqueue.
     /// A slot includes authorization, media, tags, publication and sidecars.
     pub async fn run_pending(&self) -> Result<Vec<ScheduledResult>> {
-        self.drain(None).await
+        self.drain(None, None).await
     }
+
+    pub(crate) async fn run_pending_notified(&self, wake: &Notify) -> Result<Vec<ScheduledResult>> {
+        self.drain(None, Some(wake)).await
+    }
+
     /// Drain only explicitly selected tasks, preserving the same account-wide
     /// scheduler lock and full-task concurrency bound.
     pub async fn run_selected(&self, ids: &[String]) -> Result<Vec<ScheduledResult>> {
         for id in ids {
             self.service.get(id)?;
         }
-        self.drain(Some(ids.iter().cloned().collect())).await
+        self.drain(Some(ids.iter().cloned().collect()), None).await
     }
-    async fn drain(&self, selected: Option<HashSet<String>>) -> Result<Vec<ScheduledResult>> {
+    async fn drain(
+        &self,
+        selected: Option<HashSet<String>>,
+        wake: Option<&Notify>,
+    ) -> Result<Vec<ScheduledResult>> {
         let token = self.service.session.token()?;
         self.service.guard(&token)?;
         crate::download::directory::gate::require(&self.service.store, &self.service.owner, None)?;
@@ -169,11 +178,25 @@ impl DownloadScheduler {
             if active.is_empty() {
                 break;
             }
-            let result = active
-                .join_next()
-                .await
-                .ok_or(Error::State("download scheduler lost a worker"))?
-                .map_err(|_| Error::State("download worker stopped unexpectedly"))?;
+            // A held FIFO head can be released after the transaction, or
+            // entirely new work can arrive after the snapshot. With spare
+            // capacity a desktop wake must reach this drain even if an
+            // unrelated body is blocked. An empty drain above leaves the
+            // notification for the outer worker, which starts the next drain.
+            let result = if let Some(wake) = wake
+                && active.len() < self.concurrency
+                && !self.stop.load(Ordering::SeqCst)
+            {
+                tokio::select! {
+                    biased;
+                    result = active.join_next() => result,
+                    () = wake.notified() => continue,
+                }
+            } else {
+                active.join_next().await
+            }
+            .ok_or(Error::State("download scheduler lost a worker"))?
+            .map_err(|_| Error::State("download worker stopped unexpectedly"))?;
             active_dispatch.remove(&result.id);
             results.push(result);
         }

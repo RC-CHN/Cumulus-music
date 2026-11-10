@@ -218,7 +218,12 @@ impl Host {
                     break;
                 }
                 if captured.directory.active().ok().flatten().is_none() {
-                    let _ = jobs.run_pending().await;
+                    let _ = jobs.run_pending_notified(&wake).await;
+                }
+                // A wake may already have been observed inside the drain.
+                // Don't park a worker whose account was retired there.
+                if captured.guard().is_err() {
+                    break;
                 }
                 wake.notified().await;
             }
