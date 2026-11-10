@@ -250,6 +250,7 @@ import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
 import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
+import TogetherRoomLossDialog from './components/TogetherRoomLossDialog.vue';
 import RankingsPage from './components/RankingsPage.vue';
 import FmPage from './components/FmPage.vue';
 import SceneFmPage from './components/SceneFmPage.vue';
@@ -1798,6 +1799,23 @@ watch(
     if (player.queueOpen.value) void player.loadQueue();
   },
 );
+const togetherRoomLoss = computed(() => together.view.value?.queueRoomLoss);
+async function confirmTogetherRoomLoss() {
+  const notice = togetherRoomLoss.value;
+  if (!notice || together.busy.value) return;
+  const owner = together.epoch.value;
+  await together.command({
+    kind: 'confirm_queue_room_loss',
+    room_id: notice.roomId,
+    report_id: notice.reportId,
+  });
+  if (
+    owner === together.epoch.value &&
+    !togetherRoomLoss.value &&
+    (together.error.value || together.view.value?.pending.some((op) => op.action === 'end'))
+  )
+    music.navigate({ kind: 'together' });
+}
 const podcastRecent = usePodcastRecent(
   () => music.account.value,
   () => void music.bootstrap(false),
@@ -7458,5 +7476,14 @@ onUnmounted(() => {
       />
     </ModalTransition>
   </div>
+  <ModalTransition>
+    <TogetherRoomLossDialog
+      v-if="togetherRoomLoss"
+      :key="togetherRoomLoss.reportId"
+      :busy="together.busy.value"
+      :error="together.error.value"
+      @confirm="confirmTogetherRoomLoss"
+    />
+  </ModalTransition>
   <ContentTooltip :reset-key="account.epoch + navigationKey" />
 </template>

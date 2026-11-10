@@ -159,6 +159,16 @@ pub(super) async fn project(
                 .is_none_or(|r| r.room_id != binding.room_id)
         }),
         ending: state.end_notice.is_some(),
+        queue_room_loss: state.end_notice.as_ref().and_then(|notice| {
+            notice
+                .queue_loss
+                .as_ref()
+                .filter(|loss| !loss.end_sent)
+                .map(|loss| QueueRoomLossView {
+                    room_id: notice.room_id.clone(),
+                    report_id: loss.report_id.clone(),
+                })
+        }),
         lifecycle_notice: client.session.with_token(token, |uid| {
             Ok(client
                 .registry

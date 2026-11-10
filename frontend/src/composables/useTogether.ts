@@ -194,7 +194,7 @@ export function useTogether(
         acceptView(result.value);
         closeError.value = '';
         notice.value =
-          command.kind === 'end'
+          command.kind === 'end' || command.kind === 'confirm_queue_room_loss'
             ? '已退出房间'
             : command.kind === 'reconcile'
               ? '已核对服务端状态'

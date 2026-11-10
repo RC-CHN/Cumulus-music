@@ -16,7 +16,7 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU16, Ordering},
 };
 #[derive(Default)]
 pub(crate) struct RoomState {
@@ -30,6 +30,8 @@ pub(crate) struct RoomState {
 pub(crate) struct Backend {
     pub(crate) state: Mutex<RoomState>,
     pub(crate) calls: Mutex<Vec<(String, Value)>>,
+    pub(crate) queue_rejection: AtomicU16,
+    pub(crate) deny_queue_http: AtomicBool,
     pub(super) drop_play: AtomicBool,
     pub(crate) drop_end: AtomicBool,
     pub(crate) hold_end: AtomicBool,
@@ -113,6 +115,19 @@ impl Api for Backend {
                     json!({"code":200,"data":{"playlist":state.playlist,"playCommand":state.play}})
                 }
                 "/api/listen/together/sync/list/command/report" => {
+                    if self.deny_queue_http.swap(false, Ordering::SeqCst) {
+                        return Err(Error::HttpStatus {
+                            status: 403,
+                            endpoint: Some(path.into()),
+                            body: Some(Box::new(json!({"code":488}))),
+                        });
+                    }
+                    let code = self.queue_rejection.swap(0, Ordering::SeqCst);
+                    if code != 0 {
+                        return Ok(
+                            json!({"code":code,"message":"never serialize service body","data":{"result":false}}),
+                        );
+                    }
                     let c: Value =
                         serde_json::from_str(p["playlistParam"].as_str().unwrap()).unwrap();
                     assert_eq!(c["commandType"], "REPLACE");

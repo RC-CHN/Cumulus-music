@@ -43,6 +43,8 @@ pub enum WriteIntent {
     End {
         room_id: String,
         count: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        queue_loss_report: Option<String>,
     },
     Queue {
         room_id: String,
@@ -250,7 +252,12 @@ impl TogetherService {
         let mut state = self.state_for(token)?;
         let room = self.status(token).await?;
         Self::observe(&mut state, room, &owner, now)?;
-        if let Some(room) = &state.room {
+        if let Some(room) = &state.room
+            && !state
+                .end_notice
+                .as_ref()
+                .is_some_and(|notice| notice.queue_loss.is_some())
+        {
             state.snapshot = self.snapshot(token, &room.room_id).await?;
             if let Some(command) = &state.snapshot.play_command {
                 state.playback.restore(command.clone(), &owner, now)?;
