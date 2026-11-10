@@ -264,6 +264,7 @@ WebKit 实际核对六条路径，共 60 个截图状态：直达、已有歌单
 - [普通底栏方向键](desktop-minibar-skip.txt)已接官方 M308 判权：同一已知无版权候选在 t1 跳到后续可播行，在控制组保留当前播放。自然 EOF、完整 Windows 联网观察和真实账号分组仍独立验收。
 - [搜索表现](search-reactive-presentation-contracts.txt)在原生凭据轮换时不把旧响应签发为新表现候选；综合端点在 Tab 返回后重新看全局分组。实际 Linux WebView 复验控制组与 t1、返回缓存、滚动与焦点，凭据轮换另有封闭签名对照。
 - [专辑时长排序](album-detail-ui-contracts.txt)已在 Linux 实际窗口核对原序、升降序、同长顺序、返回恢复、筛选播放、同曲双击和整张入队；普通真实服务与 Windows 桌面结果另行核对。
+- [专辑热度排序](album-detail-ui-contracts.txt)读取官方 `pop`，Linux 实窗已核对进度条、降序／升序／原序、同分稳定、整专播放与暂停时整专入队；沿用原生专辑快照和整专读回，未做真实账号或 Windows 专项验证。
 - [本地文件夹定位](desktop-local-library-contracts.txt)在 Linux 真实窗口和私有文件管理器替身验证定位、有限父目录回退、失败提示和焦点回归。Windows 使用 Explorer 单项选中，尚缺实机证据。
 - [索引 FLAC 音效](indexed-flac-receipt.txt)在 Linux 用可信解码器和故意错误摘要分别验证固定图与同句柄普通解码，以及暂停定位、继续播放和自然结束。系统运行时、CI 打包解码器与真实声卡是独立证据；Windows 索引分支未开启。
 - [声音搜索作者](search-results-ui-contracts.txt)只有有效的官方嵌套作者身份生成公开主页入口。Linux 真实 WebView 验证单一作者路由、退回焦点和滚动位置，未请求媒体或改动队列。
