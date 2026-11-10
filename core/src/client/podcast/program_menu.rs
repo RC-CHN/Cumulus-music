@@ -1,7 +1,7 @@
 //! Ordinary program row actions, separate from downloadedVoice.
 use super::{
-    EpisodeView, MusicClient, PodcastLibrary, PodcastRecentProgramTarget, PodcastScope,
-    SessionToken, identifier, json,
+    EpisodeView, MusicClient, PodcastLibrary, PodcastPurchasedTarget, PodcastRecentProgramTarget,
+    PodcastScope, SessionToken, identifier, json, purchased::purchased_playback_episode,
 };
 use crate::{
     Error, Result,
@@ -139,6 +139,57 @@ impl MusicClient {
                 download_complete,
             },
         })
+    }
+
+    pub async fn podcast_purchased_program_menu(
+        &self,
+        epoch: &str,
+        target: &PodcastPurchasedTarget,
+        route: DefaultRoute,
+    ) -> Result<AccountData<PodcastRecentProgramMenu>> {
+        let token = self.podcast_token(epoch)?;
+        let episode = purchased_playback_episode(&self.session, &token, target)?;
+        let library = PodcastLibrary::new(self.session.clone())?;
+        let current = || {
+            self.session.check_generation(&token)?;
+            if !library.purchase_observation_is_current(&token, &target.revision)? {
+                return Err(Error::QueueChanged);
+            }
+            Ok(())
+        };
+        let comment_count = self
+            .read_program_comment_count(&token, &episode.id, route)
+            .await;
+        current()?;
+        let download_complete = self
+            .voice_download_state(epoch, &episode.id)
+            .await
+            .ok()
+            .map(|status| status == SongDownloadState::Complete);
+        current()?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value: PodcastRecentProgramMenu {
+                comment_count,
+                download_complete,
+            },
+        })
+    }
+
+    pub async fn podcast_purchased_program_directory_path(
+        &self,
+        epoch: &str,
+        target: &PodcastPurchasedTarget,
+    ) -> Result<PathBuf> {
+        let token = self.podcast_token(epoch)?;
+        let episode = purchased_playback_episode(&self.session, &token, target)?;
+        let path = self.completed_voice_directory(epoch, &episode.id).await?;
+        let library = PodcastLibrary::new(self.session.clone())?;
+        self.session.check_generation(&token)?;
+        if !library.purchase_observation_is_current(&token, &target.revision)? {
+            return Err(Error::QueueChanged);
+        }
+        Ok(path)
     }
 
     /// Resolve link and download targets from the same current native row.

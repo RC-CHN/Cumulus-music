@@ -354,6 +354,7 @@ pub async fn player_action<R: tauri::Runtime>(
             program: Some(_),
             ..
         } | PlayerAction::QueueRecentProgram { .. }
+            | PlayerAction::QueuePurchasedProgram { .. }
     ) && window.label() != "main"
     {
         return Err(Error::InvalidInput("podcast program queue requires the main window").into());

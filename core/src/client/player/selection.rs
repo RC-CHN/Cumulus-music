@@ -634,10 +634,10 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
-            PlaySelection::PodcastPurchasedEpisode { target } => {
+            PlaySelection::PodcastPurchasedEpisode { target, menu } => {
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
                 let (command, source_guard) = self
-                    .podcast_purchased_selection(&token, &target, prepared)
+                    .podcast_purchased_selection(&token, &target, menu, prepared)
                     .await?;
                 let state = self
                     .submit_selection_with_source(

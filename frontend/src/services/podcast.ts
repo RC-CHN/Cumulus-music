@@ -29,6 +29,14 @@ export interface PodcastRecentProgramMenu {
   downloadComplete: boolean | null;
 }
 export interface PodcastProgramMenuClient {
+  podcastPurchasedProgramMenu(
+    epoch: string,
+    target: PodcastPurchasedTarget,
+  ): Promise<AccountData<PodcastRecentProgramMenu>>;
+  podcastOpenPurchasedProgramDownloadDirectory(
+    epoch: string,
+    target: PodcastPurchasedTarget,
+  ): Promise<void>;
   podcastRecentProgramMenu(
     epoch: string,
     target: PodcastRecentProgramTarget,

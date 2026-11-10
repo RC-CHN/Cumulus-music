@@ -398,6 +398,10 @@ export function createTauriClient(): CoreClient {
       invoke('podcast_open_program_download_directory', { epoch, target }),
     podcastRecentProgramMenu: (epoch, target) =>
       invoke('podcast_recent_program_menu', { epoch, target }),
+    podcastPurchasedProgramMenu: (epoch, target) =>
+      invoke('podcast_purchased_program_menu', { epoch, target }),
+    podcastOpenPurchasedProgramDownloadDirectory: (epoch, target) =>
+      invoke('podcast_open_purchased_program_download_directory', { epoch, target }),
     podcastRecentProgram: (epoch, target) => invoke('podcast_recent_program', { epoch, target }),
     podcastOpenRecentProgramDownloadDirectory: (epoch, target) =>
       invoke('podcast_open_recent_program_download_directory', { epoch, target }),

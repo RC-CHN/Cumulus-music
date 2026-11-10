@@ -1,4 +1,4 @@
-//! Official mixed purchase table: double-click selects the clicked program only.
+//! Official mixed purchase table: gestures target only the clicked program.
 use super::{
     MusicClient, PlaybackCommand, PlaybackStatus, PlayerResourceKind, identity,
     podcast_browse::resource, prepared_selection::PreparedSelection,
@@ -14,10 +14,14 @@ use crate::{
         engine::Cancellation,
     },
     podcast::{Episode, PodcastApi, PodcastLibrary},
-    protocol::api::identifier,
+    protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
+
+pub(super) fn purchased_origin() -> Value {
+    json!({"kind":"podcast_purchased","scene":"myPayedAudio"})
+}
 
 fn compatible(before: &Episode, detail: &Episode) -> bool {
     detail.id == before.id
@@ -50,12 +54,11 @@ fn same_online_voice(value: &Value, episode: &Episode) -> bool {
 }
 
 impl MusicClient {
-    pub(super) async fn podcast_purchased_selection(
+    pub(super) fn purchased_episode_scope(
         &self,
         token: &SessionToken,
         target: &PodcastPurchasedTarget,
-        prepared: &PreparedSelection,
-    ) -> Result<(PlaybackCommand, Cancellation)> {
+    ) -> Result<(Episode, Arc<dyn Api>, Cancellation)> {
         let api = self.session.native_api(token)?;
         let credential = api.playback_source_credential_revision()?;
         let cached = purchased_playback_episode(&self.session, token, target)?;
@@ -78,6 +81,37 @@ impl MusicClient {
                     .unwrap_or(false)
         });
         guard.check()?;
+        Ok((cached, api, guard))
+    }
+
+    pub(super) async fn read_purchased_episode_detail(
+        &self,
+        token: &SessionToken,
+        cached: &Episode,
+        guard: &Cancellation,
+    ) -> Result<Episode> {
+        guard.check()?;
+        let detail = self
+            .session
+            .run_for(token, |api, _| async {
+                PodcastApi::new(api).episode(&json!(cached.id)).await
+            })
+            .await?;
+        guard.check()?;
+        if !compatible(cached, &detail) {
+            return Err(Error::QueueChanged);
+        }
+        Ok(detail)
+    }
+
+    pub(super) async fn podcast_purchased_selection(
+        &self,
+        token: &SessionToken,
+        target: &PodcastPurchasedTarget,
+        menu: bool,
+        prepared: &PreparedSelection,
+    ) -> Result<(PlaybackCommand, Cancellation)> {
+        let (cached, api, guard) = self.purchased_episode_scope(token, target)?;
         let controller = self.player.controller().await?;
         let (before, mut queue) = controller.queue_with_state(token).await?;
         prepared.check(self, &before)?;
@@ -101,22 +135,24 @@ impl MusicClient {
                     .as_ref()
                     .is_some_and(|entry| same_online_voice(&entry.resource, episode))
         };
+        let current_command = || {
+            if !menu {
+                PlaybackCommand::Pause(!before.paused)
+            } else if before.paused {
+                PlaybackCommand::Pause(false)
+            } else {
+                PlaybackCommand::Snapshot
+            }
+        };
         if identifier(&cached.raw["mainSong"]["id"]).is_ok() && loaded(&cached) {
-            return Ok((PlaybackCommand::Pause(!before.paused), guard));
+            return Ok((current_command(), guard));
         }
 
         let detail = self
-            .session
-            .run_for(token, |api, _| async {
-                PodcastApi::new(api).episode(&json!(cached.id)).await
-            })
+            .read_purchased_episode_detail(token, &cached, &preparing)
             .await?;
-        preparing.check()?;
-        if !compatible(&cached, &detail) {
-            return Err(Error::QueueChanged);
-        }
         if loaded(&detail) {
-            return Ok((PlaybackCommand::Pause(!before.paused), guard));
+            return Ok((current_command(), guard));
         }
 
         let selected = resource(&detail)?;
@@ -134,7 +170,7 @@ impl MusicClient {
             .filter(|position| timeline.to_media(*position).is_ok())
             .unwrap_or_else(|| timeline.snapshot().start);
 
-        let source = json!({"kind":"podcast_purchased","scene":"myPayedAudio"});
+        let source = purchased_origin();
         queue = insert_collection_bound(
             queue,
             vec![selected.clone()],

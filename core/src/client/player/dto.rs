@@ -478,6 +478,8 @@ pub enum PlaySelection {
     },
     PodcastPurchasedEpisode {
         target: crate::client::dto::PodcastPurchasedTarget,
+        #[serde(default)]
+        menu: bool,
     },
     SearchResultVoice {
         id: String,
@@ -762,6 +764,10 @@ pub enum PlayerAction {
     },
     QueueRecentProgram {
         target: crate::client::dto::PodcastRecentProgramTarget,
+        expected_queue_revision: String,
+    },
+    QueuePurchasedProgram {
+        target: crate::client::dto::PodcastPurchasedTarget,
         expected_queue_revision: String,
     },
     QueueDailyRecommendations {

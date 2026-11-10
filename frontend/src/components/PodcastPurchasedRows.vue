@@ -5,20 +5,24 @@ import type { PodcastModel } from '../composables/usePodcasts';
 import type { EpisodeView, PodcastPurchasedRow, PodcastPurchasedTarget } from '../services/podcast';
 import { playlistTableCount } from '../services/playlistHeader';
 import Icon from './Icon.vue';
+import PodcastProgramMenu from './PodcastProgramMenu.vue';
 
 const props = defineProps<{
   model: PodcastModel;
   playable: boolean;
+  queueable: boolean;
   compact: boolean;
   currentId?: string;
+  queue: (epoch: string, target: PodcastPurchasedTarget, live: () => boolean) => Promise<boolean>;
 }>();
 const emit = defineEmits<{
   comments: [id: string, title: string];
   download: [episode: EpisodeView, live: () => boolean, source: PodcastPurchasedTarget];
-  play: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
+  play: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean, menu?: boolean];
 }>();
 const rows = computed(() => props.model.page.value?.purchases?.rows ?? []);
 const selected = ref('');
+const programMenu = ref<InstanceType<typeof PodcastProgramMenu>>();
 watch(rows, () => {
   if (!rows.value.some((row) => key(row) === selected.value)) selected.value = '';
 });
@@ -67,6 +71,30 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
   if (event.target instanceof Element && event.target.closest('button, a, input')) return;
   play(row, event);
 }
+function showMenu(row: PodcastPurchasedRow, event: MouseEvent | KeyboardEvent) {
+  if (
+    row.kind !== 'episode' ||
+    row.item.unavailable ||
+    !(event.currentTarget instanceof HTMLElement)
+  )
+    return;
+  const current = event.currentTarget;
+  const anchor =
+    current instanceof HTMLButtonElement
+      ? current
+      : current.querySelector<HTMLButtonElement>('[data-purchased-menu]');
+  if (!anchor || !props.model.capturePurchasedRow(row)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const point =
+    event instanceof MouseEvent && event.type === 'contextmenu'
+      ? { x: event.clientX, y: event.clientY }
+      : undefined;
+  void programMenu.value?.open(row.item, anchor, point);
+}
+function menuKey(row: PodcastPurchasedRow, event: KeyboardEvent) {
+  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) showMenu(row, event);
+}
 </script>
 
 <template>
@@ -103,6 +131,8 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
         :data-purchase-index="start + index"
         :aria-rowindex="start + index + 2"
         @dblclick="playRow(row, $event)"
+        @contextmenu="showMenu(row, $event)"
+        @keydown="menuKey(row, $event)"
       >
         <span role="cell" class="purchase-index muted">{{
           String(start + index + 1).padStart(2, '0')
@@ -178,12 +208,34 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
             >
               <Icon name="comment" />
             </button>
+            <button
+              type="button"
+              class="icon-button"
+              aria-label="更多单集操作"
+              aria-haspopup="menu"
+              data-purchased-menu
+              :disabled="loading || row.item.unavailable"
+              @click="showMenu(row, $event)"
+            >
+              <Icon name="more" />
+            </button>
           </template>
         </div>
       </article>
       <div aria-hidden="true" :style="{ height: `${(rows.length - end) * rowHeight}px` }" />
     </div>
   </div>
+  <PodcastProgramMenu
+    ref="programMenu"
+    :page="model.page.value"
+    :playable="playable"
+    :queueable="queueable"
+    :queue-purchased="queue"
+    :capture-purchased="model.capturePurchasedRow"
+    @purchased-play="(epoch, target, live) => emit('play', epoch, target, live, true)"
+    @purchased-download="(voice, live, target) => emit('download', voice, live, target)"
+    @comments="(id, title) => emit('comments', id, title)"
+  />
   <div v-if="typeof model.page.value?.purchases?.nextOffset === 'number'" class="purchase-footer">
     <button type="button" class="text-button" :disabled="loading" @click="model.loadMorePurchases">
       加载更多 <Icon name="down" />
@@ -197,7 +249,7 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
   display: grid;
   grid-template-columns:
     clamp(28px, 7%, 45px) minmax(0, 1fr) clamp(54px, 13%, 92px)
-    clamp(54px, 17%, 120px) 72px;
+    clamp(54px, 17%, 120px) 104px;
   column-gap: 8px;
   align-items: center;
   padding-inline: 8px;
@@ -234,8 +286,8 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
 }
 .purchase-actions {
   display: grid;
-  grid-template-columns: repeat(2, 32px);
-  gap: 8px;
+  grid-template-columns: repeat(3, 32px);
+  gap: 4px;
 }
 .purchase-row.selected {
   background: var(--hover);

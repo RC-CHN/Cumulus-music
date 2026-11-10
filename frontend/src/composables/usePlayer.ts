@@ -499,6 +499,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   function queueRecentProgram(target: import('../services/podcast').PodcastRecentProgramTarget) {
     return queueAction({ kind: 'queue_recent_program', target });
   }
+  function queuePurchasedProgram(target: import('../services/podcast').PodcastPurchasedTarget) {
+    return queueAction({ kind: 'queue_purchased_program', target });
+  }
   function queueLocal(query: LocalQuery, revision: string, trackId?: string) {
     return queueAction({ kind: 'queue_local', query, revision, track_id: trackId });
   }
@@ -611,6 +614,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_mixed_playlist'
             | 'queue_voice'
             | 'queue_recent_program'
+            | 'queue_purchased_program'
             | 'queue_daily_recommendations'
             | 'queue_style_recommendations'
             | 'queue_playlist_batch'
@@ -1428,6 +1432,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueZonePlaylistDetail,
     queueVoice,
     queueRecentProgram,
+    queuePurchasedProgram,
     queueLocal,
     dropIntoQueue,
     queueAlbum,

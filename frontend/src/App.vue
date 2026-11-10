@@ -1910,7 +1910,12 @@ watch(
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
 }
-function playPurchasedProgram(epoch: string, target: PodcastPurchasedTarget, live: () => boolean) {
+function playPurchasedProgram(
+  epoch: string,
+  target: PodcastPurchasedTarget,
+  live: () => boolean,
+  menu = false,
+) {
   const valid = () =>
     page.value.kind === 'podcasts' &&
     account.value.epoch === epoch &&
@@ -1920,8 +1925,25 @@ function playPurchasedProgram(epoch: string, target: PodcastPurchasedTarget, liv
   void player.prepareSelection(async (owner) => {
     if (owner !== epoch || !valid())
       throw { code: 'stale', message: '已购节目列表已更新', retryable: false };
-    return { kind: 'podcast_purchased_episode', target };
+    return { kind: 'podcast_purchased_episode', target, ...(menu ? { menu } : {}) };
   });
+}
+async function queuePurchasedProgram(
+  epoch: string,
+  target: PodcastPurchasedTarget,
+  live: () => boolean,
+) {
+  if (
+    page.value.kind !== 'podcasts' ||
+    account.value.epoch !== epoch ||
+    !live() ||
+    !ordinaryVoiceQueueable.value ||
+    target.kind !== 'episode'
+  )
+    return false;
+  const before = player.view.value;
+  const next = await player.queuePurchasedProgram(target);
+  return !!before?.queueLen && !!next && next.queueRevision !== before.queueRevision;
 }
 async function queuePodcastProgram(epoch: string, program: PodcastProgramTarget): Promise<boolean> {
   const snapshot = podcasts.page.value,
@@ -6432,6 +6454,7 @@ onUnmounted(() => {
                 :queueable="ordinaryVoiceQueueable"
                 :queue-program="queuePodcastProgram"
                 :queue-recent-program="queueRecentProgram"
+                :queue-purchased-program="queuePurchasedProgram"
                 @back="backFromPodcastDetail"
                 @recent-program-play="playRecentProgram"
                 @purchased-play="playPurchasedProgram"

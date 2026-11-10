@@ -27,6 +27,11 @@ const props = defineProps<{
   queueable: boolean;
   queueProgram: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
   queueRecentProgram: (epoch: string, program: PodcastRecentProgramTarget) => Promise<boolean>;
+  queuePurchasedProgram: (
+    epoch: string,
+    target: PodcastPurchasedTarget,
+    live: () => boolean,
+  ) => Promise<boolean>;
   currentId?: string;
   currentRadioId?: string;
   playing: boolean;
@@ -39,7 +44,12 @@ const emit = defineEmits<{
   recommendedPlay: [id: string, action: PodcastRecommendationAction];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[], live?: () => boolean, purchased?: PodcastPurchasedTarget];
-  purchasedPlay: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
+  purchasedPlay: [
+    epoch: string,
+    target: PodcastPurchasedTarget,
+    live: () => boolean,
+    menu?: boolean,
+  ];
 }>();
 const { page, query, loading, busy, error, notice, operations, recentSelected } = props.model;
 const root = ref<HTMLElement>();
@@ -388,11 +398,13 @@ const pending = props.model.pending;
         v-if="scope.kind === 'purchased' && page?.purchases"
         :model="model"
         :playable="playable && queueable"
+        :queueable="queueable"
         :compact="purchasesCompact"
         :current-id="currentId"
+        :queue="queuePurchasedProgram"
         @comments="(id, title) => emit('comments', id, title)"
         @download="(episode, live, source) => emit('download', [episode], live, source)"
-        @play="(epoch, target, live) => emit('purchasedPlay', epoch, target, live)"
+        @play="(epoch, target, live, menu) => emit('purchasedPlay', epoch, target, live, menu)"
       />
       <div v-if="page?.cards.length" class="podcast-grid">
         <button

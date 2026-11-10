@@ -8,6 +8,8 @@ import {
   type EpisodeView,
   type PodcastPage,
   type PodcastProgramTarget,
+  type PodcastPurchasedRow,
+  type PodcastPurchasedTarget,
   type PodcastRecentPage,
   type PodcastRecentProgramTarget,
 } from '../services/podcast';
@@ -17,7 +19,7 @@ import TrackShareDialog from './TrackShareDialog.vue';
 
 type RecentMenuPage = PodcastRecentPage & { epoch: string };
 type MenuPage = PodcastPage | RecentMenuPage;
-type MenuTarget = PodcastProgramTarget | PodcastRecentProgramTarget;
+type MenuTarget = PodcastProgramTarget | PodcastRecentProgramTarget | PodcastPurchasedTarget;
 
 const props = defineProps<{
   page?: MenuPage;
@@ -25,12 +27,26 @@ const props = defineProps<{
   queueable: boolean;
   queue?: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
   queueRecent?: (epoch: string, program: PodcastRecentProgramTarget) => Promise<boolean>;
+  queuePurchased?: (
+    epoch: string,
+    target: PodcastPurchasedTarget,
+    live: () => boolean,
+  ) => Promise<boolean>;
+  capturePurchased?: (row: PodcastPurchasedRow) =>
+    | {
+        epoch: string;
+        target: PodcastPurchasedTarget;
+        live: () => boolean;
+      }
+    | undefined;
 }>();
 const emit = defineEmits<{
   play: [id: string];
   recentPlay: [epoch: string, program: PodcastRecentProgramTarget];
+  purchasedPlay: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[]];
+  purchasedDownload: [voice: EpisodeView, live: () => boolean, target: PodcastPurchasedTarget];
 }>();
 const client = useCore();
 const menu = ref<InstanceType<typeof ActionMenu>>();
@@ -44,13 +60,19 @@ type Selection = {
   voice: EpisodeView;
   target: MenuTarget;
   anchor: HTMLButtonElement;
+  purchaseLive?: () => boolean;
 };
 const selection = shallowRef<Selection>();
 const shared = shallowRef<Selection>();
 const shareAnchor = shallowRef<HTMLButtonElement>();
 let preparing: Selection | undefined;
 function current(value: Selection) {
-  return props.page === value.page && value.anchor.isConnected && !value.anchor.closest('[inert]');
+  return (
+    props.page === value.page &&
+    value.anchor.isConnected &&
+    !value.anchor.closest('[inert]') &&
+    (value.purchaseLive?.() ?? true)
+  );
 }
 const active = computed(() =>
   selection.value && current(selection.value) ? selection.value : undefined,
@@ -135,14 +157,29 @@ async function open(
   point?: { x: number; y: number },
 ) {
   const page = props.page;
-  if (
-    !page?.epoch ||
-    ('scope' in page && page.scope.kind !== 'radio') ||
-    !page.episodes.some((candidate) => candidate === voice) ||
-    !anchor.isConnected ||
-    anchor.closest('[inert]')
-  )
-    return;
+  if (!page?.epoch || !anchor.isConnected || anchor.closest('[inert]')) return;
+  const row = { revision: page.revision, voiceId: voice.id };
+  let target: MenuTarget;
+  let purchaseLive: (() => boolean) | undefined;
+  if ('scope' in page && page.scope.kind === 'purchased') {
+    const purchase = page.purchases?.rows.find(
+      (candidate) => candidate.kind === 'episode' && candidate.item === voice,
+    );
+    const source = purchase && props.capturePurchased?.(purchase);
+    if (!source || source.epoch !== page.epoch || !source.live()) return;
+    target = source.target;
+    purchaseLive = source.live;
+  } else {
+    if (
+      ('scope' in page && page.scope.kind !== 'radio') ||
+      !page.episodes.some((candidate) => candidate === voice)
+    )
+      return;
+    target =
+      'scope' in page && page.scope.kind === 'radio'
+        ? { ...row, radioId: page.scope.id, ascending: page.scope.ascending }
+        : row;
+  }
   if (!point && opened.value && selection.value?.anchor === anchor) {
     menu.value?.close(true);
     return;
@@ -150,12 +187,7 @@ async function open(
   abandonPreparation();
   menu.value?.close();
   anchor.focus({ preventScroll: true });
-  const row = { revision: page.revision, voiceId: voice.id };
-  const target =
-    'scope' in page && page.scope.kind === 'radio'
-      ? { ...row, radioId: page.scope.id, ascending: page.scope.ascending }
-      : row;
-  const value: Selection = { page, voice, anchor, target };
+  const value: Selection = { page, voice, anchor, target, purchaseLive };
   clearFeedback();
   count.value = undefined;
   completed.value = undefined;
@@ -172,7 +204,9 @@ async function open(
       count.value = result.value ?? undefined;
       completed.value = status === undefined ? undefined : status === 'complete';
     } else {
-      const result = await client.podcastRecentProgramMenu(page.epoch, target);
+      const result = await ('kind' in target
+        ? client.podcastPurchasedProgramMenu(page.epoch, target)
+        : client.podcastRecentProgramMenu(page.epoch, target));
       if (!live() || result.epoch !== page.epoch) return;
       count.value = result.value.commentCount ?? undefined;
       completed.value = result.value.downloadComplete ?? undefined;
@@ -195,7 +229,22 @@ async function action(key: string) {
   let voice = value.voice;
   let message: string | undefined;
   try {
-    if (!('radioId' in target) && ['comments', 'download', 'share', 'copy'].includes(key)) {
+    if ('kind' in target && ['comments', 'download', 'share', 'copy'].includes(key)) {
+      const result = await client.podcastPurchasedTarget(page.epoch, target);
+      if (
+        selection.value !== value ||
+        !current(value) ||
+        result.epoch !== page.epoch ||
+        result.value.kind !== 'episode' ||
+        result.value.item.id !== target.id
+      )
+        return;
+      voice = result.value.item;
+    } else if (
+      !('radioId' in target) &&
+      !('kind' in target) &&
+      ['comments', 'download', 'share', 'copy'].includes(key)
+    ) {
       const result = await client.podcastRecentProgram(page.epoch, target);
       if (
         selection.value !== value ||
@@ -208,11 +257,14 @@ async function action(key: string) {
     }
     if (key === 'play' && props.playable && !voice.unavailable) {
       if ('radioId' in target) emit('play', voice.id);
+      else if ('kind' in target) emit('purchasedPlay', page.epoch, target, () => current(value));
       else emit('recentPlay', page.epoch, target);
     }
     if (key === 'comments') emit('comments', voice.id, voice.name);
-    if (key === 'download' && completed.value === false && !voice.unavailable)
-      emit('download', [voice]);
+    if (key === 'download' && completed.value === false && !voice.unavailable) {
+      if ('kind' in target) emit('purchasedDownload', voice, () => current(value), target);
+      else emit('download', [voice]);
+    }
     if (key === 'share' && podcastProgramPublicLink(voice.id)) {
       shareAnchor.value = anchor;
       shared.value = { ...value, voice };
@@ -221,7 +273,9 @@ async function action(key: string) {
       const queued =
         'radioId' in target
           ? await props.queue?.(page.epoch, target)
-          : await props.queueRecent?.(page.epoch, target);
+          : 'kind' in target
+            ? await props.queuePurchased?.(page.epoch, target, () => current(value))
+            : await props.queueRecent?.(page.epoch, target);
       if (queued) message = '已添加至播放列表';
     }
     if (key === 'copy') {
@@ -232,6 +286,8 @@ async function action(key: string) {
     }
     if (key === 'folder' && completed.value === true) {
       if ('radioId' in target) await client.podcastOpenProgramDownloadDirectory(page.epoch, target);
+      else if ('kind' in target)
+        await client.podcastOpenPurchasedProgramDownloadDirectory(page.epoch, target);
       else await client.podcastOpenRecentProgramDownloadDirectory(page.epoch, target);
     }
   } catch (error) {

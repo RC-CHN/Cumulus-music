@@ -440,7 +440,11 @@ export type PlaySelection =
   | { kind: 'search_podcast_row'; id: string; receipt: string; gesture: SearchPodcastRowGesture }
   | { kind: 'search_voice_menu'; target: import('./search').SearchVoiceMenuTarget }
   | { kind: 'podcast_browse_voice'; receipt: string; double_click?: boolean }
-  | { kind: 'podcast_purchased_episode'; target: import('./podcast').PodcastPurchasedTarget }
+  | {
+      kind: 'podcast_purchased_episode';
+      target: import('./podcast').PodcastPurchasedTarget;
+      menu?: boolean;
+    }
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'listened_book_chapter'; revision: string; key: number }
   | {
@@ -726,6 +730,11 @@ export type PlayerAction =
   | {
       kind: 'queue_recent_program';
       target: import('./podcast').PodcastRecentProgramTarget;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'queue_purchased_program';
+      target: import('./podcast').PodcastPurchasedTarget;
       expected_queue_revision: string;
     }
   | {
