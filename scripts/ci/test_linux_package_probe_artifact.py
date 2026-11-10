@@ -5,7 +5,7 @@ import stat
 import tempfile
 import unittest
 
-from linux_package_probe_artifact import CORE, RECEIPT, SHARDS, restore, stage
+from linux_package_probe_artifact import CORE, LOCAL_SHARDS, RECEIPT, SHARDS, restore, stage
 
 
 @unittest.skipUnless(os.name == 'posix', 'Linux executable mode and links')
@@ -23,12 +23,15 @@ class LinuxPackageProbeArtifact(unittest.TestCase):
         self.artifact = root / 'artifact'
         self.output = root / 'installed'
         self.identity = {'commit': 'a' * 40, 'ciRun': '17', 'ciAttempt': '2'}
+        self.write_probes(SHARDS)
+        stage(self.artifact, self.examples, self.examples / CORE, self.dist, self.identity)
+
+    def write_probes(self, shards):
         header = b'\x7fELF\x02\x01\x01' + bytes(9) + b'\x03\x00\x3e\x00' + bytes(44)
-        for name in {name for names in SHARDS.values() for name in names}:
+        for name in {name for names in shards.values() for name in names}:
             path = self.examples / name
             path.write_bytes(header + name.encode())
             path.chmod(0o755)
-        stage(self.artifact, self.examples, self.examples / CORE, self.dist, self.identity)
 
     def test_fixed_shards_restore_exact_executables_with_the_same_harness(self):
         core_digests = set()
@@ -81,6 +84,24 @@ class LinuxPackageProbeArtifact(unittest.TestCase):
         self.assertEqual(list(self.output.iterdir()), [existing])
         self.assertEqual(existing.read_bytes(), b'preexisting')
         self.assertTrue((self.artifact / 'media-startup' / RECEIPT).is_file())
+
+    def test_local_desktop_shards_share_one_probe_without_a_core_harness(self):
+        suite = 'local-desktop'
+        self.write_probes(LOCAL_SHARDS)
+        local = self.artifact.parent / 'local'
+        stage(local, self.examples, None, self.dist, self.identity, suite=suite)
+        mini_digests = set()
+        for shard, names in LOCAL_SHARDS.items():
+            source = local / shard
+            output = self.output / shard
+            with self.assertRaisesRegex(ValueError, 'receipt mismatch'):
+                restore(source, output, shard, self.dist, self.identity | {'ciAttempt': '3'}, suite=suite)
+            self.assertFalse(any(output.iterdir()))
+            result = json.loads(restore(source, output, shard, self.dist, self.identity, suite=suite))
+            self.assertEqual(result['kind'], 'linux-local-desktop-probes-v1')
+            self.assertEqual({file.name for file in output.iterdir()}, set(names))
+            mini_digests.add(next(row['sha256'] for row in result['binaries'] if row['name'] == 'mini_ui_probe'))
+        self.assertEqual(len(mini_digests), 1)
 
 
 if __name__ == '__main__':

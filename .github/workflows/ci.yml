@@ -1366,11 +1366,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - &linux_webview_dependencies
-        name: Linux native dependencies
+      - name: Linux native dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
+          python3 scripts/ci/linux_webview_apt.py --publish "$RUNNER_TEMP/cumulus-webview-apt-cache"
           sudo locale-gen en_US.UTF-8
       - &linux_webview_python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -1403,10 +1401,55 @@ jobs:
           python3 scripts/ci/linux_webview_probe_artifact.py stage \
             --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
             --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
+          if test -d "$RUNNER_TEMP/cumulus-webview-apt-cache"; then
+            mv "$RUNNER_TEMP/cumulus-webview-apt-cache" "$RUNNER_TEMP/cumulus-webview-ux-probe/apt-cache"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/cumulus-webview-ux-probe/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+
+  linux-local-probes:
+    name: Linux local desktop probe build
+    needs: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_webview_checkout
+      - name: Linux native dependencies
+        run: |
+          python3 scripts/ci/linux_webview_apt.py --cold
+          sudo locale-gen en_US.UTF-8
+      - *linux_webview_python
+      - *linux_webview_toolchain
+      - *linux_webview_rust_downloads
+      - *linux_webview_dist
+      - name: Build and bind the Linux local desktop test probes
+        run: |
+          test -f frontend/dist/index.html
+          cargo build -p cumulus-desktop --features custom-protocol --locked \
+            --example mini_ui_probe --example local_ui_probe --example local_batch_favorite_ui_probe \
+            --example desktop_lyrics_ui_probe
+          python3 scripts/ci/linux_package_probe_artifact.py stage --suite local-desktop \
+            --examples .build/target/debug/examples --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-linux-local-probes"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-local-probes-local-files-cloud-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-local-probes/local-files-cloud/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-local-probes-mini-player-lyrics-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-local-probes/mini-player-lyrics/
           if-no-files-found: error
           retention-days: 3
           compression-level: 1
@@ -1423,7 +1466,11 @@ jobs:
         shell: bash
     steps:
       - *linux_webview_checkout
-      - *linux_webview_dependencies
+      - name: Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
+          sudo locale-gen en_US.UTF-8
       - *linux_webview_python
       - *linux_webview_toolchain
       - *linux_webview_rust_downloads
@@ -1467,7 +1514,17 @@ jobs:
         shell: bash
     steps:
       - *linux_webview_checkout
-      - *linux_webview_dependencies
+      - &linux_webview_probe_download
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-webview-ux-probe
+      - &linux_webview_cached_dependencies
+        name: Linux native dependencies
+        run: |
+          python3 scripts/ci/linux_webview_apt.py --reuse "$RUNNER_TEMP/cumulus-webview-ux-probe/apt-cache"
+          rm -rf -- "${RUNNER_TEMP:?}/cumulus-webview-ux-probe/apt-cache"
+          sudo locale-gen en_US.UTF-8
       - *linux_webview_python
       - *linux_webview_dist
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -1505,11 +1562,6 @@ jobs:
           printf 'CUMULUS_CI_PACKAGED_FLAC_SHA256=%s\n' "$flac_sha" >> "$GITHUB_ENV"
           test ! -d .build/target
           df -h .
-      - &linux_webview_probe_download
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cumulus-webview-ux-probe
       - &linux_webview_probe_restore
         name: Verify and install the same-attempt Linux WebView probe
         run: |
@@ -1671,16 +1723,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, playback-podcasts, playback-startup, library-search, local-desktop, account-shell, catalog-browse, catalog-community]
+        shard: [playback, playback-podcasts, playback-startup, library-search, account-shell, catalog-browse, catalog-community]
     defaults:
       run:
         shell: bash
     steps:
       - *linux_webview_checkout
-      - *linux_webview_dependencies
-      - name: Native GTK folder chooser accessibility
-        if: matrix.shard == 'local-desktop'
-        run: sudo apt-get install -y gir1.2-atspi-2.0 at-spi2-core
+      - *linux_webview_probe_download
+      - *linux_webview_cached_dependencies
       - *linux_webview_python
       - *linux_webview_toolchain
       - *linux_webview_rust_downloads
@@ -1690,7 +1740,6 @@ jobs:
           test -f frontend/dist/index.html
           test ! -d .build/target
           df -h .
-      - *linux_webview_probe_download
       - *linux_webview_probe_restore
       - name: Verify player and queue workflows
         if: matrix.shard == 'playback'
@@ -1920,72 +1969,6 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
-      - name: Verify local files, cloud, mini player and lyrics
-        if: matrix.shard == 'local-desktop'
-        env:
-          GDK_BACKEND: x11
-          LIBGL_ALWAYS_SOFTWARE: '1'
-          WEBKIT_FORCE_DMABUF_RENDERER: '1'
-          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
-        run: |
-          # A bare namespace leaves loopback down and /proc/net/route empty.
-          # Bring up only loopback so proofs see an initialized, route-free table.
-          loopback_only() {
-            sudo unshare --net --fork --kill-child sh -ec '
-              target_user=$1
-              shift
-              ip link set lo up
-              exec runuser -u "$target_user" -- "$@"
-            ' sh "$(id -un)" "$@"
-          }
-          cargo build -p cumulus-desktop --example mini_ui_probe --example local_ui_probe --example local_batch_favorite_ui_probe --features custom-protocol --locked
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-intelligence-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-fm-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-feedback-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-pin-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-pin-unmanaged-linux --unmanaged
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-menu-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-menu-exit-linux --exit
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/lyric_report_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-lyric-report-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-page-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/cloud_capacity_smoke.py --binary .build/target/debug/examples/mini_ui_probe --frontend-dist frontend/dist --root .build/ci-cloud-capacity-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-batch-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-menu-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_toolbar_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-toolbar-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_upload_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-upload-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/cloud_upload_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-upload-size-linux --size-admission
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/daily_notification_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-daily-notification-linux
-          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/copyright_notification_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-copyright-notification-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_task_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-task-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_song_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-song-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_delete_context_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-delete-context-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-local-delete-linux
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-local-resource-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-cold-start-linux
-          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- /usr/bin/python3 scripts/ci/local_directory_selection_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-directory-selection-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-linux
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-offline-playlist-linux --screenshots
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_download_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-offline-playlist-download-linux --screenshots
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_folder_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-folder-reveal-linux --screenshots
-          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_queue_file_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-file-reveal-linux --screenshots
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_group_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-group-hide-linux --screenshots
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-batch-hide-linux --screenshots
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-batch-play-linux --screenshots --play
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-batch-add-linux --screenshots --add
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_favorite_smoke.py --binary .build/target/debug/examples/local_batch_favorite_ui_probe --root .build/ci-local-batch-favorite-linux --screenshots
-          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
-          cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --embedded --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-embedded-lyrics-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-native-sidecar-lyrics-linux
-          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-vinyl-lyric-credits-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
-          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
-            CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
-            xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- \
-            /usr/bin/python3 scripts/ci/interface_font_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe \
-            --frontend-dist frontend/dist --root .build/ci-interface-font-linux --screenshots
       - name: Verify account and platform shell
         if: matrix.shard == 'account-shell'
         env:
@@ -2134,11 +2117,127 @@ jobs:
       - *linux_webview_diagnostics
       - *linux_webview_diagnostics_upload
 
+  linux-webview-local:
+    name: Linux WebView (${{ matrix.shard }})
+    needs: [frontend, linux-webview-probe, linux-local-probes]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [local-files-cloud, mini-player-lyrics]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_webview_checkout
+      - *linux_webview_probe_download
+      - *linux_webview_cached_dependencies
+      - name: Native GTK folder chooser accessibility
+        if: matrix.shard == 'local-files-cloud'
+        run: sudo apt-get install -y gir1.2-atspi-2.0 at-spi2-core
+      - *linux_webview_python
+      - *linux_webview_dist
+      - name: Check Linux WebView inputs and measure disk
+        run: |
+          test -f frontend/dist/index.html
+          test ! -d .build/target
+          df -h .
+      - *linux_webview_probe_restore
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-local-probes-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-local-probes
+      - name: Verify and install same-attempt Linux local desktop test probes
+        env:
+          LOCAL_SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/ci/linux_package_probe_artifact.py restore --suite local-desktop --shard "$LOCAL_SHARD" \
+            --examples .build/target/debug/examples --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-linux-local-probes"
+      - name: Verify local files and cloud workflows
+        if: matrix.shard == 'local-files-cloud'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
+          # A bare namespace leaves loopback down and /proc/net/route empty.
+          # Bring up only loopback so proofs see an initialized, route-free table.
+          loopback_only() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              target_user=$1
+              shift
+              ip link set lo up
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$(id -un)" "$@"
+          }
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-page-linux
+          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/cloud_capacity_smoke.py --binary .build/target/debug/examples/mini_ui_probe --frontend-dist frontend/dist --root .build/ci-cloud-capacity-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-batch-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-menu-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_toolbar_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-toolbar-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_upload_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-upload-linux
+          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/cloud_upload_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-upload-size-linux --size-admission
+          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/daily_notification_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-daily-notification-linux
+          sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/copyright_notification_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-copyright-notification-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_task_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-task-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_song_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-song-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_delete_context_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-delete-context-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-local-delete-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-local-resource-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-cold-start-linux
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- /usr/bin/python3 scripts/ci/local_directory_selection_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-directory-selection-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-offline-playlist-linux --screenshots
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_download_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-offline-playlist-download-linux --screenshots
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_folder_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-folder-reveal-linux --screenshots
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_queue_file_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-file-reveal-linux --screenshots
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_group_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-group-hide-linux --screenshots
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-batch-hide-linux --screenshots
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-batch-play-linux --screenshots --play
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-batch-add-linux --screenshots --add
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/local_batch_favorite_smoke.py --binary .build/target/debug/examples/local_batch_favorite_ui_probe --root .build/ci-local-batch-favorite-linux --screenshots
+      - name: Verify mini player and desktop lyrics workflows
+        if: matrix.shard == 'mini-player-lyrics'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-intelligence-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-fm-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-feedback-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-pin-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-pin-unmanaged-linux --unmanaged
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-menu-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-menu-exit-linux --exit
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/lyric_report_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-lyric-report-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --embedded --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-embedded-lyrics-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-native-sidecar-lyrics-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-vinyl-lyric-credits-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
+            CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- \
+            /usr/bin/python3 scripts/ci/interface_font_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe \
+            --frontend-dist frontend/dist --root .build/ci-interface-font-linux --screenshots
+      - *linux_webview_disk_after
+      - *linux_webview_failure_checkpoints
+      - *linux_webview_failure_checkpoints_upload
+      - *linux_webview_diagnostics
+      - *linux_webview_diagnostics_upload
+
   linux-webview:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
     if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
-    needs: [linux-webview-shards, linux-webview-media]
+    needs: [linux-webview-shards, linux-webview-media, linux-webview-local]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -2146,9 +2245,11 @@ jobs:
         env:
           SHARDS: ${{ needs.linux-webview-shards.result }}
           MEDIA: ${{ needs.linux-webview-media.result }}
+          LOCAL: ${{ needs.linux-webview-local.result }}
         run: |
           test "$SHARDS" = success
           test "$MEDIA" = success
+          test "$LOCAL" = success
 
   linux-webview-ux-shards:
     name: Linux WebView UX (${{ matrix.shard }})
@@ -2167,11 +2268,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Linux native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
-          sudo locale-gen en_US.UTF-8
+      - *linux_webview_probe_download
+      - *linux_webview_cached_dependencies
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -2179,10 +2277,6 @@ jobs:
         with:
           name: frontend-dist
           path: frontend/dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cumulus-webview-ux-probe
       - name: Verify and install the same-attempt Linux WebView probe
         run: |
           python3 scripts/ci/linux_webview_probe_artifact.py restore \

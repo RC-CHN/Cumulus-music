@@ -6,7 +6,7 @@ import stat
 import tempfile
 import unittest
 
-from linux_webview_probe_artifact import BINARY, RECEIPT, restore, run_identity, stage
+from linux_webview_probe_artifact import APT_CACHE, BINARY, RECEIPT, restore, run_identity, stage
 
 
 @unittest.skipUnless(os.name == 'posix', 'Linux executable mode and links')
@@ -71,6 +71,18 @@ class LinuxWebViewProbeArtifact(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     restore(self.artifact, self.dist, self.installed, self.identity)
                 self.assertFalse(self.installed.exists())
+
+    def test_optional_bad_apt_cache_does_not_change_native_probe_authority(self):
+        # The packages have their own signed admission. Even malformed
+        # optional content cannot satisfy or invalidate the probe receipt.
+        (self.artifact / APT_CACHE).write_bytes(b'invalid optional APT handoff')
+        restore(self.artifact, self.dist, self.installed, self.identity)
+        self.assertEqual(self.installed.read_bytes(), self.binary)
+        self.installed.unlink()
+        (self.artifact / BINARY).write_bytes(self.binary[:-1] + b'!')
+        with self.assertRaisesRegex(ValueError, 'receipt mismatch'):
+            restore(self.artifact, self.dist, self.installed, self.identity)
+        self.assertFalse(self.installed.exists())
 
     def test_incomplete_or_unexpected_artifact_does_not_restore(self):
         unexpected = self.artifact / 'other'

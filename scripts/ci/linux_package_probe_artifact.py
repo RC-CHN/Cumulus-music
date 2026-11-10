@@ -1,4 +1,4 @@
-"""Bind prebuilt Linux package probes to the current CI attempt and frontend."""
+"""Bind prebuilt Linux desktop probe sets to the current CI attempt and frontend."""
 
 import argparse
 import json
@@ -21,43 +21,54 @@ SHARDS = {
     'media-decoder': (CORE, 'native_local_equalizer_probe'),
     'media-startup': (CORE, 'native_audio_probe', 'equalizer_ui_probe', 'loudness_ui_probe'),
 }
+LOCAL_SHARDS = {
+    'local-files-cloud': ('mini_ui_probe', 'local_ui_probe', 'local_batch_favorite_ui_probe'),
+    'mini-player-lyrics': ('mini_ui_probe', 'desktop_lyrics_ui_probe'),
+}
+SUITES = {
+    'media': ('linux-packaged-media-probes-v1', SHARDS),
+    'local-desktop': ('linux-local-desktop-probes-v1', LOCAL_SHARDS),
+}
 
 
-def receipt(path, shard, frontend, identity):
+def receipt(path, shard, frontend, identity, *, suite='media'):
+    kind, shards = SUITES[suite]
     payload = {
-        'kind': 'linux-packaged-media-probes-v1',
+        'kind': kind,
         **identity,
         'shard': shard,
         'frontendSha256': frontend,
-        'binaries': [binary_receipt(path / name, name) for name in SHARDS[shard]],
+        'binaries': [binary_receipt(path / name, name) for name in shards[shard]],
     }
     return (json.dumps(payload, sort_keys=True) + '\n').encode()
 
 
-def stage(artifact, examples, core, dist, identity):
+def stage(artifact, examples, core, dist, identity, *, suite='media'):
+    _, shards = SUITES[suite]
     frontend = frontend_digest(dist)
     sources = {
         name: core if name == CORE else examples / name
-        for names in SHARDS.values() for name in names
+        for names in shards.values() for name in names
     }
     for source in sources.values():
         checked_size(source, MAX_BINARY)
         if not source.stat().st_mode & stat.S_IXUSR:
-            raise ValueError(f'Linux packaged media probe is not executable: {source.name}')
+            raise ValueError(f'Linux desktop probe is not executable: {source.name}')
     artifact.mkdir()
-    for shard, names in SHARDS.items():
+    for shard, names in shards.items():
         output = artifact / shard
         output.mkdir()
         for name in names:
             shutil.copyfile(sources[name], output / name)
-        (output / RECEIPT).write_bytes(receipt(output, shard, frontend, identity))
+        (output / RECEIPT).write_bytes(receipt(output, shard, frontend, identity, suite=suite))
 
 
-def restore(artifact, examples, shard, dist, identity):
-    names = SHARDS[shard]
+def restore(artifact, examples, shard, dist, identity, *, suite='media'):
+    _, shards = SUITES[suite]
+    names = shards[shard]
     if (not stat.S_ISDIR(artifact.lstat().st_mode)
             or {p.name for p in artifact.iterdir()} != {*names, RECEIPT}):
-        raise ValueError('unexpected Linux packaged media artifact contents')
+        raise ValueError('unexpected Linux desktop probe artifact contents')
     manifest = artifact / RECEIPT
     checked_size(manifest, MAX_RECEIPT)
     for name in names:
@@ -67,9 +78,9 @@ def restore(artifact, examples, shard, dist, identity):
         copied = Path(temporary)
         for name in names:
             shutil.copyfile(artifact / name, copied / name)
-        verified = receipt(copied, shard, frontend_digest(dist), identity)
+        verified = receipt(copied, shard, frontend_digest(dist), identity, suite=suite)
         if manifest.read_bytes() != verified:
-            raise ValueError('Linux packaged media receipt mismatch (checkout/run/attempt/shard/assets/binaries)')
+            raise ValueError('Linux desktop probe receipt mismatch (checkout/run/attempt/suite/shard/assets/binaries)')
         for name in names:
             (copied / name).chmod(0o755)
         installed = []
@@ -91,19 +102,25 @@ def main():
     parser.add_argument('--examples', required=True, type=Path)
     parser.add_argument('--frontend-dist', required=True, type=Path)
     parser.add_argument('--artifact', required=True, type=Path)
-    parser.add_argument('--shard', choices=SHARDS)
+    parser.add_argument('--suite', choices=SUITES, default='media')
+    parser.add_argument('--shard')
     args = parser.parse_args()
     if (args.action == 'restore') != (args.shard is not None):
         parser.error('--shard is required only for restore')
+    if args.shard is not None and args.shard not in SUITES[args.suite][1]:
+        parser.error('--shard is not part of the selected suite')
     checkout = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     identity = run_identity(os.environ, checkout)
     if args.action == 'stage':
-        core = build_core_test_executable(sys.stderr, repo=Path.cwd())
-        if core.parent != (args.examples.parent / 'deps').resolve(strict=True):
-            raise ValueError('core test executable is outside the examples build target')
-        stage(args.artifact, args.examples, core, args.frontend_dist, identity)
+        core = None
+        if args.suite == 'media':
+            core = build_core_test_executable(sys.stderr, repo=Path.cwd())
+            if core.parent != (args.examples.parent / 'deps').resolve(strict=True):
+                raise ValueError('core test executable is outside the examples build target')
+        stage(args.artifact, args.examples, core, args.frontend_dist, identity, suite=args.suite)
     else:
-        manifest = restore(args.artifact, args.examples, args.shard, args.frontend_dist, identity)
+        manifest = restore(args.artifact, args.examples, args.shard, args.frontend_dist, identity,
+                           suite=args.suite)
         print(manifest.decode(), end='')
 
 
