@@ -128,9 +128,19 @@
     await wait(() => player()?.dataset.state === 'playing', 'menu resumes current voice');
     assert((await playerSnapshot()).playId === paused.playId, 'resume keeps current native instance');
 
-    step = 'double-click keeps the existing liked-list behaviour';
+    step = 'double-click distinguishes the current instance from a new collection start';
+    const doubleClick = () => one('.liked-voice-info strong', row(504)).dispatchEvent(
+      new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+    const beforeToggle = await playerSnapshot();
+    doubleClick();
+    await wait(() => player()?.dataset.state === 'paused', 'same-row double-click pauses');
+    const held = await playerSnapshot();
+    assert(held.playId === beforeToggle.playId && held.queueRevision === beforeToggle.queueRevision,
+      'double-click current keeps the instance and queue');
+    await invoke('player_action', { epoch, action: { kind: 'stop' } });
+    await wait(() => player()?.dataset.state !== 'playing' && player()?.dataset.state !== 'paused', 'native stop before fresh list start');
     const beforeDirect = await playerSnapshot();
-    one('.liked-voice-info strong', row(504)).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+    doubleClick();
     let playing;
     for (let i = 0; i < 240; i++) {
       const candidate = await playerSnapshot();
@@ -143,8 +153,10 @@
     assert(playing, 'new collection queue and native audio progression');
     await wait(() => Number(player().dataset.position) > playing.position + 0.08, 'native clock advances');
     const active = await queue();
-    assert(active.tracks.map((entry) => entry.track.voiceId).join() === '503,504' && active.current === active.tracks[1].entryId, 'filtered original order and exact start');
-    await stage('ux_08_valid_native', { voice: playing.track.voiceId, position: playing.position, queue: active.tracks.map((entry) => entry.track.voiceId) });
+    const rebuilt = active.tracks.map((entry) => entry.track.voiceId);
+    assert(rebuilt.join() === '504' && active.current === active.tracks[0].entryId,
+      'fresh loaded prefix skips withdrawn and unbound siblings: ' + rebuilt.join());
+    await stage('ux_08_valid_native', { voice: playing.track.voiceId, position: playing.position, queue: active.tracks.map((entry) => entry.track.voiceId), toggleRetained:true });
 
     step = 'explicit unavailable target retains playback';
     one('button[aria-label^="播放"]', row(502)).click();
@@ -159,12 +171,16 @@
     focusedMore.focus({ preventScroll:true });
     await emit('voice_list_cohort', { compact:false });
     await wait(() => row(504) && height(row(504)) === 64, 'control liked height');
-    assert(document.activeElement === focusedMore && more(504) === focusedMore && shown(focusedMore), 'focus and visible More survive the experiment update');
+    assert(document.activeElement === focusedMore && more(504) === focusedMore && shown(focusedMore.closest('.liked-voice-actions')), 'focus and visible More survive the experiment update');
     const control = likedDimensions(504);
     assert(control.cover === 48 && control.title === 16, 'control liked geometry 64 / 48 / 16');
     if (matchMedia('(hover: hover)').matches) {
       const idle = [502,503].map(more).find((node) => !node.closest('article').matches(':hover, :focus-within'));
-      assert(idle && !shown(idle) && getComputedStyle(idle).pointerEvents === 'none', 'idle row actions hidden and not pointer targets');
+      const actions = idle?.closest('.liked-voice-actions');
+      const hit = idle?.getBoundingClientRect();
+      assert(actions && hit && !shown(actions) && getComputedStyle(actions).pointerEvents === 'none' &&
+        !idle.contains(document.elementFromPoint(hit.left + hit.width / 2, hit.top + hit.height / 2)),
+        'idle action group is invisible and its button is not a pointer target');
     }
     const openKey = () => new KeyboardEvent('keydown', { key:'F10', shiftKey:true, bubbles:true, cancelable:true });
     const closeMenu = async (anchor) => {

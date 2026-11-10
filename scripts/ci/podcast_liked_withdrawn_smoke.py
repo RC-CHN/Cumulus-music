@@ -49,7 +49,8 @@ def main():
     assert stages[3]['indexPauseRetained']
     assert stages[5]['link'] == 'https://music.163.com/dj?id=503'
     assert stages[6]['target'] == 503 and stages[6]['beforeCancel']
-    assert stages[7]['queue'] == ['503', '504'] and stages[7]['position'] > 0 and stages[8]['playIdRetained']
+    assert stages[7]['queue'] == ['504'] and stages[7]['position'] > 0 and stages[8]['playIdRetained']
+    assert stages[7]['toggleRetained']
     dimensions = lambda row: (row['height'], row['cover'], row['title'])
     assert dimensions(stages[0]) == dimensions(stages[11]) == (56, 36, 14)
     assert dimensions(stages[9]) == dimensions(stages[10]) == (64, 48, 16)
@@ -65,7 +66,7 @@ def main():
     assert [body for path, body in calls if path == recent] == [{}]
     assert not any(path == '/api/dj/program/detail' for path, _ in stages[1]['calls'])
     detail = [body['id'] for path, body in calls if path == '/api/dj/program/detail']
-    assert {'502', '503', '504'} <= set(detail) <= {'502', '503', '504'} and detail[-1] == '502', detail
+    assert set(detail) == {'502', '503'} and detail[-1] == '502', detail
     assert [body for path, body in calls if path == '/api/dj/voices/download/check'] == [{'voiceIdsStr': ['503']}]
     assert [body for path, body in calls if path == '/api/dj/program/song/musics'] == [{'ids': ['503']}]
     assert not any(path == '/api/song/enhance/download/url/v1' for path, _ in calls)

@@ -130,7 +130,11 @@
 
     step = 'restored prefix keeps the unspent second cursor';
     bottom();
-    await wait(() => loaded() === 145 && row('1145'), 'third page only after new tail scroll');
+    await wait(() => loaded() === 145, 'third page only after new tail scroll');
+    // The append must not jump the viewport. Scroll to the new end to mount
+    // the last row rather than requiring offscreen rows to remain in the DOM.
+    bottom();
+    await wait(() => row('1145'), 'last programme mounts at the new end');
     await capture('ux_09_final_page', geometry());
     await capture('complete', { ok: true });
   } catch (error) {
