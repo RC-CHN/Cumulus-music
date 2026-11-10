@@ -1543,11 +1543,12 @@ function playVoiceCard(voice: EpisodeView) {
     void player.toggleSource();
   else void player.select(selection);
 }
-function playPodcastBrowseVoice(voice: EpisodeView) {
+function playPodcastBrowseVoice(voice: EpisodeView, doubleClick = false) {
   const route = page.value;
   const receipt = voice.browsePlaybackReceipt;
   if (
     (route.kind !== 'podcast_discovery' && route.kind !== 'podcast_rankings') ||
+    (doubleClick && route.kind !== 'podcast_rankings') ||
     !receipt ||
     voice.unavailable ||
     !signedIn.value ||
@@ -1557,7 +1558,7 @@ function playPodcastBrowseVoice(voice: EpisodeView) {
     return;
   void player.prepareSelection(async () => {
     if (page.value !== route) throw { code: 'stale', message: '播客列表已更新', retryable: false };
-    return { kind: 'podcast_browse_voice', receipt };
+    return { kind: 'podcast_browse_voice', receipt, double_click: doubleClick };
   });
 }
 function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
@@ -6463,6 +6464,7 @@ onUnmounted(() => {
                 @radio="openSceneRadio"
                 @host="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @play="playPodcastBrowseVoice"
+                @double-play="(voice) => playPodcastBrowseVoice(voice, true)"
               />
               <PlaylistCreatorPage
                 v-else-if="profileUid !== null"

@@ -473,6 +473,8 @@ pub enum PlaySelection {
     },
     PodcastBrowseVoice {
         receipt: String,
+        #[serde(default)]
+        double_click: bool,
     },
     SearchResultVoice {
         id: String,

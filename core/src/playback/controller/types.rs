@@ -278,6 +278,13 @@ pub enum PlaybackCommand {
         update: QueueUpdate,
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
     },
+    /// Double click on an already loaded rank episode changes mode if
+    /// required, then toggles transport without reopening or seeking.
+    TogglePodcastRank {
+        expected: PlaybackFence,
+        paused: bool,
+        mode: Option<crate::playback::PlaybackMode>,
+    },
     ApplyLocalBatch(LocalBatchUpdate),
     ApplyHistoryAdd(HistoryQueueUpdate),
     ApplyOfflinePlaylistQueue(OfflinePlaylistQueueUpdate),

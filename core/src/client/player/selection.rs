@@ -612,10 +612,13 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
-            PlaySelection::PodcastBrowseVoice { receipt } => {
+            PlaySelection::PodcastBrowseVoice {
+                receipt,
+                double_click,
+            } => {
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
                 let (command, source_guard) = self
-                    .podcast_browse_selection(&token, &receipt, prepared)
+                    .podcast_browse_selection(&token, &receipt, double_click, prepared)
                     .await?;
                 let state = self
                     .submit_selection_with_source(

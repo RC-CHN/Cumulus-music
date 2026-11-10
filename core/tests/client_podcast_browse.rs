@@ -6,7 +6,7 @@ use cumulus_core::{
     Error, Result,
     account::{AccountSession, profiles::ProfileRegistry},
     client::{MusicClient, dto::*},
-    playback::controller::PlaybackStatus,
+    playback::{PlaybackMode, controller::PlaybackStatus},
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -59,7 +59,9 @@ impl Api for Fixture {
                     "uiElement":{"mainTitle":{"title":"Week"}},"creatives":[{"resources":[
                         {"resourceId":82,"resourceType":"voice","resourceExtInfo":{"djProgram":episode(82)}}]}]}]}})
                 }
-                "/api/charts/voice" => json!({"code":200,"data":[{"voiceMetaVO":episode(82)}]}),
+                "/api/charts/voice" => json!({"code":200,"data":[
+                    {"voiceMetaVO":episode(82)}, {"voiceMetaVO":episode(86)}, {"voiceMetaVO":episode(84)}
+                ]}),
                 "/api/dj/around/program/v1" => {
                     assert_eq!(args, json!({"programId":"82","roundNum":250}));
                     assert!(!cached);
@@ -160,11 +162,25 @@ async fn weekly(client: &MusicClient) -> String {
         .into()
 }
 async fn select(client: &MusicClient, receipt: String) -> Result<PlayerView> {
+    select_gesture(client, receipt, false).await
+}
+async fn select_gesture(
+    client: &MusicClient,
+    receipt: String,
+    double_click: bool,
+) -> Result<PlayerView> {
     let state = client.player_snapshot("1").await?;
     let ticket =
         client.prepare_play_selection("1", &state.queue_revision, state.play_id.as_deref())?;
     client
-        .commit_prepared_selection("1", &ticket, PlaySelection::PodcastBrowseVoice { receipt })
+        .commit_prepared_selection(
+            "1",
+            &ticket,
+            PlaySelection::PodcastBrowseVoice {
+                receipt,
+                double_click,
+            },
+        )
         .await
 }
 async fn queue(client: &MusicClient) -> Vec<String> {
@@ -220,6 +236,87 @@ async fn preview_and_full_rank_insert_the_window_select_exact_episode_and_toggle
         !calls
             .iter()
             .any(|(path, _)| path == "/api/v6/dj/program/byradio")
+    );
+}
+
+#[tokio::test]
+async fn rank_double_click_uses_bound_chart_or_around_according_to_the_native_preference() {
+    let (_root, api, _session, client) = fixture();
+    old_selection(&client).await;
+    let preview = rank(&client, true).await;
+    let full = rank(&client, false).await;
+    api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        select_gesture(&client, preview, true).await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(api.calls.lock().unwrap().is_empty());
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let playing = select_gesture(&client, full.clone(), true).await.unwrap();
+    assert_eq!(playing.mode, PlaybackMode::Sequential);
+    assert_eq!(
+        playing.track.as_ref().unwrap().voice_id.as_deref(),
+        Some("82")
+    );
+    assert_eq!(queue(&client).await, ["82", "86", "84"]);
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(path, _)| path == "/api/dj/around/program/v1")
+    );
+
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    api.calls.lock().unwrap().clear();
+    let paused = select_gesture(&client, full, true).await.unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.play_id, playing.play_id);
+    assert_eq!(paused.entry_id, playing.entry_id);
+    assert_eq!(paused.position, playing.position);
+    assert_eq!(paused.mode, PlaybackMode::Sequential);
+    assert_eq!(queue(&client).await, ["82", "86", "84"]);
+    assert!(api.calls.lock().unwrap().is_empty());
+
+    old_selection(&client).await;
+    client
+        .queue_click_preferences_command(
+            "1",
+            QueueClickPreferencesCommand::Change {
+                expected_revision: "0".into(),
+                replace_queue: false,
+            },
+        )
+        .unwrap();
+    let full = rank(&client, false).await;
+    api.calls.lock().unwrap().clear();
+    let retained = select_gesture(&client, full, true).await.unwrap();
+    assert_eq!(retained.track.unwrap().voice_id.as_deref(), Some("82"));
+    assert_eq!(queue(&client).await, ["80", "83", "82", "81"]);
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path == "/api/dj/around/program/v1")
+            .count(),
+        1
     );
 }
 
@@ -287,7 +384,10 @@ async fn retired_browse_and_changed_credentials_never_dispatch_around() {
             .commit_prepared_selection(
                 "2",
                 &ticket,
-                PlaySelection::PodcastBrowseVoice { receipt: fresh }
+                PlaySelection::PodcastBrowseVoice {
+                    receipt: fresh,
+                    double_click: false
+                }
             )
             .await,
         Err(Error::StaleResponse)

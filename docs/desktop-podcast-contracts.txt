@@ -198,10 +198,16 @@ queue for plain Play and insert/de-duplicate the ordered window after
 current; M213:86–128 selects the exact clicked ID. The triangle toggles
 an already loaded matching episode without re-reading. Official full
 table double-click has a separate preference-dependent branch (M195:
-399–410, M225:590–602, M405:225–255, M3085:207–242): with replacement off
-it fetches around; with replacement on it uses the visible chart list and
-clears. This patch does not add table/weekly double-click gestures. The
-community full-chart explicit Play button uses the retained-queue path.
+399–410, M225:590–602, M405:225–255, M3085:207–311): with replacement off
+it fetches around and keeps the old queue; with replacement on it uses
+the table's loaded native rows in chart order and clears the ordinary queue.
+The M3096:2888–2905 full voice table supplies needFetchAudio and does not set
+resourceIdOfScene, so the replacement mode uses the episode's numeric categoryId:
+except 3001/10002/2001 it switches to sequential (M3085:478–485). A double-click
+on the currently loaded exact episode still toggles its transport without replacing
+the queue (M3085:531–546), after any required mode change. The row's keyboard
+Enter invokes the same Cumulus action. The play button, weekly card and preview
+retain their existing single-button path.
 
 M3085:431–453 and M71.c/g only give the latest radio breakpoint priority if
 it belongs to the clicked voice. M308:2251–2288 then uses that exact
@@ -217,6 +223,11 @@ receipts. A refreshed lane invalidates the old observation. Weekly cursor
 handles are additionally tied to that exact native feed visit: a previous
 page cannot mint current playback receipts after refresh or opt-out.
 Renderer sends only a receipt under the ordinary prepared playback ticket.
+Full table receipts additionally bind the ordered native chart. Selecting a
+different full chart retires the previous one without retiring preview/weekly
+receipts. A replacement uses no around query. Invalid/offline rows and rows
+missing a backing song cannot mint other episode authority; the clicked row
+still reads and validates its own detail and media rights before queue commit.
 After a usable window or eligible thrown fallback, Cumulus reads
 /api/dj/program/detail {id:<clicked episode>}; the optional signed t1 resume
 setting uses /api/dj/user/setting/resumeplay/get {radioId:<verified radio>}.

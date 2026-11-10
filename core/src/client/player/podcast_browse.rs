@@ -11,14 +11,15 @@ use crate::{
         radio_playback::{around_request, order_around_programs, parse_around_programs},
     },
     playback::{
+        PlaybackMode, QueueSnapshot,
         controller::{QueueTransport, QueueUpdate},
         engine::Cancellation,
     },
     podcast::{Episode, PodcastApi, PodcastLibrary, progress},
-    protocol::api::Api,
+    protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 fn request_failure(error: &Error) -> bool {
     match error {
@@ -66,15 +67,48 @@ fn resource(voice: &Episode) -> Result<Value> {
     Ok(resource)
 }
 
+fn rank_replacement_mode(category: &Value, old_mode: PlaybackMode) -> PlaybackMode {
+    if matches!(category.as_i64(), Some(3001 | 10002 | 2001)) {
+        old_mode
+    } else {
+        PlaybackMode::Sequential
+    }
+}
+
 impl MusicClient {
     pub(super) async fn podcast_browse_selection(
         &self,
         token: &SessionToken,
         receipt: &str,
+        double_click: bool,
         prepared: &PreparedSelection,
     ) -> Result<(PlaybackCommand, Cancellation)> {
         let api = self.session.native_api(token)?;
         let (observation, target) = self.podcast_browse_playback.resolve(token, &api, receipt)?;
+        if double_click && !observation.lane.is_full_rank() {
+            return Err(Error::InvalidInput(
+                "double click requires a full voice rank",
+            ));
+        }
+        let replace = double_click && self.replace_queue_on_double_click(token)?;
+        let chart = replace
+            .then(|| self.podcast_browse_playback.full_rank(&observation))
+            .transpose()?;
+        let clicked_chart_row = chart
+            .as_ref()
+            .map(|episodes| {
+                let mut matches = episodes.iter().filter(|episode| episode.id == target.id);
+                let first = matches.next().ok_or(Error::QueueChanged)?;
+                if !compatible(&target, first)
+                    || matches.any(|episode| !compatible(&target, episode))
+                {
+                    return Err(Error::QueueChanged);
+                }
+                Ok(first)
+            })
+            .transpose()?;
+        let chart_has_track =
+            clicked_chart_row.filter(|episode| identifier(&episode.raw["mainSong"]["id"]).is_ok());
         let room = self.together_detached_guard(token);
         let login = self.auth.pending_guard();
         let session = self.session.clone();
@@ -118,50 +152,83 @@ impl MusicClient {
                 PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
             )
         {
+            if double_click {
+                let mode = if replace {
+                    let raw = chart_has_track
+                        .map(|episode| &episode.raw)
+                        .or_else(|| {
+                            before.selected.as_ref().and_then(|entry| {
+                                bound_episode(&entry.resource).map(|(_, _, voice)| voice)
+                            })
+                        })
+                        .ok_or(Error::QueueChanged)?;
+                    Some(rank_replacement_mode(&raw["categoryId"], queue.mode))
+                        .filter(|mode| *mode != queue.mode)
+                } else {
+                    None
+                };
+                return Ok((
+                    PlaybackCommand::TogglePodcastRank {
+                        expected: before.fence(),
+                        paused: !before.paused,
+                        mode,
+                    },
+                    guard,
+                ));
+            }
             return Ok((PlaybackCommand::Pause(!before.paused), guard));
         }
 
         let episode_id = target.id.as_str();
-        let around = self
-            .session
-            .run_for(token, |api, _| async move {
-                around_request(api.as_ref(), episode_id).await
-            })
-            .await;
-        current()?;
-        let mut voices = match around {
-            Ok(raw) => {
-                let mut voices = parse_around_programs(&raw)?
-                    .filter(|voices| !voices.is_empty())
-                    .ok_or(Error::State("podcast browse around list is empty"))?;
-                let clicked = voices
-                    .iter()
-                    .find(|voice| voice.id == target.id)
-                    .ok_or(Error::QueueChanged)?;
-                let radio = target
-                    .radio
-                    .as_deref()
-                    .or_else(|| clicked.radio.as_ref().map(|v| v.id.as_str()));
-                if !compatible(&target, clicked) {
-                    return Err(Error::QueueChanged);
+        let chart_category = chart_has_track.map(|episode| episode.raw["categoryId"].clone());
+        let mut voices = if let Some(episodes) = chart {
+            episodes
+        } else {
+            let around = self
+                .session
+                .run_for(token, |api, _| async move {
+                    around_request(api.as_ref(), episode_id).await
+                })
+                .await;
+            current()?;
+            match around {
+                Ok(raw) => {
+                    let mut voices = parse_around_programs(&raw)?
+                        .filter(|voices| !voices.is_empty())
+                        .ok_or(Error::State("podcast browse around list is empty"))?;
+                    let clicked = voices
+                        .iter()
+                        .find(|voice| voice.id == target.id)
+                        .ok_or(Error::QueueChanged)?;
+                    let radio = target
+                        .radio
+                        .as_deref()
+                        .or_else(|| clicked.radio.as_ref().map(|v| v.id.as_str()));
+                    if !compatible(&target, clicked) {
+                        return Err(Error::QueueChanged);
+                    }
+                    let library = PodcastLibrary::new(self.session.clone())?;
+                    let ascending = match radio {
+                        Some(id) => library.radio_order_for(token, id)?.unwrap_or(false),
+                        None => false,
+                    };
+                    order_around_programs(&mut voices, &raw, ascending);
+                    voices
                 }
-                let library = PodcastLibrary::new(self.session.clone())?;
-                let ascending = match radio {
-                    Some(id) => library.radio_order_for(token, id)?.unwrap_or(false),
-                    None => false,
-                };
-                order_around_programs(&mut voices, &raw, ascending);
-                voices
+                // M402 does not throw on a false/missing code. M71 does not
+                // construct a list for that reply, so it is not a thrown fallback.
+                Err(Error::Service { code, .. })
+                    if code.is_null()
+                        || code == 0
+                        || code == "0"
+                        || code == ""
+                        || code == false =>
+                {
+                    return Err(Error::State("podcast browse around list is empty"));
+                }
+                Err(error) if request_failure(&error) => Vec::new(),
+                Err(error) => return Err(error),
             }
-            // M402 does not throw on a false/missing code. M71 does not
-            // construct a list for that reply, so it is not a thrown fallback.
-            Err(Error::Service { code, .. })
-                if code.is_null() || code == 0 || code == "0" || code == "" || code == false =>
-            {
-                return Err(Error::State("podcast browse around list is empty"));
-            }
-            Err(error) if request_failure(&error) => Vec::new(),
-            Err(error) => return Err(error),
         };
         let detail = self
             .session
@@ -207,6 +274,23 @@ impl MusicClient {
             .collect::<Result<Vec<_>>>()?;
         let selected = resource(&detail)?;
         let source = json!({"kind":source_name,"scene":"unknown","pldScene":"audio"});
+        let queue = if replace {
+            QueueSnapshot {
+                mode: rank_replacement_mode(
+                    chart_category.as_ref().unwrap_or(&detail.raw["categoryId"]),
+                    queue.mode,
+                ),
+                ..QueueSnapshot::default()
+            }
+        } else {
+            queue
+        };
+        let random_batch = (double_click && queue.mode == PlaybackMode::Random).then(|| {
+            let ids = resources
+                .iter()
+                .filter_map(|row| row["voice_id"].as_str().map(str::to_owned));
+            (ids.clone().next(), ids.collect::<HashSet<_>>())
+        });
         let mut queue = insert_collection_bound(queue, resources, source, false, true, true);
         let entry = queue
             .items
@@ -214,6 +298,34 @@ impl MusicClient {
             .find(|entry| entry.resource == selected && entry.source["kind"] == source_name)
             .ok_or(Error::QueueChanged)?;
         queue.current = Some(entry.entry_id.clone());
+        if let Some((Some(first_voice), ids)) = random_batch {
+            let inserted: HashSet<_> = queue
+                .items
+                .iter()
+                .filter(|entry| {
+                    entry.resource["voice_id"]
+                        .as_str()
+                        .is_some_and(|id| ids.contains(id))
+                        && entry.source["kind"] == source_name
+                })
+                .map(|entry| entry.entry_id.as_str())
+                .collect();
+            let first = queue
+                .items
+                .iter()
+                .find(|entry| {
+                    entry.resource["voice_id"] == first_voice
+                        && inserted.contains(entry.entry_id.as_str())
+                })
+                .ok_or(Error::QueueChanged)?;
+            queue.order = super::local_batch::random_order(
+                &queue,
+                &inserted,
+                &first.entry_id,
+                false,
+                &mut rand::rng(),
+            );
+        }
         current()?;
 
         let position = self

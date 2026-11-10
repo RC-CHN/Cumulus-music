@@ -37,6 +37,7 @@ impl Actor {
                 | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::PlayPodcastBrowse { .. }
+                | PlaybackCommand::TogglePodcastRank { .. }
                 | PlaybackCommand::ApplySearchGroupNext { .. }
                 | PlaybackCommand::ApplySearchGroupPlay { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
@@ -153,6 +154,14 @@ impl Actor {
         }
         if let PlaybackCommand::ApplyRemote(value) = &request.command
             && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
+        if let PlaybackCommand::TogglePodcastRank { expected, .. } = &request.command
+            && (expected != &self.snapshot().fence()
+                || self.queue.is_fm()
+                || self.queue.intelligence_context().is_some())
         {
             self.reply(request.reply, Err(Error::QueueChanged));
             return;
@@ -359,6 +368,13 @@ impl Actor {
                     self.update_queue_with_source(update, Some(&request.reply), Some(first_source))
                         .await
                         .map(|value| options = value)
+                }
+            }
+            PlaybackCommand::TogglePodcastRank { paused, mode, .. } => {
+                let result = mode.map_or(Ok(()), |mode| self.queue.set_mode(mode));
+                match result {
+                    Ok(()) => self.pause(paused).await,
+                    Err(error) => Err(error),
                 }
             }
             PlaybackCommand::ApplyLocalBatch(update) => {

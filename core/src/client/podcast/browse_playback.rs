@@ -28,6 +28,10 @@ pub(in crate::client) enum Lane {
 }
 
 impl Lane {
+    pub(in crate::client) fn is_full_rank(&self) -> bool {
+        matches!(self, Self::Rank { preview: false, .. })
+    }
+
     pub(in crate::client) fn source(&self) -> &'static str {
         match self {
             Self::Weekly => "podcast_weekly",
@@ -77,6 +81,8 @@ impl Observation {
 struct Visit {
     observation: Observation,
     rows: HashMap<String, Target>,
+    // Only the full voice table offers double click with its read order.
+    chart: Vec<Episode>,
 }
 
 impl Drop for Visit {
@@ -110,7 +116,10 @@ impl Host {
                     .map(|visit| visit.observation.clone())
                     .ok_or(Error::StaleResponse);
             }
-            visits.retain(|visit| visit.observation.lane != lane);
+            visits.retain(|visit| {
+                visit.observation.lane != lane
+                    && !(lane.is_full_rank() && visit.observation.lane.is_full_rank())
+            });
             if visits.len() == LANES {
                 visits.pop_front();
             }
@@ -125,6 +134,7 @@ impl Host {
             visits.push_back(Visit {
                 observation: observation.clone(),
                 rows: HashMap::new(),
+                chart: Vec::new(),
             });
             Ok(observation)
         })
@@ -136,6 +146,21 @@ impl Host {
             .map_err(|_| Error::LockPoisoned)?
             .retain(|visit| !Arc::ptr_eq(&visit.observation.live, &observation.live));
         Ok(())
+    }
+
+    pub(super) fn retire_full_rank(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+    ) -> Result<()> {
+        session.with_verified_profile(token, api, |_, _| {
+            self.0
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?
+                .retain(|visit| !visit.observation.lane.is_full_rank());
+            Ok(())
+        })
     }
 
     pub(super) fn bind(
@@ -161,6 +186,9 @@ impl Host {
                     radio: episode.radio.as_ref().map(|radio| radio.id.clone()),
                 },
             );
+            if observation.lane.is_full_rank() {
+                visit.chart.push(episode.clone());
+            }
             view.browse_playback_receipt = Some(receipt);
         }
         Some(())
@@ -191,5 +219,20 @@ impl Host {
             return Err(Error::StaleResponse);
         }
         Ok(value)
+    }
+
+    pub(in crate::client) fn full_rank(&self, observation: &Observation) -> Result<Vec<Episode>> {
+        if !observation.lane.is_full_rank() {
+            return Err(Error::InvalidInput(
+                "double click requires a full voice rank",
+            ));
+        }
+        self.0
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .iter()
+            .find(|visit| Arc::ptr_eq(&visit.observation.live, &observation.live))
+            .map(|visit| visit.chart.clone())
+            .ok_or(Error::StaleResponse)
     }
 }
