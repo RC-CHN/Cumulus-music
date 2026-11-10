@@ -14,6 +14,8 @@ DIRECT = ('first', 'blocked', 'last', 'anchor', 'download', 'check', 'accepted')
 PLAYLIST = ('first', 'blocked', 'last', 'collect_filtered', 'anchor', 'download', 'choose', 'reconcile', 'accepted')
 CREATED = ('first', 'blocked', 'last', 'collect_filtered', 'anchor', 'download', 'open_create',
            'private', 'create', 'creation_readback', 'add_created', 'accepted')
+PURCHASED = ('first', 'blocked', 'last', 'paid2', 'anchor', 'download', 'cancel', 'anchor_again',
+             'download_again', 'lower_tier', 'confirm', 'check', 'accepted')
 
 
 def load(path):
@@ -51,12 +53,15 @@ def run(args):
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_DESTINATION_PROOF'] = '1'
     if args.liked:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_LIKED_PROOF'] = '1'
+    if args.purchased:
+        env['CUMULUS_SEARCH_GROUP_DOWNLOAD_PURCHASED_PROOF'] = '1'
+        env['CUMULUS_UX_SCRIPT'] = str(repo / 'desktop/examples/search_group_purchased_download_ui_probe.js')
     if args.mixed:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_MIXED_PROOF'] = '1'
     if args.created:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_CREATED_PROOF'] = '1'
     output = root / 'first'
-    labels = CREATED if args.created else (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else PLAYLIST if args.playlist else DIRECT
+    labels = PURCHASED if args.purchased else CREATED if args.created else (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else PLAYLIST if args.playlist else DIRECT
     with ExitStack() as stack:
         driver = TrustedClicks()
         stack.callback(driver.close)
@@ -91,14 +96,31 @@ def run(args):
         assert old is None and first['searchGroupDownload'] == []
     assert all(row['queue'] == first['queue'] for row in rows)
     assert all(row['player']['position'] == first['player']['position'] for row in rows)
-    ordered = ['104', '101', '103'] if args.playlist else ['103', '101']
+    ordered = ['103', '101', '104'] if args.purchased else (
+        ['104', '101', '103'] if args.playlist else ['103', '101'])
     prepare = last['actions'][0]
     assert prepare['command']['anchor']['trackId'] == '102'
     assert prepare['reply']['eligibleCount'] == len(ordered) and prepare['reply']['omittedCount'] == 1
     receipt = prepare['reply']['receipt']
-    assert all(step['command']['receipt'] == receipt for step in last['actions'][1:])
+    if not args.purchased:
+        assert all(step['command']['receipt'] == receipt for step in last['actions'][1:])
     trace = last['searchGroupDownload'][prefix:]
-    if args.created:
+    if args.purchased:
+        prepare, cancel, reopen, start, check = last['actions']
+        assert [step['command']['kind'] for step in last['actions']] == [
+            'prepare', 'cancel', 'prepare', 'confirm_quality', 'status']
+        assert prepare['reply']['decision'] == reopen['reply']['decision'] == 'purchased_quality_required'
+        assert prepare['reply']['purchasedQualities'] == reopen['reply']['purchasedQualities'] == [
+            'sky', 'hires', 'exhigh', 'standard']
+        assert [row['trackId'] for row in reopen['command']['rows']] == ['103', '102', '101', '104']
+        assert receipt == cancel['command']['receipt'] != reopen['reply']['receipt']
+        assert reopen['reply']['receipt'] == start['command']['receipt'] == check['command']['receipt']
+        assert start['command']['quality'] == 'hires'
+        assert start['reply']['result']['accepted'] == check['reply']['result']['accepted']
+        assert all(not row['searchGroupDownload'] for row in rows[:PURCHASED.index('confirm') + 1])
+        assert all(row['args']['level'] == 'hires' and row['args']['immerseType'] == 'c51'
+                   for row in trace if row['kind'] == 'authorize')
+    elif args.created:
         prepare, listing, create, check, add, start = last['actions']
         assert [step['command']['kind'] for step in last['actions']] == [
             'prepare', 'destinations', 'create_playlist', 'creation_status', 'add_created',
@@ -168,7 +190,7 @@ def run(args):
             assert trace[1]['tracks'] == trace[3]['tracks'] == []
             assert trace[4]['tracks'] == [{'id': 103}, {'id': 101}]
             trace = trace[5:]
-    else:
+    elif not args.purchased:
         prepare, start, check = last['actions']
         assert [step['command']['kind'] for step in last['actions']] == ['prepare', 'start', 'status']
         assert [row['trackId'] for row in prepare['command']['rows']] == ['103', '102', '101']
@@ -205,7 +227,8 @@ def run(args):
         assert [row['id'] for row in tasks] == ids
         assert [row['song_id'] for row in tasks] == ordered
         assert all(row['status'] == 'complete' for row in tasks)
-        assert all(row['options']['quality'] == 'exhigh' for row in tasks[int(args.mixed):])
+        quality = 'hires' if args.purchased else 'exhigh'
+        assert all(row['options']['quality'] == quality for row in tasks[int(args.mixed):])
         journal = [json.loads(value) for value, in store.execute(
             "SELECT value FROM state WHERE kind='playlist-mutations' AND owner='2'"
         )]
@@ -228,7 +251,7 @@ def run(args):
                'readOnlyDelayedCreateRecovery': args.created,
                'playlistAddCount': int(args.playlist), 'playlistCreateCount': int(args.created),
                'playlistAddedInOrder': ['103', '101'] if args.playlist else [],
-               'systemLikedDestination': args.liked,
+               'systemLikedDestination': args.liked, 'explicitPurchasedQuality': 'hires' if args.purchased else None,
                'exactFlacFrames': True, 'preservedPartialTask': args.mixed, 'realAccountWrites': 0, 'realMusicRequests': 0}
     (root / 'report.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(summary))
@@ -241,6 +264,7 @@ if __name__ == '__main__':
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--playlist', action='store_true')
     mode.add_argument('--liked', action='store_true')
+    mode.add_argument('--purchased', action='store_true')
     mode.add_argument('--created', action='store_true')
     parser.add_argument('--mixed', action='store_true')
     parser.add_argument('--root', type=Path, required=True)

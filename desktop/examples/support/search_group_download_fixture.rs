@@ -55,8 +55,22 @@ pub fn created() -> bool {
     destination() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_CREATED_PROOF").is_some()
 }
 
+pub fn purchased() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_PURCHASED_PROOF").is_some()
+}
+
+pub fn purchased_privilege(id: usize) -> Option<Value> {
+    let (payed, flag, maxbr) = match id {
+        102 => (2, 1 << 21, 999_000),
+        103 => (2, 1 << 12, 320_000),
+        104 => (4, 1 << 18, 128_000),
+        _ => return None,
+    };
+    Some(json!({"fee":4,"payed":payed,"flag":flag,"maxbr":maxbr}))
+}
+
 fn song_allowed(id: &str) -> bool {
-    matches!(id, "101" | "103") || destination() && id == "104"
+    matches!(id, "101" | "103") || (destination() || purchased()) && id == "104"
 }
 
 fn playlist(id: u64, owner: u64, special: u64) -> Value {
@@ -218,7 +232,9 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
                 .lock()
                 .unwrap()
                 .push(json!({"kind":"authorize","args":args,"cached":cached}));
-            let level = if mixed() && id == "104" {
+            let level = if purchased() {
+                "hires"
+            } else if mixed() && id == "104" {
                 "lossless"
             } else {
                 "exhigh"
@@ -231,7 +247,7 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
             } else {
                 Ok(
                     json!({"code":200,"data":{"code":200,"id":id,"url":format!("{ROOT}{id}.flac"),
-                    "size":AUDIO.len(),"type":"flac","level":"lossless","md5":MD5}}),
+                    "size":AUDIO.len(),"type":"flac","level":if purchased() {"hires"} else {"lossless"},"md5":MD5}}),
                 )
             }
         }

@@ -1755,6 +1755,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     if super::search_group_download_fixture::enabled() {
                         song["privilege"]["fee"] = json!(0);
                         song["privilege"]["dl"] = json!(if i == 1 { 0 } else { 320000 });
+                        if super::search_group_download_fixture::purchased()
+                            && let Some(fields) =
+                                super::search_group_download_fixture::purchased_privilege(i + 101)
+                        {
+                            song["privilege"]
+                                .as_object_mut()
+                                .unwrap()
+                                .extend(fields.as_object().unwrap().clone());
+                        }
                         if super::search_group_download_fixture::destination() {
                             if i == 2 {
                                 song["privilege"]["subp"] = json!(0);
