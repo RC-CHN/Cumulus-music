@@ -1816,16 +1816,14 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval(format!("window.__searchClipboardAck={matches};")).unwrap();
                 });return;
             }
-            if search_group_download_fixture::enabled() {
-                if stage=="search-group-download-configure" {
-                    let handle=handle.clone(); let root=cover_root.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root).await;
-                        let ack=json!({"ok":result.is_ok(),"playlist":search_group_download_fixture::destination()});
-                        handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();
-                    });
-                    return;
-                }
+            if search_group_download_fixture::enabled() && stage=="search-group-download-configure" {
+                let handle=handle.clone(); let root=cover_root.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root).await;
+                    let ack=json!({"ok":result.is_ok(),"playlist":search_group_download_fixture::destination()});
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();
+                });
+                return;
             }
             if search_download_row_proof && stage=="search-download-fixture" {
                 let handle=handle.clone();let session=fixture_session.clone();let store=proof_store.clone();
