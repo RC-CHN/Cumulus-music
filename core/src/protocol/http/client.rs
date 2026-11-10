@@ -1245,6 +1245,18 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn effect_catalogue_credential_revision(&self) -> Result<Option<String>> {
+        let target = self
+            .credentials
+            .origin()
+            .request_url(WireRoute::Eapi, "/api/w/nuser/account/get")?;
+        let account = self.credentials.request_credentials(&target)?;
+        if account.unique_music_u().is_none() {
+            return Err(Error::CredentialChanged);
+        }
+        Ok(Some(account.revision))
+    }
+
     fn request_effect_catalogue<'a>(
         &'a self,
         read: crate::protocol::api::EffectCatalogueRead,

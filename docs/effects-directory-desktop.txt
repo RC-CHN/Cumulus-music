@@ -373,6 +373,7 @@ Linux 实际 WebView `effect_peq_native_smoke.py --pause-local` 验证暂停前�
   与现有新版 574×560 的自适应外框。Cumulus 复用原生 M147 分组生命周期和按 UID 隔离的
   SQLite 展示缓存；音效弹窗消费应用外壳已有的快照和事件，不额外查询实验。展示分流不是权益。
   账号、传输、凭据或分支发生变化时，旧读取不回填；不相关实验不触发重读。
+  未启用 Windows 请求兼容时仍能用普通已登录传输读取旧版目录。
 - Audio.tsx:65–85 / M3091:1868–2015 经 M85:28–50 与 M15:1534–1535，
   先请求 /api/usertool/sound/mobile/promote {}，再请求
   /api/usertool/sound/mobile/all {}。任一普通读取失败等同该接口空列表；若全部

@@ -268,3 +268,48 @@ async fn rotated_credential_discards_inflight_overview_and_same_user_cache_never
     assert_eq!(ids(&other["groups"][1]), [32]);
     assert_eq!(f.paths(), [ASSIGNMENT_PATH, MODERN, PROMOTE, ALL]);
 }
+
+#[tokio::test]
+async fn ordinary_legacy_remains_available_without_signed_windows_experiment_context() {
+    use cumulus_core::protocol::http::{ClientProfile, RequestOptions};
+    let f = Fixture::new(true, []);
+    let wire = Arc::new(ScriptHttp::new([
+        catalogue(&[61]).into(),
+        catalogue(&[61, 62]).into(),
+    ]));
+    let portable = Arc::new(
+        MusicHttpClient::with_backend(
+            f.credentials.clone(),
+            ClientProfile {
+                user_agent: "Cumulus-native/0.2".into(),
+                os_version: "Linux".into(),
+                client_sign: None,
+            },
+            RequestOptions::default(),
+            None,
+            wire.clone(),
+        )
+        .unwrap(),
+    );
+    assert!(portable.pc_presentation_credential_revision().is_err());
+    f.session
+        .adopt(portable, json!({"userId":71}), &f.session.token().unwrap())
+        .unwrap();
+    let view = overview(&f).await;
+    assert_eq!(view["layout"], "legacy");
+    assert_eq!(ids(&view["groups"][0]), [61]);
+    assert_eq!(ids(&view["groups"][1]), [62]);
+    let sent = wire.calls();
+    assert_eq!(
+        sent.iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [PROMOTE, ALL]
+    );
+    assert!(sent.iter().all(|call| {
+        call.cookie
+            .as_ref()
+            .is_some_and(|cookie| cookie.contains("MUSIC_U=synthetic-presentation"))
+    }));
+    assert!(f.http.calls().is_empty());
+}

@@ -367,11 +367,11 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         self.session.with_token(&token, |_| Ok(()))?;
         let api = self.session.native_api(&token)?;
-        let credential = api.pc_presentation_credential_revision()?;
+        let credential = api.effect_catalogue_credential_revision()?;
         let (revision, modern) = self.effect_catalogue_presentation(&token, &api)?;
         let current = || {
             let (now, _) = self.effect_catalogue_presentation(&token, &api)?;
-            if now != revision || api.pc_presentation_credential_revision()? != credential {
+            if now != revision || api.effect_catalogue_credential_revision()? != credential {
                 return Err(Error::StaleResponse);
             }
             Ok(())

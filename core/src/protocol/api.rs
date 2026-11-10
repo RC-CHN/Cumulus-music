@@ -633,6 +633,12 @@ impl EffectCatalogueRead {
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
+    /// Account-side revision for the ordinary catalogue, available even when
+    /// the profile has not enabled the signed PC experiment transport.
+    fn effect_catalogue_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Fixed catalogue read. Native HTTP rechecks the account and current
     /// presentation at the actual dispatch boundary after obtaining its gate.
     fn request_effect_catalogue<'a>(
