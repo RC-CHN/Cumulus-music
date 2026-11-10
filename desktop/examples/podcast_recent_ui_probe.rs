@@ -624,7 +624,7 @@ impl Api for Library {
             {
                 panic!("unexpected synthetic remote action: {path}");
             }
-            if (self.program_menu || self.recent_program_menu)
+            if (self.program_menu || self.recent_program_menu || self.liked_withdrawn)
                 && path == "/api/resource/commentInfo/list"
             {
                 assert!(!cache);
@@ -633,6 +633,7 @@ impl Api for Library {
                 let [id] = ids.as_slice() else {
                     panic!("one program menu count target");
                 };
+                assert!(!self.liked_withdrawn || matches!(id.as_str(), "503" | "504"));
                 let count = match id.as_str() {
                     "501" => 51,
                     "503" => 53,
@@ -652,7 +653,7 @@ impl Api for Library {
                     json!({"code":200,"data":[{"threadId":format!("A_DJ_1_{id}"),"commentCount":count}]}),
                 );
             }
-            if (self.program_menu || self.recent_program_menu)
+            if (self.program_menu || self.recent_program_menu || self.liked_withdrawn)
                 && matches!(
                     path,
                     "/api/v1/resource/comments/A_DJ_1_503"
@@ -697,6 +698,21 @@ impl Api for Library {
                     json!({"code":200,"data":{"data":[withdrawn,missing,hydrated,voice(504)],"hasMore":false}}),
                 );
             }
+            if self.liked_withdrawn && path == "/api/dj/voices/download/check" {
+                assert_eq!(body, json!({"voiceIdsStr":["503"]}));
+                self.calls.lock().unwrap().push(json!([path, body]));
+                return Ok(
+                    json!({"code":200,"data":{"allowDownloadVoiceIds":[503],"forbidDownloadVoiceIds":[],"downloadCheckResultList":[{"voiceId":503,"canDownload":true}]}}),
+                );
+            }
+            if self.liked_withdrawn && path == "/api/dj/program/song/musics" {
+                assert_eq!(body, json!({"ids":["503"]}));
+                self.calls.lock().unwrap().push(json!([path, body]));
+                return Ok(
+                    json!({"code":200,"programs":[{"musics":[{"bitrate":128000,"size":1048576}]}]}),
+                );
+            }
+            assert!(!self.liked_withdrawn || path != "/api/song/enhance/download/url/v1");
             Ok(match path {
                 RECENT if self.recent_program_menu => {
                     if body == json!({}) {

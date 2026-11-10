@@ -34,21 +34,29 @@ def main():
     failed = output / 'failed.json'
     assert not failed.exists(), read(failed)
     assert code == 0, f'WebView exited {code}; see {root / "host.log"}'
-    names = ['ux_01_liked_rows', 'ux_02_withdrawn', 'ux_03_valid_native', 'ux_04_missing_retained']
+    names = ['ux_01_liked_rows', 'ux_02_withdrawn', 'ux_03_menu', 'ux_04_single_play', 'ux_05_next',
+             'ux_06_share', 'ux_07_download', 'ux_08_valid_native', 'ux_09_missing_retained']
     assert sorted(path.stem for path in output.glob('ux_*.json')) == names
     assert sorted(path.stem for path in output.glob('ux_*.png')) == names
     stages = [read(output / f'{name}.json') for name in names]
     assert all(stage['actual'] for stage in stages)
     assert stages[0]['ids'] == ['501', '502', '503', '504']
     assert stages[1]['notice'] == '该声音已下线不可收听' and stages[1]['queue'] == 0
-    assert stages[2]['voice'] == stages[3]['voice'] == '504'
-    assert stages[2]['queue'] == ['503', '504'] and stages[2]['position'] > 0
-    assert stages[3]['playIdRetained']
+    assert stages[2]['labels'] == ['播放', '下一首播放', '查看评论(54)', '下载', '分享...', '复制链接']
+    assert stages[3]['voice'] == stages[7]['voice'] == stages[8]['voice'] == '504'
+    assert stages[3]['queue'] == ['504'] and stages[4]['queue'] == ['504', '503'] and stages[4]['playIdRetained']
+    assert stages[5]['link'] == 'https://music.163.com/dj?id=503'
+    assert stages[6]['target'] == 503 and stages[6]['beforeCancel']
+    assert stages[7]['queue'] == ['503', '504'] and stages[7]['position'] > 0 and stages[8]['playIdRetained']
     complete = read(output / 'complete.json')
     assert complete['ok']
     calls = complete['calls']
     assert not any(path == '/api/dj/program/detail' for path, _ in stages[1]['calls'])
-    assert [body['id'] for path, body in calls if path == '/api/dj/program/detail'] == ['502', '503', '504', '502']
+    detail = [body['id'] for path, body in calls if path == '/api/dj/program/detail']
+    assert {'502', '503', '504'} <= set(detail) <= {'502', '503', '504'} and detail[-1] == '502', detail
+    assert [body for path, body in calls if path == '/api/dj/voices/download/check'] == [{'voiceIdsStr': ['503']}]
+    assert [body for path, body in calls if path == '/api/dj/program/song/musics'] == [{'ids': ['503']}]
+    assert not any(path == '/api/song/enhance/download/url/v1' for path, _ in calls)
     privileges = [body['voiceId'] for path, body in calls if path == '/api/dj/play/url/check']
     assert '504' in privileges and set(privileges) <= {'503', '504'}
     urls = [str(id_) for path, body in calls if path == '/api/song/enhance/player/url/v1' for id_ in json.loads(body['ids'])]

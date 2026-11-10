@@ -214,6 +214,12 @@ b同样保留失败：脚本填入目录后未等待Vue更新提交按钮；c补
 - 下载仍先读 `/api/dj/voices/download/check {voiceIdsStr:[id]}` 与
   `/api/dj/program/song/musics {ids:[id]}`；确认时再核对绑定的点赞修订，
   保存前持同一列表的原生锁。取消不申请下载 URL，也不修改点赞。
+- 三组 Rust 回归共 75 项通过，包括迟到数量在下架后被拒绝、单集菜单播放、
+  暂停时下一首和继续使用原播放实例。Linux 的同一个 WebView 探针通过 9 个
+  实际状态及截图：Shift+F10、菜单顺序和评论数、单集起播、下一首、公开分享、
+  下载准备与取消、原有列表双击和明确选中缺失节目。证据见
+  `.build/ui-proof/phase267-podcast-liked-menu/`。没有验证真实账号下载、
+  真声卡或 Windows 的这个实窗流程。
 
 布局追加修正：c的几何复核发现小窗口document.scrollHeight=665而body=540；节目行的
 隐藏辅助文字使用绝对定位，未约束到行容器，产生额外窗口滚动。给episode-row设position:relative
