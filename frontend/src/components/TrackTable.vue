@@ -17,6 +17,7 @@ import { useMixedPlaylistDrag } from '../composables/useMixedPlaylistDrag';
 import { expandedRows, rowBoundary, rowExtent, rowTop } from '../services/virtualWindow';
 import type { TrackView } from '../services/contracts';
 import type { AlbumTrackOrder } from '../services/albumDurationSort';
+import type { PlaylistDurationOrder } from '../services/playlistDuration';
 import type { SearchSongTableHint } from '../services/search';
 import TrackRow from './TrackRow.vue';
 const props = defineProps<{
@@ -24,6 +25,7 @@ const props = defineProps<{
   matchKeyword?: string;
   searchTitleHints?: readonly (SearchSongTableHint | undefined)[];
   albumOrder?: AlbumTrackOrder;
+  durationOrder?: PlaylistDurationOrder;
   originalRecordings?: ReadonlySet<string>;
   liked: Set<string>;
   busy: Set<string>;
@@ -70,8 +72,9 @@ const emit = defineEmits<{
   ];
 }>();
 const albumTable = computed(() => props.albumOrder !== undefined);
+const sortableDuration = computed(() => albumTable.value || props.durationOrder !== undefined);
 const durationDirection = computed(() => {
-  const order = props.albumOrder;
+  const order = props.albumOrder ?? props.durationOrder;
   return order === 'ascending' || order === 'descending' ? order : 'none';
 });
 const popularityDirection = computed(() => {
@@ -371,9 +374,9 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
       <span role="columnheader">歌曲 / 歌手</span>
       <span v-if="!albumTable" role="columnheader">专辑</span>
       <span role="columnheader">喜欢</span>
-      <span role="columnheader" :aria-sort="albumTable ? durationDirection : undefined">
+      <span role="columnheader" :aria-sort="sortableDuration ? durationDirection : undefined">
         <button
-          v-if="albumTable"
+          v-if="sortableDuration"
           type="button"
           class="track-sort"
           aria-label="按时长排序"
