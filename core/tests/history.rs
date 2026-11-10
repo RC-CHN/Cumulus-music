@@ -345,20 +345,50 @@ async fn failed_and_malformed_refreshes_preserve_last_good_snapshot() {
 async fn local_history_is_bounded_persistent_merged_and_account_isolated() {
     let (root, store, api, session, service) = fixture();
     let token = session.token().unwrap();
+    const OWNER: &str = "99";
+    const NAMESPACE: &str = "play-history-v1";
+    let record =
+        |kind, id: usize| HistoryRecord::local(kind, json!({"id":id,"name":"合成"}), id as u64);
+    // Check the native empty-store write for every kind, then fill only the
+    // below-limit setup in one durable fixture transaction. The native writer
+    // below still fills both remaining slots and evicts two records per kind.
     for kind in HistoryKind::ALL {
-        for id in 1..=(kind.local_limit() + 2) {
+        service
+            .record_for(&token, kind, record(kind, 1).unwrap())
+            .unwrap();
+    }
+    store
+        .transaction(|tx| {
+            for kind in HistoryKind::ALL {
+                let key = format!("local:{}", kind.key());
+                let mut rows: Vec<HistoryRecord> =
+                    serde_json::from_value(tx.get(OWNER, NAMESPACE, &key)?.unwrap())?;
+                assert_eq!(rows, [record(kind, 1)?]);
+                let fill = (2..=kind.local_limit() - 2)
+                    .map(|id| record(kind, id))
+                    .collect::<cumulus_core::Result<Vec<_>>>()?;
+                rows.extend(fill);
+                rows.reverse();
+                tx.put(OWNER, NAMESPACE, &key, &serde_json::to_value(rows)?)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    for kind in HistoryKind::ALL {
+        let limit = kind.local_limit();
+        for id in (limit - 1)..=(limit + 2) {
             service
-                .record_for(
-                    &token,
-                    kind,
-                    HistoryRecord::local(kind, json!({"id":id,"name":"合成"}), id as u64).unwrap(),
-                )
+                .record_for(&token, kind, record(kind, id).unwrap())
                 .unwrap();
         }
         let page = service.snapshot_for(&token, kind).unwrap();
-        assert_eq!(page.local.len(), kind.local_limit());
-        assert_eq!(page.local.last().unwrap().id, "3");
-        assert_eq!(page.local[0].played_at, (kind.local_limit() + 2) as u64);
+        assert!(
+            page.local
+                .iter()
+                .zip((3..=(limit + 2)).rev())
+                .all(|(row, id)| { row.id == id.to_string() && row.played_at == id as u64 })
+        );
+        assert_eq!(page.local.len(), limit);
     }
     service
         .record_for(
@@ -442,7 +472,7 @@ async fn local_history_is_bounded_persistent_merged_and_account_isolated() {
             .entries
             .is_empty()
     );
-    assert!(store.values("99", "play-history-v1").unwrap().len() > 6);
+    assert!(store.values(OWNER, NAMESPACE).unwrap().len() > 6);
 }
 #[tokio::test]
 async fn account_change_and_inflight_sync_disable_drop_late_history() {
