@@ -15,13 +15,25 @@
       if (result) return result;
       await sleep(70);
     }
-    throw Error(label);
+    throw Error(typeof label === 'function' ? label() : label);
   }
   async function capture(stage, facts) {
     await paint();
     await emit(stage, facts);
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'capture ' + stage);
   }
+  function assertFacts(label, checks) {
+    const changed = Object.fromEntries(Object.entries(checks)
+      .filter(([, [actual, expected]]) => actual !== expected)
+      .map(([key, [actual, expected]]) => [key, { actual: actual ?? null, expected: expected ?? null }]));
+    if (Object.keys(changed).length) throw Error(`${label}: ${JSON.stringify(changed)}`);
+  }
+  const pausedIdentity = (snapshot, baseline) => ({
+    state: [snapshot.state, 'paused'],
+    playId: [snapshot.playId, baseline.playId],
+    entryId: [snapshot.entryId, baseline.entryId],
+    trackId: [snapshot.track?.id, baseline.track?.id],
+  });
   try {
     (await wait(() => one('.track-credit-links button'), 'synthetic artist credit')).click();
     await wait(() => one('.catalog-heading h1')?.textContent === '测试歌手', 'artist page');
@@ -95,19 +107,38 @@
     await invoke('play_selection', {
       epoch, selection: { kind: 'songs', ids: ['91', '3', '1', '92'], index: 1, quality: 'standard' },
     });
-    await wait(async () => {
+    const playing = await wait(async () => {
       const snapshot = await invoke('player_snapshot', { epoch });
-      return snapshot.state === 'playing' && snapshot.track?.id === '3' && snapshot.position > .35;
+      return snapshot.state === 'playing' && snapshot.track?.id === '3' && snapshot.position > .35 &&
+        snapshot.playId && snapshot.entryId && snapshot;
     }, 'loaded queue baseline');
-    await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
-    let prior;
+    const pauseReply = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    assertFacts('artist pause did not retain the loaded song', pausedIdentity(pauseReply, playing));
+    // Adjacent UI samples can both precede the native 200 ms clock poll.
+    // Settle the original decoder across two full polls before mutating the queue.
+    let observed = pauseReply;
+    let stableSince = performance.now();
+    let stableFor = 0;
     const paused = await wait(async () => {
-      const view = await invoke('player_snapshot', { epoch });
-      const settled = prior && prior.position === view.position && prior.playId === view.playId;
-      prior = view;
-      return view.state === 'paused' && view.position > .3 && settled && view;
-    }, 'native paused baseline clock settles');
+      const snapshot = await invoke('player_snapshot', { epoch });
+      assertFacts('artist paused baseline changed transport', pausedIdentity(snapshot, pauseReply));
+      const now = performance.now();
+      if (snapshot.position !== observed.position) stableSince = now;
+      stableFor = now - stableSince;
+      observed = snapshot;
+      return snapshot.position > .3 && stableFor >= 420 && snapshot;
+    }, () => `native paused baseline clock did not settle: ${JSON.stringify({
+      lastPosition: observed.position, stableForMs: stableFor, requiredMs: 420,
+    })}`);
     const queueBefore = await invoke('player_queue', { epoch });
+    function assertRetained(label, snapshot, queue, duplicateIndex) {
+      assertFacts(label, {
+        ...pausedIdentity(snapshot, paused),
+        position: [snapshot.position, paused.position],
+        queueCurrent: [queue.current, queueBefore.current],
+        originalSongEntry: [queue.tracks[duplicateIndex]?.entryId, queueBefore.tracks[2].entryId],
+      });
+    }
     let staleAccepted = true;
     try {
       await invoke('player_action', { epoch, action: {
@@ -141,14 +172,12 @@
       return queue.tracks.map((entry) => entry.track.id).join(',') === '91,3,2,4,1,92' && queue;
     }, 'only selected songs insert in page order after the current song');
     const selectedPaused = await invoke('player_snapshot', { epoch });
-    if (selectedPaused.state !== 'paused' || selectedPaused.playId !== paused.playId ||
-        selectedPaused.position !== paused.position || selectedQueue.current !== queueBefore.current ||
-        selectedQueue.tracks[4].entryId !== queueBefore.tracks[2].entryId)
-      throw Error('selected artist queue changed the paused decoder, clock or original row identity');
+    assertRetained('selected artist queue changed paused playback or row identity',
+      selectedPaused, selectedQueue, 4);
     await wait(() => document.activeElement === more, 'selected queue restores the exact More trigger');
     await capture('ux_artist_batch_queued', {
       queue: selectedQueue.tracks.map((entry) => entry.track.id),
-      position: selectedPaused.position, retainedPlayId: true, restoredFocus: true,
+      position: selectedPaused.position, pausedStableMs: stableFor, retainedPlayId: true, restoredFocus: true,
     });
     more.focus();
     more.click();
@@ -169,10 +198,7 @@
     await wait(() => [...document.querySelectorAll('[role="status"]')]
       .some((node) => node.textContent.includes('已添加到播放列表')), 'queue update feedback');
     const unchanged = await invoke('player_snapshot', { epoch });
-    if (unchanged.state !== 'paused' || unchanged.playId !== paused.playId ||
-        unchanged.position !== paused.position || queueAfter.current !== queueBefore.current ||
-        queueAfter.tracks[2].entryId !== queueBefore.tracks[2].entryId)
-      throw Error('artist insertion changed transport or duplicated an existing song');
+    assertRetained('loaded artist queue changed paused playback or row identity', unchanged, queueAfter, 2);
     await invoke('player_action', { epoch, action: {
       kind: 'queue_for', expected_queue_revision: queueAfter.revision, edit: { kind: 'clear' },
     } });
