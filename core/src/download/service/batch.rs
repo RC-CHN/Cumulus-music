@@ -140,6 +140,13 @@ impl DownloadService {
                                 "SongCard batch requires a confirmed liked anchor",
                             ));
                         }
+                        if tx
+                            .playback_download_rows(owner, anchor, PlaybackDownloadKind::Song)?
+                            .iter()
+                            .any(|row| row.status == "complete")
+                        {
+                            return Err(Error::State("song batch anchor is already downloaded"));
+                        }
                     }
                     SongBatchAdmission::Playlist(proof) => proof.verify_in(tx, owner)?,
                 }

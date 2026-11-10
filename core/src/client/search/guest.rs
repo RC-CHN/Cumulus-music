@@ -232,6 +232,7 @@ impl MusicClient {
                     SearchItem::Song {
                         queue_drop_receipt,
                         group_next_right,
+                        group_download,
                         hint,
                         table_hint,
                         reasons,
@@ -239,6 +240,7 @@ impl MusicClient {
                     } => {
                         *queue_drop_receipt = None;
                         *group_next_right = None;
+                        *group_download = None;
                         *hint = None;
                         *table_hint = None;
                         reasons.clear();

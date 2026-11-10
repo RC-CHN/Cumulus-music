@@ -329,7 +329,30 @@ function showSelectedTrackMenu(
   const allCopyrightBlocked = rows.every(
     ({ index }) => items[index]?.groupNextRight === 'copyright_blocked',
   );
-  emit('more', { ...request, searchGroup: { action, allCopyrightBlocked, live: current } });
+  const downloadRows = rows.map(({ track, index }) => {
+    const item = items[index];
+    if (item?.track !== track || !item.groupDownload) return;
+    return { receipt: item.groupDownload.receipt, trackId: track.id };
+  });
+  const downloadAnchor = downloadRows[rows.findIndex((row) => row.index === anchorIndex)];
+  const download =
+    downloadAnchor && downloadRows.every((row) => !!row)
+      ? { anchor: downloadAnchor, rows: downloadRows }
+      : undefined;
+  const allDownloadsBlocked = rows.every(
+    ({ index }) => items[index]?.groupDownload?.right === 'copyright_blocked',
+  );
+  emit('more', {
+    ...request,
+    searchGroup: {
+      epoch,
+      action,
+      allCopyrightBlocked,
+      live: current,
+      download,
+      allDownloadsBlocked,
+    },
+  });
 }
 function playComprehensiveAll(section: SearchSection) {
   const rows = comprehensivePlayAllTracks(section);

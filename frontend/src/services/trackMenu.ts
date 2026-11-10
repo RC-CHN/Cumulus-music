@@ -33,6 +33,9 @@ export interface TrackMenuRequest {
   play: () => void;
   nextOrigin?: 'search';
   searchGroup?: {
+    epoch: string;
+    download?: import('./search').SearchGroupDownloadSelection;
+    allDownloadsBlocked: boolean;
     action: { anchor: SearchQueueRow; rows: SearchQueueRow[] } | undefined;
     allCopyrightBlocked: boolean;
     live: () => boolean;

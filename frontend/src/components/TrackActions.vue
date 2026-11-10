@@ -22,6 +22,7 @@ const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{
   collect: [track: TrackView];
   download: [track: TrackView];
+  downloadSettings: [epoch: string];
   comments: [track: TrackView];
   remove: [track: TrackView, playlist: PlaylistView];
   manage: [track: TrackView, playlist: PlaylistView];
@@ -32,6 +33,14 @@ const client = useCore(),
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
 const queueRequest = shallowRef<QueueMenuRequest>();
+type SearchDownloadFeedback = {
+  group: NonNullable<TrackMenuRequest['searchGroup']>;
+  receipt?: string;
+  omitted?: number;
+  action: 'settings' | 'check';
+};
+const downloadFeedback = shallowRef<SearchDownloadFeedback>();
+const groupDownloadBusy = ref(false);
 const searchGroupQueue = shallowRef<{ playId: string | null; revision: string }>();
 function currentSearchGroupQueue() {
   const current = props.player.view.value;
@@ -131,6 +140,16 @@ const items = computed<MenuItem[]>(() => {
     return [
       { key: 'play', label: '播放', icon: 'play', disabled, hint },
       { key: 'next', label: '下一首播放', icon: 'next', disabled, hint },
+      ...(searchGroup.download
+        ? [
+            {
+              key: 'download',
+              label: '下载',
+              icon: 'download',
+              disabled: searchGroup.allDownloadsBlocked || groupDownloadBusy.value,
+            },
+          ]
+        : []),
     ];
   }
   const selection = input.episode?.selection;
@@ -199,6 +218,7 @@ function clear() {
   failed.value = false;
   copying.value = false;
   retrying.value = false;
+  downloadFeedback.value = undefined;
 }
 function dismiss() {
   clear();
@@ -324,6 +344,105 @@ function closeVoiceShare(restore: boolean) {
 function voiceShareReturn() {
   return returnFocus ?? null;
 }
+async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['searchGroup']>) {
+  if (!group.live() || !group.download || groupDownloadBusy.value) return;
+  const attempt = sequence;
+  const live = () => attempt === sequence && group.live();
+  groupDownloadBusy.value = true;
+  let receipt: string | undefined;
+  let omitted = 0;
+  try {
+    const plan = await client.searchGroupDownload(group.epoch, {
+      kind: 'prepare',
+      ...group.download,
+    });
+    if (plan.kind !== 'prepared' || plan.epoch !== group.epoch) return;
+    if (!live()) {
+      if (plan.receipt)
+        void client
+          .searchGroupDownload(group.epoch, { kind: 'cancel', receipt: plan.receipt })
+          .catch(() => {});
+      return;
+    }
+    switch (plan.decision) {
+      case 'ready':
+        if (!plan.receipt) return;
+        receipt = plan.receipt;
+        omitted = plan.omittedCount;
+        break;
+      case 'directory_required':
+        clearTimeout(timer);
+        message.value = '请先设置下载目录，再重新选择下载。';
+        downloadFeedback.value = { group, action: 'settings' };
+        return;
+      case 'playlist_required':
+        feedback('这组歌曲需先选择下载到的歌单，当前搜索菜单尚不支持该步骤。');
+        return;
+      case 'membership_unknown':
+        feedback('暂未核实右击歌曲的喜欢状态，未添加下载任务。');
+        return;
+      case 'anchor_unavailable':
+        feedback('右击的歌曲已有本地音频，未添加下载任务。');
+        return;
+      case 'unavailable':
+        feedback('所选歌曲没有可添加的新下载任务。');
+        return;
+    }
+    const response = await client.searchGroupDownload(group.epoch, { kind: 'start', receipt });
+    if (
+      live() &&
+      response.kind === 'accepted' &&
+      response.result.epoch === group.epoch &&
+      response.result.operationId === receipt
+    ) {
+      feedback(searchDownloadResult(response.result.accepted.length, omitted));
+    }
+  } catch (issue) {
+    if (!live()) return;
+    if (receipt) {
+      clearTimeout(timer);
+      message.value = '下载任务的接纳结果未确认。';
+      downloadFeedback.value = { group, receipt, omitted, action: 'check' };
+    } else {
+      feedback(failure(issue).message);
+    }
+  } finally {
+    groupDownloadBusy.value = false;
+  }
+}
+function searchDownloadResult(count: number, omitted: number) {
+  return `已添加 ${count} 首到下载列表${omitted ? `，跳过 ${omitted} 首` : ''}`;
+}
+async function checkSearchDownload() {
+  const target = downloadFeedback.value;
+  if (!target?.receipt || !target.group.live() || groupDownloadBusy.value) return;
+  const { group, receipt } = target;
+  groupDownloadBusy.value = true;
+  try {
+    const reply = await client.searchGroupDownload(group.epoch, { kind: 'status', receipt });
+    if (downloadFeedback.value !== target || !group.live()) return;
+    if (
+      reply.kind === 'accepted' &&
+      reply.result.epoch === group.epoch &&
+      reply.result.operationId === receipt
+    ) {
+      downloadFeedback.value = undefined;
+      feedback(searchDownloadResult(reply.result.accepted.length, target.omitted ?? 0));
+    } else if (reply.kind === 'pending') message.value = '下载任务正在处理。';
+    else message.value = '未找到本次已接纳的下载任务，请查看下载列表。';
+  } catch (issue) {
+    if (downloadFeedback.value === target && group.live()) message.value = failure(issue).message;
+  } finally {
+    groupDownloadBusy.value = false;
+  }
+}
+function openSearchDownloadSettings() {
+  const target = downloadFeedback.value;
+  if (target?.action === 'settings' && target.group.live()) {
+    emit('downloadSettings', target.group.epoch);
+    close();
+  }
+}
 async function select(key: string) {
   const queue = queueRequest.value;
   if (queue) {
@@ -359,6 +478,10 @@ async function select(key: string) {
   )
     return;
   const group = input.searchGroup;
+  if (group && key === 'download') {
+    await startSearchGroupDownload(group);
+    return;
+  }
   if (group && (key === 'play' || key === 'next')) {
     const view = props.player.view.value;
     const target = currentSearchGroupQueue();
@@ -471,7 +594,22 @@ defineExpose({ show, showQueue, close });
       >
         {{ copying ? '正在复制…' : '重试' }}
       </button>
-      <button v-if="failed" class="text-button" @click="dismiss">关闭</button>
+      <button
+        v-if="downloadFeedback?.action === 'settings'"
+        class="text-button"
+        @click="openSearchDownloadSettings"
+      >
+        下载设置
+      </button>
+      <button
+        v-if="downloadFeedback?.action === 'check'"
+        class="text-button"
+        :disabled="groupDownloadBusy"
+        @click="checkSearchDownload"
+      >
+        核对下载
+      </button>
+      <button v-if="failed || downloadFeedback" class="text-button" @click="dismiss">关闭</button>
     </div></MenuTransition
   >
 </template>

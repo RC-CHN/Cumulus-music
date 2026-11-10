@@ -2,7 +2,12 @@ mod audio_toplist;
 mod correction_channel;
 mod default_context;
 pub(crate) mod experiment;
+mod group_download;
 mod guest;
+pub use group_download::{
+    SearchGroupDownloadCommand, SearchGroupDownloadDecision, SearchGroupDownloadReply,
+    SearchGroupDownloadRow, SearchGroupDownloadTarget,
+};
 mod lyrics;
 pub(super) mod podcast_playback;
 mod presentation;

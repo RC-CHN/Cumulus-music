@@ -64,6 +64,7 @@ export type SearchItem =
       excerpt: string[];
       queueDropReceipt?: string;
       groupNextRight?: 'playable' | 'copyright_blocked';
+      groupDownload?: { receipt: string; right: 'ordinary' | 'copyright_blocked' };
       excerptTruncated?: boolean;
       mvId?: string;
       replacementMv?: boolean;
@@ -265,7 +266,40 @@ export type SearchDiscovery =
 export type SearchHistoryCommand =
   | { kind: 'read' | 'clear' }
   | { kind: 'remember' | 'remove'; keyword: string };
+export interface SearchGroupDownloadTarget {
+  receipt: string;
+  trackId: string;
+}
+export interface SearchGroupDownloadSelection {
+  anchor: SearchGroupDownloadTarget;
+  rows: SearchGroupDownloadTarget[];
+}
+export type SearchGroupDownloadCommand =
+  | ({ kind: 'prepare' } & SearchGroupDownloadSelection)
+  | { kind: 'start' | 'status' | 'cancel'; receipt: string };
+export type SearchGroupDownloadReply =
+  | {
+      kind: 'prepared';
+      epoch: string;
+      decision:
+        | 'ready'
+        | 'playlist_required'
+        | 'membership_unknown'
+        | 'directory_required'
+        | 'anchor_unavailable'
+        | 'unavailable';
+      receipt: string | null;
+      eligibleCount: number;
+      omittedCount: number;
+    }
+  | { kind: 'accepted'; result: import('./downloads').DownloadResult }
+  | { kind: 'pending' | 'not_started' | 'cancelled' };
+
 export interface SearchClient {
+  searchGroupDownload(
+    epoch: string,
+    command: SearchGroupDownloadCommand,
+  ): Promise<SearchGroupDownloadReply>;
   searchDiscovery(
     epoch: string,
     query: SearchDiscoveryQuery,

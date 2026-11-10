@@ -3219,6 +3219,7 @@ function openSettingsSection(
   epoch: string,
   section:
     | 'settings-desktop-notifications'
+    | 'settings-download'
     | 'settings-audio-output'
     | 'settings-playback'
     | 'settings-privacy'
@@ -7368,6 +7369,7 @@ onUnmounted(() => {
       @remove="(track, playlist) => (playlistDialog = { kind: 'remove', track, playlist })"
       @manage="(track, playlist) => (playlistDialog = { kind: 'track', track, playlist })"
       @queue-action="applyQueueMenu"
+      @download-settings="(epoch) => openSettingsSection(epoch, 'settings-download')"
     />
     <ModalTransition
       :restore-focus="

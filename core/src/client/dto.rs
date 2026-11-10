@@ -115,10 +115,12 @@ pub use super::scene_fm::{
     SceneFmPaletteResult, SceneFmView, home::SceneFmHomeView,
 };
 pub use super::search::{
-    ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,
-    SearchItem, SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
-    SearchPrivilegePatch, SearchQualityBadge, SearchReasonPage, SearchResultQuery,
-    SearchResultView, SearchSection, SearchVoiceMenu, SearchVoiceMenuTarget,
+    ReasonTarget, SearchCategory, SearchGroupDownloadCommand, SearchGroupDownloadDecision,
+    SearchGroupDownloadReply, SearchGroupDownloadRow, SearchGroupDownloadTarget,
+    SearchHistoryCommand, SearchHotAction, SearchHotTarget, SearchItem, SearchPresentationItem,
+    SearchPresentationPatch, SearchPresentationSection, SearchPrivilegePatch, SearchQualityBadge,
+    SearchReasonPage, SearchResultQuery, SearchResultView, SearchSection, SearchVoiceMenu,
+    SearchVoiceMenuTarget,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

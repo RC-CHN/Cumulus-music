@@ -21,6 +21,8 @@ pub enum SearchItem {
         queue_drop_receipt: Option<String>,
         #[serde(rename = "groupNextRight", skip_serializing_if = "Option::is_none")]
         group_next_right: Option<super::SearchNextRight>,
+        #[serde(rename = "groupDownload", skip_serializing_if = "Option::is_none")]
+        group_download: Option<super::SearchGroupDownloadRow>,
         #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
         mv_id: Option<String>,
         #[serde(rename = "replacementMv", skip_serializing_if = "std::ops::Not::not")]
@@ -311,6 +313,9 @@ impl MusicClient {
                         correction_receipt,
                     )
                 };
+                let download_credentials = (query.category == SearchCategory::Songs)
+                    .then(|| api.song_card_download_scope_revision().ok().flatten())
+                    .flatten();
                 let group_credentials = (query.category == SearchCategory::Songs)
                     .then(|| api.search_privilege_credential_revision().ok().flatten())
                     .flatten();
@@ -554,8 +559,25 @@ impl MusicClient {
                     } else {
                         None
                     };
+                    let download_revision = if self.login_pending()? {
+                        None
+                    } else {
+                        download_credentials.filter(|revision| {
+                            api.song_card_download_scope_revision()
+                                .ok()
+                                .flatten()
+                                .as_ref()
+                                == Some(revision)
+                        })
+                    };
                     self.session.require_api(token, &api)?;
                     self.session.with_token(token, |_| {
+                        view.publish_download_receipts(
+                            &self.search.group_downloads,
+                            token,
+                            &api,
+                            download_revision,
+                        )?;
                         view.publish_drop_receipts(&self.search.queue_drops, token, group)
                     })?;
                 }
@@ -821,6 +843,7 @@ fn item(
                 track,
                 queue_drop_receipt: None,
                 group_next_right: None,
+                group_download: None,
                 mv_id,
                 replacement_mv: is_replacement,
                 vip_badge: None,
@@ -903,6 +926,56 @@ fn correction(v: &Value) -> Option<String> {
         .find_map(|key| crate::catalog::search::keyword(v[key].as_str()?).ok())
 }
 impl SearchResultView {
+    fn publish_download_receipts(
+        &mut self,
+        pages: &super::group_download::SearchGroupDownloads,
+        token: &crate::account::SessionToken,
+        api: &Arc<dyn crate::protocol::api::Api>,
+        revision: Option<String>,
+    ) -> Result<()> {
+        let all = |item: &SearchItem| match item {
+            SearchItem::Song {
+                track,
+                group_download,
+                ..
+            } => Some((
+                track.id.clone(),
+                group_download.as_ref().map(|row| row.right),
+            )),
+            _ => None,
+        };
+        let page = if let Some(revision) = revision {
+            pages.capture(
+                token,
+                api,
+                revision,
+                &self.query,
+                self.sections
+                    .iter()
+                    .flat_map(|section| &section.items)
+                    .filter_map(all)
+                    .collect(),
+            )?
+        } else {
+            None
+        };
+        for item in self
+            .sections
+            .iter_mut()
+            .flat_map(|section| &mut section.items)
+        {
+            if let SearchItem::Song {
+                track,
+                group_download,
+                ..
+            } = item
+            {
+                *group_download = page.as_ref().and_then(|page| page.row(&track.id));
+            }
+        }
+        Ok(())
+    }
+
     fn publish_drop_receipts(
         &mut self,
         pages: &super::queue_drop::SearchDropPages,
@@ -1226,6 +1299,7 @@ pub(super) fn project(
                         track,
                         queue_drop_receipt,
                         group_next_right,
+                        group_download,
                         table_hint,
                         ..
                     } = &mut item
@@ -1240,6 +1314,13 @@ pub(super) fn project(
                         // Only the song-tab projector may mark a row for issuance.
                         *queue_drop_receipt = Some(String::new());
                         *group_next_right = super::SearchNextRight::from_song(base, &track.id);
+                        *group_download = super::group_download::SearchGroupDownloadRight::observe(
+                            base, &track.id,
+                        )
+                        .map(|right| super::SearchGroupDownloadRow {
+                            receipt: String::new(),
+                            right,
+                        });
                     }
                 }
                 section.items.push(item);

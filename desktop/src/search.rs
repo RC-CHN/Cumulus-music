@@ -56,6 +56,20 @@ pub async fn search_results<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn search_group_download<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: SearchGroupDownloadCommand,
+) -> Result<SearchGroupDownloadReply, ClientError> {
+    search_window(&window)?;
+    client
+        .search_group_download(&epoch, command)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn search_refresh_privileges(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
