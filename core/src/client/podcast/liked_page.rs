@@ -56,11 +56,29 @@ pub struct PodcastLikedPage {
     pub revision: String,
     /// Open/Restore replace the rendered prefix; Next returns an append only.
     /// Suspend returns no rows.
-    pub episodes: Vec<EpisodeView>,
+    pub episodes: Vec<PodcastLikedEpisode>,
     pub loaded_count: usize,
     pub count: Option<u64>,
     pub continuation: Option<String>,
     pub capped: bool,
+}
+
+/// Presentation fields for the common voice table. Native row actions still
+/// return EpisodeView and take an opaque, visit-bound target.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastLikedEpisode {
+    #[serde(flatten)]
+    pub voice: EpisodeView,
+    pub listener_count: Option<u64>,
+}
+
+fn project_list_row(row: &Episode) -> PodcastLikedEpisode {
+    let count = &row.raw["listenerCount"];
+    PodcastLikedEpisode {
+        voice: project(row),
+        listener_count: count.as_u64().or_else(|| count.as_str()?.parse().ok()),
+    }
 }
 
 fn receipt() -> String {
@@ -117,7 +135,7 @@ impl Default for Visit {
 }
 
 impl Visit {
-    fn view(&self, episodes: Vec<EpisodeView>) -> PodcastLikedPage {
+    fn view(&self, episodes: Vec<PodcastLikedEpisode>) -> PodcastLikedPage {
         PodcastLikedPage {
             visit: self.id.clone(),
             revision: self.revision.clone(),
@@ -162,7 +180,7 @@ impl Visit {
                 self.indices.entry(row.id.clone())
             {
                 entry.insert(self.rows.len());
-                added.push(project(&row));
+                added.push(project_list_row(&row));
                 self.rows.push(row);
             }
         }
@@ -246,7 +264,7 @@ impl MusicClient {
                     row.suspended_at = None;
                     row.revision = receipt();
                     row.load = Arc::default();
-                    Ok(row.view(row.rows.iter().map(project).collect()))
+                    Ok(row.view(row.rows.iter().map(project_list_row).collect()))
                 })?
             }
             PodcastLikedQuery::Next {
@@ -316,15 +334,36 @@ impl MusicClient {
         target: &PodcastLikedPageTarget,
     ) -> Result<AccountData<EpisodeView>> {
         let token = self.podcast_token(epoch)?;
+        let row = self.liked_page_row(&token, target)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value: project(&row),
+        })
+    }
+
+    fn liked_page_row(
+        &self,
+        token: &SessionToken,
+        target: &PodcastLikedPageTarget,
+    ) -> Result<Episode> {
         let id = identifier(&json!(target.voice_id))?;
-        self.with_liked_visit(&token, |slot| {
+        self.with_liked_visit(token, |slot| {
             let row = slot.as_ref().ok_or(Error::QueueChanged)?;
             row.current(&target.visit, &target.revision)?;
             let index = row.indices.get(&id).ok_or(Error::QueueChanged)?;
-            Ok(AccountData {
-                epoch: epoch.into(),
-                value: project(&row.rows[*index]),
-            })
+            Ok(row.rows[*index].clone())
         })
+    }
+
+    pub(in crate::client) fn liked_page_menu_program(
+        &self,
+        token: &SessionToken,
+        target: &PodcastLikedPageTarget,
+    ) -> Result<Episode> {
+        let row = self.liked_page_row(token, target)?;
+        if row.display_status_withdrawn() {
+            return Err(Error::QueueChanged);
+        }
+        Ok(row)
     }
 }

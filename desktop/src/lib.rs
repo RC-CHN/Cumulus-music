@@ -295,6 +295,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 podcast::podcast_open_program_download_directory,
                 podcast::podcast_recent_program_menu,
                 podcast::podcast_liked_program_menu,
+                podcast::podcast_liked_page_program_menu,
+                podcast::podcast_open_liked_page_program_download_directory,
                 podcast::podcast_liked_program,
                 podcast::podcast_open_liked_program_download_directory,
                 podcast::podcast_purchased_program_menu,

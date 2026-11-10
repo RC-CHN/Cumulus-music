@@ -120,9 +120,9 @@ async fn liked_paging_reads_only_the_requested_page_and_pop_reuses_the_native_cu
     assert_eq!(trace(&api), [read(json!(0))]);
     assert_eq!(first.loaded_count, 100);
     assert_eq!(first.count, Some(102));
-    assert!(first.episodes.iter().all(|row| row.liked));
-    assert_eq!(first.episodes[4].withdrawn, Some(true));
-    assert!(first.episodes[4].unavailable);
+    assert!(first.episodes.iter().all(|row| row.voice.liked));
+    assert_eq!(first.episodes[4].voice.withdrawn, Some(true));
+    assert!(first.episodes[4].voice.unavailable);
     let wire = serde_json::to_string(&first).unwrap();
     assert!(!wire.contains("not-for-the-renderer") && !wire.contains("likeTime"));
     assert!(
@@ -157,7 +157,7 @@ async fn liked_paging_reads_only_the_requested_page_and_pop_reuses_the_native_cu
     let restored = page(&client, restore(&first)).await;
     assert_eq!(restored.visit, first.visit);
     assert_ne!(restored.revision, first.revision);
-    assert_eq!(restored.episodes[99].id, "100");
+    assert_eq!(restored.episodes[99].voice.id, "100");
     assert_eq!(restored.count, Some(102));
     assert_eq!(trace(&api), [read(json!(0)), (COUNT.into(), json!({}))]);
     assert!(matches!(
@@ -180,7 +180,7 @@ async fn liked_paging_reads_only_the_requested_page_and_pop_reuses_the_native_cu
         terminal
             .episodes
             .iter()
-            .map(|row| row.id.as_str())
+            .map(|row| row.voice.id.as_str())
             .collect::<Vec<_>>(),
         ["101", "102"]
     );
@@ -337,7 +337,7 @@ async fn liked_paging_keeps_the_prefix_and_exact_retry_cursor_after_invalid_or_f
         Err(Error::QueueChanged)
     ));
     let last = page(&client, next(&recovered)).await;
-    assert_eq!(last.episodes[0].id, "83");
+    assert_eq!(last.episodes[0].voice.id, "83");
     assert_eq!(last.loaded_count, 2);
     assert_eq!(last.count, Some(2));
     assert_eq!(
@@ -398,7 +398,7 @@ async fn liked_paging_does_not_restore_a_suspended_prefix_past_its_retention_win
     let suspended = page(&client, suspend(&first)).await;
     tokio::time::advance(Duration::from_secs(3_599)).await;
     let restored = page(&client, restore(&suspended)).await;
-    assert_eq!(restored.episodes[0].id, "81");
+    assert_eq!(restored.episodes[0].voice.id, "81");
     let suspended = page(&client, suspend(&restored)).await;
     tokio::time::advance(Duration::from_secs(3_600)).await;
     assert!(matches!(
@@ -421,5 +421,83 @@ fn liked_paging_never_accepts_raw_wire_cursors_or_extra_account_keys() {
             "kind":"open","uid":"1"
         }))
         .is_err()
+    );
+}
+
+#[tokio::test]
+async fn paged_liked_menu_drops_a_held_count_after_leaving_and_rejects_withdrawn_rows() {
+    use cumulus_core::network_diagnostics::DefaultRoute;
+
+    let mut withdrawn = row(81, json!(450));
+    withdrawn["displayStatus"] = json!("UNDER_SHELF");
+    let mut normal = row(82, json!(440));
+    normal["listenerCount"] = json!("12082");
+    let (held, deliver) = gate();
+    let (_root, api, _, client) = setup([
+        response(vec![withdrawn, normal], false, Some(2)).into(),
+        held,
+    ]);
+    let opened = page(&client, PodcastLikedQuery::Open {}).await;
+    let visible = page(&client, next(&opened)).await;
+    let rendered = serde_json::to_value(&visible).unwrap();
+    assert_eq!(rendered["episodes"][0]["listenerCount"], Value::Null);
+    assert_eq!(rendered["episodes"][1]["listenerCount"], json!(12082));
+    assert_eq!(rendered["episodes"][1]["id"], "82");
+
+    assert!(matches!(
+        client
+            .podcast_liked_page_program_menu("1", &target(&visible, "81"), DefaultRoute::Present)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(api.calls().len(), 1);
+
+    let action = target(&visible, "82");
+    let pending = tokio::spawn({
+        let client = client.clone();
+        let action = action.clone();
+        async move {
+            client
+                .podcast_liked_page_program_menu("1", &action, DefaultRoute::Present)
+                .await
+        }
+    });
+    api.wait_for_calls(2).await;
+    let suspended = page(&client, suspend(&visible)).await;
+    deliver.send(Ok(json!({"code":200,"data":[]}))).unwrap();
+    assert!(matches!(pending.await.unwrap(), Err(Error::QueueChanged)));
+    assert!(matches!(
+        client
+            .podcast_liked_page_program_directory_path("1", &action)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let restored = page(&client, restore(&suspended)).await;
+    let menu = client
+        .podcast_liked_page_program_menu("1", &target(&restored, "82"), DefaultRoute::Missing)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(menu).unwrap()["value"],
+        json!({"commentCount":null,"downloadComplete":false})
+    );
+    assert_eq!(
+        trace(&api),
+        [
+            read(json!(0)),
+            (
+                "/api/resource/commentInfo/list".into(),
+                json!({"resourceType":1,"resourceIds":"[\"82\"]"})
+            ),
+        ]
+    );
+    assert!(
+        client
+            .podcast_state("1", false)
+            .await
+            .unwrap()
+            .value
+            .liked_ids
+            .is_none()
     );
 }

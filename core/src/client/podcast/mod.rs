@@ -39,7 +39,9 @@ pub use dto::*;
 pub use home::{PodcastHomeBlock, PodcastHomePage};
 pub use liked_menu::PodcastLikedProgramTarget;
 pub(super) use liked_page::PodcastLikedHost;
-pub use liked_page::{PodcastLikedPage, PodcastLikedPageTarget, PodcastLikedQuery};
+pub use liked_page::{
+    PodcastLikedEpisode, PodcastLikedPage, PodcastLikedPageTarget, PodcastLikedQuery,
+};
 pub use rankings::{
     PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource, PodcastRankRow,
     PodcastRankTab, PodcastRanks, PodcastTopLayout,

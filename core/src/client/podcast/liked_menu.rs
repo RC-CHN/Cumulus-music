@@ -1,7 +1,7 @@
 //! Native authority for normal programme rows in /myAudio/LikedVoiceTab.
 use super::{
-    EpisodeView, MusicClient, PodcastLibrary, PodcastRecentProgramMenu, PodcastScope, SessionToken,
-    view,
+    EpisodeView, MusicClient, PodcastLibrary, PodcastLikedPageTarget, PodcastRecentProgramMenu,
+    PodcastScope, SessionToken, view,
 };
 use crate::{
     Error, Result,
@@ -85,15 +85,39 @@ impl MusicClient {
         route: DefaultRoute,
     ) -> Result<AccountData<PodcastRecentProgramMenu>> {
         let token = self.podcast_token(epoch)?;
-        let api = self.session.native_api(&token)?;
-        let current = || {
-            self.session.require_api(&token, &api)?;
+        self.prepare_liked_row_menu(epoch, &token, route, || {
             liked_program(&self.session, &token, target)
+        })
+        .await
+    }
+
+    pub async fn podcast_liked_page_program_menu(
+        &self,
+        epoch: &str,
+        target: &PodcastLikedPageTarget,
+        route: DefaultRoute,
+    ) -> Result<AccountData<PodcastRecentProgramMenu>> {
+        let token = self.podcast_token(epoch)?;
+        self.prepare_liked_row_menu(epoch, &token, route, || {
+            self.liked_page_menu_program(&token, target)
+        })
+        .await
+    }
+
+    async fn prepare_liked_row_menu(
+        &self,
+        epoch: &str,
+        token: &SessionToken,
+        route: DefaultRoute,
+        require_row: impl Fn() -> Result<Episode>,
+    ) -> Result<AccountData<PodcastRecentProgramMenu>> {
+        let api = self.session.native_api(token)?;
+        let current = || {
+            self.session.require_api(token, &api)?;
+            require_row()
         };
         let row = current()?;
-        let comment_count = self
-            .read_program_comment_count(&token, &row.id, route)
-            .await;
+        let comment_count = self.read_program_comment_count(token, &row.id, route).await;
         current()?;
         let download_complete = self
             .voice_download_state(epoch, &row.id)
@@ -119,6 +143,18 @@ impl MusicClient {
         let row = liked_program(&self.session, &token, target)?;
         let path = self.completed_voice_directory(epoch, &row.id).await?;
         liked_program(&self.session, &token, target)?;
+        Ok(path)
+    }
+
+    pub async fn podcast_liked_page_program_directory_path(
+        &self,
+        epoch: &str,
+        target: &PodcastLikedPageTarget,
+    ) -> Result<PathBuf> {
+        let token = self.podcast_token(epoch)?;
+        let row = self.liked_page_menu_program(&token, target)?;
+        let path = self.completed_voice_directory(epoch, &row.id).await?;
+        self.liked_page_menu_program(&token, target)?;
         Ok(path)
     }
 }
