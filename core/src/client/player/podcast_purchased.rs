@@ -292,6 +292,7 @@ impl MusicClient {
                     expected: before.fence(),
                     paused: !before.paused,
                     mode: None,
+                    liked_visit: Some(liked_visit.ok_or(Error::QueueChanged)?),
                 },
                 guard,
             ));
