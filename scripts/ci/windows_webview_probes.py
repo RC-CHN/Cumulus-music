@@ -24,10 +24,11 @@ PROBES = {
         'main_flow_ui_probe', 'native_audio_probe', 'playback_power_ui_probe',
         'queue_room_ui_probe', 'scroll_ui_probe', 'search_playback_read',
     ),
-    # These two shards only use the shared UX executable. Their empty
+    # These shards only use the shared UX executable. Their empty
     # inventories still get an exact-attempt manifest like the other shards.
     'library': (),
     'search': (),
+    'playlists': (),
     'library-local': (
         'desktop_lyrics_ui_probe', 'local_ui_probe', 'mini_ui_probe', 'output_ui_probe',
         'startup_ui_probe',
