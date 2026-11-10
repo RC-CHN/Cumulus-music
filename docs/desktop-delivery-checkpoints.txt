@@ -41,6 +41,13 @@ Cumulus 桌面交付证据（更新于 2026-11-10）
     .build/ui-proof/phase254-download-combined/receipt.json 与
     .build/ui-proof/phase254-ordinary-download-admission/report.json。
     这批验证使用合成账号和媒体，不代表真实账号资源已修改或 Windows 桌面已复验。
+  - 同一树的正式程序在德语逗号小数环境启动。原生播放从 1.101 推进到
+    2.198 秒，暂停后私有 PipeWire RMS 为零；报告和实际窗口截图位于
+    .build/ui-proof/phase255-combined-production/。生产源一致、仅增加验收
+    夹具的 a6a925ac85831aa8ed1532d39555b1e6b5fb7113 另在真实 WebView
+    通过已购同档续传 14 态：错档不发授权并保留暂停和分片；确认 Hi-Res 后以
+    同一 ID 从 2048 字节处接受合成 HTTP 206，最终 FLAC 与合成源一致。
+    回执位于 .build/ui-proof/phase255-purchased-resume-exact/receipt.json。
 
 可检查的源码快照
   - 主线 `45b208e42dba6364e73cc90317fad19fe8d4d853`：普通 Linux
