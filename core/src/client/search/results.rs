@@ -940,7 +940,9 @@ impl SearchResultView {
                 ..
             } => Some((
                 track.id.clone(),
-                group_download.as_ref().map(|row| row.right),
+                group_download
+                    .as_ref()
+                    .map(super::group_download::RowRights::from),
             )),
             _ => None,
         };
@@ -1314,13 +1316,9 @@ pub(super) fn project(
                         // Only the song-tab projector may mark a row for issuance.
                         *queue_drop_receipt = Some(String::new());
                         *group_next_right = super::SearchNextRight::from_song(base, &track.id);
-                        *group_download = super::group_download::SearchGroupDownloadRight::observe(
-                            base, &track.id,
-                        )
-                        .map(|right| super::SearchGroupDownloadRow {
-                            receipt: String::new(),
-                            right,
-                        });
+                        *group_download =
+                            super::group_download::RowRights::observe(base, &track.id)
+                                .map(|rights| rights.row(String::new()));
                     }
                 }
                 section.items.push(item);

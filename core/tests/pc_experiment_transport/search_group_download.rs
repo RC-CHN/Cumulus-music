@@ -6,14 +6,15 @@ use cumulus_core::{
     client::{
         MusicClient,
         dto::{
-            DownloadCommand, SearchCategory, SearchGroupDownloadCommand as C,
+            DownloadCommand, PlaylistCollectSort, SearchCategory, SearchGroupDownloadCommand as C,
             SearchGroupDownloadDecision as D, SearchGroupDownloadReply as R, SearchResultQuery,
             SongDownloadState,
         },
     },
     download::service::DownloadService,
     membership::Quality,
-    protocol::http::ApiOrigin,
+    protocol::{http::ApiOrigin, mconfig::Snapshot},
+    storage::StateStore,
 };
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc, time::Duration};
@@ -23,18 +24,29 @@ const AUTH: &str = "/api/song/enhance/download/url/v1";
 const LIKED: &str = "/api/song/like/get";
 
 fn search_page() -> HttpResponse {
-    let songs: Vec<_> = (41..=45)
+    search_page_with_destination(false)
+}
+
+fn search_page_with_destination(destination: bool) -> HttpResponse {
+    let songs: Vec<_> = (41..=45 + u64::from(destination))
         .map(|id| {
-            json!({"baseInfo":{"simpleSongData":{"id":id,
+            let mut row = json!({"baseInfo":{"simpleSongData":{"id":id,
             "name":format!("合成搜索下载歌曲 {id}"),"dt":120000,
             "ar":[{"id":101,"name":"合成歌手"}],"al":{"id":123,"name":"合成专辑"},
             "privilege":{"id":id,"fee":0,"st":if id==42 {-100}else{0},
               "pl":if id==41 || id==42 {0}else{320000},
               "dl":if id==44 {0}else{320000},"cs":id==45}
-            }}})
+            }}});
+            let privilege = &mut row["baseInfo"]["simpleSongData"]["privilege"];
+            if destination && id == 43 {
+                privilege["subp"] = json!(0);
+            } else if id == 46 {
+                privilege["subp"] = json!(-1);
+            }
+            row
         })
         .collect();
-    json!({"code":200,"data":{"resources":songs,"totalCount":5,"hasMore":false}}).into()
+    json!({"code":200,"data":{"totalCount":songs.len(),"resources":songs,"hasMore":false}}).into()
 }
 
 fn client(
@@ -61,7 +73,7 @@ async fn search(client: &MusicClient, epoch: &str) -> Value {
                 keyword: "合成".into(),
                 category: SearchCategory::Songs,
                 offset: 0,
-                limit: 5,
+                limit: 6,
                 correct: true,
                 channel: None,
             },
@@ -297,16 +309,20 @@ async fn search_group_download_requires_known_anchor_directory_and_live_credenti
         .is_none()
     );
     client.liked_ids().await.unwrap();
-    assert!(
-        decision(
-            &client,
-            &epoch,
-            prepare(&old, 0, &[0, 1]),
-            D::PlaylistRequired
-        )
-        .await
-        .is_none()
-    );
+    let playlist = decision(
+        &client,
+        &epoch,
+        prepare(&old, 0, &[0, 1]),
+        D::PlaylistRequired,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        client
+            .search_group_download(&epoch, C::Start { receipt: playlist })
+            .await,
+        Err(Error::StaleResponse)
+    ));
     assert!(
         decision(
             &client,
@@ -373,4 +389,182 @@ async fn search_group_download_requires_known_anchor_directory_and_live_credenti
             .is_empty()
     );
     assert_eq!(http.calls().len(), 3);
+}
+
+#[tokio::test]
+async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_recovery() {
+    const LIST: &str = "/api/user/playlist/v2";
+    const DETAIL: &str = "/api/v6/playlist/detail";
+    const ADD: &str = "/api/v1/playlist/manipulate/tracks";
+    let summary = |id, owner, special| {
+        json!({
+            "id":id,"userId":owner,"name":"合成下载目的地","specialType":special,"privacy":10
+        })
+    };
+    let detail = |ids: &[u64]| {
+        let mut row = summary(81, 71, 0);
+        row["tags"] = json!([]);
+        row["trackIds"] = json!(ids.iter().map(|id| json!({"id":id})).collect::<Vec<_>>());
+        json!({"code":200,"playlist":row}).into()
+    };
+    let denied = || json!({"code":200,"data":{"code":403}}).into();
+    let root = tempfile::tempdir().unwrap();
+    let (api, http) = vinyl_http(root.path(), &[COOKIE], [
+        search_page_with_destination(true),
+        json!({"code":200,"ids":[43]}).into(),
+        json!({"code":200,"playlist":[summary(81,71,0),summary(82,76,0),summary(83,71,5)],"more":false}).into(),
+        detail(&[]),
+        HttpResponse::Ready(Err(Error::Transport("synthetic lost search add".into()))),
+        detail(&[]),
+        detail(&[43,41]),
+        denied(), denied(), denied(),
+    ]);
+    StateStore::open(root.path().join("config"))
+        .unwrap()
+        .put(
+            "transport",
+            "pc-mconfig-v1",
+            "pc",
+            &serde_json::to_value(Snapshot {
+                origin: ApiOrigin::Pc,
+                version: 1,
+                bucket: String::new(),
+                generation: 1,
+                source_url: Some("https://p1.music.126.net/obj/fixture.data".into()),
+                data: Some(json!({})),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    let (client, session, epoch) = client(root.path(), api);
+    let rows = search(&client, &epoch).await;
+    assert_eq!(rows[5]["track"]["id"], "46");
+    assert_eq!(rows[5]["groupDownload"]["right"], "ordinary");
+    assert_eq!(rows[5]["groupDownload"].as_object().unwrap().len(), 2);
+    client.liked_ids().await.unwrap();
+    directory(&client, &epoch, root.path()).await;
+    let receipt = decision(
+        &client,
+        &epoch,
+        prepare(&rows, 1, &[2, 5, 1, 0]),
+        D::PlaylistRequired,
+    )
+    .await
+    .unwrap();
+    let command = |kind, extra: Value| {
+        let mut dto = json!({"kind":kind,"receipt":receipt});
+        dto.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::from_value::<C>(dto).unwrap()
+    };
+    let choose = |id| command("choose", json!({"playlistId":id}));
+    assert!(matches!(
+        client.search_group_download(&epoch, choose("81")).await,
+        Err(Error::StaleResponse)
+    ));
+    let R::Destinations { page } = client
+        .search_group_download(
+            &epoch,
+            C::Destinations {
+                receipt: receipt.clone(),
+                sort: PlaylistCollectSort::Default,
+                page: 0,
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("expected verified destinations")
+    };
+    assert_eq!(
+        page.value
+            .playlists
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["81"]
+    );
+    for id in ["82", "83"] {
+        assert!(matches!(
+            client.search_group_download(&epoch, choose(id)).await,
+            Err(Error::StaleResponse)
+        ));
+    }
+    assert_eq!(
+        http.calls()
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>()[1..],
+        [LIKED, LIST]
+    );
+    for _ in 0..2 {
+        let reply = client
+            .search_group_download(&epoch, choose("81"))
+            .await
+            .unwrap();
+        let value = serde_json::to_value(reply).unwrap();
+        assert_eq!(value["result"]["phase"], "uncertain");
+        assert!(value["result"]["continuation"].is_null());
+    }
+    assert!(
+        DownloadService::new(session.clone())
+            .unwrap()
+            .list()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        http.calls().len(),
+        6,
+        "one write; reselect never repeats it"
+    );
+    let reply = client
+        .search_group_download(&epoch, command("reconcile", json!({})))
+        .await
+        .unwrap();
+    let value = serde_json::to_value(reply).unwrap();
+    assert_eq!(value["result"]["phase"], "confirmed");
+    let permit = value["result"]["continuation"].as_str().unwrap();
+    assert!(matches!(
+        client
+            .search_group_download(
+                &epoch,
+                command("start_from_playlist", json!({"continuation":"forged"}))
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    let result = client
+        .search_group_download(
+            &epoch,
+            command("start_from_playlist", json!({"continuation":permit})),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(result, R::Accepted { .. }));
+    let tasks = DownloadService::new(session).unwrap().list().unwrap();
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|task| task.song_id.as_str())
+            .collect::<Vec<_>>(),
+        ["41", "46", "43"]
+    );
+    http.wait(10).await;
+    let calls = http.calls();
+    let trace: Vec<_> = calls.iter().map(|call| call.path.as_str()).collect();
+    assert_eq!(
+        trace[1..],
+        [LIKED, LIST, DETAIL, ADD, DETAIL, DETAIL, AUTH, AUTH, AUTH]
+    );
+    let mut wire = calls[4].payload.clone();
+    let header = wire.as_object_mut().unwrap().remove("header").unwrap();
+    let header: Value = serde_json::from_str(header.as_str().unwrap()).unwrap();
+    assert_eq!(header["appver"], "3.1.42.205594");
+    assert_eq!(header["os"], "pc");
+    assert_eq!(
+        wire,
+        json!({"op":"add","pid":"81","trackIds":r#"["43","41"]"#})
+    );
 }

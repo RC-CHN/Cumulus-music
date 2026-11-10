@@ -30,6 +30,10 @@ struct Commit {
 pub(crate) enum SongBatchAdmission {
     LikedAnchor(String),
     Playlist(GroupDownloadPlaylistProof),
+    SearchPlaylist {
+        proof: GroupDownloadPlaylistProof,
+        anchor: String,
+    },
 }
 
 impl DownloadService {
@@ -140,15 +144,24 @@ impl DownloadService {
                                 "SongCard batch requires a confirmed liked anchor",
                             ));
                         }
-                        if tx
-                            .playback_download_rows(owner, anchor, PlaybackDownloadKind::Song)?
-                            .iter()
-                            .any(|row| row.status == "complete")
-                        {
-                            return Err(Error::State("song batch anchor is already downloaded"));
-                        }
                     }
                     SongBatchAdmission::Playlist(proof) => proof.verify_in(tx, owner)?,
+                    SongBatchAdmission::SearchPlaylist { proof, .. } => {
+                        proof.verify_in(tx, owner)?
+                    }
+                }
+                let anchor = match &admission {
+                    SongBatchAdmission::LikedAnchor(anchor)
+                    | SongBatchAdmission::SearchPlaylist { anchor, .. } => Some(anchor),
+                    SongBatchAdmission::Playlist(_) => None,
+                };
+                if let Some(anchor) = anchor
+                    && tx
+                        .playback_download_rows(owner, anchor, PlaybackDownloadKind::Song)?
+                        .iter()
+                        .any(|row| row.status == "complete")
+                {
+                    return Err(Error::State("song batch anchor is already downloaded"));
                 }
                 for task in &staged {
                     let task = task.task();

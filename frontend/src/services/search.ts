@@ -274,9 +274,13 @@ export interface SearchGroupDownloadSelection {
   anchor: SearchGroupDownloadTarget;
   rows: SearchGroupDownloadTarget[];
 }
+export type SearchGroupDownloadSort = 'default' | 'recently';
 export type SearchGroupDownloadCommand =
   | ({ kind: 'prepare' } & SearchGroupDownloadSelection)
-  | { kind: 'start' | 'status' | 'cancel'; receipt: string };
+  | { kind: 'start' | 'status' | 'cancel' | 'reconcile'; receipt: string }
+  | { kind: 'destinations'; receipt: string; sort: SearchGroupDownloadSort; page: number }
+  | { kind: 'choose'; receipt: string; playlistId: string }
+  | { kind: 'start_from_playlist'; receipt: string; continuation: string };
 export type SearchGroupDownloadReply =
   | {
       kind: 'prepared';
@@ -284,6 +288,7 @@ export type SearchGroupDownloadReply =
       decision:
         | 'ready'
         | 'playlist_required'
+        | 'playlist_unavailable'
         | 'membership_unknown'
         | 'directory_required'
         | 'anchor_unavailable'
@@ -293,7 +298,22 @@ export type SearchGroupDownloadReply =
       omittedCount: number;
     }
   | { kind: 'accepted'; result: import('./downloads').DownloadResult }
-  | { kind: 'pending' | 'not_started' | 'cancelled' };
+  | {
+      kind: 'destinations';
+      page: AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>;
+    }
+  | {
+      kind: 'playlist';
+      result: {
+        epoch: string;
+        receipt: string;
+        playlistId: string;
+        phase: import('./playlists').PlaylistPhase;
+        addFailed: boolean;
+        continuation: string | null;
+      };
+    }
+  | { kind: 'pending' | 'not_started' | 'cancelled' | 'directory_required' };
 
 export interface SearchClient {
   searchGroupDownload(

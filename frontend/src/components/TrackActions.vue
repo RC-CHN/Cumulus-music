@@ -18,6 +18,7 @@ import { podcastProgramPublicLink, type PodcastProgramShare } from '../services/
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
 import TrackShareDialog from './TrackShareDialog.vue';
+import SearchGroupDownloadPicker from './SearchGroupDownloadPicker.vue';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{
   collect: [track: TrackView];
@@ -41,6 +42,11 @@ type SearchDownloadFeedback = {
 };
 const downloadFeedback = shallowRef<SearchDownloadFeedback>();
 const groupDownloadBusy = ref(false);
+const downloadPicker = shallowRef<{
+  group: NonNullable<TrackMenuRequest['searchGroup']>;
+  receipt: string;
+  omitted: number;
+}>();
 const searchGroupQueue = shallowRef<{ playId: string | null; revision: string }>();
 function currentSearchGroupQueue() {
   const current = props.player.view.value;
@@ -219,6 +225,7 @@ function clear() {
   copying.value = false;
   retrying.value = false;
   downloadFeedback.value = undefined;
+  downloadPicker.value = undefined;
 }
 function dismiss() {
   clear();
@@ -371,12 +378,14 @@ async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['sea
         omitted = plan.omittedCount;
         break;
       case 'directory_required':
-        clearTimeout(timer);
-        message.value = '请先设置下载目录，再重新选择下载。';
-        downloadFeedback.value = { group, action: 'settings' };
+        askSearchDownloadDirectory(group);
         return;
       case 'playlist_required':
-        feedback('这组歌曲需先选择下载到的歌单，当前搜索菜单尚不支持该步骤。');
+        if (plan.receipt)
+          downloadPicker.value = { group, receipt: plan.receipt, omitted: plan.omittedCount };
+        return;
+      case 'playlist_unavailable':
+        feedback('暂不能核对这组歌曲可用的下载歌单，未添加下载任务。');
         return;
       case 'membership_unknown':
         feedback('暂未核实右击歌曲的喜欢状态，未添加下载任务。');
@@ -409,6 +418,41 @@ async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['sea
   } finally {
     groupDownloadBusy.value = false;
   }
+}
+function askSearchDownloadDirectory(group: NonNullable<TrackMenuRequest['searchGroup']>) {
+  clearTimeout(timer);
+  message.value = '请先设置下载目录，再重新选择下载。';
+  downloadFeedback.value = { group, action: 'settings' };
+}
+function closeSearchDownloadPicker() {
+  downloadPicker.value = undefined;
+  const target = returnFocus;
+  if (target)
+    void nextTick(() => {
+      const focused = document.activeElement;
+      if (target.isConnected && (!focused || focused === document.body || !focused.isConnected))
+        target.focus({ preventScroll: true });
+    });
+}
+function searchDownloadPicked(count: number, addFailed: boolean) {
+  const picker = downloadPicker.value;
+  if (!picker?.group.live()) return;
+  feedback((addFailed ? '未能添加到歌单。' : '') + searchDownloadResult(count, picker.omitted));
+  closeSearchDownloadPicker();
+}
+function searchDownloadPickerDirectory() {
+  const picker = downloadPicker.value;
+  if (!picker?.group.live()) return;
+  askSearchDownloadDirectory(picker.group);
+  closeSearchDownloadPicker();
+}
+function searchDownloadPickerUnknown() {
+  const picker = downloadPicker.value;
+  if (!picker?.group.live()) return;
+  clearTimeout(timer);
+  message.value = '下载任务的接纳结果未确认。';
+  downloadFeedback.value = { ...picker, action: 'check' };
+  closeSearchDownloadPicker();
 }
 function searchDownloadResult(count: number, omitted: number) {
   return `已添加 ${count} 首到下载列表${omitted ? `，跳过 ${omitted} 首` : ''}`;
@@ -583,6 +627,16 @@ defineExpose({ show, showQueue, close });
       @close="closeVoiceShare(sharedVoice.live())"
     />
   </ModalTransition>
+  <SearchGroupDownloadPicker
+    v-if="downloadPicker"
+    :epoch="downloadPicker.group.epoch"
+    :receipt="downloadPicker.receipt"
+    :live="downloadPicker.group.live"
+    @close="closeSearchDownloadPicker"
+    @accepted="searchDownloadPicked"
+    @directory="searchDownloadPickerDirectory"
+    @unknown="searchDownloadPickerUnknown"
+  />
   <MenuTransition
     ><div v-if="message" class="track-action-feedback" :class="{ failed }" role="status">
       {{ message
