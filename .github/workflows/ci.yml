@@ -571,6 +571,7 @@ jobs:
           msys-root: ${{ steps.msys2.outputs.msys2-location }}
           save-cache: 'false'
           cargo-profile: release
+          release-package-probes: 'true'
       - name: Stage the exact native files shared with packaging
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
@@ -579,6 +580,16 @@ jobs:
         with:
           name: windows-release-runtime-attempt-${{ github.run_attempt }}
           path: .build/windows-release-runtime/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+      - name: Bind Windows release probes to this attempt after media verification
+        run: python scripts/ci/windows_package_probes.py stage
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-package-probes-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
@@ -628,6 +639,10 @@ jobs:
         with:
           name: windows-release-runtime-attempt-${{ github.run_attempt }}
           path: .build/windows-release-runtime
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-package-probes-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes
       - run: npm --prefix frontend ci
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -639,7 +654,9 @@ jobs:
           CARGO_BUILD_JOBS: '3'
           # Workflow-dispatch artifacts cannot enter the main push release gate.
           CUMULUS_BUILD_WINDOWS_NATIVE_OPEN_NULL_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output == 'null' && '1' || '' }}
-        run: python scripts/ci/package.py --platform windows-x64 --windows-runtime .build/windows-release-runtime
+        run: >-
+          python scripts/ci/package.py --platform windows-x64 --windows-runtime .build/windows-release-runtime
+          --windows-package-probes .build/windows-package-probes
       # The portable runtime, FLAC and local-queue proofs consume this exact
       # package in parallel with the other Windows regression shards.
       - name: Archive synthetic failure diagnostics

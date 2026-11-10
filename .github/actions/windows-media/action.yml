@@ -12,6 +12,10 @@ inputs:
     description: Build and verify the debug or release filter and player probe
     required: false
     default: debug
+  release-package-probes:
+    description: Build all four package verification probes with the release filter
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -45,13 +49,14 @@ runs:
       shell: bash
       env:
         CUMULUS_MEDIA_CARGO_PROFILE: ${{ inputs.cargo-profile }}
+        CUMULUS_MEDIA_RELEASE_PACKAGE_PROBES: ${{ inputs.release-package-probes }}
       run: |
-        case "$CUMULUS_MEDIA_CARGO_PROFILE" in
-          debug) args=() ;;
-          release) args=(--release) ;;
+        case "$CUMULUS_MEDIA_CARGO_PROFILE:$CUMULUS_MEDIA_RELEASE_PACKAGE_PROBES" in
+          debug:false) cargo build --locked -p cumulus-audio-filter --lib --example player_probe ;;
+          release:false) cargo build --release --locked -p cumulus-audio-filter --lib --example player_probe ;;
+          release:true) CARGO_BUILD_JOBS=3 python scripts/ci/windows_package_probes.py build ;;
           *) exit 1 ;;
         esac
-        cargo build "${args[@]}" --locked -p cumulus-audio-filter --lib --example player_probe
     - name: Select the explicit Windows libmpv directory
       shell: pwsh
       env:
