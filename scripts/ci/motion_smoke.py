@@ -22,7 +22,7 @@ def set_webview2_motion_preference(env, *, reduced):
 
 
 def paint_checks(picture, payload):
-    """Check declared opaque padding/cover samples after CSS settles.
+    """Check declared opaque samples and small painted glyph regions after CSS settles.
 
     This detects a stale compositor frame, not whole-dialog visual correctness.
     Other probes without dialog coordinates still use their own settled checks.
@@ -65,6 +65,31 @@ def paint_checks(picture, payload):
         point, actual = pixel(sample)
         checks.append({'point': point, 'expected': expected, 'actual': actual,
                        'ok': all(abs(a - b) <= tolerance for a, b in zip(actual, expected, strict=True))})
+    regions = payload.get('paintRegions', [])
+    if regions:
+        pixels = picture.get_pixels()
+        stride, channels = picture.get_rowstride(), picture.get_n_channels()
+        for region in regions:
+            color = re.fullmatch(r'rgb\((\d+), (\d+), (\d+)\)', region['color'])
+            assert color is not None, 'expected an opaque paint region color'
+            expected = list(map(int, color.groups()))
+            left, top = (payload.get('screenX', 0) + region['left'],
+                         payload.get('screenY', 0) + region['top'])
+            x0, y0 = math.floor(left * ratio), math.floor(top * ratio)
+            x1, y1 = (math.ceil((left + region['width']) * ratio),
+                      math.ceil((top + region['height']) * ratio))
+            assert (0 <= x0 < x1 <= picture.get_width() and 0 <= y0 < y1 <= picture.get_height()
+                    and x1 - x0 <= 64 and y1 - y0 <= 64), 'paint region outside captured root window'
+            count = 0
+            # Small antialiased SVG marks need not paint an exact RGB pixel.
+            for y in range(y0, y1):
+                for x in range(x0, x1):
+                    offset = y * stride + x * channels
+                    if max(abs(a - b) for a, b in zip(pixels[offset:offset + 3], expected, strict=True)) <= 75:
+                        count += 1
+            checks.append({'region': region['name'], 'rect': [x0, y0, x1, y1],
+                           'expected': expected, 'nearColorPixels': count, 'present': region['present'],
+                           'ok': count >= 3 if region['present'] else count == 0})
     return checks
 
 

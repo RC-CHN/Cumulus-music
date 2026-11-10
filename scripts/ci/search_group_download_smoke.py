@@ -83,6 +83,11 @@ def run(args):
         if label in ('choose', 'reconcile'):
             paint = load(path.with_name('paint-' + path.name))
             assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples'])
+        if args.purchased and label == 'confirm':
+            paint = load(path.with_name('paint-' + path.name))
+            selected, previous = paint['samples']
+            assert selected['region'] == 'hires-tick' and selected['present'] and selected['ok']
+            assert previous['region'] == 'sky-no-tick' and not previous['present'] and previous['ok']
     first, last = rows[0], rows[-1]
     prefix = 2 if args.mixed else 0
     old = first.get('old')

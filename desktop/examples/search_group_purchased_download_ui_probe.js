@@ -40,7 +40,7 @@
     await emit(`ux_${String(++step).padStart(2,'0')}_${label}`,
       { player, queue, actions, ...extra });
   }
-  async function input(label, node, mouseButton = 1, ctrl = false) {
+  async function input(label, node, mouseButton = 1, ctrl = false, extra = {}) {
     assert(node?.isConnected && !node.disabled, 'actual enabled target');
     const r = node.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
     assert(node.contains(document.elementFromPoint(x,y)), 'pointer reaches intended control');
@@ -51,12 +51,27 @@
     };
     document.addEventListener('pointerdown', observed, true);
     try {
-      await capture(label, { pointer: { x: Math.floor((screenX+x)*devicePixelRatio),
+      await capture(label, { ...extra, pointer: { x: Math.floor((screenX+x)*devicePixelRatio),
         y: Math.floor((screenY+y)*devicePixelRatio), button:mouseButton, ctrl }});
       await wait(() => trusted, 'trusted X11 pointer and modifier');
     } finally {
       document.removeEventListener('pointerdown', observed, true);
     }
+  }
+  function afterPaint() {
+    return new Promise((resolve, reject) => {
+      let frame;
+      const timeout = setTimeout(() => {
+        cancelAnimationFrame(frame);
+        reject(Error('quality selection did not get two paint frames'));
+      }, 2500);
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    });
   }
   function click(node) {
     assert(node?.isConnected && !node.disabled,'enabled action');
@@ -110,6 +125,22 @@
 
     const modal = () => one('[data-search-group-purchased][open]');
     const choice = (quality) => modal()?.querySelector(`[data-voice-purchased-quality="${quality}"]`);
+    const selectionPaint = () => {
+      const selected = choice('hires'), previous = choice('sky');
+      const selectedRow = selected?.closest('label'), previousRow = previous?.closest('label');
+      const marks = modal()?.querySelectorAll('.purchased-quality-row > svg');
+      const mark = marks?.[0];
+      if (!selected?.checked || previous?.checked || marks?.length !== 1 ||
+          mark.parentElement !== selectedRow || !previousRow) return;
+      const {left, top, width, height} = mark.getBoundingClientRect();
+      const to = selectedRow.getBoundingClientRect(), from = previousRow.getBoundingClientRect();
+      const color = getComputedStyle(mark).color;
+      return {screenX, screenY, ratio: devicePixelRatio, paintRegions: [
+        {name: 'hires-tick', left, top, width, height, color, present: true},
+        {name: 'sky-no-tick', left: left + from.left - to.left, top: top + from.top - to.top,
+          width, height, color, present: false},
+      ]};
+    };
     const waitForMenu = () => wait(() => {
       const node = download(), menu = node?.closest('[role="menu"]');
       return node && !node.disabled && menu && getComputedStyle(menu).opacity === '1' &&
@@ -148,8 +179,11 @@
     await expectChooser();
     assert(actions[2].reply.receipt !== actions[0].reply.receipt, 'reopen gets an independent receipt');
     await input('lower_tier',choice('hires').closest('label'));
-    await wait(() => choice('hires')?.checked, 'trusted lower-tier selection');
-    await input('confirm',button('确定',modal()));
+    await wait(selectionPaint, 'trusted Hi-Res selection and the Vue check mark agree');
+    await afterPaint();
+    const paint = selectionPaint();
+    assert(paint, 'Hi-Res check mark remains selected before confirmation');
+    await input('confirm',button('确定',modal()),1,false,paint);
     await wait(() => button('核对下载') && !modal() && actions.length === 4 &&
       one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost paid reply offers only status');
     await input('check',button('核对下载'));
