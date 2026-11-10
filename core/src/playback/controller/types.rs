@@ -67,6 +67,8 @@ pub struct PlaybackSnapshot {
     pub intelligence_operation: Option<String>,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub bound_parametric: Option<super::parametric::ParametricBindingStatus>,
+    /// Public catalogue identity for the confirmed binding, including source bypass.
+    pub applied_effect_id: Option<crate::effects::catalog::EffectId>,
     /// PCM observed for the configured component on the current playing entry.
     pub parametric_processing: bool,
     pub device_parametric: Option<super::parametric::DeviceParametricView>,

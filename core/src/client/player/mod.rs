@@ -369,6 +369,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             source_bypassed: value.equalizer.source_bypassed,
         },
         bound_parametric: value.bound_parametric,
+        applied_effect_id: value.applied_effect_id,
         parametric_processing: value.parametric_processing,
         device_parametric: value.device_parametric.clone(),
         epoch: token.generation.to_string(),

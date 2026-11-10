@@ -210,6 +210,7 @@ async fn registered_ordinary_peq_source_latch_keeps_exact_binding_and_unpause_or
             .unwrap();
         assert_eq!(view.actual_quality.as_deref(), Some(actual));
         assert_eq!(view.bound_parametric, Some(expected));
+        assert_eq!(view.applied_effect_id, Some(id()));
         assert_eq!(proof.inspect().await, expected);
         if expected == Status::BypassedForSource {
             assert!(!view.parametric_processing);
@@ -247,10 +248,9 @@ async fn registered_ordinary_peq_source_restore_failure_requires_confirmed_remov
             .store(!can_remove, SeqCst);
         let result = proof.play(2, Quality::Standard).await;
         if can_remove {
-            assert_eq!(
-                result.unwrap().bound_parametric,
-                Some(Status::ProcessorFailed)
-            );
+            let failed = result.unwrap();
+            assert_eq!(failed.bound_parametric, Some(Status::ProcessorFailed));
+            assert_eq!(failed.applied_effect_id, None);
             assert_eq!(proof.inspect().await, Status::ProcessorFailed);
             assert!(!proof.device.parametric_attached.load(SeqCst));
             assert_eq!(

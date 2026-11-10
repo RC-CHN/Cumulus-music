@@ -260,7 +260,7 @@ impl Actor {
     pub fn snapshot(&self) -> PlaybackSnapshot {
         let selected = self.queue.selected();
         let speed_scope = PlaybackSpeedScope::for_entry(selected.as_ref());
-        let bound_parametric = self.parametric.bound_status();
+        let (bound_parametric, applied_effect_id) = self.parametric.bound_presentation();
         let device_parametric = self.parametric.device_status(self.comparable_device_play());
         let parametric_processing = self.state == PlaybackStatus::Playing
             && self
@@ -295,6 +295,7 @@ impl Actor {
                 ..self.equalizer
             },
             bound_parametric,
+            applied_effect_id,
             device_parametric,
             parametric_processing,
             loudness: self.loudness.clone(),

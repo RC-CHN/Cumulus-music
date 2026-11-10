@@ -25,6 +25,9 @@ pub struct PlayerView {
     pub equalizer: EqualizerView,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bound_parametric: Option<crate::playback::controller::ParametricBindingStatus>,
+    /// Catalogue presentation only, never a registration or processing receipt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub applied_effect_id: Option<crate::effects::catalog::EffectId>,
     /// PCM observed for the configured component on the current playing entry.
     pub parametric_processing: bool,
     #[serde(skip_serializing_if = "Option::is_none")]

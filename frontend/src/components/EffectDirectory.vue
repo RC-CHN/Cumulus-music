@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { useAppearance } from '../composables/useAppearance';
@@ -24,14 +24,22 @@ const props = defineProps<{
   effectCatalogueRevision?: string;
   headphoneManagement?: boolean;
   bindingStatus?: BoundParametricStatus;
+  appliedEffectId?: number;
   deviceParametric?: DeviceParametricView;
   parametricProcessing?: boolean;
 }>();
 const emit = defineEmits<{ close: []; login: []; equalizer: [] }>();
 const core = useCore();
 const { effective: appearance } = useAppearance();
+const checkedEffectId = computed(() =>
+  props.bindingStatus === 'configured' || props.bindingStatus === 'bypassed_for_source'
+    ? props.appliedEffectId
+    : undefined,
+);
 const failedArtwork = ref(new Set<string>());
 const dialog = ref<HTMLElement>();
+const detailId = useId();
+let viewedCard: HTMLButtonElement | undefined;
 const categories = [
   ['highly_recommended', '强推荐'],
   ['recommended', '官方精选音效'],
@@ -144,6 +152,7 @@ async function load(category: Category) {
   partial.value = false;
   clearTrials();
   selected.value = undefined;
+  viewedCard = undefined;
   recoveryOnly.value = false;
   access.value = undefined;
   checking.value = false;
@@ -181,7 +190,8 @@ async function load(category: Category) {
   }
 }
 
-async function inspect(item: EffectCatalogueItem) {
+async function inspect(item: EffectCatalogueItem, event?: MouseEvent) {
+  if (event?.currentTarget instanceof HTMLButtonElement) viewedCard = event.currentTarget;
   const epoch = props.account.epoch;
   const request = ++detailRequest;
   const current = () =>
@@ -238,6 +248,7 @@ async function openRegistration(id: number) {
     name: `音效 ${id}`,
     subtitle: '',
   };
+  viewedCard = undefined;
   recoveryOnly.value = true;
   checking.value = false;
   access.value = undefined;
@@ -249,9 +260,7 @@ async function openRegistration(id: number) {
 
 function retryRights() {
   if (!selected.value) return;
-  dialog.value
-    ?.querySelector<HTMLButtonElement>('.effect-directory-card[aria-pressed="true"]')
-    ?.focus({ preventScroll: true });
+  if (viewedCard?.isConnected) viewedCard.focus({ preventScroll: true });
   void inspect(selected.value);
 }
 
@@ -422,10 +431,14 @@ onUnmounted(() => {
                   <button
                     class="effect-directory-card"
                     :class="{ 'with-artwork': group.key !== 'more' && artworkFor(item) }"
-                    :aria-pressed="selected?.id === item.id"
+                    :aria-expanded="!recoveryOnly && selected?.id === item.id"
+                    :aria-controls="
+                      !recoveryOnly && selected?.id === item.id ? detailId : undefined
+                    "
                     :data-effect-id="item.id"
+                    :data-effect-applied="checkedEffectId === item.id ? bindingStatus : undefined"
                     type="button"
-                    @click="inspect(item)"
+                    @click="inspect(item, $event)"
                   >
                     <img
                       v-if="group.key !== 'more' && artworkFor(item)"
@@ -456,9 +469,22 @@ onUnmounted(() => {
                         >NEW</span
                       >
                     </strong>
-                    <span v-if="item.subtitle && group.key !== 'legacy_all'">{{
-                      item.subtitle
-                    }}</span>
+                    <span
+                      v-if="item.subtitle && group.key !== 'legacy_all'"
+                      class="effect-card-subtitle"
+                    >
+                      {{ item.subtitle }}
+                    </span>
+                    <span v-if="checkedEffectId === item.id" class="effect-card-applied-badge">
+                      <Icon name="check" />
+                      <span class="sr-only">
+                        {{
+                          bindingStatus === 'bypassed_for_source'
+                            ? '已启用，当前音源暂不处理'
+                            : '已启用'
+                        }}
+                      </span>
+                    </span>
                   </button>
                 </li>
               </ul>
@@ -469,6 +495,7 @@ onUnmounted(() => {
     </div>
     <section
       v-if="selected && account.status === 'authenticated'"
+      :id="detailId"
       class="effect-directory-detail"
       aria-label="音效权益"
     >
@@ -657,7 +684,7 @@ onUnmounted(() => {
   font-weight: 500;
   line-height: 24px;
 }
-.effect-directory-grid-legacy_recommended .effect-directory-card > span {
+.effect-directory-grid-legacy_recommended .effect-directory-card > .effect-card-subtitle {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 18px;
@@ -666,15 +693,11 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 500;
 }
-.effect-directory-grid-legacy_recommended .effect-directory-card[aria-pressed='true'],
-.effect-directory-grid-legacy_all .effect-directory-card[aria-pressed='true'] {
-  border-color: var(--accent);
-}
 .effect-directory-grid-legacy_all .effect-directory-card {
   height: 66px;
 }
 .effect-directory-grid-legacy_recommended .effect-directory-card > strong,
-.effect-directory-grid-legacy_recommended .effect-directory-card > span,
+.effect-directory-grid-legacy_recommended .effect-directory-card > .effect-card-subtitle,
 .effect-directory-grid-legacy_all .effect-directory-card > strong {
   max-width: 100%;
   overflow: hidden;
@@ -733,8 +756,42 @@ onUnmounted(() => {
   line-height: 1;
   vertical-align: middle;
 }
-.effect-directory-card[aria-pressed='true'] {
+.effect-directory-card[aria-expanded='true'] {
+  border-color: var(--text-secondary);
+}
+.effect-directory-card[data-effect-applied] {
   border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.effect-card-applied-badge {
+  position: absolute;
+  inset: 10px 10px auto auto;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: #d92f50;
+  pointer-events: none;
+}
+.effect-card-applied-badge svg {
+  width: 15px;
+  height: 15px;
+}
+.effect-directory-grid-more .effect-card-applied-badge {
+  inset: 50% 16px auto auto;
+  transform: translateY(-50%);
+}
+.effect-directory-grid-legacy_recommended .effect-card-applied-badge,
+.effect-directory-grid-legacy_all .effect-card-applied-badge {
+  inset: auto 8px 8px auto;
+  width: 24px;
+  height: 24px;
+}
+.effect-directory-grid-more .effect-directory-card[data-effect-applied] > strong,
+.effect-directory-grid-legacy_all .effect-directory-card[data-effect-applied] > strong {
+  max-width: calc(100% - 28px);
 }
 .effect-directory-card:focus-visible {
   outline-offset: -3px;

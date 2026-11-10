@@ -283,7 +283,7 @@ impl State {
         })
     }
 
-    pub(super) fn bound_status(&self) -> Option<ParametricBindingStatus> {
+    pub(super) fn bound_presentation(&self) -> (Option<ParametricBindingStatus>, Option<EffectId>) {
         use ParametricBindingStatus as Status;
         if self.installing.is_some()
             || (self.detach_required && self.applied.is_some())
@@ -292,15 +292,15 @@ impl State {
                 .as_ref()
                 .is_some_and(|binding| binding.requires_detach())
         {
-            Some(Status::DetachRequired)
-        } else if self.applied.is_some() {
-            Some(self.attached_bound_status())
+            (Some(Status::DetachRequired), None)
+        } else if let Some(binding) = &self.applied {
+            (Some(self.attached_bound_status()), Some(binding.effect()))
         } else if matches!(self.deferred, Some(Selection::Bound(_))) {
-            Some(Status::Deferred)
+            (Some(Status::Deferred), None)
         } else if self.failed_binding.is_some() {
-            Some(Status::ProcessorFailed)
+            (Some(Status::ProcessorFailed), None)
         } else {
-            None
+            (None, None)
         }
     }
 

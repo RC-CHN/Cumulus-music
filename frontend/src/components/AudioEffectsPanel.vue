@@ -208,6 +208,9 @@ onUnmounted(() => {
             :effect-catalogue-revision="effectCatalogue?.revision"
             :account="account"
             :binding-status="view?.boundParametric"
+            :applied-effect-id="
+              ready && view?.epoch === account.epoch ? view.appliedEffectId : undefined
+            "
             :parametric-processing="view?.parametricProcessing"
             @login="emit('login')"
           />

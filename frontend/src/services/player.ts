@@ -92,6 +92,7 @@ export interface PlayerView {
   intelligenceOperation?: string | null;
   equalizer: EqualizerView;
   boundParametric?: BoundParametricStatus;
+  appliedEffectId?: number;
   parametricProcessing?: boolean;
   deviceParametric?: DeviceParametricView;
   loudness: LoudnessView;
