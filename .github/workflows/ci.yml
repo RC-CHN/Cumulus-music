@@ -810,6 +810,7 @@ jobs:
           python scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-collection-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_row_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-row-collection-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe.exe --root .build/ci-queue-room-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/queue_room_smoke.py --room-loss --binary .build/target/debug/examples/queue_room_ui_probe.exe --root .build/ci-queue-room-loss-windows --runtime .build/package-stage/windows-x64/native
       - name: Windows WebView regression (library)
         if: runner.os == 'Windows' && matrix.shard == 'library'
         run: |
@@ -1700,6 +1701,7 @@ jobs:
         run: |
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/queue_room_smoke.py --room-loss --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-loss-linux --screenshots
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
