@@ -35,7 +35,68 @@ impl MyLibrary {
         self.next_index < self.ids.len()
     }
 }
+const LIKED_PAGE_SIZE: usize = 100;
+
+pub(crate) struct LikedVoicePage {
+    pub rows: Vec<Episode>,
+    pub next: Option<(Value, u64)>,
+    pub count: Option<u64>,
+}
+
 impl PodcastApi {
+    async fn liked_voice_response(&self, cursor: &Value) -> Result<Value> {
+        self.api
+            .call(
+                "/api/content/my/liked/voice",
+                json!({"limit":LIKED_PAGE_SIZE,"likeTime":cursor}),
+                false,
+                &[200],
+            )
+            .await
+    }
+
+    // M3149: one uncached display page. The cursor comes from the raw tail,
+    // even when the display prefix already contains that programme.
+    pub(crate) async fn liked_voice_page(&self, cursor: &Value) -> Result<LikedVoicePage> {
+        let result = self.liked_voice_response(cursor).await?;
+        let data = &result["data"];
+        let page = rows(data, "data")?;
+        if page.len() > LIKED_PAGE_SIZE {
+            return Err(Error::Response("liked voice display page exceeds limit"));
+        }
+        let more = data["hasMore"]
+            .as_bool()
+            .ok_or(Error::Response("liked voice page flag missing"))?;
+        let next = if more {
+            let raw = page
+                .last()
+                .ok_or(Error::Response("liked voice cursor missing"))?["likeTime"]
+                .clone();
+            let time = count(&raw)?;
+            if time == 0 {
+                return Err(Error::Response("liked voice cursor missing"));
+            }
+            Some((raw, time))
+        } else {
+            None
+        };
+        let rows = page
+            .iter()
+            .map(|raw| {
+                let mut item = Episode::from_official(raw)?;
+                item.liked = Some(true);
+                Ok(item)
+            })
+            .collect::<Result<_>>()?;
+        Ok(LikedVoicePage {
+            rows,
+            next,
+            count: (!data["count"].is_null())
+                .then(|| count(&data["count"]))
+                .transpose()?,
+        })
+    }
+
     pub async fn my_page(
         &self,
         kind: LibraryKind,
@@ -154,15 +215,7 @@ impl PodcastApi {
         let mut seen = BTreeSet::new();
         let mut items = vec![];
         for _ in 0..500 {
-            let result = self
-                .api
-                .call(
-                    "/api/content/my/liked/voice",
-                    json!({"limit":100,"likeTime":cursor}),
-                    false,
-                    &[200],
-                )
-                .await?;
+            let result = self.liked_voice_response(&cursor).await?;
             let data = &result["data"];
             let page = rows(data, "data")?;
             for raw in page {
@@ -202,6 +255,9 @@ impl PodcastApi {
                 &[200],
             )
             .await?;
+        if value["data"].is_null() {
+            return Err(Error::Response("liked voice count missing"));
+        }
         count(&value["data"])
     }
 }

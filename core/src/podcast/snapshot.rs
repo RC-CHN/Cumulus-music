@@ -80,6 +80,17 @@ impl PodcastLibrary {
             session,
         })
     }
+    /// A presentation lease is independent of the full snapshot, but its
+    /// positive row evidence expires on the same native invalidations.
+    pub(crate) fn with_generation_for<T>(
+        &self,
+        token: &SessionToken,
+        operation: impl FnOnce(u64) -> Result<T>,
+    ) -> Result<T> {
+        self.session
+            .with_token(token, |owner| operation(generation(&self.store, owner)?))
+    }
+
     pub(crate) fn radio_order_for(&self, token: &SessionToken, id: &str) -> Result<Option<bool>> {
         let id = identifier(&json!(id))?;
         self.session.with_token(token, |owner| {

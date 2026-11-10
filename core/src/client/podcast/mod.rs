@@ -6,6 +6,7 @@ mod discovery;
 mod dto;
 mod home;
 pub(in crate::client) mod liked_menu;
+mod liked_page;
 mod liked_playback;
 mod program_menu;
 pub(in crate::client) mod purchased;
@@ -37,6 +38,8 @@ pub use discovery::{
 pub use dto::*;
 pub use home::{PodcastHomeBlock, PodcastHomePage};
 pub use liked_menu::PodcastLikedProgramTarget;
+pub(super) use liked_page::PodcastLikedHost;
+pub use liked_page::{PodcastLikedPage, PodcastLikedPageTarget, PodcastLikedQuery};
 pub use rankings::{
     PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource, PodcastRankRow,
     PodcastRankTab, PodcastRanks, PodcastTopLayout,

@@ -16,6 +16,7 @@ mod skip;
 mod snapshot;
 pub use api::{PodcastApi, ProgramPage};
 pub use discovery::{DiscoveryPage, HistoryKind};
+pub(crate) use library::LikedVoicePage;
 pub use library::{LibraryKind, MyLibrary};
 pub use model::{Episode, Radio};
 pub(crate) use mutations::FreshVinylSubscription;
