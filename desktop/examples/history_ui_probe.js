@@ -60,8 +60,8 @@
     const {epoch}=await invoke('account_snapshot');
     for(const [label,kind] of [['歌曲','catalog'],['声音','voice']]){
       await tab(label);
-      const play=one('.history-play-selected');
-      assert(play?.disabled,'no history selection');
+      const play=one('.history-play-selected'),add=one('.history-add-selected');
+      assert(play?.disabled&&add?.disabled,'no history selection');
       for(const id of [3,2])click(one(`input[aria-label="选择 合成记录 ${id}"]`));
       await wait(()=>!play.disabled,"selected history action enabled");
       click(play);
@@ -75,7 +75,23 @@
       const queue=await invoke('player_queue',{epoch});
       const batchTracks=queue.tracks.map(row=>row.track.voiceId??row.track.id);
       assert(batchTracks.join(',')==='2,3','selected history queue follows displayed order');
-      await capture('selected_'+kind+'_playback',{batchTracks,playbackKind:player.resourceKind});
+      const held=await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+      assert(held.state==='paused'&&held.playId===player.playId,'selected history incumbent paused');
+      const check=id=>one(`input[aria-label="选择 合成记录 ${id}"]`);
+      for(const id of [2,3])if(check(id).checked)click(check(id));
+      for(const id of [4,2])click(check(id));
+      await wait(()=>!add.disabled,'selected history add enabled');
+      click(add);
+      await wait(()=>one('.history-add-notice')?.textContent.trim()==='已添加到播放列表',
+        'selected history add completed');
+      const after=await invoke('player_snapshot',{epoch});
+      const addedQueue=await invoke('player_queue',{epoch});
+      const addedTracks=addedQueue.tracks.map(row=>row.track.voiceId??row.track.id);
+      assert(addedTracks.join(',')==='2,4,3','selected history add inserts after current');
+      assert(after.state==='paused'&&after.playId===held.playId&&after.entryId===held.entryId&&
+        after.position===held.position,'selected history add preserves paused transport');
+      await capture('selected_'+kind+'_playback',{batchTracks,playbackKind:player.resourceKind,
+        addedTracks,addKeptPausedTransport:true});
     }
     await invoke('player_action',{epoch,action:{kind:'stop'}});
 

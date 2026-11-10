@@ -899,6 +899,7 @@ def main():
         for kind in ('catalog', 'voice'):
             stage = next(v for v in stages if v['stage'].endswith(f'_selected_{kind}_playback'))
             assert stage['batchTracks'] == ['2', '3'] and stage['playbackKind'] == kind
+            assert stage['addedTracks'] == ['2', '4', '3'] and stage['addKeptPausedTransport']
         by_name = {v['stage'][6:]: v for v in stages}
         initial = by_name['sync_first_off_confirm']
         assert initial['checked'] and initial['dialog']
