@@ -87,6 +87,9 @@
       const account = await invoke('account_snapshot');
       return account.status === 'authenticated' && ready(launcher()) && account;
     }, 'synthetic account ready'));
+    // The sealed native catalogue is available in the no-route test namespace.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    window.dispatchEvent(new Event('online'));
     layout = (await invoke('pc_presentation', {epoch})).effectCatalogueNew ? 'modern' : 'legacy';
     stage = 'playing';
     const first = await play('71','vivid');
