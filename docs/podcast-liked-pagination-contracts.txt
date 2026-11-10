@@ -30,10 +30,15 @@ Rust 候选：MusicClient::podcast_liked_page(epoch, query)
 - podcast_liked_count 独立执行上述计数请求，缺失/失败不视为 0，不修改前缀
   或成员快照。后续页面仍须丢弃失效路由的计数回复。
 
-未接 IPC 和桌面视图。本候选不改变 PodcastScope::Liked 的全量快照、点赞写入前
-状态检查与写后回读、既有节目菜单/下载/队列或其他页对完整 likedIds 的依赖。
-下一步为主窗口 typed IPC、前端首次/续页/POP 和虚拟行，按可见行回执接既有菜单、
-下载及播放器队列动作；绝不将部分前缀作为完整 likedIds。其他收藏页仍可能为
+主窗口 IPC 已提供 podcast_liked_page、podcast_liked_count 和
+podcast_liked_page_program。TypeScript adapter 只发送类型规定的字段并核对回复 epoch。
+usePodcastLiked 独立管理前缀、计数、滚动位置和回退：open 触发首读，next 只在活动
+前缀有 continuation 时执行，suspend 先在界面撤销行凭据，restore 复用前缀和原滚动位置。
+恢复前缀为空时由虚拟列表的首读观察触发 next；只有确定原生回执已失效时 Back 重新打开。
+count 可独立调用，由外层路由安排 M3108 的计数触发；迟到回复不会覆盖新视图。
+既有 PodcastScope::Liked 全量快照、点赞写入前状态检查与写后回读、节目菜单/下载/队列
+不受影响。未接 App 或 PodcastPage：下一步接路由、虚拟列表观察和可见行原生动作；
+绝不将部分前缀作为完整 likedIds。其他收藏页仍可能为
 点赞状态完整读取列表，需要独立的未知/已知成员状态契约再优化。
 官方 M2022:49–51、M195:399–410、M3085:243–253,311,382–411 表明普通行
 双击按 replaceQueue 决定已载入顺序队列或单项，不应为此默默扫完所有未加载页。
@@ -42,3 +47,5 @@ M3108:702,777–791 此页未打开 Play All；现有全量动作应单独处理
 合成回归 core/tests/podcast/liked_paging.rs：100 条首批和跨页重叠、原始数字/文本游标、
 独立计数、恢复无读取、同账号写/换号/重进期间迟到回复、重复续页与失败重试、未见目标、
 不泄露原始字段、部分视图不污染完整快照。无真实会话、服务或 GUI 执行。
+前端合成回归 frontend/tests/podcast-liked.test.ts：一页一续页、精确回退位置、重复请求、
+迟到列表/行/计数与换号、原游标重试、失效回退、IPC 白名单字段和回复账号隔离。

@@ -6,6 +6,7 @@ import type { DailyNotification, DailyNotificationPreference } from '../services
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createVoiceSongGroupDownloadBridge } from './voiceSongGroupDownload';
+import { createPodcastLikedBridge } from './podcastLiked';
 import type { PlayerUpdate } from '../services/player';
 import type {
   AccountData,
@@ -392,6 +393,7 @@ export function createTauriClient(): CoreClient {
     podcastPurchasedTarget: (epoch, target) =>
       invoke('podcast_purchased_target', { epoch, target }),
     podcastPage: (epoch, query, refresh) => invoke('podcast_page', { epoch, query, refresh }),
+    ...createPodcastLikedBridge(invoke),
     podcastProgramCommentCount: (epoch, target) =>
       invoke('podcast_program_comment_count', { epoch, target }),
     podcastOpenProgramDownloadDirectory: (epoch, target) =>

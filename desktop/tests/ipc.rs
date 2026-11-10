@@ -68,6 +68,9 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "player_voice_songs_collect_liked",
             "solve_login_captcha",
             "catalog_page",
+            "podcast_liked_page",
+            "podcast_liked_count",
+            "podcast_liked_page_program",
             "collection_page",
             "history_page",
             "history_command",
@@ -150,6 +153,46 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         headers: Default::default(),
         invoke_key: INVOKE_KEY.into(),
     };
+    let opened = tauri::test::get_ipc_response(
+        &window,
+        request(
+            "podcast_liked_page",
+            json!({"epoch":"1","query":{"kind":"open"}}),
+        ),
+    )
+    .unwrap()
+    .deserialize::<serde_json::Value>()
+    .unwrap();
+    assert_eq!(opened["epoch"], "1");
+    let visit = opened["value"]["visit"].as_str().unwrap();
+    let revision = opened["value"]["revision"].as_str().unwrap();
+    assert!(!visit.is_empty() && !revision.is_empty());
+    assert_eq!(opened["value"]["episodes"], json!([]));
+    assert!(opened["value"]["continuation"].is_string());
+    let forged = tauri::test::get_ipc_response(
+        &window,
+        request(
+            "podcast_liked_page",
+            json!({"epoch":"1","query":{"kind":"next","visit":visit,"revision":revision,
+                "continuation":opened["value"]["continuation"],"likeTime":123}}),
+        ),
+    )
+    .unwrap_err();
+    assert!(
+        forged
+            .as_str()
+            .is_some_and(|message| message.contains("likeTime"))
+    );
+    assert_ipc_response(
+        &window,
+        request(
+            "podcast_liked_page_program",
+            json!({"epoch":"1","target":{"visit":visit,"revision":revision,"voiceId":"81"}}),
+        ),
+        Err(
+            json!({"code":"snapshot_changed","message":"列表已更新，请刷新后重试","retryable":true}),
+        ),
+    );
     let card_receipt = "0123456789abcdef0123456789abcdef";
     let selection_receipt = "abcdef0123456789abcdef0123456789";
     let local_id = "b".repeat(64);
@@ -597,6 +640,15 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","command":{"kind":"create"}}),
         ),
         ("podcast_state", json!({"epoch":"0","refresh":false})),
+        (
+            "podcast_liked_page",
+            json!({"epoch":"0","query":{"kind":"open"}}),
+        ),
+        ("podcast_liked_count", json!({"epoch":"0"})),
+        (
+            "podcast_liked_page_program",
+            json!({"epoch":"0","target":{"visit":"old","revision":"old","voiceId":"81"}}),
+        ),
         (
             "podcast_radio_order",
             json!({"epoch":"0","query":{"kind":"read","id":"81"}}),

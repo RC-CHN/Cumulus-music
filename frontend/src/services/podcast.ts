@@ -208,6 +208,33 @@ export interface PodcastClient {
   podcastClearSubscribedBadge(epoch: string, receipt: string, id: string): Promise<void>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }
+export interface PodcastLikedVisit {
+  visit: string;
+  revision: string;
+}
+export type PodcastLikedQuery =
+  | { kind: 'open' }
+  | ({ kind: 'suspend' | 'restore' } & PodcastLikedVisit)
+  | ({ kind: 'next'; continuation: string } & PodcastLikedVisit);
+export interface PodcastLikedPage extends PodcastLikedVisit {
+  /** Next returns a delta; Open/Restore replace the prefix. */
+  episodes: EpisodeView[];
+  loadedCount: number;
+  count: number | null;
+  continuation: string | null;
+  capped: boolean;
+}
+export interface PodcastLikedPageTarget extends PodcastLikedVisit {
+  voiceId: string;
+}
+export interface PodcastLikedClient {
+  podcastLikedPage(epoch: string, query: PodcastLikedQuery): Promise<AccountData<PodcastLikedPage>>;
+  podcastLikedCount(epoch: string): Promise<AccountData<number>>;
+  podcastLikedPageProgram(
+    epoch: string,
+    target: PodcastLikedPageTarget,
+  ): Promise<AccountData<EpisodeView>>;
+}
 export interface PodcastRecentEpisode extends EpisodeView {
   listenerCount: number | null;
   listenLocationMs: number | null;
