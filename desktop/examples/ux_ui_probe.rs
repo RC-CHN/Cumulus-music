@@ -1093,6 +1093,7 @@ impl Api for Library {
                         return value;
                     }
                     let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
+                    search_fixture::group_next_media_call(&ids, &args["trialMode"])?;
                     card_source_fixture::record_authorization(&ids);
                     let mut row = json!({"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120});
                     if trial_seek_proof() && (ids[0] == 1 || ids[0] == "1") {
@@ -1610,6 +1611,7 @@ fn main() {
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
+                if let Some(calls) = search_fixture::group_next_media_calls() { value["searchGroupNextMedia"] = json!(calls); }
                 if let Some(calls) = search_fixture::offline_result_calls() { value["offlineResultCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::correction_result_calls() { value["correctionResultCalls"] = json!(calls); }
                 if let Some((_,wire))=guest_search.as_ref() {value["guestSearchCalls"]=json!(wire.report());}

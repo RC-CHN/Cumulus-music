@@ -7,6 +7,7 @@ use std::sync::{
 };
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
+static GROUP_NEXT_MEDIA: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
 static OFFLINE_RESULT_CALLS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 static CORRECTION_RESULT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 pub const CORRECTION_CHANNEL: &str = "synthetic_qc_reminder";
@@ -263,6 +264,7 @@ pub fn control(value: &Value) {
             "song_waterfall",
             "song_waterfall_error",
             "song_waterfall_group_next",
+            "song_waterfall_group_next_extended",
             "voice_queue",
             "voice_next",
             "podcast_follow",
@@ -332,10 +334,31 @@ pub fn result_play_trial() -> Option<i64> {
         return None;
     }
     match MODE.lock().unwrap().as_str() {
-        "result_play_trial" | "song_waterfall" | "song_waterfall_error" => Some(42),
+        "result_play_trial"
+        | "song_waterfall"
+        | "song_waterfall_error"
+        | "song_waterfall_group_next_extended" => Some(42),
         "result_play_default" => Some(-1),
         _ => None,
     }
+}
+pub fn group_next_media_call(ids: &[Value], trial: &Value) -> Result<()> {
+    if MODE.lock().unwrap().as_str() != "song_waterfall_group_next_extended" {
+        return Ok(());
+    }
+    let [id] = ids else {
+        return Err(Error::InvalidInput(
+            "search group proof must authorize one song",
+        ));
+    };
+    let id = cumulus_core::protocol::api::identifier(id)?;
+    let mut calls = GROUP_NEXT_MEDIA.lock().unwrap();
+    calls.push((id, trial.as_i64().unwrap_or_default()));
+    Ok(())
+}
+pub fn group_next_media_calls() -> Option<Vec<(String, i64)>> {
+    (MODE.lock().unwrap().as_str() == "song_waterfall_group_next_extended")
+        .then(|| GROUP_NEXT_MEDIA.lock().unwrap().clone())
 }
 static AUDIO_RANK_DETAILS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
 pub fn audio_rank_details() -> Vec<u64> {
@@ -1722,7 +1745,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     let song = &mut row["baseInfo"]["simpleSongData"];
                     song["id"] = json!(i + 101);
                     song["name"] = json!(format!("合成连续单曲 {}", i + 101));
-                    if mode == "song_waterfall_group_next" {
+                    if mode.starts_with("song_waterfall_group_next") {
                         song["privilege"] = json!({
                             "id":i+101,
                             "st":if i==1 {-200}else{0},

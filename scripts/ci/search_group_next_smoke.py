@@ -18,6 +18,60 @@ LABELS = (
     'open_playable_anchor', 'group_menu', 'group_inserted', 'single_menu', 'single_inserted',
 )
 
+EXTENDED_LABELS = (
+    'select_first', 'select_blocked', 'select_third', 'open_empty_anchor', 'empty_menu',
+    'empty_started', 'select_random_first', 'select_random_anchor', 'open_random_anchor',
+    'random_menu', 'random_inserted',
+)
+
+
+def verify_extended(output, report):
+    previous = None
+    search_calls = None
+    for index, label in enumerate(EXTENDED_LABELS, 1):
+        path = output / f'ux_{index:02}_{label}.json'
+        receipt = json.loads(path.read_text(encoding='utf-8'))
+        assert path.with_suffix('.png').is_file()
+        if label in ('empty_menu', 'random_menu'):
+            pixels = json.loads((output / f'paint-{path.name}').read_text(encoding='utf-8'))
+            assert len(pixels['samples']) == 1 and pixels['samples'][0]['ok']
+        player, queue = receipt['checkedPlayer'], receipt['checkedQueue']
+        assert player['mode'] == 'random' and not player.get('error')
+        assert player['queueRevision'] == queue['revision']
+        if search_calls is None:
+            search_calls = receipt['syntheticSearchCalls']
+        assert receipt['syntheticSearchCalls'] == search_calls
+        ids = [item['track']['id'] for item in queue['tracks']]
+        media = receipt['searchGroupNextMedia']
+        if index <= 5:
+            assert player['state'] == 'idle' and player['entryId'] is player['playId'] is None
+            assert queue['current'] is None and ids == [] and media == []
+        else:
+            assert player['track']['id'] == '101' and queue['current'] == player['entryId']
+            assert media[0] == ['101', 42] and media.count(['101', 42]) == 1
+            assert all(song in ('101', '103', '104', '105') and trial == 42 for song, trial in media)
+            if index == 6:
+                assert player['state'] == 'playing' and player['position'] > .2
+                previous = player
+            else:
+                assert player['state'] == 'paused' and player['position'] >= previous['position']
+                assert all(player[field] == previous[field] for field in ('playId', 'entryId'))
+            assert ids == (['103', '101', '104', '105'] if index == 11 else ['103', '101'])
+        if index == 11:
+            assert player['queueRevision'] != previous['queueRevision']
+            commands = receipt['actionTrace']
+            assert len(commands) == 2 and all(c['outcome'] == 'confirmed' for c in commands)
+            for command, anchor, chosen in zip(commands, ['101', '105'],
+                                                [['103', '102', '101'], ['104', '105']]):
+                action = command['action']
+                assert action['kind'] == 'search_group_next_play'
+                assert action['anchor']['track_id'] == anchor
+                assert [r['track_id'] for r in action['rows']] == chosen
+            assert commands[0]['action']['expected_play_id'] is None
+            assert commands[1]['action']['expected_play_id'] == previous['playId']
+    report.update(finalQueue=['103', '101', '104', '105'], startedAnchor='101',
+                  screenshots=len(EXTENDED_LABELS))
+
 
 class TrustedClicks(TrustedDrag):
     def __init__(self):
@@ -53,11 +107,16 @@ def run(args):
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
+    script = Path(__file__).resolve().parents[2] / 'desktop/examples/search_group_next_ui_probe.js'
+    if args.extended:
+        combined = root / 'extended-probe.js'
+        combined.write_text('window.__CUMULUS_SEARCH_GROUP_EXTENDED__ = true;\n' +
+                            script.read_text(encoding='utf-8'), encoding='utf-8')
+        script = combined
     env.update(
         CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
         CUMULUS_SEARCH_UI_PROOF='1', CUMULUS_SEARCH_GROUP_NEXT_PROOF='1',
-        CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2]
-                              / 'desktop/examples/search_group_next_ui_probe.js'),
+        CUMULUS_UX_SCRIPT=str(script),
     )
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime')]:
@@ -78,8 +137,15 @@ def run(args):
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'search group Next exited {code}'
     report = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert report['ok'] and report['stageCount'] == len(LABELS)
+    assert report['ok'] and report['stageCount'] == len(EXTENDED_LABELS if args.extended else LABELS)
     assert report['realMusicRequests'] == report['realAccountWrites'] == 0
+    if args.extended:
+        verify_extended(output, report)
+        report.update(actualWebView=True, trustedPointer=True, physicalAudioOutputVerified=False,
+                      windowsVisualVerified=False)
+        (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
+        return
     base = first_revision = None
     initial_search_calls = None
     for index, label in enumerate(LABELS, 1):
@@ -128,6 +194,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--extended', action='store_true', help='prove empty and random Next')
     args = parser.parse_args()
     require_xvfb()
     run(args)

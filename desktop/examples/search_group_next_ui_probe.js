@@ -48,14 +48,20 @@
   const bar = () => one('.playerbar');
   let step = 'setup', epoch, stageCount = 0, before, baseline;
   const actionTrace = [];
+  const extended = window.__CUMULUS_SEARCH_GROUP_EXTENDED__ === true;
   const state = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
   const native = async () => {
     const [checkedPlayer, checkedQueue] = await Promise.all([state(), queue()]);
     assert(checkedPlayer.queueRevision === checkedQueue.revision, 'consistent native queue revision');
-    assert(checkedPlayer.state === 'paused' && checkedPlayer.playId === before.playId &&
-      checkedPlayer.entryId === before.entryId && checkedPlayer.position === before.position &&
-      !checkedPlayer.error && checkedQueue.current === baseline.current, 'same paused decoder and clock');
+    if (!extended || before) {
+      assert(checkedPlayer.state === 'paused' && checkedPlayer.playId === before.playId &&
+        checkedPlayer.entryId === before.entryId && checkedPlayer.position === before.position &&
+        !checkedPlayer.error && checkedQueue.current === baseline.current, 'same paused decoder and clock');
+    } else {
+      assert(checkedPlayer.mode === 'random' && !checkedPlayer.error,
+        'ordinary random mode is still active');
+    }
     return { checkedPlayer, checkedQueue };
   };
   const capture = async (label, extra = {}) => {
@@ -95,22 +101,30 @@
     await emit('resize', { width: 1120, height: 760 });
     await wait(() => innerWidth === 1120 && innerHeight === 760, 'wide viewport');
     ({ epoch } = await invoke('account_snapshot'));
-    await invoke('player_action', { epoch, action: { kind: 'mode', mode: 'single_loop' } });
-    await invoke('play_selection', {
-      epoch, selection: { kind: 'songs', ids: ['701', '702'], index: 0, quality: 'standard' },
-    });
-    await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
-      'actual decoder advances');
-    click(button('暂停', bar()));
-    before = await wait(async () => {
-      const view = await state();
-      return view.state === 'paused' && view.position > .2 && view;
-    }, 'native paused baseline');
-    baseline = await queue();
-    assert(ids(baseline) === '701,702' && before.mode === 'single_loop', 'baseline source and mode');
+    await invoke('player_action', { epoch, action: { kind: 'mode', mode: extended ? 'random' : 'single_loop' } });
+    if (!extended) {
+      await invoke('play_selection', {
+        epoch, selection: { kind: 'songs', ids: ['701', '702'], index: 0, quality: 'standard' },
+      });
+      await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
+        'actual decoder advances');
+      click(button('暂停', bar()));
+      before = await wait(async () => {
+        const view = await state();
+        return view.state === 'paused' && view.position > .2 && view;
+      }, 'native paused baseline');
+      baseline = await queue();
+      assert(ids(baseline) === '701,702' && before.mode === 'single_loop', 'baseline source and mode');
+    } else {
+      const empty = await state();
+      assert(empty.state === 'idle' && empty.playId === null && empty.entryId === null &&
+        empty.mode === 'random' && ids(await queue()) === '', 'no startup selection or playback');
+    }
 
     window.__searchFixtureAck = false;
-    await emit('search-fixture', { mode: 'song_waterfall_group_next' });
+    await emit('search-fixture', {
+      mode: extended ? 'song_waterfall_group_next_extended' : 'song_waterfall_group_next',
+    });
     await wait(() => window.__searchFixtureAck, 'synthetic search fixture active');
     const search = one('[aria-label="搜索音乐"]');
     search.value = '合成连续单曲';
@@ -148,6 +162,46 @@
     await wait(() => selected() === '102,103', 'Ctrl includes blocked row');
     await input('select_third', title('101'), 1, true);
     await wait(() => selected() === '101,102,103', 'Ctrl preserves reversed selection');
+
+    if (extended) {
+      const empty = await state();
+      await input('open_empty_anchor', title('101'), 3);
+      await wait(() => menuReady() && !play(), 'group Next is enabled in the empty random queue');
+      await input('empty_menu', next());
+      const playing = await wait(async () => {
+        const view = await state();
+        return actionTrace[0]?.outcome === 'confirmed' && view.state === 'playing' &&
+          view.track?.id === '101' && view.position > .2 && view;
+      }, 'clicked song really starts instead of the first selected');
+      const initial = await queue();
+      assert(ids(initial) === '103,101' && initial.current === playing.entryId,
+        'empty queue retains selected display order, excludes blocked, and starts anchor');
+      assert(actionTrace[0].action.expected_play_id === null &&
+        actionTrace[0].action.expected_queue_revision === empty.queueRevision,
+      'empty command is bound to its exact native revision');
+      await capture('empty_started');
+
+      click(button('暂停', bar()));
+      before = await wait(async () => {
+        const view = await state();
+        return view.state === 'paused' && view.playId === playing.playId &&
+          view.entryId === playing.entryId && view.position >= playing.position && view;
+      }, 'paused same decoder before inserting in random');
+      baseline = await queue();
+      await input('select_random_first', title('104'));
+      await wait(() => selected() === '104', 'plain click replaces the old group');
+      await input('select_random_anchor', title('105'), 1, true);
+      await wait(() => selected() === '104,105', 'Ctrl includes the new anchor');
+      await input('open_random_anchor', title('105'), 3);
+      await wait(() => menuReady() && !play(), 'group Next remains enabled in paused random');
+      await input('random_menu', next());
+      await wait(async () => actionTrace[1]?.outcome === 'confirmed' &&
+        ids(await queue()) === '103,101,104,105', 'the new group inserts in visible selected order');
+      await capture('random_inserted');
+      core.playerAction = original;
+      await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
+      return;
+    }
 
     await input('open_blocked_anchor', title('102'), 3);
     await wait(() => menuReady() && !play(),
