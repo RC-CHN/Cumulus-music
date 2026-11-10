@@ -26,6 +26,7 @@ const loadingQuality = ref(false);
 const qualityError = ref('');
 let dialogOpen = true;
 const voiceIsCurrent = props.model.captureVisit();
+const originalVoiceTarget = props.target.kind === 'voice' ? props.target : undefined;
 const voicePlan = shallowRef<VoiceDownloadPreparation>();
 const loadingVoice = ref(false);
 const voicePreparationError = ref('');
@@ -126,7 +127,9 @@ const stale = computed(
           : live.value.status !== 'complete' || live.value.path !== original.path)),
 );
 const staleVoice = computed(
-  () => props.target.kind === 'voice' && (!voiceIsCurrent() || props.target.live?.() === false),
+  () =>
+    props.target.kind === 'voice' &&
+    (props.target !== originalVoiceTarget || !voiceIsCurrent() || props.target.live?.() === false),
 );
 const blocked = computed(
   () =>
@@ -257,6 +260,7 @@ async function perform(command: DownloadCommand) {
   }
 }
 async function save() {
+  const target = props.target;
   localError.value = '';
   admissionNotice.value = '';
   admissionTab.value = undefined;
@@ -301,7 +305,7 @@ async function save() {
       path_type: pathType.value,
       file_type: fileType.value,
     });
-    if (!dialogOpen || !configured || configured.failed.length) return;
+    if (!dialogOpen || props.target !== target || !configured || configured.failed.length) return;
   }
   if (props.target.kind === 'voice_song') {
     if (props.target.live() && (await props.target.start({ ...options.value }))) emit('started');
