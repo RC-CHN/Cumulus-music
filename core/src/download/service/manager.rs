@@ -559,14 +559,25 @@ impl DownloadService {
                 "download integrity failure requires an explicit restart",
             ));
         }
+        let readmission = matches!(task.status, DownloadStatus::Paused | DownloadStatus::Error);
         task.status = DownloadStatus::Queued;
         task.last_error = None;
         task.service_code = None;
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |owner| {
+            if owner != self.owner {
+                return Err(Error::StaleResponse);
+            }
             self.store.transaction(|tx| {
-                tx.delete(&self.owner, CONTROL, id)?;
-                tx.put(&self.owner, KIND, id, &serde_json::to_value(&task)?)?;
-                Ok(())
+                if Control::read_tx(tx, owner, id)? == Some(DownloadAction::Cancel) {
+                    return Err(Error::State("download cancellation already requested"));
+                }
+                // Explicit Resume of a stopped task is a new admission.
+                // Repeated enqueue of already runnable work does not move it.
+                if readmission {
+                    task.dispatch = Some(Dispatch::new(Dispatch::reserve(tx, owner)?, 0));
+                }
+                tx.delete(owner, CONTROL, id)?;
+                tx.put(owner, KIND, id, &serde_json::to_value(&task)?)
             })
         })?;
         Ok(task)

@@ -407,3 +407,57 @@ async fn live_drain_observes_commit_wake_behind_a_held_head_without_waiting_for_
         ]
     );
 }
+
+#[tokio::test]
+async fn explicit_resume_has_fresh_position_without_reordering_already_queued_work() {
+    let f = Fixture::new().await;
+    let manual = f.paused("75");
+    let old = f.paused("41");
+    let ids = f.admit(f.observe(&old).unwrap(), "before-manual").unwrap();
+    let resumed = f.service.enqueue(&manual.id).unwrap();
+    assert!(resumed.dispatch > manual.dispatch);
+    assert_eq!(resumed.created_ms, manual.created_ms);
+    assert_eq!(resumed.work, manual.work);
+    assert!(f.service.enqueue(&manual.id).unwrap().dispatch == resumed.dispatch);
+    let results = DownloadScheduler::new(f.service.clone(), 1)
+        .unwrap()
+        .run_pending()
+        .await
+        .unwrap();
+    assert_eq!(
+        results.into_iter().map(|row| row.id).collect::<Vec<_>>(),
+        [ids[0].clone(), old.id, ids[2].clone(), manual.id]
+    );
+    assert_eq!(
+        *f.wire.0.lock().unwrap(),
+        [
+            ("31".into(), "standard".into()),
+            ("41".into(), "lossless".into()),
+            ("32".into(), "standard".into()),
+            ("75".into(), "lossless".into()),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn explicit_resume_does_not_erase_a_durable_cancel() {
+    let f = Fixture::new().await;
+    let task = f.paused("75");
+    let lock = f.service.lock(&task.id).unwrap();
+    f.service.request(&task.id, DownloadAction::Cancel).unwrap();
+    drop(lock);
+    assert!(matches!(
+        f.service.enqueue(&task.id),
+        Err(Error::State("download cancellation already requested"))
+    ));
+    let pending = f
+        .service
+        .store
+        .read_snapshot(|tx| Control::observe(tx, "25", &task.id))
+        .unwrap();
+    assert_eq!(pending.action, Some(DownloadAction::Cancel));
+    let after = f.service.get(&task.id).unwrap();
+    assert_eq!(after.status, DownloadStatus::Paused);
+    assert!(after.dispatch == task.dispatch);
+    assert!(f.wire.0.lock().unwrap().is_empty());
+}
