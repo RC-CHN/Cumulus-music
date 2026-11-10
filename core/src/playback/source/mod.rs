@@ -610,6 +610,38 @@ impl SourceResolver {
         Ok(Arc::new(source))
     }
 
+    /// Authorize only the clicked online song before an empty search queue
+    /// starts. Keep the URL out of both IPC and the shared source cache.
+    pub(crate) async fn prepare_scoped_search_song(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        expected: &Arc<dyn Api>,
+        guard: &Cancellation,
+    ) -> Result<Arc<ResolvedSource>> {
+        guard.check()?;
+        let key = self.key(resource, token)?;
+        if key.voice_id.is_some()
+            || key.trial != 42
+            || resource.get("local_id").is_some()
+            || resource.get("path").is_some()
+            || resource.get("download_task_id").is_some()
+            || resource.get("cloud_song_id").is_some()
+        {
+            return Err(Error::InvalidInput(
+                "scoped search preparation requires an online song",
+            ));
+        }
+        let source = self
+            .fetch(resource, &key, Some(expected), Some(guard), None)
+            .await?
+            .source;
+        guard.check()?;
+        self.session.require_api(token, expected)?;
+        source.timeline(None)?;
+        Ok(Arc::new(source))
+    }
+
     async fn resolve_online(
         &self,
         resource: &Value,

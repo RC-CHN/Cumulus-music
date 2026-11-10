@@ -238,6 +238,12 @@ pub enum PlaybackCommand {
     RecallPrefill(RecallPrefill),
     /// Explicit next-play insertion; only this durable edit starts a chorus read.
     InsertNext(QueueUpdate),
+    /// Search selection with a native receipt. A real empty queue can
+    /// promote Next to Play with its exact freshly authorized clicked song.
+    ApplySearchGroupNext {
+        update: QueueUpdate,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+    },
     /// M71 browse list insertion with the exact freshly authorized first episode.
     PlayPodcastBrowse {
         update: QueueUpdate,

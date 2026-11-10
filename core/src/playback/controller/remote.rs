@@ -220,7 +220,8 @@ impl Actor {
         value: super::QueueUpdate,
         reply: Option<&Response>,
     ) -> Result<Option<LoadOptions>> {
-        self.update_queue_inner(value, reply, None, true).await
+        self.update_queue_inner(value, reply, None, true, None)
+            .await
     }
 
     pub(super) async fn update_queue_with_source(
@@ -229,7 +230,50 @@ impl Actor {
         reply: Option<&Response>,
         first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
     ) -> Result<Option<LoadOptions>> {
-        self.update_queue_inner(value, reply, first_source, false)
+        self.update_queue_inner(value, reply, first_source, false, None)
+            .await
+    }
+
+    pub(super) async fn apply_search_group_next(
+        &mut self,
+        value: super::QueueUpdate,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+        reply: &Response,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<LoadOptions>> {
+        let selected = self.queue.selected();
+        let next = value.queue.selected();
+        let start = first_source.is_some();
+        let valid = if let Some(first) = &first_source {
+            self.queue.is_empty()
+                && selected.is_none()
+                && self.state == PlaybackStatus::Idle
+                && self.play_id.is_none()
+                && next.is_some()
+                && value
+                    .transport
+                    .as_ref()
+                    .is_some_and(|transport| !transport.paused && transport.position.is_none())
+                && !first.needs_renewal_for_reopen(self.resolver.now())
+        } else {
+            selected.is_some()
+                && selected == next
+                && value.transport.is_none()
+                && matches!(self.state, PlaybackStatus::Playing | PlaybackStatus::Paused)
+                && self
+                    .loaded
+                    .as_ref()
+                    .is_some_and(|loaded| Some(&loaded.item) == selected.as_ref())
+        };
+        if !valid
+            || self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || value.queue.fm_source.is_some()
+            || value.queue.intelligence.is_some()
+        {
+            return Err(Error::StaleResponse);
+        }
+        self.update_queue_inner(value, Some(reply), first_source, !start, Some(authority))
             .await
     }
 
@@ -239,6 +283,7 @@ impl Actor {
         reply: Option<&Response>,
         first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
         insert_next: bool,
+        authority: Option<&crate::playback::engine::Cancellation>,
     ) -> Result<Option<LoadOptions>> {
         value.queue.validate()?;
         if value
@@ -259,6 +304,12 @@ impl Actor {
         let position = value.transport.as_ref().and_then(|t| t.position);
         let previous_revision = self.queue.revision();
         self.save_position()?;
+        if let Some(authority) = authority {
+            if reply.is_some_and(Response::is_closed) {
+                return Err(Error::StaleResponse);
+            }
+            authority.check()?;
+        }
         if insert_next || first_source.is_some() {
             self.session
                 .with_token(&self.token, |_| self.queue.install(value.queue))?;

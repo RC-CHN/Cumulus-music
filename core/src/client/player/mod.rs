@@ -805,6 +805,11 @@ impl MusicClient {
             expected_queue_revision,
         } = action
         {
+            if native.is_some() || policy != NativeTransportPolicy::Ordinary {
+                return Err(Error::InvalidInput(
+                    "search next used as native media command",
+                ));
+            }
             return self
                 .search_group_next_play(
                     epoch,

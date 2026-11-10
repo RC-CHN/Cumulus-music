@@ -32,20 +32,27 @@ const client = useCore(),
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
 const queueRequest = shallowRef<QueueMenuRequest>();
-const searchGroupQueue = shallowRef<{ playId: string; revision: string }>();
+const searchGroupQueue = shallowRef<{ playId: string | null; revision: string }>();
 function currentSearchGroupQueue() {
   const current = props.player.view.value;
   const target = searchGroupQueue.value;
   if (
-    target &&
-    current?.playId === target.playId &&
-    current.queueRevision === target.revision &&
-    (current.state === 'playing' || current.state === 'paused') &&
-    !current.fm &&
-    !current.intelligence &&
-    current.mode !== 'random'
+    !target ||
+    !current ||
+    current.playId !== target.playId ||
+    current.queueRevision !== target.revision ||
+    current.fm ||
+    current.intelligence
   )
-    return target;
+    return;
+  const empty =
+    current.queueLen === 0 && current.state === 'idle' && !current.playId && !current.entryId;
+  const active =
+    (current.state === 'playing' || current.state === 'paused') &&
+    !!current.playId &&
+    !!current.entryId &&
+    !!current.timeline;
+  if (empty || active) return target;
 }
 const sharedVoice = shallowRef<{ program: PodcastProgramShare; live: () => boolean }>();
 const voiceShareRestore = ref(false);
@@ -227,7 +234,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
   request.value = input;
   const view = props.player.view.value;
   searchGroupQueue.value =
-    input.searchGroupNext && view?.playId
+    input.searchGroupNext && view
       ? { playId: view.playId, revision: view.queueRevision }
       : undefined;
   playlist.value = source;
@@ -396,7 +403,8 @@ async function select(key: string) {
           expected_play_id: target.playId,
           expected_queue_revision: target.revision,
         });
-        if (attempt === sequence && next && group.live()) feedback('已将所选歌曲设为下一首播放');
+        if (attempt === sequence && next && group.live())
+          feedback(target.playId === null ? '已开始播放' : '已将所选歌曲设为下一首播放');
         return;
       }
       const next = input.queueNext

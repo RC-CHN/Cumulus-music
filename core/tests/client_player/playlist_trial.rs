@@ -24,6 +24,10 @@ pub(super) struct Fixture {
 }
 
 impl Fixture {
+    pub(super) fn enable_media_trace(&self) {
+        self.enabled.store(true, Ordering::SeqCst);
+    }
+
     pub(super) fn list(&self, payload: &Value) -> Value {
         assert!(self.enabled.load(Ordering::SeqCst));
         assert_eq!(
@@ -78,7 +82,7 @@ impl Fixture {
         self.media.lock().unwrap().clear();
     }
 
-    fn modes(&self, id: &str) -> Vec<i64> {
+    pub(super) fn modes(&self, id: &str) -> Vec<i64> {
         self.media
             .lock()
             .unwrap()

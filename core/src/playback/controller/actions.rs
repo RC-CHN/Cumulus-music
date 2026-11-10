@@ -37,6 +37,7 @@ impl Actor {
                 | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::PlayPodcastBrowse { .. }
+                | PlaybackCommand::ApplySearchGroupNext { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
@@ -153,6 +154,7 @@ impl Actor {
         | PlaybackCommand::InsertNext(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
+        | PlaybackCommand::ApplySearchGroupNext { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
             && value.expected != self.snapshot().fence()
         {
@@ -297,6 +299,15 @@ impl Actor {
                 .update_queue(value, Some(&request.reply))
                 .await
                 .map(|value| options = value),
+            PlaybackCommand::ApplySearchGroupNext {
+                update,
+                first_source,
+            } => {
+                let authority = &request.guard.as_ref().expect("guarded search next").1;
+                self.apply_search_group_next(update, first_source, &request.reply, authority)
+                    .await
+                    .map(|value| options = value)
+            }
             PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,

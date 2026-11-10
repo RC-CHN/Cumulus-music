@@ -279,3 +279,151 @@ async fn search_group_next_queues_in_selection_order_filters_and_preserves_the_d
         Err(Error::StaleResponse)
     ));
 }
+
+#[tokio::test]
+async fn search_group_next_empty_starts_clicked_in_random_and_later_pins_first_inserted() {
+    use cumulus_core::playback::PlaybackMode;
+    let device = Arc::new(support::Device::default());
+    let (dir, api, _session, client, _) = fixture_with_device(device.clone());
+    api.search_menu_revision.store(1, Ordering::SeqCst);
+    api.playlist_trial.enable_media_trace();
+    let empty = client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(empty.state, PlaybackStatus::Idle);
+    assert!(empty.play_id.is_none());
+    let p1 =
+        serde_json::to_value(client.search_results("1", query(0)).await.unwrap().value).unwrap();
+    let p2 =
+        serde_json::to_value(client.search_results("1", query(3)).await.unwrap().value).unwrap();
+    let row = |page, index| search_row(if page == 0 { &p1 } else { &p2 }, index);
+    let anchor = row(0, 0);
+    let rows = vec![row(3, 1), row(0, 1), anchor.clone()];
+    assert!(
+        serde_json::from_value::<PlayerAction>(json!({
+            "kind":"search_group_next_play", "anchor":anchor, "rows":rows, "quality":"standard",
+            "expected_queue_revision":empty.queue_revision
+        }))
+        .is_err(),
+        "an empty play identity must be explicit"
+    );
+    api.calls.lock().unwrap().clear();
+
+    api.deny_url_id.store(4, Ordering::SeqCst);
+    assert!(matches!(
+        client
+            .player_action("1", group_next(&empty, anchor.clone(), rows.clone()))
+            .await,
+        Err(Error::Service { .. })
+    ));
+    assert_eq!(device.state.lock().unwrap().loads, 0);
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(queue.revision, empty.queue_revision);
+    assert!(queue.tracks.is_empty());
+    assert_eq!(api.playlist_trial.modes("4"), [42]);
+    assert!(api.playlist_trial.modes("7").is_empty());
+    api.deny_url_id.store(0, Ordering::SeqCst);
+
+    let active = client
+        .player_action("1", group_next(&empty, anchor, rows))
+        .await
+        .unwrap();
+    assert_eq!(active.state, PlaybackStatus::Playing);
+    assert_eq!(active.track.as_ref().unwrap().id, "4");
+    assert_eq!(active.mode, PlaybackMode::Random);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(api.playlist_trial.modes("4"), [42, 42]);
+    let ids = |q: &QueueView| {
+        q.tracks
+            .iter()
+            .map(|row| row.track.id.clone())
+            .collect::<Vec<_>>()
+    };
+    let old_queue = client.player_queue("1").await.unwrap();
+    assert_eq!(ids(&old_queue), ["7", "4"]);
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+
+    let anchor = row(3, 2);
+    let rows = vec![row(3, 0), anchor.clone(), row(0, 0)];
+    let next = client
+        .player_action("1", group_next(&paused, anchor, rows))
+        .await
+        .unwrap();
+    assert_eq!(next.play_id, paused.play_id);
+    assert_eq!(next.entry_id, paused.entry_id);
+    assert_eq!(next.position, paused.position);
+    assert_eq!(next.state, PlaybackStatus::Paused);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let new_queue = client.player_queue("1").await.unwrap();
+    assert_eq!(ids(&new_queue), ["7", "4", "2", "8"]);
+    assert_eq!(old_queue.current, new_queue.current);
+
+    let store = cumulus_core::storage::StateStore::open(dir.path()).unwrap();
+    let saved: cumulus_core::playback::QueueSnapshot =
+        serde_json::from_value(store.get("9", "playback", "queue").unwrap().unwrap()).unwrap();
+    let current = saved
+        .order
+        .iter()
+        .position(|id| Some(id) == saved.current.as_ref())
+        .unwrap();
+    assert_eq!(saved.order[current + 1], new_queue.tracks[2].entry_id);
+    assert_ne!(saved.order[current + 1], new_queue.tracks[3].entry_id);
+    assert!(
+        saved
+            .items
+            .iter()
+            .all(|entry| entry.source["scene"] == "search" && entry.resource["trial_mode"] == 42)
+    );
+}
+
+#[tokio::test]
+async fn search_group_next_discards_late_clicked_source_after_empty_queue_mode_changes() {
+    use cumulus_core::playback::PlaybackMode;
+    let device = Arc::new(support::Device::default());
+    let (_dir, api, _session, client, _) = fixture_with_device(device.clone());
+    api.search_menu_revision.store(1, Ordering::SeqCst);
+    api.hold_url_id.store(4, Ordering::SeqCst);
+    let empty = client.player_snapshot("1").await.unwrap();
+    assert_eq!(empty.state, PlaybackStatus::Idle);
+    let p =
+        serde_json::to_value(client.search_results("1", query(0)).await.unwrap().value).unwrap();
+    let anchor = search_row(&p, 0);
+    let action = group_next(&empty, anchor.clone(), vec![search_row(&p, 1), anchor]);
+    let held = {
+        let client = client.clone();
+        tokio::spawn(async move { client.player_action("1", action).await })
+    };
+    tokio::time::timeout(Duration::from_secs(5), api.url_started.notified())
+        .await
+        .expect("clicked source must be prepared without blocking the actor");
+    let latest = client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    assert_ne!(latest.queue_revision, empty.queue_revision);
+    api.hold_url_id.store(0, Ordering::SeqCst);
+    api.url_release.notify_one();
+    assert!(matches!(
+        held.await.unwrap(),
+        Err(Error::Cancelled | Error::QueueChanged | Error::StaleResponse)
+    ));
+    let after = client.player_queue("1").await.unwrap();
+    assert_eq!(after.revision, latest.queue_revision);
+    assert!(after.tracks.is_empty());
+    assert!(after.current.is_none());
+    assert_eq!(device.state.lock().unwrap().loads, 0);
+}

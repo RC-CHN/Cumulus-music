@@ -752,7 +752,7 @@ export type PlayerAction =
       anchor: SearchQueueRowWire;
       rows: SearchQueueRowWire[];
       quality: Quality;
-      expected_play_id: string;
+      expected_play_id: string | null;
       expected_queue_revision: string;
     }
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }
