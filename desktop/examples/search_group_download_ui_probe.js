@@ -100,6 +100,7 @@
     await wait(() => window.__groupDownloadConfigured?.ok, 'native isolated download settings');
     const playlist = window.__groupDownloadConfigured.playlist;
     const liked = window.__groupDownloadConfigured.liked;
+    const created = window.__groupDownloadConfigured.created;
     old = window.__groupDownloadConfigured.old;
     async function noNewTasks() {
       const view = await downloads('active');
@@ -175,18 +176,49 @@
         'real picker excludes foreign IDs and displays the star only after native verification');
       assert(await noNewTasks(), 'opening does not enqueue');
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      await input('choose',destination());
-      const reconcile = () => picker()?.querySelector('[data-search-group-reconcile]');
-      await wait(() => reconcile() && !reconcile().disabled && actions.length === 3 &&
-        picker().textContent.includes('加入歌单的结果尚未确认'), 'lost actual native add result needs readback');
-      assert(await noNewTasks(), 'no task before verified readback');
-      if (liked) assert(!isLiked('101'), 'uncertain star write never changes hearts');
-      await input('reconcile',reconcile());
-      if (old) {
-        await wait(() => button('核对下载') && actions.length === 5 &&
-          one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost mixed admission offers only readback');
-        assert(!picker(), 'confirmed playlist cannot offer another add');
-        await input('check',button('核对下载'));
+      if (created) {
+        const newPlaylist = () => button('创建新歌单',picker());
+        assert(actions[1].reply.canCreate && newPlaylist(), 'native create scope controls the new row');
+        await input('open_create',newPlaylist());
+        const name = () => picker()?.querySelector('input[aria-label="歌单名称"]');
+        const privacy = () => picker()?.querySelector('input[type="checkbox"]');
+        const create = () => button('创建',picker());
+        await wait(() => name() === document.activeElement && create()?.disabled, 'focused empty creation form');
+        assert(privacy()?.checked === false && picker().textContent.includes('公开歌单'),
+          'official public default is visible before explicit confirmation');
+        name().value = '合成新下载歌单';
+        name().dispatchEvent(new Event('input',{bubbles:true}));
+        await input('private',privacy());
+        await wait(() => privacy()?.checked && !create()?.disabled,'explicit private playlist and valid name');
+        await input('create',create());
+        const check = () => picker()?.querySelector('[data-search-group-creation-reconcile]');
+        const add = () => picker()?.querySelector('[data-search-group-creation-add]');
+        await wait(() => check() && !check().disabled && actions.length === 3 &&
+          picker().textContent.includes('创建歌单的结果尚未确认'), 'acknowledged creation awaits owned readback');
+        assert(!add() && (await downloads('active')).activeCount === 0, 'no add or task before readback');
+        await input('creation_readback',check());
+        await wait(() => add() && !add().disabled && actions.length === 4 &&
+          picker().textContent.includes('已核对新歌单'), 'readback unlocks explicit add');
+        assert((await downloads('active')).activeCount === 0,'read-only recovery never enqueues');
+        const notice = picker().querySelector('.collect-create-feedback [role="status"]').getBoundingClientRect();
+        const action = add().getBoundingClientRect(), center = (rect) => rect.left + rect.width / 2;
+        assert(action.top - notice.bottom >= 10 && Math.abs(center(action) - center(notice)) < 2,
+          'recovery keeps status and confirmation centered and separated');
+        await input('add_created',add());
+      } else {
+        await input('choose',destination());
+        const reconcile = () => picker()?.querySelector('[data-search-group-reconcile]');
+        await wait(() => reconcile() && !reconcile().disabled && actions.length === 3 &&
+          picker().textContent.includes('加入歌单的结果尚未确认'), 'lost actual native add result needs readback');
+        assert(await noNewTasks(), 'no task before verified readback');
+        if (liked) assert(!isLiked('101'), 'uncertain star write never changes hearts');
+        await input('reconcile',reconcile());
+        if (old) {
+          await wait(() => button('核对下载') && actions.length === 5 &&
+            one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost mixed admission offers only readback');
+          assert(!picker(), 'confirmed playlist cannot offer another add');
+          await input('check',button('核对下载'));
+        }
       }
     } else {
       await wait(() => button('核对下载') && actions.length === 2 &&
@@ -197,7 +229,7 @@
     const expected = playlist ? ['101','103','104'] : ['101','103'];
     const result = await wait(async () => {
       const view = await downloads('completed');
-      return actions.length === (old ? 6 : playlist ? 5 : 3) && view.completedCount === expected.length &&
+      return actions.length === (old || created ? 6 : playlist ? 5 : 3) && view.completedCount === expected.length &&
         one('.track-action-feedback')?.textContent.includes(`已添加 ${expected.length} 首到下载列表，跳过 1 首`) && view;
     }, 'actual native files and read-only confirmation');
     assert(result.tasks.map((task) => task.track.id).sort().join(',') === expected.join(','),

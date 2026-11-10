@@ -491,6 +491,7 @@ async fn owned_playlist(mixed: bool) {
     let R::Destinations {
         page,
         system_liked_receipt,
+        ..
     } = client
         .search_group_download(
             &epoch,
@@ -721,6 +722,7 @@ async fn search_group_download_system_liked_requires_two_coherent_membership_rea
     let R::Destinations {
         page,
         system_liked_receipt: Some(old),
+        ..
     } = choices().await.unwrap()
     else {
         panic!("missing verified system liked destination")
@@ -823,4 +825,262 @@ async fn search_group_download_system_liked_requires_two_coherent_membership_rea
     );
     assert_eq!(calls[11].payload["pid"], "83");
     assert_eq!(calls[11].payload["trackIds"], r#"["43","41"]"#);
+}
+
+#[tokio::test]
+async fn search_group_download_create_uses_acknowledged_id_and_never_replays_writes() {
+    const LIST: &str = "/api/user/playlist/v2";
+    const OWNED: &str = "/api/user/playlist";
+    const DETAIL: &str = "/api/v6/playlist/detail";
+    const CREATE: &str = "/api/playlist/create";
+    const ADD: &str = "/api/v1/playlist/manipulate/tracks";
+    const NAME: &str = "合成新下载歌单";
+
+    for (create_code, add_code, delayed) in [
+        (None, 403, true),
+        (Some(403), 403, true),
+        (Some(200), 403, true),
+        (Some(200), 200, true),
+        (Some(200), 200, false),
+    ] {
+        let acknowledged = create_code == Some(200);
+        let rejected = create_code == Some(403);
+        let root = tempfile::tempdir().unwrap();
+        let row = json!({"id":91,"userId":71,"name":NAME,"privacy":10,"specialType":0});
+        let list = |exists| {
+            json!({"code":200,"playlist":if exists {vec![row.clone()]} else {vec![]},"more":false})
+                .into()
+        };
+        let detail = |ids: &[u64]| {
+            let mut row = row.clone();
+            row["tags"] = json!([]);
+            row["trackIds"] = json!(ids.iter().map(|id| json!({"id":id})).collect::<Vec<_>>());
+            json!({"code":200,"playlist":row}).into()
+        };
+        let mut replies = vec![
+            search_page_with_destination(true),
+            json!({"code":200,"ids":[43]}).into(),
+            list(false), // regular picker destinations
+            list(false), // system-liked verification
+            list(false), // fresh owned preflight before the create
+            match create_code {
+                Some(200) => json!({"code":200,"id":91}).into(),
+                Some(code) => json!({"code":code}).into(),
+                None => HttpResponse::Ready(Err(Error::Transport(
+                    "synthetic lost search create".into(),
+                ))),
+            },
+            list(!delayed), // verification may not observe the new playlist yet
+        ];
+        if delayed && !rejected {
+            replies.push(list(true)); // explicit read-only recovery
+        }
+        if acknowledged {
+            replies.extend([
+                detail(&[]),
+                json!({"code":add_code}).into(),
+                detail(if add_code == 200 { &[43, 41] } else { &[] }),
+            ]);
+        }
+        if delayed && add_code == 200 {
+            replies.extend([
+                json!({"code":200,"data":{"code":403}}).into(),
+                json!({"code":200,"data":{"code":403}}).into(),
+                json!({"code":200,"data":{"code":403}}).into(),
+            ]);
+        }
+        let (api, http) = vinyl_http(root.path(), &[COOKIE], replies);
+        StateStore::open(root.path().join("config"))
+            .unwrap()
+            .put(
+                "transport",
+                "pc-mconfig-v1",
+                "pc",
+                &serde_json::to_value(Snapshot {
+                    origin: ApiOrigin::Pc,
+                    version: 1,
+                    bucket: String::new(),
+                    generation: 1,
+                    source_url: Some("https://p1.music.126.net/obj/fixture.data".into()),
+                    data: Some(json!({})),
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        let (client, session, epoch) = client(root.path(), api);
+        let rows = search(&client, &epoch).await;
+        client.liked_ids().await.unwrap();
+        directory(&client, &epoch, root.path()).await;
+        let receipt = decision(
+            &client,
+            &epoch,
+            prepare(&rows, 1, &[2, 5, 1, 0]),
+            D::PlaylistRequired,
+        )
+        .await
+        .unwrap();
+        let command = |kind, args: Value| {
+            let mut value = json!({"kind":kind,"receipt":receipt});
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(args.as_object().unwrap().clone());
+            client.search_group_download(&epoch, serde_json::from_value::<C>(value).unwrap())
+        };
+        let create = || {
+            command(
+                "create_playlist",
+                json!({"name":NAME,"privatePlaylist":true}),
+            )
+        };
+        let add = || command("add_created", json!({}));
+        let tasks = DownloadService::new(session).unwrap();
+        assert!(matches!(create().await, Err(Error::StaleResponse)));
+        assert!(matches!(
+            command("destinations", json!({"page":0,"sort":"default"}))
+                .await
+                .unwrap(),
+            R::Destinations {
+                can_create: true,
+                ..
+            }
+        ));
+        assert!(matches!(add().await, Err(Error::StaleResponse)));
+        let first = serde_json::to_value(create().await.unwrap()).unwrap()["result"].clone();
+        if !delayed {
+            assert_eq!(first["createPhase"], "confirmed");
+            assert_eq!(first["playlistId"], "91");
+            assert_eq!(first["add"]["phase"], "confirmed");
+            assert!(first["add"]["continuation"].is_string());
+            assert!(tasks.list().unwrap().is_empty());
+            assert_eq!(
+                serde_json::to_value(create().await.unwrap()).unwrap()["result"],
+                first
+            );
+            assert_eq!(
+                http.calls()
+                    .iter()
+                    .map(|c| c.path.as_str())
+                    .collect::<Vec<_>>()[1..],
+                [
+                    LIKED, LIST, OWNED, OWNED, CREATE, OWNED, DETAIL, ADD, DETAIL
+                ]
+            );
+            continue;
+        }
+        if rejected {
+            assert_eq!(first["createPhase"], "rejected");
+        } else {
+            assert!(matches!(
+                first["createPhase"].as_str(),
+                Some("uncertain" | "verifying")
+            ));
+        }
+        assert_eq!(first["canAdd"], false);
+        assert!(first["add"].is_null());
+        assert_eq!(
+            serde_json::to_value(create().await.unwrap()).unwrap()["result"],
+            first,
+            "a repeated create is only a local read"
+        );
+        assert_eq!(http.calls().len(), 7);
+        assert!(matches!(add().await, Err(Error::StaleResponse)));
+        assert!(matches!(
+            command("choose", json!({"playlistId":"91"})).await,
+            Err(Error::StaleResponse)
+        ));
+        let recovered = serde_json::to_value(
+            command("creation_status", json!({"reconcile":true}))
+                .await
+                .unwrap(),
+        )
+        .unwrap()["result"]
+            .clone();
+        if rejected {
+            assert_eq!(recovered, first);
+            assert!(matches!(add().await, Err(Error::StaleResponse)));
+            assert!(tasks.list().unwrap().is_empty());
+            assert_eq!(http.calls().len(), 7, "definite rejection stays terminal");
+            continue;
+        }
+        assert_eq!(recovered["createPhase"], "confirmed");
+        assert_eq!(recovered["canAdd"], acknowledged);
+        assert!(recovered["add"].is_null());
+        assert!(tasks.list().unwrap().is_empty());
+        assert_eq!(
+            http.calls().len(),
+            8,
+            "readback never sends the not-yet-sent add"
+        );
+        let expected = [LIKED, LIST, OWNED, OWNED, CREATE, OWNED, OWNED];
+        let calls = http.calls();
+        assert_eq!(
+            calls.iter().map(|c| c.path.as_str()).collect::<Vec<_>>()[1..],
+            expected
+        );
+        let mut create_wire = calls[5].payload.clone();
+        create_wire.as_object_mut().unwrap().remove("header");
+        assert_eq!(create_wire, json!({"uid":"71","name":NAME,"privacy":"10"}));
+        if !acknowledged {
+            assert!(recovered["playlistId"].is_null());
+            assert!(matches!(add().await, Err(Error::StaleResponse)));
+            assert!(tasks.list().unwrap().is_empty());
+            assert_eq!(http.calls().len(), 8);
+            continue;
+        }
+        assert_eq!(recovered["playlistId"], "91");
+        let picked = serde_json::to_value(add().await.unwrap()).unwrap()["result"].clone();
+        assert_eq!(
+            picked["add"]["phase"],
+            if add_code == 200 {
+                "confirmed"
+            } else {
+                "rejected"
+            }
+        );
+        assert_eq!(picked["canAdd"], false);
+        assert_eq!(
+            serde_json::to_value(add().await.unwrap()).unwrap()["result"],
+            picked
+        );
+        assert!(tasks.list().unwrap().is_empty());
+        let calls = http.calls();
+        let mut add_wire = calls[9].payload.clone();
+        add_wire.as_object_mut().unwrap().remove("header");
+        assert_eq!(
+            add_wire,
+            json!({"op":"add","pid":"91","trackIds":r#"["43","41"]"#})
+        );
+        if add_code != 200 {
+            assert_eq!(picked["add"]["addFailed"], true);
+            assert!(picked["add"]["continuation"].is_null());
+            assert_eq!(
+                calls.iter().map(|c| c.path.as_str()).collect::<Vec<_>>()[8..],
+                [DETAIL, ADD, DETAIL]
+            );
+            continue;
+        }
+        let permit = picked["add"]["continuation"].as_str().unwrap();
+        assert!(matches!(
+            command("start_from_playlist", json!({"continuation":permit}))
+                .await
+                .unwrap(),
+            R::Accepted { .. }
+        ));
+        assert_eq!(
+            tasks
+                .list()
+                .unwrap()
+                .iter()
+                .map(|row| row.song_id.as_str())
+                .collect::<Vec<_>>(),
+            ["41", "46", "43"]
+        );
+        http.wait(14).await;
+        let calls = http.calls();
+        assert_eq!(
+            calls.iter().map(|c| c.path.as_str()).collect::<Vec<_>>()[8..],
+            [DETAIL, ADD, DETAIL, AUTH, AUTH, AUTH]
+        );
+    }
 }

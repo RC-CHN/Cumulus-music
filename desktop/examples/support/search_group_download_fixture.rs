@@ -27,6 +27,8 @@ const LIST: &str = "/api/user/playlist/v2";
 const STAR_LIST: &str = "/api/user/playlist";
 const DETAIL: &str = "/api/v6/playlist/detail";
 const WRITE: &str = "/api/v1/playlist/manipulate/tracks";
+const CREATE: &str = "/api/playlist/create";
+const NAME: &str = "合成新下载歌单";
 const MEMBERSHIP: &str = "/api/song/like/get";
 pub const REVISION: &str = "synthetic-search-group-download";
 const MD5: &str = "4e25192f88135eb81a995c6aa5fa7848";
@@ -49,6 +51,10 @@ pub fn liked() -> bool {
     destination() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_LIKED_PROOF").is_some()
 }
 
+pub fn created() -> bool {
+    destination() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_CREATED_PROOF").is_some()
+}
+
 fn song_allowed(id: &str) -> bool {
     matches!(id, "101" | "103") || destination() && id == "104"
 }
@@ -58,9 +64,37 @@ fn playlist(id: u64, owner: u64, special: u64) -> Value {
         "name":"合成下载目的地","specialType":special,"privacy":10,"tags":[]})
 }
 
+fn created_playlist() -> Value {
+    let mut row = playlist(91, 2, 0);
+    row["name"] = json!(NAME);
+    row
+}
+
+pub fn create(path: &str, args: &Value) -> Result<Value> {
+    let mut trace = TRACE.lock().unwrap();
+    if !created()
+        || path != CREATE
+        || *args != json!({"uid":"2","name":NAME,"privacy":10})
+        || trace.iter().any(|row| row["kind"] == "playlist_create")
+    {
+        trace.push(json!({"kind":"unexpected_write","path":path}));
+        return Err(Error::InvalidInput(
+            "unexpected group proof playlist create",
+        ));
+    }
+    trace.push(json!({"kind":"playlist_create","args":args}));
+    Ok(json!({"code":200,"id":91}))
+}
+
 pub fn write(path: &str, args: &Value) -> Result<Value> {
     let mut trace = TRACE.lock().unwrap();
-    let target = if liked() { "83" } else { "81" };
+    let target = if created() {
+        "91"
+    } else if liked() {
+        "83"
+    } else {
+        "81"
+    };
     if !destination()
         || path != WRITE
         || *args != json!({"op":"add","pid":target,"trackIds":r#"["103","101"]"#})
@@ -70,7 +104,11 @@ pub fn write(path: &str, args: &Value) -> Result<Value> {
         return Err(Error::InvalidInput("unexpected group proof playlist add"));
     }
     trace.push(json!({"kind":"playlist_add","args":args}));
-    Err(Error::Transport("sealed playlist response lost".into()))
+    if created() {
+        Ok(json!({"code":200}))
+    } else {
+        Err(Error::Transport("sealed playlist response lost".into()))
+    }
 }
 
 pub fn liked_read(read: cumulus_core::protocol::api::SystemLikedRead) -> Result<Value> {
@@ -122,6 +160,33 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
             Ok(
                 json!({"code":200,"playlist":[playlist(81,2,0),playlist(82,9,0),playlist(83,2,5)],"more":false}),
             )
+        }
+        STAR_LIST if created() && args["uid"] == "2" && args["includeVideo"] == true => {
+            let mut trace = TRACE.lock().unwrap();
+            if !trace.iter().any(|row| row["kind"] == "playlist_list") {
+                return None;
+            }
+            let observed = trace
+                .iter()
+                .any(|row| row["kind"] == "created_owned" && row["afterCreate"] == true);
+            let wrote = trace.iter().any(|row| row["kind"] == "playlist_create");
+            trace.push(json!({"kind":"created_owned","afterCreate":wrote,"hasNew":observed,"cached":cached}));
+            let mut owned = vec![playlist(81, 2, 0)];
+            if observed {
+                owned.push(created_playlist());
+            }
+            Ok(json!({"code":200,"playlist":owned,"more":false}))
+        }
+        DETAIL if created() && (args["id"] == "91" || args["id"] == 91) => {
+            let mut trace = TRACE.lock().unwrap();
+            let mut row = created_playlist();
+            row["trackIds"] = if trace.iter().any(|row| row["kind"] == "playlist_add") {
+                json!([{"id":103},{"id":101}])
+            } else {
+                json!([])
+            };
+            trace.push(json!({"kind":"created_detail","tracks":row["trackIds"],"cached":cached}));
+            Ok(json!({"code":200,"playlist":row}))
         }
         DETAIL if destination() && (args["id"] == "81" || args["id"] == 81) => {
             let mut trace = TRACE.lock().unwrap();

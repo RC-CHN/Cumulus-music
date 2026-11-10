@@ -12,6 +12,8 @@ from window_manager import launch
 
 DIRECT = ('first', 'blocked', 'last', 'anchor', 'download', 'check', 'accepted')
 PLAYLIST = ('first', 'blocked', 'last', 'collect_filtered', 'anchor', 'download', 'choose', 'reconcile', 'accepted')
+CREATED = ('first', 'blocked', 'last', 'collect_filtered', 'anchor', 'download', 'open_create',
+           'private', 'create', 'creation_readback', 'add_created', 'accepted')
 
 
 def load(path):
@@ -51,8 +53,10 @@ def run(args):
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_LIKED_PROOF'] = '1'
     if args.mixed:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_MIXED_PROOF'] = '1'
+    if args.created:
+        env['CUMULUS_SEARCH_GROUP_DOWNLOAD_CREATED_PROOF'] = '1'
     output = root / 'first'
-    labels = (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else PLAYLIST if args.playlist else DIRECT
+    labels = CREATED if args.created else (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else PLAYLIST if args.playlist else DIRECT
     with ExitStack() as stack:
         driver = TrustedClicks()
         stack.callback(driver.close)
@@ -94,7 +98,33 @@ def run(args):
     receipt = prepare['reply']['receipt']
     assert all(step['command']['receipt'] == receipt for step in last['actions'][1:])
     trace = last['searchGroupDownload'][prefix:]
-    if args.playlist:
+    if args.created:
+        prepare, listing, create, check, add, start = last['actions']
+        assert [step['command']['kind'] for step in last['actions']] == [
+            'prepare', 'destinations', 'create_playlist', 'creation_status', 'add_created',
+            'start_from_playlist']
+        assert [row['trackId'] for row in prepare['command']['rows']] == ['103', '102', '101', '104']
+        assert prepare['reply']['decision'] == 'playlist_required'
+        assert listing['reply']['canCreate'] and listing['reply']['systemLikedReceipt'] is None
+        assert create['command']['name'] == '合成新下载歌单' and create['command']['privatePlaylist']
+        assert create['reply']['result']['playlistId'] is None
+        assert create['reply']['result']['add'] is None and not create['reply']['result']['canAdd']
+        assert check['command']['reconcile'] and check['reply']['result']['canAdd']
+        assert check['reply']['result']['playlistId'] == '91' and check['reply']['result']['add'] is None
+        assert not add['reply']['result']['canAdd'] and add['reply']['result']['add']['phase'] == 'confirmed'
+        assert add['reply']['result']['add']['continuation'] == start['command']['continuation']
+        before = ['playlist_list', 'created_owned', 'playlist_create', 'created_owned', 'created_owned']
+        assert [step['kind'] for step in rows[-4]['searchGroupDownload']] == before[:1]
+        assert [step['kind'] for step in rows[-3]['searchGroupDownload']] == before[:4]
+        assert [step['kind'] for step in rows[-2]['searchGroupDownload']] == before
+        before_media = before + ['created_detail', 'playlist_add', 'created_detail']
+        assert [step['kind'] for step in trace[:len(before_media)]] == before_media
+        assert trace[2]['args'] == {'uid': '2', 'name': '合成新下载歌单', 'privacy': 10}
+        assert not trace[3]['hasNew'] and trace[4]['hasNew']
+        assert trace[6]['args'] == {'op': 'add', 'pid': '91', 'trackIds': '["103","101"]'}
+        assert trace[5]['tracks'] == [] and trace[7]['tracks'] == [{'id': 103}, {'id': 101}]
+        trace = trace[len(before_media):]
+    elif args.playlist:
         prepare, listing, choose, check, start = last['actions'][:5]
         expected = ['prepare', 'destinations', 'choose_liked' if args.liked else 'choose',
                     'reconcile', 'start_from_playlist']
@@ -179,7 +209,10 @@ def run(args):
         journal = [json.loads(value) for value, in store.execute(
             "SELECT value FROM state WHERE kind='playlist-mutations' AND owner='2'"
         )]
-        if args.playlist:
+        if args.created:
+            assert len(journal) == 2 and all(row['phase'] == 'confirmed' for row in journal)
+            assert all(row['playlist_id'] == '91' and not row.get('system_liked_group', False) for row in journal)
+        elif args.playlist:
             assert len(journal) == 1 and journal[0]['phase'] == 'confirmed'
             assert journal[0].get('system_liked_group', False) == args.liked
         else:
@@ -191,8 +224,10 @@ def run(args):
     reference = flac_frames(repo / 'core/tests/fixtures/stereo-pcm-source.flac')
     assert all(flac_frames(path) == reference for path in published)
     summary = {'ok': True, 'screenshots': len(labels), 'actualWebView': True,
-               'orderedTasks': ordered, 'anchor': '102', 'readOnlyLostReplyRecovery': True,
-               'playlistAddCount': len(journal), 'playlistAddedInOrder': ['103', '101'] if args.playlist else [],
+               'orderedTasks': ordered, 'anchor': '102', 'readOnlyLostReplyRecovery': not args.created,
+               'readOnlyDelayedCreateRecovery': args.created,
+               'playlistAddCount': int(args.playlist), 'playlistCreateCount': int(args.created),
+               'playlistAddedInOrder': ['103', '101'] if args.playlist else [],
                'systemLikedDestination': args.liked,
                'exactFlacFrames': True, 'preservedPartialTask': args.mixed, 'realAccountWrites': 0, 'realMusicRequests': 0}
     (root / 'report.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
@@ -206,11 +241,12 @@ if __name__ == '__main__':
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--playlist', action='store_true')
     mode.add_argument('--liked', action='store_true')
+    mode.add_argument('--created', action='store_true')
     parser.add_argument('--mixed', action='store_true')
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
     if args.mixed and not args.playlist:
         parser.error('--mixed requires --playlist')
-    args.playlist = args.playlist or args.liked
+    args.playlist = args.playlist or args.liked or args.created
     require_xvfb()
     run(args)

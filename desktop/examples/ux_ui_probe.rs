@@ -373,6 +373,9 @@ impl Api for Library {
     }
 
     fn download_collection_create_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        if search_group_download_fixture::created() {
+            return Ok(Some(search_group_download_fixture::REVISION.into()));
+        }
         Ok(playlist_collect_fixture::download_create_enabled()
             .then(|| "sealed-download-collection".into()))
     }
@@ -384,6 +387,12 @@ impl Api for Library {
         dispatched: &'a std::sync::atomic::AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if search_group_download_fixture::created() {
+                let (path, payload) = write.into_request();
+                permission()?;
+                dispatched.store(true, std::sync::atomic::Ordering::Release);
+                return search_group_download_fixture::create(path, &payload);
+            }
             if !playlist_collect_fixture::download_create_enabled() {
                 return Err(cumulus_core::Error::CredentialChanged);
             }
@@ -1831,7 +1840,7 @@ fn main() {
                 tauri::async_runtime::spawn(async move {
                     let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root, session).await;
                     let ack=match result {
-                        Ok(old)=>json!({"ok":true,"playlist":search_group_download_fixture::destination(),"liked":search_group_download_fixture::liked(),"old":old}),
+                        Ok(old)=>json!({"ok":true,"playlist":search_group_download_fixture::destination(),"liked":search_group_download_fixture::liked(),"old":old,"created":search_group_download_fixture::created()}),
                         Err(error)=>json!({"ok":false,"error":error.to_string()}),
                     };
                     handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();
