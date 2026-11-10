@@ -16,6 +16,8 @@ CREATED = ('first', 'blocked', 'last', 'collect_filtered', 'anchor', 'download',
            'private', 'create', 'creation_readback', 'add_created', 'accepted')
 PURCHASED = ('first', 'blocked', 'last', 'paid2', 'anchor', 'download', 'cancel', 'anchor_again',
              'download_again', 'lower_tier', 'confirm', 'check', 'accepted')
+PURCHASED_RESUME = (*PURCHASED[:PURCHASED.index('lower_tier')], 'wrong_tier',
+                    *PURCHASED[PURCHASED.index('lower_tier'):])
 
 
 def load(path):
@@ -39,6 +41,8 @@ def run(args):
     repo = Path(__file__).resolve().parents[2]
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700)
+    resume = getattr(args, 'resume', False)
+    has_partial = args.mixed or resume
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_SEARCH_UI_PROOF='1',
                CUMULUS_SEARCH_GROUP_NEXT_PROOF='1', CUMULUS_SEARCH_GROUP_DOWNLOAD_PROOF='1',
@@ -58,10 +62,15 @@ def run(args):
         env['CUMULUS_UX_SCRIPT'] = str(repo / 'desktop/examples/search_group_purchased_download_ui_probe.js')
     if args.mixed:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_MIXED_PROOF'] = '1'
+    if resume:
+        env['CUMULUS_SEARCH_GROUP_DOWNLOAD_PURCHASED_RESUME_PROOF'] = '1'
     if args.created:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_CREATED_PROOF'] = '1'
     output = root / 'first'
-    labels = PURCHASED if args.purchased else CREATED if args.created else (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else PLAYLIST if args.playlist else DIRECT
+    labels = (PURCHASED_RESUME if resume else PURCHASED) if args.purchased else (
+        CREATED if args.created else (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else
+        PLAYLIST if args.playlist else DIRECT
+    )
     with ExitStack() as stack:
         driver = TrustedClicks()
         stack.callback(driver.close)
@@ -89,7 +98,7 @@ def run(args):
             assert selected['region'] == 'hires-tick' and selected['present'] and selected['ok']
             assert previous['region'] == 'sky-no-tick' and not previous['present'] and previous['ok']
     first, last = rows[0], rows[-1]
-    prefix = 2 if args.mixed else 0
+    prefix = 2 if has_partial else 0
     old = first.get('old')
     if args.mixed:
         assert old and old['bytes'] == 2048
@@ -97,11 +106,17 @@ def run(args):
             {'kind':'authorize','args':{'id':'104','level':'lossless','immerseType':'c51'},'cached':False},
             {'kind':'media','id':'104','offset':0},
         ]
+    elif resume:
+        assert old and old['bytes'] == 2048
+        assert first['searchGroupDownload'] == [
+            {'kind':'authorize','args':{'id':'103','level':'hires','immerseType':'c51'},'cached':False},
+            {'kind':'media','id':'103','offset':0,'status':200,'contentRange':None},
+        ]
     else:
         assert old is None and first['searchGroupDownload'] == []
     assert all(row['queue'] == first['queue'] for row in rows)
     assert all(row['player']['position'] == first['player']['position'] for row in rows)
-    ordered = ['103', '101', '104'] if args.purchased else (
+    ordered = (['104', '101', '103'] if resume else ['103', '101', '104']) if args.purchased else (
         ['104', '101', '103'] if args.playlist else ['103', '101'])
     prepare = last['actions'][0]
     assert prepare['command']['anchor']['trackId'] == '102'
@@ -111,18 +126,28 @@ def run(args):
         assert all(step['command']['receipt'] == receipt for step in last['actions'][1:])
     trace = last['searchGroupDownload'][prefix:]
     if args.purchased:
-        prepare, cancel, reopen, start, check = last['actions']
+        prepare, cancel, reopen, *rejected, start, check = last['actions']
         assert [step['command']['kind'] for step in last['actions']] == [
-            'prepare', 'cancel', 'prepare', 'confirm_quality', 'status']
+            'prepare', 'cancel', 'prepare', *(['confirm_quality'] if resume else []),
+            'confirm_quality', 'status']
         assert prepare['reply']['decision'] == reopen['reply']['decision'] == 'purchased_quality_required'
         assert prepare['reply']['purchasedQualities'] == reopen['reply']['purchasedQualities'] == [
             'sky', 'hires', 'exhigh', 'standard']
-        assert [row['trackId'] for row in reopen['command']['rows']] == ['103', '102', '101', '104']
+        assert [row['trackId'] for row in reopen['command']['rows']] == [ordered[0], '102', *ordered[1:]]
         assert receipt == cancel['command']['receipt'] != reopen['reply']['receipt']
         assert reopen['reply']['receipt'] == start['command']['receipt'] == check['command']['receipt']
+        if resume:
+            mismatch, = rejected
+            assert prepare['reply']['existingPurchasedQuality'] == reopen['reply']['existingPurchasedQuality'] == 'hires'
+            assert mismatch['command']['quality'] == 'sky' and mismatch['reply']['kind'] == 'existing_quality_mismatch'
+            assert mismatch['command']['receipt'] == mismatch['reply']['receipt'] == reopen['reply']['receipt']
+            assert mismatch['reply']['requiredQuality'] == 'hires'
+            assert start['reply']['result']['accepted'][-1] == old['id']
         assert start['command']['quality'] == 'hires'
         assert start['reply']['result']['accepted'] == check['reply']['result']['accepted']
-        assert all(not row['searchGroupDownload'] for row in rows[:PURCHASED.index('confirm') + 1])
+        # No auth or transfer beyond the one setup transfer before the matching confirm.
+        assert all(row['searchGroupDownload'] == first['searchGroupDownload']
+                   for row in rows[:labels.index('confirm') + 1])
         assert all(row['args']['level'] == 'hires' and row['args']['immerseType'] == 'c51'
                    for row in trace if row['kind'] == 'authorize')
     elif args.created:
@@ -210,6 +235,14 @@ def run(args):
         assert [row['offset'] for row in trace if row['kind'] == 'media' and row['id'] == '104'] == [2048]
         assert [row['args']['level'] for row in trace if row['kind'] == 'authorize'
                 and row['args']['id'] == '104'] == ['lossless']
+    source = repo / 'core/tests/fixtures/stereo-pcm-source.flac'
+    if resume:
+        size = source.stat().st_size
+        assert [row for row in trace if row['kind'] == 'media' and row['id'] == '103'] == [
+            {'kind':'media','id':'103','offset':2048,'status':206,'contentRange':f'bytes 2048-{size - 1}/{size}'},
+        ]
+        assert all(row['status'] == 200 and row['offset'] == 0 and row['contentRange'] is None
+                   for row in trace if row['kind'] == 'media' and row['id'] != '103')
     assert load(output / 'locale.json') == {
         'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8',
     }
@@ -218,15 +251,19 @@ def run(args):
         tasks = [json.loads(value) for value, in store.execute(
             "SELECT value FROM state WHERE kind='download_tasks_v1' AND owner='2'"
         )]
-        if args.mixed:
+        if has_partial:
             assert len(tasks) == len(ids)
             tasks.sort(key=lambda row: (row['dispatch']['sequence'], row['dispatch']['index']))
             assert len({row['dispatch']['sequence'] for row in tasks}) == 1
             assert [row['dispatch']['index'] for row in tasks] == [0, 1, 2]
-            retained = tasks[0]
+            retained = tasks[-1] if resume else tasks[0]
             assert retained['id'] == old['id'] and retained['created_ms'] == old['createdMs']
-            assert retained['options']['quality'] == 'lossless' and not retained['options']['tags']
-            assert Path(retained['target']) == root / 'group-previous/original-104.flac'
+            assert retained['options']['quality'] == ('hires' if resume else 'lossless')
+            assert not retained['options']['tags'] and not retained['options']['cover']
+            assert Path(retained['target']) == root / f"group-previous/original-{retained['song_id']}.flac"
+            if resume:
+                assert retained['song_id'] == '103' and retained['authorization_count'] == 2
+                assert Path(retained['target']).read_bytes() == source.read_bytes()
         else:
             tasks.sort(key=lambda row: (row['created_ms'], row['id']))
         assert [row['id'] for row in tasks] == ids
@@ -246,10 +283,10 @@ def run(args):
         else:
             assert journal == []
     published = list((root / 'group-output').rglob('*.flac'))
-    if args.mixed:
-        published.append(root / 'group-previous/original-104.flac')
+    if has_partial:
+        published.append(root / f"group-previous/original-{103 if resume else 104}.flac")
     assert len(published) == len(ordered)
-    reference = flac_frames(repo / 'core/tests/fixtures/stereo-pcm-source.flac')
+    reference = flac_frames(source)
     assert all(flac_frames(path) == reference for path in published)
     summary = {'ok': True, 'screenshots': len(labels), 'actualWebView': True,
                'orderedTasks': ordered, 'anchor': '102', 'readOnlyLostReplyRecovery': not args.created,
@@ -257,7 +294,9 @@ def run(args):
                'playlistAddCount': int(args.playlist), 'playlistCreateCount': int(args.created),
                'playlistAddedInOrder': ['103', '101'] if args.playlist else [],
                'systemLikedDestination': args.liked, 'explicitPurchasedQuality': 'hires' if args.purchased else None,
-               'exactFlacFrames': True, 'preservedPartialTask': args.mixed, 'realAccountWrites': 0, 'realMusicRequests': 0}
+               'exactFlacFrames': True, 'preservedPartialTask': has_partial,
+               'purchasedMismatchKeptPaused': resume, 'purchasedResumeStatus': 206 if resume else None,
+               'realAccountWrites': 0, 'realMusicRequests': 0}
     (root / 'report.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(summary))
 
@@ -272,10 +311,13 @@ if __name__ == '__main__':
     mode.add_argument('--purchased', action='store_true')
     mode.add_argument('--created', action='store_true')
     parser.add_argument('--mixed', action='store_true')
+    parser.add_argument('--resume', action='store_true', help='seed and resume a real same-tier partial task')
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
     if args.mixed and not args.playlist:
         parser.error('--mixed requires --playlist')
+    if args.resume and not args.purchased:
+        parser.error('--resume requires --purchased')
     args.playlist = args.playlist or args.liked or args.created
     require_xvfb()
     run(args)

@@ -59,6 +59,19 @@ pub fn purchased() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_PURCHASED_PROOF").is_some()
 }
 
+fn purchased_resume() -> bool {
+    purchased()
+        && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_PURCHASED_RESUME_PROOF").is_some()
+}
+
+fn partial_task() -> Option<(&'static str, Quality)> {
+    if purchased_resume() {
+        Some(("103", Quality::HiRes))
+    } else {
+        mixed().then_some(("104", Quality::Lossless))
+    }
+}
+
 pub fn purchased_privilege(id: usize) -> Option<Value> {
     let (payed, flag, maxbr) = match id {
         102 => (2, 1 << 21, 999_000),
@@ -280,7 +293,8 @@ impl MediaBackend for Media {
                 .and_then(|url| url.strip_suffix(".flac"))
                 .filter(|id| song_allowed(id))
                 .ok_or(Error::InvalidInput("unexpected group proof media"))?;
-            if (request.offset != 0 && (!mixed() || id != "104" || request.offset != PARTIAL))
+            let expected_partial = partial_task().is_some_and(|(song, _)| song == id);
+            if (request.offset != 0 && (!expected_partial || request.offset != PARTIAL))
                 || request.if_range.is_some()
             {
                 return Err(Error::InvalidInput("unexpected group proof offset"));
@@ -294,12 +308,16 @@ impl MediaBackend for Media {
                     format!("bytes {start}-{}/{}", AUDIO.len() - 1, AUDIO.len()),
                 );
             }
-            TRACE
-                .lock()
-                .unwrap()
-                .push(json!({"kind":"media","id":id,"offset":request.offset}));
+            let status = if start == 0 { 200 } else { 206 };
+            let trace = if purchased_resume() {
+                json!({"kind":"media","id":id,"offset":request.offset,"status":status,
+                       "contentRange":headers.get("content-range")})
+            } else {
+                json!({"kind":"media","id":id,"offset":request.offset})
+            };
+            TRACE.lock().unwrap().push(trace);
             Ok(MediaReply {
-                status: if start == 0 { 200 } else { 206 },
+                status,
                 headers,
                 body: Box::new(Body(body)),
             })
@@ -318,7 +336,8 @@ pub async fn configure(
     let epoch = client.account()?.epoch;
     let output = root.join("group-output");
     std::fs::create_dir(&output)?;
-    if mixed() {
+    let partial = partial_task();
+    if partial.is_some() {
         DownloadDirectory::new(session.clone())?.configure(&output, 0, 0)?;
     } else {
         client
@@ -348,17 +367,17 @@ pub async fn configure(
             },
         )
         .await?;
-    if !mixed() {
+    let Some((song, quality)) = partial else {
         return Ok(Value::Null);
-    }
+    };
     let service = DownloadService::with_backend(session, Arc::new(Media), 512 * 1024 * 1024)?;
     let task = service.create(
-        &json!("104"),
+        &json!(song),
         DownloadDestination::Path {
-            path: root.join("group-previous/original-104.flac"),
+            path: root.join(format!("group-previous/original-{song}.flac")),
         },
         DownloadOptions {
-            quality: Quality::Lossless,
+            quality,
             cover: false,
             tags: false,
             ..Default::default()

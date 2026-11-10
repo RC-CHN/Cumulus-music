@@ -24,7 +24,7 @@
     (node) => node.getClientRects().length && !node.closest('[inert]'));
   const selection = () => all('.search-song-panel .track-row[aria-selected="true"]')
     .map((node) => node.dataset.trackId).join(',');
-  let epoch, before, stage = 'setup', step = 0;
+  let epoch, before, old, stage = 'setup', step = 0;
   const actions = [];
   const state = () => invoke('player_snapshot', { epoch });
   const downloads = (tab) => invoke('downloads', { epoch, query: {
@@ -38,7 +38,7 @@
       player.queueRevision === before.queueRevision && queue.current === before.entryId &&
       queue.tracks.length === 1 && queue.tracks[0].track.id === '701', 'independent paused playback');
     await emit(`ux_${String(++step).padStart(2,'0')}_${label}`,
-      { player, queue, actions, ...extra });
+      { player, queue, actions, old, ...extra });
   }
   async function input(label, node, mouseButton = 1, ctrl = false, extra = {}) {
     assert(node?.isConnected && !node.disabled, 'actual enabled target');
@@ -87,6 +87,16 @@
     await invoke('liked_ids');
     await emit('search-group-download-configure');
     await wait(() => window.__groupDownloadConfigured?.ok, 'native isolated download settings');
+    old = window.__groupDownloadConfigured.old;
+    const firstPaid = old ? '104' : '103', lastPaid = old ? '103' : '104';
+    async function noNewTasks() {
+      const view = await downloads('active');
+      if (!old) return view.activeCount === 0;
+      return view.activeCount === 1 && view.tasks.length === 1 &&
+        view.tasks[0].id === old.id && view.tasks[0].track.id === '103' &&
+        view.tasks[0].status === 'paused' && view.tasks[0].bytes === 2048 &&
+        view.tasks[0].bytes === old.bytes && view.tasks[0].requestedQuality === 'hires';
+    }
     await invoke('player_action', {epoch, action:{kind:'mode',mode:'single_loop'}});
     await invoke('play_selection', {epoch,selection:{kind:'songs',ids:['701'],index:0,quality:'standard'}});
     await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
@@ -96,7 +106,7 @@
       const view = await state();
       return view.state === 'paused' && view.position > .2 && view;
     }, 'paused native position captured');
-    assert((await downloads('active')).activeCount === 0, 'no earlier task');
+    assert(await noNewTasks(), 'only the expected partial task can pre-exist');
     window.__searchFixtureAck = false;
     await emit('search-fixture',{mode:'song_waterfall_group_next'});
     await wait(() => window.__searchFixtureAck, 'search fixture selected');
@@ -119,12 +129,14 @@
       const reply = await original(owner, command);
       actions.push({ command, reply });
       // Only simulate delivery loss after the actual native write/receipt.
-      if (command.kind === 'confirm_quality') throw Error('sealed purchased confirmation reply lost');
+      if (command.kind === 'confirm_quality' && reply.kind === 'accepted')
+        throw Error('sealed purchased confirmation reply lost');
       return reply;
     };
 
     const modal = () => one('[data-search-group-purchased][open]');
     const choice = (quality) => modal()?.querySelector(`[data-voice-purchased-quality="${quality}"]`);
+    const existingQuality = () => modal()?.querySelector('[data-existing-download-quality][role="status"]');
     const selectionPaint = () => {
       const selected = choice('hires'), previous = choice('sky');
       const selectedRow = selected?.closest('label'), previousRow = previous?.closest('label');
@@ -154,16 +166,19 @@
         'sky,hires,exhigh,standard', 'union excludes blocked vivid and is sorted highest first');
       assert(choice('sky').checked, 'highest tier is default but not accepted automatically');
       assert(!one('[data-search-group-download-picker][open]'), 'no destination before explicit quality');
-      assert((await downloads('active')).activeCount === 0, 'no tasks from opening chooser');
+      assert(await noNewTasks(), 'opening chooser does not change tasks');
+      if (old) assert(existingQuality()?.textContent.includes('高解析度无损 (Hi-Res)') &&
+        !existingQuality().textContent.includes('所选音质与已有任务不同'), 'chooser identifies the retained tier');
+      else assert(!existingQuality(), 'a fresh batch has no retained-tier notice');
     };
 
-    await input('first',title('103'));
-    await wait(() => selection() === '103','first selected');
+    await input('first',title(firstPaid));
+    await wait(() => selection() === firstPaid,'first selected');
     await input('blocked',title('102'),1,true);
-    await wait(() => selection() === '102,103','blocked row selected');
+    await wait(() => selection() === `102,${firstPaid}`,'blocked row selected');
     await input('last',title('101'),1,true);
-    await wait(() => selection() === '101,102,103','ordinary third selected');
-    await input('paid2',title('104'),1,true);
+    await wait(() => selection() === `101,102,${firstPaid}`,'ordinary third selected');
+    await input('paid2',title(lastPaid),1,true);
     await wait(() => selection() === '101,102,103,104','second purchased row selected');
     await input('anchor',title('102'),3);
     await waitForMenu();
@@ -171,29 +186,45 @@
     await expectChooser();
     await input('cancel',button('关闭音质选择',modal()));
     await wait(() => !modal() && actions.length === 2, 'native cancels original receipt');
-    assert((await downloads('active')).activeCount === 0, 'cancellation never enqueues');
+    assert(await noNewTasks(), 'cancellation never changes the existing task set');
 
     await input('anchor_again',title('102'),3);
     await waitForMenu();
     await input('download_again',download());
     await expectChooser();
     assert(actions[2].reply.receipt !== actions[0].reply.receipt, 'reopen gets an independent receipt');
+    if (old) {
+      await input('wrong_tier',button('确定',modal()));
+      await wait(() => {
+        const mismatch = actions[3];
+        return mismatch?.command.kind === 'confirm_quality' && mismatch.command.quality === 'sky' &&
+          mismatch.reply.kind === 'existing_quality_mismatch' &&
+          mismatch.reply.receipt === actions[2].reply.receipt && mismatch.reply.requiredQuality === 'hires' &&
+          existingQuality()?.textContent.includes('所选音质与已有任务不同') &&
+          button('确定',modal())?.disabled === false;
+      }, 'different tier stays in chooser with a visible inline notice');
+      assert(await noNewTasks() && !one('[data-search-group-download-picker][open]'),
+        'mismatch keeps the same paused task and never opens a destination');
+    }
     await input('lower_tier',choice('hires').closest('label'));
     await wait(selectionPaint, 'trusted Hi-Res selection and the Vue check mark agree');
     await afterPaint();
     const paint = selectionPaint();
     assert(paint, 'Hi-Res check mark remains selected before confirmation');
     await input('confirm',button('确定',modal()),1,false,paint);
-    await wait(() => button('核对下载') && !modal() && actions.length === 4 &&
+    await wait(() => button('核对下载') && !modal() && actions.length === (old ? 5 : 4) &&
       one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost paid reply offers only status');
     await input('check',button('核对下载'));
     const result = await wait(async () => {
       const view = await downloads('completed');
-      return actions.length === 5 && view.completedCount === 3 &&
+      return actions.length === (old ? 6 : 5) && view.completedCount === 3 &&
         one('.track-action-feedback')?.textContent.includes('已添加 3 首到下载列表，跳过 1 首') && view;
     }, 'authorized audio is published once, status stays read only');
     assert(result.tasks.map((task) => task.track.id).sort().join(',') === '101,103,104',
       'only surviving requested tracks completed');
+    if (old) assert(result.tasks.some(task => task.id === old.id && task.track.id === '103' &&
+      task.createdMs === old.createdMs && task.requestedQuality === 'hires'),
+      'the original purchased task, options and identity completed');
     await capture('accepted', { completed: result.tasks.map(({id, track}) => ({id, trackId:track.id})) });
     core.searchGroupDownload = original;
     await emit('complete',{ok:true,stageCount:step,realAccountWrites:0,realMusicRequests:0});
