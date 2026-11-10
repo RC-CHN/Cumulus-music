@@ -38,7 +38,10 @@ async function prepareVoice() {
   loadingVoice.value = true;
   voicePreparationError.value = '';
   try {
-    const plan = await props.model.prepareVoice(target.tracks.map((track) => track.id));
+    const plan = await props.model.prepareVoice(
+      target.tracks.map((track) => track.id),
+      target.purchased,
+    );
     if (!dialogOpen || !voiceIsCurrent() || props.target !== target || staleVoice.value) {
       if (plan) void props.model.discardVoice(plan);
       return;

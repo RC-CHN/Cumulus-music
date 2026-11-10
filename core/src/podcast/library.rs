@@ -148,42 +148,6 @@ impl PodcastApi {
         }
         Err(Error::Response("podcast library exceeds page limit"))
     }
-    pub async fn purchased(&self) -> Result<Vec<Radio>> {
-        let mut items = vec![];
-        let mut seen = BTreeSet::new();
-        for offset in (0..50_000).step_by(20) {
-            let result = self
-                .api
-                .call(
-                    "/api/voicelist/bought/list",
-                    json!({"limit":20,"offset":offset}),
-                    false,
-                    &[200],
-                )
-                .await?;
-            let data = &result["data"];
-            let page = rows(data, "list")?;
-            let before = items.len();
-            for raw in page {
-                let item = Radio::from_official(raw)?;
-                if seen.insert(item.id.clone()) {
-                    items.push(item);
-                }
-            }
-            if !data["hasMore"]
-                .as_bool()
-                .ok_or(Error::Response("purchased podcast page flag missing"))?
-            {
-                return Ok(items);
-            }
-            if items.len() == before {
-                return Err(Error::Response(
-                    "purchased podcast pagination did not advance",
-                ));
-            }
-        }
-        Err(Error::Response("purchased podcasts exceed page limit"))
-    }
     pub async fn liked_voices(&self) -> Result<Vec<Episode>> {
         let mut cursor = json!(0);
         let mut cursors = BTreeSet::new();

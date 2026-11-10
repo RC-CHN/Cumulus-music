@@ -256,6 +256,10 @@ export interface DownloadClient {
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadVoicePrepare(epoch: string, voiceIds: string[]): Promise<VoiceDownloadPreparation>;
+  downloadPurchasedVoicePrepare(
+    epoch: string,
+    target: import('./podcast').PodcastPurchasedTarget,
+  ): Promise<VoiceDownloadPreparation>;
   downloadVoiceDiscard(epoch: string, receipt: string): Promise<void>;
   downloadClearPrepare(epoch: string): Promise<DownloadClearPlan>;
   downloadClearDiscard(epoch: string, receipt: string): Promise<void>;
@@ -268,6 +272,7 @@ export type DownloadDialogTarget =
   | {
       kind: 'voice';
       tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[];
+      purchased?: import('./podcast').PodcastPurchasedTarget;
       live?: () => boolean;
     }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }

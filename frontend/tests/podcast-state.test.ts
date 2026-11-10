@@ -5,6 +5,8 @@ import { podcastPublicLink } from '../src/services/podcast.ts';
 import type {
   PodcastClient,
   PodcastPage,
+  PodcastPurchasedRow,
+  PodcastPurchasedTarget,
   PodcastState,
   PodcastMutation,
   PodcastSubscriptionRecommendation,
@@ -47,6 +49,9 @@ function deferred<T>() {
 function client(extra: Partial<PodcastClient> = {}): PodcastClient {
   return {
     podcastPage: async (e) => page(e),
+    podcastPurchasedTarget: async () => {
+      throw Error('unexpected purchased row action');
+    },
     podcastSubscriptionRecommendations: async (e) => ({
       epoch: e,
       value: { receipt: e, cards: [] },
@@ -597,4 +602,84 @@ test('player confirmation updates only its visible radio and a held old detail c
   assert.equal(m.page.value?.resumeEnabled, false);
   assert.equal(m.loading.value, false);
   assert.equal(reads, 2, 'passive shell synchronization does not reload the detail');
+});
+
+test('purchased rows retain kind/identity and an old result cannot open another view', async () => {
+  const requests: { offset: number; revision: string | null; refresh: boolean }[] = [];
+  const targets: [string, PodcastPurchasedTarget][] = [];
+  const radio: PodcastPurchasedRow = {
+    kind: 'radio',
+    item: {
+      id: '81',
+      name: '播单 81',
+      coverUrl: null,
+      creator: '',
+      description: '',
+      programCount: 3,
+      subscribed: null,
+      feeType: 0,
+      unavailable: false,
+    },
+  };
+  const episode: PodcastPurchasedRow = {
+    kind: 'episode',
+    item: {
+      id: '81',
+      name: '单集 81',
+      coverUrl: null,
+      creator: '',
+      radioId: '71',
+      radioName: '播单 71',
+      durationMs: 3000,
+      feeType: 10,
+      liked: false,
+      unavailable: false,
+    },
+  };
+  const held = deferred<AccountData<PodcastPurchasedRow>>();
+  const m = usePodcasts(
+    client({
+      podcastPage: async (epoch, request, refresh) => {
+        if (request.scope.kind !== 'purchased') return page(epoch);
+        requests.push({ offset: request.offset, revision: request.revision, refresh });
+        const more = request.offset === 20;
+        return {
+          ...page(epoch),
+          scope: request.scope,
+          revision: more ? 'bought2' : 'bought1',
+          purchases: { rows: [radio, episode], nextOffset: more ? null : 20 },
+        };
+      },
+      podcastPurchasedTarget: (epoch, target) => {
+        targets.push([epoch, target]);
+        return target.kind === 'radio' ? held.promise : Promise.resolve({ epoch, value: episode });
+      },
+    }),
+  );
+  m.connect(account());
+  m.show(true);
+  m.navigate({ kind: 'purchased' });
+  await Promise.resolve();
+  assert.equal(m.page.value?.scope.kind, 'purchased');
+  assert.deepEqual(requests, [{ offset: 0, revision: null, refresh: true }]);
+  const frozen = m.capturePurchasedRow(episode);
+  assert.equal(frozen?.live(), true);
+  assert.deepEqual(frozen?.target, { kind: 'episode', id: '81', revision: 'bought1' });
+  const old = m.resolvePurchasedRow(radio);
+  await m.loadMorePurchases();
+  assert.deepEqual(requests, [
+    { offset: 0, revision: null, refresh: true },
+    { offset: 20, revision: 'bought1', refresh: false },
+  ]);
+  assert.equal(m.query.value.offset, 0);
+  assert.equal(frozen?.live(), false);
+  held.resolve({ epoch: '1', value: radio });
+  assert.equal(await old, undefined);
+  assert.equal(await m.resolvePurchasedRow(episode), episode);
+  assert.deepEqual(targets, [
+    ['1', { kind: 'radio', id: '81', revision: 'bought1' }],
+    ['1', { kind: 'episode', id: '81', revision: 'bought2' }],
+  ]);
+  assert.equal(m.capturePurchasedRow({ ...episode }), undefined);
+  m.dispose();
 });

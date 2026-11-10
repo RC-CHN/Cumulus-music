@@ -189,6 +189,24 @@ pub fn podcast_radio_order<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub fn podcast_purchased_target<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastPurchasedTarget,
+) -> Result<AccountData<PodcastPurchasedRow>, ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "purchased podcasts require the main window",
+        )
+        .into());
+    }
+    client
+        .podcast_purchased_target(&epoch, &target)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn podcast_page(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

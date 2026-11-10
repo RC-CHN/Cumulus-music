@@ -303,6 +303,22 @@ pub async fn download_voice_prepare<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn download_purchased_voice_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastPurchasedTarget,
+) -> Result<VoiceDownloadPreparation, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("program download requires main window").into());
+    }
+    client
+        .download_purchased_voice_prepare(&epoch, target)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn download_voice_discard<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

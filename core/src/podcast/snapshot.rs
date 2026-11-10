@@ -1,6 +1,6 @@
 //! Complete account-scoped lists. Page slicing and playback share one identity
 //! snapshot; a failed/inconsistent refresh never publishes a partial queue.
-use super::{Episode, LibraryKind, PodcastApi, Radio};
+use super::{Episode, LibraryKind, PodcastApi, Radio, purchased::Purchases};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
@@ -32,6 +32,8 @@ pub struct PodcastSnapshot {
     pub voices: Vec<Episode>,
     pub source_ids: Vec<String>,
     pub remote_total: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) purchases: Option<Purchases>,
     generation: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) badge_observation: Option<String>,
@@ -151,7 +153,7 @@ impl PodcastLibrary {
                 return Err(Error::State("podcast snapshot identity mismatch"));
             }
             let version = generation(&self.store, owner)?;
-            Ok(snapshot.filter(|s| s.generation == version))
+            Ok(snapshot.filter(|s| s.generation == version && s.has_current_shape()))
         })
     }
     pub(crate) fn badge_observation_is_current(
@@ -192,7 +194,7 @@ impl PodcastLibrary {
             if snapshot.scope != *scope {
                 return Err(Error::State("podcast snapshot identity mismatch"));
             }
-            if snapshot.generation == version {
+            if snapshot.generation == version && snapshot.has_current_shape() {
                 self.session.with_token(token, |_| Ok(()))?;
                 return Ok(snapshot);
             }
@@ -207,16 +209,7 @@ impl PodcastLibrary {
         if matches!(scope, PodcastScope::Podcasts) {
             snapshot.badge_observation = Some(uuid::Uuid::new_v4().simple().to_string());
         }
-        snapshot.revision = hex::encode(Sha256::digest(serde_json::to_vec(&json!([
-            scope,
-            snapshot.source_ids,
-            snapshot
-                .voices
-                .iter()
-                .map(|v| (&v.id, &v.song_id, v.duration_ms))
-                .collect::<Vec<_>>(),
-            snapshot.remote_total
-        ]))?));
+        snapshot.revise()?;
         self.session.with_token(token, |owner| {
             self.store.transaction(|tx| {
                 let current = tx
@@ -239,6 +232,89 @@ impl PodcastLibrary {
         })?;
         Ok(snapshot)
     }
+    pub(crate) fn lock_purchases_for(&self, token: &SessionToken) -> Result<OperationLock> {
+        let owner = self.session.with_token(token, |uid| Ok(uid.to_owned()))?;
+        let key = serde_json::to_string(&PodcastScope::Purchased)?;
+        OperationLock::acquire(
+            self.store.directory(),
+            &owner,
+            &format!("podcast-list:{key}"),
+        )
+    }
+
+    pub(crate) async fn extend_purchased_for(
+        &self,
+        token: &SessionToken,
+        revision: &str,
+        offset: usize,
+    ) -> Result<PodcastSnapshot> {
+        let owner = self.session.with_token(token, |uid| Ok(uid.to_owned()))?;
+        let key = serde_json::to_string(&PodcastScope::Purchased)?;
+        let _lock = OperationLock::acquire(
+            self.store.directory(),
+            &owner,
+            &format!("podcast-list:{key}"),
+        )?;
+        let mut snapshot = self
+            .cached_for(token, &PodcastScope::Purchased)?
+            .filter(|value| value.revision == revision)
+            .ok_or(Error::QueueChanged)?;
+        let previous = snapshot.purchases.take().ok_or(Error::QueueChanged)?;
+        let next = self
+            .session
+            .run_for(token, |api, _| async move {
+                PodcastApi::new(api)
+                    .extend_purchases(Some(previous), offset)
+                    .await
+            })
+            .await?;
+        snapshot.update_purchases(next);
+        snapshot.revise()?;
+        self.session.with_token(token, |owner| {
+            self.store.transaction(|tx| {
+                let version = tx
+                    .get(owner, VERSION, "current")?
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                if version != snapshot.generation {
+                    return Err(Error::StaleResponse);
+                }
+                tx.put(owner, CACHE, &key, &serde_json::to_value(&snapshot)?)
+            })
+        })?;
+        Ok(snapshot)
+    }
+}
+
+impl PodcastSnapshot {
+    fn has_current_shape(&self) -> bool {
+        !matches!(self.scope, PodcastScope::Purchased) || self.purchases.is_some()
+    }
+
+    fn update_purchases(&mut self, purchases: Purchases) {
+        self.remote_total = purchases.total.unwrap_or(purchases.items.len() as u64);
+        self.purchases = Some(purchases);
+    }
+
+    fn revise(&mut self) -> Result<()> {
+        if let Some(purchases) = &self.purchases {
+            self.revision = hex::encode(Sha256::digest(serde_json::to_vec(&(
+                self.generation,
+                purchases,
+            ))?));
+            return Ok(());
+        }
+        self.revision = hex::encode(Sha256::digest(serde_json::to_vec(&json!([
+            self.scope,
+            self.source_ids,
+            self.voices
+                .iter()
+                .map(|v| (&v.id, &v.song_id, v.duration_ms))
+                .collect::<Vec<_>>(),
+            self.remote_total
+        ]))?));
+        Ok(())
+    }
 }
 async fn fetch(api: PodcastApi, scope: &PodcastScope) -> Result<PodcastSnapshot> {
     let mut result = PodcastSnapshot {
@@ -248,6 +324,7 @@ async fn fetch(api: PodcastApi, scope: &PodcastScope) -> Result<PodcastSnapshot>
         voices: vec![],
         source_ids: vec![],
         remote_total: 0,
+        purchases: None,
         generation: 0,
         badge_observation: None,
     };
@@ -264,7 +341,7 @@ async fn fetch(api: PodcastApi, scope: &PodcastScope) -> Result<PodcastSnapshot>
             result.radios = list.items;
         }
         PodcastScope::Created => result.radios = api.legacy_library(true).await?,
-        PodcastScope::Purchased => result.radios = api.purchased().await?,
+        PodcastScope::Purchased => result.update_purchases(api.extend_purchases(None, 0).await?),
         PodcastScope::Liked => result.voices = api.liked_voices().await?,
         PodcastScope::Radio { id, ascending } => {
             let radio = api.radio(&json!(id)).await?;
@@ -299,7 +376,7 @@ async fn fetch(api: PodcastApi, scope: &PodcastScope) -> Result<PodcastSnapshot>
             }
         }
     }
-    if !matches!(scope, PodcastScope::Radio { .. }) {
+    if !matches!(scope, PodcastScope::Radio { .. } | PodcastScope::Purchased) {
         if result.source_ids.is_empty() {
             result.source_ids = if matches!(scope, PodcastScope::Liked) {
                 result.voices.iter().map(|v| v.id.clone()).collect()

@@ -91,7 +91,29 @@ pub(super) fn page(
                 .contains(&keyword)
         })
         .collect::<Vec<_>>();
-    let total = if matches!(
+    let purchases = snapshot
+        .purchases
+        .as_ref()
+        .map(|value| PodcastPurchasedRows {
+            rows: value
+                .items
+                .iter()
+                .map(|item| super::purchased::row(item, &liked_ids))
+                .filter(|row| {
+                    let (name, creator) = match row {
+                        PodcastPurchasedRow::Radio(radio) => (&radio.name, &radio.creator),
+                        PodcastPurchasedRow::Episode(episode) => (&episode.name, &episode.creator),
+                    };
+                    format!("{name} {creator}")
+                        .to_lowercase()
+                        .contains(&keyword)
+                })
+                .collect(),
+            next_offset: value.next_offset,
+        });
+    let total = if let Some(purchases) = &purchases {
+        purchases.rows.len()
+    } else if matches!(
         query.scope,
         PodcastScope::Liked | PodcastScope::Radio { .. }
     ) {
@@ -114,8 +136,13 @@ pub(super) fn page(
             .skip(query.offset)
             .take(query.limit)
             .collect(),
+        purchases,
         total,
-        offset: query.offset,
+        offset: if matches!(snapshot.scope, PodcastScope::Purchased) {
+            0
+        } else {
+            query.offset
+        },
         remote_total: snapshot.remote_total,
         radio: if is_radio {
             snapshot.radios.first().map(card)

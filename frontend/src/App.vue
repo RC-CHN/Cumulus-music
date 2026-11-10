@@ -6423,7 +6423,10 @@ onUnmounted(() => {
                 @recent-play="playRecentPodcast"
                 @recommended-play="playRecommendedPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
-                @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
+                @download="
+                  (tracks, live, purchased) =>
+                    (downloadDialog = { kind: 'voice', tracks, live, purchased })
+                "
               />
               <PodcastCataloguePage
                 v-else-if="page.kind === 'podcast_category'"
