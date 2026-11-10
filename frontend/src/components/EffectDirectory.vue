@@ -431,10 +431,8 @@ onUnmounted(() => {
                   <button
                     class="effect-directory-card"
                     :class="{ 'with-artwork': group.key !== 'more' && artworkFor(item) }"
-                    :aria-expanded="!recoveryOnly && selected?.id === item.id"
-                    :aria-controls="
-                      !recoveryOnly && selected?.id === item.id ? detailId : undefined
-                    "
+                    :aria-expanded="!recoveryOnly && selected === item"
+                    :aria-controls="!recoveryOnly && selected === item ? detailId : undefined"
                     :data-effect-id="item.id"
                     :data-effect-applied="checkedEffectId === item.id ? bindingStatus : undefined"
                     type="button"
