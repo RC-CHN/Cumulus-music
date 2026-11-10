@@ -167,7 +167,40 @@ pub struct LocalEqualizerStereoMaterial {
 
 enum LocalEqualizerMode {
     Legacy { geq_only: bool },
-    Modern,
+    Modern(ModernLocalMaterial),
+}
+
+struct ModernLocalMaterial {
+    plan: Box<ModernLimiterPlan>,
+    active: bool,
+}
+
+impl ModernLocalMaterial {
+    fn install(
+        plan: &ModernLimiterPlan,
+        stage: &mut LocalFixedStage,
+        format: Format,
+    ) -> Result<(Self, Option<LimiterStage>)> {
+        let plan = Box::new(plan.clone());
+        let limiter = plan.install_on_settled_local(stage, format)?;
+        Ok((Self { plan, active: true }, limiter))
+    }
+
+    fn set_active(
+        &mut self,
+        stage: &mut LocalFixedStage,
+        format: Format,
+        active: bool,
+    ) -> Result<Option<LimiterStage>> {
+        if self.active == active {
+            return Ok(None);
+        }
+        let limiter = self
+            .plan
+            .set_active_on_shared_local(stage, format, active)?;
+        self.active = active;
+        Ok(limiter)
+    }
 }
 impl LocalEqualizerStereoMaterial {
     /// Reset the initialized nodes and apply the verified local material.
@@ -219,7 +252,7 @@ impl LocalEqualizerStereoMaterial {
     fn require_legacy(&self) -> Result<bool> {
         match self.mode {
             LocalEqualizerMode::Legacy { geq_only } => Ok(geq_only),
-            LocalEqualizerMode::Modern => Err(Error::State(
+            LocalEqualizerMode::Modern(_) => Err(Error::State(
                 "old local controls cannot change a modern graph",
             )),
         }
@@ -227,8 +260,8 @@ impl LocalEqualizerStereoMaterial {
 
     /// Apply a validated modern material to the currently driven GEQ-only
     /// object. Keeps the upstream wrappers and the caller's PCM/decoder
-    /// state. This is a one-way DSP transition; it cannot select a source,
-    /// grant playback rights, or install an effect in the application.
+    /// state. It cannot select a source, grant playback rights, or install
+    /// an effect in the application.
     pub fn apply_initial_modern(&mut self, plan: &ModernLimiterPlan) -> Result<()> {
         self.graph.available()?;
         if !self.has_pcm
@@ -240,10 +273,30 @@ impl LocalEqualizerStereoMaterial {
             ));
         }
         let format = self.graph.format();
-        if let Some(limiter) = plan.install_on_settled_local(&mut self.graph.stage, format)? {
+        let (material, limiter) =
+            ModernLocalMaterial::install(plan, &mut self.graph.stage, format)?;
+        if let Some(limiter) = limiter {
             self.graph.limiter = limiter;
         }
-        self.mode = LocalEqualizerMode::Modern;
+        self.mode = LocalEqualizerMode::Modern(material);
+        Ok(())
+    }
+
+    /// On the converted graph only, restore its original modern material or
+    /// run master off. Retains decoder, PCM queues and wrapper previous flags.
+    /// The caller's next quantum applies pending edges and any new B0 timing.
+    pub fn set_modern_material_active(&mut self, active: bool) -> Result<()> {
+        self.graph.available()?;
+        let format = self.graph.format();
+        let LocalEqualizerMode::Modern(material) = &mut self.mode else {
+            return Err(Error::State("no modern material on the local graph"));
+        };
+        if !self.has_pcm || self.ending {
+            return Err(Error::State("modern effect needs a live local graph"));
+        }
+        if let Some(limiter) = material.set_active(&mut self.graph.stage, format, active)? {
+            self.graph.limiter = limiter;
+        }
         Ok(())
     }
     /// Original 1B960 node reset, separate from a full apply or master off.

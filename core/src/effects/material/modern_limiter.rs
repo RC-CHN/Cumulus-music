@@ -183,7 +183,24 @@ impl ModernLimiterPlan {
             ));
         }
         let b0 = self.prepare_control(format, true)?;
-        stage.apply_initial_modern(&self.geq, [self.bass, self.treble], &self.peq)?;
+        stage.apply_modern(true, &self.geq, [self.bass, self.treble], &self.peq)?;
+        Ok(b0)
+    }
+
+    /// Master-off or reapply on the same already-converted local graph.
+    /// Keep the previous wrapper flags even when both controls precede PCM.
+    pub(crate) fn set_active_on_shared_local(
+        &self,
+        stage: &mut LocalFixedStage,
+        format: Format,
+        active: bool,
+    ) -> Result<Option<LimiterStage>> {
+        let b0 = self.prepare_control(format, active)?;
+        if active {
+            stage.apply_modern(false, &self.geq, [self.bass, self.treble], &self.peq)?;
+        } else {
+            stage.modern_master_off()?;
+        }
         Ok(b0)
     }
 

@@ -98,16 +98,62 @@ while libmpv is paused. It never stops, loads, reopens or changes the
 native entry. The only paused snapshot changes are command revisions;
 the independent control outcome distinguishes a successful transition
 from a rejected duplicate. Both leave existing buffered PCM and decoder
-positions in place. The same entry resumes, decodes all 147463 source
-frames, delivers 147225 PCM frames (the old 238-frame B0 debt), and emits
-natural EOF after a seven-frame final source quantum. The original
-descriptor's lifetime remains valid. This passed with Linux x86_64
-libmpv 0.41.0-2ubuntu4 null output; it is not physical-device proof.
+positions in place. The original descriptor's lifetime remains valid.
 The hook is test-only; a handled revision alone cannot stand for effect
 authorization or successful mutation.
 
     cargo test --locked -p cumulus-core --lib initial_modern \
       -- --include-ignored --test-threads=1 --nocapture
+
+Same-graph master off and reapply
+--------------------------------
+
+After initial apply, the same local graph holds an immutable copy of the
+modern parameter program. The off action follows `68770(true)`: it changes
+only target bypass for GEQ, BT and PEQ, leaves their previous flags alone,
+and restores B0's native defaults. Reapply uses the original Begin/defaults
+and setter sequence against those same wrappers. It never applies saved
+legacy settings over a converted graph. No control can extend source EOF.
+
+The original x64 SDK corpus covers two material recipes and a third with
+default B0 settings, both sample rates, and four timelines: steady, one
+real off quantum, off/on between modern quanta, and off/on before the first
+modern quantum. The probe leaves 511, 257 and 1023 frames pending and
+compares unread old output, each subsequent PCM window and exact EOF.
+An off quantum lets GEQ settle dry: reapply leaves current/previous
+`[0,1]`. Without a quantum the old previous state is still active `[0,0]`.
+The latter sequence still resets the applicable setters and can change
+samples; it is not valid to drop the two controls just because their final
+target agrees with the initial target. Before the first modern quantum,
+off/on is byte-identical to the first apply in this corpus.
+
+For `neutralTone` at 48 kHz, the middle output is 2048 frames in the steady
+control, 1810 after an off quantum, and 1857 after off/on without a quantum.
+For changing B0 timing, the two setters in the latter case request setup
+but only the final setting reaches the next Execute. The default B0 case
+has one setup at initialization and identical output counts in all four
+timelines, even though the wrapper histories change the samples.
+
+Rust matches the 24 original timelines' frame counts and PCM hashes. The
+fixture `effects-modern-limiter-shared-controls-official.json` has SHA-256
+`d2fdc75999161ee2b02d738a5d9d56c0ac2460091f3fd96d9e3c44be6cc9c361`.
+It contains synthetic recipes and hashes, no original code or account
+data. Optional source-backed reproduction:
+
+    unshare -Urn python3 scripts/research/freeze_modern_limiter_shared_controls.py \
+      --dll LOCAL_ORIGINAL_NEAUDIOEFFECTS_DLL --out NEW.json
+    cargo test --locked -p cumulus-core --lib shared_modern_controls
+
+The opt-in test above also ran both controls through the existing owned
+WAV worker and the same real Linux x86_64 libmpv 0.41.0-2ubuntu4 null
+output entry. Paused control acknowledgements did not move the decoder,
+buffers or native clock. After off/on before the first modern block and
+then a real off quantum and reapply, all 147463 source frames decoded and
+146796 output frames reached the same entry before clean natural EOF.
+The 667-frame difference is the old 238-frame B0, the 191-frame modern
+B0 and the 238-frame off B0 discarded at their respective transitions.
+The held descriptor is still owned at EOF. No physical sound device was
+used.
 
 Observed failed handoff
 -----------------------
@@ -143,9 +189,9 @@ run observations, not timing thresholds or physical playback proof.
 The same-graph initial apply supplies the bounded DSP/worker step. A
 production attach still needs to bind the acknowledged account/material
 receipt to this exact held entry, check revocation before graph use, and
-keep rejected/stale work distinct from successful controls. Modern
-off/reapply and return to legacy controls on this same C graph still need
-their own proof. Lease cleanup belongs to the production owner. An
+keep rejected/stale work distinct from successful controls. Returning to
+legacy controls on this same C graph still needs its own proof. Lease
+cleanup belongs to the production owner. An
 intentionally retired entry cannot be reused as an authorization proof.
 There is no stock decoder, network request, path reopen or synthetic
 silence in the same-graph test.

@@ -355,6 +355,48 @@ fn initial_modern_uses_same_held_local_worker_and_native_entry_until_short_eof()
         );
     }
     assert_eq!(native.poll().unwrap().entry_id, Some(entry));
+
+    // Off then on before another decoder quantum: the final setup reaches
+    // the same live graph without consuming a separate off block.
+    let paused = control.snapshot().unwrap();
+    assert_eq!(switch_paused_modern_entry(&control, paused, false), 3);
+    let paused = control.snapshot().unwrap();
+    assert_eq!(switch_paused_modern_entry(&control, paused, true), 4);
+    let advance = |native: &mut MpvEngine, previous: StereoPcmSnapshot, label| {
+        native.pause(false).unwrap();
+        actual(label, || {
+            let view = native.poll().unwrap();
+            let state = control.snapshot().unwrap();
+            assert!(!state.failed && !state.cancelled);
+            (view.entry_id == Some(entry)
+                && state.decoded_source_frame >= previous.decoded_source_frame + 2048
+                && state.native_output_frame >= previous.native_output_frame + u64::from(rate) / 5)
+                .then_some(())
+        });
+        pause_modern_entry(native, &control, entry, label)
+    };
+    let modern_debt = 191;
+    let active = advance(
+        &mut native,
+        before,
+        "the coalesced first modern quantum ran",
+    );
+    assert_eq!(
+        active.decoded_source_frame - active.produced_frames,
+        old_debt + modern_debt
+    );
+    assert_eq!(switch_paused_modern_entry(&control, active, false), 5);
+    let off = advance(
+        &mut native,
+        active,
+        "a real off quantum ran on the same native entry",
+    );
+    let debt_after_reapply = 2 * old_debt + modern_debt;
+    assert_eq!(
+        off.decoded_source_frame - off.produced_frames,
+        debt_after_reapply
+    );
+    assert_eq!(switch_paused_modern_entry(&control, off, true), 6);
     native.pause(false).unwrap();
     actual(
         "the same entry drains the modern graph's short final quantum",
@@ -374,13 +416,15 @@ fn initial_modern_uses_same_held_local_worker_and_native_entry_until_short_eof()
     assert!(end.graph_end && end.cancelled && !end.failed, "{end:?}");
     assert!(!lifetime.is_cancelled());
     assert_eq!(end.decoded_source_frame, total);
-    assert_eq!(end.produced_frames, total - old_debt);
+    assert_eq!(end.produced_frames, total - debt_after_reapply);
     assert_eq!(end.delivered_frames, end.produced_frames);
-    assert_eq!(end.applied_revision, 2);
-    assert!(end.native_source_frame > before.native_source_frame);
+    assert_eq!(end.applied_revision, 6);
+    assert!(end.native_source_frame > off.native_source_frame);
     assert!(end.native_source_frame <= end.delivered_frames);
     assert_eq!(pass.reclaim().unwrap().total_frames(), total);
-    eprintln!("held local-to-modern receipt: before={before:?}, end={end:?}");
+    eprintln!(
+        "held local-to-modern receipt: before={before:?}, active={active:?}, off={off:?}, end={end:?}"
+    );
 }
 
 #[test]

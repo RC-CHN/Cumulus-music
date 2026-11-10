@@ -1,5 +1,6 @@
 use super::*;
-use crate::effects::dsp::{LimiterStream, LimiterStreamWrite};
+use crate::effects::dsp::{LimiterStream, LimiterStreamQuantum, LimiterStreamWrite};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -58,6 +59,17 @@ fn push(
     count: usize,
     timestamp: Option<u32>,
 ) -> LimiterStreamWrite {
+    push_observed(stream, stage, first, count, timestamp, |_| {})
+}
+
+fn push_observed(
+    stream: &mut LimiterStream,
+    stage: &mut LocalFixedStage,
+    first: usize,
+    count: usize,
+    timestamp: Option<u32>,
+    observe: impl FnMut(LimiterStreamQuantum),
+) -> LimiterStreamWrite {
     stream
         .push_interleaved_graph(
             &synth(first, count),
@@ -75,15 +87,19 @@ fn push(
                 );
                 limiter.process(block, frames, end)
             },
-            |_| {},
+            observe,
         )
         .unwrap()
 }
 
 fn pull(stream: &mut LimiterStream, max: usize) -> Vec<f32> {
+    pull_with_end(stream, max, false)
+}
+
+fn pull_with_end(stream: &mut LimiterStream, max: usize, end: bool) -> Vec<f32> {
     let mut pcm = vec![0.0; max * 2];
     let receipt = stream.pull_interleaved(&mut pcm).unwrap();
-    assert_eq!(receipt.end, Some(false));
+    assert_eq!(receipt.end, Some(end));
     pcm.truncate(receipt.frames as usize * 2);
     pcm
 }
@@ -238,4 +254,164 @@ fn initial_modern_rejects_unsupported_or_unsettled_legacy_without_mutating() {
         ended.apply_initial_modern(&plan).is_err(),
         "source already ending"
     );
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedCorpus {
+    schema: String,
+    sdk_sha256: String,
+    cases: Vec<SharedCase>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedCase {
+    profile: String,
+    rate: u32,
+    mode: SharedMode,
+    inputs: Vec<u32>,
+    outputs: Vec<u32>,
+    frames: [usize; 4],
+    sha256: [String; 4],
+    native_b0_setups: usize,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum SharedMode {
+    Steady,
+    SettledOff,
+    Coalesced,
+    InitialCoalesced,
+}
+
+#[test]
+fn shared_modern_controls_match_original_pcm_with_and_without_an_off_quantum() {
+    let corpus: SharedCorpus = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/effects-modern-limiter-shared-controls-official.json"
+    )))
+    .unwrap();
+    let profiles: Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/effects-modern-limiter-graph-official.json"
+    )))
+    .unwrap();
+    assert_eq!(
+        corpus.schema,
+        "cumulus.modern-limiter-x64-shared-controls.v1"
+    );
+    assert_eq!(corpus.sdk_sha256, profiles["sdkSha256"].as_str().unwrap());
+    assert_eq!(corpus.cases.len(), 24);
+
+    for case in corpus.cases {
+        let label = (&case.profile, case.rate, case.mode);
+        let mut profile = profiles["profiles"][&case.profile].clone();
+        if case.profile == "defaultTiming" {
+            profile = profiles["profiles"]["nonzeroTone"].clone();
+            profile["aev2"]["limiter"] = json!({
+                "on":true,"threshold":0,"attack":0.005,"release":0.1,
+                "outputgain":0,"infiniteRatio":true,"ratio":4
+            });
+        }
+        let plan = ModernLimiterPlan::from_material(&profile).unwrap();
+        let format = Format::new(case.rate as f32, 2, QUANTUM as u32).unwrap();
+        let local = LocalEqualizerStereoMaterial::new(format, legacy(3.0, 0, 0)).unwrap();
+        let LocalFixedStereoMaterial {
+            mut stage, limiter, ..
+        } = local.graph;
+        let mut stream = limiter.into_stream(8192).unwrap();
+        let mut quanta = Vec::new();
+        let mut push =
+            |stream: &mut LimiterStream, stage: &mut LocalFixedStage, first, count, timestamp| {
+                push_observed(stream, stage, first, count, timestamp, |q| quanta.push(q))
+            };
+        let mut setups = 1;
+        let mut material: Option<ModernLocalMaterial> = None;
+        let mut pcm_segments = Vec::new();
+        push(&mut stream, &mut stage, 0, QUANTUM, Some(1000));
+        for (i, pending) in [511, 257, 1023].into_iter().enumerate() {
+            let first = (i + 1) * QUANTUM;
+            let mut pcm = pull(&mut stream, 31);
+            let queued = push(&mut stream, &mut stage, first, pending, None);
+            assert_eq!(queued.input_ready as usize, pending);
+            assert_eq!(queued.output_ready as usize, case.frames[i] - 31);
+            let mut new_b0 = None;
+            if i == 0 {
+                let (new, b0) = ModernLocalMaterial::install(&plan, &mut stage, format).unwrap();
+                material = Some(new);
+                new_b0 = b0;
+            }
+            let switch = match (i, case.mode) {
+                (0, SharedMode::InitialCoalesced) | (1, SharedMode::Coalesced) => {
+                    [false, true].as_slice()
+                }
+                (1, SharedMode::SettledOff) => [false].as_slice(),
+                (2, SharedMode::SettledOff) => [true].as_slice(),
+                _ => [].as_slice(),
+            };
+            for active in switch {
+                new_b0 = material
+                    .as_mut()
+                    .unwrap()
+                    .set_active(&mut stage, format, *active)
+                    .unwrap();
+            }
+            // More than one setup request before the next quantum coalesces
+            // inside B0. Its old pending PCM is already invalidated by the
+            // first timing change; only the final settings reach Execute.
+            if let Some(b0) = new_b0 {
+                setups += 1;
+                stream.replace_stage_for_setup(b0);
+            }
+            pcm.extend(pull(&mut stream, QUANTUM));
+            pcm_segments.push(pcm);
+            push(
+                &mut stream,
+                &mut stage,
+                first + pending,
+                QUANTUM - pending,
+                None,
+            );
+        }
+        let mut tail = pull(&mut stream, QUANTUM);
+        push(&mut stream, &mut stage, 4 * QUANTUM, 7, None);
+        push(&mut stream, &mut stage, 4 * QUANTUM + 7, 0, None);
+        tail.extend(pull_with_end(&mut stream, QUANTUM, true));
+        assert!(pull_with_end(&mut stream, QUANTUM, true).is_empty());
+        pcm_segments.push(tail);
+
+        assert_eq!(setups, case.native_b0_setups, "{label:?} B0 setups");
+        assert_eq!(
+            quanta.iter().map(|q| q.input_frames).collect::<Vec<_>>(),
+            case.inputs,
+            "{label:?} source quanta"
+        );
+        assert_eq!(
+            quanta
+                .iter()
+                .map(|q| q.timing.output_frames)
+                .collect::<Vec<_>>(),
+            case.outputs,
+            "{label:?} output quanta"
+        );
+        assert_eq!(
+            quanta.iter().map(|q| q.timestamp_ms).collect::<Vec<_>>(),
+            if case.rate == 44_100 {
+                [1000, 1046, 1092, 1138, 1184]
+            } else {
+                [1000, 1042, 1084, 1126, 1168]
+            },
+            "{label:?} source clock"
+        );
+        for (index, pcm) in pcm_segments.into_iter().enumerate() {
+            assert_eq!(
+                pcm.len() / 2,
+                case.frames[index],
+                "{label:?} segment {index}"
+            );
+            assert_eq!(hash(&pcm), case.sha256[index], "{label:?} segment {index}");
+        }
+    }
 }

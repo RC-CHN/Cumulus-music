@@ -1,0 +1,1422 @@
+{
+  "schema": "cumulus.modern-limiter-x64-shared-controls.v1",
+  "sdkSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "cases": [
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1873,
+        2048,
+        2048,
+        182
+      ],
+      "frames": [
+        1829,
+        1873,
+        2048,
+        2230
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "cbf8dfcf82bf13be062fc063951c3b07523d05c3eff887c9c0868313deb86c27",
+        "8120af4b493d2a44278c83b1f8565e42d54464d53a842d1b3c7ad31d4abeb47e",
+        "f7c53850ce06d91ded83e05a03a924ff448d3aef22ffcdac88eaedef0e3239bd"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "mode": "settledOff",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1873,
+        1829,
+        1873,
+        182
+      ],
+      "frames": [
+        1829,
+        1873,
+        1829,
+        2055
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "cbf8dfcf82bf13be062fc063951c3b07523d05c3eff887c9c0868313deb86c27",
+        "a6df913d61d35b9aa8efec27a550951504a1b571b66c3ee5cba534b7ba1fa4e7",
+        "5cdb44f592006b7006908cdb1f7bd9e9edcd68d0062ef7f37b9d74829dd90ddb"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 4
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1873,
+        1873,
+        2048,
+        182
+      ],
+      "frames": [
+        1829,
+        1873,
+        1873,
+        2230
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "cbf8dfcf82bf13be062fc063951c3b07523d05c3eff887c9c0868313deb86c27",
+        "38e573972addaaa92559da15031e2037602be7f5038de4335d08ce7ac4a24116",
+        "c3cc9a5f87f861393ec9a7d7e85782b44764177c64a98ed0b77efd1517ed60aa"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 3
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "mode": "initialCoalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1873,
+        2048,
+        2048,
+        182
+      ],
+      "frames": [
+        1829,
+        1873,
+        2048,
+        2230
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "cbf8dfcf82bf13be062fc063951c3b07523d05c3eff887c9c0868313deb86c27",
+        "8120af4b493d2a44278c83b1f8565e42d54464d53a842d1b3c7ad31d4abeb47e",
+        "f7c53850ce06d91ded83e05a03a924ff448d3aef22ffcdac88eaedef0e3239bd"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1857,
+        2048,
+        2048,
+        198
+      ],
+      "frames": [
+        1810,
+        1857,
+        2048,
+        2246
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "d0f80b98e4e81ee931eea7b942d3d07acc82c779d0d02e8ee0105a9032f0a772",
+        "baa9b96d46bc1b13f8f76675adabd03f7520ee113650fefdebcd457a7526033a",
+        "c88c543ba7f13748e944a418c99917dce92afd651c762109ebeefadcddc8189e"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "mode": "settledOff",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1857,
+        1810,
+        1857,
+        198
+      ],
+      "frames": [
+        1810,
+        1857,
+        1810,
+        2055
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "d0f80b98e4e81ee931eea7b942d3d07acc82c779d0d02e8ee0105a9032f0a772",
+        "1ecb8eb2e32db726a255005554da9194e92bc2aa049c73013761a6a4177204c3",
+        "c0a18a67630273ea5527a69c7f94ac96487be37a894c171ebcc2a4449a7eb36c"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 4
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1857,
+        1857,
+        2048,
+        198
+      ],
+      "frames": [
+        1810,
+        1857,
+        1857,
+        2246
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "d0f80b98e4e81ee931eea7b942d3d07acc82c779d0d02e8ee0105a9032f0a772",
+        "94b28a0b5e7a49cb4a1ba25ffdabbfafb943045d7731b4e3d5bc9d96e680daa3",
+        "2b98304234122481c9593b726622aea23a810d03d3b52f893fc9d4dd079c7ee8"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 3
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "mode": "initialCoalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1857,
+        2048,
+        2048,
+        198
+      ],
+      "frames": [
+        1810,
+        1857,
+        2048,
+        2246
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "d0f80b98e4e81ee931eea7b942d3d07acc82c779d0d02e8ee0105a9032f0a772",
+        "baa9b96d46bc1b13f8f76675adabd03f7520ee113650fefdebcd457a7526033a",
+        "c88c543ba7f13748e944a418c99917dce92afd651c762109ebeefadcddc8189e"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1785,
+        2048,
+        2048,
+        270
+      ],
+      "frames": [
+        1829,
+        1785,
+        2048,
+        2318
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "481f2348fa1e2c0ced158422ec7ad26096391fdf30b3c6577e986ec7e7bc375a",
+        "a4ab75902df74716f50d524848c53c541879810bfd6cf9f25e8438ca56ed041a",
+        "7d634653be833d88adee6c933616ce2f8ae5ffeffb2b562749220b165602f1cb"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "mode": "settledOff",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1785,
+        1829,
+        1785,
+        270
+      ],
+      "frames": [
+        1829,
+        1785,
+        1829,
+        2055
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "481f2348fa1e2c0ced158422ec7ad26096391fdf30b3c6577e986ec7e7bc375a",
+        "f72dfc27deb600fac7fdf3982e2b6c5c1558fc22af558721cd72a50a52b454fa",
+        "0b5019a0564d87428174e4d1fcf93e2b26f5e24e693c3d6f3e441fdd84b2b6c9"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 4
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1785,
+        1785,
+        2048,
+        270
+      ],
+      "frames": [
+        1829,
+        1785,
+        1785,
+        2318
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "481f2348fa1e2c0ced158422ec7ad26096391fdf30b3c6577e986ec7e7bc375a",
+        "081b82ae38637a60a0742b3f35f6d1d76a112a89d2c7e9e27b771388c3bbd021",
+        "b927bf538fe90ba21da8e41d32e9383a413bff3ffa6d5ca7109369c3cf25b629"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 3
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "mode": "initialCoalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1785,
+        2048,
+        2048,
+        270
+      ],
+      "frames": [
+        1829,
+        1785,
+        2048,
+        2318
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "481f2348fa1e2c0ced158422ec7ad26096391fdf30b3c6577e986ec7e7bc375a",
+        "a4ab75902df74716f50d524848c53c541879810bfd6cf9f25e8438ca56ed041a",
+        "7d634653be833d88adee6c933616ce2f8ae5ffeffb2b562749220b165602f1cb"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1761,
+        2048,
+        2048,
+        294
+      ],
+      "frames": [
+        1810,
+        1761,
+        2048,
+        2342
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "635dc5d7b4788c55264778880022bcc629faaf8434d8d6be031bcb0e28e051e9",
+        "37a43e4d3bcfaec6764fdb700c8010457fa6d30f7a455a326a33c8edf5a96394",
+        "1b67b345582def1d17c66e3c11173c3e1daa9c277c28e2cc1fca12fec3cde356"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "mode": "settledOff",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1761,
+        1810,
+        1761,
+        294
+      ],
+      "frames": [
+        1810,
+        1761,
+        1810,
+        2055
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "635dc5d7b4788c55264778880022bcc629faaf8434d8d6be031bcb0e28e051e9",
+        "a30ffc61a0b27df9bd0739fc4a429e9f6c48f257a84d56f3570411d78f25c4db",
+        "67d47e321c1b90274bd78b864486a0b9e59d6052a3712aa67eb71cae1a223b0b"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 4
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1761,
+        1761,
+        2048,
+        294
+      ],
+      "frames": [
+        1810,
+        1761,
+        1761,
+        2342
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "635dc5d7b4788c55264778880022bcc629faaf8434d8d6be031bcb0e28e051e9",
+        "741d6d86c1f3d1e01aab3aedd3553a84cc28b03226dcf72a9320f3d8cec5fc1b",
+        "663c306eca9e44c778f1ae8eb0e42b1f74f5363503e499bd6c014775077aef97"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 3
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "mode": "initialCoalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1761,
+        2048,
+        2048,
+        294
+      ],
+      "frames": [
+        1810,
+        1761,
+        2048,
+        2342
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "635dc5d7b4788c55264778880022bcc629faaf8434d8d6be031bcb0e28e051e9",
+        "37a43e4d3bcfaec6764fdb700c8010457fa6d30f7a455a326a33c8edf5a96394",
+        "1b67b345582def1d17c66e3c11173c3e1daa9c277c28e2cc1fca12fec3cde356"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "nativeB0Setups": 2
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 44100,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "004cb373816f24ecfd11ced85123c006ed3dd71e6dfed96831bbafce94c0bda6",
+        "af9aa4c0782a6319f573b22a2ff8022affcfe7f69096b32fb921ec7852dc1d60",
+        "71f89f4e781a0d2ce76a30133790c7ca748de788f6daf5e786351d0ba7d289b7"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 44100,
+      "mode": "settledOff",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "004cb373816f24ecfd11ced85123c006ed3dd71e6dfed96831bbafce94c0bda6",
+        "882bd39f4ca8f2837562b103010c60363c62bb8bffb715b7305e2b8e5cbe15f3",
+        "4a031028e871032302764a2b55eadf460afbc4130efab660ff16fbada1750947"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 44100,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "004cb373816f24ecfd11ced85123c006ed3dd71e6dfed96831bbafce94c0bda6",
+        "3a66c7dd9fa1b9bf36a4359ff8d9cbff8f7d24b5a4cdd60d54ab36dae5022c17",
+        "c04de045944b7be3c62b146796909bf4d4061585ddda9aa5091ca8f487371725"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 44100,
+      "mode": "initialCoalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+        "004cb373816f24ecfd11ced85123c006ed3dd71e6dfed96831bbafce94c0bda6",
+        "af9aa4c0782a6319f573b22a2ff8022affcfe7f69096b32fb921ec7852dc1d60",
+        "71f89f4e781a0d2ce76a30133790c7ca748de788f6daf5e786351d0ba7d289b7"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 48000,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "0985ecd8895242e806c063ce5e840c89e7406cb7e352b6822c07db88e7d2d3f7",
+        "dca3e22b51867655ef5fdb44c687221240c72e5765bf060c73414cd8813b957e",
+        "a4e51a3797eba8af4785e093f19c8e43a70f59c3eeb055b3779f2f59aca0edd9"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 48000,
+      "mode": "settledOff",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "0985ecd8895242e806c063ce5e840c89e7406cb7e352b6822c07db88e7d2d3f7",
+        "0b4bbd63963cdadfcc529a85f2d7a2533b304700377517598fefd505bb282cd4",
+        "cbb476aca7155e44876d4f0ddee155833df8b5cacc7ec2c4807f19209307cd76"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 48000,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "0985ecd8895242e806c063ce5e840c89e7406cb7e352b6822c07db88e7d2d3f7",
+        "03cee74135ad38236359017fdf33860ccdf7d76109f2700f9ca88410bf09ce34",
+        "fcb6bc904df51b81185a999c0591d4723b69b7a10ddd16eeb5f4b8a25d71aacd"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 48000,
+      "mode": "initialCoalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+        "0985ecd8895242e806c063ce5e840c89e7406cb7e352b6822c07db88e7d2d3f7",
+        "dca3e22b51867655ef5fdb44c687221240c72e5765bf060c73414cd8813b957e",
+        "a4e51a3797eba8af4785e093f19c8e43a70f59c3eeb055b3779f2f59aca0edd9"
+      ],
+      "controls": {
+        "initial": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "off": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "reapply": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      },
+      "nativeB0Setups": 1
+    }
+  ]
+}

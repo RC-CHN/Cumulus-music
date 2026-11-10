@@ -1,4 +1,4 @@
-/* Explicit fixed local equalizer scope and bounded initial modern apply;
+/* Explicit fixed local equalizer scope and bounded in-place modern controls;
  * no RVB-on, normalization, rotation or general optional SDK effect.
  * Includes the real first off-wrapper transitions in original graph order.
  * The caller still supplies the independently recovered final B0 node.
@@ -125,23 +125,34 @@ typedef struct {
 } NeteaseLocalModernBand;
 _Static_assert(sizeof(NeteaseLocalModernBand)==24,"modern band ABI changed");
 
-/* Initial modern EFB760 application on an already-settled GEQ-only graph.
- * The native Begin/defaults and explicit setters modify controls but do not
- * replace the live wrappers or synchronize their previous flags. LocalOff is
- * inline POD; stage the whole transaction without borrowing the SE arena.
- * Rejections (including unsupported old state) never modify the live graph. */
-int netease_local_equalizer_initial_modern(NeteaseLocalFixed *s,const float geq[10],
-                                          float bass,float treble,float peq_gain,
-                                          const NeteaseLocalModernBand *bands,uint32_t count) {
-    if(!local_equalizer_format(s) || !geq || !bands || !count || count>9 ||
+static int local_equalizer_modern_dry_siblings(const NeteaseLocalFixed *s) {
+    return local_equalizer_format(s) && !s->bank_one &&
+           s->stereo.shared.bypass && s->stereo.shared.previous &&
+           s->off.pre58_previous && s->off.pre60_previous &&
+           s->off.post78_previous && s->off.rvb_previous;
+}
+int netease_local_equalizer_initial_modern_ready(const NeteaseLocalFixed *s) {
+    return local_equalizer_modern_dry_siblings(s) &&
+           !s->off.geq.bypass && !s->off.geq.previous &&
+           s->off.bt.bypass && s->off.bt.previous &&
+           s->off.peq.bypass && s->off.peq.previous;
+}
+
+/* Modern EFB760 first apply on a settled GEQ-only graph, or reapply on the
+ * same modern graph after master off. The previous flags can still be active
+ * if no PCM ran during off; only the setters and the next block own them.
+ * LocalOff is inline POD, so staging does not borrow the SE arena. Rejection
+ * never mutates the graph or its wrapper flags. */
+int netease_local_equalizer_apply_modern(NeteaseLocalFixed *s,uint32_t initial,
+                                        const float geq[10],float bass,float treble,
+                                        float peq_gain,const NeteaseLocalModernBand *bands,
+                                        uint32_t count) {
+    if(!local_equalizer_format(s) || initial>1 || !geq || !bands || !count || count>9 ||
        !isfinite(bass) || !isfinite(treble) || !isfinite(peq_gain) ||
        fabsf(bass)>24 || fabsf(treble)>24 || fabsf(peq_gain)>24)return -1;
-    if(s->off.geq.bypass || s->off.geq.previous ||
-       !s->off.bt.bypass || !s->off.bt.previous ||
-       !s->off.peq.bypass || !s->off.peq.previous || s->bank_one ||
-       !s->stereo.shared.bypass || !s->stereo.shared.previous ||
-       !s->off.pre58_previous || !s->off.pre60_previous ||
-       !s->off.post78_previous || !s->off.rvb_previous)return 1;
+    if(initial?!netease_local_equalizer_initial_modern_ready(s):
+       (!local_equalizer_modern_dry_siblings(s) || !s->off.geq.bypass ||
+        !s->off.bt.bypass || !s->off.peq.bypass))return 1;
     for(unsigned i=0;i<10;i++)if(!isfinite(geq[i]) || fabsf(geq[i])>12)return -1;
     unsigned seen=0,enabled=0;
     for(unsigned i=0;i<count;i++) {
@@ -169,6 +180,18 @@ int netease_local_equalizer_initial_modern(NeteaseLocalFixed *s,const float geq[
         if(netease_peq_band(&next.peq,b->slot,b->kind,b->gain,b->frequency,b->q,b->enabled))return -1;
     }
     if(netease_peq_bypass(&next.peq,0))return -1;
+    s->off=next;
+    return 0;
+}
+
+/* Native master bypass keeps cached parameters and previous flags. A later
+ * same-quantum reapply still sees the old wrapper blend history. */
+int netease_local_equalizer_modern_master_off(NeteaseLocalFixed *s) {
+    if(!local_equalizer_modern_dry_siblings(s) || s->off.geq.bypass ||
+       s->off.bt.bypass || s->off.peq.bypass)return 1;
+    NeteaseLocalOff next=s->off;
+    if(netease_geq_stage_bypass(&next.geq,1) || netease_peq_bypass(&next.bt,1) ||
+       netease_peq_bypass(&next.peq,1))return -1;
     s->off=next;
     return 0;
 }

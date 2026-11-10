@@ -178,7 +178,9 @@ Production wiring and its remaining gates
   apply. The bounded initial modern material can now update the settled
   GEQ-only graph itself; original hot PCM matches at both rates and an
   opt-in test uses the same paused held-WAV worker and native entry.
-  This initial DSP control does not perform registration or activation.
+  The same graph also matches original off/reapply with or without an
+  intervening quantum. These controls do not register or activate an
+  effect in the application.
 - The ordinary official type-4 cache/online source feeds the device PCM
   route (`10555B0` negotiated geometry; `1055EF0` SDK write/read); it does
   not infer the graph format from song bitrate. The ordinary seek discards

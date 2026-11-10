@@ -95,6 +95,10 @@ impl SourceGraph {
                 graph.apply(active)
             }
             #[cfg(test)]
+            (Material::Local(graph), StereoGraphControl::SetModernMaterialActive(active)) => {
+                graph.set_modern_material_active(active)
+            }
+            #[cfg(test)]
             (material, StereoGraphControl::InitialModernFromLocal { plan, outcome }) => {
                 let result = match material {
                     Material::Local(graph) => graph.apply_initial_modern(&plan),

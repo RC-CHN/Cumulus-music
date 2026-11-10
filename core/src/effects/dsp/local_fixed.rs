@@ -141,8 +141,9 @@ impl LocalFixedStage {
         let code = unsafe { ffi::netease_local_equalizer_master_off(self.state.pointer()) };
         self.checked_control(code)
     }
-    pub(crate) fn apply_initial_modern(
+    pub(crate) fn apply_modern(
         &mut self,
+        initial: bool,
         geq: &[f32; 10],
         [bass, treble]: [f32; 2],
         calls: &[PeqCall],
@@ -185,8 +186,9 @@ impl LocalFixedStage {
         // at most nine initialized repr(C) records. The C transaction mutates
         // only after the bounded local graph state and all parameters verify.
         let status = unsafe {
-            ffi::netease_local_equalizer_initial_modern(
+            ffi::netease_local_equalizer_apply_modern(
                 self.state.pointer(),
+                u32::from(initial),
                 geq.as_ptr(),
                 bass,
                 treble,
@@ -195,12 +197,23 @@ impl LocalFixedStage {
                 bands.len() as u32,
             )
         };
+        Self::check_modern_control(status)
+    }
+    pub(crate) fn modern_master_off(&mut self) -> Result<()> {
+        self.available()?;
+        // SAFETY: exclusive initialized state; this checked C operation
+        // only changes target bypass flags and commits atomically.
+        let status =
+            unsafe { ffi::netease_local_equalizer_modern_master_off(self.state.pointer()) };
+        Self::check_modern_control(status)
+    }
+    fn check_modern_control(status: i32) -> Result<()> {
         match status {
             0 => Ok(()),
             1 => Err(Error::State(
-                "initial modern effect needs a settled local GEQ-only graph",
+                "modern effect needs a compatible local graph state",
             )),
-            _ => Err(Error::InvalidInput("invalid initial modern graph controls")),
+            _ => Err(Error::InvalidInput("invalid modern local graph controls")),
         }
     }
     fn checked_control(&mut self, code: i32) -> Result<()> {

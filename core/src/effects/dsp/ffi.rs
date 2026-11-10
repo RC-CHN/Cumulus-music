@@ -31,8 +31,9 @@ unsafe extern "C" {
         stereoizer: i32,
     ) -> i32;
     pub fn netease_local_equalizer_master_off(state: *mut c_void) -> i32;
-    pub fn netease_local_equalizer_initial_modern(
+    pub fn netease_local_equalizer_apply_modern(
         state: *mut c_void,
+        initial: u32,
         geq: *const f32,
         bass: f32,
         treble: f32,
@@ -40,6 +41,7 @@ unsafe extern "C" {
         bands: *const super::local_fixed::LocalModernBand,
         count: u32,
     ) -> i32;
+    pub fn netease_local_equalizer_modern_master_off(state: *mut c_void) -> i32;
     pub fn netease_local_fixed_parameters(
         state: *mut c_void,
         presence: f32,
