@@ -506,6 +506,12 @@ pub enum PlaySelection {
         quality: Quality,
         toggle_current: bool,
     },
+    SearchResultMenuPlay {
+        id: String,
+        quality: Quality,
+        expected_play_id: Option<String>,
+        expected_queue_revision: String,
+    },
     SearchResults {
         ids: Vec<String>,
         index: usize,

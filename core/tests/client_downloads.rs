@@ -329,6 +329,36 @@ fn assert_search_online(f: &Fixture, level: &str) {
 }
 
 #[tokio::test]
+async fn search_menu_play_starts_from_empty_queue_using_the_same_verified_download() {
+    let f = Fixture::new();
+    let (_, completed) = f.completed().await;
+    let path = fs::canonicalize(completed.tasks[0].path.as_ref().unwrap()).unwrap();
+    let initial = f.client.player_snapshot("1").await.unwrap();
+    let played = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::SearchResultMenuPlay {
+                id: "123".into(),
+                quality: Quality::Standard,
+                expected_play_id: initial.play_id,
+                expected_queue_revision: initial.queue_revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(played.state, PlaybackStatus::Playing);
+    assert_ne!(played.queue_revision, initial.queue_revision);
+    assert!(played.catalog_file_source);
+    assert_eq!(played.resource_kind, Some(PlayerResourceKind::Catalog));
+    assert_eq!(f.api.count(SEARCH_URL), 0);
+    assert_eq!(
+        f.device.state.lock().unwrap().last_pinned,
+        Some((false, fs::read(path).unwrap()))
+    );
+}
+
+#[tokio::test]
 async fn search_row_verified_download_keeps_catalog_and_disables_quality_switch() {
     let f = Fixture::new();
     let (_task, completed) = f.completed().await;

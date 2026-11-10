@@ -1802,7 +1802,37 @@
       const unchanged=await player();
       assert(!one('[data-search-queue-add-tip]')&&unchanged.playId===advanced.playId&&
         unchanged.queueRevision===advanced.queueRevision,'current song does not acknowledge a queue mutation');
-      await emit('complete',{ok:true,searchNextVerified:true,searchNextNoopVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await fixture('good');
+      await invoke('player_action',{epoch,action:{kind:'select',entry_id:before.tracks[1].entryId}});
+      const playFrom=await playing('92');
+      await wait(()=>one('.playerbar')?.dataset.playId===playFrom.playId,'source selection rendered');
+      await fixture('result_play_trial');
+      const resultRow=()=>one('.track-row[data-track-id="3"]');
+      const menuPlay=()=>{const scope=one('.song-action-menu:not([inert])');return scope&&button('播放',scope);};
+      click(resultRow().querySelector('.track-more'));
+      await wait(()=>menuPlay()&&!menuPlay().disabled,'explicit search Play');
+      click(menuPlay());
+      const replayed=await playing('3'), moved=await queue();
+      await wait(()=>one('[data-search-queue-add-tip]')?.textContent.trim()==='已添加至播放列表','search menu Play queue receipt');
+      assert(replayed.playId!==playFrom.playId&&replayed.entryId===advanced.entryId&&
+        replayed.queueRevision!==playFrom.queueRevision,'explicit Play reuses the target entry and commits selection');
+      assert(moved.tracks.map(row=>row.entryId).join(',')===before.tracks.map(row=>row.entryId).join(','),
+        'explicit Play moves an existing search/42 entry after current rather than selecting its old slot');
+      await capture('search_menu_play_repositions_same_source');
+      await wait(()=>!one('[data-search-queue-add-tip]'),'Play queue cue dismisses');
+      await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+      const paused=await player();
+      assert(paused.state==='paused'&&paused.playId===replayed.playId,'native search target paused');
+      click(resultRow().querySelector('.track-more'));
+      await wait(()=>menuPlay()&&!menuPlay().disabled,'Play current search song');
+      click(menuPlay());
+      const resumed=await playing('3');
+      await sleep(200);
+      assert(resumed.playId===paused.playId&&resumed.queueRevision===paused.queueRevision&&
+        resumed.position>=paused.position&&!one('[data-search-queue-add-tip]'),
+        'current result Play continues its decoder without changing or acknowledging the queue');
+      await capture('search_menu_play_resumes_current_decoder');
+      await emit('complete',{ok:true,searchNextVerified:true,searchNextNoopVerified:true,searchMenuPlayVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchPeopleCategoriesProof){

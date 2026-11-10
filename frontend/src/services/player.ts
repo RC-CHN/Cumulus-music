@@ -527,6 +527,13 @@ export type PlaySelection =
   | { kind: 'search_artist_card'; id: string; quality: Quality }
   | { kind: 'search_result_track'; id: string; quality: Quality; toggle_current: boolean }
   | {
+      kind: 'search_result_menu_play';
+      id: string;
+      quality: Quality;
+      expected_play_id: string | null;
+      expected_queue_revision: string;
+    }
+  | {
       kind: 'search_results';
       ids: string[];
       index: number;

@@ -431,13 +431,28 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       (initial, current) => sameSelection(initial, current) || failedReload(initial, current),
     );
   }
-  async function searchQueueMenuAction(input: SearchQueueMenuAction, live: () => boolean) {
+  function searchQueueMenuAction(input: SearchQueueMenuAction, live: () => boolean) {
+    return acknowledgeSearchQueueAddition(input.expected_queue_revision, live, () => action(input));
+  }
+  function searchQueueMenuPlay(
+    input: Extract<PlaySelection, { kind: 'search_result_menu_play' }>,
+    live: () => boolean,
+  ) {
+    return acknowledgeSearchQueueAddition(input.expected_queue_revision, live, () =>
+      run((e) => core.playSelection(e, input), null, true),
+    );
+  }
+  async function acknowledgeSearchQueueAddition(
+    previousRevision: string,
+    live: () => boolean,
+    operate: () => Promise<PlayerView | undefined>,
+  ) {
     const owner = connection;
-    const next = await action(input);
+    const next = await operate();
     if (!next || owner !== connection || next.epoch !== epoch || !ready.value || !live()) return;
     // The native action reply owns this revision; stream notifications,
     // transport-only resumes, and returning the current row do not add a tip.
-    const added = !next.fm && next.queueRevision !== input.expected_queue_revision;
+    const added = !next.fm && next.queueRevision !== previousRevision;
     if (added) {
       clearTimeout(searchQueueAddedTimer);
       searchQueueAdded.value = true;
@@ -1519,6 +1534,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     connect,
     action,
     searchQueueMenuAction,
+    searchQueueMenuPlay,
     qualityTrial,
     configureLoudness,
     configureEqualizer,

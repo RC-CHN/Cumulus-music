@@ -292,7 +292,26 @@ function oneRowPreview(section: SearchSection) {
   );
 }
 function showTrackMenu(request: TrackMenuRequest) {
-  emit('more', { ...request, nextOrigin: 'search' });
+  const owner = panel.value;
+  const snapshot = view.value;
+  const { epoch } = props.account;
+  const visit = props.searchId;
+  const tab = category.value;
+  const current = () =>
+    props.account.status === 'authenticated' &&
+    props.account.epoch === epoch &&
+    props.searchId === visit &&
+    category.value === tab &&
+    !loading.value &&
+    view.value === snapshot &&
+    panel.value === owner &&
+    !!owner?.isConnected &&
+    !owner.closest('[inert], .page-leave-active, .search-results-leave-active');
+  emit('more', {
+    ...request,
+    nextOrigin: 'search',
+    searchSinglePlay: props.account.status === 'authenticated' ? current : undefined,
+  });
 }
 function showSelectedTrackMenu(
   section: SearchSection,

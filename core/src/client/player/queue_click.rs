@@ -196,6 +196,7 @@ pub(super) enum RetainedRow {
     OfflineDownload,
     DailyRecommendation,
     SearchCatalog,
+    SearchMenuPlay,
     SearchSong,
     SearchVoice,
 }
@@ -377,6 +378,24 @@ impl MusicClient {
         &self,
         token: &SessionToken,
     ) -> Result<QueueClickSnapshot> {
+        self.queue_click_snapshot_for(token, None).await
+    }
+
+    pub(super) async fn search_menu_play_snapshot(
+        &self,
+        token: &SessionToken,
+        play_id: Option<&str>,
+        queue_revision: &str,
+    ) -> Result<QueueClickSnapshot> {
+        self.queue_click_snapshot_for(token, Some((play_id, queue_revision)))
+            .await
+    }
+
+    async fn queue_click_snapshot_for(
+        &self,
+        token: &SessionToken,
+        expected: Option<(Option<&str>, &str)>,
+    ) -> Result<QueueClickSnapshot> {
         let observed = self.player.selection.load(Ordering::Acquire);
         let focus = self.focus.snapshot()?;
         let (before, queue) = self
@@ -385,6 +404,11 @@ impl MusicClient {
             .await?
             .queue_with_state(token)
             .await?;
+        if expected.is_some_and(|(play_id, revision)| {
+            before.play_id.as_deref() != play_id || before.queue_revision.to_string() != revision
+        }) {
+            return Err(Error::QueueChanged);
+        }
         if before.fm || queue.intelligence.is_some() || self.together_attached(token, None)? {
             return Err(Error::State("queue click requires an ordinary queue"));
         }
@@ -442,6 +466,38 @@ impl MusicClient {
         .map(Some)
     }
 
+    pub(super) async fn resume_retained_search_menu_track(
+        &self,
+        token: &SessionToken,
+        snapshot: &QueueClickSnapshot,
+        id: &str,
+        lease: u64,
+    ) -> Result<Option<PlaybackSnapshot>> {
+        if !current_table_song(&snapshot.before, TableSong::Catalog(id)) {
+            return Ok(None);
+        }
+        let _room = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        if self.together_attached(token, None)? {
+            return Err(Error::State("search menu requires an ordinary queue"));
+        }
+        // Explicit menu Play resumes or leaves the active decoder playing.
+        // It never toggles Pause or rebinds the current source for a new scene.
+        self.submit_retained_row(
+            token,
+            PlaybackCommand::PlaySearchCatalog(None),
+            snapshot.before.fence(),
+            snapshot.attempt,
+            lease,
+            None,
+        )
+        .await
+        .map(Some)
+    }
+
     pub(super) async fn play_retained_queue_row(
         &self,
         token: &SessionToken,
@@ -485,6 +541,36 @@ impl MusicClient {
         let id = resource[identity]
             .as_str()
             .ok_or(Error::State("selected resource has no identifier"))?;
+        if policy == RetainedRow::SearchMenuPlay {
+            // M/3085 skips pure-list reuse for an explicit menu action.
+            // M/1384 deduplicates by resource at the current display slot.
+            let selected = id.to_owned();
+            let queue = super::next_play::search_group_queue(
+                queue,
+                vec![resource],
+                source,
+                Some(&selected),
+                &mut rand::rng(),
+            )?;
+            let expected = before.fence();
+            return self
+                .submit_retained_row(
+                    token,
+                    PlaybackCommand::PlaySearchCatalog(Some(QueueUpdate {
+                        expected: expected.clone(),
+                        queue,
+                        transport: Some(QueueTransport {
+                            position: None,
+                            paused: false,
+                        }),
+                    })),
+                    expected,
+                    attempt,
+                    lease,
+                    source_guard,
+                )
+                .await;
+        }
         if policy == RetainedRow::DailyRecommendation {
             let expected = before.fence();
             // M/308 offsets a non-clearing row play to the current display

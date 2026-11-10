@@ -484,6 +484,9 @@ impl MusicClient {
             input @ PlaySelection::SearchResultTrack { .. } => {
                 (input, Some(RetainedRow::SearchCatalog))
             }
+            input @ PlaySelection::SearchResultMenuPlay { .. } => {
+                (input, Some(RetainedRow::SearchMenuPlay))
+            }
             input @ (PlaySelection::SearchHotTrack { .. } | PlaySelection::MessageTrack { .. }) => {
                 (input, Some(RetainedRow::SearchSong))
             }
@@ -550,7 +553,21 @@ impl MusicClient {
         }
         let retained_album =
             retained.is_some() && matches!(&input, PlaySelection::AlbumDetail { row: Some(_), .. });
-        let preserve = if retained.is_some() {
+        let preserve = if let PlaySelection::SearchResultMenuPlay {
+            expected_play_id,
+            expected_queue_revision,
+            ..
+        } = &input
+        {
+            Some(
+                self.search_menu_play_snapshot(
+                    &token,
+                    expected_play_id.as_deref(),
+                    expected_queue_revision,
+                )
+                .await?,
+            )
+        } else if retained.is_some() {
             Some(self.queue_click_snapshot(&token).await?)
         } else {
             None
@@ -592,6 +609,15 @@ impl MusicClient {
         ) = (&input, &preserve, lease)
             && let Some(state) = self
                 .toggle_retained_search_track(&token, snapshot, id, lease)
+                .await?
+        {
+            self.session.with_token(&token, |_| Ok(()))?;
+            return project(&state, &token);
+        }
+        if let (PlaySelection::SearchResultMenuPlay { id, .. }, Some(snapshot), Some(lease)) =
+            (&input, &preserve, lease)
+            && let Some(state) = self
+                .resume_retained_search_menu_track(&token, snapshot, id, lease)
                 .await?
         {
             self.session.with_token(&token, |_| Ok(()))?;
@@ -1462,7 +1488,8 @@ impl MusicClient {
                         // search-row trialMode or playlist context.
                         json!({"kind":"songs","scene":"search"}),
                     )),
-                    PlaySelection::SearchResultTrack { id, quality, .. } => Ok((
+                    PlaySelection::SearchResultTrack { id, quality, .. }
+                    | PlaySelection::SearchResultMenuPlay { id, quality, .. } => Ok((
                         vec![json!(identifier(&json!(id))?)],
                         0,
                         quality,

@@ -350,7 +350,7 @@ impl MusicClient {
     }
 }
 
-fn search_group_queue(
+pub(super) fn search_group_queue(
     queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,

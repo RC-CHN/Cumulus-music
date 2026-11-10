@@ -59,6 +59,21 @@ const purchaseChooser = shallowRef<
 >();
 const purchaseQualityMismatch = ref(false);
 const searchGroupQueue = shallowRef<{ playId: string | null; revision: string }>();
+const searchSingleQueue = shallowRef<{ epoch: string; playId: string | null; revision: string }>();
+function currentSearchSingleQueue() {
+  const view = props.player.view.value;
+  const target = searchSingleQueue.value;
+  if (
+    target &&
+    view &&
+    view.epoch === target.epoch &&
+    view.playId === target.playId &&
+    view.queueRevision === target.revision &&
+    !view.fm &&
+    !view.intelligence
+  )
+    return target;
+}
 function currentSearchGroupQueue() {
   const current = props.player.view.value;
   const target = searchGroupQueue.value;
@@ -189,7 +204,14 @@ const items = computed<MenuItem[]>(() => {
       key: 'play',
       label: '播放',
       icon: 'play',
-      disabled: !canPlay || !props.player.ready.value || props.player.busy.value,
+      disabled:
+        !canPlay ||
+        !props.player.ready.value ||
+        props.player.busy.value ||
+        (!!input.searchSinglePlay &&
+          (!input.searchSinglePlay() ||
+            !currentSearchSingleQueue() ||
+            props.player.queueBusy.value)),
     },
     {
       key: 'next',
@@ -267,7 +289,10 @@ watch(
   },
 );
 watch(
-  () => request.value?.episode?.live() ?? request.value?.searchGroup?.live(),
+  () =>
+    request.value?.episode?.live() ??
+    request.value?.searchGroup?.live() ??
+    request.value?.searchSinglePlay?.(),
   (live) => {
     if (live === false) close();
   },
@@ -280,6 +305,10 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
   const view = props.player.view.value;
   searchGroupQueue.value =
     input.searchGroup && view ? { playId: view.playId, revision: view.queueRevision } : undefined;
+  searchSingleQueue.value =
+    input.searchSinglePlay && view
+      ? { epoch: view.epoch, playId: view.playId, revision: view.queueRevision }
+      : undefined;
   playlist.value = source;
   const event = input.event;
   const scope = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
@@ -302,7 +331,8 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
   if (
     request.value !== input ||
     (input.episode && !input.episode.live()) ||
-    (input.searchGroup && !input.searchGroup.live())
+    (input.searchGroup && !input.searchGroup.live()) ||
+    (input.searchSinglePlay && !input.searchSinglePlay())
   )
     return;
   await menu.value?.showAt(
@@ -625,7 +655,8 @@ async function select(key: string) {
     item.disabled ||
     item.separator ||
     (input.episode && !input.episode.live()) ||
-    (input.searchGroup && !input.searchGroup.live())
+    (input.searchGroup && !input.searchGroup.live()) ||
+    (input.searchSinglePlay && !input.searchSinglePlay())
   )
     return;
   const group = input.searchGroup;
@@ -668,7 +699,22 @@ async function select(key: string) {
     return;
   }
   const { track } = input;
-  if (key === 'play') input.play();
+  if (key === 'play' && input.searchSinglePlay) {
+    const view = props.player.view.value;
+    const target = currentSearchSingleQueue();
+    if (!view || !target || !input.searchSinglePlay()) return;
+    const attempt = sequence;
+    await props.player.searchQueueMenuPlay(
+      {
+        kind: 'search_result_menu_play',
+        id: track.id,
+        quality: view.qualityPreferences.quality,
+        expected_play_id: target.playId,
+        expected_queue_revision: target.revision,
+      },
+      () => attempt === sequence && request.value === input && !!input.searchSinglePlay?.(),
+    );
+  } else if (key === 'play') input.play();
   else if (key === 'remove_local_member') input.removeLocalMember?.(returnFocus);
   else if (key === 'remove_mixed_member' && input.mixedRemoval?.live())
     input.mixedRemoval.confirm(returnFocus);

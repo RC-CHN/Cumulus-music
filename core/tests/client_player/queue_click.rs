@@ -210,3 +210,137 @@ fn row_double_click_does_not_accept_explicit_or_excluded_selection_variants() {
         .is_ok()
     );
 }
+
+fn search_menu_play(id: &str, state: &cumulus_core::client::dto::PlayerView) -> PlaySelection {
+    PlaySelection::SearchResultMenuPlay {
+        id: id.into(),
+        quality: Quality::Standard,
+        expected_play_id: state.play_id.clone(),
+        expected_queue_revision: state.queue_revision.clone(),
+    }
+}
+
+#[tokio::test]
+async fn search_menu_play_moves_the_same_source_copy_and_current_play_only_resumes() {
+    let (_dir, api, _, client, _) = fixture();
+    api.playlist_trial.enable_media_trace();
+    let initial = client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: ["1", "2", "3", "4"].map(str::to_owned).to_vec(),
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let original = queue(&client).await;
+    client
+        .player_action(
+            "1",
+            PlayerAction::SearchNextPlay {
+                id: "3".into(),
+                quality: Quality::Standard,
+                expected_queue_revision: initial.queue_revision,
+            },
+        )
+        .await
+        .unwrap();
+    let before = client
+        .player_action(
+            "1",
+            PlayerAction::Select {
+                entry_id: original[1].1.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        queue(&client).await,
+        [0, 2, 1, 3].map(|index| original[index].clone())
+    );
+
+    // The old source is already search/42. This is an explicit add at the
+    // current display slot, even though a generic row play can reuse the slot.
+    let started = client
+        .play_selection("1", search_menu_play("3", &before))
+        .await
+        .unwrap();
+    assert_eq!(started.state, PlaybackStatus::Playing);
+    assert_ne!(started.play_id, before.play_id);
+    assert_ne!(started.queue_revision, before.queue_revision);
+    assert_eq!(started.entry_id.as_deref(), Some(original[2].1.as_str()));
+    assert_eq!(queue(&client).await, original);
+    let target_reads = api.playlist_trial.modes("3");
+    assert!(!target_reads.is_empty());
+    assert!(target_reads.iter().all(|mode| *mode == 42));
+
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let detail_count = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.ends_with("/v3/song/detail"))
+            .count()
+    };
+    let details_before = detail_count();
+    let resumed = client
+        .play_selection("1", search_menu_play("3", &paused))
+        .await
+        .unwrap();
+    let already_playing = client
+        .play_selection("1", search_menu_play("3", &resumed))
+        .await
+        .unwrap();
+    assert_eq!(already_playing.state, PlaybackStatus::Playing);
+    assert_eq!(already_playing.play_id, paused.play_id);
+    assert_eq!(already_playing.queue_revision, paused.queue_revision);
+    assert_eq!(queue(&client).await, original);
+    assert_eq!(detail_count(), details_before);
+    assert_eq!(api.playlist_trial.modes("3"), target_reads);
+}
+
+#[tokio::test]
+async fn search_menu_play_rejects_stale_open_and_late_detail_without_touching_the_new_queue() {
+    let (_dir, api, _, client, _) = fixture();
+    let old = client.play_selection("1", songs("11")).await.unwrap();
+    let next = client.play_selection("1", songs("12")).await.unwrap();
+    let initial_calls = api.calls.lock().unwrap().len();
+    assert!(matches!(
+        client
+            .play_selection("1", search_menu_play("31", &old))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(
+        !api.calls.lock().unwrap()[initial_calls..]
+            .iter()
+            .any(|path| path.ends_with("/v3/song/detail"))
+    );
+
+    api.hold_id.store(31, Ordering::SeqCst);
+    let pending = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .play_selection("1", search_menu_play("31", &next))
+                .await
+        })
+    };
+    api.started.notified().await;
+    let replacement = client.play_selection("1", songs("13")).await.unwrap();
+    api.release.notify_one();
+    assert!(matches!(pending.await.unwrap(), Err(Error::StaleResponse)));
+    let current = client.player_snapshot("1").await.unwrap();
+    assert_eq!(current.play_id, replacement.play_id);
+    assert_eq!(current.queue_revision, replacement.queue_revision);
+    assert_eq!(
+        queue(&client).await,
+        [("13".into(), replacement.entry_id.unwrap())]
+    );
+}

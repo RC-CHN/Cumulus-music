@@ -32,6 +32,7 @@ export interface TrackMenuRequest {
   event: MouseEvent | KeyboardEvent;
   play: () => void;
   nextOrigin?: 'search';
+  searchSinglePlay?: () => boolean;
   searchGroup?: {
     epoch: string;
     download?: import('./search').SearchGroupDownloadSelection;
