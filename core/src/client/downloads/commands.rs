@@ -73,14 +73,10 @@ impl MusicClient {
         let runtime = tokio::runtime::Handle::current();
         let operation_id = batch.receipt.clone();
         let accepted = tokio::task::spawn_blocking(move || {
-            let accepted = context.service.create_guarded_song_batch(
-                &batch.songs,
-                &batch.receipt,
-                batch.admission,
-                batch.options,
-                &permission,
-                &cancelled,
-            )?;
+            let accepted =
+                context
+                    .service
+                    .create_guarded_song_batch(batch, &permission, &cancelled)?;
             // The worker wakes even if the caller lost its response after the
             // transaction committed. The callback also retires the one lease.
             on_commit(&accepted);

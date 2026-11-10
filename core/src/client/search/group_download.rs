@@ -13,7 +13,7 @@ use crate::{
         downloads::GuardedSongBatch,
         dto::{AccountData, DownloadResult, PlaylistCollectPage, PlaylistCollectSort},
     },
-    download::service::SongBatchAdmission,
+    download::service::{ExistingSongAdmission, SongBatchAdmission},
     protocol::{
         api::{Api, identifier},
         wire::serialization::js_truthy,
@@ -24,7 +24,7 @@ pub use destination::SearchGroupDownloadPlaylistResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     sync::{
         Arc, Mutex, OnceLock, Weak,
         atomic::{AtomicBool, Ordering},
@@ -260,6 +260,7 @@ struct Plan {
     receipt: String,
     observed: Arc<Observed>,
     songs: Arc<[String]>,
+    existing: Arc<BTreeMap<String, ExistingSongAdmission>>,
     collection: Arc<[String]>,
     purpose: SearchGroupDownloadDecision,
     destination: Mutex<destination::Destination>,
@@ -421,6 +422,7 @@ impl SearchGroupDownloads {
         ticket: u64,
         observed: Arc<Observed>,
         songs: Vec<String>,
+        existing: BTreeMap<String, ExistingSongAdmission>,
         collection: Vec<String>,
         purpose: SearchGroupDownloadDecision,
     ) -> Result<String> {
@@ -433,6 +435,7 @@ impl SearchGroupDownloads {
             receipt: receipt.clone(),
             observed,
             songs: songs.into(),
+            existing: Arc::new(existing),
             collection: collection.into(),
             purpose,
             destination: Mutex::default(),
@@ -619,6 +622,7 @@ impl MusicClient {
                 GuardedSongBatch {
                     receipt: plan.receipt.clone(),
                     admission,
+                    existing: plan.existing.clone(),
                     songs,
                     options,
                 },
@@ -668,7 +672,7 @@ impl MusicClient {
         let local = self.local.context().await?;
         let session = self.session.clone();
         let candidate = observed.clone();
-        let (songs, collection, decision) = tokio::task::spawn_blocking(move || {
+        let (songs, existing, collection, decision) = tokio::task::spawn_blocking(move || {
             let ids = candidate.rows.iter().map(|(id, _)| id.as_str()).collect();
             let matched =
                 local
@@ -676,6 +680,7 @@ impl MusicClient {
                     .matched_online_song_ids(&session, &candidate.owner, &ids)?;
             let store = session.persistent_store()?;
             let mut songs = Vec::new();
+            let mut existing = BTreeMap::new();
             let mut collection = Vec::new();
             let decision = session.with_token(&candidate.owner, |owner| {
                 store.read_snapshot(|tx| {
@@ -695,7 +700,16 @@ impl MusicClient {
                         if right.collectable {
                             collection.push(id.clone());
                         }
-                        if !tasks.iter().any(|row| row.status != "cancelled") {
+                        let mut current = tasks.iter().filter(|row| row.status != "cancelled");
+                        if let Some(task) = current.next() {
+                            if current.next().is_none()
+                                && let Some(previous) =
+                                    ExistingSongAdmission::observe(tx, owner, id, &task.id)?
+                            {
+                                existing.insert(id.clone(), previous);
+                                songs.push(id.clone());
+                            }
+                        } else {
                             songs.push(id.clone());
                         }
                     }
@@ -719,7 +733,7 @@ impl MusicClient {
                     )
                 })
             })?;
-            Ok::<_, Error>((songs, collection, decision))
+            Ok::<_, Error>((songs, existing, collection, decision))
         })
         .await
         .map_err(|_| Error::State("search download preparation stopped"))??;
@@ -744,7 +758,7 @@ impl MusicClient {
         };
         let omitted_count = observed.rows.len() - eligible_count;
         let receipt = if matches!(decision, D::Ready | D::PlaylistRequired) {
-            Some(host.publish(ticket, observed, songs, collection, decision)?)
+            Some(host.publish(ticket, observed, songs, existing, collection, decision)?)
         } else {
             None
         };

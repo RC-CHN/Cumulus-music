@@ -37,12 +37,7 @@ use std::{
 };
 use tokio::sync::Notify;
 
-pub(in crate::client) struct GuardedSongBatch {
-    pub receipt: String,
-    pub admission: crate::download::service::SongBatchAdmission,
-    pub songs: Arc<[String]>,
-    pub options: crate::download::service::DownloadOptions,
-}
+pub(in crate::client) use crate::download::service::GuardedSongBatch;
 
 const PREFERENCES: &str = "download_preferences_v1";
 

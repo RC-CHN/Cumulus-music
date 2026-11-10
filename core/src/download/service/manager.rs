@@ -1,4 +1,4 @@
-use super::{control::Control, files, *};
+use super::{control::Control, dispatch::Dispatch, files, *};
 use crate::download::directory::gate as directory_gate;
 use crate::{
     Error, Result,
@@ -42,8 +42,8 @@ pub(super) struct StagedTask {
 }
 
 impl StagedTask {
-    pub(super) fn task(&self) -> &DownloadTask {
-        self.task.as_ref().expect("staged download")
+    pub(super) fn task_mut(&mut self) -> &mut DownloadTask {
+        self.task.as_mut().expect("staged download")
     }
 
     pub(super) fn commit(mut self) -> DownloadTask {
@@ -462,7 +462,7 @@ impl DownloadService {
             destination,
             root,
         };
-        let staged = self.stage_task(
+        let mut staged = self.stage_task(
             uuid::Uuid::new_v4().simple().to_string(),
             creation_clock()?,
             song_id,
@@ -474,7 +474,16 @@ impl DownloadService {
         if let Some(permission) = permission {
             permission()?;
         }
-        self.save_current(&token, staged.task())?;
+        self.session.with_token(&token, |owner| {
+            if owner != self.owner {
+                return Err(Error::StaleResponse);
+            }
+            self.store.transaction(|tx| {
+                let task = staged.task_mut();
+                task.dispatch = Some(Dispatch::new(Dispatch::reserve(tx, owner)?, 0));
+                tx.put(owner, KIND, &task.id, &serde_json::to_value(&*task)?)
+            })
+        })?;
         Ok(staged.commit())
     }
 
@@ -503,6 +512,7 @@ impl DownloadService {
             status: DownloadStatus::Queued,
             phase: DownloadPhase::Authorize,
             created_ms,
+            dispatch: None,
             completed_ms: None,
             bytes: 0,
             authorization_count: 0,
@@ -584,15 +594,24 @@ impl DownloadService {
                 }
                 let old = Control::read_tx(tx, &self.owner, id)?;
                 if old != Some(DownloadAction::Cancel) {
-                    tx.put(&self.owner, CONTROL, id, &serde_json::to_value(action)?)?;
+                    Control::record(tx, &self.owner, id, action)?;
                 }
                 Ok(())
             })
         })?;
+        self.settle_pending_control(&token, id)
+    }
+
+    pub(super) fn settle_pending_control(
+        &self,
+        token: &SessionToken,
+        id: &str,
+    ) -> Result<DownloadTask> {
+        self.guard(token)?;
         match self.lock(id) {
             Ok(_lock) => {
                 if directory_gate::active(&self.store, &self.owner)?.is_some() {
-                    return self.get(id);
+                    return self.get_for(token, id);
                 }
                 let mut task = self.read(id)?;
                 if matches!(
@@ -608,16 +627,16 @@ impl DownloadService {
                     .map(serde_json::from_value)
                     .transpose()?;
                 if pending == Some(DownloadAction::Cancel) {
-                    self.cancel_task(&token, &mut task)?;
-                } else if !task.needs_transfer_restart() {
+                    self.cancel_task(token, &mut task)?;
+                } else if pending == Some(DownloadAction::Pause) && !task.needs_transfer_restart() {
                     task.status = DownloadStatus::Paused;
-                    self.save_current(&token, &task)?;
+                    self.save_current(token, &task)?;
                 }
             }
             Err(Error::MutationBusy) => (),
             Err(e) => return Err(e),
         }
-        self.get(id)
+        self.get_for(token, id)
     }
 }
 fn valid_id(id: &str) -> Result<()> {

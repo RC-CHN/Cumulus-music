@@ -22,7 +22,46 @@ pub(super) struct Control {
     pub _task_lock: Arc<OperationLock>,
     pub _scheduler_lock: Option<Arc<OperationLock>>,
 }
+const CONTROL_GENERATION: &str = "download_control_generation_v1";
+
+#[derive(PartialEq, Eq)]
+pub(super) struct ObservedControl {
+    pub action: Option<DownloadAction>,
+    generation: Option<String>,
+}
+
 impl Control {
+    pub(super) fn observe(
+        tx: &StateTransaction<'_>,
+        owner: &str,
+        id: &str,
+    ) -> Result<ObservedControl> {
+        Ok(ObservedControl {
+            action: Self::read_tx(tx, owner, id)?,
+            generation: tx
+                .get(owner, CONTROL_GENERATION, id)?
+                .map(serde_json::from_value)
+                .transpose()?,
+        })
+    }
+
+    pub(super) fn record(
+        tx: &mut StateTransaction<'_>,
+        owner: &str,
+        id: &str,
+        action: DownloadAction,
+    ) -> Result<()> {
+        tx.put(owner, CONTROL, id, &serde_json::to_value(action)?)?;
+        // Leave the generation when a control is consumed. A fresh Pause
+        // followed by Resume must not match an earlier absence.
+        tx.put(
+            owner,
+            CONTROL_GENERATION,
+            id,
+            &serde_json::json!(uuid::Uuid::new_v4().simple().to_string()),
+        )
+    }
+
     pub fn read_tx(
         tx: &StateTransaction<'_>,
         owner: &str,

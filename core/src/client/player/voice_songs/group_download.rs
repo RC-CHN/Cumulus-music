@@ -653,6 +653,7 @@ impl MusicClient {
             GuardedSongBatch {
                 receipt: selection_receipt,
                 admission,
+                existing: Default::default(),
                 songs: songs.clone(),
                 options,
             },

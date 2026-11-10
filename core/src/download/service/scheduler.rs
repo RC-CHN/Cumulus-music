@@ -1,8 +1,8 @@
-use super::{DownloadRunOptions, DownloadService, DownloadStatus};
+use super::{DownloadRunOptions, DownloadService, DownloadStatus, run::ScheduledRun};
 use crate::{Error, Result, storage::OperationLock};
 use serde::Serialize;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -74,6 +74,7 @@ impl DownloadScheduler {
         let _stop = StopOnDrop(self.stop.clone());
         let mut active = JoinSet::new();
         let mut attempted = HashSet::new();
+        let mut active_dispatch = HashMap::new();
         let mut results = Vec::new();
         loop {
             if self.service.guard(&token).is_err()
@@ -86,26 +87,53 @@ impl DownloadScheduler {
                 self.stop();
             }
             if !self.stop.load(Ordering::SeqCst) {
-                for task in self
-                    .service
-                    .list()?
-                    .into_iter()
-                    .filter(|t| selected.as_ref().is_none_or(|ids| ids.contains(&t.id)))
-                    .filter(|t| {
-                        matches!(
-                            t.status,
+                let mut tasks = self.service.list()?;
+                // Legacy rows with no key were admitted before the counter
+                // existed. Keep their old creation order, then use the
+                // exact private admission order for all new batches.
+                tasks.sort_by(|a, b| {
+                    (a.dispatch, a.created_ms, &a.id).cmp(&(b.dispatch, b.created_ms, &b.id))
+                });
+                for task in tasks {
+                    if active.len() == self.concurrency {
+                        break;
+                    }
+                    if selected.as_ref().is_some_and(|ids| !ids.contains(&task.id))
+                        || !matches!(
+                            task.status,
                             DownloadStatus::Queued
                                 | DownloadStatus::Authorizing
                                 | DownloadStatus::Downloading
                                 | DownloadStatus::Processing
                                 | DownloadStatus::Cancelling
                         )
-                    })
-                    .filter(|t| !attempted.contains(&t.id))
-                    .take(self.concurrency - active.len())
-                    .collect::<Vec<_>>()
-                {
-                    attempted.insert(task.id.clone());
+                    {
+                        continue;
+                    }
+                    if let Some(active) = active_dispatch.get(&task.id) {
+                        if *active != task.dispatch {
+                            // Do not admit later rows ahead of a newly
+                            // ranked row whose stale worker hasn't exited.
+                            break;
+                        }
+                        continue;
+                    }
+                    let key = (task.id.clone(), task.dispatch);
+                    if attempted.contains(&key) {
+                        continue;
+                    }
+                    // The batch commits its order while still holding staged
+                    // task locks. Stop at a held queued row; its postcommit
+                    // wake can retry it. Never count it as an attempted job
+                    // or let a later row pass it.
+                    let task_lock = match self.service.lock(&task.id) {
+                        Ok(lock) => lock,
+                        Err(Error::MutationBusy) if task.status == DownloadStatus::Queued => break,
+                        Err(Error::MutationBusy) => continue,
+                        Err(error) => return Err(error),
+                    };
+                    attempted.insert(key);
+                    active_dispatch.insert(task.id.clone(), task.dispatch);
                     let service = self.service.clone();
                     let stop = self.stop.clone();
                     let lock = lock.clone();
@@ -118,7 +146,11 @@ impl DownloadScheduler {
                                     byte_budget: None,
                                     stop,
                                 },
-                                Some(lock),
+                                Some(ScheduledRun {
+                                    scheduler: lock,
+                                    task: task_lock,
+                                    expected: task.dispatch,
+                                }),
                                 token,
                             )
                             .await;
@@ -142,6 +174,7 @@ impl DownloadScheduler {
                 .await
                 .ok_or(Error::State("download scheduler lost a worker"))?
                 .map_err(|_| Error::State("download worker stopped unexpectedly"))?;
+            active_dispatch.remove(&result.id);
             results.push(result);
         }
         Ok(results)

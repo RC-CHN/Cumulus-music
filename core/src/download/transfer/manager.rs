@@ -7,7 +7,7 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 use std::{fs, sync::Arc, time::Duration};
-const KIND: &str = "media_transfers_v1";
+pub(in crate::download) const KIND: &str = "media_transfers_v1";
 pub struct TransferManager {
     pub(super) store: Arc<StateStore>,
     pub(super) owner: String,
@@ -122,6 +122,22 @@ impl TransferManager {
             "media-transfer",
             &serde_json::to_string(&(&self.owner, id))?,
         )
+    }
+    pub(in crate::download) fn hold_quiescent(
+        &self,
+        id: &str,
+        raw: Option<&TransferJob>,
+    ) -> Result<OperationLock> {
+        let lock = self.lock(id)?;
+        if let Some(job) = raw {
+            if job.id != id {
+                return Err(Error::StaleResponse);
+            }
+            files::ensure_unpublished(job)?;
+            files::absent(&job.target)?;
+            files::owned_part(job)?;
+        }
+        Ok(lock)
     }
     /// Explicit authorization renewal. Preserve bytes only when an identical
     /// nonempty MD5 and total length prove the new response is the same media.

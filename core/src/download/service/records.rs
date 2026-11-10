@@ -130,6 +130,8 @@ pub struct DownloadTask {
     pub phase: DownloadPhase,
     pub created_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) dispatch: Option<super::dispatch::Dispatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_ms: Option<u64>,
     pub bytes: u64,
     pub authorization_count: u64,

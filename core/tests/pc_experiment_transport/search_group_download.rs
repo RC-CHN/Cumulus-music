@@ -11,7 +11,7 @@ use cumulus_core::{
             SongDownloadState,
         },
     },
-    download::service::DownloadService,
+    download::service::{DownloadAction, DownloadOptions, DownloadService, DownloadStatus},
     membership::Quality,
     protocol::{http::ApiOrigin, mconfig::Snapshot},
     storage::StateStore,
@@ -393,6 +393,15 @@ async fn search_group_download_requires_known_anchor_directory_and_live_credenti
 
 #[tokio::test]
 async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_recovery() {
+    owned_playlist(false).await;
+}
+
+#[tokio::test]
+async fn search_group_download_owned_playlist_mixes_existing_task_in_reverse_order() {
+    owned_playlist(true).await;
+}
+
+async fn owned_playlist(mixed: bool) {
     const LIST: &str = "/api/user/playlist/v2";
     const STAR_LIST: &str = "/api/user/playlist";
     const DETAIL: &str = "/api/v6/playlist/detail";
@@ -445,6 +454,20 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
     assert_eq!(rows[5]["groupDownload"].as_object().unwrap().len(), 2);
     client.liked_ids().await.unwrap();
     directory(&client, &epoch, root.path()).await;
+    let service = DownloadService::new(session.clone()).unwrap();
+    let old = mixed.then(|| {
+        let task = service
+            .create_default(
+                &json!("46"),
+                DownloadOptions {
+                    quality: Quality::Lossless,
+                    cover: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        service.request(&task.id, DownloadAction::Pause).unwrap()
+    });
     let receipt = decision(
         &client,
         &epoch,
@@ -513,13 +536,12 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
         assert_eq!(value["result"]["phase"], "uncertain");
         assert!(value["result"]["continuation"].is_null());
     }
-    assert!(
-        DownloadService::new(session.clone())
-            .unwrap()
-            .list()
-            .unwrap()
-            .is_empty()
-    );
+    let before_readback = service.list().unwrap();
+    assert_eq!(before_readback.len(), usize::from(mixed));
+    if let Some(old) = &old {
+        assert_eq!(before_readback[0].id, old.id);
+        assert_eq!(before_readback[0].status, DownloadStatus::Paused);
+    }
     assert_eq!(
         http.calls().len(),
         7,
@@ -548,15 +570,40 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
         )
         .await
         .unwrap();
-    assert!(matches!(result, R::Accepted { .. }));
-    let tasks = DownloadService::new(session).unwrap().list().unwrap();
+    let R::Accepted { result } = result else {
+        panic!("mixed batch not admitted")
+    };
+    let observed: Vec<_> = result
+        .accepted
+        .iter()
+        .map(|id| service.get(id).unwrap())
+        .collect();
     assert_eq!(
-        tasks
+        observed
             .iter()
             .map(|task| task.song_id.as_str())
             .collect::<Vec<_>>(),
         ["41", "46", "43"]
     );
+    if let Some(old) = &old {
+        assert_eq!(observed[1].id, old.id);
+        assert_eq!(observed[1].created_ms, old.created_ms);
+        assert_eq!(observed[1].work, old.work);
+        assert_eq!(observed[1].options.quality, Quality::Lossless);
+    }
+    let R::Accepted { result: readback } = client
+        .search_group_download(
+            &epoch,
+            C::Status {
+                receipt: receipt.clone(),
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("missing local readback")
+    };
+    assert_eq!(result.accepted, readback.accepted);
     http.wait(11).await;
     let calls = http.calls();
     let trace: Vec<_> = calls.iter().map(|call| call.path.as_str()).collect();

@@ -25,6 +25,12 @@ impl Default for DownloadRunOptions {
         }
     }
 }
+pub(super) struct ScheduledRun {
+    pub(super) scheduler: Arc<OperationLock>,
+    pub(super) task: OperationLock,
+    pub(super) expected: Option<super::dispatch::Dispatch>,
+}
+
 impl DownloadService {
     pub async fn run(&self, id: &str, options: DownloadRunOptions) -> Result<DownloadTask> {
         self.run_locked(id, options, None, self.session.token()?)
@@ -34,16 +40,25 @@ impl DownloadService {
         &self,
         id: &str,
         options: DownloadRunOptions,
-        scheduler_lock: Option<Arc<OperationLock>>,
+        schedule: Option<ScheduledRun>,
         token: crate::account::SessionToken,
     ) -> Result<DownloadTask> {
         if options.byte_budget == Some(0) {
             return Err(Error::InvalidInput("download byte budget must be positive"));
         }
         self.guard(&token)?;
-        let lock = Arc::new(self.lock(id)?);
+        let (lock, scheduler_lock, expected) = match schedule {
+            Some(run) => (run.task, Some(run.scheduler), Some(run.expected)),
+            None => (self.lock(id)?, None, None),
+        };
         crate::download::directory::gate::require(&self.store, &self.owner, None)?;
         let task = self.read(id)?;
+        if expected.is_some_and(|expected| expected != task.dispatch) {
+            // A pending scheduler snapshot may have been displaced by a
+            // mixed admission before it took this lock. No I/O or error
+            // transition may belong to the earlier admission.
+            return Ok(task);
+        }
         // A direct run must honor the same integrity recovery contract as
         // enqueue, before requesting a URL that could replace the raw job.
         if task.needs_transfer_restart() {
@@ -62,7 +77,7 @@ impl DownloadService {
             id: id.into(),
             alive,
             stop: options.stop,
-            _task_lock: lock,
+            _task_lock: Arc::new(lock),
             _scheduler_lock: scheduler_lock,
         };
         let result = self.execute(task, &gate, options.byte_budget).await;
