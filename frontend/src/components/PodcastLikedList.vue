@@ -94,6 +94,26 @@ watch(
     if (container.value !== list || page.value?.revision !== revision) return;
     scroller.scrollTop = targetTop;
     update();
+    await nextTick();
+    if (
+      !list.isConnected ||
+      container.value !== list ||
+      page.value?.revision !== revision ||
+      scroller.closest('.page-leave-active')
+    )
+      return;
+    const focus = props.model.takeRestoredFocus(revision);
+    const active = document.activeElement;
+    if (!focus || (active !== document.body && !active?.matches('.topbar .back-button'))) return;
+    const row = list.querySelector(`[data-voice-id="${CSS.escape(focus.voiceId)}"]`);
+    const button = row?.querySelector<HTMLButtonElement>(
+      focus.control === 'comment' ? '[data-liked-voice-comment]' : '[data-liked-voice-more]',
+    );
+    if (!button || button.disabled) return;
+    const bounds = scroller.getBoundingClientRect();
+    const anchor = button.getBoundingClientRect();
+    if (anchor.bottom > bounds.top && anchor.top < bounds.bottom)
+      button.focus({ preventScroll: true });
   },
   { flush: 'post' },
 );
@@ -201,6 +221,7 @@ watch(
               class="icon-button"
               type="button"
               aria-label="单集评论"
+              data-liked-voice-comment
               @click.stop="emit('comments', voice)"
             >
               <Icon name="comment" />

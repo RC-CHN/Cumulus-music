@@ -127,7 +127,7 @@ test('reads one page at a time, preserves stable row actions and restores the pr
   assert.deepEqual(calls.at(-1)?.query, next('cursor-1'));
   await model.next();
   assert.equal(calls.length, 3, 'no continuation at terminal');
-  await model.suspend(841);
+  await model.suspend(841, { voiceId: '81', control: 'comment' });
   assert.equal(captured?.live(), false);
   assert.equal(model.page.value, undefined);
   await model.restore();
@@ -140,6 +140,9 @@ test('reads one page at a time, preserves stable row actions and restores the pr
   );
   assert.deepEqual(model.page.value?.episodes, [restoredA, b]);
   assert.equal(model.scrollTop.value, 841);
+  assert.equal(model.takeRestoredFocus('revision-1'), undefined);
+  assert.deepEqual(model.takeRestoredFocus('revision-2'), { voiceId: '81', control: 'comment' });
+  assert.equal(model.takeRestoredFocus('revision-2'), undefined);
   assert.equal(model.captureProgram(restoredA)?.target.revision, 'revision-2');
   assert.equal(model.captureProgram(a), undefined);
 });

@@ -7,7 +7,7 @@ import type { PodcastModel } from '../composables/usePodcasts';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
 import PodcastRecentList from './PodcastRecentList.vue';
 import PodcastLikedList from './PodcastLikedList.vue';
-import type { PodcastLikedModel } from '../composables/usePodcastLiked';
+import type { PodcastLikedModel, PodcastLikedReturnFocus } from '../composables/usePodcastLiked';
 import PodcastPurchasedRows from './PodcastPurchasedRows.vue';
 import PodcastProgramMenu from './PodcastProgramMenu.vue';
 import PodcastSubscriptionRecommendations from './PodcastSubscriptionRecommendations.vue';
@@ -54,6 +54,7 @@ const emit = defineEmits<{
   recentProgramPlay: [epoch: string, program: PodcastRecentProgramTarget];
   recommendedPlay: [id: string, action: PodcastRecommendationAction];
   comments: [id: string, title: string];
+  likedComments: [id: string, title: string, control: PodcastLikedReturnFocus['control']];
   download: [
     voices: EpisodeView[],
     live?: () => boolean,
@@ -138,7 +139,7 @@ async function actOnPagedLikedRow(
   }
   const row = await props.liked.resolveProgram(voice);
   if (!row || !source.live() || row.withdrawn) return;
-  if (kind === 'comments') emit('comments', row.id, row.name);
+  if (kind === 'comments') emit('likedComments', row.id, row.name, 'comment');
   else if (!row.unavailable) emit('download', [row], source.live, undefined, source.target);
 }
 const menuPage = computed(() => {
@@ -403,7 +404,7 @@ const pending = props.model.pending;
         @liked-page-download="
           (voice, live, target) => emit('download', [voice], live, undefined, target)
         "
-        @comments="(id, title) => emit('comments', id, title)"
+        @comments="(id, title) => emit('likedComments', id, title, 'menu')"
       />
     </template>
     <template v-else>

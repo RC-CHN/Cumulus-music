@@ -247,7 +247,7 @@ import LocalPage from './components/LocalPage.vue';
 import LocalBatchPage from './components/LocalBatchPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
 import { usePodcastRecent } from './composables/usePodcastRecent';
-import { usePodcastLiked } from './composables/usePodcastLiked';
+import { usePodcastLiked, type PodcastLikedReturnFocus } from './composables/usePodcastLiked';
 import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
 import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
@@ -1890,6 +1890,7 @@ const podcasts = usePodcasts(
   podcastLiked,
 );
 let podcastBackRoute: typeof page.value | undefined;
+const likedCommentOpeners = new WeakMap<Page, PodcastLikedReturnFocus>();
 const podcastCatalogue = usePodcastCatalogue(
   () => music.account.value,
   () => {
@@ -2174,9 +2175,23 @@ provide(commentAuthorNavigation, {
     if (commentAuthorReturn.value?.anchor === anchor) commentAuthorReturn.value = undefined;
   },
 });
-function openComments(resource: CommentResource, title: string, initialSort?: 'hot') {
+function openComments(
+  resource: CommentResource,
+  title: string,
+  initialSort?: 'hot',
+  likedOpener?: PodcastLikedReturnFocus,
+) {
   playlistDialog.value = undefined;
-  music.navigate({ kind: 'comments', resource, title, initialSort });
+  const target: Page = { kind: 'comments', resource, title, initialSort };
+  if (likedOpener) likedCommentOpeners.set(target, likedOpener);
+  music.navigate(target);
+}
+function openLikedPodcastComments(
+  id: string,
+  title: string,
+  control: PodcastLikedReturnFocus['control'],
+) {
+  openComments({ kind: 'voice', id }, title, undefined, { voiceId: id, control });
 }
 function openMessageTarget(epoch: string, target: MessageTarget): Page | undefined {
   if (!signedIn.value || initializing.value || epoch !== account.value.epoch) return;
@@ -5484,7 +5499,8 @@ watch(
   (value, previous) => {
     if (previous.kind === 'podcasts' && value.kind !== 'podcasts') {
       podcastBackRoute = previous;
-      podcasts.show(false);
+      podcasts.show(false, false, likedCommentOpeners.get(value));
+      likedCommentOpeners.delete(value);
     } else if (value.kind === 'podcasts' && previous.kind !== 'podcasts') {
       podcasts.show(true, value === podcastBackRoute);
       podcastBackRoute = undefined;
@@ -6683,6 +6699,7 @@ onUnmounted(() => {
                 @recent-play="playRecentPodcast"
                 @recommended-play="playRecommendedPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
+                @liked-comments="openLikedPodcastComments"
                 @download="
                   (tracks, live, purchased, pagedLiked) =>
                     (downloadDialog = { kind: 'voice', tracks, live, purchased, pagedLiked })

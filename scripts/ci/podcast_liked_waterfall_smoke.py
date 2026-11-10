@@ -14,7 +14,7 @@ COUNT = '/api/content/my/liked/voice/count'
 COMMENTS = '/api/v1/resource/comments/A_DJ_1_1122'
 DETAIL = '/api/dj/program/detail'
 NAMES = ('library', 'first_page', 'tail_held', 'tail_failed', 'tail_retried',
-         'before_comments', 'comments', 'back', 'final_page')
+         'before_comments', 'comments', 'back', 'menu', 'menu_back', 'final_page')
 
 
 def read(path):
@@ -38,20 +38,21 @@ def verify(output):
 
     cursors = (0, '1700000000900', '1700000000900', 1700000000863)
     list_requests = [{'limit': 100, 'likeTime': cursor} for cursor in cursors]
-    for stage, total in zip(stages.values(), (0, 1, 2, 2, 3, 3, 3, 3, 4), strict=True):
+    for stage, total in zip(stages.values(), (0, 1, 2, 2, 3, 3, 3, 3, 3, 3, 4), strict=True):
         assert requests(stage, LIST) == list_requests[:total], stage
     assert requests(complete, LIST) == list_requests
     assert requests(stages['library'], COUNT) == [{}]
     before = stages['before_comments']
     count_requests = requests(before, COUNT)
     assert count_requests in ([{}], [{}, {}])
-    for stage in (stages['comments'], stages['back'], stages['final_page'], complete):
+    for stage in (stages['comments'], stages['back'], stages['menu'], stages['menu_back'],
+                  stages['final_page'], complete):
         assert requests(stage, COUNT) == count_requests, stage
     assert all(cache is False for path, _, cache in complete['likedWaterfallTrace']
                if path in (LIST, COUNT))
 
     loaded = {'first_page': 100, 'tail_held': 100, 'tail_failed': 100, 'tail_retried': 137,
-              'before_comments': 137, 'back': 137, 'final_page': 145}
+              'before_comments': 137, 'back': 137, 'menu': 137, 'menu_back': 137, 'final_page': 145}
     for name, expected in loaded.items():
         row = stages[name]
         assert row['loaded'] == expected and row['count'] == 145, row
@@ -67,16 +68,23 @@ def verify(output):
     assert '1122' in before['visibleIds'] and before['visibleIds'] == after['visibleIds']
     assert before['scrollTop'] > 1000 and abs(before['scrollTop'] - after['scrollTop']) <= 2
     assert abs(before['screenY'] - after['screenY']) <= 2
+    assert after['commentFocused'] is True
+    menu_back = stages['menu_back']
+    assert stages['menu']['voice'] == menu_back['voice'] == '1122'
+    assert before['visibleIds'] == menu_back['visibleIds']
+    assert abs(before['scrollTop'] - menu_back['scrollTop']) <= 2
+    assert abs(before['screenY'] - menu_back['screenY']) <= 2
+    assert menu_back['moreFocused'] is True
     assert stages['final_page']['ids'][-1] == '1145'
     assert requests(complete, COMMENTS) and not requests(before, COMMENTS)
-    assert requests(complete, DETAIL) == [{'id': '1122'}]
+    assert requests(complete, DETAIL) == [{'id': '1122'}, {'id': '1122'}]
     assert not any(path in {'/api/dj/play/url/check', '/api/song/enhance/player/url/v1'}
                    for path, _, _ in complete['likedWaterfallTrace'])
     return {'ok': True, 'actualWebView': True, 'screenshots': len(names), 'loadedRows': 145,
             'maxMountedRows': max(stages[name]['mounted'] for name in loaded),
             'listCursors': list(cursors), 'countRequests': len(count_requests),
-            'restoredScrollTop': after['scrollTop'], 'realMusicRequests': 0,
-            'realAccountWrites': 0}
+            'restoredScrollTop': after['scrollTop'], 'commentFocusRestored': True,
+            'menuFocusRestored': True, 'realMusicRequests': 0, 'realAccountWrites': 0}
 
 
 def main():

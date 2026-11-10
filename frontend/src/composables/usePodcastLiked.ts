@@ -18,6 +18,11 @@ const lease = ({ visit, revision }: PodcastLikedVisit): PodcastLikedVisit => ({ 
 const sameVisit = (a: PodcastLikedVisit, b: PodcastLikedVisit) =>
   a.visit === b.visit && a.revision === b.revision;
 
+export interface PodcastLikedReturnFocus {
+  voiceId: string;
+  control: 'comment' | 'menu';
+}
+
 /** Display-only liked programmes. Never writes the full liked membership store. */
 export function usePodcastLiked(
   account: () => AccountView,
@@ -28,6 +33,7 @@ export function usePodcastLiked(
   const count = ref<number | null>(null);
   const issue = ref('');
   const scrollTop = ref(0);
+  const restoredFocus = shallowRef<PodcastLikedReturnFocus>();
   const controlPending = ref(false);
   const pagePending = ref(false);
   const pending = computed(() => controlPending.value || pagePending.value);
@@ -36,7 +42,9 @@ export function usePodcastLiked(
   let ownerGeneration = 0;
   let countRequest = 0;
   let nativeVisit: PodcastLikedVisit | undefined;
-  let saved: { visit: PodcastLikedVisit; scrollTop: number } | undefined;
+  let saved:
+    | { visit: PodcastLikedVisit; scrollTop: number; focus?: PodcastLikedReturnFocus }
+    | undefined;
   let controls = Promise.resolve();
   let retryAction: (() => Promise<void>) | undefined;
 
@@ -51,6 +59,7 @@ export function usePodcastLiked(
       count.value = null;
       issue.value = '';
       scrollTop.value = 0;
+      restoredFocus.value = undefined;
       controlPending.value = false;
       pagePending.value = false;
       nativeVisit = undefined;
@@ -104,6 +113,7 @@ export function usePodcastLiked(
     visible = true;
     page.value = undefined;
     issue.value = '';
+    restoredFocus.value = undefined;
     retryAction = undefined;
     controlPending.value = true;
     pagePending.value = false;
@@ -145,6 +155,9 @@ export function usePodcastLiked(
         if (!live(epoch, intent)) return false;
         if (restored && previous) scrollTop.value = previous.scrollTop;
         publish(reply.value, epoch);
+        const focus = restored ? previous?.focus : undefined;
+        if (focus && reply.value.episodes.some((row) => row.id === focus.voiceId && !row.withdrawn))
+          restoredFocus.value = focus;
         return !restored;
       } catch (error) {
         if (live(epoch, intent)) {
@@ -159,13 +172,19 @@ export function usePodcastLiked(
     if (first && live(epoch, intent)) await next();
   }
 
-  function suspend(position = scrollTop.value) {
+  function suspend(position = scrollTop.value, focus?: PodcastLikedReturnFocus) {
     const { epoch } = account();
     if (!visible || !owns(epoch)) return controls;
+    const source = page.value;
+    const validFocus =
+      focus && source?.episodes.some((row) => row.id === focus.voiceId && !row.withdrawn)
+        ? { ...focus }
+        : undefined;
     visible = false;
     activation++;
     countRequest++;
     page.value = undefined;
+    restoredFocus.value = undefined;
     issue.value = '';
     retryAction = undefined;
     controlPending.value = false;
@@ -181,13 +200,20 @@ export function usePodcastLiked(
       try {
         const reply = await core.podcastLikedPage(epoch, { kind: 'suspend', ...target });
         if (current() && reply.epoch === epoch && sameVisit(reply.value, target)) {
-          saved = { visit: target, scrollTop: previousScroll };
+          saved = { visit: target, scrollTop: previousScroll, focus: validFocus };
         }
       } catch (error) {
         if (current()) authenticationIssue(error);
         // A missing/invalid receipt will make the next explicit Back open fresh.
       }
     });
+  }
+
+  function takeRestoredFocus(revision: string) {
+    if (page.value?.revision !== revision) return;
+    const focus = restoredFocus.value;
+    restoredFocus.value = undefined;
+    return focus;
   }
 
   async function next() {
@@ -282,6 +308,7 @@ export function usePodcastLiked(
     pending,
     issue,
     scrollTop,
+    takeRestoredFocus,
     open: () => enter(false),
     suspend,
     restore: () => enter(true),

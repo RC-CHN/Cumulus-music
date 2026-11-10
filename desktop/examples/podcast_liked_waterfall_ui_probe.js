@@ -122,11 +122,34 @@
     step = 'Back restores the liked prefix and scroll position';
     const back = one('[aria-label="返回上一页"]');
     assert(back && !back.disabled, 'Back enabled on comments');
+    back.focus({ preventScroll: true });
     back.click();
     await wait(() => loaded() === 137 && comments() &&
       Math.abs(pane().scrollTop - previous.scrollTop) <= 2 &&
-      Math.abs(screenY() - previousY) <= 2, 'POP restores the same row at the same position');
-    await capture('ux_08_back', { ...geometry(), voice: '1122', screenY: screenY() });
+      Math.abs(screenY() - previousY) <= 2 && document.activeElement === comments(),
+      'POP restores the same row, position and comment focus');
+    await capture('ux_08_back', { ...geometry(), voice: '1122', screenY: screenY(),
+      commentFocused: document.activeElement === comments() });
+
+    step = 'Back to the More control after opening comments from the menu';
+    const more = () => one('[data-liked-voice-more]', episode());
+    more().focus({ preventScroll: true });
+    more().dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
+    const menu = () => one('[role="menu"][aria-label^="单集菜单"]');
+    const menuComments = () => all('[role="menuitem"]', menu()).find((item) =>
+      item.textContent.trim().startsWith('查看评论'));
+    await wait(() => menuComments() && Number(getComputedStyle(menu()).opacity) > 0.98, 'row menu');
+    await capture('ux_09_menu', { ...geometry(), voice: '1122' });
+    menuComments().click();
+    await wait(() => header()?.getAttribute('aria-busy') === 'false' &&
+      one('[data-comment-read-heading]'), 'comments from the same row menu');
+    back.focus({ preventScroll: true });
+    back.click();
+    await wait(() => loaded() === 137 && more() && document.activeElement === more() &&
+      Math.abs(pane().scrollTop - previous.scrollTop) <= 2 &&
+      Math.abs(screenY() - previousY) <= 2, 'POP restores the exact More focus');
+    await capture('ux_10_menu_back', { ...geometry(), voice: '1122', screenY: screenY(),
+      moreFocused: document.activeElement === more() });
 
     step = 'restored prefix keeps the unspent second cursor';
     bottom();
@@ -135,7 +158,7 @@
     // the last row rather than requiring offscreen rows to remain in the DOM.
     bottom();
     await wait(() => row('1145'), 'last programme mounts at the new end');
-    await capture('ux_09_final_page', geometry());
+    await capture('ux_11_final_page', geometry());
     await capture('complete', { ok: true });
   } catch (error) {
     await capture('failed', { step, message: String(error) });

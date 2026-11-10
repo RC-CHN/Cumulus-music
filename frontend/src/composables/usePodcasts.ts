@@ -2,6 +2,7 @@ import { computed, ref, shallowRef } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
+import type { PodcastLikedReturnFocus } from './usePodcastLiked.ts';
 import { podcastReference } from '../services/podcast.ts';
 import type {
   PodcastClient,
@@ -19,7 +20,7 @@ import type {
 type LikedRoute = {
   open: () => Promise<void>;
   restore: () => Promise<void>;
-  suspend: () => Promise<void>;
+  suspend: (position?: number, focus?: PodcastLikedReturnFocus) => Promise<void>;
   readCount: () => Promise<void>;
 };
 
@@ -125,11 +126,11 @@ export function usePodcasts(
       void load(true);
     }
   }
-  function updateLikedRoute(restore = false, reset = false) {
+  function updateLikedRoute(restore = false, reset = false, focus?: PodcastLikedReturnFocus) {
     if (!likedRoute) return;
     const active =
       visible && !!epoch.value && !recentSelected.value && query.value.scope.kind === 'liked';
-    if (likedVisible && !active) void likedRoute.suspend();
+    if (likedVisible && !active) void likedRoute.suspend(undefined, focus);
     if (active && (!likedVisible || reset))
       void (restore ? likedRoute.restore() : likedRoute.open());
     likedVisible = active;
@@ -449,9 +450,9 @@ export function usePodcasts(
     updateLikedRoute(true);
     if (visible) void load(previous.scope.kind !== 'purchased');
   }
-  function show(value: boolean, restore = false) {
+  function show(value: boolean, restore = false, focus?: PodcastLikedReturnFocus) {
     visible = value;
-    updateLikedRoute(restore);
+    updateLikedRoute(restore, false, focus);
     if (!value) {
       recommendationVisit++;
       recommendationsRequested = false;
