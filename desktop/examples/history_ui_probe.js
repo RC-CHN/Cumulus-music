@@ -9,23 +9,45 @@
   const input=(node,value)=>{node.value=value;node.dispatchEvent(new Event('input',{bubbles:true}));};
   const ready=()=>one('.history-page')?.getAttribute('aria-busy')==='false';
   let stageCount=0;
+  function historyLayout(){
+    const main=one('.main-content'),page=main?.querySelector('.page-view .history-page');
+    const route=page?.closest('.page-view'),note=page?.querySelector('.history-note');
+    if(!route?.isConnected||!note||page.getAttribute('aria-busy')!=='false' ||
+      route.matches('.page-enter-active,.page-leave-active') ||
+      route.getAnimations().some(animation=>animation.pending||animation.playState==='running'))return;
+    const style=getComputedStyle(route);
+    if(style.visibility!=='visible'||Number(style.opacity)!==1 ||
+      (style.transform!=='none'&&!new DOMMatrixReadOnly(style.transform).isIdentity))return;
+    const bounds=page.getBoundingClientRect(),mainBounds=main.getBoundingClientRect();
+    const footer=note.getBoundingClientRect();
+    if(bounds.width<=0||bounds.height<=0||footer.height<=0)return;
+    return {route,page,note,bounds,mainBounds,footer};
+  }
   async function capture(name,extra={}){
     await sleep(400);
     // A history read can finish while the entering route is still translated.
-    // Check clipping after the real transition (including its no-frame deadline).
-    const settledHistory=()=>one('.page-view:not(.page-enter-active,.page-leave-active) .history-page');
-    await wait(settledHistory,`history route did not settle: ${name}`);
+    // Class cleanup alone can precede a settled frame. Verify the same live
+    // route and layout on two polls, then apply the original clipping limits.
+    let previous,settled;
+    await wait(()=>{
+      const current=historyLayout();
+      const stable=current&&previous?.route===current.route&&previous.page===current.page&&
+        previous.note===current.note&&previous.bounds.bottom===current.bounds.bottom&&
+        previous.mainBounds.bottom===current.mainBounds.bottom&&previous.footer.bottom===current.footer.bottom;
+      previous=current;
+      if(stable)settled=current;
+      return stable;
+    },`history route did not settle: ${name}`);
     assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');
-    const page=settledHistory().getBoundingClientRect(),main=one('.main-content').getBoundingClientRect();
-    const note=one('.history-note').getBoundingClientRect();
+    const {page:history,bounds:page,mainBounds:main,footer:note}=settled;
     assert(page.bottom<=main.bottom+1,`history page clipped: ${name} (${page.bottom} > ${main.bottom})`);
     assert(note.bottom<=main.bottom+1,`history footer clipped: ${name} (${note.bottom} > ${main.bottom})`);
-    const rows=all('.history-window .history-row');assert(rows.length<=35,'unbounded history rows');
+    const rows=[...history.querySelectorAll('.history-window .history-row')];assert(rows.length<=35,'unbounded history rows');
     for(const row of rows){for(const action of row.querySelectorAll('.history-actions button')){
       const b=action.getBoundingClientRect(),cell=action.parentElement.getBoundingClientRect();
       assert(b.left>=cell.left-1&&b.right<=cell.right+1,'action outside cell');
     }}
-    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:rows.length,total:one('.history-table')?.getAttribute('aria-rowcount'),pageBottom:page.bottom,mainBottom:main.bottom,footerBottom:note.bottom,scope:one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim(),dialog:!!one('dialog[open]'),...extra});await sleep(900);
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:rows.length,total:history.querySelector('.history-table')?.getAttribute('aria-rowcount'),pageBottom:page.bottom,mainBottom:main.bottom,footerBottom:note.bottom,scope:history.querySelector('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim(),dialog:!!one('dialog[open]'),...extra});await sleep(900);
   }
   async function theme(value){click(one('[aria-label="外观主题"]'));await wait(()=>button(value),'theme menu');click(button(value));await wait(()=>document.documentElement.dataset.theme===(value==='深色'?'dark':'light'),'theme changed');}
   async function tab(label){click(all('[aria-label="播放记录类型"] button').find(n=>n.textContent.trim()===label));await wait(()=>ready()&&one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim()===label,'history tab '+label);await sleep(250);}
