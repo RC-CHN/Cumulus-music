@@ -9,6 +9,7 @@ import {
   type PlaylistClient,
   type PlaylistCommand,
   type PlaylistEditor,
+  type PlaylistMixedAddTarget,
   type PlaylistMutationView,
 } from '../src/services/playlists.ts';
 import type { CoverOutcome } from '../src/services/playlistCover.ts';
@@ -147,6 +148,57 @@ test('search collection reads a fresh revision, deduplicates IDs, and stops if t
   read.resolve(data(editor()));
   await pending;
   assert.equal(sent.length, 1);
+});
+test('an earlier mixed destination receipt is read back without submitting the current song', async () => {
+  let writes = 0;
+  const checks: unknown[][] = [];
+  const pending = {
+    playlistId: '10',
+    operationId: 'earlier-op',
+    phase: 'uncertain' as const,
+    evidence: null,
+    serviceCode: null,
+  };
+  const model = fixture({
+    playlistMixedAddTarget: async (epoch, id, song) => {
+      assert.deepEqual([epoch, id, song], ['1', '10', '704']);
+      return data({ kind: 'pending', receipt: pending, currentSelection: false });
+    },
+    addCatalogSongToMixedPlaylist: async () => {
+      writes++;
+      return data(pending);
+    },
+    reconcilePlaylistMixedAdd: async (...args) => {
+      checks.push(args);
+      return data({ ...pending, phase: 'confirmed', evidence: 'changed_readback' });
+    },
+  });
+  const earlier = await model.addTracks('10', ['704'], true);
+  assert.equal(earlier?.mixedTrackAddition, 'earlier');
+  assert.match(earlier!.message, /本次未提交/);
+  const verified = await model.reconcileMixedAdd('10', earlier!.operationId, 'earlier');
+  assert.equal(verified?.phase, 'confirmed');
+  assert.equal(verified?.mixedTrackAddition, 'earlier');
+  assert.match(verified!.message, /本次未提交/);
+  assert.deepEqual(checks, [['1', '10', 'earlier-op']]);
+  assert.equal(writes, 0);
+});
+test('a stale mixed destination preparation cannot send a write in another account', async () => {
+  const wait = deferred<AccountData<PlaylistMixedAddTarget | null>>();
+  let calls = 0;
+  const model = fixture({
+    playlistMixedAddTarget: () => wait.promise,
+    addCatalogSongToMixedPlaylist: async () => {
+      calls++;
+      throw new Error('stale request was sent');
+    },
+  });
+  const adding = model.addTracks('10', ['703'], true);
+  model.connect(account('2'));
+  wait.resolve(data({ kind: 'ready', revision: 'mixed', operationId: 'new-op' }));
+  assert.equal(await adding, undefined);
+  assert.equal(model.result.value, undefined);
+  assert.equal(calls, 0);
 });
 test('unknown replies are not retried and explicit reconciliation only invokes the readback use case', async () => {
   let writes = 0,

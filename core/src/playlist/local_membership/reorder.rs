@@ -1,11 +1,15 @@
 //! Frozen send-once edits to a mixed playlist. Only the applicable online
 //! IDs go to the service; the receipt and overlay settle in one transaction.
+mod addition;
 mod removal;
+pub use addition::PlaylistMixedAddTarget;
 
 use super::*;
 use crate::{
     playlist::{PlaylistPhase, PlaylistService, TrackOperation},
-    protocol::api::{GuardedPlaylistRemove, validate_response},
+    protocol::api::{
+        GuardedPlaylistAdd, GuardedPlaylistRemove, PlaylistAddPermission, validate_response,
+    },
     storage::StateTransaction,
 };
 use removal::Removal;
@@ -16,6 +20,8 @@ use std::{
 
 const INTENTS: &str = "playlist-local-reorders-v1";
 const REMOVALS: &str = "playlist-local-removals-v1";
+const ADDITIONS: &str = "playlist-local-additions-v1";
+const USED_ADDITIONS: &str = "playlist-local-addition-operations-v1";
 const PATH: &str = "/api/v1/playlist/manipulate/tracks";
 const REJECTIONS: &[i64] = &[400, 403, 405, 406, 502, 505, 506, 511, 512];
 
@@ -46,11 +52,13 @@ pub struct PlaylistMixedReorderReceipt {
 }
 
 pub type PlaylistMixedRemoveReceipt = PlaylistMixedReorderReceipt;
+pub type PlaylistMixedAddReceipt = PlaylistMixedReorderReceipt;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum EditKind {
     Reorder,
     Remove,
+    Add,
 }
 
 impl EditKind {
@@ -58,7 +66,12 @@ impl EditKind {
         match self {
             Self::Reorder => INTENTS,
             Self::Remove => REMOVALS,
+            Self::Add => ADDITIONS,
         }
+    }
+
+    fn guarded(self) -> bool {
+        self != Self::Reorder
     }
 }
 
@@ -75,6 +88,8 @@ struct Intent {
     desired_local: Vec<LocatedLocal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     removal: Option<Removal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    addition: Option<Vec<String>>,
     phase: PlaylistPhase,
     evidence: Option<PlaylistMixedReorderEvidence>,
     service_code: Option<i64>,
@@ -96,12 +111,13 @@ impl Intent {
             (Rejected, Some(ExplicitRejection), Some(code)) => REJECTIONS.contains(&code),
             _ => false,
         };
-        let valid_edit = match (kind, &row.removal) {
-            (EditKind::Reorder, None) => {
+        let valid_edit = match (kind, &row.removal, &row.addition) {
+            (EditKind::Reorder, None, None) => {
                 !row.desired_local.is_empty()
                     && online_permutation(&row.before_online, &row.desired_online)
             }
-            (EditKind::Remove, Some(plan)) => plan.valid(&row),
+            (EditKind::Remove, Some(plan), None) => plan.valid(&row),
+            (EditKind::Add, None, Some(ids)) => addition::valid(&row, ids),
             _ => false,
         };
         if row.owner != owner
@@ -146,19 +162,24 @@ enum Outcome {
     Unknown,
 }
 
-enum Reorder {
+enum Edit {
     Complete(Vec<String>, Vec<LocatedLocal>),
     Move {
         selected: Vec<PlaylistMixedOrderRow>,
         gap: usize,
     },
     Remove(Vec<PlaylistMixedOrderRow>),
+    Add {
+        selected: Vec<String>,
+        operation: String,
+    },
 }
 
-impl Reorder {
+impl Edit {
     fn kind(&self) -> EditKind {
         match self {
             Self::Remove(_) => EditKind::Remove,
+            Self::Add { .. } => EditKind::Add,
             Self::Complete(..) | Self::Move { .. } => EditKind::Reorder,
         }
     }
@@ -169,7 +190,7 @@ pub(in crate::playlist) fn require_settled(
     owner: &str,
     id: &str,
 ) -> Result<()> {
-    for kind in [EditKind::Reorder, EditKind::Remove] {
+    for kind in [EditKind::Reorder, EditKind::Remove, EditKind::Add] {
         if store
             .get(owner, kind.namespace(), id)?
             .map(|raw| Intent::parse(owner, id, kind, raw))
@@ -195,7 +216,8 @@ impl PlaylistLocalStore {
             token,
             id,
             expected_revision,
-            Reorder::Complete(online, local),
+            Edit::Complete(online, local),
+            &|| Ok(()),
         )
         .await
     }
@@ -215,7 +237,8 @@ impl PlaylistLocalStore {
             token,
             id,
             expected_revision,
-            Reorder::Move { selected, gap },
+            Edit::Move { selected, gap },
+            &|| Ok(()),
         )
         .await
     }
@@ -232,8 +255,40 @@ impl PlaylistLocalStore {
                 "invalid mixed playlist removal selection",
             ));
         }
-        self.submit_mixed(token, id, expected_revision, Reorder::Remove(selected))
-            .await
+        self.submit_mixed(
+            token,
+            id,
+            expected_revision,
+            Edit::Remove(selected),
+            &|| Ok(()),
+        )
+        .await
+    }
+
+    pub(crate) async fn add_mixed(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        expected_revision: &str,
+        ids: Vec<String>,
+        operation: &str,
+        source_guard: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMixedAddReceipt> {
+        addition::validate_selection(&ids)?;
+        if !operation_id(operation) {
+            return Err(Error::InvalidInput("invalid mixed playlist operation"));
+        }
+        self.submit_mixed(
+            token,
+            id,
+            expected_revision,
+            Edit::Add {
+                selected: ids,
+                operation: operation.to_owned(),
+            },
+            source_guard,
+        )
+        .await
     }
 
     async fn submit_mixed(
@@ -241,7 +296,8 @@ impl PlaylistLocalStore {
         token: &SessionToken,
         id: &str,
         expected_revision: &str,
-        reorder: Reorder,
+        edit: Edit,
+        source_guard: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMixedReorderReceipt> {
         identifier(&json!(id))?;
         if !digest(expected_revision) {
@@ -257,7 +313,8 @@ impl PlaylistLocalStore {
         )?;
         require_settled(&self.store, &owner, id)?;
         PlaylistService::new(self.session.clone())?.require_no_pending_playlist(&owner, id)?;
-        let kind = reorder.kind();
+        let kind = edit.kind();
+        source_guard()?;
         let (detail, credential) = self.fresh_mixed_detail(token, id, kind).await?;
         let remote = Remote::read(&owner, id, &detail)?;
         require_owner(&owner, &remote, &detail, kind)?;
@@ -269,24 +326,33 @@ impl PlaylistLocalStore {
             self.store.transaction(|tx| {
                 let current = read_local(tx, owner, id)?;
                 let projected = project(owner, id, &remote, Some(&current))?;
-                if projected.revision != expected_revision {
+                if expected_revision != projected.revision {
                     return Err(Error::QueueChanged);
                 }
-                let (desired_online, desired_local, removal) = match reorder {
-                    Reorder::Complete(online, local) => (online, local, None),
-                    Reorder::Move { selected, gap } => {
-                        let (online, local) = split(
-                            materialize_move(projected.rows, &before_online, selected, gap)?,
-                            true,
-                        )?;
-                        (online, local, None)
-                    }
-                    Reorder::Remove(selected) => {
-                        let (online, local, removal) =
-                            removal::project_removal(projected.rows, &before_online, selected)?;
-                        (online, local, Some(removal))
-                    }
-                };
+                let (desired_online, desired_local, removal, addition, proposed_operation) =
+                    match edit {
+                        Edit::Complete(online, local) => (online, local, None, None, None),
+                        Edit::Move { selected, gap } => {
+                            let (online, local) = split(
+                                materialize_move(projected.rows, &before_online, selected, gap)?,
+                                true,
+                            )?;
+                            (online, local, None, None, None)
+                        }
+                        Edit::Remove(selected) => {
+                            let (online, local, removal) =
+                                removal::project_removal(projected.rows, &before_online, selected)?;
+                            (online, local, Some(removal), None, None)
+                        }
+                        Edit::Add {
+                            selected,
+                            operation,
+                        } => {
+                            let (online, local) =
+                                addition::prepend(projected.rows, &before_online, &selected)?;
+                            (online, local, None, Some(selected), Some(operation))
+                        }
+                    };
                 if kind == EditKind::Reorder && !online_permutation(&before_online, &desired_online)
                 {
                     return Err(Error::InvalidInput(
@@ -298,20 +364,33 @@ impl PlaylistLocalStore {
                         "mixed edit must retain every unselected local revision",
                     ));
                 }
-                if read_intent(tx, owner, id, kind)?.is_some_and(|row| row.phase.pending()) {
-                    return Err(Error::MutationUncertain);
+                if let Some(row) = read_intent(tx, owner, id, kind)? {
+                    if row.phase.pending() {
+                        return Err(Error::MutationUncertain);
+                    }
+                    if proposed_operation.as_deref() == Some(row.operation.as_str()) {
+                        return Err(Error::StaleResponse);
+                    }
                 }
-                let operation = uuid::Uuid::new_v4().simple().to_string();
+                let operation =
+                    proposed_operation.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
+                if kind == EditKind::Add {
+                    if tx.get(owner, USED_ADDITIONS, &operation)?.is_some() {
+                        return Err(Error::StaleResponse);
+                    }
+                    tx.put(owner, USED_ADDITIONS, &operation, &json!(id))?;
+                }
                 let journal = Intent {
                     owner: owner.to_owned(),
                     playlist: id.to_owned(),
                     operation: operation.clone(),
-                    before_revision: expected_revision.to_owned(),
+                    before_revision: projected.revision,
                     generation: current.generation,
                     before_online,
                     desired_online,
                     desired_local,
                     removal,
+                    addition,
                     phase: PlaylistPhase::Sending,
                     evidence: None,
                     service_code: None,
@@ -324,16 +403,14 @@ impl PlaylistLocalStore {
                 )?;
                 let requested = journal
                     .removal
-                    .map_or_else(|| journal.desired_online.clone(), |plan| plan.online);
+                    .map(|plan| plan.online)
+                    .or(journal.addition)
+                    .unwrap_or_else(|| journal.desired_online.clone());
                 Ok((operation, requested, journal.desired_online))
             })
         })?;
         let dispatched = AtomicBool::new(false);
         let reply = match (kind, credential) {
-            (EditKind::Remove, Some(credential)) => {
-                self.dispatch_remove(token, id, requested, &credential, &dispatched)
-                    .await
-            }
             (EditKind::Reorder, None) => {
                 // Reorder's official array is truthy even when empty. Never
                 // elide the request merely because its online part didn't move.
@@ -346,10 +423,22 @@ impl PlaylistLocalStore {
                     })
                     .await
             }
+            (EditKind::Remove | EditKind::Add, Some(credential)) => {
+                self.dispatch_guarded(
+                    token,
+                    id,
+                    requested,
+                    kind,
+                    &credential,
+                    source_guard,
+                    &dispatched,
+                )
+                .await
+            }
             _ => Err(Error::State("mixed playlist request authority mismatch")),
         };
         let outcome = match reply {
-            Ok(_) if kind == EditKind::Remove => {
+            Ok(_) if kind.guarded() => {
                 // Do not install new local positions against an old remote
                 // order: confirm the exact full online projection first.
                 match self.matches_online(token, &owner, id, kind, &desired).await {
@@ -362,37 +451,57 @@ impl PlaylistLocalStore {
             }
             Ok(_) => Outcome::Acknowledged,
             Err(error) if matches!(error.root(), Error::StaleResponse) => return Err(error),
-            Err(_) if kind == EditKind::Remove && !dispatched.load(Ordering::Acquire) => {
-                Outcome::NotSent
-            }
+            Err(_) if kind.guarded() && !dispatched.load(Ordering::Acquire) => Outcome::NotSent,
             Err(error) => classify(&error),
         };
         self.settle_mixed(token, id, kind, &operation, outcome)
     }
 
-    async fn dispatch_remove(
+    #[allow(clippy::too_many_arguments)]
+    async fn dispatch_guarded(
         &self,
         token: &SessionToken,
         id: &str,
         selected: Vec<String>,
+        kind: EditKind,
         credential: &str,
+        source_guard: &PlaylistAddPermission<'_>,
         dispatched: &AtomicBool,
     ) -> Result<Value> {
-        let write = GuardedPlaylistRemove::new(id.to_owned(), selected)?;
         self.session
             .run_for(token, |api, _| async move {
                 let current = || {
                     self.session.require_api(token, &api)?;
-                    if api.local_collection_scope_revision()?.as_deref() != Some(credential) {
+                    if mixed_credentials(api.as_ref(), kind)?.as_deref() != Some(credential) {
                         return Err(Error::CredentialChanged);
                     }
-                    Ok(())
+                    source_guard()
                 };
                 current()?;
-                let response = api
-                    .request_guarded_playlist_remove(write, credential, &current, dispatched)
-                    .await?;
-                validate_response(GuardedPlaylistRemove::PATH, response, &[200])
+                let response = match kind {
+                    EditKind::Remove => {
+                        api.request_guarded_playlist_remove(
+                            GuardedPlaylistRemove::new(id.to_owned(), selected)?,
+                            credential,
+                            &current,
+                            dispatched,
+                        )
+                        .await?
+                    }
+                    EditKind::Add => {
+                        api.request_guarded_mixed_playlist_add(
+                            GuardedPlaylistAdd::new(id.to_owned(), selected)?,
+                            credential,
+                            &current,
+                            dispatched,
+                        )
+                        .await?
+                    }
+                    EditKind::Reorder => {
+                        return Err(Error::State("mixed playlist request authority mismatch"));
+                    }
+                };
+                validate_response(PATH, response, &[200])
             })
             .await
     }
@@ -411,6 +520,14 @@ impl PlaylistLocalStore {
         id: &str,
     ) -> Result<Option<PlaylistMixedRemoveReceipt>> {
         self.mixed_receipt(token, id, EditKind::Remove)
+    }
+
+    pub(crate) fn mixed_add_receipt(
+        &self,
+        token: &SessionToken,
+        id: &str,
+    ) -> Result<Option<PlaylistMixedAddReceipt>> {
+        self.mixed_receipt(token, id, EditKind::Add)
     }
 
     fn mixed_receipt(
@@ -445,6 +562,16 @@ impl PlaylistLocalStore {
         operation: &str,
     ) -> Result<PlaylistMixedRemoveReceipt> {
         self.reconcile_mixed(token, id, EditKind::Remove, operation)
+            .await
+    }
+
+    pub(crate) async fn reconcile_mixed_add(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        operation: &str,
+    ) -> Result<PlaylistMixedAddReceipt> {
+        self.reconcile_mixed(token, id, EditKind::Add, operation)
             .await
     }
 
@@ -514,17 +641,10 @@ impl PlaylistLocalStore {
     ) -> Result<(Value, Option<String>)> {
         self.session
             .run_for(token, |api, _| async move {
-                let credential = if kind == EditKind::Remove {
-                    Some(
-                        api.local_collection_scope_revision()?
-                            .ok_or(Error::CredentialChanged)?,
-                    )
-                } else {
-                    None
-                };
+                let credential = mixed_credentials(api.as_ref(), kind)?;
                 let detail = PlaylistApi::new(api.clone()).detail(&json!(id)).await?;
                 if let Some(credential) = &credential
-                    && api.local_collection_scope_revision()?.as_deref()
+                    && mixed_credentials(api.as_ref(), kind)?.as_deref()
                         != Some(credential.as_str())
                 {
                     return Err(Error::CredentialChanged);
@@ -588,8 +708,20 @@ impl PlaylistLocalStore {
     }
 }
 
+fn mixed_credentials(
+    api: &dyn crate::protocol::api::Api,
+    kind: EditKind,
+) -> Result<Option<String>> {
+    let revision = match kind {
+        EditKind::Reorder => return Ok(None),
+        EditKind::Remove => api.local_collection_scope_revision()?,
+        EditKind::Add => api.mixed_playlist_add_scope_revision()?,
+    };
+    Ok(Some(revision.ok_or(Error::CredentialChanged)?))
+}
+
 fn require_owner(owner: &str, remote: &Remote, detail: &Value, kind: EditKind) -> Result<()> {
-    if !remote.writable || kind == EditKind::Remove && !removal::regular_owned(owner, detail) {
+    if !remote.writable || kind.guarded() && !removal::regular_owned(owner, detail) {
         return Err(Error::InvalidInput(
             "mixed edit requires a regular owned playlist",
         ));
@@ -621,10 +753,16 @@ fn read_intent(
 }
 
 fn online_ids(detail: &Value, kind: EditKind) -> Result<Vec<String>> {
-    detail["trackIds"]
+    let rows = detail["trackIds"]
         .as_array()
-        .ok_or(Error::Response("missing complete playlist tracks"))?
-        .iter()
+        .ok_or(Error::Response("missing complete playlist tracks"))?;
+    if kind == EditKind::Add
+        && !detail["trackCount"].is_null()
+        && detail["trackCount"].as_u64() != Some(rows.len() as u64)
+    {
+        return Err(Error::Response("incomplete mixed playlist track list"));
+    }
+    rows.iter()
         .map(|row| {
             if row["v"].as_i64() == Some(-1) {
                 return Err(Error::State(match kind {
@@ -632,6 +770,7 @@ fn online_ids(detail: &Value, kind: EditKind) -> Result<Vec<String>> {
                     EditKind::Remove => {
                         "cannot remove from a playlist with unbound server local rows"
                     }
+                    EditKind::Add => "cannot add to a playlist with unbound server local rows",
                 }));
             }
             identifier(&row["id"])

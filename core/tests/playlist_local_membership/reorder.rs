@@ -1,9 +1,13 @@
 use super::*;
-use cumulus_core::playlist::{PlaylistMixedOrderRow, PlaylistMixedReorderEvidence, PlaylistPhase};
-use cumulus_core::protocol::api::{GuardedPlaylistRemove, PlaylistAddPermission};
+use cumulus_core::playlist::{
+    PlaylistMixedAddTarget, PlaylistMixedOrderRow, PlaylistMixedReorderEvidence, PlaylistPhase,
+};
+use cumulus_core::protocol::api::{
+    GuardedPlaylistAdd, GuardedPlaylistRemove, PlaylistAddPermission,
+};
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
 use tokio::sync::Notify;
@@ -18,11 +22,14 @@ enum Reply {
     Reject,
     NotSent,
     MissingCode,
+    AckAtEnd,
 }
 
 struct ReorderServer {
     detail: Mutex<Value>,
     writes: Mutex<Vec<Value>>,
+    details: AtomicUsize,
+    collect_privilege: Mutex<Option<i64>>,
     reply: Reply,
     scope: Mutex<String>,
     rotate_scope_at_dispatch: AtomicBool,
@@ -42,6 +49,8 @@ impl ReorderServer {
         Self {
             detail: Mutex::new(detail),
             writes: Mutex::new(Vec::new()),
+            details: AtomicUsize::new(0),
+            collect_privilege: Mutex::new(None),
             reply,
             scope: Mutex::new("fixture-a".into()),
             rotate_scope_at_dispatch: AtomicBool::new(false),
@@ -68,9 +77,32 @@ impl Api for ReorderServer {
         Ok(Some(self.scope.lock().unwrap().clone()))
     }
 
+    fn mixed_playlist_add_scope_revision(&self) -> Result<Option<String>> {
+        self.local_collection_scope_revision()
+    }
+
     fn request_guarded_playlist_remove<'a>(
         &'a self,
         write: GuardedPlaylistRemove,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            assert_eq!(revision, self.scope.lock().unwrap().as_str());
+            if self.rotate_scope_at_dispatch.swap(false, Ordering::SeqCst) {
+                *self.scope.lock().unwrap() = "fixture-b".into();
+            }
+            let (path, payload) = write.into_request()?;
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            self.request(path, payload, false).await
+        })
+    }
+
+    fn request_guarded_mixed_playlist_add<'a>(
+        &'a self,
+        write: GuardedPlaylistAdd,
         revision: &'a str,
         permission: &'a PlaylistAddPermission<'a>,
         dispatched: &'a AtomicBool,
@@ -93,12 +125,29 @@ impl Api for ReorderServer {
             match path {
                 "/api/v6/playlist/detail" => {
                     assert_eq!(payload, json!({"id":"73","n":100000,"s":0}));
+                    self.details.fetch_add(1, Ordering::SeqCst);
                     Ok(json!({"code":200,"playlist":self.detail.lock().unwrap().clone()}))
+                }
+                "/api/v3/song/detail" => {
+                    let ids: Vec<Value> =
+                        serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
+                    assert_eq!(ids.len(), 1);
+                    let id = ids[0]["id"].as_str().unwrap();
+                    let privileges = self
+                        .collect_privilege
+                        .lock()
+                        .unwrap()
+                        .map_or_else(Vec::new, |privilege| {
+                            vec![json!({"id":id,"subp":privilege})]
+                        });
+                    Ok(
+                        json!({"code":200,"songs":[{"id":id,"name":"Synthetic catalogue song"}],"privileges":privileges}),
+                    )
                 }
                 UPDATE => {
                     assert_eq!(payload["pid"], "73");
                     let op = payload["op"].as_str().unwrap().to_owned();
-                    assert!(matches!(op.as_str(), "update" | "del"));
+                    assert!(matches!(op.as_str(), "update" | "del" | "add"));
                     assert!(payload.get("imme").is_none());
                     let ids: Vec<String> =
                         serde_json::from_str(payload["trackIds"].as_str().unwrap()).unwrap();
@@ -107,7 +156,10 @@ impl Api for ReorderServer {
                         self.entered.notify_one();
                         self.release.notified().await;
                     }
-                    if matches!(self.reply, Reply::Ack | Reply::Lost | Reply::MissingCode) {
+                    if matches!(
+                        self.reply,
+                        Reply::Ack | Reply::Lost | Reply::MissingCode | Reply::AckAtEnd
+                    ) {
                         let mut detail = self.detail.lock().unwrap();
                         let original = detail["trackIds"].as_array().unwrap();
                         detail["trackIds"] = if op == "update" {
@@ -124,6 +176,13 @@ impl Api for ReorderServer {
                                     })
                                     .collect::<Vec<_>>()
                             )
+                        } else if op == "add" {
+                            let added = ids.iter().map(|id| json!({"id":id,"v":0}));
+                            if matches!(self.reply, Reply::AckAtEnd) {
+                                json!(original.iter().cloned().chain(added).collect::<Vec<_>>())
+                            } else {
+                                json!(added.chain(original.iter().cloned()).collect::<Vec<_>>())
+                            }
                         } else {
                             assert!(
                                 ids.iter().all(|id| original
@@ -143,7 +202,9 @@ impl Api for ReorderServer {
                         };
                     }
                     match self.reply {
-                        Reply::Ack | Reply::AckNotApplied => Ok(json!({"code":"200"})),
+                        Reply::Ack | Reply::AckNotApplied | Reply::AckAtEnd => {
+                            Ok(json!({"code":"200"}))
+                        }
                         Reply::Lost => Err(Error::Transport("synthetic lost response".into())),
                         Reply::Reject => Ok(json!({"code":405, "msg":"synthetic"})),
                         Reply::NotSent => Err(Error::RequestNotSent(Box::new(Error::Cancelled))),
@@ -200,6 +261,285 @@ impl Fixture {
 
 fn online(id: u32) -> PlaylistMixedOrderRow {
     PlaylistMixedOrderRow::Online { id: id.to_string() }
+}
+
+async fn add_target(client: &MusicClient, song: &str) -> (String, String) {
+    let Some(PlaylistMixedAddTarget::Ready {
+        revision,
+        operation_id,
+    }) = client
+        .playlist_mixed_add_target("1", "73", song)
+        .await
+        .unwrap()
+        .value
+    else {
+        panic!("expected fresh verified mixed destination");
+    };
+    (revision, operation_id)
+}
+
+#[tokio::test]
+async fn mixed_add_prepends_one_catalog_song_and_preserves_same_spelled_device_reference() {
+    let fixture = Fixture::new(&[10, 20], Reply::Ack).await;
+    let (client, session) = fixture.open();
+    let collision = "9".repeat(64);
+    let reference = PlaylistLocalRef {
+        id: collision.clone(),
+        revision: "b".repeat(64),
+    };
+    ProfileRegistry::open(&fixture.profile, ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .put(
+            "9",
+            "playlist-local-membership-v1",
+            "73",
+            &json!({"generation":8,"local":[{"position":1,"reference":reference}]}),
+        )
+        .unwrap();
+    let (revision, operation) = add_target(&client, &collision).await;
+    let value = client
+        .add_catalog_song_to_mixed_playlist("1", "73", &revision, &collision, &operation)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(value.phase, PlaylistPhase::Confirmed);
+    assert_eq!(
+        value.evidence,
+        Some(PlaylistMixedReorderEvidence::Acknowledged)
+    );
+    assert_eq!(value.operation_id, operation);
+    assert_eq!(
+        &*fixture.api.writes.lock().unwrap(),
+        &[json!({"pid":"73","trackIds":json!([collision]).to_string(),"op":"add"}),]
+    );
+    let projected = fixture.api.current(&session);
+    assert_eq!(projected.generation(), Some(9));
+    assert_eq!(
+        projected.rows,
+        [
+            PlaylistLocalRow::Remote { index: 0 },
+            PlaylistLocalRow::Remote { index: 1 },
+            PlaylistLocalRow::Local(reference),
+            PlaylistLocalRow::Remote { index: 2 },
+        ]
+    );
+}
+
+#[tokio::test]
+async fn mixed_add_lost_ack_recovers_after_reopen_using_exact_readback_only() {
+    let fixture = Fixture::new(&[10, 20], Reply::Lost).await;
+    let (client, session) = fixture.open();
+    let before = fixture.api.current(&session);
+    let (revision, operation) = add_target(&client, "30").await;
+    let value = client
+        .add_catalog_song_to_mixed_playlist("1", "73", &revision, "30", &operation)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(value.phase, PlaylistPhase::Uncertain);
+    assert_eq!(
+        before.generation(),
+        fixture.api.current(&session).generation()
+    );
+    drop(client);
+    let (client, session) = fixture.open();
+    let reads = fixture.api.details.load(Ordering::SeqCst);
+    let Some(PlaylistMixedAddTarget::Pending {
+        receipt,
+        current_selection: true,
+    }) = client
+        .playlist_mixed_add_target("1", "73", "30")
+        .await
+        .unwrap()
+        .value
+    else {
+        panic!("expected saved pending operation");
+    };
+    assert_eq!(receipt, value);
+    assert!(matches!(
+        client.playlist_mixed_add_target("1", "73", "40").await.unwrap().value,
+        Some(PlaylistMixedAddTarget::Pending { receipt: ref earlier, current_selection: false })
+            if earlier == &value
+    ));
+    assert_eq!(fixture.api.details.load(Ordering::SeqCst), reads);
+    let shown = fixture.api.current(&session);
+    assert!(matches!(
+        client
+            .remove_playlist_mixed("1", "73", &shown.revision, vec![online(10)])
+            .await,
+        Err(Error::MutationUncertain),
+    ));
+    let (other, _, _) = open(&fixture.profile, fixture.api.clone(), Some(99));
+    assert!(
+        other
+            .playlist_mixed_add_target("1", "73", "30")
+            .await
+            .unwrap()
+            .value
+            .is_none()
+    );
+    let confirmed = client
+        .reconcile_playlist_mixed_add("1", "73", &operation)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(confirmed.phase, PlaylistPhase::Confirmed);
+    assert_eq!(
+        confirmed.evidence,
+        Some(PlaylistMixedReorderEvidence::ChangedReadback)
+    );
+    assert_eq!(fixture.api.details.load(Ordering::SeqCst), reads + 1);
+    assert_eq!(fixture.api.writes.lock().unwrap().len(), 1);
+    assert!(matches!(
+        fixture.api.current(&session).rows.as_slice(),
+        [
+            PlaylistLocalRow::Remote { index: 0 },
+            PlaylistLocalRow::Local(_),
+            PlaylistLocalRow::Local(_),
+            PlaylistLocalRow::Remote { index: 1 },
+            PlaylistLocalRow::Remote { index: 2 }
+        ],
+    ));
+}
+
+#[tokio::test]
+async fn mixed_add_wrong_server_placement_never_commits_local_order_even_with_ack() {
+    let fixture = Fixture::new(&[10, 20], Reply::AckAtEnd).await;
+    let (client, session) = fixture.open();
+    let before = fixture.api.current(&session);
+    let (revision, operation) = add_target(&client, "30").await;
+    let value = client
+        .add_catalog_song_to_mixed_playlist("1", "73", &revision, "30", &operation)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(value.phase, PlaylistPhase::Uncertain);
+    assert_eq!(
+        before.generation(),
+        fixture.api.current(&session).generation()
+    );
+    assert_eq!(
+        client
+            .reconcile_playlist_mixed_add("1", "73", &operation)
+            .await
+            .unwrap()
+            .value,
+        value,
+    );
+    assert_eq!(fixture.api.writes.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn mixed_add_blocks_stale_duplicate_denied_and_queue_context_and_fences_credentials() {
+    let fixture = Fixture::new(&[10, 20], Reply::Ack).await;
+    let (client, session) = fixture.open();
+    let (revision, operation) = add_target(&client, "30").await;
+    assert!(matches!(
+        client
+            .add_catalog_song_to_mixed_playlist("1", "73", &"b".repeat(64), "30", &operation)
+            .await,
+        Err(Error::QueueChanged),
+    ));
+    assert!(matches!(
+        client
+            .add_catalog_song_to_mixed_playlist("1", "73", &revision, "10", &operation)
+            .await,
+        Err(Error::InvalidInput(
+            "mixed playlist addition requires new catalog songs"
+        )),
+    ));
+    *fixture.api.collect_privilege.lock().unwrap() = Some(-1);
+    assert!(matches!(
+        client
+            .add_catalog_song_to_mixed_playlist("1", "73", &revision, "30", &operation)
+            .await,
+        Err(Error::InvalidInput("catalog song cannot be collected")),
+    ));
+    *fixture.api.collect_privilege.lock().unwrap() = Some(1);
+    let state = ProfileRegistry::open(&fixture.profile, ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    state
+        .put(
+            "9",
+            "playback",
+            "queue",
+            &json!({
+                "items":[{"entry_id":"synthetic-entry","resource":{"id":"30","song":{"id":30}}}],
+                "order":["synthetic-entry"],"current":"synthetic-entry",
+            }),
+        )
+        .unwrap();
+    assert!(matches!(
+        client
+            .add_catalog_song_to_mixed_playlist("1", "73", &revision, "30", &operation)
+            .await,
+        Err(Error::InvalidInput(
+            "queued song requires its original collection context"
+        )),
+    ));
+    state.put("9", "playback", "queue", &json!({})).unwrap();
+    assert!(fixture.api.writes.lock().unwrap().is_empty());
+    assert!(
+        client
+            .playlist_mixed_add_receipt("1", "73")
+            .unwrap()
+            .value
+            .is_none()
+    );
+    fixture
+        .api
+        .rotate_scope_at_dispatch
+        .store(true, Ordering::SeqCst);
+    let value = client
+        .add_catalog_song_to_mixed_playlist("1", "73", &revision, "30", &operation)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(value.phase, PlaylistPhase::Rejected);
+    assert_eq!(value.evidence, Some(PlaylistMixedReorderEvidence::NotSent));
+    assert_eq!(fixture.api.current(&session).revision, revision);
+    assert!(fixture.api.writes.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn mixed_add_refuses_truncated_detail_and_cannot_replay_an_older_terminal_operation() {
+    let fixture = Fixture::new(&[10, 20], Reply::Reject).await;
+    let (client, _) = fixture.open();
+    fixture.api.detail.lock().unwrap()["trackCount"] = json!(3);
+    assert!(matches!(
+        client.playlist_mixed_add_target("1", "73", "30").await,
+        Err(Error::Response("incomplete mixed playlist track list")),
+    ));
+    fixture.api.detail.lock().unwrap()["trackCount"] = json!(2);
+    // A falsey single-row privilege (raw numeric zero) remains admissible.
+    *fixture.api.collect_privilege.lock().unwrap() = Some(0);
+    let (revision, first) = add_target(&client, "30").await;
+    let rejection = client
+        .add_catalog_song_to_mixed_playlist("1", "73", &revision, "30", &first)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(
+        rejection.evidence,
+        Some(PlaylistMixedReorderEvidence::ExplicitRejection)
+    );
+    let (same_revision, second) = add_target(&client, "40").await;
+    assert_eq!(same_revision, revision);
+    let replacement = client
+        .add_catalog_song_to_mixed_playlist("1", "73", &revision, "40", &second)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(replacement.phase, PlaylistPhase::Rejected);
+    assert!(matches!(
+        client
+            .add_catalog_song_to_mixed_playlist("1", "73", &revision, "30", &first)
+            .await,
+        Err(Error::StaleResponse),
+    ));
+    assert_eq!(fixture.api.writes.lock().unwrap().len(), 2);
 }
 
 #[tokio::test]

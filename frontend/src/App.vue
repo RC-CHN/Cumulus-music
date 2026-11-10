@@ -3503,6 +3503,7 @@ const playlistManager = usePlaylists(
   undefined,
   async (change, epoch) => {
     music.notice.value = change.message;
+    if (change.mixedTrackAddition && !playlistSaved(change.phase)) return;
     if (change.verifiedLikedTrackIds) {
       music.mergeVerifiedPlaylistLikes(epoch, change.verifiedLikedTrackIds);
     } else await music.resources();
@@ -7626,7 +7627,10 @@ onUnmounted(() => {
       ref="trackActions"
       :key="account.epoch"
       :player="player"
-      @collect="(track) => (playlistDialog = { kind: 'tracks', tracks: [track] })"
+      @collect="
+        (track, ordinaryCatalog) =>
+          (playlistDialog = { kind: 'tracks', tracks: [track], ordinaryCatalog })
+      "
       @download="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
       @comments="(track) => openComments({ kind: 'track', id: track.id }, track.name)"
       @remove="(track, playlist) => (playlistDialog = { kind: 'remove', track, playlist })"
@@ -7649,6 +7653,7 @@ onUnmounted(() => {
         :manager="playlistManager"
         :epoch="account.epoch"
         :tracks="playlistDialog.tracks"
+        :ordinary-catalog="playlistDialog.ordinaryCatalog"
         :selection-summary="playlistDialog.selectionSummary"
         :download-collection="playlistDialog.downloadCollection"
         @download-creation-changed="music.resources()"

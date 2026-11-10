@@ -579,6 +579,13 @@ export function createTauriClient(): CoreClient {
       invoke('playlist_mixed_remove_receipt', { epoch, id }),
     reconcilePlaylistMixedRemove: (epoch, id, operationId) =>
       invoke('reconcile_playlist_mixed_remove', { epoch, id, operationId }),
+    playlistMixedAddTarget: (epoch, id, song) =>
+      invoke('playlist_mixed_add_target', { epoch, id, song }),
+    addCatalogSongToMixedPlaylist: (epoch, id, revision, song, operationId) =>
+      invoke('add_catalog_song_to_mixed_playlist', { epoch, id, revision, song, operationId }),
+    playlistMixedAddReceipt: (epoch, id) => invoke('playlist_mixed_add_receipt', { epoch, id }),
+    reconcilePlaylistMixedAdd: (epoch, id, operationId) =>
+      invoke('reconcile_playlist_mixed_add', { epoch, id, operationId }),
     async watchPlayer(epoch, update) {
       const streamId = crypto.randomUUID();
       const onUpdate = new Channel<PlayerUpdate>();

@@ -1,0 +1,43 @@
+普通目录单曲收藏到已有本机成员的普通自建歌单
+
+依据 Windows 3.1.42.205594。FavouriteModal/index.jsx:379–406 传原资源和用户
+选择的歌单。M/3085:764–790 先处理选区再反转，单曲的假值 subPriv 不过滤，
+真值要求大于零。M/21:362 将原始 subp 投影为 subPriv。M/3160:1059、1143–1231
+再次反转后分线上与本机；普通目录单曲没有命中当前播放列表时，走
+/api/v1/playlist/manipulate/tracks：
+
+  {pid: "歌单ID", trackIds: "[\"线上歌曲ID\"]", op: "add"}
+
+没有 imme。若在当前播放列表中找到该曲，会走同端点的 songRqRefer、rqRefer、
+可选 alg 分支。明确成功事件 M/3160:1258–1266、1917–1961 按选择顺序前插完整
+缓存，去掉旧重复，保留其余线上和本机条目的相对次序。
+
+Rust 当前接普通曲目菜单的单条、未在原生播放列表里的目录歌曲。原生重新读取该曲
+的歌单收藏权限，因为普通 TrackView 不含此字段；接受官方单曲的未知/假值规则，
+明确拒绝负值和不能解析的真值。验证权限读与写目标所用同账号凭据范围，绑定账号
+epoch 和队列版次。播放器尚未初始化时核对同账号持久队列，无需启动音频。
+目标必须是有此设备持久成员的普通自建歌单，完整 V6 详情所有者、ID 和可用曲序
+相符；显式 trackCount 与完整 trackIds 不符、未绑定 v=-1、重复线上曲目、红心、
+他人歌单均不会进入此写入。原有普通纯线上目标仍走原收藏路径。
+
+同账号歌单写入互斥内核对页面组合版次，在发送前原子写持久操作 ID、线上前后顺序、
+本机代数与新位置；回执不含本机路径和凭据。只传线上单曲 ID。即使设备摘要与线上
+ID 字面相同，也保留本机绑定。发送一次；明确 200 还须完整读回为预期线上顺序，
+才同事务提交新的本机位置与确认回执。超时、空回执或顺序不匹配保留未决和本机位置；
+明确核对只读同账号当前完整详情，前后有变化且全序吻合才确认。操作 ID 一旦写入
+日志不能再次发送，即使该歌单最新回执已被新的已结操作替换。无服务端 CAS。
+
+收藏器重开后选择同一目的歌单，只读已有未决记录。选择另一首时，核对先前记录不会
+显示新歌已收藏或关闭本次收藏器；只有用户重新选择目的地才可能提交本次请求。
+不改变当前播放/队列、本机文件或其他资源。未实现有 queue refer 的来源、同歌重复
+请求、批量选区、同一手势新增本机和线上资源、云盘上传或换绑；不推断这些分支。
+验证限定在合成账号/服务和 Linux WebView，未调用真实账号或上游写入。
+
+本地 WebView 验收：
+
+  npm --prefix frontend run build
+  cargo build --locked -p cumulus-desktop --example local_ui_probe --features custom-protocol
+  sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 \
+    CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
+    dbus-run-session -- /usr/bin/python3 scripts/ci/mixed_add_smoke.py \
+    --binary target/debug/examples/local_ui_probe --root .build/mixed-add-proof

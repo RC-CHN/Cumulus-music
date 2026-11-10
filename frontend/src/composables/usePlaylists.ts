@@ -10,8 +10,10 @@ import { coverTerminal, type CoverTask } from '../services/playlistCover.ts';
 import { sidebarMoveOrder, type SidebarPlaylistMove } from '../services/sidebar.ts';
 import {
   playlistSaved,
+  playlistPending,
   type PlaylistCommand,
   type PlaylistEditor,
+  type PlaylistMixedReorderReceipt,
   type PlaylistMutationView,
 } from '../services/playlists.ts';
 
@@ -200,10 +202,77 @@ export function usePlaylists(
       if (scope.epoch !== e) throw { code: 'stale', message: '账号已切换' };
       return core.downloadCollectLiked(e, scope.receipt, destination, reconcile);
     });
-  async function addTracks(id: string, ids: string[]) {
+  function mixedAddition(
+    receipt: PlaylistMixedReorderReceipt,
+    selection: 'current' | 'earlier' = 'current',
+  ): PlaylistMutationView {
+    return {
+      operationId: receipt.operationId,
+      kind: 'tracks',
+      playlistId: receipt.playlistId,
+      phase: receipt.phase,
+      label: '',
+      serviceCodes: receipt.serviceCode == null ? {} : { tracks: receipt.serviceCode },
+      message: playlistPending(receipt.phase)
+        ? selection === 'earlier'
+          ? '此歌单有先前的收藏待确认。本次未提交，请先核对结果。'
+          : '收藏结果待确认，本机曲目位置未更新。请先核对，勿重复提交。'
+        : receipt.phase === 'confirmed'
+          ? selection === 'earlier'
+            ? '已核对先前的收藏。本次未提交，请重新选择歌单。'
+            : '已收藏到歌单'
+          : receipt.evidence === 'not_sent'
+            ? '请求未提交，可稍后重新操作'
+            : '未能收藏到歌单，本机曲目位置未更新',
+      observed: null,
+      mixedTrackAddition: selection,
+    };
+  }
+  const reconcileMixedAdd = (id: string, operationId: string, selection: 'current' | 'earlier') =>
+    run(async (e) => {
+      const reply = await core.reconcilePlaylistMixedAdd(e, id, operationId);
+      return { epoch: reply.epoch, value: mixedAddition(reply.value, selection) };
+    });
+  async function addTracks(id: string, ids: string[], ordinaryCatalog = false, live = () => true) {
     return run(async (e) => {
+      const check = (actual: string) => {
+        if (actual !== e || epoch !== e || !live()) throw { code: 'stale', message: '操作已失效' };
+      };
+      const song = ids[0];
+      if (ordinaryCatalog && ids.length === 1 && song) {
+        const target = await core.playlistMixedAddTarget(e, id, song);
+        check(target.epoch);
+        if (target.value?.kind === 'pending')
+          return {
+            epoch: e,
+            value: mixedAddition(
+              target.value.receipt,
+              target.value.currentSelection ? 'current' : 'earlier',
+            ),
+          };
+        if (target.value?.kind === 'ready') {
+          try {
+            const reply = await core.addCatalogSongToMixedPlaylist(
+              e,
+              id,
+              target.value.revision,
+              song,
+              target.value.operationId,
+            );
+            check(reply.epoch);
+            return { epoch: e, value: mixedAddition(reply.value) };
+          } catch (error) {
+            check(e);
+            const receipt = await core.playlistMixedAddReceipt(e, id).catch(() => undefined);
+            check(receipt?.epoch ?? e);
+            if (receipt?.value && receipt.value.operationId === target.value.operationId)
+              return { epoch: e, value: mixedAddition(receipt.value) };
+            throw error;
+          }
+        }
+      }
       const current = await core.playlistEditor(e, id);
-      if (current.epoch !== e || epoch !== e) throw { code: 'stale', message: '账号已切换' };
+      check(current.epoch);
       return core.mutatePlaylist(e, {
         kind: 'tracks',
         id,
@@ -296,6 +365,7 @@ export function usePlaylists(
     reconcile,
     tracks,
     addTracks,
+    reconcileMixedAdd,
     addDownloadedTrack,
     collectDownloadedLiked,
     move,

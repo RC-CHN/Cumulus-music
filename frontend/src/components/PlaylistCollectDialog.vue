@@ -24,6 +24,7 @@ const props = defineProps<{
   manager: PlaylistManager;
   epoch: string;
   tracks: TrackView[];
+  ordinaryCatalog?: boolean;
   playlists: PlaylistView[];
   selectionSummary?: { total: number; unsupported: number; duplicates: number };
   downloadCollection?: DownloadCollectScope;
@@ -243,6 +244,7 @@ async function perform(
 }
 async function collected(value: PlaylistMutationView | undefined) {
   if (!alive || !value || !props.manager.saved(value.phase)) return;
+  if (value.mixedTrackAddition === 'earlier') return;
   if (value.kind === 'create' && value.playlistId) {
     // A confirmed creation is retained if adding the songs later fails. Never
     // create a second playlist when retrying the second half of this flow.
@@ -265,6 +267,8 @@ async function collect(id: string) {
           : props.manager.addTracks(
               id,
               props.tracks.map((track) => track.id),
+              props.ordinaryCatalog === true,
+              () => alive,
             ),
       'tracks',
       id,
@@ -314,11 +318,20 @@ async function resolveDownloadCreation(continueAdd: boolean) {
 async function reconcile() {
   if (!receipt.value || busy.value) return;
   const scope = props.downloadCollection;
-  if (scope && receipt.value.verifiedLikedTrackIds && likedDestination.value) {
+  const current = receipt.value;
+  if (current.mixedTrackAddition && current.playlistId) {
+    await collected(
+      await props.manager.reconcileMixedAdd(
+        current.playlistId,
+        current.operationId,
+        current.mixedTrackAddition,
+      ),
+    );
+  } else if (scope && current.verifiedLikedTrackIds && likedDestination.value) {
     await collected(
       await props.manager.collectDownloadedLiked(scope, likedDestination.value, true),
     );
-  } else await collected(await props.manager.reconcile(receipt.value.operationId));
+  } else await collected(await props.manager.reconcile(current.operationId));
 }
 </script>
 <template>
@@ -378,7 +391,7 @@ async function reconcile() {
       {{ error }}
     </div>
     <div
-      v-if="receipt && !manager.saved(receipt.phase)"
+      v-if="receipt && (!manager.saved(receipt.phase) || receipt.mixedTrackAddition === 'earlier')"
       class="collect-feedback mutation-result"
       :data-phase="receipt.phase"
       role="status"

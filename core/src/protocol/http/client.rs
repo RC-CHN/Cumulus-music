@@ -2095,6 +2095,18 @@ impl Api for MusicHttpClient {
         self.ordinary_playlist_collection_revision()
     }
 
+    fn mixed_playlist_add_scope_revision(&self) -> Result<Option<String>> {
+        let revision = self
+            .ordinary_playlist_collection_revision()?
+            .ok_or(Error::CredentialChanged)?;
+        self.require_playlist_write_target(
+            GuardedPlaylistAdd::PATH,
+            &revision,
+            ["/api/v3/song/detail"],
+        )?;
+        Ok(Some(revision))
+    }
+
     fn download_collection_create_scope_revision(&self) -> Result<Option<String>> {
         let revision = self
             .download_collection_scope_revision()?
@@ -2226,6 +2238,30 @@ impl Api for MusicHttpClient {
     fn request_guarded_playlist_remove<'a>(
         &'a self,
         write: GuardedPlaylistRemove,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = write.into_request()?;
+            self.execute(
+                path,
+                payload,
+                false,
+                Some(revision),
+                Jsk::None,
+                Some(RequestBinding::PlaylistWrite {
+                    permission,
+                    dispatched,
+                }),
+            )
+            .await
+        })
+    }
+
+    fn request_guarded_mixed_playlist_add<'a>(
+        &'a self,
+        write: GuardedPlaylistAdd,
         revision: &'a str,
         permission: &'a PlaylistAddPermission<'a>,
         dispatched: &'a AtomicBool,

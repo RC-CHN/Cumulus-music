@@ -1,8 +1,9 @@
 use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
     playlist::{
-        ExternalPlaylistInput, PlaylistCommand, PlaylistLocalChange, PlaylistMixedOrderRow,
-        PlaylistMixedRemoveReceipt, PlaylistMixedReorderReceipt, preview_external_playlist_inputs,
+        ExternalPlaylistInput, PlaylistCommand, PlaylistLocalChange, PlaylistMixedAddReceipt,
+        PlaylistMixedAddTarget, PlaylistMixedOrderRow, PlaylistMixedRemoveReceipt,
+        PlaylistMixedReorderReceipt, preview_external_playlist_inputs,
     },
 };
 #[tauri::command]
@@ -148,6 +149,58 @@ pub async fn remove_playlist_mixed(
 ) -> Result<AccountData<PlaylistMixedRemoveReceipt>, ClientError> {
     client
         .remove_playlist_mixed(&epoch, &id, &revision, selected)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn playlist_mixed_add_target(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    song: String,
+) -> Result<AccountData<Option<PlaylistMixedAddTarget>>, ClientError> {
+    client
+        .playlist_mixed_add_target(&epoch, &id, &song)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn add_catalog_song_to_mixed_playlist(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    revision: String,
+    song: String,
+    operation_id: String,
+) -> Result<AccountData<PlaylistMixedAddReceipt>, ClientError> {
+    client
+        .add_catalog_song_to_mixed_playlist(&epoch, &id, &revision, &song, &operation_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn playlist_mixed_add_receipt(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+) -> Result<AccountData<Option<PlaylistMixedAddReceipt>>, ClientError> {
+    client
+        .playlist_mixed_add_receipt(&epoch, &id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn reconcile_playlist_mixed_add(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    operation_id: String,
+) -> Result<AccountData<PlaylistMixedAddReceipt>, ClientError> {
+    client
+        .reconcile_playlist_mixed_add(&epoch, &id, &operation_id)
         .await
         .map_err(Into::into)
 }

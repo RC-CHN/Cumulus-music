@@ -1,3 +1,5 @@
+mod addition;
+
 use super::{MusicClient, dto::AccountData};
 use crate::{
     Result,

@@ -23,7 +23,7 @@ import VoiceSongPurchasedQuality from './VoiceSongPurchasedQuality.vue';
 import type { SearchPurchasedQuality } from '../services/search';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{
-  collect: [track: TrackView];
+  collect: [track: TrackView, ordinaryCatalog: boolean];
   download: [track: TrackView];
   downloadSettings: [epoch: string];
   downloadLikes: [epoch: string, ids: string[]];
@@ -667,7 +667,7 @@ async function select(key: string) {
     input.mixedRemoval.confirm(returnFocus);
   else if (key === 'collect') {
     if (input.episode?.selection) input.episode.collectGroup?.();
-    else emit('collect', track);
+    else emit('collect', track, !input.episode && !track.missing && !track.local && !track.voiceId);
   } else if (key === 'download') {
     if (input.episode?.selection) {
       const group = input.episode.downloadGroup;

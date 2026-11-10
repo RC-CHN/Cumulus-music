@@ -10,8 +10,8 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 pub use reorder::{
-    PlaylistMixedOrderRow, PlaylistMixedRemoveReceipt, PlaylistMixedReorderEvidence,
-    PlaylistMixedReorderReceipt,
+    PlaylistMixedAddReceipt, PlaylistMixedAddTarget, PlaylistMixedOrderRow,
+    PlaylistMixedRemoveReceipt, PlaylistMixedReorderEvidence, PlaylistMixedReorderReceipt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

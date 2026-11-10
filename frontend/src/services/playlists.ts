@@ -7,6 +7,7 @@ export type PlaylistDialogTarget =
       tracks: TrackView[];
       selectionSummary?: { total: number; unsupported: number; duplicates: number };
       downloadCollection?: DownloadCollectScope;
+      ordinaryCatalog?: boolean;
     }
   | { kind: 'create' | 'history' | 'open' }
   | { kind: 'track'; track: TrackView; playlist?: PlaylistView };
@@ -66,6 +67,7 @@ export interface PlaylistMutationView {
   message: string;
   observed: PlaylistEditor | null;
   verifiedLikedTrackIds?: string[];
+  mixedTrackAddition?: 'current' | 'earlier';
 }
 export type PlaylistMixedOrderRow =
   | { kind: 'online'; id: string }
@@ -78,6 +80,9 @@ export interface PlaylistMixedReorderReceipt {
   serviceCode: number | null;
 }
 export type PlaylistMixedRemoveReceipt = PlaylistMixedReorderReceipt;
+export type PlaylistMixedAddTarget =
+  | { kind: 'ready'; revision: string; operationId: string }
+  | { kind: 'pending'; receipt: PlaylistMixedReorderReceipt; currentSelection: boolean };
 export type ExternalPlaylistSource = 'qq' | 'kugou' | 'kuwo' | 'xiaomi';
 export type ExternalPlaylistInput =
   | { kind: 'empty' }
@@ -132,6 +137,27 @@ export interface PlaylistClient {
     id: string,
     operationId: string,
   ): Promise<AccountData<PlaylistMixedRemoveReceipt>>;
+  playlistMixedAddTarget(
+    epoch: string,
+    id: string,
+    song: string,
+  ): Promise<AccountData<PlaylistMixedAddTarget | null>>;
+  addCatalogSongToMixedPlaylist(
+    epoch: string,
+    id: string,
+    revision: string,
+    song: string,
+    operationId: string,
+  ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
+  playlistMixedAddReceipt(
+    epoch: string,
+    id: string,
+  ): Promise<AccountData<PlaylistMixedReorderReceipt | null>>;
+  reconcilePlaylistMixedAdd(
+    epoch: string,
+    id: string,
+    operationId: string,
+  ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
 }
 export const playlistPending = (phase: PlaylistPhase) =>
   ['sending', 'verifying', 'uncertain'].includes(phase);

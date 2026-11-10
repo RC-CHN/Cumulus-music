@@ -875,6 +875,20 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async { Err(Error::State("guarded mixed playlist remove is unavailable")) })
     }
 
+    fn request_guarded_mixed_playlist_add<'a>(
+        &'a self,
+        _write: GuardedPlaylistAdd,
+        _revision: &'a str,
+        _permission: &'a PlaylistAddPermission<'a>,
+        _dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("guarded mixed playlist add is unavailable")) })
+    }
+
+    fn mixed_playlist_add_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     fn request_guarded_playlist_create<'a>(
         &'a self,
         _write: GuardedPlaylistCreate,
