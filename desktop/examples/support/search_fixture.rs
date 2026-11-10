@@ -1755,6 +1755,13 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     if super::search_group_download_fixture::enabled() {
                         song["privilege"]["fee"] = json!(0);
                         song["privilege"]["dl"] = json!(if i == 1 { 0 } else { 320000 });
+                        if super::search_group_download_fixture::destination() {
+                            if i == 2 {
+                                song["privilege"]["subp"] = json!(0);
+                            } else if i == 3 {
+                                song["privilege"]["subp"] = json!(-1);
+                            }
+                        }
                     }
                     if i == 0 || i == 29 {
                         song["alia"] = json!(["默认合成别名", "前缀合成连续单曲别名"]);

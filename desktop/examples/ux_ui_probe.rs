@@ -245,6 +245,11 @@ impl Api for Library {
             .then(|| "synthetic-search-group-download".into()))
     }
 
+    fn song_card_collection_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(search_group_download_fixture::destination()
+            .then(|| "synthetic-search-group-download".into()))
+    }
+
     fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok((search_fixture::enabled()
             && std::env::var_os("CUMULUS_SEARCH_GROUP_NEXT_PROOF").is_some())
@@ -348,6 +353,9 @@ impl Api for Library {
         })
     }
     fn download_collection_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        if search_group_download_fixture::destination() {
+            return Ok(Some("synthetic-search-group-download".into()));
+        }
         Ok(
             download_page_fixture::collection_enabled()
                 .then(|| "sealed-download-collection".into()),
@@ -386,6 +394,12 @@ impl Api for Library {
         dispatched: &'a std::sync::atomic::AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if search_group_download_fixture::destination() {
+                let (path, payload) = write.into_request()?;
+                permission()?;
+                dispatched.store(true, std::sync::atomic::Ordering::Release);
+                return search_group_download_fixture::write(path, &payload);
+            }
             if !download_page_fixture::collection_enabled() || !playlist_collect_fixture::enabled()
             {
                 return Err(cumulus_core::Error::CredentialChanged);
@@ -1325,7 +1339,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || headphone_header_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() {
+        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || headphone_header_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() || search_group_download_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1698,6 +1712,7 @@ fn main() {
                 value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());
             }
             if voice_download_fixture::enabled() { value["voiceDownloadService"]=voice_download_fixture::report(); }
+            if search_group_download_fixture::enabled() { value["searchGroupDownload"]=json!(search_group_download_fixture::report()); }
             let stage=value["stage"].as_str().unwrap_or("");
             if vinyl_similar_fixture::enabled() && stage=="vinyl-similar-fixture" {
                 let id=value["id"].as_u64().unwrap();
@@ -1806,12 +1821,11 @@ fn main() {
                     let handle=handle.clone(); let root=cover_root.clone();
                     tauri::async_runtime::spawn(async move {
                         let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root).await;
-                        let ack=json!({"ok":result.is_ok()});
+                        let ack=json!({"ok":result.is_ok(),"playlist":search_group_download_fixture::destination()});
                         handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();
                     });
                     return;
                 }
-                value["searchGroupDownload"]=json!(search_group_download_fixture::report());
             }
             if search_download_row_proof && stage=="search-download-fixture" {
                 let handle=handle.clone();let session=fixture_session.clone();let store=proof_store.clone();

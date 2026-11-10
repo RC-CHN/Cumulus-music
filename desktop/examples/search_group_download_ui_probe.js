@@ -72,6 +72,7 @@
     await invoke('liked_ids');
     await emit('search-group-download-configure');
     await wait(() => window.__groupDownloadConfigured?.ok, 'native isolated download settings');
+    const playlist = window.__groupDownloadConfigured.playlist;
     await invoke('player_action', {epoch, action:{kind:'mode',mode:'single_loop'}});
     await invoke('play_selection', {epoch,selection:{kind:'songs',ids:['701'],index:0,quality:'standard'}});
     await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
@@ -104,7 +105,7 @@
       const reply = await original(owner, command);
       actions.push({ command, reply });
       // Only simulate delivery loss after the actual native write/receipt.
-      if (command.kind === 'start') throw Error('sealed start reply lost');
+      if (!playlist && command.kind === 'start') throw Error('sealed start reply lost');
       return reply;
     };
 
@@ -114,6 +115,10 @@
     await wait(() => selection() === '102,103','second selected');
     await input('last',title('101'),1,true);
     await wait(() => selection() === '101,102,103','third selected');
+    if (playlist) {
+      await input('collect_filtered',title('104'),1,true);
+      await wait(() => selection() === '101,102,103,104','fourth selected');
+    }
     await input('anchor',title('102'),3);
     await wait(() => {
       const node = download(), menu = node?.closest('[role="menu"]');
@@ -121,16 +126,34 @@
         !menu.matches('.menu-enter-active,.menu-leave-active');
     }, 'mixed download offered on the liked, copyright-blocked anchor');
     await input('download',download());
-    await wait(() => button('核对下载') && actions.length === 2 &&
-      one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost reply offers only readback');
-    assert(!one('dialog[open]'), 'ordinary direct lane needs no quality or destination modal');
-    await input('check',button('核对下载'));
+    if (playlist) {
+      const picker = () => one('[data-search-group-download-picker][open]');
+      const destination = () => picker()?.querySelector('[data-playlist-id="81"]');
+      await wait(() => destination() && !destination().disabled && actions.length === 2,
+        'owned ordinary picker has loaded');
+      assert(picker().querySelector('h2').textContent === '下载到歌单' &&
+        all('[data-search-group-download-picker] [data-playlist-id]').map(row => row.dataset.playlistId).join() === '81',
+        'real picker excludes foreign and system liked destinations');
+      assert((await downloads('active')).activeCount === 0, 'opening does not enqueue');
+      await input('choose',destination());
+      const reconcile = () => picker()?.querySelector('[data-search-group-reconcile]');
+      await wait(() => reconcile() && !reconcile().disabled && actions.length === 3 &&
+        picker().textContent.includes('加入歌单的结果尚未确认'), 'lost actual native add result needs readback');
+      assert((await downloads('active')).activeCount === 0, 'no task before verified readback');
+      await input('reconcile',reconcile());
+    } else {
+      await wait(() => button('核对下载') && actions.length === 2 &&
+        one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost reply offers only readback');
+      assert(!one('dialog[open]'), 'ordinary direct lane needs no quality or destination modal');
+      await input('check',button('核对下载'));
+    }
+    const expected = playlist ? ['101','103','104'] : ['101','103'];
     const result = await wait(async () => {
       const view = await downloads('completed');
-      return actions.length === 3 && view.completedCount === 2 &&
-        one('.track-action-feedback')?.textContent.includes('已添加 2 首到下载列表，跳过 1 首') && view;
-    }, 'two actual native files and read-only confirmation');
-    assert(result.tasks.map((task) => task.track.id).sort().join(',') === '101,103',
+      return actions.length === (playlist ? 5 : 3) && view.completedCount === expected.length &&
+        one('.track-action-feedback')?.textContent.includes(`已添加 ${expected.length} 首到下载列表，跳过 1 首`) && view;
+    }, 'actual native files and read-only confirmation');
+    assert(result.tasks.map((task) => task.track.id).sort().join(',') === expected.join(','),
       'filtered IDs completed');
     await capture('accepted', { completed: result.tasks.map(({id, track}) => ({id, trackId:track.id})) });
     core.searchGroupDownload = original;
