@@ -1,0 +1,118 @@
+3.1.42.205594 x64: GEQ + modern BT + PEQ + explicit limiter
+
+Scope: one already archived NCAE, not a preset-family qualification.
+NCAE SHA-256: edd169bf9168ced030c3d4ac0dae36252741aef2f39b6b3d564cbc89980c1710
+Decoded SHA-256: 3a73d4a2983764a5108c0f0020d2fc23df7c8b266c7d775661db35798ca2c138
+SDK SHA-256: c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be
+
+This archived material uses the modern aev2 object. Its GEQ, BT, nine-slot
+PEQ and explicit limiter are enabled; SE, RVB and CMP are explicitly off.
+No legacy fallback is merged with it. The other archived explicit-limiter
+material has different sibling state. Neither the old settings EQ nor an
+arbitrary aev2 material can inherit this receipt's proof.
+
+The test runs the original native code from scripts/research/full_stereo_oracle's
+bounded x64 instruction harness in a Linux network namespace with loopback
+only. It checks that executable bytes are unchanged. CRT, allocation and
+single-thread lock shims are the only applicable host substitutions; the
+outer PCM FIFOs, two format converters, DSP nodes, settings setters, reset
+and graph dispatcher are native. The inputs are deterministic synthetic
+stereo f32, at 44.1/48 kHz with a 2048-frame graph quantum. There is no
+Windows process, account, live material fetch, player, or audio device.
+
+Original SDK boundary, all offsets/RVAs are hexadecimal:
+
+- Outer constructor 65B60 and direct Init 670E0; outer vtable 23F8C8,
+  actual processor vtable 1E42B0. Outer write 67C00, read 68120, reset 67F70.
+- Manually replay the proven cloud material calls against real outer
+  vtable slots: begin +158; GEQ gains +A0, enable +98; BT gains +B0,
+  enable +A8; SE off +88, RVB off +48; PEQ gain +E8, ordered bands +F0,
+  enable +E0; CMP off +C0; limiter parameters +150, enable +148; end +160.
+  BT takes just bass/treble; do not infer extra control writes from fields
+  in the material. These are SDK calls, not a fresh run of the cloud JSON
+  dispatcher. The limiter node offset +B0 below is in a different object
+  from the BT setter slot +B0 here.
+- The 1AA50 graph changes valid PCM at processor +48 (GEQ), +50 (modern
+  BT using shared PEQ), +68 (material PEQ) and +B0 (limiter). ExtraPEQ at
+  +70 still runs between +50 and +68 and is byte-passthrough for this
+  material. The other visited nodes, including +38 immediately before
+  +B0, make no change to the valid PCM in this scope. +10 consumes the
+  post-limiter frame count to write interleaved output.
+
+Native stream observations, per rate (44.1 / 48 kHz):
+
+- Irregular 6151-frame input produces 6151 output frames. Sending the same
+  samples with different write/read splits yields identical PCM bytes.
+  Per-graph-call outputs are 1829/1810, 2048, 2048 and 226/245 frames.
+- Exact 4096-frame input followed by an empty-FIFO EOF produces 4097
+  frames, including the native one-frame sentinel. EOF remains set across
+  subsequent nonzero-capacity reads. Zero-capacity read leaves the caller's
+  EOF flag unchanged.
+- Reset after EOF clears the read EOF state. Reset with 511 pending input
+  frames and unread output from a prior full quantum discards both. A new
+  4103-frame stream then produces 4103 frames. The old input/output does
+  not carry into the new FIFO; reset does not reinstall the material.
+- Explicit limiter off changes the output bytes but preserves total frames
+  for the irregular stream. Disabling material PEQ through +E0 changes
+  whole output and leaves steady +68 byte-identical to +70. The +70 node
+  continues to pass through, so it is not the material PEQ node.
+
+EOF and reset are verified for this native SDK entry. This does not show
+when every official desktop UI action calls it, or qualify arbitrary hot
+preset changes, loudness, disabled-sibling transitions, other formats,
+other materials, decoder/seek integration or physical playback. Do not
+activate this preset in production based on this test alone.
+
+Candidate equivalence and next integration boundary
+
+- The tracked C `netease_geq_stage_*` and `netease_peq_*` kernels, with
+  separate modern BT and material PEQ state, match each native tap and the
+  composed pre-B0 samples in 22 of 22 graph calls. This includes initial
+  activation, steady quanta, EOF and both reset situations. The modern BT
+  uses the shared PEQ kernel, not the standalone BT constructor. It is
+  actually enabled even with this receipt's neutral gains.
+- All three wrappers start with the off state synchronized before the
+  material enables them. Skipping the initial dry-to-wet edges is a
+  negative control: only 7 of 11 composed pre-B0 blocks per rate match.
+  Reset on an active graph synchronizes its current target; it does not
+  replay the first material activation.
+- The retained Rust `effect_dsp_render material-limiter-render` CLI feeds
+  the observed pre-B0 samples through the explicit B0 plan from the exact
+  NCAE. It matches 20 of 20 original PCM output blocks and their frame/EOF
+  geometry, across the initial full run and both reset suffixes. Lookahead
+  is 219 frames at 44.1 kHz and 238 at 48 kHz. This direct B0 test creates
+  a fresh stage for each suffix; it is separate from native FIFO reset.
+- A second comparator feeds the composed C samples into one retained Rust
+  `material-limiter-stream` per rate. Its 38 operations compare 6151,
+  4097, 31 (a partial read before discard), and 4103 frames bit for bit
+  against the real outer SDK. Three Rust resets actually run; the reset
+  reads are empty and do not report EOF, completed reads retain EOF, and
+  zero-capacity reads leave it unset. This test supplies the upstream
+  graph quanta, including its processed sentinel, and does not claim
+  that production already has a combined upstream FIFO or graph.
+
+The private tap report has SHA-256
+4565453fd356085fde71b81559c7690ce598a7d3d4c5a8c330b171fb9a8ce13e.
+It records PCM digests, frame/EOF geometry and control call names, without
+copying the archived material or SDK into the repository. The retained Rust
+comparator executable has SHA-256
+c5aaa81fa345de8099fadebd97aae16332c927657ea9de6fc1e0cbad167fc77a.
+
+Reference output SHA-256 (interleaved little-endian f32):
+
+  44100 irregular    46cc780d156ce4d5b3df0be8dbdca9031778b97f01917abffbc8c36413d49c34
+  44100 after EOF    822f0a97b1a21006cb879dfadd76a0d945950064e18a9b412a17e5af596efac4
+  44100 after live   d14294ee87bdb74b95d83f1b180a4c1cea048053102416f2b4fc4b231dbba079
+  48000 irregular    76aced94d6d4f1d539bffcba27fe1939d39ba8960ee65b4da013549a355e7caf
+  48000 after EOF    d2ed6aa156f7e76902b525704f11b95b9f063df66ac28361a20af4d3407b4150
+  48000 after live   ca00753d2d0af2abb44792c62a938ddf4b0c88cb2eb2b2d419d73ca99458f9a9
+
+Use the original intermediate taps to make a regression distinguish a
+wrong slot or wrapper edge from a B0 frame-flow difference. A production
+candidate must first compose the stages into the same bounded graph,
+qualify the exact authorized material and input geometry, and verify
+reset/EOF at the owned decoder and player boundary. An existing local
+settings EQ attachment and a material-plan decoder do not supply those
+properties on their own. Missing material, unsupported siblings or
+formats, or a failed authorization must never fall through to this lane.
+No product routes or defaults are changed by this evidence.
