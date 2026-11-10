@@ -186,7 +186,7 @@ jobs:
       - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         id: rust-cache
         with:
-          # Linux reuses downloads only, never a target directory.
+          # Download cache is separate from the scoped Release dependency cache below.
           path: |
             ~/.cargo/registry
             ~/.cargo/git
@@ -194,6 +194,33 @@ jobs:
           restore-keys: |
             rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
             rust-Linux-downloads-v2-
+      - name: Fingerprint the installed Linux release toolchain and native libraries
+        id: linux-release-environment
+        env:
+          LC_ALL: C
+        run: |
+          digest="$(
+            {
+              set -e
+              dpkg-query --show --showformat='${binary:Package}\t${Version}\n' | sort
+              cc --version
+              ld --version
+              pkg-config --version
+            } | sha256sum | cut -d ' ' -f 1
+          )"
+          [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - name: Restore Linux release dependencies
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        id: linux-release-deps
+        with:
+          path: |
+            .build/target/release/.fingerprint
+            .build/target/release/build
+            .build/target/release/deps
+          key: rust-linux-ubuntu-2404-x64-release-deps-v1-${{ steps.linux-release-environment.outputs.digest }}-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            rust-linux-ubuntu-2404-x64-release-deps-v1-${{ steps.linux-release-environment.outputs.digest }}-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run build
       - name: Check Linux package build space
@@ -202,6 +229,9 @@ jobs:
           test ! -d .build/target/debug
           df -h .
       - name: Build release packages and verify native media
+        env:
+          # The x64 hosted Linux runner has four cores; leave one for packaging and linking overhead.
+          CARGO_BUILD_JOBS: '3'
         run: python scripts/ci/package.py --platform linux-x64
       - name: Verify the release graphics startup
         env:
@@ -211,21 +241,6 @@ jobs:
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
           xvfb-run -a dbus-run-session -- python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
-      - name: Verify playback and EQ in the extracted Debian application
-        run: |
-          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
-            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-linux --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm --verify-packaged-flac
-      - name: Verify continuous indexed FLAC output in the Linux Debian package
-        run: |
-          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
-            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-indexed-flac-linux --verify-local-playback --verify-monitor-pcm --verify-packaged-flac --verify-indexed-flac-equalizer --indexed-flac-block-size 4608 --verify-indexed-playback-speeds
-      - name: Verify playback and EQ in the Linux portable archive
-        run: |
-          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
-            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-portable-linux --portable --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm --verify-packaged-flac
       - name: Verify registered Linux startup and tray recovery
         run: |
           outer_network=$(readlink /proc/self/ns/net)
@@ -311,6 +326,19 @@ jobs:
           path: .build/packages/linux-x64/manifest-linux-x64.json
           if-no-files-found: error
           retention-days: 3
+      - name: Remove workspace outputs before caching Linux release dependencies
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.linux-release-deps.outputs.cache-hit != 'true'
+        # Application, filter, media probes and bundle must come from this exact checkout.
+        run: cargo clean --release --workspace --locked --offline
+      - name: Cache Linux release dependencies
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.linux-release-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            .build/target/release/.fingerprint
+            .build/target/release/build
+            .build/target/release/deps
+          key: ${{ steps.linux-release-deps.outputs.cache-primary-key }}
 
   windows-rust-lint:
     name: Rust format and Clippy (windows-x64)
@@ -543,6 +571,7 @@ jobs:
           msys-root: ${{ steps.msys2.outputs.msys2-location }}
           save-cache: 'false'
           cargo-profile: release
+          release-package-probes: 'true'
       - name: Stage the exact native files shared with packaging
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
@@ -551,6 +580,16 @@ jobs:
         with:
           name: windows-release-runtime-attempt-${{ github.run_attempt }}
           path: .build/windows-release-runtime/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+      - name: Bind Windows release probes to this attempt after media verification
+        run: python scripts/ci/windows_package_probes.py stage
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-package-probes-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
@@ -600,6 +639,10 @@ jobs:
         with:
           name: windows-release-runtime-attempt-${{ github.run_attempt }}
           path: .build/windows-release-runtime
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-package-probes-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes
       - run: npm --prefix frontend ci
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -611,7 +654,9 @@ jobs:
           CARGO_BUILD_JOBS: '3'
           # Workflow-dispatch artifacts cannot enter the main push release gate.
           CUMULUS_BUILD_WINDOWS_NATIVE_OPEN_NULL_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output == 'null' && '1' || '' }}
-        run: python scripts/ci/package.py --platform windows-x64 --windows-runtime .build/windows-release-runtime
+        run: >-
+          python scripts/ci/package.py --platform windows-x64 --windows-runtime .build/windows-release-runtime
+          --windows-package-probes .build/windows-package-probes
       # The portable runtime, FLAC and local-queue proofs consume this exact
       # package in parallel with the other Windows regression shards.
       - name: Archive synthetic failure diagnostics
@@ -1740,6 +1785,60 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  linux-installed-package:
+    name: Linux installed package playback
+    # Playback reads the exact CI archives, not a separately built application.
+    needs: [package-linux, linux-webview-probe]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_webview_checkout
+      - *linux_webview_probe_download
+      - name: Linux native dependencies with verified same-run archives
+        run: |
+          python3 scripts/ci/linux_webview_apt.py --profile package --reuse "$RUNNER_TEMP/cumulus-webview-ux-probe/apt-cache"
+          rm -rf -- "${RUNNER_TEMP:?}/cumulus-webview-ux-probe"
+          sudo locale-gen en_US.UTF-8
+      - *linux_webview_python
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: packages-linux-x64
+          path: .build/packages/linux-x64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-webview-package-runtime
+          path: .build/package-stage/linux-x64/native
+      - name: Verify playback and EQ in the extracted Debian application
+        run: |
+          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
+            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-linux --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm --verify-packaged-flac
+      - name: Verify continuous indexed FLAC output in the Linux Debian package
+        run: |
+          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
+            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-indexed-flac-linux --verify-local-playback --verify-monitor-pcm --verify-packaged-flac --verify-indexed-flac-equalizer --indexed-flac-block-size 4608 --verify-indexed-playback-speeds
+      - name: Verify playback and EQ in the Linux portable archive
+        run: |
+          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
+            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-portable-linux --portable --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm --verify-packaged-flac
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Preserve Linux installed package failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-linux-installed-package-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
   linux-webview-shards:
     name: Linux WebView (${{ matrix.shard }})
     # These checks use synthetic inputs and the runner's native libraries.
@@ -1749,7 +1848,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, playback-podcasts, playback-startup, library-search, account-shell, catalog-browse, catalog-community]
+        shard: [playback, playback-podcasts, playback-startup, library-search, account-auth, account-shell, catalog-browse, catalog-community]
     defaults:
       run:
         shell: bash
@@ -1996,8 +2095,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
-      - name: Verify account and platform shell
-        if: matrix.shard == 'account-shell'
+      - name: Verify account sessions, QR, device and SMS login
+        if: matrix.shard == 'account-auth'
         env:
           GDK_BACKEND: x11
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -2042,6 +2141,14 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-login-legacy-linux --legacy
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-send-failure-linux --send-failure
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-send-failure-legacy-linux --legacy --send-failure
+      - name: Verify account and platform shell
+        if: matrix.shard == 'account-shell'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
           cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-legacy-linux --legacy
@@ -2269,7 +2376,7 @@ jobs:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
     if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
-    needs: [linux-webview-shards, linux-webview-media, linux-webview-local]
+    needs: [linux-webview-shards, linux-webview-media, linux-webview-local, linux-installed-package]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -2278,10 +2385,12 @@ jobs:
           SHARDS: ${{ needs.linux-webview-shards.result }}
           MEDIA: ${{ needs.linux-webview-media.result }}
           LOCAL: ${{ needs.linux-webview-local.result }}
+          INSTALLED_PACKAGE: ${{ needs.linux-installed-package.result }}
         run: |
           test "$SHARDS" = success
           test "$MEDIA" = success
           test "$LOCAL" = success
+          test "$INSTALLED_PACKAGE" = success
 
   linux-webview-ux-shards:
     name: Linux WebView UX (${{ matrix.shard }})
