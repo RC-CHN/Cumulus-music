@@ -270,6 +270,40 @@ async fn renewal_preserves_only_proven_representation_and_unknown_validators_res
 }
 
 #[tokio::test]
+async fn renewal_without_any_known_length_restarts_even_with_same_digest() {
+    let root = tempfile::tempdir().unwrap();
+    let data = b"audio".repeat(1000);
+    let origin = Arc::new(Origin::new(data.clone()));
+    origin.settings.lock().unwrap().omit_content_length = true;
+    let m = manager(
+        Arc::new(StateStore::open(root.path().join("state")).unwrap()),
+        origin.clone(),
+    );
+    let mut authorization = resource(&data);
+    authorization.size = None;
+    let job = m
+        .create(CreateTransfer {
+            resource: authorization.clone(),
+            target: root.path().join("audio.flac"),
+            resource_id: Some("123".into()),
+            id: None,
+        })
+        .unwrap();
+    let paused = m.run(&job.id, budget(123)).await.unwrap();
+    assert_eq!(paused.bytes, 123);
+    assert_eq!(paused.resource.size, None);
+    assert_eq!(fs::metadata(&job.part).unwrap().len(), 123);
+
+    let renewed = m.refresh_resource(&job.id, authorization).unwrap();
+    assert!(renewed.representation_restarted);
+    assert_eq!(renewed.bytes, 0);
+    assert_eq!(fs::metadata(&job.part).unwrap().len(), 0);
+    m.run(&job.id, RunOptions::default()).await.unwrap();
+    assert_eq!(origin.calls().last().unwrap().offset, 0);
+    assert_eq!(fs::read(job.target).unwrap(), data);
+}
+
+#[tokio::test]
 async fn publication_commit_recovery_never_truncates_or_adopts_an_unrelated_target() {
     let root = tempfile::tempdir().unwrap();
     let state = root.path().join("state");

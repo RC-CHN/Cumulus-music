@@ -25,6 +25,7 @@ pub struct Settings {
     pub range_limit: Option<usize>,
     pub status: Option<u16>,
     pub content_length: Option<String>,
+    pub omit_content_length: bool,
     pub encoding: Option<String>,
     pub gate: Option<Arc<ReadGate>>,
     pub gate_after: usize,
@@ -48,6 +49,7 @@ impl Origin {
                 range_limit: None,
                 status: None,
                 content_length: None,
+                omit_content_length: false,
                 encoding: None,
                 gate: None,
                 gate_after: 0,
@@ -78,10 +80,13 @@ impl MediaBackend for Origin {
             } else {
                 200
             });
-            let mut headers = BTreeMap::from([(
-                "content-length".into(),
-                s.content_length.unwrap_or_else(|| data.len().to_string()),
-            )]);
+            let mut headers = BTreeMap::new();
+            if !s.omit_content_length {
+                headers.insert(
+                    "content-length".into(),
+                    s.content_length.unwrap_or_else(|| data.len().to_string()),
+                );
+            }
             if status == 206 {
                 headers.insert(
                     "content-range".into(),

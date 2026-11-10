@@ -154,6 +154,7 @@ impl TransferManager {
         files::ensure_unpublished(&job)?;
         let same = resource.md5.is_some()
             && resource.md5 == job.resource.md5
+            && resource.size.is_some()
             && resource.size == job.resource.size;
         if !same {
             let file = files::open_part(&job)?;
