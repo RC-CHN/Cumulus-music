@@ -9,6 +9,7 @@ use crate::{
     protocol::api::identifier,
     storage::{OperationLock, StateStore},
 };
+pub(crate) use reorder::{MixedPlaylistAddPlan, MixedPlaylistWriteLease};
 pub use reorder::{
     PlaylistMixedAddReceipt, PlaylistMixedAddTarget, PlaylistMixedOrderRow,
     PlaylistMixedRemoveReceipt, PlaylistMixedReorderEvidence, PlaylistMixedReorderReceipt,

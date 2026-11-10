@@ -83,6 +83,15 @@ export type PlaylistMixedRemoveReceipt = PlaylistMixedReorderReceipt;
 export type PlaylistMixedAddTarget =
   | { kind: 'ready'; revision: string; operationId: string }
   | { kind: 'pending'; receipt: PlaylistMixedReorderReceipt; currentSelection: boolean };
+export interface PlaylistMixedBatchSource {
+  playlistId: string;
+  revision: string;
+  ids: string[];
+}
+export interface PlaylistMixedBatchCollection {
+  receipt: PlaylistMixedReorderReceipt;
+  currentSelection: boolean;
+}
 export type ExternalPlaylistSource = 'qq' | 'kugou' | 'kuwo' | 'xiaomi';
 export type ExternalPlaylistInput =
   | { kind: 'empty' }
@@ -149,6 +158,12 @@ export interface PlaylistClient {
     song: string,
     operationId: string,
   ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
+  collectPlaylistBatchIntoMixed(
+    epoch: string,
+    id: string,
+    source: PlaylistMixedBatchSource,
+    operationId: string,
+  ): Promise<AccountData<PlaylistMixedBatchCollection | null>>;
   playlistMixedAddReceipt(
     epoch: string,
     id: string,

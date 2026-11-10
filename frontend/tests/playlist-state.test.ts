@@ -200,6 +200,57 @@ test('a stale mixed destination preparation cannot send a write in another accou
   assert.equal(model.result.value, undefined);
   assert.equal(calls, 0);
 });
+test('batch collection correlates a lost IPC reply and never falls through to a legacy add', async () => {
+  const source = { playlistId: '74', revision: 'authoritative-revision', ids: ['70', '40'] };
+  let sent = '',
+    writes = 0,
+    legacy = 0,
+    checked = 0;
+  const model = fixture({
+    collectPlaylistBatchIntoMixed: async (epoch, id, selection, operationId) => {
+      assert.deepEqual([epoch, id, selection], ['1', '10', source]);
+      assert.match(operationId, /^[a-f0-9]{32}$/);
+      sent = operationId;
+      writes++;
+      throw { code: 'network', message: 'IPC reply lost' };
+    },
+    playlistMixedAddReceipt: async (epoch, id) => {
+      assert.deepEqual([epoch, id], ['1', '10']);
+      checked++;
+      return data({
+        playlistId: id,
+        operationId: sent,
+        phase: 'uncertain',
+        evidence: null,
+        serviceCode: null,
+      });
+    },
+    mutatePlaylist: async () => {
+      legacy++;
+      return data(receipt());
+    },
+  });
+  const reply = await model.addTracks('10', source.ids, false, () => true, source);
+  assert.equal(reply?.phase, 'uncertain');
+  assert.equal(reply?.mixedTrackAddition, 'current');
+  assert.equal(reply?.operationId, sent);
+  assert.deepEqual([writes, checked, legacy], [1, 1, 0]);
+});
+test('a normal destination keeps its existing batch collection command', async () => {
+  const source = { playlistId: '74', revision: 'authoritative-revision', ids: ['70', '40'] };
+  const legacy: PlaylistCommand[] = [];
+  const model = fixture({
+    collectPlaylistBatchIntoMixed: async () => data(null),
+    mutatePlaylist: async (_epoch, command) => {
+      legacy.push(command);
+      return data(receipt());
+    },
+  });
+  await model.addTracks('10', source.ids, false, () => true, source);
+  assert.deepEqual(legacy, [
+    { kind: 'tracks', id: '10', revision: 'fresh', change: 'add', ids: ['70', '40'] },
+  ]);
+});
 test('unknown replies are not retried and explicit reconciliation only invokes the readback use case', async () => {
   let writes = 0,
     checks = 0;

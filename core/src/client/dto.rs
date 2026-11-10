@@ -70,6 +70,9 @@ pub use super::playlist_duration::{
     PlaylistDurationOrder, PlaylistDurationPage, PlaylistDurationScope, PlaylistDurationSource,
 };
 pub use super::playlist_essential::{PlaylistEssentialCategory, PlaylistEssentialPage};
+pub use super::playlist_local_membership::{
+    PlaylistMixedBatchCollection, PlaylistMixedBatchSource,
+};
 pub use super::playlist_square::PlaylistSquarePage;
 pub use super::playlist_tags_browse::{
     PlaylistTagGroup, PlaylistTagPage, PlaylistTagQuery, PlaylistTopTags,

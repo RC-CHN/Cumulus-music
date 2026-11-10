@@ -182,6 +182,20 @@ pub async fn add_catalog_song_to_mixed_playlist(
 }
 
 #[tauri::command]
+pub async fn collect_playlist_batch_into_mixed(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    source: PlaylistMixedBatchSource,
+    operation_id: String,
+) -> Result<AccountData<Option<PlaylistMixedBatchCollection>>, ClientError> {
+    client
+        .collect_playlist_batch_into_mixed(&epoch, &id, source, &operation_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn playlist_mixed_add_receipt(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

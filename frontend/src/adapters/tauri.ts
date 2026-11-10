@@ -590,6 +590,8 @@ export function createTauriClient(): CoreClient {
       invoke('playlist_mixed_add_target', { epoch, id, song }),
     addCatalogSongToMixedPlaylist: (epoch, id, revision, song, operationId) =>
       invoke('add_catalog_song_to_mixed_playlist', { epoch, id, revision, song, operationId }),
+    collectPlaylistBatchIntoMixed: (epoch, id, source, operationId) =>
+      invoke('collect_playlist_batch_into_mixed', { epoch, id, source, operationId }),
     playlistMixedAddReceipt: (epoch, id) => invoke('playlist_mixed_add_receipt', { epoch, id }),
     reconcilePlaylistMixedAdd: (epoch, id, operationId) =>
       invoke('reconcile_playlist_mixed_add', { epoch, id, operationId }),

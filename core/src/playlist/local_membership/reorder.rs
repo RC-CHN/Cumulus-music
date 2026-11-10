@@ -54,6 +54,20 @@ pub struct PlaylistMixedReorderReceipt {
 pub type PlaylistMixedRemoveReceipt = PlaylistMixedReorderReceipt;
 pub type PlaylistMixedAddReceipt = PlaylistMixedReorderReceipt;
 
+/// The shared writer lease, also held while resolving a batch's source.
+pub(crate) struct MixedPlaylistWriteLease {
+    owner: String,
+    store: Arc<StateStore>,
+    _lock: OperationLock,
+}
+
+pub(crate) struct MixedPlaylistAddPlan<'a> {
+    pub(crate) id: &'a str,
+    pub(crate) expected_revision: &'a str,
+    pub(crate) ids: Vec<String>,
+    pub(crate) operation: &'a str,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum EditKind {
     Reorder,
@@ -268,27 +282,43 @@ impl PlaylistLocalStore {
     pub(crate) async fn add_mixed(
         &self,
         token: &SessionToken,
-        id: &str,
-        expected_revision: &str,
-        ids: Vec<String>,
-        operation: &str,
+        plan: MixedPlaylistAddPlan<'_>,
         source_guard: &PlaylistAddPermission<'_>,
+        lease: MixedPlaylistWriteLease,
     ) -> Result<PlaylistMixedAddReceipt> {
-        addition::validate_selection(&ids)?;
-        if !operation_id(operation) {
+        addition::validate_selection(&plan.ids)?;
+        if !operation_id(plan.operation) {
             return Err(Error::InvalidInput("invalid mixed playlist operation"));
         }
-        self.submit_mixed(
+        self.submit_mixed_with_lease(
             token,
-            id,
-            expected_revision,
+            plan.id,
+            plan.expected_revision,
             Edit::Add {
-                selected: ids,
-                operation: operation.to_owned(),
+                selected: plan.ids,
+                operation: plan.operation.to_owned(),
             },
             source_guard,
+            lease,
         )
         .await
+    }
+
+    pub(crate) fn mixed_write_lease(
+        &self,
+        token: &SessionToken,
+    ) -> Result<MixedPlaylistWriteLease> {
+        let owner = self.session.with_token(token, |uid| Ok(uid.to_owned()))?;
+        let lock = OperationLock::acquire(
+            self.store.directory(),
+            &owner,
+            crate::playlist::service::JOURNAL,
+        )?;
+        Ok(MixedPlaylistWriteLease {
+            owner,
+            store: self.store.clone(),
+            _lock: lock,
+        })
     }
 
     async fn submit_mixed(
@@ -299,18 +329,39 @@ impl PlaylistLocalStore {
         edit: Edit,
         source_guard: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMixedReorderReceipt> {
+        let lease = self.mixed_write_lease(token)?;
+        self.submit_mixed_with_lease(token, id, expected_revision, edit, source_guard, lease)
+            .await
+    }
+
+    async fn submit_mixed_with_lease(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        expected_revision: &str,
+        edit: Edit,
+        source_guard: &PlaylistAddPermission<'_>,
+        lease: MixedPlaylistWriteLease,
+    ) -> Result<PlaylistMixedReorderReceipt> {
         identifier(&json!(id))?;
         if !digest(expected_revision) {
             return Err(Error::InvalidInput("invalid mixed playlist revision"));
         }
-        let owner = self
-            .session
-            .with_token(token, |owner| Ok(owner.to_owned()))?;
-        let _lease = OperationLock::acquire(
-            self.store.directory(),
-            &owner,
-            crate::playlist::service::JOURNAL,
-        )?;
+        let MixedPlaylistWriteLease {
+            owner,
+            store,
+            _lock,
+        } = lease;
+        if !Arc::ptr_eq(&self.store, &store) {
+            return Err(Error::StaleResponse);
+        }
+        self.session.with_token(token, |uid| {
+            if uid == owner {
+                Ok(())
+            } else {
+                Err(Error::StaleResponse)
+            }
+        })?;
         require_settled(&self.store, &owner, id)?;
         PlaylistService::new(self.session.clone())?.require_no_pending_playlist(&owner, id)?;
         let kind = edit.kind();

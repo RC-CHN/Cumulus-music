@@ -14,7 +14,12 @@ import type { PlaylistManager } from '../composables/usePlaylists';
 import type { DownloadCollectScope } from '../services/downloads';
 import { failure, type PlaylistView, type TrackView } from '../services/contracts';
 import { useCore } from '../services/core';
-import { playlistLength, playlistPending, type PlaylistMutationView } from '../services/playlists';
+import {
+  playlistLength,
+  playlistPending,
+  type PlaylistMixedBatchSource,
+  type PlaylistMutationView,
+} from '../services/playlists';
 import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import Icon from './Icon.vue';
 import PlaylistCollectList from './PlaylistCollectList.vue';
@@ -25,6 +30,7 @@ const props = defineProps<{
   epoch: string;
   tracks: TrackView[];
   ordinaryCatalog?: boolean;
+  mixedBatchSource?: PlaylistMixedBatchSource;
   playlists: PlaylistView[];
   selectionSummary?: { total: number; unsupported: number; duplicates: number };
   downloadCollection?: DownloadCollectScope;
@@ -269,6 +275,7 @@ async function collect(id: string) {
               props.tracks.map((track) => track.id),
               props.ordinaryCatalog === true,
               () => alive,
+              props.mixedBatchSource,
             ),
       'tracks',
       id,

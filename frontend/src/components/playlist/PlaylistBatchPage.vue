@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onBeforeUnmount, ref } from 'vue';
-import { failure, type AccountView, type PlaylistView } from '../../services/contracts';
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, shallowRef } from 'vue';
+import {
+  failure,
+  type AccountView,
+  type PlaylistView,
+  type TrackView,
+} from '../../services/contracts';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import type { PlayerModel } from '../../composables/usePlayer';
 import type { DownloadModel } from '../../composables/useDownloads';
 import { usePlaylistBatch } from '../../composables/usePlaylistBatch';
 import { useCore } from '../../services/core';
+import type { PlaylistMixedBatchSource } from '../../services/playlists';
 import type { ZonePlaylistBatchOrigin } from '../../services/verticalZone';
 import PlaylistBatchTable from './PlaylistBatchTable.vue';
 import PlaylistMutationDialog from './PlaylistMutationDialog.vue';
@@ -38,6 +44,7 @@ const dialog = ref<'collect' | 'download' | 'delete'>(),
   message = ref(''),
   failed = ref(false),
   acting = ref(false);
+const collection = shallowRef<{ tracks: TrackView[]; mixedSource?: PlaylistMixedBatchSource }>();
 const done = ref<HTMLButtonElement>(),
   retry = ref<HTMLButtonElement>();
 const locked = computed(
@@ -53,6 +60,28 @@ onMounted(() => done.value?.focus());
 onBeforeUnmount(() => {
   alive = false;
 });
+function openCollection() {
+  const page = data.value;
+  if (!usable.value || !page || props.account.status !== 'authenticated') return;
+  const rows = [...available.value];
+  const mixedSource =
+    !props.zoneOrigin &&
+    !props.playlist.favorite &&
+    !page.playlistOffline &&
+    !page.playlistLocal?.hasMembers &&
+    !page.playlistLocal?.hasUnboundLegacy &&
+    page.playlist?.id === props.playlist.id &&
+    rows.length === chosen.value.length &&
+    rows.every((row) => !row.voiceId)
+      ? { playlistId: props.playlist.id, revision: page.revision, ids: rows.map((row) => row.id) }
+      : undefined;
+  collection.value = { tracks: rows, mixedSource };
+  dialog.value = 'collect';
+}
+function closeCollection() {
+  dialog.value = undefined;
+  collection.value = undefined;
+}
 function requestLeave(continuation?: () => void) {
   if (props.leaving || dialog.value) return;
   if (props.manager.busy.value) {
@@ -181,7 +210,7 @@ defineExpose({ requestLeave });
         <button :disabled="!usable || downloads.busy.value" @click="dialog = 'download'">
           <Icon name="download" />下载
         </button>
-        <button :disabled="!usable" @click="dialog = 'collect'"><Icon name="star" />收藏</button>
+        <button :disabled="!usable" @click="openCollection"><Icon name="star" />收藏</button>
         <button
           v-if="playlist.owned"
           :disabled="!canDelete || !chosen.length || locked || !!error"
@@ -245,12 +274,13 @@ defineExpose({ requestLeave });
     />
     <ModalTransition :fallback-focus="() => done ?? null">
       <PlaylistCollectDialog
-        v-if="dialog === 'collect'"
+        v-if="dialog === 'collect' && collection"
         :manager="manager"
         :epoch="account.epoch"
-        :tracks="available"
+        :tracks="collection.tracks"
+        :mixed-batch-source="collection.mixedSource"
         :playlists="playlists"
-        @close="dialog = undefined"
+        @close="closeCollection"
         @expired="emit('expired')"
       />
       <DownloadDialog

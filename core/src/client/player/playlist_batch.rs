@@ -10,7 +10,7 @@ pub(super) fn track_revision(id: &str, tracks: &[Value]) -> Result<String> {
     ]))?)))
 }
 
-pub(super) fn selected_ids(
+pub(in crate::client) fn selected_ids(
     id: &str,
     detail: &Value,
     ids: &[String],

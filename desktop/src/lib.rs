@@ -622,6 +622,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 playlists::reconcile_playlist_mixed_remove,
                 playlists::playlist_mixed_add_target,
                 playlists::add_catalog_song_to_mixed_playlist,
+                playlists::collect_playlist_batch_into_mixed,
                 playlists::playlist_mixed_add_receipt,
                 playlists::reconcile_playlist_mixed_add,
                 playlists::reconcile_playlist,

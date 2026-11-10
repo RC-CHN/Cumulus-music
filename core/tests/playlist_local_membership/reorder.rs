@@ -6,11 +6,15 @@ use cumulus_core::protocol::api::{
     GuardedPlaylistAdd, GuardedPlaylistRemove, PlaylistAddPermission,
 };
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
 use tokio::sync::Notify;
+
+#[path = "batch_add.rs"]
+mod batch_add;
 
 const UPDATE: &str = "/api/v1/playlist/manipulate/tracks";
 
@@ -27,9 +31,12 @@ enum Reply {
 
 struct ReorderServer {
     detail: Mutex<Value>,
+    source_detail: Mutex<Value>,
     writes: Mutex<Vec<Value>>,
     details: AtomicUsize,
     collect_privilege: Mutex<Option<i64>>,
+    batch_privileges: Mutex<BTreeMap<String, Value>>,
+    batch_requests: Mutex<Vec<Value>>,
     reply: Reply,
     scope: Mutex<String>,
     rotate_scope_at_dispatch: AtomicBool,
@@ -48,9 +55,16 @@ impl ReorderServer {
         );
         Self {
             detail: Mutex::new(detail),
+            source_detail: Mutex::new(json!({
+                "id":74,"name":"Synthetic batch source","userId":8,"privacy":0,"specialType":0,
+                "trackCount":4,
+                "trackIds":[{"id":40,"v":0},{"id":50,"v":0},{"id":60,"v":0},{"id":70,"v":0}],
+            })),
             writes: Mutex::new(Vec::new()),
             details: AtomicUsize::new(0),
             collect_privilege: Mutex::new(None),
+            batch_privileges: Mutex::new(BTreeMap::new()),
+            batch_requests: Mutex::new(Vec::new()),
             reply,
             scope: Mutex::new("fixture-a".into()),
             rotate_scope_at_dispatch: AtomicBool::new(false),
@@ -123,14 +137,41 @@ impl Api for ReorderServer {
         Box::pin(async move {
             assert!(!cache);
             match path {
-                "/api/v6/playlist/detail" => {
-                    assert_eq!(payload, json!({"id":"73","n":100000,"s":0}));
-                    self.details.fetch_add(1, Ordering::SeqCst);
-                    Ok(json!({"code":200,"playlist":self.detail.lock().unwrap().clone()}))
-                }
+                "/api/v6/playlist/detail" => match payload["id"].as_str() {
+                    Some("73") => {
+                        assert_eq!(payload, json!({"id":"73","n":100000,"s":0}));
+                        self.details.fetch_add(1, Ordering::SeqCst);
+                        Ok(json!({"code":200,"playlist":self.detail.lock().unwrap().clone()}))
+                    }
+                    Some("74") => {
+                        assert_eq!(payload, json!({"id":"74","n":100000,"s":0}));
+                        Ok(
+                            json!({"code":200,"playlist":self.source_detail.lock().unwrap().clone()}),
+                        )
+                    }
+                    _ => panic!("unexpected playlist detail {payload}"),
+                },
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
+                    if payload["trialMode"] == -1 || ids.len() > 1 {
+                        if payload["trialMode"] == -1 {
+                            self.batch_requests.lock().unwrap().push(payload);
+                        }
+                        let values = self.batch_privileges.lock().unwrap();
+                        let ids = ids
+                            .iter()
+                            .map(|row| row["id"].as_str().unwrap())
+                            .collect::<Vec<_>>();
+                        let privileges = ids
+                            .iter()
+                            .filter_map(|id| values.get(*id).map(|p| json!({"id":id,"subp":p})))
+                            .collect::<Vec<_>>();
+                        return Ok(json!({"code":200,
+                            "songs":ids.iter().map(|id| json!({"id":id,"name":"Synthetic catalogue song"})).collect::<Vec<_>>(),
+                            "privileges":privileges
+                        }));
+                    }
                     assert_eq!(ids.len(), 1);
                     let id = ids[0]["id"].as_str().unwrap();
                     let privileges = self

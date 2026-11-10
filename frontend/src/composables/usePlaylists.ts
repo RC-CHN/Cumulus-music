@@ -14,6 +14,8 @@ import {
   type PlaylistCommand,
   type PlaylistEditor,
   type PlaylistMixedReorderReceipt,
+  type PlaylistMixedBatchCollection,
+  type PlaylistMixedBatchSource,
   type PlaylistMutationView,
 } from '../services/playlists.ts';
 
@@ -233,11 +235,50 @@ export function usePlaylists(
       const reply = await core.reconcilePlaylistMixedAdd(e, id, operationId);
       return { epoch: reply.epoch, value: mixedAddition(reply.value, selection) };
     });
-  async function addTracks(id: string, ids: string[], ordinaryCatalog = false, live = () => true) {
+  async function addTracks(
+    id: string,
+    ids: string[],
+    ordinaryCatalog = false,
+    live = () => true,
+    batchSource?: PlaylistMixedBatchSource,
+  ) {
     return run(async (e) => {
       const check = (actual: string) => {
         if (actual !== e || epoch !== e || !live()) throw { code: 'stale', message: '操作已失效' };
       };
+      async function collectMixed(
+        operationId: string,
+        submit: () => Promise<
+          import('../services/contracts').AccountData<PlaylistMixedBatchCollection | null>
+        >,
+      ) {
+        try {
+          const reply = await submit();
+          check(reply.epoch);
+          if (reply.value)
+            return {
+              epoch: e,
+              value: mixedAddition(
+                reply.value.receipt,
+                reply.value.currentSelection ? 'current' : 'earlier',
+              ),
+            };
+        } catch (error) {
+          check(e);
+          const receipt = await core.playlistMixedAddReceipt(e, id).catch(() => undefined);
+          check(receipt?.epoch ?? e);
+          if (receipt?.value && receipt.value.operationId === operationId)
+            return { epoch: e, value: mixedAddition(receipt.value) };
+          throw error;
+        }
+      }
+      if (batchSource) {
+        const operationId = crypto.randomUUID().replaceAll('-', '');
+        const reply = await collectMixed(operationId, () =>
+          core.collectPlaylistBatchIntoMixed(e, id, batchSource, operationId),
+        );
+        if (reply) return reply;
+      }
       const song = ids[0];
       if (ordinaryCatalog && ids.length === 1 && song) {
         const target = await core.playlistMixedAddTarget(e, id, song);
@@ -251,24 +292,18 @@ export function usePlaylists(
             ),
           };
         if (target.value?.kind === 'ready') {
-          try {
+          const { revision: expected, operationId } = target.value;
+          const value = await collectMixed(operationId, async () => {
             const reply = await core.addCatalogSongToMixedPlaylist(
               e,
               id,
-              target.value.revision,
+              expected,
               song,
-              target.value.operationId,
+              operationId,
             );
-            check(reply.epoch);
-            return { epoch: e, value: mixedAddition(reply.value) };
-          } catch (error) {
-            check(e);
-            const receipt = await core.playlistMixedAddReceipt(e, id).catch(() => undefined);
-            check(receipt?.epoch ?? e);
-            if (receipt?.value && receipt.value.operationId === target.value.operationId)
-              return { epoch: e, value: mixedAddition(receipt.value) };
-            throw error;
-          }
+            return { epoch: reply.epoch, value: { receipt: reply.value, currentSelection: true } };
+          });
+          if (value) return value;
         }
       }
       const current = await core.playlistEditor(e, id);

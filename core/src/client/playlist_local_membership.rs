@@ -1,4 +1,5 @@
 mod addition;
+pub use addition::{PlaylistMixedBatchCollection, PlaylistMixedBatchSource};
 
 use super::{MusicClient, dto::AccountData};
 use crate::{

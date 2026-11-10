@@ -14,6 +14,7 @@ pub use external_input::{
     ExternalPlaylistInput, ExternalPlaylistSource, MAX_EXTERNAL_PLAYLIST_LINKS,
     preview_external_playlist_inputs,
 };
+pub(crate) use local_membership::{MixedPlaylistAddPlan, MixedPlaylistWriteLease};
 pub use local_membership::{
     PlaylistLocalChange, PlaylistLocalMembership, PlaylistLocalMutation, PlaylistLocalRef,
     PlaylistLocalRow, PlaylistLocalStore, PlaylistMixedAddReceipt, PlaylistMixedAddTarget,

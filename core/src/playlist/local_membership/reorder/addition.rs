@@ -57,14 +57,20 @@ pub(super) fn prepend(
 }
 
 impl PlaylistLocalStore {
+    pub(crate) fn has_device_members(&self, token: &SessionToken, id: &str) -> Result<bool> {
+        identifier(&json!(id))?;
+        self.session
+            .with_token(token, |owner| has_entries(&self.store, owner, id))
+    }
+
     pub(crate) async fn mixed_add_target(
         &self,
         token: &SessionToken,
         id: &str,
-        song: &str,
+        selection: &[String],
     ) -> Result<Option<PlaylistMixedAddTarget>> {
         identifier(&json!(id))?;
-        identifier(&json!(song))?;
+        validate_selection(selection)?;
         let (owner, has_members) = self.session.with_token(token, |owner| {
             Ok((owner.to_owned(), has_entries(&self.store, owner, id)?))
         })?;
@@ -78,9 +84,7 @@ impl PlaylistLocalStore {
                 .transpose()
         })?;
         if let Some(intent) = pending.filter(|row| row.phase.pending()) {
-            let current_selection = intent.addition.as_ref().is_some_and(
-                |ids| matches!(ids.as_slice(), [pending_song] if pending_song == song),
-            );
+            let current_selection = intent.addition.as_deref() == Some(selection);
             return Ok(Some(PlaylistMixedAddTarget::Pending {
                 receipt: intent.receipt(),
                 current_selection,
