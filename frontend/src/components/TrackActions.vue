@@ -51,7 +51,13 @@ type SearchDownloadTarget = {
   omitted: number;
 };
 const downloadPicker = shallowRef<SearchDownloadTarget>();
-const purchaseChooser = shallowRef<SearchDownloadTarget & { choices: SearchPurchasedQuality[] }>();
+const purchaseChooser = shallowRef<
+  SearchDownloadTarget & {
+    choices: SearchPurchasedQuality[];
+    existingQuality?: SearchPurchasedQuality;
+  }
+>();
+const purchaseQualityMismatch = ref(false);
 const searchGroupQueue = shallowRef<{ playId: string | null; revision: string }>();
 function currentSearchGroupQueue() {
   const current = props.player.view.value;
@@ -387,12 +393,14 @@ async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['sea
         askSearchDownloadDirectory(group);
         return;
       case 'purchased_quality_required':
+        purchaseQualityMismatch.value = false;
         if (plan.receipt && plan.purchasedQualities?.length)
           purchaseChooser.value = {
             group,
             receipt: plan.receipt,
             omitted: plan.omittedCount,
             choices: plan.purchasedQualities,
+            existingQuality: plan.existingPurchasedQuality,
           };
         return;
       case 'purchased_selection_unavailable':
@@ -440,6 +448,7 @@ async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['sea
 function closeSearchPurchase(cancel: boolean) {
   const target = purchaseChooser.value;
   purchaseChooser.value = undefined;
+  purchaseQualityMismatch.value = false;
   if (cancel && target)
     void client
       .searchGroupDownload(target.group.epoch, { kind: 'cancel', receipt: target.receipt })
@@ -474,6 +483,13 @@ async function confirmSearchPurchase(quality: SearchPurchasedQuality) {
     } else if (reply.kind === 'directory_required') {
       closeSearchPurchase(true);
       askSearchDownloadDirectory(group);
+    } else if (
+      reply.kind === 'existing_quality_mismatch' &&
+      reply.epoch === group.epoch &&
+      reply.receipt === receipt &&
+      reply.requiredQuality === target.existingQuality
+    ) {
+      purchaseQualityMismatch.value = true;
     } else if (
       reply.kind === 'quality_confirmed' &&
       reply.epoch === group.epoch &&
@@ -717,6 +733,8 @@ defineExpose({ show, showQueue, close });
       :choices="purchaseChooser.choices"
       :busy="groupDownloadBusy"
       :open-guide="openSearchPurchaseGuide"
+      :existing-quality="purchaseChooser.existingQuality"
+      :quality-mismatch="purchaseQualityMismatch"
       @close="closeSearchPurchase(true)"
       @confirm="confirmSearchPurchase"
     />

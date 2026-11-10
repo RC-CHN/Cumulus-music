@@ -322,6 +322,7 @@ export type SearchGroupDownloadReply =
       eligibleCount: number;
       omittedCount: number;
       purchasedQualities?: SearchPurchasedQuality[];
+      existingPurchasedQuality?: SearchPurchasedQuality;
     }
   | {
       kind: 'quality_confirmed';
@@ -329,6 +330,12 @@ export type SearchGroupDownloadReply =
       decision: 'playlist_required' | 'playlist_unavailable' | 'membership_unknown';
       receipt: string | null;
       quality: SearchPurchasedQuality;
+    }
+  | {
+      kind: 'existing_quality_mismatch';
+      epoch: string;
+      receipt: string;
+      requiredQuality: SearchPurchasedQuality;
     }
   | { kind: 'accepted'; result: import('./downloads').DownloadResult }
   | {

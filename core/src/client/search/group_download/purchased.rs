@@ -17,6 +17,16 @@ pub(super) struct Choice {
     destination: bool,
 }
 
+pub(super) fn common_existing_quality(
+    existing: &BTreeMap<String, ExistingSongAdmission>,
+) -> Option<Quality> {
+    let quality = existing.values().next()?.options().quality;
+    existing
+        .values()
+        .all(|task| task.has_bound_prefix() && task.options().quality == quality)
+        .then_some(quality)
+}
+
 pub(super) fn vivid(experiments: &PcExperimentHost, observed: &Observed) -> Result<bool> {
     let groups = experiments.observed_groups(&observed.owner, &observed.api, &observed.revision)?;
     Ok(vivid_available(groups.as_ref()))
@@ -110,6 +120,15 @@ impl MusicClient {
         if let Some(ids) = plan.committed.get() {
             return Ok(accepted(epoch, &plan, ids.clone()));
         }
+        if let Some(required_quality) = plan.existing_purchased_quality
+            && quality != required_quality
+        {
+            return Ok(Reply::ExistingQualityMismatch {
+                epoch: epoch.into(),
+                receipt: plan.receipt.clone(),
+                required_quality,
+            });
+        }
         check_quality(&self.pc_experiments, observed, Some(quality))?;
         let confirmed = |decision, has_destination: bool| Reply::QualityConfirmed {
             epoch: epoch.into(),
@@ -117,13 +136,21 @@ impl MusicClient {
             receipt: has_destination.then(|| plan.receipt.clone()),
             quality,
         };
-        if plan.quality.get().is_some_and(|choice| choice.destination) {
-            return Ok(confirmed(Decision::PlaylistRequired, true));
-        }
         let store = self.session.persistent_store()?;
         let membership = self.session.with_token(&observed.owner, |owner| {
-            store.read_snapshot(|tx| anchor_membership(tx, owner, &observed.anchor))
+            store.read_snapshot(|tx| {
+                for task in plan.existing.values() {
+                    task.check(tx, owner)?;
+                }
+                anchor_membership(tx, owner, &observed.anchor)
+            })
         })?;
+        if plan.quality.get().is_some_and(|choice| choice.destination) {
+            if membership != Decision::PlaylistRequired {
+                return Err(Error::StaleResponse);
+            }
+            return Ok(confirmed(Decision::PlaylistRequired, true));
+        }
         if plan.quality.get().is_some() && membership != Decision::Ready {
             return Err(Error::StaleResponse);
         }

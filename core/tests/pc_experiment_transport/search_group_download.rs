@@ -23,6 +23,8 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 #[path = "search_group_download/purchased_creation.rs"]
 mod purchased_creation;
+#[path = "search_group_download/purchased_resume.rs"]
+mod purchased_resume;
 
 const COOKIE: &str = "MUSIC_U=synthetic-search-group-download; Path=/; Secure";
 const AUTH: &str = "/api/song/enhance/download/url/v1";

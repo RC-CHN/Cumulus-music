@@ -7,6 +7,8 @@ const props = defineProps<{
   choices: readonly VoiceSongPurchasedQuality[];
   busy: boolean;
   openGuide: () => Promise<void>;
+  existingQuality?: VoiceSongPurchasedQuality;
+  qualityMismatch?: boolean;
 }>();
 const emit = defineEmits<{ close: []; confirm: [quality: VoiceSongPurchasedQuality] }>();
 const dialog = ref<HTMLDialogElement>();
@@ -81,6 +83,15 @@ function confirm() {
     </button>
     <p v-if="guideError" class="muted purchased-quality-notice" role="status">
       暂时无法打开音质说明，请重试。
+    </p>
+    <p
+      v-if="existingQuality"
+      class="muted purchased-quality-notice"
+      role="status"
+      data-existing-download-quality
+    >
+      {{ qualityMismatch && selected !== existingQuality ? '所选音质与已有任务不同。' : '' }}
+      请选择原音质「{{ names[existingQuality] }}」续传。换音质前请先在下载管理取消原任务。
     </p>
     <form @submit.prevent="confirm">
       <fieldset class="purchased-quality-list" :disabled="busy" aria-label="下载音质">

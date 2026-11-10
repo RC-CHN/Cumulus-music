@@ -131,7 +131,7 @@ impl ExistingSongAdmission {
         } else if task.bytes != 0 {
             return Ok(None);
         } else {
-            true
+            files::absent(&task.work.join("raw")).is_ok()
         };
         Ok(Some(Self {
             id: id.into(),
@@ -143,7 +143,7 @@ impl ExistingSongAdmission {
         }))
     }
 
-    pub(super) fn check(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
+    pub(crate) fn check(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
         if tx.get(owner, KIND, &self.id)?.as_ref() != Some(&self.row)
             || tx.get(owner, TRANSFERS, &self.id)? != self.raw
             || Control::observe(tx, owner, &self.id)? != self.control
@@ -159,6 +159,9 @@ impl ExistingSongAdmission {
         let raw = self.raw.clone().map(serde_json::from_value).transpose()?;
         let transfer_lock = service.transfer.hold_quiescent(&task.id, raw.as_ref())?;
         files::work(&task)?;
+        if raw.is_none() {
+            files::absent(&task.work.join("raw"))?;
+        }
         if task.target.is_some() {
             files::absent(files::target(&task)?)?;
         }

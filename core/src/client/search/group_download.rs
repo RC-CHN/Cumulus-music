@@ -237,12 +237,19 @@ pub enum SearchGroupDownloadReply {
         omitted_count: usize,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         purchased_qualities: Vec<Quality>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        existing_purchased_quality: Option<Quality>,
     },
     QualityConfirmed {
         epoch: String,
         decision: SearchGroupDownloadDecision,
         receipt: Option<String>,
         quality: Quality,
+    },
+    ExistingQualityMismatch {
+        epoch: String,
+        receipt: String,
+        required_quality: Quality,
     },
     Accepted {
         result: DownloadResult,
@@ -309,6 +316,7 @@ struct PlanDraft {
     collection: Vec<String>,
     purpose: SearchGroupDownloadDecision,
     purchased_qualities: Vec<Quality>,
+    existing_purchased_quality: Option<Quality>,
 }
 struct Plan {
     receipt: String,
@@ -318,6 +326,7 @@ struct Plan {
     collection: Arc<[String]>,
     purpose: SearchGroupDownloadDecision,
     purchased_qualities: Vec<Quality>,
+    existing_purchased_quality: Option<Quality>,
     quality: OnceLock<purchased::Choice>,
     destination: Mutex<destination::Destination>,
     busy: AtomicBool,
@@ -487,6 +496,7 @@ impl SearchGroupDownloads {
             collection: draft.collection.into(),
             purpose: draft.purpose,
             purchased_qualities: draft.purchased_qualities,
+            existing_purchased_quality: draft.existing_purchased_quality,
             quality: OnceLock::new(),
             destination: Mutex::default(),
             busy: AtomicBool::new(false),
@@ -682,6 +692,14 @@ impl MusicClient {
         if quality.is_some() == plan.purchased_qualities.is_empty() {
             return Err(Error::StaleResponse);
         }
+        if let Some(quality) = quality
+            && plan
+                .existing
+                .values()
+                .any(|task| !task.has_bound_prefix() || task.options().quality != quality)
+        {
+            return Err(Error::StaleResponse);
+        }
         let experiments = self.pc_experiments.clone();
         let system_liked = matches!(&admission,
             SongBatchAdmission::SearchPlaylist { proof, .. } if proof.liked_origin.is_some());
@@ -769,7 +787,7 @@ impl MusicClient {
         let local = self.local.context().await?;
         let session = self.session.clone();
         let candidate = observed.clone();
-        let (songs, existing, collection, offers, decision) =
+        let (songs, existing, collection, offers, decision, existing_purchased_quality) =
             tokio::task::spawn_blocking(move || {
                 let ids = candidate.rows.iter().map(|(id, _)| id.as_str()).collect();
                 let matched =
@@ -782,6 +800,7 @@ impl MusicClient {
                 let mut collection = Vec::new();
                 let mut offers = Vec::new();
                 let mut first_filter_count = 0;
+                let mut existing_quality = None;
                 let decision = session.with_token(&candidate.owner, |owner| {
                     store.read_snapshot(|tx| {
                         for (id, right) in &candidate.rows {
@@ -823,9 +842,13 @@ impl MusicClient {
                             // observed anchors are either fee-free, paid or
                             // copyright-blocked, never the original fee prompt.
                             // The anchor remains independent of this list.
-                            // Reuse neither quiescent nor excluded old tasks.
-                            let all_new = existing.is_empty() && songs.len() == first_filter_count;
-                            return Ok(if all_new {
+                            // No excluded task can masquerade as a first-filter
+                            // omission. Exact quiescent old tasks may only use
+                            // their common original tier with proven prefixes.
+                            existing_quality = purchased::common_existing_quality(&existing);
+                            let admissible = songs.len() == first_filter_count
+                                && (existing.is_empty() || existing_quality.is_some());
+                            return Ok(if admissible {
                                 D::PurchasedQualityRequired
                             } else {
                                 D::PurchasedSelectionUnavailable
@@ -837,7 +860,14 @@ impl MusicClient {
                         purchased::anchor_membership(tx, owner, &candidate.anchor)
                     })
                 })?;
-                Ok::<_, Error>((songs, existing, collection, offers, decision))
+                Ok::<_, Error>((
+                    songs,
+                    existing,
+                    collection,
+                    offers,
+                    decision,
+                    existing_quality,
+                ))
             })
             .await
             .map_err(|_| Error::State("search download preparation stopped"))??;
@@ -846,7 +876,10 @@ impl MusicClient {
         } else {
             Vec::new()
         };
-        let decision = if decision == D::PurchasedQualityRequired && qualities.is_empty() {
+        let decision = if decision == D::PurchasedQualityRequired
+            && (qualities.is_empty()
+                || existing_purchased_quality.is_some_and(|tier| !qualities.contains(&tier)))
+        {
             D::PurchasedSelectionUnavailable
         } else if decision == D::Ready
             && !self.configured_download_directory_available(epoch).await?
@@ -868,6 +901,9 @@ impl MusicClient {
             songs.len()
         };
         let omitted_count = observed.rows.len() - eligible_count;
+        let existing_purchased_quality = (decision == D::PurchasedQualityRequired)
+            .then_some(existing_purchased_quality)
+            .flatten();
         let receipt = if matches!(
             decision,
             D::Ready | D::PlaylistRequired | D::PurchasedQualityRequired
@@ -881,6 +917,7 @@ impl MusicClient {
                     collection,
                     purpose: decision,
                     purchased_qualities: qualities.clone(),
+                    existing_purchased_quality,
                 },
             )?)
         } else {
@@ -893,6 +930,7 @@ impl MusicClient {
             eligible_count,
             omitted_count,
             purchased_qualities: qualities,
+            existing_purchased_quality,
         })
     }
 }
