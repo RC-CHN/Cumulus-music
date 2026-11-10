@@ -542,8 +542,15 @@
     const scroll = () => one(".settings-scroll");
     await wait(() => direct(), "direct edit entry");
     await settle();
-    let settingsScroll;
-    click(direct(), () => { settingsScroll = scroll().scrollTop; });
+    const triggerTop = () => {
+      const scroller = scroll(), trigger = direct();
+      if (!scroller || !trigger) return null;
+      return trigger.getBoundingClientRect().top - scroller.getBoundingClientRect().top - scroller.clientTop;
+    };
+    let settingsOrigin;
+    click(direct(), () => {
+      settingsOrigin = { scroll: scroll().scrollTop, offset: triggerTop() };
+    });
     async function edit(signature) {
       await wait(() => state() === "ready" && test("profile-edit-signature"), "edit ready");
       await wait(() =>
@@ -581,25 +588,38 @@
     // focus restoration to that connected button must not win over the origin.
     click(button("返回上一页"));
     await wait(leavePrompt, "topbar back also asks before discard");
+    // Windows settings controls can change their layout while this route is
+    // hidden. Deliberately reproduce an upstream layout shift on either OS.
+    const upstream = one("#settings-general")?.closest("section");
+    assert(upstream && settingsOrigin.offset !== null, "settings scroll anchor available");
+    const previousPadding = upstream.style.paddingBottom;
+    upstream.style.paddingBottom = "300px";
     click(test("profile-edit-discard"));
-    const returned = () => ({
-      editorOpen: !!state(),
-      triggerVisible: visible(direct()),
-      triggerFocused: document.activeElement === direct(),
-      scroll: scroll()?.scrollTop,
-      focused: document.activeElement?.getAttribute("data-testid") ??
-        document.activeElement?.getAttribute("aria-label") ??
-        document.activeElement?.tagName,
-    });
+    const returned = () => {
+      const offset = triggerTop(), scroller = scroll(), trigger = direct();
+      return {
+        editorOpen: !!state(),
+        triggerVisible: visible(trigger) && offset !== null && offset >= -1 &&
+          offset + trigger.getBoundingClientRect().height <= scroller.clientHeight + 1,
+        triggerFocused: document.activeElement === trigger,
+        scroll: scroller?.scrollTop,
+        offset,
+        focused: document.activeElement?.getAttribute("data-testid") ??
+          document.activeElement?.getAttribute("aria-label") ??
+          document.activeElement?.tagName,
+      };
+    };
     try {
       await wait(() => {
-        const { editorOpen, triggerVisible, triggerFocused, scroll } = returned();
+        const { editorOpen, triggerVisible, triggerFocused, scroll, offset } = returned();
         return !editorOpen && triggerVisible && triggerFocused &&
-          Math.abs(scroll - settingsScroll) <= 1;
-      }, "discard returns to the same settings action and scroll position");
+          Math.abs(scroll - settingsOrigin.scroll) > 100 &&
+          Math.abs(offset - settingsOrigin.offset) <= 2;
+      }, "discard restores the visible settings action and viewport position");
     } catch (error) {
-      throw Error(`${error.message}: ${JSON.stringify({ expectedScroll: settingsScroll, ...returned() })}`);
+      throw Error(`${error.message}: ${JSON.stringify({ expected: settingsOrigin, ...returned() })}`);
     }
+    upstream.style.paddingBottom = previousPadding;
     await settle();
     click(test("account-profile-open"));
     await wait(

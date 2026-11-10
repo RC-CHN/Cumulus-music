@@ -73,10 +73,18 @@ function requestLeave(commit: () => void) {
 defineExpose({ requestLeave });
 let detailOrigin: HTMLElement | undefined;
 let detailScroll = 0;
+let detailOriginTop: number | undefined;
+function scrollViewportTop(scroller: HTMLElement) {
+  return scroller.getBoundingClientRect().top + scroller.clientTop;
+}
 function openDetail(kind: AccountDetailKind, event: MouseEvent) {
   if (props.account.status !== 'authenticated') return;
   detailOrigin = event.currentTarget as HTMLElement;
-  detailScroll = settingsScroll.value?.scrollTop ?? 0;
+  const scroller = settingsScroll.value;
+  detailScroll = scroller?.scrollTop ?? 0;
+  detailOriginTop = scroller
+    ? detailOrigin.getBoundingClientRect().top - scrollViewportTop(scroller)
+    : undefined;
   emit('accountDetail', kind);
 }
 watch(
@@ -90,7 +98,18 @@ watch(
       // Native dialog close can put focus on another connected control. An
       // inline editor return belongs to the button that opened that editor.
       detailOrigin.focus({ preventScroll: true });
-      scroller.scrollTop = detailScroll;
+      const origin = detailOrigin.getBoundingClientRect();
+      if (detailOriginTop === undefined || origin.height <= 0 || !scroller.clientHeight) {
+        scroller.scrollTop = detailScroll;
+        return;
+      }
+      // Settings above the account section may have reflowed while hidden.
+      // Keep the original button at its visible viewport position.
+      const viewportTop = scrollViewportTop(scroller);
+      const min = Math.max(0, -viewportTop);
+      const max = Math.min(scroller.clientHeight, window.innerHeight - viewportTop) - origin.height;
+      const desiredTop = Math.max(min, Math.min(max, detailOriginTop));
+      scroller.scrollTop += origin.top - viewportTop - desiredTop;
       return;
     }
     scroller.scrollTop = detailScroll;
