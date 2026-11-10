@@ -1589,7 +1589,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, playback-podcasts, playback-startup, library-search, local-desktop, account-shell, catalog-community]
+        shard: [playback, playback-podcasts, playback-startup, library-search, local-desktop, account-shell, catalog-browse, catalog-community]
     defaults:
       run:
         shell: bash
@@ -1929,8 +1929,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
-      - name: Verify catalog and community
-        if: matrix.shard == 'catalog-community'
+      - name: Verify catalog browsing and playback
+        if: matrix.shard == 'catalog-browse'
         env:
           GDK_BACKEND: x11
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -1954,10 +1954,19 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-batch-linux --artist-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-navigation-linux --navigation
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-playback-credit-linux --playback-credit
-          cargo build -p cumulus-desktop --example comment_edit_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_edit_smoke.py --binary .build/target/debug/examples/comment_edit_ui_probe --root .build/ci-comment-edit-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-layout-linux --layout
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
+      - name: Verify community, history and playback continuity
+        if: matrix.shard == 'catalog-community'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
+          cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --example comment_edit_ui_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_edit_smoke.py --binary .build/target/debug/examples/comment_edit_ui_probe --root .build/ci-comment-edit-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/collection_context_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-context-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/follow_new_song_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-follow-new-song-linux --notifications
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/album_card_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-album-card-linux
