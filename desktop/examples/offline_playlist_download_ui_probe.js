@@ -312,6 +312,51 @@
       'empty queue starts from the whole cache in its own order');
     await capture('ux_15_queue_starts_empty', { player: queuedHead });
 
+    step = 'duration cycle keeps cached ties stable and shares order with native playback and menu';
+    const sort = () => one('.track-table [aria-label="按时长排序"]');
+    const sortState = () => sort()?.closest('[role="columnheader"]').getAttribute('aria-sort');
+    const asc = [legacy, local, own, foreign];
+    const desc = [own, foreign, local, legacy];
+    check(sortState() === 'none', 'natural duration header');
+    click(sort());
+    await wait(() => sortState() === 'ascending' && same(rows(), asc) && !headerPlay().disabled,
+      'complete ascending projection');
+    await capture('ux_16_sort_ascending', { sortState: sortState() });
+    click(sort());
+    await wait(() => sortState() === 'descending' && same(rows(), desc) && !headerPlay().disabled,
+      'complete descending projection with natural ties');
+    click(headerPlay());
+    const sortedHead = await playing(own, 'downloaded', 'sorted header starts the eligible download');
+    check(same(sortedHead.queue, [own, local]), 'sorted header queue uses complete visible order');
+    await capture('ux_17_sort_header', { player: sortedHead, sortState: sortState() });
+    await invoke('player_action', { epoch, action: { kind: 'clear' } });
+    await wait(async () => (await queue()).length === 0, 'clear between sorted actions');
+    await addAll();
+    const sortedMenu = await playing(own, 'downloaded', 'sorted Add All starts the same download');
+    check(same(sortedMenu.queue, [own, local]) && sortedMenu.playId !== sortedHead.playId,
+      'sorted menu uses the same queue order on an empty queue');
+    await capture('ux_18_sort_queue', { player: sortedMenu, sortState: sortState() });
+    click(sort());
+    await wait(() => sortState() === 'none' && same(rows(), expected), 'natural order restored');
+    check(same(await queue(), [own, local]), 'reset is a view change only');
+    await capture('ux_19_sort_reset', { sortState: sortState(), queue: await queue() });
+
+    step = 'sort a live mixed playlist and play its exact native CUE at the end of the queue';
+    await localLibrary();
+    await setMode(0);
+    await playlist();
+    await wait(() => sortState() === 'none' && same(rows(), expected) && !status(),
+      'live mixed playlist resumes its natural order');
+    click(sort());
+    await wait(() => sortState() === 'ascending' && same(rows(), asc), 'live ascending order');
+    click(sort());
+    await wait(() => sortState() === 'descending' && same(rows(), desc), 'live descending order');
+    click(rowPlay(local));
+    const sortedCue = await playing(local, 'local', 'actual live sorted CUE advances');
+    check(same(sortedCue.queue, [own, foreign, local]) && sortedCue.playId !== sortedMenu.playId,
+      'live native queue preserves the typed CUE and skips the unbound legacy row');
+    await capture('ux_20_sort_live_cue', { player: sortedCue, sortState: sortState() });
+
     const frontendEntry = new URL(one('script[type="module"][src]').src).pathname.split('/').pop();
     await event('complete', { ok: true, local, setupAttempts, frontendEntry });
   } catch (error) {

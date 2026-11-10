@@ -15,6 +15,8 @@ STAGES = (
     'ux_08_play_available', 'ux_09_next_downloaded',
     'ux_10_header_later_page', 'ux_11_header_download_playing', 'ux_12_header_empty_preserves_play',
     'ux_13_queue_empty_preserves_play', 'ux_14_queue_filtered_insert', 'ux_15_queue_starts_empty',
+    'ux_16_sort_ascending', 'ux_17_sort_header', 'ux_18_sort_queue', 'ux_19_sort_reset',
+    'ux_20_sort_live_cue',
 )
 LEGACY = 'a10c0000000000000000000000000001'
 
@@ -92,7 +94,7 @@ def main():
     assert empty['incumbent']['state'] == 'paused' and empty['incumbent']['queue'] == ['701']
     assert empty['incumbent']['playId'] == later['playId'] and empty['incumbent']['queueRevision']
 
-    menu_empty, menu_added, menu_start = states[12:]
+    menu_empty, menu_added, menu_start = states[12:15]
     assert menu_empty['incumbent'] == menu_empty['afterRejectedAdd'] == empty['incumbent']
     assert menu_added['rows'] == ['701'] and menu_added['added']['queue'] == ['701', local]
     assert menu_added['added']['state'] == 'paused'
@@ -102,8 +104,23 @@ def main():
     assert menu_start['player']['id'] == local and menu_start['player']['resourceKind'] == 'local'
     assert menu_start['player']['position'] > .10 and menu_start['player']['playId'] != later['playId']
 
+    asc, head, menu, reset, live_cue = states[15:]
+    assert asc['rows'] == [LEGACY, local, '701', '702'] and asc['sortState'] == 'ascending'
+    for state in (head, menu):
+        assert state['rows'] == ['701', '702', local, LEGACY] and state['sortState'] == 'descending'
+        player = state['player']
+        assert player['id'] == '701' and player['resourceKind'] == 'downloaded'
+        assert player['position'] > .10 and player['queue'] == ['701', local]
+    assert head['player']['playId'] != menu['player']['playId']
+    assert reset['rows'] == order and reset['sortState'] == 'none' and reset['queue'] == ['701', local]
+    assert live_cue['rows'] == head['rows'] and live_cue['sortState'] == 'descending'
+    cue_player = live_cue['player']
+    assert cue_player['id'] == local and cue_player['resourceKind'] == 'local'
+    assert cue_player['queue'] == ['701', '702', local] and 7900 <= cue_player['durationMs'] <= 8100
+    assert cue_player['position'] > .10 and cue_player['playId'] != menu['player']['playId']
+
     receipts = [state['nativeReceipt'] for state in states]
-    assert [r['unavailable'] for r in receipts] == [0, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4]
+    assert [r['unavailable'] for r in receipts] == [0, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 3, 3] + [4] * 7
     header_receipts = receipts[9:12]
     assert [r['headerTransportCuts'] for r in header_receipts] == [1, 1, 2]
     assert [r['headerReads'] for r in header_receipts] == [2, 2, 4]
@@ -116,10 +133,17 @@ def main():
         assert mixed['generation'] == 1 and mixed['localMembers'] == 1 and mixed['localId'] == local
         assert mixed['originalUnchanged'] and mixed['localPosition'] == 0
         assert mixed['remoteMutations'] == mixed['unsafeAudioAttempts'] == 0
-        assert not mixed['catalogAudioChecks'], 'offline-only playback attempted a player URL request'
+        live_sort = index >= 19
+        if not live_sort:
+            assert not mixed['catalogAudioChecks'], 'offline-only playback attempted a player URL request'
+        else:
+            first_catalog = [{'route': '/api/song/enhance/player/url/v1', 'id': '701'}]
+            assert mixed['catalogAudioChecks'] in ([], first_catalog), 'unexpected live catalog prefetch'
         extra_reads = [] if index < 9 else [['701']] if index < 11 else [['701'], ['702']]
+        if live_sort:
+            extra_reads += [['701', '702']]
         assert mixed['catalogReads'] == receipts[0]['mixed']['catalogReads'] + extra_reads
-        assert mixed['detailReads'] == receipts[0]['mixed']['detailReads']
+        assert mixed['detailReads'] == receipts[0]['mixed']['detailReads'] + int(live_sort)
         downloads = r['downloads']
         assert downloads['sameAccountLedgerSongs'] == ['701']
         assert downloads['foreignAccountLedgerSongs'] == ['702']
@@ -141,7 +165,10 @@ def main():
                   restoredPublicationPlayable=True, headerAndNextUseOfflineQueue=True,
                   headerPlaysBeyondLoadedPage=True, emptyHeaderPreservesIncumbent=True,
                   menuQueuesWholeCache=True, menuPreservesIncumbent=True, menuStartsEmptyQueue=True,
-                  realMusicRequests=0, playbackAuthorizationAttempts=0, remotePlaylistMutations=0,
+                  durationCycleStableTies=True, sortedHeaderAndMenuMatch=True,
+                  liveMixedDurationCue=True, realMusicRequests=0,
+                  playbackAuthorizationAttempts=len(receipts[-1]['mixed']['catalogAudioChecks']),
+                  offlinePlaybackAuthorizationAttempts=0, remotePlaylistMutations=0,
                   frontendEntry=entry, frontendApp=args.expected_app, stages=len(STAGES),
                   screenshots=len(images))
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

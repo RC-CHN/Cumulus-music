@@ -43,6 +43,11 @@ const DOWNLOAD_STAGES: &[&str] = &[
     "ux_13_queue_empty_preserves_play",
     "ux_14_queue_filtered_insert",
     "ux_15_queue_starts_empty",
+    "ux_16_sort_ascending",
+    "ux_17_sort_header",
+    "ux_18_sort_queue",
+    "ux_19_sort_reset",
+    "ux_20_sort_live_cue",
 ];
 const HEADER_PLAYLIST: &str = "13";
 
