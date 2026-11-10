@@ -1,4 +1,5 @@
-//! Verified existing playlist destinations for search group download.
+//! Verified playlist destinations for search group download.
+pub(super) mod creation;
 use super::*;
 use crate::{
     client::content::PLAYLIST_COLLECT_LAST_PAGE,
@@ -15,6 +16,8 @@ pub(super) struct Destination {
     observed: BTreeMap<(&'static str, u32), Vec<String>>,
     liked: Option<LikedTarget>,
     attempt: Option<Attempt>,
+    creation: Option<creation::CreationAttempt>,
+    can_create: bool,
 }
 
 struct LikedTarget {
@@ -33,6 +36,7 @@ struct Attempt {
     liked_receipt: Option<String>,
     operation: String,
     continuation: String,
+    creation: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -53,7 +57,7 @@ impl Attempt {
             operation: self.operation.clone(),
             playlist: self.playlist.clone(),
             songs: plan.collection.clone(),
-            creation: None,
+            creation: self.creation.clone(),
             liked_origin: self
                 .liked_receipt
                 .is_some()
@@ -61,7 +65,11 @@ impl Attempt {
         }
     }
 
-    fn view(&self, plan: &Plan, record: &PlaylistMutation) -> Result<SearchGroupDownloadReply> {
+    fn result(
+        &self,
+        plan: &Plan,
+        record: &PlaylistMutation,
+    ) -> Result<SearchGroupDownloadPlaylistResult> {
         let owner = plan
             .observed
             .owner
@@ -81,16 +89,19 @@ impl Attempt {
         } else {
             Vec::new()
         };
+        Ok(SearchGroupDownloadPlaylistResult {
+            epoch: plan.observed.owner.generation.to_string(),
+            receipt: plan.receipt.clone(),
+            playlist_id: self.playlist.clone(),
+            phase: record.phase,
+            add_failed,
+            continuation: completed.then(|| self.continuation.clone()),
+            liked_ids,
+        })
+    }
+    fn view(&self, plan: &Plan, record: &PlaylistMutation) -> Result<SearchGroupDownloadReply> {
         Ok(SearchGroupDownloadReply::Playlist {
-            result: SearchGroupDownloadPlaylistResult {
-                epoch: plan.observed.owner.generation.to_string(),
-                receipt: plan.receipt.clone(),
-                playlist_id: self.playlist.clone(),
-                phase: record.phase,
-                add_failed,
-                continuation: completed.then(|| self.continuation.clone()),
-                liked_ids,
-            },
+            result: self.result(plan, record)?,
         })
     }
 }
@@ -118,6 +129,18 @@ pub(super) fn authorize_liked(observed: &Observed) -> Result<()> {
         .download_system_liked_scope_revision()?
         .as_deref()
         != Some(&observed.revision)
+    {
+        return Err(Error::StaleResponse);
+    }
+    Ok(())
+}
+
+pub(super) fn authorize_creation(observed: &Observed) -> Result<()> {
+    if observed
+        .api
+        .download_collection_create_scope_revision()?
+        .as_deref()
+        != Some(observed.revision.as_str())
     {
         return Err(Error::StaleResponse);
     }
@@ -171,12 +194,13 @@ impl MusicClient {
                 .destination
                 .lock()
                 .map_err(|_| Error::LockPoisoned)?;
-            if destination.attempt.is_some() {
+            if destination.attempt.is_some() || destination.creation.is_some() {
                 return Err(Error::StaleResponse);
             }
             destination.observed.remove(&key);
             if page == 0 {
                 destination.liked = None;
+                destination.can_create = false;
             }
         }
         let reply = self
@@ -201,6 +225,7 @@ impl MusicClient {
             None
         };
         check()?;
+        let can_create = page == 0 && authorize_creation(&lease.0.observed).is_ok();
         let mut destination = lease
             .0
             .destination
@@ -217,10 +242,12 @@ impl MusicClient {
         );
         if page == 0 {
             destination.liked = liked;
+            destination.can_create = can_create;
         }
         Ok(SearchGroupDownloadReply::Destinations {
             page: reply,
             system_liked_receipt: destination.liked.as_ref().map(|row| row.receipt.clone()),
+            can_create: destination.can_create,
         })
     }
 
@@ -234,6 +261,9 @@ impl MusicClient {
         let plan = &lease.0;
         let (attempt, first) = {
             let mut destination = plan.destination.lock().map_err(|_| Error::LockPoisoned)?;
+            if destination.creation.is_some() {
+                return Err(Error::StaleResponse);
+            }
             let (id, liked_receipt) = match choice {
                 Choice::Regular(playlist) => {
                     let id = identifier(&json!(playlist))?;
@@ -267,6 +297,7 @@ impl MusicClient {
                     liked_receipt,
                     operation: uuid::Uuid::new_v4().simple().to_string(),
                     continuation: uuid::Uuid::new_v4().simple().to_string(),
+                    creation: None,
                 };
                 destination.attempt = Some(attempt.clone());
                 (attempt, true)
@@ -318,6 +349,9 @@ impl MusicClient {
     ) -> Result<SearchGroupDownloadReply> {
         let plan = &lease.0;
         let attempt = current_attempt(plan)?;
+        if attempt.creation.is_some() {
+            return Err(Error::StaleResponse);
+        }
         let system_liked = attempt.liked_receipt.is_some();
         let check = self.search_group_playlist_permission(plan, system_liked)?;
         let service = PlaylistService::new(self.session.clone())?;
@@ -344,6 +378,9 @@ impl MusicClient {
         let plan = &lease.0;
         let attempt = current_attempt(plan)?;
         let check = self.search_group_playlist_permission(plan, attempt.liked_receipt.is_some())?;
+        if attempt.creation.is_some() {
+            self.search_group_creation_permission(plan)?()?;
+        }
         if attempt.continuation != continuation {
             return Err(Error::StaleResponse);
         }

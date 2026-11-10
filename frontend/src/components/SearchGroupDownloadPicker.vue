@@ -2,7 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { failure, type PlaylistView } from '../services/contracts';
 import { useCore } from '../services/core';
-import type { SearchGroupDownloadReply, SearchGroupDownloadSort } from '../services/search';
+import { playlistLength } from '../services/playlists';
+import type {
+  SearchGroupDownloadCommand,
+  SearchGroupDownloadPlaylistResult,
+  SearchGroupDownloadSort,
+} from '../services/search';
 import Icon from './Icon.vue';
 import PlaylistCollectList from './PlaylistCollectList.vue';
 import '../styles/playlist-collect.css';
@@ -23,6 +28,16 @@ const error = ref('');
 const pending = ref(false);
 const rows = ref<PlaylistView[]>([]);
 const likedReceipt = ref<string | null>(null);
+const canCreate = ref(false);
+const createForm = ref(false);
+const creation = ref<'none' | 'checking' | 'ready' | 'rejected'>('none');
+const name = ref('');
+const privatePlaylist = ref(false);
+const nameInput = ref<HTMLInputElement>();
+const validName = computed(() => {
+  const value = name.value.trim();
+  return !!value && playlistLength(value) <= 40 && !/[@#]/u.test(value);
+});
 const cursor = ref<number | null>(0);
 const preference = 'cumulus.playlist-collect-sort.v1';
 const options = [
@@ -63,6 +78,7 @@ async function read() {
     });
     if (!live() || response.kind !== 'destinations' || response.page.epoch !== props.epoch) return;
     likedReceipt.value = response.systemLikedReceipt;
+    canCreate.value = response.canCreate;
     const seen = new Set(rows.value.map((row) => row.id));
     for (const row of response.page.value.playlists) {
       if (row.owned && !row.favorite && !seen.has(row.id)) {
@@ -83,6 +99,7 @@ function selectSort(value: SearchGroupDownloadSort) {
   sort.value = value;
   rows.value = [];
   likedReceipt.value = null;
+  canCreate.value = false;
   cursor.value = 0;
   scrollTop.value = 0;
   try {
@@ -117,36 +134,127 @@ function close() {
   emit('close');
 }
 
-async function afterPlaylist(response: SearchGroupDownloadReply) {
-  if (
-    !live() ||
-    response.kind !== 'playlist' ||
-    response.result.epoch !== props.epoch ||
-    response.result.receipt !== props.receipt
-  )
-    return;
-  if (!response.result.continuation) {
+function openCreate() {
+  if (!live() || busy.value || pending.value || !canCreate.value) return;
+  name.value = '';
+  privatePlaylist.value = false;
+  error.value = '';
+  createForm.value = true;
+  void nextTick(() => nameInput.value?.focus());
+}
+function back() {
+  if (busy.value || !createForm.value) return;
+  createForm.value = false;
+  error.value = '';
+  void nextTick(() =>
+    dialog.value?.querySelector<HTMLElement>('[aria-label="创建新歌单"]')?.focus(),
+  );
+}
+function dismiss() {
+  if (createForm.value) back();
+  else close();
+}
+
+async function afterPlaylist(result: SearchGroupDownloadPlaylistResult) {
+  if (!live() || result.epoch !== props.epoch || result.receipt !== props.receipt) return;
+  if (!result.continuation) {
     error.value = '加入歌单的结果尚未确认。请核对后再继续。';
     return;
   }
-  if (response.result.likedIds.length)
-    emit('liked', response.result.epoch, response.result.likedIds);
+  if (result.likedIds.length) emit('liked', result.epoch, result.likedIds);
   try {
-    const result = await core.searchGroupDownload(props.epoch, {
+    const reply = await core.searchGroupDownload(props.epoch, {
       kind: 'start_from_playlist',
       receipt: props.receipt,
-      continuation: response.result.continuation,
+      continuation: result.continuation,
     });
     if (!live()) return;
     if (
-      result.kind === 'accepted' &&
-      result.result.epoch === props.epoch &&
-      result.result.operationId === props.receipt
+      reply.kind === 'accepted' &&
+      reply.result.epoch === props.epoch &&
+      reply.result.operationId === props.receipt
     )
-      emit('accepted', result.result.accepted.length, response.result.addFailed);
-    else if (result.kind === 'directory_required') emit('directory');
+      emit('accepted', reply.result.accepted.length, result.addFailed);
+    else if (reply.kind === 'directory_required') emit('directory');
   } catch {
     if (live()) emit('unknown');
+  }
+}
+
+async function submitCreation(action: 'create' | 'readback' | 'add') {
+  if (
+    !live() ||
+    busy.value ||
+    (action === 'create' && (!createForm.value || !validName.value || !canCreate.value)) ||
+    (action === 'add' && creation.value !== 'ready') ||
+    (action === 'readback' && creation.value !== 'checking')
+  )
+    return;
+  const receipt = props.receipt;
+  const command: SearchGroupDownloadCommand =
+    action === 'create'
+      ? {
+          kind: 'create_playlist',
+          receipt,
+          name: name.value.trim(),
+          privatePlaylist: privatePlaylist.value,
+        }
+      : action === 'readback'
+        ? { kind: 'creation_status', receipt, reconcile: true }
+        : { kind: 'add_created', receipt };
+  createForm.value = false;
+  pending.value = busy.value = true;
+  creation.value = 'checking';
+  error.value = '';
+  try {
+    const reply = await core.searchGroupDownload(props.epoch, command);
+    if (
+      !live() ||
+      reply.kind !== 'creation' ||
+      reply.result.epoch !== props.epoch ||
+      reply.result.receipt !== receipt
+    )
+      return;
+    const result = reply.result;
+    if (result.add) {
+      if (!result.add.continuation && (result.add.addFailed || result.add.phase === 'rejected')) {
+        creation.value = 'rejected';
+        error.value = '加入歌单未成功，未开始下载。';
+      } else await afterPlaylist(result.add);
+    } else if (result.canAdd) {
+      creation.value = 'ready';
+      error.value = '已核对新歌单。请确认加入歌曲后继续下载。';
+    } else if (result.createPhase === 'rejected') {
+      creation.value = 'rejected';
+      error.value = '创建歌单未成功，没有加入或下载歌曲。';
+    } else if (result.createPhase === 'confirmed' && !result.playlistId) {
+      creation.value = 'rejected';
+      error.value = '已核对，但原请求没有返回可核实的歌单 ID。没有加入或下载歌曲。';
+    } else error.value = '创建歌单的结果尚未确认。请核对后再继续。';
+  } catch (issue) {
+    if (live()) {
+      const value = failure(issue);
+      error.value = value.message;
+      if (action === 'create' && value.code === 'download_create_not_started') {
+        pending.value = false;
+        creation.value = 'none';
+        createForm.value = true;
+      }
+    }
+  } finally {
+    busy.value = false;
+    if (live())
+      void nextTick(() => {
+        if (createForm.value) nameInput.value?.focus();
+        else
+          dialog.value
+            ?.querySelector<HTMLElement>(
+              creation.value === 'ready'
+                ? '[data-search-group-creation-add]'
+                : '[data-search-group-creation-reconcile]',
+            )
+            ?.focus();
+      });
   }
 }
 type Choice = { kind: 'regular'; id: string } | { kind: 'liked'; receipt: string };
@@ -177,7 +285,7 @@ async function submit(choice?: Choice) {
               destinationReceipt: choice.receipt,
             },
     );
-    await afterPlaylist(response);
+    if (response.kind === 'playlist') await afterPlaylist(response.result);
   } catch (issue) {
     if (live()) error.value = failure(issue).message;
   } finally {
@@ -197,10 +305,19 @@ async function submit(choice?: Choice) {
     :aria-labelledby="title"
     :aria-busy="busy"
     data-search-group-download-picker
-    @cancel.prevent="close"
+    @cancel.prevent="dismiss"
   >
     <header>
-      <h2 :id="title">下载到歌单</h2>
+      <button
+        v-if="createForm"
+        type="button"
+        class="icon-button"
+        aria-label="返回下载歌单"
+        @click="back"
+      >
+        <Icon name="back" />
+      </button>
+      <h2 :id="title">{{ createForm ? '创建新歌单' : '下载到歌单' }}</h2>
       <button
         type="button"
         class="icon-button collect-close"
@@ -211,7 +328,7 @@ async function submit(choice?: Choice) {
         <Icon name="close" />
       </button>
     </header>
-    <div v-if="!pending" class="collect-body">
+    <div v-if="!pending && !createForm" class="collect-body">
       <div class="collect-sort-tabs" role="tablist" aria-label="下载歌单排序" @keydown="sortKeys">
         <button
           v-for="option in options"
@@ -232,7 +349,7 @@ async function submit(choice?: Choice) {
         :key="sort"
         purpose="download"
         :playlists="rows"
-        :include-create="false"
+        :include-create="canCreate"
         :system-liked="likedReceipt !== null"
         :disabled="busy"
         :scroll-top="scrollTop"
@@ -242,6 +359,7 @@ async function submit(choice?: Choice) {
         @near-end="!error && read()"
         @select="(id) => submit({ kind: 'regular', id })"
         @liked="likedReceipt && submit({ kind: 'liked', receipt: likedReceipt })"
+        @create="openCreate"
       />
       <button
         v-if="cursor !== null && (rows.length || error)"
@@ -251,6 +369,52 @@ async function submit(choice?: Choice) {
         @click="read"
       >
         {{ error ? '重试读取' : '加载更多歌单' }}
+      </button>
+    </div>
+    <form v-else-if="createForm" class="collect-create" @submit.prevent="submitCreation('create')">
+      <label>
+        歌单名称<input
+          ref="nameInput"
+          v-model="name"
+          aria-label="歌单名称"
+          :aria-invalid="!!name && !validName"
+          placeholder="输入歌单标题"
+          maxlength="80"
+        />
+        <small>{{ playlistLength(name.trim()) }} / 40</small>
+      </label>
+      <label class="private-checkbox"
+        ><input v-model="privatePlaylist" type="checkbox" />设为私密歌单</label
+      >
+      <p v-if="!privatePlaylist" class="muted">公开歌单可被其他用户查看和收藏。</p>
+      <p v-if="error || (name && !validName)" class="form-warning" role="status">
+        {{ error || '名称不能包含 @ 或 #，并请保持在字数上限内。' }}
+      </p>
+      <footer>
+        <button class="primary" type="submit" :disabled="!validName || busy">创建</button>
+      </footer>
+    </form>
+    <div v-else-if="creation !== 'none'" class="collect-feedback">
+      <p role="status">{{ error || '正在处理新歌单…' }}</p>
+      <button
+        v-if="creation === 'checking'"
+        type="button"
+        class="secondary"
+        :disabled="busy"
+        data-search-group-creation-reconcile
+        @click="submitCreation('readback')"
+      >
+        核对结果
+      </button>
+      <button
+        v-else-if="creation === 'ready'"
+        type="button"
+        class="primary"
+        :disabled="busy"
+        data-search-group-creation-add
+        @click="submitCreation('add')"
+      >
+        加入已创建的歌单
       </button>
     </div>
     <div v-else class="collect-feedback">

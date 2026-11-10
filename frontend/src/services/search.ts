@@ -281,7 +281,27 @@ export type SearchGroupDownloadCommand =
   | { kind: 'destinations'; receipt: string; sort: SearchGroupDownloadSort; page: number }
   | { kind: 'choose'; receipt: string; playlistId: string }
   | { kind: 'choose_liked'; receipt: string; destinationReceipt: string }
+  | { kind: 'create_playlist'; receipt: string; name: string; privatePlaylist: boolean }
+  | { kind: 'creation_status'; receipt: string; reconcile: boolean }
+  | { kind: 'add_created'; receipt: string }
   | { kind: 'start_from_playlist'; receipt: string; continuation: string };
+export interface SearchGroupDownloadPlaylistResult {
+  epoch: string;
+  receipt: string;
+  playlistId: string;
+  phase: import('./playlists').PlaylistPhase;
+  addFailed: boolean;
+  continuation: string | null;
+  likedIds: string[];
+}
+export interface SearchGroupDownloadCreation {
+  epoch: string;
+  receipt: string;
+  createPhase: import('./playlists').PlaylistPhase;
+  playlistId: string | null;
+  canAdd: boolean;
+  add: SearchGroupDownloadPlaylistResult | null;
+}
 export type SearchGroupDownloadReply =
   | {
       kind: 'prepared';
@@ -303,19 +323,13 @@ export type SearchGroupDownloadReply =
       kind: 'destinations';
       page: AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>;
       systemLikedReceipt: string | null;
+      canCreate: boolean;
     }
   | {
       kind: 'playlist';
-      result: {
-        epoch: string;
-        receipt: string;
-        playlistId: string;
-        phase: import('./playlists').PlaylistPhase;
-        addFailed: boolean;
-        continuation: string | null;
-        likedIds: string[];
-      };
+      result: SearchGroupDownloadPlaylistResult;
     }
+  | { kind: 'creation'; result: SearchGroupDownloadCreation }
   | { kind: 'pending' | 'not_started' | 'cancelled' | 'directory_required' };
 
 export interface SearchClient {

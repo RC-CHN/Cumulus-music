@@ -21,6 +21,7 @@ use crate::{
     storage::PlaybackDownloadKind,
 };
 pub use destination::SearchGroupDownloadPlaylistResult;
+pub use destination::creation::SearchGroupDownloadCreation;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -166,6 +167,18 @@ pub enum SearchGroupDownloadCommand {
         receipt: String,
         destination_receipt: String,
     },
+    CreatePlaylist {
+        receipt: String,
+        name: String,
+        private_playlist: bool,
+    },
+    CreationStatus {
+        receipt: String,
+        reconcile: bool,
+    },
+    AddCreated {
+        receipt: String,
+    },
     Reconcile {
         receipt: String,
     },
@@ -207,9 +220,13 @@ pub enum SearchGroupDownloadReply {
     Destinations {
         page: AccountData<PlaylistCollectPage>,
         system_liked_receipt: Option<String>,
+        can_create: bool,
     },
     Playlist {
         result: SearchGroupDownloadPlaylistResult,
+    },
+    Creation {
+        result: SearchGroupDownloadCreation,
     },
     DirectoryRequired,
     Pending,
@@ -571,6 +588,34 @@ impl MusicClient {
                 let lease = Lease(host.use_plan(&token, &receipt, true)?);
                 self.search_group_download_reconcile(&lease).await
             }
+            C::CreatePlaylist {
+                receipt,
+                name,
+                private_playlist,
+            } => {
+                let lease = Lease(host.use_plan(&token, &receipt, true)?);
+                self.search_group_download_creation(
+                    &lease,
+                    destination::creation::Request::Create {
+                        name: &name,
+                        private: private_playlist,
+                    },
+                )
+                .await
+            }
+            C::CreationStatus { receipt, reconcile } => {
+                let lease = Lease(host.use_plan(&token, &receipt, true)?);
+                self.search_group_download_creation(
+                    &lease,
+                    destination::creation::Request::Status { reconcile },
+                )
+                .await
+            }
+            C::AddCreated { receipt } => {
+                let lease = Lease(host.use_plan(&token, &receipt, true)?);
+                self.search_group_download_creation(&lease, destination::creation::Request::Add)
+                    .await
+            }
             C::StartFromPlaylist {
                 receipt,
                 continuation,
@@ -597,6 +642,8 @@ impl MusicClient {
         let login = self.auth.pending_guard();
         let system_liked = matches!(&admission,
             SongBatchAdmission::SearchPlaylist { proof, .. } if proof.liked_origin.is_some());
+        let created = matches!(&admission,
+            SongBatchAdmission::SearchPlaylist { proof, .. } if proof.creation.is_some());
         let check = move || {
             login()?;
             authorization(&session, &observed)?;
@@ -604,6 +651,9 @@ impl MusicClient {
                 destination::authorize_liked(&observed)?;
             } else if through_playlist {
                 destination::authorize_collection(&observed)?;
+            }
+            if created {
+                destination::authorize_creation(&observed)?;
             }
             host.current(&observed)
         };

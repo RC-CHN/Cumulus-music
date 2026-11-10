@@ -211,7 +211,7 @@ impl MusicClient {
                     .guarded_collect_created_download(
                         &ctx.token,
                         &attempt.create_id,
-                        song,
+                        std::slice::from_ref(song),
                         &attempt.add_id,
                         &check,
                     )
