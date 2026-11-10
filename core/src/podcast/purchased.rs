@@ -44,6 +44,16 @@ pub(crate) struct Purchases {
 }
 
 impl PodcastApi {
+    /// Walk the same typed pages for native diagnostics. The desktop surface
+    /// uses explicit next-page actions through `PodcastLibrary` instead.
+    pub async fn purchased(&self) -> Result<Vec<PurchasedItem>> {
+        let mut result = self.extend_purchases(None, 0).await?;
+        while let Some(offset) = result.next_offset {
+            result = self.extend_purchases(Some(result), offset).await?;
+        }
+        Ok(result.items)
+    }
+
     pub(super) async fn extend_purchases(
         &self,
         previous: Option<Purchases>,
