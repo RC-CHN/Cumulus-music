@@ -137,17 +137,36 @@ impl MusicClient {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum SearchGroupAction {
+    Play,
+    Next,
+}
+
+pub(super) struct SearchGroupRequest {
+    pub action: SearchGroupAction,
+    pub anchor: crate::client::search::SearchDropRow,
+    pub rows: Vec<crate::client::search::SearchDropRow>,
+    pub quality: Quality,
+    pub expected_play_id: Option<String>,
+    pub expected_queue_revision: String,
+}
+
 impl MusicClient {
-    pub(super) async fn search_group_next_play(
+    pub(super) async fn search_group_playback(
         &self,
         epoch: &str,
-        anchor: crate::client::search::SearchDropRow,
-        rows: Vec<crate::client::search::SearchDropRow>,
-        quality: Quality,
-        expected_play_id: Option<String>,
-        expected_queue_revision: String,
+        request: SearchGroupRequest,
     ) -> Result<PlayerView> {
         use super::{super::focus::Owner, queue_playlist::queue_resource_for_track};
+        let SearchGroupRequest {
+            action,
+            anchor,
+            rows,
+            quality,
+            expected_play_id,
+            expected_queue_revision,
+        } = request;
 
         let token = self.player_token(epoch)?;
         let api = self.session.native_api(&token)?;
@@ -168,13 +187,13 @@ impl MusicClient {
         {
             return Err(Error::QueueChanged);
         }
-        // Only a genuinely empty ordinary queue can promote Next to Play.
-        // Stopped or partially restored queues keep their existing selection.
-        let start = queue.items.is_empty()
+        // Next promotes to Play only for a genuinely empty ordinary queue.
+        // Both menu actions leave stopped nonempty or pending queues alone.
+        let empty = queue.items.is_empty()
             && queue.current.is_none()
             && before.play_id.is_none()
             && before.state == PlaybackStatus::Idle;
-        let insert = !before.startup_pending
+        let active = !before.startup_pending
             && queue.current.is_some()
             && before.play_id.is_some()
             && matches!(
@@ -182,7 +201,7 @@ impl MusicClient {
                 PlaybackStatus::Playing | PlaybackStatus::Paused
             )
             && before.timeline.is_some();
-        if (!start && !insert)
+        if (!empty && !active)
             || before.fm
             || queue.intelligence.is_some()
             || queue.items.iter().any(|item| !item.visible_in_queue())
@@ -191,6 +210,14 @@ impl MusicClient {
         {
             return Err(Error::State("search next requires a stable ordinary queue"));
         }
+        let play = action == SearchGroupAction::Play;
+        let start = empty || play;
+        let retain = play
+            && active
+            && before
+                .selected
+                .as_ref()
+                .is_some_and(|entry| identity::online_song(&entry.resource, &anchor.track_id));
         let focus = start.then(|| self.focus.snapshot()).transpose()?;
         let source = search_track_source();
         let resources = chosen
@@ -202,7 +229,7 @@ impl MusicClient {
                 resource
             })
             .collect();
-        let next = search_group_next_queue(
+        let next = search_group_queue(
             queue.clone(),
             resources,
             source,
@@ -211,7 +238,7 @@ impl MusicClient {
         )?;
         let session = self.session.clone();
         let selection = self.player.selection.clone();
-        let attempt = if next == queue {
+        let attempt = if !play && next == queue {
             selection.load(Ordering::Acquire)
         } else {
             selection.fetch_add(1, Ordering::AcqRel) + 1
@@ -235,7 +262,7 @@ impl MusicClient {
         });
         guard.check()?;
         let expected = before.fence();
-        let first_source = if let Some(focus) = focus {
+        let first_source = if let Some(focus) = focus.filter(|_| !retain) {
             let preparing = {
                 let guard = guard.clone();
                 let controller = controller.clone();
@@ -257,8 +284,8 @@ impl MusicClient {
         } else {
             None
         };
-        // Do not hold the Together mutation gate while authorizing an empty
-        // queue's source. A room transition may supersede that pending read.
+        // Do not hold the Together mutation gate while authorizing a source.
+        // A room transition may supersede that pending read.
         let _room_gate = self
             .together
             .gate
@@ -266,7 +293,7 @@ impl MusicClient {
             .map_err(|_| Error::MutationBusy)?;
         self.validate_queue_clear_room(&token, None)?;
         guard.check()?;
-        if next == queue {
+        if !play && next == queue {
             return project(&before, &token);
         }
         if let Some(focus) = focus {
@@ -277,43 +304,53 @@ impl MusicClient {
             if latest.fence() != expected {
                 return Err(Error::QueueChanged);
             }
-            let (lease, ()) = self.reserve_prepared_audio(&token, focus, || {
-                guard.check()?;
-                if controller.snapshot().fence() != expected {
-                    return Err(Error::StaleResponse);
-                }
-                Ok(())
-            })?;
-            self.finish_media_claim(&token, Owner::Audio, lease).await?;
+            let lease = if retain && focus.owner == Some(Owner::Audio) {
+                self.focus.check_snapshot(focus)?;
+                focus.generation
+            } else {
+                let (lease, ()) = self.reserve_prepared_audio(&token, focus, || {
+                    guard.check()?;
+                    if controller.snapshot().fence() != expected {
+                        return Err(Error::StaleResponse);
+                    }
+                    Ok(())
+                })?;
+                self.finish_media_claim(&token, Owner::Audio, lease).await?;
+                lease
+            };
             let media_focus = self.focus.clone();
             guard = Cancellation::new(move || {
                 !guard.is_cancelled() && media_focus.check(lease, Owner::Audio).is_ok()
             });
         }
+        let update = QueueUpdate {
+            expected: expected.clone(),
+            queue: next,
+            transport: start.then_some(QueueTransport {
+                position: None,
+                paused: false,
+            }),
+        };
+        let command = if play {
+            PlaybackCommand::ApplySearchGroupPlay {
+                update,
+                first_source,
+            }
+        } else {
+            PlaybackCommand::ApplySearchGroupNext {
+                update,
+                first_source,
+            }
+        };
         let value = controller
-            .command_guarded(
-                &token,
-                PlaybackCommand::ApplySearchGroupNext {
-                    update: QueueUpdate {
-                        expected: expected.clone(),
-                        queue: next,
-                        transport: start.then_some(QueueTransport {
-                            position: None,
-                            paused: false,
-                        }),
-                    },
-                    first_source,
-                },
-                expected,
-                guard,
-            )
+            .command_guarded(&token, command, expected, guard)
             .await?;
         self.session.check_generation(&token)?;
         project(&value, &token)
     }
 }
 
-fn search_group_next_queue(
+fn search_group_queue(
     queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,
@@ -321,18 +358,36 @@ fn search_group_next_queue(
     rng: &mut impl Rng,
 ) -> Result<QueueSnapshot> {
     let incumbent = queue.current.clone();
+    let retain = queue
+        .selected()
+        .filter(|entry| start_id.is_some_and(|id| identity::online_song(&entry.resource, id)));
     let wanted: HashSet<_> = resources
         .iter()
         .filter_map(|row| row["id"].as_str().map(str::to_owned))
         .collect();
     let mut next = super::queue_playlist::insert_collection_bound(
-        queue, resources, source, false, true, false,
+        queue,
+        resources,
+        source,
+        false,
+        true,
+        start_id.is_some(),
     );
+    if let Some(retained) = retain {
+        // Explicit Play may reposition this resource in display order. Its
+        // native decoder retains the exact same entry/source and clock.
+        let row = next
+            .items
+            .iter_mut()
+            .find(|row| row.entry_id == retained.entry_id)
+            .ok_or(Error::QueueChanged)?;
+        *row = retained;
+    }
     let inserted: Vec<_> = next
         .items
         .iter()
         .filter(|row| {
-            Some(&row.entry_id) != incumbent.as_ref()
+            (start_id.is_some() || Some(&row.entry_id) != incumbent.as_ref())
                 && identity::collection_key(&row.resource, false).is_some_and(|(kind, id)| {
                     kind == PlayerResourceKind::Catalog && wanted.contains(id)
                 })
@@ -398,7 +453,7 @@ mod tests {
                 json!({"id":replaced.resource["id"],"trial_mode":42}),
                 json!({"id":"20002","trial_mode":42}),
             ];
-            let next = search_group_next_queue(
+            let next = search_group_queue(
                 queue,
                 resources,
                 search_track_source(),

@@ -32,7 +32,7 @@ export interface TrackMenuRequest {
   event: MouseEvent | KeyboardEvent;
   play: () => void;
   nextOrigin?: 'search';
-  searchGroupNext?: {
+  searchGroup?: {
     action: { anchor: SearchQueueRow; rows: SearchQueueRow[] } | undefined;
     allCopyrightBlocked: boolean;
     live: () => boolean;

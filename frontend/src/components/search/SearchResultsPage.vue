@@ -329,7 +329,7 @@ function showSelectedTrackMenu(
   const allCopyrightBlocked = rows.every(
     ({ index }) => items[index]?.groupNextRight === 'copyright_blocked',
   );
-  emit('more', { ...request, searchGroupNext: { action, allCopyrightBlocked, live: current } });
+  emit('more', { ...request, searchGroup: { action, allCopyrightBlocked, live: current } });
 }
 function playComprehensiveAll(section: SearchSection) {
   const rows = comprehensivePlayAllTracks(section);

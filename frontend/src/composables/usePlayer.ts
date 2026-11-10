@@ -375,7 +375,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (input.kind === 'refresh_for') return run(invoke, invoke, true);
     // A search menu selection is bound to one result and queue snapshot.
     // Reopening the menu is a new intent; the player must not retry the old one.
-    if (input.kind === 'search_group_next_play') return run(invoke, null, true);
+    if (input.kind === 'search_group_next_play' || input.kind === 'search_group_play')
+      return run(invoke, null, true);
     if (input.kind !== 'quality_for') return run(invoke);
     const origin = view.value;
     const failedReload = (initial?: PlayerView, current?: PlayerView) =>

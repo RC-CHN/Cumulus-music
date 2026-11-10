@@ -610,8 +610,8 @@ impl SourceResolver {
         Ok(Arc::new(source))
     }
 
-    /// Authorize only the clicked online song before an empty search queue
-    /// starts. Keep the URL out of both IPC and the shared source cache.
+    /// Authorize only the clicked online song before a scoped search group
+    /// starts it. Keep the URL out of both IPC and the shared source cache.
     pub(crate) async fn prepare_scoped_search_song(
         &self,
         resource: &Value,

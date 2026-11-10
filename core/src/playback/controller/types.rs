@@ -252,6 +252,12 @@ pub enum PlaybackCommand {
         update: QueueUpdate,
         first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
     },
+    /// Explicit group Play inserts the selection, then starts or retains
+    /// the clicked member; independent of the queue-only Next command.
+    ApplySearchGroupPlay {
+        update: QueueUpdate,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+    },
     /// M71 browse list insertion with the exact freshly authorized first episode.
     PlayPodcastBrowse {
         update: QueueUpdate,

@@ -755,7 +755,7 @@ export type PlayerAction =
       expected_queue_revision: string;
     }
   | {
-      kind: 'search_group_next_play';
+      kind: 'search_group_next_play' | 'search_group_play';
       anchor: SearchQueueRowWire;
       rows: SearchQueueRowWire[];
       quality: Quality;

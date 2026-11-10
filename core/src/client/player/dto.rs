@@ -799,6 +799,14 @@ pub enum PlayerAction {
         expected_play_id: Option<String>,
         expected_queue_revision: String,
     },
+    SearchGroupPlay {
+        anchor: super::super::search::SearchDropRow,
+        rows: Vec<super::super::search::SearchDropRow>,
+        quality: Quality,
+        #[serde(deserialize_with = "Deserialize::deserialize")]
+        expected_play_id: Option<String>,
+        expected_queue_revision: String,
+    },
     Startup,
     Equalizer {
         expected_revision: String,

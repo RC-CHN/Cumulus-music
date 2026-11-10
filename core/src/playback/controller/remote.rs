@@ -303,6 +303,64 @@ impl Actor {
             .await
     }
 
+    pub(super) async fn apply_search_group_play(
+        &mut self,
+        mut value: super::QueueUpdate,
+        first_source: Option<Arc<ResolvedSource>>,
+        reply: &Response,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<LoadOptions>> {
+        let selected = self.queue.selected();
+        let next = value.queue.selected().ok_or(Error::QueueChanged)?;
+        let empty = self.queue.is_empty()
+            && selected.is_none()
+            && self.state == PlaybackStatus::Idle
+            && self.play_id.is_none();
+        let active = matches!(self.state, PlaybackStatus::Playing | PlaybackStatus::Paused)
+            && self.play_id.is_some()
+            && self
+                .loaded
+                .as_ref()
+                .is_some_and(|loaded| Some(&loaded.item) == selected.as_ref());
+        let retain = active && selected.as_ref() == Some(&next);
+        let fresh = first_source.as_ref().is_some_and(|source| {
+            !source.needs_renewal_for_reopen(self.resolver.now())
+                && next.source["scene"] == "search"
+                && next.resource["trial_mode"] == 42
+        });
+        let source_is_bound = if retain {
+            first_source.is_none()
+        } else {
+            fresh
+        };
+        if (!empty && !active)
+            || !source_is_bound
+            || self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || value.queue.fm_source.is_some()
+            || value.queue.intelligence.is_some()
+            || value
+                .transport
+                .as_ref()
+                .is_none_or(|transport| transport.paused || transport.position.is_some())
+        {
+            return Err(Error::StaleResponse);
+        }
+        // Play of the current song keeps the same loaded entry and clock.
+        // Let the actor resume explicitly instead of applying a remote seek.
+        if retain {
+            value.transport = None;
+        }
+        let options = self
+            .update_queue_inner(value, Some(reply), first_source, false, Some(authority))
+            .await?;
+        if retain && self.state == PlaybackStatus::Paused {
+            authority.check()?;
+            self.pause(false).await?;
+        }
+        Ok(options)
+    }
+
     async fn update_queue_inner(
         &mut self,
         value: super::QueueUpdate,
@@ -336,7 +394,7 @@ impl Actor {
             }
             authority.check()?;
         }
-        if insert_next || first_source.is_some() {
+        if insert_next || first_source.is_some() || authority.is_some() {
             self.session
                 .with_token(&self.token, |_| self.queue.install(value.queue))?;
         } else {

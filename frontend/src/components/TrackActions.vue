@@ -110,30 +110,27 @@ const items = computed<MenuItem[]>(() => {
         : []),
       { key: 'remove_local_member', label: '从歌单中移除', icon: 'trash' },
     ];
-  const searchGroup = input.searchGroupNext;
+  const searchGroup = input.searchGroup;
   if (searchGroup) {
     if (!searchGroup.live()) return [];
     const target = currentSearchGroupQueue();
+    const disabled =
+      !searchGroup.action ||
+      searchGroup.allCopyrightBlocked ||
+      !target ||
+      !props.player.ready.value ||
+      props.player.busy.value ||
+      props.player.queueBusy.value;
+    const hint = searchGroup.allCopyrightBlocked
+      ? '所选歌曲均不可播放'
+      : !searchGroup.action
+        ? '所选歌曲中有未核实播放权限的条目'
+        : !target
+          ? '仅支持当前普通播放队列'
+          : undefined;
     return [
-      {
-        key: 'next',
-        label: '下一首播放',
-        icon: 'next',
-        disabled:
-          !searchGroup.action ||
-          searchGroup.allCopyrightBlocked ||
-          !target ||
-          !props.player.ready.value ||
-          props.player.busy.value ||
-          props.player.queueBusy.value,
-        hint: searchGroup.allCopyrightBlocked
-          ? '所选歌曲均不可播放'
-          : !searchGroup.action
-            ? '所选歌曲中有未核实播放权限的条目'
-            : !target
-              ? '仅支持当前普通播放队列'
-              : undefined,
-      },
+      { key: 'play', label: '播放', icon: 'play', disabled, hint },
+      { key: 'next', label: '下一首播放', icon: 'next', disabled, hint },
     ];
   }
   const selection = input.episode?.selection;
@@ -222,7 +219,7 @@ watch(
   },
 );
 watch(
-  () => request.value?.episode?.live() ?? request.value?.searchGroupNext?.live(),
+  () => request.value?.episode?.live() ?? request.value?.searchGroup?.live(),
   (live) => {
     if (live === false) close();
   },
@@ -234,9 +231,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
   request.value = input;
   const view = props.player.view.value;
   searchGroupQueue.value =
-    input.searchGroupNext && view
-      ? { playId: view.playId, revision: view.queueRevision }
-      : undefined;
+    input.searchGroup && view ? { playId: view.playId, revision: view.queueRevision } : undefined;
   playlist.value = source;
   const event = input.event;
   const scope = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
@@ -259,7 +254,7 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
   if (
     request.value !== input ||
     (input.episode && !input.episode.live()) ||
-    (input.searchGroupNext && !input.searchGroupNext.live())
+    (input.searchGroup && !input.searchGroup.live())
   )
     return;
   await menu.value?.showAt(
@@ -360,9 +355,37 @@ async function select(key: string) {
     item.disabled ||
     item.separator ||
     (input.episode && !input.episode.live()) ||
-    (input.searchGroupNext && !input.searchGroupNext.live())
+    (input.searchGroup && !input.searchGroup.live())
   )
     return;
+  const group = input.searchGroup;
+  if (group && (key === 'play' || key === 'next')) {
+    const view = props.player.view.value;
+    const target = currentSearchGroupQueue();
+    if (!view || !target || !group.action) return;
+    const attempt = sequence;
+    const wire = ({ receipt, trackId }: (typeof group.action.rows)[number]) => ({
+      receipt,
+      track_id: trackId,
+    });
+    try {
+      const next = await props.player.action({
+        kind: key === 'play' ? 'search_group_play' : 'search_group_next_play',
+        anchor: wire(group.action.anchor),
+        rows: group.action.rows.map(wire),
+        quality: view.qualityPreferences.quality,
+        expected_play_id: target.playId,
+        expected_queue_revision: target.revision,
+      });
+      if (attempt === sequence && next && group.live())
+        feedback(
+          key === 'play' || target.playId === null ? '已开始播放' : '已将所选歌曲设为下一首播放',
+        );
+    } catch (issue) {
+      if (attempt === sequence) feedback(failure(issue).message);
+    }
+    return;
+  }
   const { track } = input;
   if (key === 'play') input.play();
   else if (key === 'remove_local_member') input.removeLocalMember?.(returnFocus);
@@ -387,26 +410,6 @@ async function select(key: string) {
     if (!view) return;
     const attempt = sequence;
     try {
-      const group = input.searchGroupNext;
-      if (group) {
-        const target = currentSearchGroupQueue();
-        if (!target || !group.action) return;
-        const wire = ({ receipt, trackId }: (typeof group.action.rows)[number]) => ({
-          receipt,
-          track_id: trackId,
-        });
-        const next = await props.player.action({
-          kind: 'search_group_next_play',
-          anchor: wire(group.action.anchor),
-          rows: group.action.rows.map(wire),
-          quality: view.qualityPreferences.quality,
-          expected_play_id: target.playId,
-          expected_queue_revision: target.revision,
-        });
-        if (attempt === sequence && next && group.live())
-          feedback(target.playId === null ? '已开始播放' : '已将所选歌曲设为下一首播放');
-        return;
-      }
       const next = input.queueNext
         ? await input.queueNext()
         : await props.player.action({

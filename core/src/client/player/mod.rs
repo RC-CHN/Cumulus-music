@@ -798,7 +798,15 @@ impl MusicClient {
                 .player_mode_for(epoch, mode, &expected_queue_revision, fm)
                 .await;
         }
+        let search_group_play = matches!(action, PlayerAction::SearchGroupPlay { .. });
         if let PlayerAction::SearchGroupNextPlay {
+            anchor,
+            rows,
+            quality,
+            expected_play_id,
+            expected_queue_revision,
+        }
+        | PlayerAction::SearchGroupPlay {
             anchor,
             rows,
             quality,
@@ -808,17 +816,24 @@ impl MusicClient {
         {
             if native.is_some() || policy != NativeTransportPolicy::Ordinary {
                 return Err(Error::InvalidInput(
-                    "search next used as native media command",
+                    "search group used as native media command",
                 ));
             }
             return self
-                .search_group_next_play(
+                .search_group_playback(
                     epoch,
-                    anchor,
-                    rows,
-                    quality,
-                    expected_play_id,
-                    expected_queue_revision,
+                    next_play::SearchGroupRequest {
+                        action: if search_group_play {
+                            next_play::SearchGroupAction::Play
+                        } else {
+                            next_play::SearchGroupAction::Next
+                        },
+                        anchor,
+                        rows,
+                        quality,
+                        expected_play_id,
+                        expected_queue_revision,
+                    },
                 )
                 .await;
         }
@@ -1884,6 +1899,7 @@ impl MusicClient {
             PlayerAction::NextPlay { .. }
             | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::SearchGroupNextPlay { .. }
+            | PlayerAction::SearchGroupPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueOfflinePlaylist { .. }
             | PlayerAction::QueueMixedPlaylist { .. }

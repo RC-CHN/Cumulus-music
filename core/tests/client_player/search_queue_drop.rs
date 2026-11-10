@@ -143,6 +143,22 @@ fn group_next(view: &PlayerView, anchor: Value, rows: Vec<Value>) -> PlayerActio
     .unwrap()
 }
 
+fn group_play(view: &PlayerView, anchor: Value, rows: Vec<Value>) -> PlayerAction {
+    serde_json::from_value(json!({
+        "kind":"search_group_play", "anchor":anchor, "rows":rows, "quality":"standard",
+        "expected_play_id":view.play_id, "expected_queue_revision":view.queue_revision
+    }))
+    .unwrap()
+}
+
+fn queue_ids(queue: &QueueView) -> Vec<&str> {
+    queue
+        .tracks
+        .iter()
+        .map(|item| item.track.id.as_str())
+        .collect()
+}
+
 #[tokio::test]
 async fn search_group_next_queues_in_selection_order_filters_and_preserves_the_decoder() {
     let (dir, api, session, client, _) = fixture();
@@ -426,4 +442,219 @@ async fn search_group_next_discards_late_clicked_source_after_empty_queue_mode_c
     assert!(after.tracks.is_empty());
     assert!(after.current.is_none());
     assert_eq!(device.state.lock().unwrap().loads, 0);
+}
+
+#[tokio::test]
+async fn search_group_play_inserts_without_clearing_and_starts_the_clicked_member() {
+    use cumulus_core::playback::PlaybackMode;
+    let device = Arc::new(support::Device::default());
+    let (dir, api, _session, client, _) = fixture_with_device(device.clone());
+    api.search_menu_revision.store(1, Ordering::SeqCst);
+    api.playlist_trial.enable_media_trace();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: ["1", "2", "3"].map(str::to_owned).to_vec(),
+                index: 1,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let before = client.player_queue("1").await.unwrap();
+    let p1 =
+        serde_json::to_value(client.search_results("1", query(0)).await.unwrap().value).unwrap();
+    let p2 =
+        serde_json::to_value(client.search_results("1", query(3)).await.unwrap().value).unwrap();
+    let anchor = search_row(&p1, 0);
+    let denied = search_row(&p1, 1);
+    let rows = vec![
+        search_row(&p2, 1),
+        denied.clone(),
+        anchor.clone(),
+        search_row(&p2, 0),
+    ];
+
+    assert!(matches!(
+        client
+            .player_action("1", group_play(&paused, denied, rows.clone()))
+            .await,
+        Err(Error::State("selected search song is unavailable online"))
+    ));
+    assert!(api.playlist_trial.modes("4").is_empty());
+    api.deny_url_id.store(4, Ordering::SeqCst);
+    assert!(matches!(
+        client
+            .player_action("1", group_play(&paused, anchor.clone(), rows.clone()))
+            .await,
+        Err(Error::Service { .. })
+    ));
+    assert_eq!(api.playlist_trial.modes("4"), [42]);
+    assert_eq!(
+        client.player_queue("1").await.unwrap().revision,
+        before.revision
+    );
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    api.deny_url_id.store(0, Ordering::SeqCst);
+
+    let playing = client
+        .player_action("1", group_play(&paused, anchor.clone(), rows.clone()))
+        .await
+        .unwrap();
+    assert_eq!(playing.state, PlaybackStatus::Playing);
+    assert_eq!(playing.mode, PlaybackMode::Random);
+    assert_eq!(playing.track.as_ref().unwrap().id, "4");
+    assert_ne!(playing.play_id, paused.play_id);
+    assert_eq!(device.state.lock().unwrap().loads, 2);
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(queue_ids(&queue), ["1", "7", "4", "2", "3"]);
+    assert_eq!(queue.tracks[3].entry_id, before.tracks[1].entry_id);
+    assert_eq!(api.playlist_trial.modes("4"), [42, 42]);
+    assert!(api.playlist_trial.modes("5").is_empty());
+    assert!(matches!(
+        client
+            .player_action("1", group_play(&paused, anchor, rows))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let saved: cumulus_core::playback::QueueSnapshot = serde_json::from_value(
+        cumulus_core::storage::StateStore::open(dir.path())
+            .unwrap()
+            .get("9", "playback", "queue")
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    for item in &saved.items[1..4] {
+        assert_eq!(item.source["scene"], "search");
+        assert_eq!(item.resource["trial_mode"], 42);
+    }
+}
+
+#[tokio::test]
+async fn search_group_play_of_current_resumes_and_repositions_the_same_decoder() {
+    let device = Arc::new(support::Device::default());
+    let (dir, api, _session, client, _) = fixture_with_device(device.clone());
+    api.search_menu_revision.store(1, Ordering::SeqCst);
+    api.playlist_trial.enable_media_trace();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: ["1", "4", "3"].map(str::to_owned).to_vec(),
+                index: 1,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Seek { seconds: 17.0 })
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.position, Some(17.0));
+    let before = client.player_queue("1").await.unwrap();
+    let p1 =
+        serde_json::to_value(client.search_results("1", query(0)).await.unwrap().value).unwrap();
+    let p2 =
+        serde_json::to_value(client.search_results("1", query(3)).await.unwrap().value).unwrap();
+    let anchor = search_row(&p1, 0);
+    let rows = vec![search_row(&p2, 1), anchor.clone()];
+    let resumed = client
+        .player_action("1", group_play(&paused, anchor.clone(), rows.clone()))
+        .await
+        .unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.play_id, paused.play_id);
+    assert_eq!(resumed.entry_id, paused.entry_id);
+    assert_eq!(resumed.position, paused.position);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let next = client.player_queue("1").await.unwrap();
+    assert_eq!(queue_ids(&next), ["1", "7", "4", "3"]);
+    assert_eq!(next.current, before.current);
+    let playing = client
+        .player_action("1", group_play(&resumed, anchor, rows))
+        .await
+        .unwrap();
+    assert_eq!(
+        playing.state,
+        PlaybackStatus::Playing,
+        "menu Play is not a toggle"
+    );
+    assert_eq!(playing.play_id, resumed.play_id);
+    assert_eq!(playing.position, resumed.position);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(api.playlist_trial.modes("4"), [-1]);
+    let saved: cumulus_core::playback::QueueSnapshot = serde_json::from_value(
+        cumulus_core::storage::StateStore::open(dir.path())
+            .unwrap()
+            .get("9", "playback", "queue")
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(saved.items[1].source["scene"], "search");
+    assert!(
+        saved.items[2].source["scene"].is_null(),
+        "retained source wasn't relabelled"
+    );
+}
+
+#[tokio::test]
+async fn search_group_play_drops_a_late_url_on_credential_rotation_without_touching_playback() {
+    let device = Arc::new(support::Device::default());
+    let (_dir, api, _session, client, _) = fixture_with_device(device.clone());
+    api.search_menu_revision.store(1, Ordering::SeqCst);
+    client.play_selection("1", songs("1")).await.unwrap();
+    let before = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let initial = client.player_queue("1").await.unwrap();
+    let p =
+        serde_json::to_value(client.search_results("1", query(0)).await.unwrap().value).unwrap();
+    let anchor = search_row(&p, 0);
+    let action = group_play(&before, anchor.clone(), vec![search_row(&p, 1), anchor]);
+    api.hold_url_id.store(4, Ordering::SeqCst);
+    let held = {
+        let client = client.clone();
+        tokio::spawn(async move { client.player_action("1", action).await })
+    };
+    tokio::time::timeout(Duration::from_secs(5), api.url_started.notified())
+        .await
+        .expect("the clicked song was held at actual source authorization");
+    api.search_menu_revision.store(2, Ordering::SeqCst);
+    api.hold_url_id.store(0, Ordering::SeqCst);
+    api.url_release.notify_one();
+    assert!(matches!(
+        held.await.unwrap(),
+        Err(Error::Cancelled | Error::StaleResponse)
+    ));
+    let after = client.player_snapshot("1").await.unwrap();
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(queue.revision, initial.revision);
+    assert_eq!(queue_ids(&queue), ["1"]);
+    assert_eq!(after.play_id, before.play_id);
+    assert_eq!(after.state, PlaybackStatus::Paused);
+    assert_eq!(after.position, before.position);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
 }

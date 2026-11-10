@@ -38,6 +38,7 @@ impl Actor {
                 | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::PlayPodcastBrowse { .. }
                 | PlaybackCommand::ApplySearchGroupNext { .. }
+                | PlaybackCommand::ApplySearchGroupPlay { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
@@ -157,6 +158,7 @@ impl Actor {
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
         | PlaybackCommand::ApplySearchGroupNext { update: value, .. }
+        | PlaybackCommand::ApplySearchGroupPlay { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
             && value.expected != self.snapshot().fence()
         {
@@ -313,6 +315,15 @@ impl Actor {
             } => {
                 let authority = &request.guard.as_ref().expect("guarded search next").1;
                 self.apply_search_group_next(update, first_source, &request.reply, authority)
+                    .await
+                    .map(|value| options = value)
+            }
+            PlaybackCommand::ApplySearchGroupPlay {
+                update,
+                first_source,
+            } => {
+                let authority = &request.guard.as_ref().expect("guarded search Play").1;
+                self.apply_search_group_play(update, first_source, &request.reply, authority)
                     .await
                     .map(|value| options = value)
             }
