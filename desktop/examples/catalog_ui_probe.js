@@ -3,11 +3,29 @@
   const all=s=>[...document.querySelectorAll(s)],one=s=>document.querySelector(s);
   const assert=(ok,message)=>{if(!ok)throw Error(message);};
   const emit=(stage,rest={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...rest}});
-  const wait=async(test,label)=>{for(let i=0;i<150;i++){if(test())return;await sleep(100);}throw Error(label);};
+  const wait=async(test,label)=>{for(let i=0;i<150;i++){const value=test();if(value)return value;await sleep(100);}throw Error(label);};
   const button=text=>all('button').find(n=>n.textContent.trim()===text);
   const click=node=>{assert(node&&!node.disabled,`unavailable ${node?.outerHTML}`);node.scrollIntoView({block:'nearest'});node.focus({preventScroll:true});node.click();};
   let stageCount=0;
-  async function capture(name){await sleep(500);assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(!one('.catalog-page')||one('.catalog-page').getBoundingClientRect().bottom<=one('.main-content').getBoundingClientRect().bottom+1,'catalog page is clipped');assert(all('.track-row').length<=30,'unbounded song rows');assert(all('.catalog-card').length<=30,'unbounded cards');await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:all('.track-row').length,cards:all('.catalog-card').length,title:one('.catalog-heading h1')?.textContent});await sleep(1300);}
+  async function capture(name){
+    await sleep(500);
+    // Data can arrive before the route's starting transform clears. Wait for
+    // this catalog's own wrapper; never wait for its geometry to pass.
+    const page=await wait(()=>{
+      const catalog=one('.main-content .catalog-page'),view=catalog?.closest('.page-view');
+      return view&&!view.matches('.page-enter-active,.page-leave-active')&&getComputedStyle(view).transform==='none'?catalog:null;
+    },`catalog route did not settle: ${name}`);
+    assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');
+    const catalogBottom=page.getBoundingClientRect().bottom,mainBottom=one('.main-content').getBoundingClientRect().bottom;
+    assert(catalogBottom<=mainBottom+1,`catalog page is clipped: ${name} (${catalogBottom} > ${mainBottom})`);
+    const rows=all('.track-row').length,cards=all('.catalog-card').length;
+    assert(rows<=30,'unbounded song rows');assert(cards<=30,'unbounded cards');
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{
+      width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows,cards,
+      title:one('.catalog-heading h1')?.textContent,catalogBottom,mainBottom,
+    });
+    await sleep(1300);
+  }
   async function tab(label,selector){const keys={'专辑':'albums','MV':'videos','歌手详情':'intro','相似歌手':'similar','演出':'concerts','歌曲':'songs'};click(one('[data-catalog-tab="'+keys[label]+'"]'));await wait(()=>one(selector),'tab '+label);await sleep(300);}
   async function collected(verb='收藏'){
     const selector=verb==='关注'?'.artist-header .catalog-actions button':'.album-header:not(.album-header-compact) .catalog-actions button';
