@@ -13,6 +13,7 @@ STAGES = (
     'ux_01_live', 'ux_02_eligible', 'ux_03_downloaded', 'ux_04_cue',
     'ux_05_digest_rejected', 'ux_06_size_disabled', 'ux_07_restored',
     'ux_08_play_available', 'ux_09_next_downloaded',
+    'ux_10_header_later_page', 'ux_11_header_download_playing', 'ux_12_header_empty_preserves_play',
 )
 LEGACY = 'a10c0000000000000000000000000001'
 
@@ -59,9 +60,11 @@ def main():
     assert local not in {'701', '702', LEGACY}
     order = [local, '701', LEGACY, '702']
     eligible = [local, '701']
-    assert all(state['rows'] == order for state in states)
-    assert {'701', '702'} <= set(states[0]['enabled'])
-    assert [state['enabled'] for state in states[1:]] == [
+    original = states[:9]
+    header_states = states[9:]
+    assert all(state['rows'] == order for state in original)
+    assert {'701', '702'} <= set(original[0]['enabled'])
+    assert [state['enabled'] for state in original[1:]] == [
         eligible, eligible, eligible, eligible, [local], eligible, eligible, eligible,
     ]
     started = [states[index]['player'] for index in (2, 3, 7, 8)]
@@ -76,8 +79,25 @@ def main():
     assert rejected['state'] == 'error' and rejected['error']
     assert rejected['position'] is None or 0 <= rejected['position'] <= .10
 
+    assert all(state['loadedRows'] == 100 and state['rows'] and not state['enabled']
+               and all(801 <= int(row) <= 900 for row in state['rows']) for state in header_states)
+    later = header_states[1]['player']
+    assert later['id'] == '701' and later['resourceKind'] == 'downloaded'
+    assert later['queue'] == ['701'] and later['position'] > .10 and later['playId'] not in {
+        state['playId'] for state in started}
+    empty = header_states[2]
+    assert empty['message'] == '歌单中没有可离线播放的曲目'
+    assert empty['incumbent'] == empty['preserved']
+    assert empty['incumbent']['state'] == 'paused' and empty['incumbent']['queue'] == ['701']
+    assert empty['incumbent']['playId'] == later['playId'] and empty['incumbent']['queueRevision']
+
     receipts = [state['nativeReceipt'] for state in states]
-    assert [r['unavailable'] for r in receipts] == [0, 1, 1, 1, 1, 2, 3, 3, 3]
+    assert [r['unavailable'] for r in receipts] == [0, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 3]
+    header_receipts = receipts[9:]
+    assert [r['headerTransportCuts'] for r in header_receipts] == [1, 1, 2]
+    assert [r['headerReads'] for r in header_receipts] == [2, 2, 4]
+    assert [r['headerLastId'] for r in header_receipts] == ['701', '701', '702']
+    assert all(r['headerRows'] == 101 and r['headerWithoutUrls'] for r in header_receipts)
     for index, r in enumerate((*receipts, done['nativeReceipt'])):
         assert r['cachedRows'] == 4 and r['cachedWithoutUrls'] and r['cueUnchanged']
         assert r['denied'] == r['downloadAuthorizationAttempts'] == 0
@@ -86,7 +106,8 @@ def main():
         assert mixed['originalUnchanged'] and mixed['localPosition'] == 0
         assert mixed['remoteMutations'] == mixed['unsafeAudioAttempts'] == 0
         assert not mixed['catalogAudioChecks'], 'offline-only playback attempted a player URL request'
-        assert mixed['catalogReads'] == receipts[0]['mixed']['catalogReads']
+        extra_reads = [] if index < 9 else [['701']] if index < 11 else [['701'], ['702']]
+        assert mixed['catalogReads'] == receipts[0]['mixed']['catalogReads'] + extra_reads
         assert mixed['detailReads'] == receipts[0]['mixed']['detailReads']
         downloads = r['downloads']
         assert downloads['sameAccountLedgerSongs'] == ['701']
@@ -107,6 +128,7 @@ def main():
     report = dict(ok=True, actualWebView=True, nativeDownloadedPlayback=True, nativeCuePlayback=True,
                   sameAccountLedgerRequired=True, damagedDigestRejected=True, damagedLengthDisabled=True,
                   restoredPublicationPlayable=True, headerAndNextUseOfflineQueue=True,
+                  headerPlaysBeyondLoadedPage=True, emptyHeaderPreservesIncumbent=True,
                   realMusicRequests=0, playbackAuthorizationAttempts=0, remotePlaylistMutations=0,
                   frontendEntry=entry, frontendApp=args.expected_app, stages=len(STAGES),
                   screenshots=len(images))

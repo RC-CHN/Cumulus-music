@@ -44,12 +44,12 @@
     click(trigger);
     await wait(() => one('.local-page'), 'real local page');
   }
-  async function playlist() {
+  async function playlist(id = '11') {
     const group = await wait(() => one('[data-sidebar-group="created"] .sidebar-group-toggle'),
       'created playlist navigation');
     if (group.getAttribute('aria-expanded') === 'false') click(group);
     group.closest('header').scrollIntoView({ block: 'start', behavior: 'instant' });
-    click(await wait(() => one('[data-sidebar-id="11"]'), 'exact synthetic playlist'));
+    click(await wait(() => one('[data-sidebar-id="' + id + '"]'), 'exact synthetic playlist ' + id));
   }
   async function capture(stage, extra = {}) {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -195,6 +195,75 @@
     const next = await playing(own, 'downloaded', 'next resolves to native downloaded WAV');
     check(same(next.queue, [local, own]) && next.playId !== head.playId, 'next retains offline queue and gets a new play');
     await capture('ux_09_next_downloaded', { player: next });
+    await stop();
+
+    const long = '13';
+    const alert = () => one('.playlist-offline-play-error[role="alert"]');
+    async function setMode(mode) {
+      await event('mode', { mode });
+      await wait(() => window.__offlineMode === mode, 'transport mode ' + mode);
+    }
+    async function hydrateHeader(lastId) {
+      const first = (await invoke('playlist_page', { id: long, page: { offset: 0, limit: 100 } })).value;
+      check(first.playlist.owned && first.total === 101 && first.tracks.length === 100 && first.more,
+        'full first page of the long owned playlist');
+      const last = (await invoke('playlist_page', { id: long, page: {
+        offset: 100, limit: 100, revision: first.revision,
+      }, localRevision: first.playlistLocal.revision })).value;
+      check(last.total === 101 && !last.more && same(last.tracks.map(track => track.id), [lastId]),
+        'second page finishes the native snapshot without loading it into the offline view');
+    }
+    function onlyFirstPage() {
+      return status()?.textContent.includes('本机缓存') &&
+        one('.playlist-total')?.textContent.includes('101') &&
+        one('.load-more')?.textContent.includes('已显示 100 / 101') &&
+        headerPlay()?.disabled === false && rows().length > 0 &&
+        rows().every(id => Number(id) >= 801 && Number(id) <= 900) && enabled().length === 0;
+    }
+    step = 'offline header can play an eligible download outside the visible page';
+    await localLibrary();
+    await setMode(0);
+    await hydrateHeader(own);
+    await setMode(1);
+    await playlist(long);
+    await wait(onlyFirstPage, 'cached first 100 and enabled header, with no available row');
+    await capture('ux_10_header_later_page', { loadedRows: 100 });
+    click(headerPlay());
+    const later = await playing(own, 'downloaded', 'the header starts the owned download on row 101');
+    check(same(later.queue, [own]) && later.playId !== next.playId && onlyFirstPage(),
+      'native queue uses only the eligible second-page download and the UI still shows page one');
+    await capture('ux_11_header_download_playing', { player: later, loadedRows: 100 });
+    click(await wait(() => {
+      const node = transport('暂停');
+      return node && !node.disabled && node;
+    }, 'pause the actual downloaded audio'));
+    const paused = await wait(async () => {
+      const v = await player();
+      return v.state === 'paused' && v.playId === later.playId && v.position > .10 && v;
+    }, 'same native play paused');
+    const incumbent = { playId: paused.playId, queueRevision: paused.queueRevision,
+      position: paused.position, state: paused.state, queue: await queue() };
+
+    step = 'empty eligibility gives local feedback without changing the incumbent';
+    await localLibrary();
+    await setMode(0);
+    await event('header_unavailable');
+    await wait(() => window.__offlineHeaderUnavailable === true, 'long playlist replaced');
+    await hydrateHeader(foreign);
+    await setMode(1);
+    await playlist(long);
+    await wait(onlyFirstPage, 'same first page, with only the foreign download on page two');
+    check(!alert(), 'no failure before the user requests playback');
+    click(headerPlay());
+    const message = await wait(() => alert()?.textContent.trim(), 'explicit offline availability alert');
+    check(message === '歌单中没有可离线播放的曲目', 'exact availability message');
+    const after = await player();
+    const preserved = { playId: after.playId, queueRevision: after.queueRevision,
+      position: after.position, state: after.state, queue: await queue() };
+    check(same(preserved, incumbent) && onlyFirstPage(),
+      'empty selection keeps native play ID, queue revision, paused clock and rows');
+    await capture('ux_12_header_empty_preserves_play', { incumbent, preserved, message, loadedRows: 100 });
+
     const frontendEntry = new URL(one('script[type="module"][src]').src).pathname.split('/').pop();
     await event('complete', { ok: true, local, setupAttempts, frontendEntry });
   } catch (error) {

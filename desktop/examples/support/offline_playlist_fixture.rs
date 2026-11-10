@@ -13,7 +13,7 @@ use std::{
     path::Path,
     sync::{
         Arc,
-        atomic::{AtomicU8, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
 };
 use tauri::{Listener, Manager};
@@ -37,7 +37,21 @@ const DOWNLOAD_STAGES: &[&str] = &[
     "ux_07_restored",
     "ux_08_play_available",
     "ux_09_next_downloaded",
+    "ux_10_header_later_page",
+    "ux_11_header_download_playing",
+    "ux_12_header_empty_preserves_play",
 ];
+const HEADER_PLAYLIST: &str = "13";
+
+fn header_playlist(no_download: bool) -> Value {
+    let mut rows = (801..=900)
+        .map(|id| json!({"id":id,"v":0}))
+        .collect::<Vec<_>>();
+    rows.push(json!({"id":if no_download {702} else {701},"v":0}));
+    json!({"id":13,"userId":2,"creator":{"userId":2,"nickname":"合成歌单用户"},
+        "name":"合成离线长歌单","privacy":0,"specialType":0,"trackCount":101,
+        "updateTime":1_600_000_000_000_u64 + u64::from(no_download),"trackIds":rows})
+}
 
 pub struct Fixture {
     inner: mixed_playlist_fixture::Fixture,
@@ -45,6 +59,9 @@ pub struct Fixture {
     unavailable: AtomicUsize,
     denied: AtomicUsize,
     download_authorizations: AtomicUsize,
+    header_unavailable: AtomicBool,
+    header_reads: AtomicUsize,
+    header_transport_cuts: AtomicUsize,
     cue: std::path::PathBuf,
     cue_bytes: Vec<u8>,
     downloads: Option<downloads::Downloads>,
@@ -68,6 +85,9 @@ impl Fixture {
             unavailable: 0.into(),
             denied: 0.into(),
             download_authorizations: 0.into(),
+            header_unavailable: false.into(),
+            header_reads: 0.into(),
+            header_transport_cuts: 0.into(),
             cue,
             cue_bytes,
             downloads: completed_downloads
@@ -88,6 +108,10 @@ impl Fixture {
             .get("2", "playlist-offline-snapshot-v1", "11")?
             .unwrap_or(Value::Null);
         let text = snapshot.to_string();
+        let header = store
+            .get("2", "playlist-offline-snapshot-v1", HEADER_PLAYLIST)?
+            .unwrap_or(Value::Null);
+        let header_text = header.to_string();
         Ok(json!({
             "mode":self.mode.load(Ordering::Acquire),
             "unavailable":self.unavailable.load(Ordering::Acquire),
@@ -96,6 +120,11 @@ impl Fixture {
             "cached":!snapshot.is_null(),
             "cachedRows":snapshot["rows"].as_array().map_or(0, Vec::len),
             "cachedWithoutUrls":!text.contains("https://") && !text.contains("http://"),
+            "headerRows":header["rows"].as_array().map_or(0, Vec::len),
+            "headerLastId":header["rows"][100]["id"],
+            "headerWithoutUrls":!header_text.contains("https://") && !header_text.contains("http://"),
+            "headerReads":self.header_reads.load(Ordering::Acquire),
+            "headerTransportCuts":self.header_transport_cuts.load(Ordering::Acquire),
             "cueUnchanged":fs::read(&self.cue).is_ok_and(|bytes| bytes == self.cue_bytes),
             "mixed":self.inner.receipt(store)?,
             "downloads":self.downloads.as_ref().map(|downloads| downloads.receipt(store)).transpose()?,
@@ -130,6 +159,54 @@ impl Api for Fixture {
                     _ => {}
                 }
             }
+            if self.downloads.is_some() {
+                match path {
+                    "/api/user/playlist" => {
+                        let mut result = self.inner.request(path, args, authenticated).await?;
+                        result["playlist"]
+                            .as_array_mut()
+                            .expect("sealed playlist list")
+                            .push(header_playlist(
+                                self.header_unavailable.load(Ordering::Acquire),
+                            ));
+                        return Ok(result);
+                    }
+                    "/api/v6/playlist/detail" if args["id"] == HEADER_PLAYLIST => {
+                        if self.mode.load(Ordering::Acquire) == 1 {
+                            self.header_transport_cuts.fetch_add(1, Ordering::AcqRel);
+                            return Err(Error::Transport(
+                                "synthetic long playlist transport cut".into(),
+                            ));
+                        }
+                        self.header_reads.fetch_add(1, Ordering::AcqRel);
+                        return Ok(json!({"code":200,"playlist":header_playlist(
+                            self.header_unavailable.load(Ordering::Acquire)
+                        )}));
+                    }
+                    "/api/v3/song/detail" => {
+                        let ids: Vec<Value> = serde_json::from_str(
+                            args["c"]
+                                .as_str()
+                                .ok_or(Error::Response("sealed song ids"))?,
+                        )?;
+                        if !ids.is_empty()
+                            && ids.iter().all(|row| {
+                                row["id"]
+                                    .as_str()
+                                    .and_then(|id| id.parse::<u16>().ok())
+                                    .is_some_and(|id| (801..=900).contains(&id))
+                            })
+                        {
+                            return Ok(json!({"code":200,"songs":ids.iter().map(|row| {
+                                let id = &row["id"];
+                                json!({"id":id,"name":format!("合成离线候选 {}", id.as_str().unwrap()),
+                                      "ar":[],"al":{"name":"合成专辑"},"dt":6000,"fee":0})
+                            }).collect::<Vec<_>>() }));
+                        }
+                    }
+                    _ => {}
+                }
+            }
             self.inner.request(path, args, authenticated).await
         })
     }
@@ -151,6 +228,17 @@ pub fn listen(app: &tauri::App, fixture: Arc<Fixture>, store: Arc<StateStore>, o
                 .get_webview_window("main")
                 .unwrap()
                 .eval(format!("window.__offlineMode={mode};"))
+                .unwrap();
+            return;
+        }
+        if stage == "header_unavailable" {
+            assert!(fixture.downloads.is_some());
+            assert_eq!(fixture.mode.load(Ordering::Acquire), 0);
+            assert!(!fixture.header_unavailable.swap(true, Ordering::AcqRel));
+            handle
+                .get_webview_window("main")
+                .unwrap()
+                .eval("window.__offlineHeaderUnavailable=true;")
                 .unwrap();
             return;
         }

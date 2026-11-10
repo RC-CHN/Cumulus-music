@@ -92,3 +92,12 @@ DownloadService 发布两份合成 WAV 到不同账号的离线账本，再断�
     xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_download_smoke.py \
     --screenshots --binary .build/target/debug/examples/local_ui_probe \
     --root .build/offline-playlist-download-webview
+
+长歌单标题按钮的 Linux 实窗回归：d6e97d4a 的 WebKitGTK / libmpv null，
+同一下载验收命令共通过 12 个场景，截图和回执见
+.build/ui-proof/phase240-offline-playlist-header/report.json。101 首歌单离线
+只显示 100 首，且可见行均不可播放；点击标题按钮后，第 101 首的当前账号
+WAV 进入原生播放并推进时钟，页面仍在第一页。替换为同一歌单的新完整
+快照，第 101 首只有其他账号的下载时，显示「歌单中没有可离线播放的曲目」，
+原生播放 ID、队列版次、暂停位置和队列完全相同。无真实账号、服务写入
+或音源授权；回环隔离与合成音频不代表实机声卡或 Windows 验收。
