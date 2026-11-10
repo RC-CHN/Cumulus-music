@@ -61,11 +61,13 @@ pub(super) fn page(
     epoch: &str,
     snapshot: &PodcastSnapshot,
     query: PodcastQuery,
-    liked_ids: Vec<String>,
+    liked_ids: Option<Vec<String>>,
     resume_enabled: Option<bool>,
     operations: Vec<PodcastMutationView>,
     audiobook_skip_enabled: Option<bool>,
 ) -> Result<PodcastPage> {
+    let liked_ids_known = liked_ids.is_some();
+    let liked_ids = liked_ids.unwrap_or_default();
     let keyword = query.keyword.trim().to_lowercase();
     let is_radio = matches!(query.scope, PodcastScope::Radio { .. });
     let cards = if is_radio {
@@ -160,6 +162,7 @@ pub(super) fn page(
             None
         },
         liked_ids,
+        liked_ids_known,
         resume_enabled,
         audiobook_skip_enabled,
         operations,

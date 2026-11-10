@@ -182,18 +182,29 @@ impl MusicClient {
         {
             return Err(Error::QueueChanged);
         }
-        let liked = if matches!(query.scope, PodcastScope::Liked) {
-            snapshot.clone()
-        } else {
-            library
-                .read_for(&token, &PodcastScope::Liked, refresh)
-                .await?
+        // Card-only views do not display episode membership. Reuse a complete
+        // observation if one already exists, without walking the liked list
+        // just to open or refresh a library tab.
+        let into_liked_ids = |liked: crate::podcast::PodcastSnapshot| {
+            liked.voices.into_iter().map(|voice| voice.id).collect()
         };
-        let liked_ids = liked
-            .voices
-            .iter()
-            .map(|v| v.id.clone())
-            .collect::<Vec<_>>();
+        let liked_ids = match &query.scope {
+            PodcastScope::Liked => Some(
+                snapshot
+                    .voices
+                    .iter()
+                    .map(|voice| voice.id.clone())
+                    .collect(),
+            ),
+            PodcastScope::Podcasts | PodcastScope::Audiobooks | PodcastScope::Created => library
+                .cached_for(&token, &PodcastScope::Liked)?
+                .map(into_liked_ids),
+            PodcastScope::Radio { .. } | PodcastScope::Purchased => Some(into_liked_ids(
+                library
+                    .read_for(&token, &PodcastScope::Liked, refresh)
+                    .await?,
+            )),
+        };
         let resume = if let PodcastScope::Radio { id, .. } = &query.scope {
             Some(crate::podcast::resume::read_for(&self.session, &token, &json!(id)).await?)
         } else {

@@ -36,6 +36,10 @@ purchased：/api/voicelist/bought/list {limit:20,offset}，读取 data.list/hasM
 liked_voices：/api/content/my/liked/voice {limit:100,likeTime:0或末项likeTime}，读取 data.data/
 hasMore；ID归一包含 voiceId，保留顺序、排除重复，并要求游标前进。不会误用 mainSong.id。
 liked_count：/api/content/my/liked/voice/count {}，data 为计数。
+通用 podcast_page 的播客、有声书和创建播单卡片只复用已有完整点赞快照，刷新卡片
+不会联动全量喜欢读取。likedIdsKnown=false 时空向量表示未确认；true 的空向量才表示
+已知没有喜欢单集。原有节目详情、已购和全量喜欢页及点赞写前/写后核对仍读取完整成员。
+独立点赞瀑布流见 podcast-liked-pagination-contracts.txt。
 
 发现与历史
 home：/api/voice/homepage/block/page {cursor} -> data.blocks/cursor/hasMore。
