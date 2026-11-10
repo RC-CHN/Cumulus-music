@@ -253,10 +253,10 @@ impl TogetherService {
         let room = self.status(token).await?;
         Self::observe(&mut state, room, &owner, now)?;
         if let Some(room) = &state.room
-            && !state
+            && state
                 .end_notice
                 .as_ref()
-                .is_some_and(|notice| notice.queue_loss.is_some())
+                .is_none_or(|notice| notice.queue_loss.is_none())
         {
             state.snapshot = self.snapshot(token, &room.room_id).await?;
             if let Some(command) = &state.snapshot.play_command {

@@ -341,6 +341,12 @@ impl MusicClient {
                     ..
                 } = &op.intent
                     && op.phase == TogetherPhase::Confirmed
+                    && !self.together_attached(&token, None)?
+                    && service
+                        .state_for(&token)?
+                        .room
+                        .as_ref()
+                        .is_none_or(|r| &r.room_id != room_id)
                     && self
                         .together_binding(&token)?
                         .is_some_and(|b| &b.room_id == room_id)

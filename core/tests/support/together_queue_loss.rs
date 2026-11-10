@@ -139,6 +139,31 @@ async fn paired_queue_loss_closes_im_before_single_end_and_read_only_recovery() 
             .speed,
         1.25
     );
+
+    // The sealed API deliberately reuses the room ID on a fresh creation.
+    // A replay of the already-confirmed old End journal must not detach it.
+    client
+        .together_command("1", TogetherCommand::Create)
+        .await
+        .unwrap();
+    wait(&client, |v| {
+        v.attached && v.connection.state == ConnectionState::Connected
+    })
+    .await;
+    let still_attached = client
+        .together_command(
+            "1",
+            TogetherCommand::Reconcile {
+                operation_id: awaiting.pending[0].id.clone(),
+            },
+        )
+        .await
+        .unwrap()
+        .value;
+    assert!(still_attached.attached && still_attached.room.is_some());
+    assert_eq!(end_count(&api), 1);
+    assert_eq!(im.closed.load(Ordering::SeqCst), 1);
+    client.close_together().await.unwrap();
 }
 
 #[tokio::test]
