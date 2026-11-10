@@ -44,6 +44,9 @@ def verify(root, capture):
     assert complete['stageCount'] == 45 and complete['syntheticSearchCalls'] >= 12
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
+    local_path, = (root / 'first').glob('ux_*_local_unavailable.json')
+    local = json.loads(local_path.read_text(encoding='utf-8'))
+    assert local['unboundLocalMutationOmitted'] and local['menuFocus']
     if capture:
         assert len(list((root / 'first').glob('ux_*.png'))) == complete['stageCount']
     result = dict(complete, actualWebView=True,

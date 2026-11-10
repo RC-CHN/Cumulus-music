@@ -502,11 +502,15 @@
         button("播放", menu()).disabled,
       "unmatched local row actions",
     );
+    // This fixture contains an unbound server v=-1 row, not a verified
+    // device-local member. The generic delete path must not accept its ID.
+    const enabled = () => [...menu().querySelectorAll("button:not(:disabled)")];
     assert(
-      document.activeElement === button("从歌单中删除", menu()),
-      "local menu skips disabled group",
+      !button("从歌单中删除", menu()) && !button("从歌单中移除", menu()) && enabled().length === 0,
+      "unbound local placeholder must expose no enabled mutation or transport",
     );
-    await capture("local_unavailable");
+    await wait(() => document.activeElement === menu(), "empty enabled group focuses menu itself");
+    await capture("local_unavailable", { unboundLocalMutationOmitted: true, menuFocus: true });
     await escape(local);
     const missing = await open(
       all(".track-row")[1].querySelector(".track-more"),
