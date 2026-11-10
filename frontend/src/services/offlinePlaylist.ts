@@ -27,7 +27,7 @@ export function offlinePlaylistSelection(
 ): Extract<PlaySelection, { kind: 'offline_playlist' }> | undefined {
   const local = page.playlistLocal;
   const offline = page.playlistOffline;
-  if (!offline || page.playlist?.id !== id || !local) return;
+  if (!offline || page.playlist?.id !== id || !local || (!track && page.total === 0)) return;
   if (
     track &&
     (!page.tracks.includes(track) || !available(page, track, new Set(offline.downloadIds)))
@@ -37,6 +37,7 @@ export function offlinePlaylistSelection(
     kind: 'offline_playlist',
     id,
     revision: local.revision,
+    cached_at_ms: offline.cachedAtMs,
     start_id: track?.id ?? null,
     ...(track && !track.local ? { start_local: false } : {}),
     ...(doubleClick && track ? { double_click: true } : {}),

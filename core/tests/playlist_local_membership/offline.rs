@@ -229,6 +229,7 @@ async fn complete_owned_snapshot_reopens_offline_and_plays_only_verified_indexed
             PlaySelection::OfflinePlaylist {
                 id: "73".into(),
                 revision: mixed_revision.clone(),
+                cached_at_ms: cached_at,
                 start_id: Some(reference.id.clone()),
                 start_local: true,
                 double_click: false,
@@ -265,6 +266,7 @@ async fn complete_owned_snapshot_reopens_offline_and_plays_only_verified_indexed
                 PlaySelection::OfflinePlaylist {
                     id: "73".into(),
                     revision: mixed_revision,
+                    cached_at_ms: cached_at,
                     start_id: Some("11".into()),
                     start_local: true,
                     double_click: false,
@@ -306,7 +308,7 @@ async fn owned_cache_isolated_from_denials_other_accounts_and_changed_membership
         .await
         .unwrap()
         .value;
-    assert!(from_hydration.playlist_offline.is_some());
+    let cached_at = from_hydration.playlist_offline.unwrap().cached_at_ms;
     let (other, _, _) = open(&profile, network.clone(), Some(8));
     network.set(1);
     assert!(matches!(
@@ -322,6 +324,7 @@ async fn owned_cache_isolated_from_denials_other_accounts_and_changed_membership
                 PlaySelection::OfflinePlaylist {
                     id: "73".into(),
                     revision: revision.clone(),
+                    cached_at_ms: cached_at,
                     start_id: None,
                     start_local: true,
                     double_click: false,
@@ -388,6 +391,7 @@ async fn owned_cache_isolated_from_denials_other_accounts_and_changed_membership
                 PlaySelection::OfflinePlaylist {
                     id: "73".into(),
                     revision,
+                    cached_at_ms: cached_at,
                     start_id: None,
                     start_local: true,
                     double_click: false,
@@ -618,7 +622,9 @@ async fn cached_catalog_row_plays_exact_same_account_publication_without_a_url()
         .await
         .unwrap()
         .value;
-    assert_eq!(page.playlist_offline.unwrap().download_ids, ["11"]);
+    let offline = page.playlist_offline.unwrap();
+    let cached_at = offline.cached_at_ms;
+    assert_eq!(offline.download_ids, ["11"]);
     assert_eq!(
         page.tracks
             .iter()
@@ -636,6 +642,7 @@ async fn cached_catalog_row_plays_exact_same_account_publication_without_a_url()
     let play = |id: &str, local, double_click| PlaySelection::OfflinePlaylist {
         id: "73".into(),
         revision: revision.clone(),
+        cached_at_ms: cached_at,
         start_id: Some(id.into()),
         start_local: local,
         double_click,
@@ -776,12 +783,15 @@ async fn cached_catalog_downloads_reject_foreign_ambiguous_and_damaged_publicati
         .await
         .unwrap()
         .value;
-    assert!(page.playlist_offline.unwrap().download_ids.is_empty());
+    let offline = page.playlist_offline.unwrap();
+    let cached_at = offline.cached_at_ms;
+    assert!(offline.download_ids.is_empty());
     assert!(page.tracks.iter().all(|track| track.missing));
     let revision = page.playlist_local.unwrap().revision;
     let selection = |id: &str| PlaySelection::OfflinePlaylist {
         id: "73".into(),
         revision: revision.clone(),
+        cached_at_ms: cached_at,
         start_id: Some(id.into()),
         start_local: false,
         double_click: false,
@@ -820,4 +830,141 @@ async fn cached_catalog_downloads_reject_foreign_ambiguous_and_damaged_publicati
         before,
         "rejected publications must not authorize online"
     );
+}
+
+#[tokio::test]
+async fn cached_playlist_header_plays_a_later_page_and_leaves_the_queue_on_empty() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile");
+    let network = Arc::new(Network::new());
+    let device = Arc::new(playback_support::Device::default());
+    device
+        .pinned_search_supported
+        .store(true, Ordering::Release);
+    let native = device.clone();
+    let (client, session, _) = open(&profile, network.clone(), Some(9));
+    let client =
+        client.with_audio_factory(move || Ok(playback_support::audio_engine(native.clone())));
+    let task = publish_fixture_song(
+        &profile,
+        &session,
+        &temp.path().join("last.flac"),
+        "42",
+        false,
+    );
+    let mut rows = (60_000..60_100)
+        .map(|id| json!({"id":id,"v":-1}))
+        .collect::<Vec<_>>();
+    rows.push(json!({"id":42,"v":0}));
+    network.upstream.detail.lock().unwrap()["trackIds"] = json!(rows);
+    let first_page = || PageRequest {
+        offset: 0,
+        limit: 100,
+        revision: None,
+    };
+    let hydrate = || async {
+        let live = client
+            .playlist_page_at("73", first_page(), None)
+            .await
+            .unwrap()
+            .value;
+        let local = live.playlist_local.unwrap();
+        client
+            .playlist_page_at(
+                "73",
+                PageRequest {
+                    offset: 100,
+                    limit: 100,
+                    revision: live.revision,
+                },
+                Some(local.revision),
+            )
+            .await
+            .unwrap();
+    };
+    hydrate().await;
+    network.set(1);
+    let page = client
+        .playlist_page_at("73", first_page(), None)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(page.total, 101);
+    assert_eq!(page.tracks.len(), 100);
+    assert!(page.tracks.iter().all(|row| row.missing));
+    let offline = page.playlist_offline.unwrap();
+    assert!(offline.download_ids.is_empty());
+    let header = |revision, cached_at_ms| PlaySelection::OfflinePlaylist {
+        id: "73".into(),
+        revision,
+        cached_at_ms,
+        start_id: None,
+        start_local: true,
+        double_click: false,
+    };
+    let revision = page.playlist_local.unwrap().revision;
+    let calls = network.calls();
+    assert!(matches!(
+        client
+            .play_selection("1", header(revision.clone(), offline.cached_at_ms - 1))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    client
+        .play_selection("1", header(revision, offline.cached_at_ms))
+        .await
+        .unwrap();
+    let playing = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            if view.state == PlaybackStatus::Playing {
+                break view;
+            }
+            assert_ne!(view.state, PlaybackStatus::Error);
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(playing.track.as_ref().unwrap().id, "42");
+    assert_eq!(playing.download_task_id.as_deref(), Some(task.as_str()));
+    assert_eq!(playing.queue_len, 1);
+    assert_eq!(network.calls(), calls);
+
+    // A newer, complete version of the same cached playlist has no eligible
+    // row. Resolving it may not replace the existing play or ask for a URL.
+    rows[100] = json!({"id":60_100,"v":-1});
+    network.upstream.detail.lock().unwrap()["trackIds"] = json!(rows);
+    network.set(0);
+    hydrate().await;
+    network.set(1);
+    let page = client
+        .playlist_page_at("73", first_page(), None)
+        .await
+        .unwrap()
+        .value;
+    let calls = network.calls();
+    let loads = device.state.lock().unwrap().loads;
+    let err = client
+        .play_selection(
+            "1",
+            header(
+                page.playlist_local.unwrap().revision,
+                page.playlist_offline.unwrap().cached_at_ms,
+            ),
+        )
+        .await
+        .err()
+        .expect("unavailable header must not replace playback");
+    assert!(matches!(err, Error::OfflinePlaylistEmpty));
+    assert_eq!(
+        cumulus_core::client::ClientError::from(err).code,
+        "offline_playlist_empty"
+    );
+    let still_playing = client.player_snapshot("1").await.unwrap();
+    assert_eq!(still_playing.play_id, playing.play_id);
+    assert_eq!(still_playing.queue_revision, playing.queue_revision);
+    assert_eq!(still_playing.state, PlaybackStatus::Playing);
+    assert_eq!(device.state.lock().unwrap().loads, loads);
+    assert_eq!(network.calls(), calls);
 }

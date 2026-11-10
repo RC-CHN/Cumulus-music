@@ -67,7 +67,21 @@ fn digest(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+struct SnapshotIdentity {
+    revision: String,
+    local_generation: Option<u64>,
+    cached_at_ms: u64,
+}
+
 impl Snapshot {
+    fn identity(&self) -> SnapshotIdentity {
+        SnapshotIdentity {
+            revision: self.local_revision.clone(),
+            local_generation: self.local_generation,
+            cached_at_ms: self.cached_at_ms,
+        }
+    }
+
     fn parse(value: Value, id: &str) -> Result<Self> {
         let item: Self = serde_json::from_value(value)?;
         if item.playlist.id != id
@@ -243,14 +257,23 @@ fn snapshot_is_current(
     session: &Arc<AccountSession>,
     token: &SessionToken,
     id: &str,
-    local_generation: Option<u64>,
+    identity: &SnapshotIdentity,
 ) -> Result<bool> {
-    if PlaylistLocalStore::new(session.clone())?.generation(token, id)? != local_generation {
+    if PlaylistLocalStore::new(session.clone())?.generation(token, id)? != identity.local_generation
+    {
         return Ok(false);
     }
     let store = session.persistent_store()?;
     session.with_token(token, |owner| {
-        Ok(store.get(owner, OFFLINE_DELETED_KIND, id)?.is_none())
+        store.read_snapshot(|tx| {
+            Ok(tx.get(owner, OFFLINE_DELETED_KIND, id)?.is_none()
+                && tx.offline_playlist_snapshot_matches(
+                    owner,
+                    id,
+                    &identity.revision,
+                    identity.cached_at_ms,
+                )?)
+        })
     })
 }
 
@@ -344,7 +367,9 @@ impl MusicClient {
         let Some(snapshot) = snapshot else {
             return Ok(None);
         };
-        if !snapshot_is_current(&self.session, token, id, snapshot.local_generation)? {
+        if PlaylistLocalStore::new(self.session.clone())?.generation(token, id)?
+            != snapshot.local_generation
+        {
             return Ok(None);
         }
         Ok(Some(snapshot))
@@ -469,7 +494,7 @@ impl MusicClient {
             })
             .collect::<Vec<_>>();
         let total = snapshot.rows.len();
-        if !snapshot_is_current(&self.session, token, id, snapshot.local_generation)? {
+        if !snapshot_is_current(&self.session, token, id, &snapshot.identity())? {
             return Err(Error::QueueChanged);
         }
         Ok(Some(TrackPage {
@@ -502,15 +527,17 @@ impl MusicClient {
         token: &SessionToken,
         id: &str,
         revision: &str,
+        cached_at_ms: u64,
         start: Option<(&str, bool)>,
         selected_only: bool,
     ) -> Result<OfflineQueue> {
         let snapshot = self
             .read_offline_playlist(token, id)?
             .ok_or(Error::QueueChanged)?;
-        if snapshot.local_revision != revision {
+        if snapshot.local_revision != revision || snapshot.cached_at_ms != cached_at_ms {
             return Err(Error::QueueChanged);
         }
+        let stamp = snapshot.identity();
         let picked = |id: &str, local: bool| !selected_only || start == Some((id, local));
         let refs = snapshot
             .rows
@@ -575,20 +602,25 @@ impl MusicClient {
             }
             resources.push(resource);
         }
-        let index = index.ok_or(Error::State("cached playlist song is unavailable"))?;
         let session = self.session.clone();
         let (token, id) = (token.clone(), id.to_owned());
         let source = json!({
             "kind":"playlist", "id":id, "name":snapshot.playlist.name, "offline_playlist":true,
             "history_resource": {"id":id, "name":snapshot.playlist.name},
         });
-        let generation = snapshot.local_generation;
         let guard = Cancellation::new(move || {
-            snapshot_is_current(&session, &token, &id, generation).unwrap_or(false)
+            snapshot_is_current(&session, &token, &id, &stamp).unwrap_or(false)
         });
         if guard.is_cancelled() {
             return Err(Error::QueueChanged);
         }
+        let index = index.ok_or_else(|| {
+            if start.is_some() {
+                Error::State("cached playlist song is unavailable")
+            } else {
+                Error::OfflinePlaylistEmpty
+            }
+        })?;
         Ok(OfflineQueue {
             resources,
             index,

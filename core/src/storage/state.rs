@@ -377,6 +377,35 @@ impl StateStore {
 }
 
 impl StateTransaction<'_> {
+    /// Compare the saved header without materializing all playlist rows.
+    pub(crate) fn offline_playlist_snapshot_matches(
+        &self,
+        owner: &str,
+        id: &str,
+        revision: &str,
+        cached_at_ms: u64,
+    ) -> Result<bool> {
+        let cached_at_ms = i64::try_from(cached_at_ms)
+            .map_err(|_| Error::State("invalid cached playlist timestamp"))?;
+        let mut query = self.connection.prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM state
+             WHERE owner=?1 AND kind=?2 AND key=?3 AND CASE WHEN json_valid(value) THEN
+               json_extract(value,'$.local_revision')=?4
+               AND json_extract(value,'$.cached_at_ms')=?5
+             ELSE 0 END)",
+        )?;
+        Ok(query.query_row(
+            params![
+                owner,
+                crate::playlist::OFFLINE_SNAPSHOT_KIND,
+                id,
+                revision,
+                cached_at_ms
+            ],
+            |row| row.get(0),
+        )?)
+    }
+
     pub(crate) fn completed_song_publication(
         &self,
         owner: &str,

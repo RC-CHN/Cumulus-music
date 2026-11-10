@@ -74,6 +74,16 @@ impl MusicClient {
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
+            PlaySelection::OfflinePlaylist {
+                id,
+                revision,
+                cached_at_ms,
+                start_id: None,
+                ..
+            } => {
+                self.play_offline_playlist_header(epoch, &id, &revision, cached_at_ms)
+                    .await
+            }
             PlaySelection::PodcastSubscriptionRecommendation { .. } => Err(Error::InvalidInput(
                 "recommended podcast playback requires a preparation ticket",
             )),
@@ -96,6 +106,54 @@ impl MusicClient {
             )),
             input => self.play_selection_inner(epoch, input, None).await,
         }
+    }
+
+    async fn play_offline_playlist_header(
+        &self,
+        epoch: &str,
+        id: &str,
+        revision: &str,
+        cached_at_ms: u64,
+    ) -> Result<PlayerView> {
+        use super::super::focus::Owner;
+        let token = self.player_token(epoch)?;
+        let observed = self.player.selection.load(Ordering::Acquire);
+        let focus = self.focus.snapshot()?;
+        // Resolve the whole snapshot before claiming audio. An empty or
+        // retired cache must not interrupt incumbent playback, including video.
+        let queue = self
+            .offline_playlist_queue(&token, id, revision, cached_at_ms, None, false)
+            .await?;
+        if queue.guard.is_cancelled() {
+            return Err(Error::QueueChanged);
+        }
+        let (lease, attempt) = self.reserve_prepared_audio(&token, focus, || {
+            let next = observed
+                .checked_add(1)
+                .ok_or(Error::State("playback selection exhausted"))?;
+            self.player
+                .selection
+                .compare_exchange(observed, next, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| Error::StaleResponse)?;
+            Ok(next)
+        })?;
+        self.finish_media_claim(&token, Owner::Audio, lease).await?;
+        let state = self
+            .submit_selection_with_source(
+                &token,
+                PlaybackCommand::Replace {
+                    resources: queue.resources,
+                    index: queue.index,
+                    source: queue.source,
+                },
+                attempt,
+                Some(lease),
+                None,
+                Some(queue.guard),
+            )
+            .await?;
+        self.session.with_token(&token, |_| Ok(()))?;
+        project(&state, &token)
     }
 
     pub(super) async fn play_selection_inner(
@@ -795,6 +853,7 @@ impl MusicClient {
             PlaySelection::OfflinePlaylist {
                 id,
                 revision,
+                cached_at_ms,
                 start_id,
                 start_local,
                 double_click,
@@ -804,6 +863,7 @@ impl MusicClient {
                         &token,
                         &id,
                         &revision,
+                        cached_at_ms,
                         start_id.as_deref().map(|id| (id, start_local)),
                         preserve.is_some(),
                     )

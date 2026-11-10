@@ -305,6 +305,11 @@ impl From<Error> for ClientError {
                 ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::OfflinePlaylistEmpty => (
+                    "offline_playlist_empty",
+                    "歌单中没有可离线播放的曲目",
+                    false,
+                ),
                 Error::AlbumDropSourceChanged => (
                     "album_drop_source_changed",
                     "专辑歌曲列表已更新，请刷新专辑后重新拖入",

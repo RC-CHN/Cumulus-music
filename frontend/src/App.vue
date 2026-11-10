@@ -3842,7 +3842,7 @@ watch(
 const cachedPlaylist = computed(() => {
   const route = page.value;
   const shown = result.value;
-  return route.kind === 'playlist' && shown?.playlist?.id === route.id
+  return route.kind === 'playlist' && !route.zonePlaylistReceipt && shown?.playlist?.id === route.id
     ? shown.playlistOffline
     : undefined;
 });
@@ -3850,6 +3850,20 @@ const cachedPlayableIds = computed(() => {
   const shown = result.value;
   if (cachedPlaylist.value && shown) return offlinePlaylistPlayableIds(shown);
 });
+const cachedPlaylistHeaderSelection = computed(() => {
+  const route = page.value;
+  const shown = result.value;
+  if (cachedPlaylist.value && route.kind === 'playlist' && shown)
+    return offlinePlaylistSelection(route.id, shown);
+});
+const cachedPlaylistPlayError = ref('');
+watch(
+  [page, result, () => account.value.epoch],
+  () => {
+    cachedPlaylistPlayError.value = '';
+  },
+  { flush: 'sync' },
+);
 const playlistPanelId = () =>
   page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
     ? page.value.id
@@ -5302,7 +5316,15 @@ function playCachedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
   if (!cachedPlaylist.value || route.kind !== 'playlist' || !shown) return false;
   const selection = offlinePlaylistSelection(route.id, shown, track, gesture === 'double_click');
   if (!selection || (track && !cachedPlayableIds.value?.has(track.id))) return true;
-  if (track || cachedPlayableIds.value?.size) void player.select(selection);
+  if (track) void player.select(selection);
+  else if (!loading.value) {
+    const epoch = account.value.epoch;
+    cachedPlaylistPlayError.value = '';
+    void player.selectForPage(selection).catch((issue) => {
+      if (page.value === route && result.value === shown && account.value.epoch === epoch)
+        cachedPlaylistPlayError.value = failure(issue).message;
+    });
+  }
   return true;
 }
 function playMixedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
@@ -6461,7 +6483,7 @@ onUnmounted(() => {
                   :playable="
                     player.ready.value &&
                     (cachedPlaylist
-                      ? !!cachedPlayableIds?.size
+                      ? !!cachedPlaylistHeaderSelection && !loading
                       : result.tracks.some((track) => !track.missing))
                   "
                   :preparing="player.busy.value"
@@ -6601,6 +6623,13 @@ onUnmounted(() => {
                   >
                     {{ loading ? '正在读取…' : '重试联网读取' }}
                   </button>
+                </div>
+                <div
+                  v-if="cachedPlaylist && cachedPlaylistPlayError"
+                  class="notice playlist-offline-play-error"
+                  role="alert"
+                >
+                  {{ cachedPlaylistPlayError }}
                 </div>
                 <div v-if="notice || music.likeNotice.value" class="notice" role="status">
                   {{ music.likeNotice.value || notice

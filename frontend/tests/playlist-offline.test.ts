@@ -50,6 +50,7 @@ test('an offline playlist click binds an existing device member, never cached ca
     kind: 'offline_playlist',
     id: '73',
     revision: 'mixed',
+    cached_at_ms: 1000,
     start_id: 'local',
     double_click: true,
   });
@@ -57,6 +58,7 @@ test('an offline playlist click binds an existing device member, never cached ca
     kind: 'offline_playlist',
     id: '73',
     revision: 'mixed',
+    cached_at_ms: 1000,
     start_id: null,
   });
   for (const track of [stale, unbound, online, { ...local }])
@@ -73,6 +75,7 @@ test('an offline playlist click binds an existing device member, never cached ca
     kind: 'offline_playlist',
     id: '73',
     revision: 'mixed',
+    cached_at_ms: 1000,
     start_id: '123',
     start_local: false,
     double_click: true,
@@ -84,4 +87,26 @@ test('an offline playlist click binds an existing device member, never cached ca
     offlinePlaylistSelection('73', { ...page, playlistOffline: undefined }, local),
     undefined,
   );
+});
+
+test('a nonempty cached playlist header is independent of loaded-page availability', () => {
+  const first = {
+    tracks: [],
+    total: 101,
+    offset: 0,
+    more: true,
+    playlist: { id: '73' },
+    playlistLocal: { revision: 'mixed', rows: {}, hasMembers: false },
+    playlistOffline: { cachedAtMs: 1000, downloadIds: [] },
+  } as TrackPage;
+  assert.equal(offlinePlaylistPlayableIds(first).size, 0);
+  assert.deepEqual(offlinePlaylistSelection('73', first), {
+    kind: 'offline_playlist',
+    id: '73',
+    revision: 'mixed',
+    cached_at_ms: 1000,
+    start_id: null,
+  });
+  assert.equal(offlinePlaylistSelection('73', { ...first, total: 0, more: false }), undefined);
+  assert.equal(offlinePlaylistSelection('74', first), undefined);
 });

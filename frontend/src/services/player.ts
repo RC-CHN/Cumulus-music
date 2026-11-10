@@ -523,6 +523,7 @@ export type PlaySelection =
       kind: 'offline_playlist';
       id: string;
       revision: string;
+      cached_at_ms: number;
       start_id: string | null;
       start_local?: boolean;
       double_click?: boolean;

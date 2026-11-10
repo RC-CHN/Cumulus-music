@@ -524,6 +524,7 @@ pub enum PlaySelection {
     OfflinePlaylist {
         id: String,
         revision: String,
+        cached_at_ms: u64,
         start_id: Option<String>,
         #[serde(default = "offline_playlist_default_local")]
         start_local: bool,
