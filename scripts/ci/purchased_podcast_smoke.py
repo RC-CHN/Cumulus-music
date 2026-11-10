@@ -127,9 +127,9 @@ def verify_playback(root, capture):
 
     native = {name: stage['native'] for name, stage in stages.items()}
     old, current = native['baseline'], native['inserted']
-    assert old['kind'] == 'catalog' and old['song'] == '2' and old['voice'] is None
-    assert old['playId'] and old['entryId'] == old['current'] == old['rows'][1]['entryId']
-    assert old['position'] > .2 and old['mode'] == 'single_loop'
+    assert old['kind'] == 'catalog' and old['song'] == '3' and old['voice'] is None
+    assert old['playId'] and old['entryId'] == old['current'] == old['rows'][2]['entryId']
+    assert old['position'] > .2 and old['mode'] == 'sequential'
     assert [r['song'] for r in old['rows']] == ['1', '2', '3']
     assert all(r['voice'] is None for r in old['rows'])
     stable = ('song', 'voice', 'kind', 'entryId', 'playId', 'queueRevision', 'current', 'rows', 'mode')
@@ -141,9 +141,9 @@ def verify_playback(root, capture):
     assert current['queueRevision'] != old['queueRevision']
     assert current['entryId'] == current['current'] and current['mode'] == old['mode']
     assert current['position'] > .2
-    assert current['rows'] == [*old['rows'][:2], {
+    assert current['rows'] == [*old['rows'], {
         'entryId': current['entryId'], 'song': '182', 'voice': '82',
-    }, *old['rows'][2:]]
+    }]
     assert len({r['entryId'] for r in current['rows']}) == 4
     for name, state in [('inserted', 'playing'), ('paused', 'paused'), ('resumed', 'playing')]:
         assert native[name]['state'] == state
@@ -177,7 +177,7 @@ def verify_playback(root, capture):
         return [PLAY_URL, {'ids': json.dumps([id_]), 'level': 'standard', 'encodeType': 'aac',
                            'immerseType': 'c51', 'trialMode': -1}]
 
-    wire_old = [[BOUGHT, {'limit': 20, 'offset': 0}], playback_url('2')]
+    wire_old = [[BOUGHT, {'limit': 20, 'offset': 0}], playback_url('3')]
     wire_denied = [*wire_old, [DETAIL, {'id': '81'}], [PLAY_RIGHTS, {'voiceId': '81'}]]
     wire_allowed = [
         *wire_denied, [DETAIL, {'id': '82'}], [PLAY_RIGHTS, {'voiceId': '82'}], playback_url('182'),
@@ -192,7 +192,7 @@ def verify_playback(root, capture):
     pngs = sorted(output.glob('ux_*.png'))
     assert [p.stem for p in pngs] == ([p.stem for p in paths] if capture else [])
     return dict(ok=True, actualWebView=True, stages=list(PLAYBACK_STAGES), screenshots=len(pngs),
-                syntheticVoice='82', syntheticMedia='182', preservedQueue=['1', '2', '182', '3'],
+                syntheticVoice='82', syntheticMedia='182', preservedQueue=['1', '2', '3', '182'],
                 playUrlRequests=2, programEntitlementRequests=2,
                 realMusicRequests=0, realAccountWrites=0)
 

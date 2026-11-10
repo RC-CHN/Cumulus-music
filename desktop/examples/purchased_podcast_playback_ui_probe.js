@@ -106,7 +106,7 @@
       return value.status === 'authenticated' && value;
     }, 'sealed account');
     epoch = account.epoch;
-    const provides = one('#app').__vue_app__._context.provides;
+    const provides = await wait(() => one('#app')?.__vue_app__?._context.provides, 'mounted production client');
     const core = provides[Reflect.ownKeys(provides).find((key) =>
       typeof key === 'symbol' && key.description === 'core-client')];
     const observe = (name, onCall, onValue = () => {}, onError = () => {}) => {
@@ -140,12 +140,15 @@
     const preference = await invoke('queue_click_preferences', { epoch });
     assert(preference.epoch === epoch && preference.value.replaceQueue && !preference.value.damaged,
       'ordinary double click would replace by default for this account');
-    await invoke('player_action', { epoch, action: { kind: 'mode', mode: 'single_loop' } });
-    await invoke('play_selection', { epoch, selection: { kind: 'songs', ids: ['1', '2', '3'], index: 1,
+    // Start at the tail of a sequential queue so neither load schedules a
+    // separate native prefetch. In SingleLoop the natural next is the current
+    // row, including a freshly authorized source outside the shared cache.
+    await invoke('player_action', { epoch, action: { kind: 'mode', mode: 'sequential' } });
+    await invoke('play_selection', { epoch, selection: { kind: 'songs', ids: ['1', '2', '3'], index: 2,
       quality: 'standard' } });
     await wait(async () => {
       const view = await player();
-      return view.state === 'playing' && view.track?.id === '2' && view.position > .2 && bar() === 'playing';
+      return view.state === 'playing' && view.track?.id === '3' && view.position > .2 && bar() === 'playing';
     }, 'real native catalog decoder playing');
     await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
     await wait(async () => (await player()).state === 'paused' && bar() === 'paused', 'real baseline paused');
@@ -153,7 +156,7 @@
     assert(title('81')?.getAttribute('aria-pressed') === 'true' &&
       preparations.length === 0 && directSelections.length === 0, 'single click starts no playback command');
     const baseline = await stage('baseline', { replaceQueue: preference.value.replaceQueue, singleClickSelected: true });
-    assert(baseline.kind === 'catalog' && baseline.song === '2' && baseline.mode === 'single_loop' &&
+    assert(baseline.kind === 'catalog' && baseline.song === '3' && baseline.mode === 'sequential' &&
       baseline.rows.map((entry) => entry.song).join(',') === '1,2,3', 'three-entry native baseline');
 
     await doubleClick(() => one('.purchase-placeholder', row('radio', '81')), 'double-click same-ID radio body', false);
@@ -186,8 +189,7 @@
     const inserted = await stage('inserted');
     assert(inserted.kind === 'voice' && inserted.playId !== baseline.playId &&
       inserted.queueRevision !== baseline.queueRevision &&
-      same(inserted.rows, [...baseline.rows.slice(0, 2),
-        { entryId: inserted.entryId, song: '182', voice: '82' }, ...baseline.rows.slice(2)]),
+      same(inserted.rows, [...baseline.rows, { entryId: inserted.entryId, song: '182', voice: '82' }]),
     'only the clicked program is inserted after the old current, with all old entries retained');
 
     await doubleClick(() => title('82'), 'double-click same program to pause');

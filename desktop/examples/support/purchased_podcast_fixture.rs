@@ -97,7 +97,7 @@ impl Fixture {
             },
             "/api/song/enhance/player/url/v1" if self.playback => {
                 let id = match args["ids"].as_str() {
-                    Some(r#"["2"]"#) => "2",
+                    Some(r#"["3"]"#) => "3",
                     Some(r#"["182"]"#) => "182",
                     _ => panic!("synthetic purchase requested media for an unrelated track"),
                 };
