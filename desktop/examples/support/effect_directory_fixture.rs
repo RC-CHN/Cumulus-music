@@ -10,6 +10,10 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_DIRECTORY_PROOF").is_some()
 }
 
+pub fn headphone_header() -> bool {
+    std::env::var_os("CUMULUS_EFFECT_HEADPHONE_HEADER_PROOF").is_some()
+}
+
 pub fn source_bypass_enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_DEVICE_SOURCE_BYPASS_PROOF").is_some()
 }
@@ -62,6 +66,7 @@ pub fn source_calls() -> Vec<Value> {
 pub fn overview_enabled() -> bool {
     std::env::var_os("CUMULUS_AUDIO_EFFECT_TABS_PROOF").is_some()
         || effect_peq_fixture::applied_catalogue()
+        || headphone_header()
 }
 
 pub fn overview_revision() -> Option<String> {

@@ -1239,6 +1239,8 @@ fn main() {
     let tone_geometry_proof = tone_geometry::enabled();
     assert!(!tone_geometry_proof || (motion_proof && !peq_proof && !device_peq_proof));
     let device_source_bypass_proof = effect_directory_fixture::source_bypass_enabled();
+    let headphone_header_proof = effect_directory_fixture::headphone_header();
+    assert!(!headphone_header_proof || device_source_bypass_proof);
     assert!(!device_source_bypass_proof || device_peq_proof);
     assert!(
         !(peq_proof || device_peq_proof) || motion_proof,
@@ -1313,7 +1315,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() {
+        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() || queue_click_proof || download_speed_proof || vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || headphone_header_proof || search_fixture::hot_playback_enabled() || search_fixture::offline_proof_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() || download_page_fixture::queue_download_reveal_enabled() || download_page_fixture::queue_catalog_reveal_enabled() || std::env::var_os("CUMULUS_SEARCH_VOICE_LINKS_PROOF").is_some() || search_voice_menu_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1346,7 +1348,7 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
-        if audio_effect_tabs_proof || effect_peq_fixture::applied_catalogue() {
+        if audio_effect_tabs_proof || effect_peq_fixture::applied_catalogue() || headphone_header_proof {
             tauri::async_runtime::block_on(async {
                 assert_eq!(client.restore_account().await?.status,
                     cumulus_core::account::SessionStatus::Authenticated);
