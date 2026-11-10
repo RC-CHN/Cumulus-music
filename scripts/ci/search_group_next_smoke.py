@@ -73,6 +73,76 @@ def verify_extended(output, report):
                   screenshots=len(EXTENDED_LABELS))
 
 
+PLAY_LABELS = (
+    'select_first', 'select_blocked', 'select_third', 'open_blocked_play_anchor',
+    'blocked_play_menu', 'open_new_play_anchor', 'group_play_menu', 'group_play_started',
+    'select_resume_first', 'select_resume_current', 'open_current_play_anchor',
+    'current_play_menu', 'current_play_resumed',
+)
+
+
+def verify_play(output, report):
+    base = started = paused = None
+    for index, label in enumerate(PLAY_LABELS, 1):
+        path = output / f'ux_{index:02}_{label}.json'
+        receipt = json.loads(path.read_text(encoding='utf-8'))
+        assert path.with_suffix('.png').is_file()
+        if label in ('blocked_play_menu', 'group_play_menu', 'current_play_menu'):
+            pixels = json.loads((output / f'paint-{path.name}').read_text(encoding='utf-8'))
+            assert len(pixels['samples']) == 1 and pixels['samples'][0]['ok']
+        player, queue = receipt['checkedPlayer'], receipt['checkedQueue']
+        assert player['mode'] == 'single_loop' and not player.get('error')
+        assert player['queueRevision'] == queue['revision'] and queue['current'] == player['entryId']
+        ids = [item['track']['id'] for item in queue['tracks']]
+        media = receipt['searchGroupNextMedia']
+        if index == 1:
+            base = player
+            search_calls = receipt['syntheticSearchCalls']
+        assert receipt['syntheticSearchCalls'] == search_calls
+        if index <= 7:
+            assert player['state'] == 'paused'
+            assert all(player[field] == base[field] for field in
+                       ('playId', 'entryId', 'position', 'queueRevision'))
+            assert ids == ['701', '702'] and media == []
+            continue
+        assert media == [['101', 42]]
+        assert player['track']['id'] == '101'
+        if label == 'group_play_started':
+            assert player['state'] == 'playing' and player['position'] > .3
+            assert all(player[field] != base[field] for field in
+                       ('playId', 'entryId', 'queueRevision'))
+            started = player
+        assert all(player[field] == started[field] for field in ('playId', 'entryId'))
+        if index < len(PLAY_LABELS):
+            assert ids == ['701', '103', '101', '702']
+            if index == 9:
+                paused = player
+            if index >= 9:
+                assert player['state'] == 'paused' and player['position'] == paused['position']
+                assert player['position'] >= started['position']
+        else:
+            assert ids == ['701', '103', '104', '101', '702']
+            assert player['state'] == 'playing' and player['position'] > paused['position']
+            assert player['queueRevision'] != started['queueRevision']
+            commands = receipt['actionTrace']
+            assert [c['outcome'] for c in commands] == [
+                'search_group_anchor_unavailable', 'confirmed', 'confirmed',
+            ]
+            for command, anchor, chosen, observed in zip(
+                commands, ['102', '101', '101'],
+                [['103', '102', '101'], ['103', '102', '101'], ['104', '101']],
+                [base, base, paused],
+            ):
+                action = command['action']
+                assert action['kind'] == 'search_group_play'
+                assert action['anchor']['track_id'] == anchor
+                assert [r['track_id'] for r in action['rows']] == chosen
+                assert action['expected_play_id'] == observed['playId']
+                assert action['expected_queue_revision'] == observed['queueRevision']
+    report.update(finalQueue=['701', '103', '104', '101', '702'], startedAnchor='101',
+                  resumedSameDecoder=True, screenshots=len(PLAY_LABELS))
+
+
 class TrustedClicks(TrustedDrag):
     def __init__(self):
         super().__init__()
@@ -108,9 +178,10 @@ def run(args):
     root.mkdir(parents=True, mode=0o700)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     script = Path(__file__).resolve().parents[2] / 'desktop/examples/search_group_next_ui_probe.js'
-    if args.extended:
-        combined = root / 'extended-probe.js'
-        combined.write_text('window.__CUMULUS_SEARCH_GROUP_EXTENDED__ = true;\n' +
+    if args.extended or args.play:
+        combined = root / 'scoped-probe.js'
+        variant = 'EXTENDED' if args.extended else 'PLAY'
+        combined.write_text(f'window.__CUMULUS_SEARCH_GROUP_{variant}__ = true;\n' +
                             script.read_text(encoding='utf-8'), encoding='utf-8')
         script = combined
     env.update(
@@ -137,10 +208,11 @@ def run(args):
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'search group Next exited {code}'
     report = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert report['ok'] and report['stageCount'] == len(EXTENDED_LABELS if args.extended else LABELS)
+    labels = PLAY_LABELS if args.play else EXTENDED_LABELS if args.extended else LABELS
+    assert report['ok'] and report['stageCount'] == len(labels)
     assert report['realMusicRequests'] == report['realAccountWrites'] == 0
-    if args.extended:
-        verify_extended(output, report)
+    if args.extended or args.play:
+        (verify_extended if args.extended else verify_play)(output, report)
         report.update(actualWebView=True, trustedPointer=True, physicalAudioOutputVerified=False,
                       windowsVisualVerified=False)
         (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
@@ -194,7 +266,9 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path)
-    parser.add_argument('--extended', action='store_true', help='prove empty and random Next')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--extended', action='store_true', help='prove empty and random Next')
+    mode.add_argument('--play', action='store_true', help='prove explicit group Play')
     args = parser.parse_args()
     require_xvfb()
     run(args)

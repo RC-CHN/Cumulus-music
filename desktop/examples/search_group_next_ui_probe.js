@@ -36,6 +36,12 @@
       !surface.matches('.menu-enter-active,.menu-leave-active') &&
       getComputedStyle(surface).opacity === '1';
   };
+  const groupMenuReady = () => {
+    const playButton = play(), surface = playButton?.closest('[role="menu"]');
+    return menuReady() && playButton && !playButton.disabled &&
+      [...surface.querySelectorAll('[data-menu-key]')].map((node) => node.dataset.menuKey)
+        .join(',') === 'play,next';
+  };
   const menuPaint = (node) => {
     const surface = node.closest('[role="menu"]');
     if (!surface) return [];
@@ -53,12 +59,18 @@
   let step = 'setup', epoch, stageCount = 0, before, baseline;
   const actionTrace = [];
   const extended = window.__CUMULUS_SEARCH_GROUP_EXTENDED__ === true;
+  const playProof = window.__CUMULUS_SEARCH_GROUP_PLAY__ === true;
+  let playStarted = false;
   const state = () => invoke('player_snapshot', { epoch });
   const queue = () => invoke('player_queue', { epoch });
   const native = async () => {
     const [checkedPlayer, checkedQueue] = await Promise.all([state(), queue()]);
     assert(checkedPlayer.queueRevision === checkedQueue.revision, 'consistent native queue revision');
-    if (!extended || before) {
+    if (playProof && playStarted) {
+      assert(checkedPlayer.mode === 'single_loop' && !checkedPlayer.error &&
+        checkedPlayer.track?.id === '101' && checkedQueue.current === checkedPlayer.entryId,
+      'the explicit anchor is the actual current song');
+    } else if (!extended || before) {
       assert(checkedPlayer.state === 'paused' && checkedPlayer.playId === before.playId &&
         checkedPlayer.entryId === before.entryId && checkedPlayer.position === before.position &&
         !checkedPlayer.error && checkedQueue.current === baseline.current, 'same paused decoder and clock');
@@ -127,7 +139,7 @@
 
     window.__searchFixtureAck = false;
     await emit('search-fixture', {
-      mode: extended ? 'song_waterfall_group_next_extended' : 'song_waterfall_group_next',
+      mode: extended || playProof ? 'song_waterfall_group_next_extended' : 'song_waterfall_group_next',
     });
     await wait(() => window.__searchFixtureAck, 'synthetic search fixture active');
     const search = one('[aria-label="搜索音乐"]');
@@ -147,7 +159,7 @@
       .find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     const original = core.playerAction.bind(core);
     core.playerAction = async (owner, action) => {
-      const trace = ['search_group_next_play', 'search_next_play'].includes(action.kind) ?
+      const trace = ['search_group_play', 'search_group_next_play', 'search_next_play'].includes(action.kind) ?
         { action, outcome: 'pending' } : undefined;
       if (trace) actionTrace.push(trace);
       try {
@@ -167,10 +179,63 @@
     await input('select_third', title('101'), 1, true);
     await wait(() => selected() === '101,102,103', 'Ctrl preserves reversed selection');
 
+    if (playProof) {
+      await input('open_blocked_play_anchor', title('102'), 3);
+      await wait(groupMenuReady, 'mixed group exposes Play and Next in that order');
+      await input('blocked_play_menu', play());
+      await wait(() => actionTrace[0]?.outcome === 'search_group_anchor_unavailable' &&
+        document.body.innerText.includes('请从同组中可播放的歌曲打开菜单'),
+      'the actual group Play command rejected a blocked anchor');
+      assert(ids(await queue()) === '701,702' && !one('.playback-message button'),
+        'blocked Play leaves the paused queue intact and cannot retry stale selection');
+
+      await input('open_new_play_anchor', title('101'), 3);
+      await wait(groupMenuReady, 'Play on the clicked available song');
+      await input('group_play_menu', play());
+      const started = await wait(async () => {
+        const view = await state();
+        return actionTrace[1]?.outcome === 'confirmed' && view.state === 'playing' &&
+          view.track?.id === '101' && view.playId !== before.playId && view.position > .3 && view;
+      }, 'different clicked song started, after authorizing only that source');
+      const startedQueue = await queue();
+      assert(ids(startedQueue) === '701,103,101,702',
+        'group is inserted without clearing and excludes the blocked non-anchor');
+      playStarted = true;
+      await capture('group_play_started');
+
+      click(button('暂停', bar()));
+      const paused = await wait(async () => {
+        const view = await state();
+        return view.state === 'paused' && view.playId === started.playId &&
+          view.entryId === started.entryId && view.position >= started.position && view;
+      }, 'current anchor is paused at a native clock position');
+      await input('select_resume_first', title('104'));
+      await wait(() => selected() === '104', 'ordinary click replaces the previous selection');
+      await input('select_resume_current', title('101'), 1, true);
+      await wait(() => selected() === '101,104', 'current track included after the other song');
+      await input('open_current_play_anchor', title('101'), 3);
+      await wait(groupMenuReady, 'same-anchor explicit group Play remains available');
+      await input('current_play_menu', play());
+      const resumed = await wait(async () => {
+        const view = await state();
+        return actionTrace[2]?.outcome === 'confirmed' && view.state === 'playing' &&
+          view.playId === paused.playId && view.entryId === paused.entryId &&
+          view.position > paused.position && view;
+      }, 'current native decoder resumes instead of reopening or toggling');
+      const final = await queue();
+      assert(ids(final) === '701,103,104,101,702' &&
+        final.current === resumed.entryId && final.revision !== startedQueue.revision,
+      'the current entry moves inside selected display order without replacing the decoder');
+      await capture('current_play_resumed');
+      core.playerAction = original;
+      await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
+      return;
+    }
+
     if (extended) {
       const empty = await state();
       await input('open_empty_anchor', title('101'), 3);
-      await wait(() => menuReady() && !play(), 'group Next is enabled in the empty random queue');
+      await wait(groupMenuReady, 'group Next is enabled in the empty random queue');
       await input('empty_menu', next());
       const playing = await wait(async () => {
         const view = await state();
@@ -197,7 +262,7 @@
       await input('select_random_anchor', title('105'), 1, true);
       await wait(() => selected() === '104,105', 'Ctrl includes the new anchor');
       await input('open_random_anchor', title('105'), 3);
-      await wait(() => menuReady() && !play(), 'group Next remains enabled in paused random');
+      await wait(groupMenuReady, 'group Next remains enabled in paused random');
       await input('random_menu', next());
       await wait(async () => actionTrace[1]?.outcome === 'confirmed' &&
         ids(await queue()) === '103,101,104,105', 'the new group inserts in visible selected order');
@@ -208,8 +273,8 @@
     }
 
     await input('open_blocked_anchor', title('102'), 3);
-    await wait(() => menuReady() && !play(),
-      'mixed group menu is enabled; only its implemented action is shown');
+    await wait(groupMenuReady,
+      'mixed group menu shows Play then Next');
     await input('blocked_anchor_menu', next());
     await wait(() => actionTrace[0]?.outcome && actionTrace[0].outcome !== 'pending',
       'actual blocked-anchor IPC settled');
@@ -221,7 +286,7 @@
     assert(!one('.playback-message button'), 'a frozen selection has no retry button');
 
     await input('open_playable_anchor', title('101'), 3);
-    await wait(() => menuReady() && !play(), 'ready selected-group menu');
+    await wait(groupMenuReady, 'ready selected-group menu');
     assert(selected() === '101,102,103', 'right-click in selection preserves the group');
     await input('group_menu', next());
     await wait(async () => actionTrace[1]?.outcome === 'confirmed' &&
