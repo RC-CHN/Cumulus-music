@@ -14,6 +14,9 @@
   });
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (v, message) => { if (!v) throw Error(message); };
+  const search = () => one('input[aria-label="搜索音乐"]');
+  const navigationReady = () => visible(one('button[aria-label="打开设置"]'));
+  const classicHome = () => one('.podcast-discovery .podcast-top[data-layout="classic"]');
   const card = () => one('[data-podcast-scene-fm]');
   let epoch, playId, count = 0, last = 'startup';
   const player = () => invoke('player_snapshot', { epoch });
@@ -130,10 +133,14 @@
       const a = await invoke('account_snapshot');
       if (a.status !== 'authenticated') return false;
       epoch = a.epoch;
-      return visible(one('input[aria-label="搜索音乐"]'));
-    }, 'isolated signed-in shell');
-    await click(() => one('input[aria-label="搜索音乐"]'), 'search chart');
-    await click(() => one('button[aria-label="播客榜：更多"]'), 'classic podcast homepage');
+      // Search can open before the restored shell permits navigation.
+      return visible(search()) && navigationReady();
+    }, 'isolated signed-in shell can navigate');
+    await click(search, 'search chart');
+    await click(() => navigationReady() && search()?.getAttribute('aria-expanded') === 'true' &&
+      one('button[aria-label="播客榜：更多"]', one('#search-discovery-panel:not(.menu-leave-active)')),
+    'active podcast chart More');
+    await wait(classicHome, 'More opens the classic podcast home');
     await wait(() => card() && one('[data-scene-fm-title]', card()), 'actual scene episode');
     await wait(() => fallback('.scene-fm-cover'), 'blocked public cover changes to local placeholder');
     await capture('card_placeholder');
@@ -162,6 +169,8 @@
       realAccountWrites: 0, physicalAudioVerified: false });
   } catch (error) {
     await emit('failed', { ok: false, last, error: String(error), stageCount: count,
+      navigationReady: !!navigationReady(), searchExpanded: search()?.getAttribute('aria-expanded'),
+      classicHome: !!classicHome(),
       page: one('.main-content')?.innerText.slice(0, 1800), metadata: metadata(), artwork: artwork() });
   }
 })();
