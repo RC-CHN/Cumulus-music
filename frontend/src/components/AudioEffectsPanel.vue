@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
+import { useHeadphoneHeader } from '../composables/useHeadphoneHeader';
+import { useCore } from '../services/core';
+import { headphoneTuningLabel } from '../services/effectDirectory';
 import type { AccountView } from '../services/contracts';
 import type { EffectCataloguePresentation } from '../services/pcPresentation';
 import { equalizerTone, equalizerToneEnabled } from '../services/equalizer';
@@ -9,6 +12,7 @@ import EffectDirectory from './EffectDirectory.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
 import LocalEqualizerMaster from './LocalEqualizerMaster.vue';
+import EffectMasterSwitch from './EffectMasterSwitch.vue';
 
 const props = defineProps<{
   account: AccountView;
@@ -25,6 +29,18 @@ type Tab = (typeof routes)[number]['key'];
 const active = ref<Tab>('catalogue');
 const online = ref(navigator.onLine);
 const { view, ready } = props.player;
+const headphone = useHeadphoneHeader(
+  useCore(),
+  () => props.account,
+  () => (ready.value ? view.value : undefined),
+  () => props.effectCatalogue?.layout !== 'legacy',
+);
+const {
+  visible: showHeadphoneMaster,
+  target: headphoneTarget,
+  pending: headphonePending,
+  error: headphoneError,
+} = headphone;
 const title = useId();
 const dialog = ref<HTMLDialogElement>();
 const tablist = ref<HTMLElement>();
@@ -134,6 +150,22 @@ watch(showLocalMaster, async (visible) => {
   await nextTick();
   if (dialog.value?.open && document.activeElement === document.body) focusTab();
 });
+watch(showHeadphoneMaster, async (visible) => {
+  const focused = document.activeElement;
+  const losingHeader = !visible && focused?.closest('.audio-effects-headphone-master');
+  const movingFromDevice =
+    visible && focused?.closest('.effect-device-active [data-comparison-receipt]');
+  if (!losingHeader && !movingFromDevice) return;
+  await nextTick();
+  if (
+    !dialog.value?.open ||
+    (document.activeElement !== document.body && document.activeElement !== dialog.value)
+  )
+    return;
+  if (movingFromDevice)
+    dialog.value.querySelector<HTMLButtonElement>('.audio-effects-headphone-master')?.focus();
+  else focusTab();
+});
 onMounted(() => {
   updateNetwork();
   dialog.value?.showModal();
@@ -142,6 +174,7 @@ onMounted(() => {
   window.addEventListener('offline', updateNetwork);
 });
 onUnmounted(() => {
+  headphone.dispose();
   window.removeEventListener('online', updateNetwork);
   window.removeEventListener('offline', updateNetwork);
 });
@@ -178,14 +211,32 @@ onUnmounted(() => {
           {{ route.label }}
         </button>
       </nav>
+      <EffectMasterSwitch
+        v-if="showHeadphoneMaster && headphoneTarget"
+        class="audio-effects-master audio-effects-headphone-master"
+        label="耳机调音"
+        :checked="headphoneTarget.device.status === 'configured'"
+        :busy="!!headphonePending"
+        :title="headphoneTuningLabel(headphoneTarget.device.status)"
+        :data-comparison-receipt="headphoneTarget.comparison.receipt"
+        keep-focus
+        @toggle="
+          headphone.toggle(($event.currentTarget as HTMLButtonElement).dataset.comparisonReceipt)
+        "
+      >
+        耳机音效
+      </EffectMasterSwitch>
       <LocalEqualizerMaster
-        v-if="showLocalMaster"
+        v-else-if="showLocalMaster"
         class="audio-effects-master"
         :player="player"
         :can-toggle="canToggleLocalMaster"
         in-header
       />
     </div>
+    <p v-if="showHeadphoneMaster && headphoneError" class="audio-effects-master-issue" role="alert">
+      {{ headphoneError }}
+    </p>
     <p v-if="localMasterIssue" class="audio-effects-master-issue" role="status">
       均衡器设置尚未确认。
       <button type="button" @click="activate('equalizer')">查看均衡器</button>
@@ -223,6 +274,8 @@ onUnmounted(() => {
             :applied="view?.deviceParametric"
             :parametric-processing="view?.parametricProcessing"
             :catalogue-parametric="view?.boundParametric"
+            :comparison-in-header="showHeadphoneMaster"
+            :header-comparison-busy="!!headphonePending"
           />
           <div v-else class="audio-effects-message">
             <p>登录后可查询耳机品牌和型号。</p>
