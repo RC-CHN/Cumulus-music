@@ -4419,6 +4419,7 @@ watch(
     if (
       ticket &&
       refreshingPlaylistDrop.value !== ticket &&
+      !cachedPlaylist.value &&
       revision &&
       (revision !== ticket.revision ||
         (ticket.mixedRevision !== undefined && mixedRevision !== ticket.mixedRevision))
@@ -4437,11 +4438,15 @@ async function refreshPlaylistDropSource(event: MouseEvent) {
     if (ticket.mixedRevision) {
       if (!(await music.reloadReorderedPlaylist(() => ownsPlaylistDrop(ticket)))) return;
     } else await music.load();
+    const shown = result.value;
+    // A transport failure can still show an offline snapshot. Only a live
+    // source can resolve the queue's stale-revision recovery.
     if (
       stalePlaylistDrop.value !== ticket ||
       !ownsPlaylistDrop(ticket) ||
-      result.value?.playlist?.id !== ticket.page.id ||
-      !result.value.revision
+      shown?.playlist?.id !== ticket.page.id ||
+      !shown.revision ||
+      shown.playlistOffline
     )
       return;
     const restore = document.activeElement === trigger;

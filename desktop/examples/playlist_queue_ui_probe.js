@@ -150,6 +150,7 @@
     const oldRow=sourceTitle('507');
     const staleNotice=()=>one('[data-queue-playlist-source-changed]');
     const refresh=()=>staleNotice() && button('重新读取歌单',staleNotice());
+    const offlineNotice=()=>one('.playlist-offline-status');
     await fixture('queue_drop_revise');
     startDrop()();
     await wait(()=>staleNotice()?.textContent.includes('歌单歌曲已更新') && refresh(),
@@ -159,12 +160,14 @@
     assert(refresh().contains(document.elementFromPoint(refreshBox.x+refreshBox.width/2,refreshBox.y+refreshBox.height/2)),
       'source recovery button is pointer reachable');
     await capture('playlist_drop_stale');
-    await fixture('fail_detail');
+    const failedReadBase=(await fixture('fail_detail')).detailReads;
     click(refresh());
-    await wait(()=>!field() && refresh() && one('.page-heading')?.textContent.includes('加载失败'),
-      'failed read retains the explicit recovery');
+    await wait(()=>offlineNotice()?.textContent.includes('正在显示本机缓存的歌单') && refresh() &&
+      field()?.value==='合成歌曲 507',
+      'failed live read keeps the cached source and explicit recovery');
     assert((await invoke('player_queue',{epoch})).revision===original.revision,'failed reread leaves queue untouched');
-    await capture('playlist_drop_reread_failed');
+    assert((await fixture('fail_detail')).detailReads===failedReadBase+1,'exactly one failed live source read');
+    await capture('playlist_drop_reread_failed',{cachedSource:!!offlineNotice(),preservedFilter:field().value});
     const rereadBase=(await fixture('hold_detail')).detailReads;
     click(refresh());
     await wait(()=>staleNotice()?.getAttribute('aria-busy')==='true','source reread visibly pending');
@@ -172,7 +175,7 @@
     assert(pendingRefresh?.getAttribute('aria-disabled')==='true','pending refresh cannot be submitted twice');
     pendingRefresh.click();
     await fixture('success');
-    await wait(()=>field()?.value==='合成歌曲 507' && !staleNotice() &&
+    await wait(()=>field()?.value==='合成歌曲 507' && !staleNotice() && !offlineNotice() &&
       !sourceTitle('507') && one('.playlist-track-match')?.textContent.includes('0 首'),
       'fresh playlist keeps filter but excludes the removed row');
     assert(!oldRow.isConnected && (await invoke('player_queue',{epoch})).revision===original.revision,
@@ -258,5 +261,10 @@
     await library();
     await fixture('expired_detail'); await open(7); await choose('下一首播放'); await wait(()=>button('重新登录') || button('点击登录'),'expired account'); await capture('expired');
     await emit('complete',{ok:true,playlistQueueUi:true,onlinePlaylistDrop:true,onlinePlaylistMultiDrop:true,playlistDropSourceRecovery:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
-  } catch(error) { await emit('failed',{step,message:String(error),stack:error.stack,stageCount:count}); }
+  } catch(error) {
+    await emit('failed',{step,message:String(error),stack:error.stack,stageCount:count,
+      offlineSource:!!one('.playlist-offline-status'),
+      sourceRecovery:one('[data-queue-playlist-source-changed]')?.textContent.trim(),
+      playlistFilter:one('[aria-label="搜索歌单歌曲"]')?.value});
+  }
 })();

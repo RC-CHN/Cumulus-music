@@ -66,7 +66,8 @@ def main():
     ]
     for stage in (failed, refreshed, marker):
         assert stale['nativeQueue']['revision'] == stage['nativeQueue']['revision']
-    assert refreshed['preservedFilter'] == '合成歌曲 507'
+    assert failed['cachedSource'] is True
+    assert failed['preservedFilter'] == refreshed['preservedFilter'] == '合成歌曲 507'
     assert detached['actionHidden'] is True
     assert detached['nativeQueue']['revision'] == multi_dropped['nativeQueue']['revision']
     before_ids = [row['track']['id'] for row in stale['nativeQueue']['tracks']]
