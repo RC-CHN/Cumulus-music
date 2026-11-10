@@ -2,6 +2,7 @@
 pub(super) mod creation;
 use super::*;
 use crate::{
+    account::resources::{AccountResources, ResourceKind},
     client::content::PLAYLIST_COLLECT_LAST_PAGE,
     playlist::{
         GroupDownloadLikedOrigin, GroupDownloadPlaylistProof, PlaylistMutation, PlaylistPhase,
@@ -153,18 +154,19 @@ impl MusicClient {
         plan: &Plan,
         system_liked: bool,
     ) -> Result<impl Fn() -> Result<()> + Send + Sync + 'static + use<>> {
-        if plan.purpose != SearchGroupDownloadDecision::PlaylistRequired
-            || plan.collection.is_empty()
-        {
+        if !plan.permits_destination() || plan.collection.is_empty() {
             return Err(Error::StaleResponse);
         }
         let observed = plan.observed.clone();
         let session = self.session.clone();
         let pages = self.search.group_downloads.clone();
         let login = self.auth.pending_guard();
+        let experiments = self.pc_experiments.clone();
+        let quality = plan.quality.get().map(|choice| choice.quality);
         let check = move || {
             login()?;
             authorization(&session, &observed)?;
+            super::purchased::check_quality(&experiments, &observed, quality)?;
             if system_liked {
                 authorize_liked(&observed)?;
             } else {

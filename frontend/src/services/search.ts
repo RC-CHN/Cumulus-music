@@ -64,7 +64,7 @@ export type SearchItem =
       excerpt: string[];
       queueDropReceipt?: string;
       groupNextRight?: 'playable' | 'copyright_blocked';
-      groupDownload?: { receipt: string; right: 'ordinary' | 'copyright_blocked' };
+      groupDownload?: { receipt: string; right: 'ordinary' | 'purchased' | 'copyright_blocked' };
       excerptTruncated?: boolean;
       mvId?: string;
       replacementMv?: boolean;
@@ -275,9 +275,11 @@ export interface SearchGroupDownloadSelection {
   rows: SearchGroupDownloadTarget[];
 }
 export type SearchGroupDownloadSort = 'default' | 'recently';
+export type SearchPurchasedQuality = import('./voiceSongs').VoiceSongPurchasedQuality;
 export type SearchGroupDownloadCommand =
   | ({ kind: 'prepare' } & SearchGroupDownloadSelection)
   | { kind: 'start' | 'status' | 'cancel' | 'reconcile'; receipt: string }
+  | { kind: 'confirm_quality'; receipt: string; quality: SearchPurchasedQuality }
   | { kind: 'destinations'; receipt: string; sort: SearchGroupDownloadSort; page: number }
   | { kind: 'choose'; receipt: string; playlistId: string }
   | { kind: 'choose_liked'; receipt: string; destinationReceipt: string }
@@ -308,6 +310,8 @@ export type SearchGroupDownloadReply =
       epoch: string;
       decision:
         | 'ready'
+        | 'purchased_quality_required'
+        | 'purchased_selection_unavailable'
         | 'playlist_required'
         | 'playlist_unavailable'
         | 'membership_unknown'
@@ -317,6 +321,14 @@ export type SearchGroupDownloadReply =
       receipt: string | null;
       eligibleCount: number;
       omittedCount: number;
+      purchasedQualities?: SearchPurchasedQuality[];
+    }
+  | {
+      kind: 'quality_confirmed';
+      epoch: string;
+      decision: 'playlist_required' | 'playlist_unavailable' | 'membership_unknown';
+      receipt: string | null;
+      quality: SearchPurchasedQuality;
     }
   | { kind: 'accepted'; result: import('./downloads').DownloadResult }
   | {
@@ -337,6 +349,7 @@ export interface SearchClient {
     epoch: string,
     command: SearchGroupDownloadCommand,
   ): Promise<SearchGroupDownloadReply>;
+  openSearchGroupPurchasedQualityGuide(epoch: string, receipt: string): Promise<void>;
   searchDiscovery(
     epoch: string,
     query: SearchDiscoveryQuery,

@@ -117,6 +117,8 @@ export function createTauriClient(): CoreClient {
         ...(correctionReceipt ? { correctionReceipt } : {}),
       }),
     searchGroupDownload: (epoch, command) => invoke('search_group_download', { epoch, command }),
+    openSearchGroupPurchasedQualityGuide: (epoch, receipt) =>
+      invoke('open_search_group_purchased_quality_guide', { target: { epoch, receipt } }),
     searchReasonPage: (epoch, target) => invoke('search_reason_page', { epoch, target }),
     communityComposerSearch: (epoch, kind, keyword, offset) =>
       invoke('community_composer_search', { epoch, kind, keyword, offset }),

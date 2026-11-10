@@ -19,6 +19,8 @@ import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
 import TrackShareDialog from './TrackShareDialog.vue';
 import SearchGroupDownloadPicker from './SearchGroupDownloadPicker.vue';
+import VoiceSongPurchasedQuality from './VoiceSongPurchasedQuality.vue';
+import type { SearchPurchasedQuality } from '../services/search';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{
   collect: [track: TrackView];
@@ -43,11 +45,13 @@ type SearchDownloadFeedback = {
 };
 const downloadFeedback = shallowRef<SearchDownloadFeedback>();
 const groupDownloadBusy = ref(false);
-const downloadPicker = shallowRef<{
+type SearchDownloadTarget = {
   group: NonNullable<TrackMenuRequest['searchGroup']>;
   receipt: string;
   omitted: number;
-}>();
+};
+const downloadPicker = shallowRef<SearchDownloadTarget>();
+const purchaseChooser = shallowRef<SearchDownloadTarget & { choices: SearchPurchasedQuality[] }>();
 const searchGroupQueue = shallowRef<{ playId: string | null; revision: string }>();
 function currentSearchGroupQueue() {
   const current = props.player.view.value;
@@ -227,6 +231,7 @@ function clear() {
   retrying.value = false;
   downloadFeedback.value = undefined;
   downloadPicker.value = undefined;
+  closeSearchPurchase(!groupDownloadBusy.value);
 }
 function dismiss() {
   clear();
@@ -381,6 +386,18 @@ async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['sea
       case 'directory_required':
         askSearchDownloadDirectory(group);
         return;
+      case 'purchased_quality_required':
+        if (plan.receipt && plan.purchasedQualities?.length)
+          purchaseChooser.value = {
+            group,
+            receipt: plan.receipt,
+            omitted: plan.omittedCount,
+            choices: plan.purchasedQualities,
+          };
+        return;
+      case 'purchased_selection_unavailable':
+        feedback('这组歌曲暂不能使用已购音质下载，请检查已有任务或重新选择。');
+        return;
       case 'playlist_required':
         if (plan.receipt)
           downloadPicker.value = { group, receipt: plan.receipt, omitted: plan.omittedCount };
@@ -416,6 +433,70 @@ async function startSearchGroupDownload(group: NonNullable<TrackMenuRequest['sea
     } else {
       feedback(failure(issue).message);
     }
+  } finally {
+    groupDownloadBusy.value = false;
+  }
+}
+function closeSearchPurchase(cancel: boolean) {
+  const target = purchaseChooser.value;
+  purchaseChooser.value = undefined;
+  if (cancel && target)
+    void client
+      .searchGroupDownload(target.group.epoch, { kind: 'cancel', receipt: target.receipt })
+      .catch(() => {});
+}
+function openSearchPurchaseGuide(): Promise<void> {
+  const target = purchaseChooser.value;
+  if (!target?.group.live() || groupDownloadBusy.value) return Promise.resolve();
+  return client.openSearchGroupPurchasedQualityGuide(target.group.epoch, target.receipt);
+}
+async function confirmSearchPurchase(quality: SearchPurchasedQuality) {
+  const target = purchaseChooser.value;
+  if (!target?.group.live() || groupDownloadBusy.value || !target.choices.includes(quality)) return;
+  const { group, receipt, omitted } = target;
+  const attempt = sequence;
+  const live = () => attempt === sequence && purchaseChooser.value === target && group.live();
+  groupDownloadBusy.value = true;
+  try {
+    const reply = await client.searchGroupDownload(group.epoch, {
+      kind: 'confirm_quality',
+      receipt,
+      quality,
+    });
+    if (!live()) return;
+    if (
+      reply.kind === 'accepted' &&
+      reply.result.epoch === group.epoch &&
+      reply.result.operationId === receipt
+    ) {
+      closeSearchPurchase(false);
+      feedback(searchDownloadResult(reply.result.accepted.length, omitted));
+    } else if (reply.kind === 'directory_required') {
+      closeSearchPurchase(true);
+      askSearchDownloadDirectory(group);
+    } else if (
+      reply.kind === 'quality_confirmed' &&
+      reply.epoch === group.epoch &&
+      reply.quality === quality
+    ) {
+      if (reply.decision === 'playlist_required' && reply.receipt === receipt) {
+        downloadPicker.value = { group, receipt, omitted };
+        closeSearchPurchase(false);
+      } else {
+        closeSearchPurchase(true);
+        feedback(
+          reply.decision === 'membership_unknown'
+            ? '暂未核实右击歌曲的喜欢状态，未添加下载任务。'
+            : '暂不能核对这组歌曲可用的下载歌单，未添加下载任务。',
+        );
+      }
+    }
+  } catch {
+    if (!live()) return;
+    closeSearchPurchase(false);
+    clearTimeout(timer);
+    message.value = '下载任务的接纳结果未确认。';
+    downloadFeedback.value = { group, receipt, omitted, action: 'check' };
   } finally {
     groupDownloadBusy.value = false;
   }
@@ -626,6 +707,18 @@ defineExpose({ show, showQueue, close });
       :program="sharedVoice.program"
       :can-copy="sharedVoice.live"
       @close="closeVoiceShare(sharedVoice.live())"
+    />
+  </ModalTransition>
+  <ModalTransition :return-focus="voiceShareReturn" :restore-focus="!downloadPicker">
+    <VoiceSongPurchasedQuality
+      v-if="purchaseChooser"
+      :key="purchaseChooser.receipt"
+      data-search-group-purchased
+      :choices="purchaseChooser.choices"
+      :busy="groupDownloadBusy"
+      :open-guide="openSearchPurchaseGuide"
+      @close="closeSearchPurchase(true)"
+      @confirm="confirmSearchPurchase"
     />
   </ModalTransition>
   <SearchGroupDownloadPicker

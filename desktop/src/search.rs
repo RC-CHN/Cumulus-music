@@ -69,6 +69,31 @@ pub async fn search_group_download<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SearchPurchasedGuide {
+    epoch: String,
+    receipt: String,
+}
+
+#[tauri::command]
+pub async fn open_search_group_purchased_quality_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    target: SearchPurchasedGuide,
+) -> Result<(), ClientError> {
+    search_window(&window)?;
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = app
+            .state::<MusicClient>()
+            .search_group_purchased_quality_guide(&target.epoch, &target.receipt)?;
+        crate::browser::launch(url)
+    })
+    .await
+    .map_err(|_| ClientError::from(cumulus_core::Error::State("browser worker stopped")))?
+    .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn search_refresh_privileges(
     client: tauri::State<'_, MusicClient>,

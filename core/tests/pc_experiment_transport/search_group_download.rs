@@ -1084,3 +1084,407 @@ async fn search_group_download_create_uses_acknowledged_id_and_never_replays_wri
         );
     }
 }
+
+fn purchased_search_page() -> HttpResponse {
+    let rows: Vec<_> = (41..=46)
+        .map(|id| {
+            let (fee, payed, flag, maxbr) = match id {
+                42 => (4, 2, 1 << 21, 999_000),
+                43 => (4, 2, 1 << 12, 320_000),
+                44 => (4, 4, 1 << 18, 128_000),
+                45 => (4, 1, 1 << 18, 999_000),
+                _ => (0, 0, 0, 320_000),
+            };
+            json!({"baseInfo":{"simpleSongData":{"id":id,
+                "name":format!("合成已购选择 {id}"), "dt":120000,
+                "ar":[{"id":101,"name":"合成歌手"}], "al":{"id":123,"name":"合成专辑"},
+                "privilege":{"id":id,"fee":fee,"payed":payed,"flag":flag,"maxbr":maxbr,
+                "st":if id==42 {-100}else{0},"pl":320000,"dl":320000}
+            }}})
+        })
+        .collect();
+    json!({"code":200,"data":{"totalCount":rows.len(),"resources":rows,"hasMore":false}}).into()
+}
+
+#[tokio::test]
+async fn search_group_download_purchased_union_and_one_level_are_scoped_to_confirmed_tasks() {
+    let root = tempfile::tempdir().unwrap();
+    let denied = || json!({"code":200,"data":{"code":403}}).into();
+    let (api, http) = vinyl_http(
+        root.path(),
+        &[COOKIE],
+        [
+            purchased_search_page(),
+            json!({"code":200,"ids":[42]}).into(),
+            denied(),
+            denied(),
+            denied(),
+        ],
+    );
+    let (client, session, epoch) = client(root.path(), api);
+    let rows = search(&client, &epoch).await;
+    assert_eq!(rows[0]["groupDownload"]["right"], "ordinary");
+    assert_eq!(rows[1]["groupDownload"]["right"], "copyright_blocked");
+    assert_eq!(rows[2]["groupDownload"]["right"], "purchased");
+    assert_eq!(rows[3]["groupDownload"]["right"], "purchased");
+    assert_eq!(rows[2]["groupDownload"].as_object().unwrap().len(), 2);
+    assert!(rows[4]["groupDownload"].is_null(), "payed=1 grants nothing");
+    let group = || prepare(&rows, 1, &[2, 1, 0, 3]);
+    let reply = client.search_group_download(&epoch, group()).await.unwrap();
+    let R::Prepared {
+        decision: D::PurchasedQualityRequired,
+        receipt: Some(first),
+        eligible_count: 3,
+        omitted_count: 1,
+        purchased_qualities,
+        ..
+    } = reply
+    else {
+        panic!("missing purchased group chooser");
+    };
+    assert_eq!(
+        purchased_qualities,
+        [
+            Quality::Sky,
+            Quality::HiRes,
+            Quality::ExHigh,
+            Quality::Standard
+        ],
+        "union includes disjoint purchases, not the blocked anchor or a tier intersection"
+    );
+    assert_eq!(
+        http.calls().len(),
+        1,
+        "chooser precedes likes and directory"
+    );
+    assert!(
+        client
+            .search_group_purchased_quality_guide(&epoch, &first)
+            .unwrap()
+            .starts_with("https://y.music.163.com/")
+    );
+    for action in [
+        C::Start {
+            receipt: first.clone(),
+        },
+        C::Destinations {
+            receipt: first.clone(),
+            sort: PlaylistCollectSort::Default,
+            page: 0,
+        },
+        C::ConfirmQuality {
+            receipt: first.clone(),
+            quality: Quality::Dolby,
+        },
+    ] {
+        assert!(client.search_group_download(&epoch, action).await.is_err());
+    }
+    assert!(matches!(
+        client
+            .search_group_download(
+                &epoch,
+                C::ConfirmQuality {
+                    receipt: first.clone(),
+                    quality: Quality::Sky
+                },
+            )
+            .await
+            .unwrap(),
+        R::QualityConfirmed {
+            decision: D::MembershipUnknown,
+            receipt: None,
+            ..
+        }
+    ));
+    client
+        .search_group_download(
+            &epoch,
+            C::Cancel {
+                receipt: first.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        client
+            .search_group_purchased_quality_guide(&epoch, &first)
+            .is_err()
+    );
+    assert_eq!(http.calls().len(), 1);
+    let service = DownloadService::new(session).unwrap();
+    assert!(service.list().unwrap().is_empty());
+
+    client.liked_ids().await.unwrap();
+    directory(&client, &epoch, root.path()).await;
+    let settings = client.download_quality_preferences(&epoch).unwrap();
+    let mut options = settings.options;
+    options.quality = Quality::ExHigh;
+    options.cover = false;
+    client
+        .download_command(
+            &epoch,
+            DownloadCommand::Preferences {
+                revision: settings.revision,
+                options,
+            },
+        )
+        .await
+        .unwrap();
+    let receipt = decision(&client, &epoch, group(), D::PurchasedQualityRequired)
+        .await
+        .unwrap();
+    let confirm = |quality| C::ConfirmQuality {
+        receipt: receipt.clone(),
+        quality,
+    };
+    let R::Accepted { result } = client
+        .search_group_download(&epoch, confirm(Quality::Sky))
+        .await
+        .unwrap()
+    else {
+        panic!("expected direct result using the omitted clicked row's like");
+    };
+    let tasks = service.list().unwrap();
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|task| task.song_id.as_str())
+            .collect::<Vec<_>>(),
+        ["43", "41", "44"]
+    );
+    assert!(
+        tasks
+            .iter()
+            .all(|task| task.options.quality == Quality::Sky && !task.options.cover)
+    );
+    assert_eq!(
+        client
+            .download_quality_preferences(&epoch)
+            .unwrap()
+            .options
+            .quality,
+        Quality::ExHigh
+    );
+    assert!(
+        client
+            .search_group_download(&epoch, confirm(Quality::HiRes))
+            .await
+            .is_err()
+    );
+    let R::Accepted { result: again } = client
+        .search_group_download(&epoch, confirm(Quality::Sky))
+        .await
+        .unwrap()
+    else {
+        panic!("exact choice must read back without duplicate admissions");
+    };
+    assert_eq!(result.accepted, again.accepted);
+    http.wait(5).await;
+    let calls = http.calls();
+    assert_eq!(calls.len(), 5, "no repeated or downgraded authorization");
+    assert_eq!(calls[1].path, LIKED);
+    let mut ids = Vec::new();
+    for call in &calls[2..] {
+        assert_eq!(call.path, AUTH);
+        assert_eq!(call.payload["level"], "sky");
+        assert_eq!(call.payload["immerseType"], "c51");
+        assert!(call.payload.get("trialMode").is_none());
+        ids.push(call.payload["id"].as_str().unwrap());
+    }
+    ids.sort();
+    assert_eq!(ids, ["41", "43", "44"]);
+}
+
+#[tokio::test]
+async fn search_group_download_purchased_refuses_a_prior_task_and_leaves_its_raw_file() {
+    let root = tempfile::tempdir().unwrap();
+    let (api, http) = vinyl_http(root.path(), &[COOKIE], [purchased_search_page()]);
+    let (client, session, epoch) = client(root.path(), api);
+    let rows = search(&client, &epoch).await;
+    directory(&client, &epoch, root.path()).await;
+    let service = DownloadService::new(session).unwrap();
+    let mut options = client.download_quality_preferences(&epoch).unwrap().options;
+    options.quality = Quality::ExHigh;
+    let prior = service.create_default(&json!(41), options).unwrap();
+    let paused = service.request(&prior.id, DownloadAction::Pause).unwrap();
+    assert_eq!(paused.status, DownloadStatus::Paused);
+    let raw = prior.work.join("raw");
+    std::fs::write(&raw, b"synthetic prior partial media").unwrap();
+    assert!(
+        decision(
+            &client,
+            &epoch,
+            prepare(&rows, 1, &[2, 1, 0, 3]),
+            D::PurchasedSelectionUnavailable,
+        )
+        .await
+        .is_none()
+    );
+    let tasks = service.list().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].id, prior.id);
+    assert_eq!(tasks[0].options.quality, Quality::ExHigh);
+    assert_eq!(
+        std::fs::read(&raw).unwrap(),
+        b"synthetic prior partial media"
+    );
+    assert_eq!(http.calls().len(), 1);
+}
+
+#[tokio::test]
+async fn search_group_download_purchased_picker_preserves_choice_and_reverses_admission_only() {
+    const LIST: &str = "/api/user/playlist/v2";
+    const STAR: &str = "/api/user/playlist";
+    const DETAIL: &str = "/api/v6/playlist/detail";
+    const ADD: &str = "/api/v1/playlist/manipulate/tracks";
+    let playlist = json!({"id":81,"userId":71,"name":"合成已购目的地",
+        "specialType":0,"privacy":10,"tags":[],"trackIds":[]});
+    let detail = |ids: &[u64]| {
+        let mut playlist = playlist.clone();
+        playlist["trackIds"] = json!(ids.iter().map(|id| json!({"id":id})).collect::<Vec<_>>());
+        json!({"code":200,"playlist":playlist}).into()
+    };
+    let denied = || json!({"code":200,"data":{"code":403}}).into();
+    let root = tempfile::tempdir().unwrap();
+    let (api, http) = vinyl_http(
+        root.path(),
+        &[COOKIE],
+        [
+            purchased_search_page(),
+            json!({"code":200,"ids":[43]}).into(),
+            json!({"code":200,"playlist":[playlist],"more":false}).into(),
+            json!({"code":200,"playlist":[],"more":false}).into(),
+            detail(&[]),
+            HttpResponse::Ready(Err(Error::Transport("synthetic lost paid add".into()))),
+            detail(&[]),
+            detail(&[43, 41, 44]),
+            denied(),
+            denied(),
+            denied(),
+        ],
+    );
+    StateStore::open(root.path().join("config"))
+        .unwrap()
+        .put(
+            "transport",
+            "pc-mconfig-v1",
+            "pc",
+            &serde_json::to_value(Snapshot {
+                origin: ApiOrigin::Pc,
+                version: 1,
+                bucket: String::new(),
+                generation: 1,
+                source_url: Some("https://p1.music.126.net/obj/fixture.data".into()),
+                data: Some(json!({})),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    let (client, session, epoch) = client(root.path(), api);
+    let rows = search(&client, &epoch).await;
+    client.liked_ids().await.unwrap();
+    directory(&client, &epoch, root.path()).await;
+    let receipt = decision(
+        &client,
+        &epoch,
+        prepare(&rows, 1, &[2, 1, 0, 3]),
+        D::PurchasedQualityRequired,
+    )
+    .await
+    .unwrap();
+    let list = || C::Destinations {
+        receipt: receipt.clone(),
+        sort: PlaylistCollectSort::Default,
+        page: 0,
+    };
+    assert!(client.search_group_download(&epoch, list()).await.is_err());
+    let confirm = |quality| C::ConfirmQuality {
+        receipt: receipt.clone(),
+        quality,
+    };
+    assert!(matches!(
+        client.search_group_download(&epoch, confirm(Quality::HiRes)).await.unwrap(),
+        R::QualityConfirmed {decision:D::PlaylistRequired, receipt:Some(grant), quality:Quality::HiRes, ..}
+        if grant == receipt
+    ));
+    assert_eq!(http.calls().len(), 2);
+    assert!(
+        client
+            .search_group_download(&epoch, confirm(Quality::Sky))
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        client.search_group_download(&epoch, list()).await.unwrap(),
+        R::Destinations { page, .. } if page.value.playlists[0].id == "81"
+    ));
+    let reply = client
+        .search_group_download(
+            &epoch,
+            C::Choose {
+                receipt: receipt.clone(),
+                playlist_id: "81".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let value = serde_json::to_value(reply).unwrap();
+    assert_eq!(value["result"]["phase"], "uncertain");
+    let service = DownloadService::new(session).unwrap();
+    assert!(service.list().unwrap().is_empty());
+    let reply = client
+        .search_group_download(
+            &epoch,
+            C::Reconcile {
+                receipt: receipt.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let value = serde_json::to_value(reply).unwrap();
+    let continuation = value["result"]["continuation"].as_str().unwrap().to_owned();
+    assert!(matches!(
+        client
+            .search_group_download(
+                &epoch,
+                C::StartFromPlaylist {
+                    receipt,
+                    continuation
+                }
+            )
+            .await
+            .unwrap(),
+        R::Accepted { .. }
+    ));
+    let tasks = service.list().unwrap();
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|task| task.song_id.as_str())
+            .collect::<Vec<_>>(),
+        ["44", "41", "43"]
+    );
+    assert!(
+        tasks
+            .iter()
+            .all(|task| task.options.quality == Quality::HiRes)
+    );
+    http.wait(11).await;
+    let calls = http.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .skip(1)
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            LIKED, LIST, STAR, DETAIL, ADD, DETAIL, DETAIL, AUTH, AUTH, AUTH
+        ]
+    );
+    assert_eq!(calls[5].payload["trackIds"], r#"["43","41","44"]"#);
+    assert!(
+        calls[8..]
+            .iter()
+            .all(|call| call.payload["level"] == "hires")
+    );
+}
