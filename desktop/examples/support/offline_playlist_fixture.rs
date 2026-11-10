@@ -40,6 +40,9 @@ const DOWNLOAD_STAGES: &[&str] = &[
     "ux_10_header_later_page",
     "ux_11_header_download_playing",
     "ux_12_header_empty_preserves_play",
+    "ux_13_queue_empty_preserves_play",
+    "ux_14_queue_filtered_insert",
+    "ux_15_queue_starts_empty",
 ];
 const HEADER_PLAYLIST: &str = "13";
 

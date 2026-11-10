@@ -130,7 +130,7 @@
         retry()?.getAttribute('aria-disabled') === 'false' && retry()?.textContent.trim() === '重试联网读取',
       'cached controls and eligibility ' + JSON.stringify(wanted));
       check(status().textContent.includes('本机缓存') && headerPlay()?.textContent.includes('播放可用曲目') &&
-        !one('.playlist-edit') && !one('[aria-label="更多歌单操作"]') &&
+        !one('.playlist-edit') && one('.playlist-hero [aria-label="更多歌单操作"]') &&
         !one('[aria-label="歌单评论"]') && !one('.playlist-hero [aria-label="下载当前歌曲列表"]'),
       'cached view remains read-only');
       check(row(own).textContent.includes(ownName) &&
@@ -263,6 +263,54 @@
     check(same(preserved, incumbent) && onlyFirstPage(),
       'empty selection keeps native play ID, queue revision, paused clock and rows');
     await capture('ux_12_header_empty_preserves_play', { incumbent, preserved, message, loadedRows: 100 });
+
+    const feedback = () => one('.playlist-action-feedback[role="status"]');
+    async function addAll() {
+      click(await wait(() => one('.playlist-hero [aria-label="更多歌单操作"]'), 'cached menu trigger'));
+      const item = await wait(() => one('[data-menu-key^="queue-offline:"]'), 'cached add all item');
+      check(item.textContent.trim() === '添加全部至播放列表' &&
+        item.closest('[role="menu"]').querySelectorAll('[role="menuitem"]').length === 1,
+        'only the supported cached action is shown');
+      click(item);
+    }
+    step = 'cached Add All with no eligible tracks preserves the incumbent';
+    await addAll();
+    await wait(() => feedback()?.textContent.includes('歌单中没有可离线播放的曲目'), 'cached queue feedback');
+    const rejectedAdd = await player();
+    const afterRejectedAdd = { playId: rejectedAdd.playId, queueRevision: rejectedAdd.queueRevision,
+      position: rejectedAdd.position, state: rejectedAdd.state, queue: await queue() };
+    check(same(afterRejectedAdd, incumbent), 'empty Add All has no queue or audio side effect');
+    await capture('ux_13_queue_empty_preserves_play', { incumbent, afterRejectedAdd });
+    click([...feedback().querySelectorAll('button')].find(button => button.textContent.trim() === '关闭'));
+
+    step = 'ordinary text search filters the view but Add All uses the whole cached order';
+    await localLibrary();
+    await playlist();
+    await ready([local, own]);
+    const search = one('[aria-label="搜索歌单歌曲"]');
+    search.value = ownName;
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(() => same(rows(), [own]), 'the existing search hides the cached CUE row');
+    await addAll();
+    const added = await wait(async () => {
+      const view = await player(), queued = await queue();
+      return view.queueRevision !== incumbent.queueRevision && same(queued, [own, local]) &&
+        { playId: view.playId, position: view.position, state: view.state, queue: queued };
+    }, 'whole cached queue insert after the current download');
+    check(added.playId === incumbent.playId && added.position === incumbent.position &&
+      added.state === 'paused' && same(rows(), [own]), 'queue insert preserves paused native audio and search');
+    await capture('ux_14_queue_filtered_insert', { added, incumbent });
+    click(one('[aria-label="清空歌单搜索"]'));
+    await wait(() => same(rows(), expected), 'original cached order visible');
+
+    step = 'the cached menu starts the first available track only on an empty queue';
+    await invoke('player_action', { epoch, action: { kind: 'clear' } });
+    await wait(async () => (await queue()).length === 0, 'synthetic queue cleared');
+    await addAll();
+    const queuedHead = await playing(local, 'local', 'Add All starts first native CUE');
+    check(same(queuedHead.queue, [local, own]) && queuedHead.playId !== incumbent.playId,
+      'empty queue starts from the whole cache in its own order');
+    await capture('ux_15_queue_starts_empty', { player: queuedHead });
 
     const frontendEntry = new URL(one('script[type="module"][src]').src).pathname.split('/').pop();
     await event('complete', { ok: true, local, setupAttempts, frontendEntry });

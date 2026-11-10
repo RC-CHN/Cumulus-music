@@ -14,6 +14,7 @@ STAGES = (
     'ux_05_digest_rejected', 'ux_06_size_disabled', 'ux_07_restored',
     'ux_08_play_available', 'ux_09_next_downloaded',
     'ux_10_header_later_page', 'ux_11_header_download_playing', 'ux_12_header_empty_preserves_play',
+    'ux_13_queue_empty_preserves_play', 'ux_14_queue_filtered_insert', 'ux_15_queue_starts_empty',
 )
 LEGACY = 'a10c0000000000000000000000000001'
 
@@ -61,7 +62,7 @@ def main():
     order = [local, '701', LEGACY, '702']
     eligible = [local, '701']
     original = states[:9]
-    header_states = states[9:]
+    header_states = states[9:12]
     assert all(state['rows'] == order for state in original)
     assert {'701', '702'} <= set(original[0]['enabled'])
     assert [state['enabled'] for state in original[1:]] == [
@@ -91,9 +92,19 @@ def main():
     assert empty['incumbent']['state'] == 'paused' and empty['incumbent']['queue'] == ['701']
     assert empty['incumbent']['playId'] == later['playId'] and empty['incumbent']['queueRevision']
 
+    menu_empty, menu_added, menu_start = states[12:]
+    assert menu_empty['incumbent'] == menu_empty['afterRejectedAdd'] == empty['incumbent']
+    assert menu_added['rows'] == ['701'] and menu_added['added']['queue'] == ['701', local]
+    assert menu_added['added']['state'] == 'paused'
+    assert menu_added['added']['playId'] == empty['incumbent']['playId']
+    assert menu_added['added']['position'] == empty['incumbent']['position']
+    assert menu_start['rows'] == order and menu_start['player']['queue'] == eligible
+    assert menu_start['player']['id'] == local and menu_start['player']['resourceKind'] == 'local'
+    assert menu_start['player']['position'] > .10 and menu_start['player']['playId'] != later['playId']
+
     receipts = [state['nativeReceipt'] for state in states]
-    assert [r['unavailable'] for r in receipts] == [0, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 3]
-    header_receipts = receipts[9:]
+    assert [r['unavailable'] for r in receipts] == [0, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4]
+    header_receipts = receipts[9:12]
     assert [r['headerTransportCuts'] for r in header_receipts] == [1, 1, 2]
     assert [r['headerReads'] for r in header_receipts] == [2, 2, 4]
     assert [r['headerLastId'] for r in header_receipts] == ['701', '701', '702']
@@ -129,6 +140,7 @@ def main():
                   sameAccountLedgerRequired=True, damagedDigestRejected=True, damagedLengthDisabled=True,
                   restoredPublicationPlayable=True, headerAndNextUseOfflineQueue=True,
                   headerPlaysBeyondLoadedPage=True, emptyHeaderPreservesIncumbent=True,
+                  menuQueuesWholeCache=True, menuPreservesIncumbent=True, menuStartsEmptyQueue=True,
                   realMusicRequests=0, playbackAuthorizationAttempts=0, remotePlaylistMutations=0,
                   frontendEntry=entry, frontendApp=args.expected_app, stages=len(STAGES),
                   screenshots=len(images))

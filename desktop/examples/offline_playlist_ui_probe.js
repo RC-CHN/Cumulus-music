@@ -90,7 +90,7 @@
     await playlist();
     await wait(() => status() && same(rows(), expected), 'cached view and same order');
     check(status().textContent.includes('本机缓存') && !one('.playlist-edit') &&
-      !one('[aria-label="更多歌单操作"]') && !one('[aria-label="歌单评论"]') &&
+      one('.playlist-hero [aria-label="更多歌单操作"]') && !one('[aria-label="歌单评论"]') &&
       !one('.playlist-hero [aria-label="下载当前歌曲列表"]'), 'cached view has no online actions');
     check(['701', opaque, '702'].every(id => row(id).querySelector('[data-result-action="play"]').disabled) &&
       !row(local).querySelector('[data-result-action="play"]').disabled &&
@@ -103,6 +103,15 @@
     const control = cachedPlay.getBoundingClientRect();
     check(ink.left >= control.left + 4 && ink.right <= control.right - 4,
       'cached play label and icon fit the button');
+    const cachedMenu = one('.playlist-hero [aria-label="更多歌单操作"]');
+    click(cachedMenu);
+    const addAll = await wait(() => one('[data-menu-key^="queue-offline:"]'), 'offline-only add all');
+    check(addAll.textContent.trim() === '添加全部至播放列表' &&
+      addAll.closest('[role="menu"]').querySelectorAll('[role="menuitem"]').length === 1,
+      'no online menu actions on the cached detail');
+    addAll.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(() => cachedMenu.getAttribute('aria-expanded') === 'false' &&
+      !one('[data-menu-key^="queue-offline:"]'), 'cached menu closed');
     await capture('ux_02_cached');
 
     step = 'play cached CUE through native decoder';
