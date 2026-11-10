@@ -145,7 +145,7 @@ fn group_next(view: &PlayerView, anchor: Value, rows: Vec<Value>) -> PlayerActio
 
 #[tokio::test]
 async fn search_group_next_queues_in_selection_order_filters_and_preserves_the_decoder() {
-    let (_dir, api, session, client, _) = fixture();
+    let (dir, api, session, client, _) = fixture();
     api.search_menu_revision.store(1, Ordering::SeqCst);
     api.hold_url_id.store(2, Ordering::SeqCst);
     client
@@ -229,6 +229,21 @@ async fn search_group_next_queues_in_selection_order_filters_and_preserves_the_d
         ["1", "7", "2", "4", "3"]
     );
     assert_eq!(queue.tracks[2].entry_id, before.tracks[1].entry_id);
+    let saved: cumulus_core::playback::QueueSnapshot = serde_json::from_value(
+        cumulus_core::storage::StateStore::open(dir.path())
+            .unwrap()
+            .get("9", "playback", "queue")
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    for entry in &saved.items[1..4] {
+        assert_eq!(entry.source["scene"], "search");
+        assert_eq!(entry.source["trial_mode"], 42);
+        assert_eq!(entry.resource["trial_mode"], 42);
+    }
+    assert_ne!(saved.items[0].source["scene"], "search");
+
     assert!(matches!(
         client
             .player_action("1", group_next(&playing, anchor.clone(), rows.clone()))

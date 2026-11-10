@@ -315,6 +315,21 @@ impl From<Error> for ClientError {
                     "专辑歌曲列表已更新，请刷新专辑后重新拖入",
                     true,
                 ),
+                Error::State("selected search song is unavailable online") => (
+                    "search_group_anchor_unavailable",
+                    "这首歌当前无法播放，请从同组中可播放的歌曲打开菜单",
+                    false,
+                ),
+                Error::State("search selection has unverified playback rights") => (
+                    "search_group_rights_unknown",
+                    "所选歌曲中有未核实播放权限的条目，请重新选择",
+                    false,
+                ),
+                Error::State("search next requires a stable ordinary queue") => (
+                    "search_group_queue_unavailable",
+                    "仅能向当前普通播放队列添加这组选中的歌曲",
+                    false,
+                ),
                 Error::State("search drop results expired") => (
                     "search_drop_source_changed",
                     "搜索结果已失效，请重新搜索后再拖入",
