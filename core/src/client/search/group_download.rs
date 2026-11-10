@@ -303,6 +303,13 @@ struct Observed {
     rows: Vec<(String, RowRights)>,
     pages: Vec<Arc<Page>>,
 }
+struct PlanDraft {
+    songs: Vec<String>,
+    existing: BTreeMap<String, ExistingSongAdmission>,
+    collection: Vec<String>,
+    purpose: SearchGroupDownloadDecision,
+    purchased_qualities: Vec<Quality>,
+}
 struct Plan {
     receipt: String,
     observed: Arc<Observed>,
@@ -466,16 +473,7 @@ impl SearchGroupDownloads {
         }
     }
 
-    fn publish(
-        &self,
-        ticket: u64,
-        observed: Arc<Observed>,
-        songs: Vec<String>,
-        existing: BTreeMap<String, ExistingSongAdmission>,
-        collection: Vec<String>,
-        purpose: SearchGroupDownloadDecision,
-        purchased_qualities: Vec<Quality>,
-    ) -> Result<String> {
+    fn publish(&self, ticket: u64, observed: Arc<Observed>, draft: PlanDraft) -> Result<String> {
         let mut state = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         if state.ticket != ticket {
             return Err(Error::StaleResponse);
@@ -484,11 +482,11 @@ impl SearchGroupDownloads {
         state.plan = Some(Arc::new(Plan {
             receipt: receipt.clone(),
             observed,
-            songs: songs.into(),
-            existing: Arc::new(existing),
-            collection: collection.into(),
-            purpose,
-            purchased_qualities,
+            songs: draft.songs.into(),
+            existing: Arc::new(draft.existing),
+            collection: draft.collection.into(),
+            purpose: draft.purpose,
+            purchased_qualities: draft.purchased_qualities,
             quality: OnceLock::new(),
             destination: Mutex::default(),
             busy: AtomicBool::new(false),
@@ -877,11 +875,13 @@ impl MusicClient {
             Some(host.publish(
                 ticket,
                 observed,
-                songs,
-                existing,
-                collection,
-                decision,
-                qualities.clone(),
+                PlanDraft {
+                    songs,
+                    existing,
+                    collection,
+                    purpose: decision,
+                    purchased_qualities: qualities.clone(),
+                },
             )?)
         } else {
             None
