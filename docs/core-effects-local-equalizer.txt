@@ -215,6 +215,25 @@ native EOF. The unmodified stock scenario also passed three stages.
 The held play used no media URL; the deliberate corrupt-publication
 selection alone used one synthetic URL through the previous fallback.
 
+Durable revocation of the held graph is a separate native check:
+`scripts/ci/search_download_revocation_smoke.py --binary ABS_PROBE
+--frontend-dist ABS_DIST --flac-library ABS_LIB --flac-sha256 SHA --root NEW_DIR`
+runs in a no-route Linux Xvfb/DBus namespace. The same fixture temporarily
+replaces the name after the exact FLAC descriptor is handed over. The
+real graph starts processing PCM and advancing the native clock, then
+pauses in the same play and entry. At that checkpoint the harness
+observes one open descriptor for the original inode and removes only
+the exact, synthetic owner's checked offline ledger row. The ordinary
+actor detects the durable change and releases that descriptor, keeps
+the queue unchanged and reports a playback error. It does not count
+revocation as EOF, reload the file or request a playback URL. The one
+authorization and one media read only seeded the fixture. It leaves the
+file bytes unchanged, uses libmpv null output and does not establish
+instantaneous server revocation, Windows behavior or audible device
+output. The Linux test used the retained native/WebView build
+4861d330 (same playback and fixture code as 7afa839b) and the same pinned
+libFLAC hash above.
+
 Held PCM WAV input
 ------------------
 
