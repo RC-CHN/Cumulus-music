@@ -30,9 +30,17 @@ WIRE = [
 ]
 SELECTION = ['官方精选音效', [200, 300, 301, 310, 311, 312, 313]]
 MORE = ['更多音效', [302, 303]]
+LEGACY = [['推荐音效', [201, 202, 203, 204, 205, 206]], ['全部音效', [208, 211, 207, 212]]]
+LEGACY_EMPTY = [[title, []] for title, _ in LEGACY]
+LEGACY_CATALOGUE = [{'path': f'/api/usertool/sound/mobile/{action}', 'args': {}}
+                    for action in ('promote', 'all')]
+LEGACY_WIRE = [*LEGACY_CATALOGUE, *WIRE[3:5], *LEGACY_CATALOGUE]
 
 
-def verify_wire(actual, count):
+def verify_wire(actual, count, legacy):
+    if legacy:
+        assert actual == LEGACY_WIRE[:count]
+        return
     assert len(actual) == count
     for start, end in ((0, 3), (3, 5), (5, 8)):
         left, right = actual[start:end], WIRE[:count][start:end]
@@ -55,6 +63,7 @@ def main():
     parser.add_argument('--filter', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--legacy', action='store_true')
     args = parser.parse_args()
     if sys.platform != 'linux':
         parser.error('this real WebView recipe uses the sealed Linux X11 environment')
@@ -70,6 +79,8 @@ def main():
                CUMULUS_UX_SCRIPT=str(repo / 'desktop/examples/audio_effect_tabs_ui_probe.js'),
                CUMULUS_PROOF_FRONTEND_DIST=str(args.frontend_dist.resolve(strict=True)),
                LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
+    if args.legacy:
+        env['CUMULUS_EFFECT_CATALOGUE_LEGACY'] = '1'
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
         folder = root / key
         folder.mkdir(mode=0o700)
@@ -91,10 +102,19 @@ def main():
         tab, online, calls, master, revisions = STAGES[name]
         assert row['active'] == tab and row['online'] is online and row['headerMaster'] is master
         assert row['connectedTabs'] == ['音效', '设备适配', '均衡器']
-        verify_wire(row['effectDirectoryCalls'], calls)
+        if args.legacy:
+            calls -= int(calls > 0) + int(name == 'menu_default')
+        verify_wire(row['effectDirectoryCalls'], calls, args.legacy)
         assert row['effectDirectoryMaterialGets'] == 0
-        assert row['overview'] == ([SELECTION, MORE] if name == 'online_catalogue' else [MORE] if name == 'menu_default' else [])
-        assert row['partialOverview'] is (name == 'menu_default')
+        if name in ('online_catalogue', 'menu_default'):
+            assert row['catalogueLayout'] == ('legacy' if args.legacy else 'modern')
+            if args.legacy:
+                assert row['overview'] == (LEGACY if name == 'online_catalogue' else LEGACY_EMPTY)
+            else:
+                assert row['overview'] == ([SELECTION, MORE] if name == 'online_catalogue' else [MORE])
+        else:
+            assert row['catalogueLayout'] is None and row['overview'] == []
+        assert row['partialOverview'] is (name == 'menu_default' and not args.legacy)
         assert row['audioFactoryCount'] == 1
         native = row['nativePeq']
         assert native['decoderLoads'] == 1 and native['starts'] == native['stops'] == native['attaches'] == 0
@@ -117,7 +137,7 @@ def main():
             assert eq['preset'] == {'kind': 'built_in', 'index': 1}
             assert eq['settings'] == (selected_settings if master else {**selected_settings, 'master_bypassed': True})
     assert len(identities) == len(positions) == len(queue_revisions) == 1
-    verify_wire(done['effectDirectoryCalls'], len(WIRE))
+    verify_wire(done['effectDirectoryCalls'], len(LEGACY_WIRE if args.legacy else WIRE), args.legacy)
     assert done['effectDirectoryMaterialGets'] == 0
     assert done['nativePlayer']['position'] == done['observedPosition'] == next(iter(positions))
     assert done['nativePlayer']['state'] == 'paused'
@@ -128,7 +148,9 @@ def main():
               'nativeNullAudio': True, 'sealedSyntheticAccount': True, 'stages': list(STAGES),
               'screenshots': screenshots, 'pausedPosition': next(iter(positions)), 'sameNativeIdentity': True,
               'localEqualizerHeaderAcrossTabs': True, 'localMasterWrites': 2, 'decoderLoads': 1,
-              'browserOfflineStateSimulated': True, 'officialSelectionCap': 7, 'partialMoreRetained': True,
+              'browserOfflineStateSimulated': True, 'catalogueLayout': 'legacy' if args.legacy else 'modern',
+              'officialSelectionCap': 6 if args.legacy else 7,
+              'legacyEmptyKeepsHeadings': args.legacy, 'partialMoreRetained': not args.legacy,
               'wire': done['effectDirectoryCalls'], 'materialGets': 0, 'realAccountWrites': 0}
     (root / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))

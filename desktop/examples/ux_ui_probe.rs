@@ -427,6 +427,7 @@ impl Api for Library {
         let existing = vinyl_comments_fixture::group()
             .or_else(vinyl_similar_fixture::revision)
             .or_else(search_artist_top50_fixture::revision)
+            .or_else(effect_directory_fixture::overview_revision)
             .or_else(|| vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into()));
         if existing.is_some() {
             return Ok(existing);
@@ -441,6 +442,9 @@ impl Api for Library {
         revision: &'a str,
     ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
         Box::pin(async move {
+            if effect_directory_fixture::overview_enabled() {
+                return effect_directory_fixture::overview_assignment(revision);
+            }
             let legacy = if vinyl_comments_fixture::group().is_some() {
                 Some(vinyl_comments_fixture::assignment(revision))
             } else if vinyl_similar_fixture::enabled() {
@@ -1341,6 +1345,13 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        if audio_effect_tabs_proof {
+            tauri::async_runtime::block_on(async {
+                assert_eq!(client.restore_account().await?.status,
+                    cumulus_core::account::SessionStatus::Authenticated);
+                client.refresh_pc_presentation().await
+            })?;
+        }
         if search_voice_menu_fixture::enabled() {
             tauri::async_runtime::block_on(async {
                 assert_eq!(client.restore_account().await?.status,
