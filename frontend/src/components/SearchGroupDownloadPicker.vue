@@ -398,7 +398,7 @@ async function submit(choice?: Choice) {
         <button class="primary" type="submit" :disabled="!validName || busy">创建</button>
       </footer>
     </form>
-    <div v-else-if="creation !== 'none'" class="collect-feedback">
+    <div v-else-if="creation !== 'none'" class="collect-feedback collect-create-feedback">
       <p role="status">{{ error || '正在处理新歌单…' }}</p>
       <button
         v-if="creation === 'checking'"

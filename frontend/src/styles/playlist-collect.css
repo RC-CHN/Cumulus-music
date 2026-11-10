@@ -163,6 +163,20 @@
   overflow-wrap: anywhere;
   flex-shrink: 0;
 }
+.playlist-collect-dialog .collect-create-feedback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 0 26px 24px;
+  min-height: 0;
+  max-height: none;
+  flex-shrink: 1;
+  text-align: center;
+}
+.collect-create-feedback p {
+  margin: 0;
+}
 .collect-create {
   padding: 0 26px;
   min-height: 0;
