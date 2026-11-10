@@ -311,7 +311,7 @@ onUnmounted(() => {
       </button>
     </header>
     <div class="effect-directory-body">
-      <p v-if="!headphoneManagement" class="effect-directory-note">
+      <p v-if="!headphoneManagement && !embedded" class="effect-directory-note">
         查看音效介绍和账号权益。可验证的独立参数均衡组件可以单独配置。
       </p>
       <div v-if="account.status !== 'authenticated'" class="effect-directory-message">
@@ -447,8 +447,13 @@ onUnmounted(() => {
                         >{{ item.membership === 'svip' ? 'SVIP' : 'VIP'
                         }}{{ trialEffects.has(item.id) ? ' 限免' : '' }}</span
                       >
-                      <span v-if="item.newly_added" class="effect-card-membership" data-effect-new
-                        >新</span
+                      <span
+                        v-if="item.newly_added"
+                        class="effect-card-new"
+                        data-effect-new
+                        role="img"
+                        aria-label="新音效"
+                        >NEW</span
                       >
                     </strong>
                     <span v-if="item.subtitle && group.key !== 'legacy_all'">{{
@@ -662,7 +667,22 @@ onUnmounted(() => {
   font-weight: 500;
 }
 .effect-directory-grid-legacy_recommended .effect-directory-card[aria-pressed='true'],
-.effect-directory-grid-legacy_all .effect-directory-card[aria-pressed='true'] {
+.effect-directory-grid-legacy_all .effect-card-new {
+  display: inline-grid;
+  width: 28px;
+  height: 16px;
+  margin-inline-start: 4px;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(to right, #ff1168, #fc3d49);
+  color: white;
+  font-size: 8px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+.effect-directory-card[aria-pressed='true'] {
   border-color: var(--accent);
 }
 .effect-directory-grid-legacy_all .effect-directory-card {

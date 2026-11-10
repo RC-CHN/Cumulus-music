@@ -380,7 +380,8 @@ Linux 实际 WebView `effect_peq_native_smoke.py --pause-local` 验证暂停前�
   列表空，保留两个标题但清空两区。否则只取推荐前六，保留全部原顺序并只排除
   这六个 ID。推荐为双列 94px，全部为三列 66px，间距 10px，小卡不展示副标题。
   M21.k:1357–1386 与 M3091:1712–1836 只在旧卡的 type 为数字 3 时标 VIP，
-  newAdd 为数字 1 时标「新」；旧卡不显示接口素材或 URL。登录失效或账号变化
+  newAdd 为数字 1 时标 28×16 的 NEW（M9.Tn:6427–6471）；旧卡不显示接口素材或 URL。
+  登录失效或账号变化
   仍由核心隔离，不当成普通空结果，也不继续发送旧账号的下一笔请求。
 - AudioNew.tsx:43–103 / M3091:3718–3793 在挂载时并行请求
   /api/usertool/sound/queryAllSound {exposeType: 5|6|7}。精选只在至少有 1 项

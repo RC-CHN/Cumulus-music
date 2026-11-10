@@ -58,7 +58,10 @@
     assert(columns(recommended) === 2 && columns(all) === 3 &&
       cardHeight(recommended) === 94 && cardHeight(all) === 66,
       'legacy recommended/all grids have the two official geometries');
-    assert(recommended.querySelector('[data-effect-id="201"] [data-effect-new]')?.textContent.trim() === '新' &&
+    const fresh = recommended.querySelector('[data-effect-id="201"] [data-effect-new]');
+    assert(fresh?.textContent.trim() === 'NEW' && fresh.getAttribute('aria-label') === '新音效' &&
+      fresh.offsetWidth === 28 && fresh.offsetHeight === 16 &&
+      getComputedStyle(fresh).backgroundImage.startsWith('linear-gradient(') &&
       recommended.querySelector('[data-effect-id="202"] [data-effect-membership="vip"]')?.textContent.trim() === 'VIP' &&
       recommended.textContent.includes('合成旧版描述') && !all.textContent.includes('合成旧版描述') &&
       !pane('catalogue').querySelector('[data-effect-group] img'), 'legacy markers and subtitle do not use modern artwork');
