@@ -83,11 +83,11 @@ pub use super::podcast::{
     AudiobookSkipAction, AudiobookSkipContext, AudiobookSkipView, EpisodeView, PodcastCard,
     PodcastCatalogue, PodcastCatalogueCard, PodcastCatalogueQuery, PodcastCategory, PodcastCommand,
     PodcastHomeBlock, PodcastHomePage, PodcastMutationView, PodcastPage, PodcastProgramTarget,
-    PodcastQuery, PodcastRadioOrder, PodcastRankGroup, PodcastRankMenu, PodcastRankQuery,
-    PodcastRankResource, PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastRecentPage,
-    PodcastRecentProgramMenu, PodcastRecentProgramTarget, PodcastRecentQuery,
-    PodcastSearchMembership, PodcastState, PodcastSubcategory, PodcastSubscriptionRecommendation,
-    PodcastSubscriptionRecommendations, PodcastTopLayout,
+    PodcastPurchasedRow, PodcastPurchasedTarget, PodcastQuery, PodcastRadioOrder, PodcastRankGroup,
+    PodcastRankMenu, PodcastRankQuery, PodcastRankResource, PodcastRankRow, PodcastRankTab,
+    PodcastRanks, PodcastRecentPage, PodcastRecentProgramMenu, PodcastRecentProgramTarget,
+    PodcastRecentQuery, PodcastSearchMembership, PodcastState, PodcastSubcategory,
+    PodcastSubscriptionRecommendation, PodcastSubscriptionRecommendations, PodcastTopLayout,
 };
 pub use super::profile_blacklist::{
     ProfileBlacklistCommand, ProfileBlacklistEntry, ProfileBlacklistHeader, ProfileBlacklistList,

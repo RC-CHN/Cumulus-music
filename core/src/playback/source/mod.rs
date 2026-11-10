@@ -107,6 +107,21 @@ impl SourceResolver {
         crate::podcast::progress::position(&self.session, token, resource, supplied_checkpoint)
             .await
     }
+    pub(crate) fn history_shuffle_position(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        anchor: &crate::podcast::progress::latest::ShuffleAnchor,
+        setting: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<f64>> {
+        crate::podcast::progress::history_shuffle_position(
+            &self.session,
+            token,
+            resource,
+            anchor,
+            setting,
+        )
+    }
     pub(crate) async fn missing_catalog_download(
         &self,
         resource: &Value,

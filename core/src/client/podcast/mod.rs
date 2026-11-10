@@ -6,6 +6,7 @@ mod discovery;
 mod dto;
 mod home;
 mod program_menu;
+pub(in crate::client) mod purchased;
 pub use program_menu::{PodcastProgramTarget, PodcastRecentProgramMenu};
 pub(super) mod profile;
 pub(in crate::client) mod radio_playback;
@@ -148,11 +149,28 @@ impl MusicClient {
             })
             .flatten();
         let library = PodcastLibrary::new(self.session.clone())?;
-        let snapshot = library.read_for(&token, &query.scope, refresh).await?;
-        if query
-            .revision
-            .as_ref()
-            .is_some_and(|r| r != &snapshot.revision)
+        let extending = matches!(query.scope, PodcastScope::Purchased) && query.offset != 0;
+        let snapshot = if extending {
+            if refresh {
+                return Err(Error::InvalidInput(
+                    "purchased refresh must start at offset zero",
+                ));
+            }
+            library
+                .extend_purchased_for(
+                    &token,
+                    query.revision.as_deref().ok_or(Error::QueueChanged)?,
+                    query.offset,
+                )
+                .await?
+        } else {
+            library.read_for(&token, &query.scope, refresh).await?
+        };
+        if !extending
+            && query
+                .revision
+                .as_ref()
+                .is_some_and(|r| r != &snapshot.revision)
         {
             return Err(Error::QueueChanged);
         }

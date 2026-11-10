@@ -14,7 +14,12 @@ const props = defineProps<{
   currentVoice?: string;
   playing: boolean;
 }>();
-const emit = defineEmits<{ radio: [id: string]; host: [id: string]; play: [voice: EpisodeView] }>();
+const emit = defineEmits<{
+  radio: [id: string];
+  host: [id: string];
+  play: [voice: EpisodeView];
+  doublePlay: [voice: EpisodeView];
+}>();
 const root = ref<HTMLElement>();
 const { groups, group, menu, tab, rows, limit, pending, error, configError } = props.model;
 usePageEntryFocus(
@@ -28,6 +33,18 @@ const change = (row: PodcastRankRow) =>
   row.rank !== null && row.lastRank !== null ? row.lastRank - row.rank : 0;
 function showMore() {
   limit.value = Math.min(rows.value.length, limit.value + 20);
+}
+function canPlay(voice: EpisodeView) {
+  return props.playable && !voice.unavailable && !!voice.browsePlaybackReceipt;
+}
+function doublePlay(row: PodcastRankRow, event: MouseEvent | KeyboardEvent) {
+  if (
+    (event.target instanceof Element && event.target.closest('button,a,input')) ||
+    row.resource.kind !== 'voice' ||
+    !canPlay(row.resource.voice)
+  )
+    return;
+  emit('doublePlay', row.resource.voice);
 }
 </script>
 
@@ -74,6 +91,12 @@ function showMore() {
         class="podcast-rank-row"
         :data-rank="row.rank ?? index + 1"
         :data-resource="row.resource.kind"
+        :tabindex="row.resource.kind === 'voice' && canPlay(row.resource.voice) ? 0 : undefined"
+        :aria-keyshortcuts="
+          row.resource.kind === 'voice' && canPlay(row.resource.voice) ? 'Enter' : undefined
+        "
+        @dblclick="doublePlay(row, $event)"
+        @keydown.enter.self.prevent="doublePlay(row, $event)"
       >
         <div class="rank-index">
           <strong>{{ row.rank ?? index + 1 }}</strong>
@@ -106,11 +129,7 @@ function showMore() {
           <button
             class="icon-button"
             type="button"
-            :disabled="
-              !playable ||
-              row.resource.voice.unavailable ||
-              !row.resource.voice.browsePlaybackReceipt
-            "
+            :disabled="!canPlay(row.resource.voice)"
             :aria-label="`${currentVoice === row.resource.voice.id && playing ? '暂停' : '播放'} ${row.resource.voice.name}`"
             @click="emit('play', row.resource.voice)"
           >

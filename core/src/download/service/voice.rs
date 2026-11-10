@@ -100,6 +100,28 @@ impl DownloadService {
     ) -> Result<DownloadTask> {
         options_valid(&options)?;
         let item = self.voice_detail(id).await?;
+        self.create_voice_default_from(item, options)
+    }
+
+    pub(crate) async fn create_scoped_voice_default(
+        &self,
+        id: &Value,
+        options: DownloadOptions,
+        lock_source: impl FnOnce() -> Result<crate::storage::OperationLock>,
+    ) -> Result<DownloadTask> {
+        options_valid(&options)?;
+        let item = self.voice_detail(id).await?;
+        // Do not hold the purchase cache lock over network I/O. Resolve the
+        // exact source again afterwards and serialize it with native commit.
+        let _source = lock_source()?;
+        self.create_voice_default_from(item, options)
+    }
+
+    fn create_voice_default_from(
+        &self,
+        item: Episode,
+        options: DownloadOptions,
+    ) -> Result<DownloadTask> {
         self.create_default_from(
             &json!(item.media_id()?),
             options,

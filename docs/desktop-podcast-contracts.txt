@@ -198,10 +198,16 @@ queue for plain Play and insert/de-duplicate the ordered window after
 current; M213:86–128 selects the exact clicked ID. The triangle toggles
 an already loaded matching episode without re-reading. Official full
 table double-click has a separate preference-dependent branch (M195:
-399–410, M225:590–602, M405:225–255, M3085:207–242): with replacement off
-it fetches around; with replacement on it uses the visible chart list and
-clears. This patch does not add table/weekly double-click gestures. The
-community full-chart explicit Play button uses the retained-queue path.
+399–410, M225:590–602, M405:225–255, M3085:207–311): with replacement off
+it fetches around and keeps the old queue; with replacement on it uses
+the table's loaded native rows in chart order and clears the ordinary queue.
+The M3096:2888–2905 full voice table supplies needFetchAudio and does not set
+resourceIdOfScene, so the replacement mode uses the episode's numeric categoryId:
+except 3001/10002/2001 it switches to sequential (M3085:478–485). A double-click
+on the currently loaded exact episode still toggles its transport without replacing
+the queue (M3085:531–546), after any required mode change. The row's keyboard
+Enter invokes the same Cumulus action. The play button, weekly card and preview
+retain their existing single-button path.
 
 M3085:431–453 and M71.c/g only give the latest radio breakpoint priority if
 it belongs to the clicked voice. M308:2251–2288 then uses that exact
@@ -217,6 +223,11 @@ receipts. A refreshed lane invalidates the old observation. Weekly cursor
 handles are additionally tied to that exact native feed visit: a previous
 page cannot mint current playback receipts after refresh or opt-out.
 Renderer sends only a receipt under the ordinary prepared playback ticket.
+Full table receipts additionally bind the ordered native chart. Selecting a
+different full chart retires the previous one without retiring preview/weekly
+receipts. A replacement uses no around query. Invalid/offline rows and rows
+missing a backing song cannot mint other episode authority; the clicked row
+still reads and validates its own detail and media rights before queue commit.
 After a usable window or eligible thrown fallback, Cumulus reads
 /api/dj/program/detail {id:<clicked episode>}; the optional signed t1 resume
 setting uses /api/dj/user/setting/resumeplay/get {radioId:<verified radio>}.
@@ -266,3 +277,69 @@ Cumulus 从同一原生账户/传输为当前有序节目选择准备一次性�
 顺序建档/部分失败保留；队列中的每条节目仍走独立权限及主音频授权。音质选项
 本身不是权益或文件授权，不能用于绕过受限音频、付费节目或 NCM 容器边界。
 本流程与声音页内的歌曲、已购歌曲、云盘和 MV 下载分开。
+
+「我的购买」播单与单集
+--------------------
+官方 M/15:3526–3565 以 /api/voicelist/bought/list {limit,offset} 读取已购项；
+productType=0 经 M/21.j 转播单，productType=1 经 M/21.B 转节目。M/2170:66–68、
+M/3008:350–378 每次 20 项、以原列表顺序追加；PayedTab.tsx:24–51 和
+M/3108:373–387,431,494–548,555–594 使用有声书/播客与单集混排的表格，
+显示「加载更多」，隐藏收藏按钮。两种资源即使数字 ID 相同也不互换。
+M/195:336–351 采用行自身 innerResourceType；M/405:288–289 的播单行单击
+打开播单，单集行单击只选中。M/2021:156–163,187–225,302–321 分别是
+单集下载、评论、更多和所属播单；下载图标 M/435:81–91 明确派发
+Action.download + ResourceType.voice，不因选中、进入列表或购买标识自动下载。
+
+M/3108:431–549 的默认列为「# / 标题 / 播放量 / 声音数」，不显示播放时间；
+只有播单有两列计数，单集保持空白。Cumulus 从已购买播单自身的 playCount
+投影可确认的数值或已缩写的计数，缺失和无效值留空；声音数保留播单投影，
+以「期」显示。表头与虚拟行共享列宽，序号在续页中连续，保留原有操作按钮。
+当前采用官方默认 64 px 行高；PH-PC-listPage-showMore=t1 的 56 px 紧凑行
+和控件布局需要单独的实验分组支持，未接入这张表。
+
+Cumulus 在首次读取只取 offset=0；明确点击「加载更多」才读取原生允许的
+下一页。未知显式 productType 不作为播单或节目，不生成操作，游标仍按原始
+20 项推进；省略 productType 的旧版播单继续按官方默认处理。相同类型/ID
+保留首次，失败的续页不替换已加载快照。旧版无类型的磁盘缓存不作权威。
+页面有界渲染；标题选中不发 IPC，播单/所属播单/评论从当前原生快照核对
+类型、ID、账号与版本。只有显式单集下载才绑定当前购买快照的收据并走上节
+权限及音质准备；选择之后变更购买快照或账号，不能以过期节目入队。
+「已购」只证明列表归类，不替代节目播放或下载权限。完整更多菜单及购买流程
+不在这条入口。
+
+已购单集双击播放（3.1.42.205594）
+---------------------------------
+PayedTab.tsx:32–51 / M3108:373–387,431–549,567–592 的混排表传入外层
+ResourceType.audio，只在 from 指定 myPayedAudio；M195:336–351 对被点击的行
+使用 innerResourceType，因而单集是 voice，M405:243–256 对其双击分派 Play。
+M195:399–410 的 listData 仅提供给外层 track/voice/local/download 类型，混排
+audio 外层不在此列，且页面没有传 needFetchAudio。M3085:247–311,399–411,
+431–454 因而使用单个被双击的节目，不请求 surrounding/节目总列表；即使启用
+替换队列也因 myPayedAudio+voice 不清空、不改模式。M1384:5241–5298 将它插在
+当前位置后并去重，用点击的节目 ID 起播；空队列同样定位这个节目。
+M3085:531–546 对同一当前节目切换播放/暂停，不重新加入。
+
+Cumulus 的单击继续只选中；双击标题或非控件行区域以当前可见行发起，键盘
+Enter 是等价的社区入口。IPC 复用原生 prepare/commit play selection，发送
+`{kind:"podcast_purchased_episode",target:{kind:"episode",id,revision}}`。
+Rust 从当前账号 SQLite 重取匹配节目，不接受播单和猜测的节目/媒体 ID。
+购买列表快照和轻量版本收据在同一事务提交；网络返回期间的列表重读、
+分页、账号/凭据变化或播放器代次变化会中止。原生同一在线节目可复用加载实例；
+匹配身份不足时先读取 `/api/dj/program/detail {id}`。新加载在落队列前也重读
+该详情以校验节目、媒体与已知播单，再按既有续播规则以及
+`/api/dj/play/url/check {voiceId}`、`/api/song/enhance/player/url/v1`
+申请该音频。权限拒绝、旧凭据、身份冲突、失效回执均保留旧队列，不把下载
+容器、试看片段或购买标识当作完整音源授权。已附着的一起听及原生 FM/心动
+模式继续由其协调器负责；本动作没有购买、支付或真实账号写入验证。
+
+节目 NCM 是独立容器策略：M/754:347–360 用同一主音频 ID 授权，
+:434–435 在成功响应后按 flag/payed 和节目/播单元数据判定本地 NCM；
+:488–529 下载到原音频后缀的临时路径，再进入标签/最终文件流程。
+M/144:23–27 对播单判断 radioFeeType===0 && feeScope===1，trial 判断则
+读取传入节目对象的顶层 radioFeeType===5；不能把嵌套播单字段当成
+trial 值。M/21:973–1000 正常节目投影保留 programFeeType，未投影该
+顶层字段；Cumulus 原生详情仍保留原始元数据，不把它当额外授权。
+M/23:567–570,598–600 的已加密节目本地播放还有独立权益判断；
+M/23:815–852 证明标签用 dj:，现有 Rust NCM 读写只支持 music:。
+因此本流程仍用服务端允许的普通音频，不假设支持节目 NCM 或把购入
+记录、试用、会员替代服务权限。尚需原官方节目容器字节和离线授权证据。

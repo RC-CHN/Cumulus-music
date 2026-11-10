@@ -248,12 +248,12 @@ fn row(
             let raw = &raw["voiceMetaVO"];
             let episode = Episode::from_official(raw).ok()?;
             let mut voice = view::episode(&episode, &[]);
-            if let Some((host, observation)) = authority {
-                host.bind(observation, &episode, &mut voice)?;
-            }
             voice.name = label(&json!(voice.name))?;
             if voice.radio_name.is_empty() {
                 voice.radio_name = label(&raw["radioName"]).unwrap_or_default();
+            }
+            if let Some((host, observation)) = authority {
+                host.bind(observation, &episode, &mut voice)?;
             }
             PodcastRankResource::Voice { voice }
         }
@@ -469,6 +469,11 @@ impl MusicClient {
                         },
                         false,
                     )?)
+                }
+                PodcastRankQuery::Entries { preview: false, .. } => {
+                    self.podcast_browse_playback
+                        .retire_full_rank(&self.session, &token, &api)?;
+                    None
                 }
                 _ => None,
             };

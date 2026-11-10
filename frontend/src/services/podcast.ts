@@ -114,12 +114,21 @@ export interface PodcastMutation {
   phase: 'sending' | 'verifying' | 'uncertain' | 'confirmed' | 'rejected' | 'unchanged';
   acknowledged: boolean;
 }
+export type PodcastPurchasedRow =
+  | { kind: 'radio'; item: PodcastCard & { playCount?: number | string } }
+  | { kind: 'episode'; item: EpisodeView };
+export interface PodcastPurchasedTarget {
+  kind: PodcastPurchasedRow['kind'];
+  id: string;
+  revision: string;
+}
 export interface PodcastPage {
   epoch: string;
   scope: PodcastScope;
   revision: string;
   cards: PodcastCard[];
   subscribedBadgeReceipt?: string;
+  purchases?: { rows: PodcastPurchasedRow[]; nextOffset: number | null };
   episodes: EpisodeView[];
   total: number;
   offset: number;
@@ -167,6 +176,10 @@ export interface PodcastClient {
   podcastState(epoch: string, refresh: boolean): Promise<AccountData<PodcastState>>;
   podcastRadioOrder(epoch: string, query: PodcastRadioOrder): Promise<AccountData<boolean | null>>;
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;
+  podcastPurchasedTarget(
+    epoch: string,
+    target: PodcastPurchasedTarget,
+  ): Promise<AccountData<PodcastPurchasedRow>>;
   podcastClearSubscribedBadge(epoch: string, receipt: string, id: string): Promise<void>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }

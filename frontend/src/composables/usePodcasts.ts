@@ -12,6 +12,8 @@ import type {
   PodcastAction,
   PodcastMutation,
   PodcastSubscriptionRecommendations,
+  PodcastPurchasedRow,
+  PodcastPurchasedTarget,
 } from '../services/podcast.ts';
 
 export function usePodcasts(core: PodcastClient = useCore(), expired: () => void = () => {}) {
@@ -145,16 +147,28 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       if (valid(g, e) && n === stateRead) issue(value);
     }
   }
-  async function load(refresh = false) {
+  async function load(refresh = false, purchaseOffset?: number) {
     activateRecommendations();
     if (!epoch.value || busy.value || recentSelected.value) return;
+    if (
+      purchaseOffset !== undefined &&
+      (query.value.scope.kind !== 'purchased' ||
+        loading.value ||
+        !query.value.revision ||
+        page.value?.purchases?.nextOffset !== purchaseOffset)
+    )
+      return;
     const g = generation,
       e = epoch.value,
       n = ++read;
     loading.value = true;
     error.value = '';
     try {
-      let request = { ...query.value, revision: refresh ? null : query.value.revision };
+      let request = {
+        ...query.value,
+        offset: purchaseOffset ?? query.value.offset,
+        revision: refresh ? null : query.value.revision,
+      };
       if (request.scope.kind === 'radio' && request.revision === null) {
         const preference = await core.podcastRadioOrder(e, { kind: 'read', id: request.scope.id });
         if (!valid(g, e) || n !== read || preference.epoch !== e) return;
@@ -168,7 +182,11 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
         liked.value = new Set(value.likedIds);
         likesKnown.value = true;
         operations.value = value.operations;
-        query.value = { ...request, revision: value.revision };
+        query.value = {
+          ...request,
+          offset: request.scope.kind === 'purchased' ? 0 : request.offset,
+          revision: value.revision,
+        };
       }
     } catch (value) {
       if (valid(g, e) && n === read) {
@@ -259,6 +277,50 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
   function isContextualRadioBack(visit: number) {
     return contextualRadioHistory.value.at(-1)?.visit === visit;
   }
+  function loadMorePurchases() {
+    const offset = page.value?.purchases?.nextOffset;
+    if (typeof offset === 'number') return load(false, offset);
+  }
+  function capturePurchasedRow(row: PodcastPurchasedRow) {
+    const displayed = page.value,
+      e = epoch.value,
+      g = generation,
+      n = read;
+    const live = () =>
+      visible &&
+      valid(g, e) &&
+      !loading.value &&
+      !recentSelected.value &&
+      n === read &&
+      query.value.scope.kind === 'purchased' &&
+      displayed?.scope.kind === 'purchased' &&
+      displayed.epoch === e &&
+      page.value === displayed &&
+      query.value.revision === displayed.revision;
+    if (!displayed || !live() || !displayed.purchases?.rows.includes(row)) return;
+    const target: PodcastPurchasedTarget = {
+      kind: row.kind,
+      id: row.item.id,
+      revision: displayed.revision,
+    };
+    return { epoch: e, target, live };
+  }
+  async function resolvePurchasedRow(row: PodcastPurchasedRow) {
+    const source = capturePurchasedRow(row);
+    if (!source) return;
+    try {
+      const result = await core.podcastPurchasedTarget(source.epoch, source.target);
+      if (
+        source.live() &&
+        result.epoch === source.epoch &&
+        result.value.kind === row.kind &&
+        result.value.item.id === row.item.id
+      )
+        return result.value;
+    } catch (value) {
+      if (source.live()) issue(value);
+    }
+  }
   function openCard(id: string) {
     const shown = page.value;
     const receipt =
@@ -343,7 +405,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     page.value = undefined;
     query.value = { ...previous, revision: null };
     canBack.value = history.length > 0;
-    if (visible) void load(true);
+    if (visible) void load(previous.scope.kind !== 'purchased');
   }
   function show(value: boolean) {
     visible = value;
@@ -505,6 +567,9 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     observePlayerResume,
     navigate,
     openCard,
+    loadMorePurchases,
+    capturePurchasedRow,
+    resolvePurchasedRow,
     recommendedCards,
     recommendedSelection,
     canCollectRecommendation,

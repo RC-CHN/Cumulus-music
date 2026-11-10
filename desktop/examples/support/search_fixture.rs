@@ -822,7 +822,13 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         "/api/charts/voice" if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") => {
             assert_eq!(*args, json!({"chartType":"3"}));
-            json!({"code":200,"data":[{"voiceMetaVO":program(407,305),"chartMetaVO":{"rank":1,"lastRank":3}}]})
+            let mut rows =
+                vec![json!({"voiceMetaVO":program(407,305),"chartMetaVO":{"rank":1,"lastRank":3}})];
+            if std::env::var_os("CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF").is_some() {
+                rows.push(json!({"voiceMetaVO":program(410,305),"chartMetaVO":{"rank":2}}));
+                rows.push(json!({"voiceMetaVO":program(409,305),"chartMetaVO":{"rank":3}}));
+            }
+            json!({"code":200,"data":rows})
         }
         "/api/charts/voice/category" if mode == "podcast_home_disabled" => {
             assert_eq!(*args, json!({"categoryId":"2"}));

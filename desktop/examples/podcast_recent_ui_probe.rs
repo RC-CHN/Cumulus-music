@@ -8,6 +8,8 @@ mod capture_ack;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/purchased_podcast_fixture.rs"]
+mod purchased_podcast_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -80,6 +82,7 @@ struct Library {
     progress_enabled: bool,
     program_menu: bool,
     recent_program_menu: bool,
+    purchased: Option<Arc<purchased_podcast_fixture::Fixture>>,
     recent_menu_count_held: AtomicBool,
     recent_menu_count_delivered: AtomicBool,
     recent_menu_count_released: tokio::sync::Notify,
@@ -593,6 +596,11 @@ impl Api for Library {
                     }
                 };
             }
+            if let Some(fixture) = &self.purchased
+                && let Some(response) = fixture.response(path, &body, cache)
+            {
+                return response;
+            }
             if let Some(fixture) = &self.badges
                 && let Some(response) = fixture.read(path, &body, cache)
             {
@@ -786,7 +794,18 @@ fn main() {
     let program_menu = std::env::var("CUMULUS_PODCAST_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
     let recent_program_menu =
         std::env::var("CUMULUS_PODCAST_RECENT_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
-    assert!(!(program_menu && recent_program_menu));
+    let purchased_download_proof =
+        std::env::var("CUMULUS_PODCAST_PURCHASED_PROOF").as_deref() == Ok("1");
+    let purchased_playback_proof =
+        std::env::var("CUMULUS_PODCAST_PURCHASED_PLAYBACK_PROOF").as_deref() == Ok("1");
+    let purchased_proof = purchased_download_proof || purchased_playback_proof;
+    assert!(
+        u8::from(program_menu)
+            + u8::from(recent_program_menu)
+            + u8::from(purchased_download_proof)
+            + u8::from(purchased_playback_proof)
+            <= 1
+    );
     let recommendations_enabled =
         std::env::var("CUMULUS_PODCAST_RECOMMENDATIONS_PROOF").as_deref() == Ok("1");
     let badges_enabled = recommendations_enabled
@@ -935,10 +954,16 @@ fn main() {
             )
             .unwrap()
         });
+    let purchased = purchased_proof.then(|| {
+        Arc::new(purchased_podcast_fixture::Fixture::new(
+            purchased_playback_proof,
+        ))
+    });
     let api = Arc::new(Library {
         progress_enabled,
         program_menu,
         recent_program_menu,
+        purchased: purchased.clone(),
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
         scene_home,
         palette: palette.clone(),
@@ -978,7 +1003,10 @@ fn main() {
     if let Some(backend) = voice_song_download {
         client = client.with_download_backend(backend);
     }
-    if voice_song_download_case.is_some() {
+    if let Some(backend) = purchased {
+        client = client.with_download_backend(backend);
+    }
+    if voice_song_download_case.is_some() || purchased_download_proof {
         fs::create_dir(&synthetic_download_root).unwrap();
     }
     let mut context = assets::context();
@@ -990,6 +1018,10 @@ fn main() {
         || {
             if player_resume_proof {
                 include_str!("player_podcast_resume_ui_probe.js").to_owned()
+            } else if purchased_playback_proof {
+                include_str!("purchased_podcast_playback_ui_probe.js").to_owned()
+            } else if purchased_download_proof {
+                include_str!("purchased_podcast_ui_probe.js").to_owned()
             } else if recent_program_menu {
                 include_str!("podcast_recent_program_menu_ui_probe.js").to_owned()
             } else if program_menu {
@@ -1059,7 +1091,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
-            if progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu {
+            if progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof {
                 fs::write(output.join("locale.json"), serde_json::to_vec(&json!({
                     "numeric":locale(libc::LC_NUMERIC),
                     "messages":locale(libc::LC_MESSAGES),
@@ -1211,6 +1243,9 @@ fn main() {
                 if let Some(songs) = &api.voice_songs {
                     value["voiceSongsTrace"] = songs.snapshot();
                 }
+                if let Some(fixture) = &api.purchased {
+                    value["purchasedTrace"] = fixture.trace();
+                }
                 if let Some(scene) = &api.scene_home {
                     value["calls"] = json!(scene.calls());
                 } else if stage == "complete" || program_menu || recent_program_menu {
@@ -1226,7 +1261,7 @@ fn main() {
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" {0} else {1});
                     } else if capture_ack::acknowledge(&handle, &output, &stage, true).await
-                        && (progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu)
+                        && (progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof)
                     {
                         handle.get_webview_window("main").unwrap().eval(format!(
                             "window.__podcastProgressStage = {};",
@@ -1254,6 +1289,9 @@ fn main() {
                         "window.__voiceSongDownloadCase = {}; window.__voiceSongDownloadRoot = {}; window.__voiceSongDownloadLocalPlay = {play_completed};",
                         json!(case), json!(synthetic_download_root)
                     )).unwrap();
+                }
+                if purchased_download_proof {
+                    view.eval(format!("window.__purchasedPodcastRoot = {};", json!(synthetic_download_root))).unwrap();
                 }
                 view.eval(&source).unwrap();
             }

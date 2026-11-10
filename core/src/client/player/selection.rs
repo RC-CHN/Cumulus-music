@@ -126,7 +126,8 @@ impl MusicClient {
             PlaySelection::SearchArtistCard { .. } => Err(Error::InvalidInput(
                 "search artist playback requires a preparation ticket",
             )),
-            PlaySelection::PodcastBrowseVoice { .. } => Err(Error::InvalidInput(
+            PlaySelection::PodcastBrowseVoice { .. }
+            | PlaySelection::PodcastPurchasedEpisode { .. } => Err(Error::InvalidInput(
                 "podcast browse playback requires a preparation ticket",
             )),
             PlaySelection::SearchPodcastCard { .. } | PlaySelection::SearchPodcastRow { .. } => {
@@ -612,10 +613,31 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
-            PlaySelection::PodcastBrowseVoice { receipt } => {
+            PlaySelection::PodcastBrowseVoice {
+                receipt,
+                double_click,
+            } => {
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
                 let (command, source_guard) = self
-                    .podcast_browse_selection(&token, &receipt, prepared)
+                    .podcast_browse_selection(&token, &receipt, double_click, prepared)
+                    .await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        command,
+                        attempt,
+                        lease,
+                        Some(prepared),
+                        Some(source_guard),
+                    )
+                    .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+            PlaySelection::PodcastPurchasedEpisode { target } => {
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (command, source_guard) = self
+                    .podcast_purchased_selection(&token, &target, prepared)
                     .await?;
                 let state = self
                     .submit_selection_with_source(
@@ -1396,6 +1418,7 @@ impl MusicClient {
                     | PlaySelection::SearchPodcastRow { .. }
                     | PlaySelection::SearchVoiceMenu { .. }
                     | PlaySelection::PodcastBrowseVoice { .. }
+                    | PlaySelection::PodcastPurchasedEpisode { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {
                         unreachable!("cloud handled before song detail requests")

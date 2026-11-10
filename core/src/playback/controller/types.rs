@@ -174,6 +174,12 @@ pub struct HistoryQueueUpdate {
     pub(crate) start: bool,
     pub(crate) kind: crate::history::HistoryKind,
     pub(crate) revision: String,
+    pub(crate) shuffle_anchor: Option<HistoryShuffleAnchor>,
+}
+/// The pre-add setting observation and local departure receipt are native-only.
+pub(crate) struct HistoryShuffleAnchor {
+    pub(crate) anchor: crate::podcast::progress::latest::ShuffleAnchor,
+    pub(crate) setting: crate::playback::engine::Cancellation,
 }
 /// Install an owned cache selection while its index and durable stamp still match.
 pub struct OfflinePlaylistQueueUpdate {
@@ -277,6 +283,13 @@ pub enum PlaybackCommand {
     PlayPodcastBrowse {
         update: QueueUpdate,
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
+    },
+    /// Double click on an already loaded rank episode changes mode if
+    /// required, then toggles transport without reopening or seeking.
+    TogglePodcastRank {
+        expected: PlaybackFence,
+        paused: bool,
+        mode: Option<crate::playback::PlaybackMode>,
     },
     ApplyLocalBatch(LocalBatchUpdate),
     ApplyHistoryAdd(HistoryQueueUpdate),

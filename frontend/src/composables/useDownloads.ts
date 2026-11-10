@@ -184,12 +184,17 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       // Another visit may have retired this exact receipt.
     }
   }
-  async function prepareVoice(voiceIds: string[]) {
+  async function prepareVoice(
+    voiceIds: string[],
+    purchased?: import('../services/podcast.ts').PodcastPurchasedTarget,
+  ) {
     if (!epoch) return;
     const captured = epoch,
       current = captureVisit();
     try {
-      const plan = await core.downloadVoicePrepare(captured, [...voiceIds]);
+      const plan = purchased
+        ? await core.downloadPurchasedVoicePrepare(captured, purchased)
+        : await core.downloadVoicePrepare(captured, [...voiceIds]);
       if (plan.epoch !== captured) return;
       if (current()) return plan;
       void discardVoice(plan);

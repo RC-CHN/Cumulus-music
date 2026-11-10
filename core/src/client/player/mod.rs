@@ -22,6 +22,7 @@ mod output;
 mod playlist_batch;
 mod playlist_trial;
 mod podcast_browse;
+mod podcast_purchased;
 mod podcast_recommended;
 mod power;
 mod preferences;

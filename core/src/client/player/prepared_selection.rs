@@ -290,6 +290,7 @@ impl MusicClient {
                 | PlaySelection::SearchPodcastRow { .. }
                 | PlaySelection::SearchVoiceMenu { .. }
                 | PlaySelection::PodcastBrowseVoice { .. }
+                | PlaySelection::PodcastPurchasedEpisode { .. }
                 | PlaySelection::HistoryRadioChapter { .. }
                 | PlaySelection::HistoryAdd { .. }
                 | PlaySelection::Songs { .. }

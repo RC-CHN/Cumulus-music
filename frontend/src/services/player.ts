@@ -439,7 +439,8 @@ export type PlaySelection =
   | { kind: 'search_podcast_card'; id: string; receipt: string }
   | { kind: 'search_podcast_row'; id: string; receipt: string; gesture: SearchPodcastRowGesture }
   | { kind: 'search_voice_menu'; target: import('./search').SearchVoiceMenuTarget }
-  | { kind: 'podcast_browse_voice'; receipt: string }
+  | { kind: 'podcast_browse_voice'; receipt: string; double_click?: boolean }
+  | { kind: 'podcast_purchased_episode'; target: import('./podcast').PodcastPurchasedTarget }
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'listened_book_chapter'; revision: string; key: number }
   | {

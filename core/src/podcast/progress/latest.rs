@@ -1,6 +1,11 @@
 //! M/71 latestPlayVoiceMap: a committed local departure, keyed by native radio.
 use super::program_identity;
-use crate::{Result, protocol::api::identifier, storage::StateTransaction};
+use crate::{
+    Error, Result,
+    account::{AccountSession, SessionToken},
+    protocol::api::identifier,
+    storage::{StateStore, StateTransaction},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -13,7 +18,7 @@ pub(crate) struct Captured {
     name: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct LatestVoice {
     pub id: String,
@@ -21,6 +26,64 @@ pub(crate) struct LatestVoice {
     pub name: String,
     pub time: u64,
     pub duration: u64,
+}
+
+/// M3085 selects this one-shot breakpoint only from the current native
+/// per-radio departure record, never from a renderer or remote history row.
+#[derive(Clone)]
+pub(crate) struct ShuffleAnchor {
+    radio_id: String,
+    record: LatestVoice,
+}
+
+impl ShuffleAnchor {
+    pub(crate) fn capture(
+        session: &AccountSession,
+        token: &SessionToken,
+        resource: &Value,
+    ) -> Result<Option<Self>> {
+        let Some(identity) = Captured::from_resource(resource) else {
+            return Ok(None);
+        };
+        let store = session.persistent_store()?;
+        session.with_token(token, |owner| {
+            store.read_snapshot(|tx| {
+                Ok(read(tx, owner, &identity.radio_id)?
+                    .filter(|row| row.id == identity.id && row.main_track_id == identity.media_id)
+                    .map(|record| Self {
+                        radio_id: identity.radio_id,
+                        record,
+                    }))
+            })
+        })
+    }
+
+    pub(crate) fn radio_id(&self) -> &str {
+        &self.radio_id
+    }
+
+    pub(crate) fn matches(&self, resource: &Value) -> bool {
+        Captured::from_resource(resource).is_some_and(|identity| {
+            identity.radio_id == self.radio_id
+                && identity.id == self.record.id
+                && identity.media_id == self.record.main_track_id
+        })
+    }
+
+    pub(crate) fn require_current(&self, store: &StateStore, owner: &str) -> Result<()> {
+        if store
+            .read_snapshot(|tx| read(tx, owner, &self.radio_id))?
+            .as_ref()
+            != Some(&self.record)
+        {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
+
+    pub(super) fn seconds(&self) -> f64 {
+        self.record.time as f64
+    }
 }
 
 impl Captured {

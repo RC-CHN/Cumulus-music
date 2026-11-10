@@ -6,6 +6,7 @@ import { time } from '../services/player';
 import type { PodcastModel } from '../composables/usePodcasts';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
 import PodcastRecentList from './PodcastRecentList.vue';
+import PodcastPurchasedRows from './PodcastPurchasedRows.vue';
 import PodcastProgramMenu from './PodcastProgramMenu.vue';
 import PodcastSubscriptionRecommendations from './PodcastSubscriptionRecommendations.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
@@ -16,6 +17,7 @@ import type {
   PodcastRecommendationAction,
   PodcastProgramTarget,
   PodcastRecentProgramTarget,
+  PodcastPurchasedTarget,
 } from '../services/podcast';
 const props = defineProps<{
   model: PodcastModel;
@@ -35,7 +37,8 @@ const emit = defineEmits<{
   recentProgramPlay: [epoch: string, program: PodcastRecentProgramTarget];
   recommendedPlay: [id: string, action: PodcastRecommendationAction];
   comments: [id: string, title: string];
-  download: [voices: EpisodeView[]];
+  download: [voices: EpisodeView[], live?: () => boolean, purchased?: PodcastPurchasedTarget];
+  purchasedPlay: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
 }>();
 const { page, query, loading, busy, error, notice, operations, recentSelected } = props.model;
 const root = ref<HTMLElement>();
@@ -371,13 +374,23 @@ const pending = props.model.pending;
             keyword
               ? '没有匹配的内容'
               : scope.kind === 'purchased'
-                ? '还没有购买的播客'
+                ? page.remoteTotal
+                  ? '没有可显示的购买内容'
+                  : '还没有购买的内容'
                 : scope.kind === 'audiobooks'
                   ? '还没有收藏的有声书'
                   : '这里还没有内容'
           }}
         </p>
       </div>
+      <PodcastPurchasedRows
+        v-if="scope.kind === 'purchased' && page?.purchases"
+        :model="model"
+        :playable="playable && queueable"
+        @comments="(id, title) => emit('comments', id, title)"
+        @download="(episode, live, source) => emit('download', [episode], live, source)"
+        @play="(epoch, target, live) => emit('purchasedPlay', epoch, target, live)"
+      />
       <div v-if="page?.cards.length" class="podcast-grid">
         <button
           v-for="card in page.cards"
@@ -486,7 +499,10 @@ const pending = props.model.pending;
         @comments="(id, title) => emit('comments', id, title)"
         @download="(voices) => emit('download', voices)"
       />
-      <footer v-if="page && page.total > query.limit" class="podcast-pagination">
+      <footer
+        v-if="scope.kind !== 'purchased' && page && page.total > query.limit"
+        class="podcast-pagination"
+      >
         <button
           class="secondary"
           :disabled="loading || page.offset === 0"

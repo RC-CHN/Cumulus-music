@@ -389,6 +389,8 @@ export function createTauriClient(): CoreClient {
       invoke('together_statistics', { epoch, relationKey }),
     togetherCommand: (epoch, command) => invoke('together_command', { epoch, command }),
     podcastRadioOrder: (epoch, query) => invoke('podcast_radio_order', { epoch, query }),
+    podcastPurchasedTarget: (epoch, target) =>
+      invoke('podcast_purchased_target', { epoch, target }),
     podcastPage: (epoch, query, refresh) => invoke('podcast_page', { epoch, query, refresh }),
     podcastProgramCommentCount: (epoch, target) =>
       invoke('podcast_program_comment_count', { epoch, target }),
@@ -535,6 +537,8 @@ export function createTauriClient(): CoreClient {
       invoke('download_quality_preferences', { epoch, refresh }),
     downloadVoicePrepare: (epoch, voiceIds) =>
       invoke('download_voice_prepare', { epoch, voiceIds }),
+    downloadPurchasedVoicePrepare: (epoch, target) =>
+      invoke('download_purchased_voice_prepare', { epoch, target }),
     downloadVoiceDiscard: (epoch, receipt) => invoke('download_voice_discard', { epoch, receipt }),
     downloadClearPrepare: (epoch) => invoke('download_clear_prepare', { epoch }),
     downloadClearDiscard: (epoch, receipt) => invoke('download_clear_discard', { epoch, receipt }),

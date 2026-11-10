@@ -272,6 +272,7 @@ import {
   AUDIOBOOK_CATEGORY,
   type EpisodeView,
   type PodcastProgramTarget,
+  type PodcastPurchasedTarget,
   type PodcastRecentProgramTarget,
   type PodcastScope,
 } from './services/podcast';
@@ -1543,11 +1544,12 @@ function playVoiceCard(voice: EpisodeView) {
     void player.toggleSource();
   else void player.select(selection);
 }
-function playPodcastBrowseVoice(voice: EpisodeView) {
+function playPodcastBrowseVoice(voice: EpisodeView, doubleClick = false) {
   const route = page.value;
   const receipt = voice.browsePlaybackReceipt;
   if (
     (route.kind !== 'podcast_discovery' && route.kind !== 'podcast_rankings') ||
+    (doubleClick && route.kind !== 'podcast_rankings') ||
     !receipt ||
     voice.unavailable ||
     !signedIn.value ||
@@ -1557,7 +1559,7 @@ function playPodcastBrowseVoice(voice: EpisodeView) {
     return;
   void player.prepareSelection(async () => {
     if (page.value !== route) throw { code: 'stale', message: '播客列表已更新', retryable: false };
-    return { kind: 'podcast_browse_voice', receipt };
+    return { kind: 'podcast_browse_voice', receipt, double_click: doubleClick };
   });
 }
 function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
@@ -1907,6 +1909,19 @@ watch(
 );
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
+}
+function playPurchasedProgram(epoch: string, target: PodcastPurchasedTarget, live: () => boolean) {
+  const valid = () =>
+    page.value.kind === 'podcasts' &&
+    account.value.epoch === epoch &&
+    target.kind === 'episode' &&
+    live();
+  if (!ordinaryVoiceQueueable.value || !valid()) return;
+  void player.prepareSelection(async (owner) => {
+    if (owner !== epoch || !valid())
+      throw { code: 'stale', message: '已购节目列表已更新', retryable: false };
+    return { kind: 'podcast_purchased_episode', target };
+  });
 }
 async function queuePodcastProgram(epoch: string, program: PodcastProgramTarget): Promise<boolean> {
   const snapshot = podcasts.page.value,
@@ -6418,12 +6433,16 @@ onUnmounted(() => {
                 :queue-recent-program="queueRecentProgram"
                 @back="backFromPodcastDetail"
                 @recent-program-play="playRecentProgram"
+                @purchased-play="playPurchasedProgram"
                 @play="playPodcast"
                 :current-radio-id="currentPodcastRadioId"
                 @recent-play="playRecentPodcast"
                 @recommended-play="playRecommendedPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
-                @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
+                @download="
+                  (tracks, live, purchased) =>
+                    (downloadDialog = { kind: 'voice', tracks, live, purchased })
+                "
               />
               <PodcastCataloguePage
                 v-else-if="page.kind === 'podcast_category'"
@@ -6460,6 +6479,7 @@ onUnmounted(() => {
                 @radio="openSceneRadio"
                 @host="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @play="playPodcastBrowseVoice"
+                @double-play="(voice) => playPodcastBrowseVoice(voice, true)"
               />
               <PlaylistCreatorPage
                 v-else-if="profileUid !== null"

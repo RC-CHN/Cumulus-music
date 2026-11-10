@@ -69,6 +69,44 @@ pub struct EpisodeView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browse_playback_receipt: Option<String>,
 }
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PodcastPurchasedTarget {
+    pub kind: crate::podcast::PurchasedKind,
+    pub id: String,
+    pub revision: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(untagged)]
+pub enum PodcastPurchasedPlayCount {
+    Number(u64),
+    Compact(String),
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastPurchasedRadio {
+    #[serde(flatten)]
+    pub card: PodcastCard,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_count: Option<PodcastPurchasedPlayCount>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", content = "item", rename_all = "snake_case")]
+pub enum PodcastPurchasedRow {
+    Radio(PodcastPurchasedRadio),
+    Episode(EpisodeView),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastPurchasedRows {
+    pub rows: Vec<PodcastPurchasedRow>,
+    pub next_offset: Option<usize>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodcastPage {
@@ -79,6 +117,8 @@ pub struct PodcastPage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subscribed_badge_receipt: Option<String>,
     pub episodes: Vec<EpisodeView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purchases: Option<PodcastPurchasedRows>,
     pub total: usize,
     pub offset: usize,
     pub remote_total: u64,

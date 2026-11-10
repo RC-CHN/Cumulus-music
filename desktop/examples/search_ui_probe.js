@@ -423,7 +423,40 @@
       assert(still.playId === fullPlayed.playId && still.entryId === fullPlayed.entryId &&
         still.queueRevision === fullPlayed.queueRevision && still.state === "paused", "empty result leaves live decoder and queue");
       await capture("around_empty");
+      click(action("今日最热", full()));
+      const title = (id) => row("播放", id, full())?.closest("li")?.querySelector(".rank-episode strong");
+      const double = async (id) => {
+        await wait(() => title(id) && !row("播放", id, full()).disabled, "enabled voice rank row " + id);
+        const node = title(id);
+        assert(node?.isConnected, "voice rank row was replaced before double click " + id);
+        node.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
+      };
+      await double(410);
+      await waitPlayer("playing", "410");
+      const replaced = await snapshot();
+      assert(replaced.mode === "sequential" && (await queue()).join() === "407,410,409",
+        "row double click replaces with the native chart order");
+      await capture("rank_double_replace");
+      const currentRow = row("暂停", 410, full()).closest("li");
+      currentRow.focus();
+      currentRow.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await waitPlayer("paused", "410");
+      const toggled = await snapshot();
+      assert(toggled.playId === replaced.playId && toggled.entryId === replaced.entryId &&
+        toggled.queueRevision === replaced.queueRevision, "focused row toggles without replacing the loaded episode");
+      await capture("rank_double_same");
+      const preference = await invoke("queue_click_preferences", { epoch });
+      await invoke("queue_click_preferences_command", { epoch, command: {
+        kind: "change", expected_revision: preference.value.revision, replace_queue: false,
+      } });
+      await invoke("play_selection", { epoch, selection: { kind: "voice", id: "401" } });
+      await waitPlayer("playing", "401");
+      await double(407);
+      await waitPlayer("playing", "407");
+      assert((await queue()).join() === "401,409,407,410", "replace-off double click uses the surrounding episode order");
+      await capture("rank_double_keep");
       await emit("complete", { ok: true, stageCount: count, podcastBrowseAroundVerified: true,
+        rankDoubleClickVerified: true,
         realMusicRequests: 0, realAccountWrites: 0 });
       return;
     }
