@@ -2,7 +2,10 @@
 //! playlist and a closed two-write server for reorder.
 use cumulus_core::{
     Error, Result,
-    protocol::api::{Api, ApiFuture, GuardedPlaylistRemove, PlaylistAddPermission, identifier},
+    protocol::api::{
+        Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistRemove, PlaylistAddPermission,
+        identifier,
+    },
     storage::StateStore,
 };
 use serde_json::{Value, json};
@@ -21,6 +24,7 @@ const REORDER: &str = "/api/v1/playlist/manipulate/tracks";
 const SOURCE: &str = "/api/song/enhance/player/url/v1";
 const JOURNAL: &str = "playlist-local-reorders-v1";
 const REMOVE_JOURNAL: &str = "playlist-local-removals-v1";
+const ADD_JOURNAL: &str = "playlist-local-additions-v1";
 
 pub const STAGES: &[&str] = &[
     "ux_01_outside_ready",
@@ -46,9 +50,26 @@ pub const REMOVE_STAGES: &[&str] = &[
     "ux_07_readback",
 ];
 
+pub const ADD_STAGES: &[&str] = &[
+    "ux_01_source",
+    "ux_02_picker",
+    "ux_03_uncertain",
+    "ux_04_earlier",
+    "ux_05_readback",
+    "ux_06_target",
+];
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Mode {
+    Reorder,
+    Remove,
+    Add,
+}
+
 struct Server {
     order: [&'static str; 2],
     removed: bool,
+    added: bool,
     writes: Vec<Value>,
     reads: usize,
     unexpected: usize,
@@ -59,6 +80,8 @@ impl Server {
     fn visible_order(&self) -> &[&'static str] {
         if self.removed {
             &self.order[1..]
+        } else if self.added {
+            &["703", "701", "702"]
         } else {
             &self.order
         }
@@ -67,20 +90,21 @@ impl Server {
 
 pub struct Fixture {
     base: super::mixed_playlist_fixture::Fixture,
-    remove: bool,
+    mode: Mode,
     server: Mutex<Server>,
     acknowledge: Notify,
     entered: Notify,
 }
 
 impl Fixture {
-    pub fn new(root: &Path, remove: bool) -> std::io::Result<Self> {
+    pub fn new(root: &Path, mode: Mode) -> std::io::Result<Self> {
         Ok(Self {
             base: super::mixed_playlist_fixture::Fixture::new(root)?,
-            remove,
+            mode,
             server: Mutex::new(Server {
                 order: ["701", "702"],
                 removed: false,
+                added: false,
                 writes: Vec::new(),
                 reads: 0,
                 unexpected: 0,
@@ -106,7 +130,11 @@ impl Fixture {
     }
 
     pub fn receipt(&self, store: &StateStore) -> Result<Value> {
-        let kind = if self.remove { REMOVE_JOURNAL } else { JOURNAL };
+        let kind = match self.mode {
+            Mode::Reorder => JOURNAL,
+            Mode::Remove => REMOVE_JOURNAL,
+            Mode::Add => ADD_JOURNAL,
+        };
         let journal = store.get("2", kind, TARGET)?.unwrap_or(Value::Null);
         let server = self.server.lock().unwrap();
         Ok(json!({
@@ -129,11 +157,16 @@ impl Fixture {
     }
 
     async fn update(&self, args: Value, cache: bool) -> Result<Value> {
-        if self.remove {
+        if self.mode != Mode::Reorder {
+            let (op, id) = if self.mode == Mode::Remove {
+                ("del", "701")
+            } else {
+                ("add", "703")
+            };
             let mut server = self.server.lock().unwrap();
             if cache
                 || !server.writes.is_empty()
-                || args != json!({"pid":TARGET,"op":"del","trackIds":"[\"701\"]"})
+                || args != json!({"pid":TARGET,"op":op,"trackIds":serde_json::to_string(&[id])?})
             {
                 server.unexpected += 1;
                 return Err(Error::Response(
@@ -141,9 +174,10 @@ impl Fixture {
                 ));
             }
             server.writes.push(args);
-            server.removed = true;
+            server.removed = self.mode == Mode::Remove;
+            server.added = self.mode == Mode::Add;
             return Err(Error::Transport(
-                "synthetic mixed removal lost response".into(),
+                "synthetic mixed edit lost response".into(),
             ));
         }
         let step = {
@@ -186,13 +220,35 @@ impl Fixture {
 
 fn playlist(id: u64, owner: u64, special: u8, name: &str, order: &[&str]) -> Value {
     json!({"id":id,"userId":owner,"creator":{"userId":owner,"nickname":"合成歌单用户"},
-        "name":name,"privacy":0,"specialType":special,"trackCount":order.len(),
+        "name":name,"privacy":0,"specialType":special,"trackCount":order.len(),"tags":[],
         "trackIds":order.iter().map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()})
 }
 
 impl Api for Fixture {
     fn local_collection_scope_revision(&self) -> Result<Option<String>> {
-        Ok(self.remove.then(|| "synthetic-mixed-remove".into()))
+        Ok((self.mode == Mode::Remove).then(|| "synthetic-mixed-remove".into()))
+    }
+
+    fn mixed_playlist_add_scope_revision(&self) -> Result<Option<String>> {
+        Ok((self.mode == Mode::Add).then(|| "synthetic-mixed-add".into()))
+    }
+
+    fn request_guarded_mixed_playlist_add<'a>(
+        &'a self,
+        write: GuardedPlaylistAdd,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.mode != Mode::Add || revision != "synthetic-mixed-add" {
+                return Err(Error::CredentialChanged);
+            }
+            let (path, args) = write.into_request()?;
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            self.request(path, args, false).await
+        })
     }
 
     fn request_guarded_playlist_remove<'a>(
@@ -203,7 +259,7 @@ impl Api for Fixture {
         dispatched: &'a AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            if !self.remove || revision != "synthetic-mixed-remove" {
+            if self.mode != Mode::Remove || revision != "synthetic-mixed-remove" {
                 return Err(Error::CredentialChanged);
             }
             let (path, args) = write.into_request()?;
@@ -221,9 +277,20 @@ impl Api for Fixture {
                     Ok(json!({"code":200,"more":false,"playlist":[
                         playlist(10,2,5,"我喜欢的音乐",&[]),
                         playlist(11,2,0,"合成自建混排歌单",server.visible_order()),
-                        playlist(12,3,0,"合成收藏歌单",&[])
+                        if self.mode == Mode::Add { playlist(12,2,0,"合成收藏来源",&["703","704"]) }
+                        else { playlist(12,3,0,"合成收藏歌单",&[]) }
                     ]}))
                 }
+                "/api/user/playlist/v2" if self.mode == Mode::Add => {
+                    let server = self.server.lock().unwrap();
+                    Ok(json!({"code":200,"playlist":[
+                        playlist(11,2,0,"合成自建混排歌单",server.visible_order()),
+                        playlist(12,2,0,"合成收藏来源",&["703","704"])
+                    ],"more":false}))
+                }
+                "/api/v6/playlist/detail" if self.mode == Mode::Add && args["id"] == "12" => Ok(
+                    json!({"code":200,"playlist":playlist(12,2,0,"合成收藏来源",&["703","704"])}),
+                ),
                 "/api/v6/playlist/detail"
                     if !cache && args == json!({"id":TARGET,"n":100000,"s":0}) =>
                 {
@@ -234,6 +301,26 @@ impl Api for Fixture {
                     )
                 }
                 REORDER => self.update(args, cache).await,
+                "/api/v3/song/detail" if self.mode == Mode::Add => {
+                    let ids = serde_json::from_str::<Vec<Value>>(
+                        args["c"]
+                            .as_str()
+                            .ok_or(Error::Response("missing synthetic c field"))?,
+                    )?
+                    .iter()
+                    .map(|row| identifier(&row["id"]))
+                    .collect::<Result<Vec<_>>>()?;
+                    if !ids
+                        .iter()
+                        .all(|id| matches!(id.as_str(), "701" | "702" | "703" | "704"))
+                    {
+                        return Err(Error::Response("unknown synthetic catalog song"));
+                    }
+                    Ok(json!({"code":200,"songs":ids.iter().map(|id|
+                        json!({"id":id,"name":format!("合成线上曲目 {id}"),"ar":[{"name":"Cumulus"}],
+                            "al":{"name":"合成专辑"},"dt":12000,"fee":0})).collect::<Vec<_>>(),
+                        "privileges":ids.iter().map(|id|json!({"id":id,"subp":1})).collect::<Vec<_>>() }))
+                }
                 path if path.starts_with("/api/song/enhance/player/") => {
                     let valid = args["ids"]
                         .as_str()

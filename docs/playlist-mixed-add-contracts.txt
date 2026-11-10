@@ -41,3 +41,9 @@ ID 字面相同，也保留本机绑定。发送一次；明确 200 还须完整
     CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
     dbus-run-session -- /usr/bin/python3 scripts/ci/mixed_add_smoke.py \
     --binary target/debug/examples/local_ui_probe --root .build/mixed-add-proof
+
+Linux 实窗通过 6 个状态及截图，包含两次可信 X11 右键。合成服务仅收到
+{pid:"11",op:"add",trackIds:"[\"703\"]"} 一次，在应用写入后丢弃确认。
+另选 704 时只显示先前记录；明确核对后收藏器仍打开并提示「本次未提交」。
+目标最终顺序是 703、本机曲目、701、702。WAV 原始字节和暂停的解码实例、位置、
+队列未变。GTK 初始化后数字 locale 是 C，消息仍为 en_US.UTF-8。
