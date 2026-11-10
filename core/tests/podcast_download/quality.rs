@@ -12,7 +12,7 @@ const MUSICS: &str = "/api/dj/program/song/musics";
 
 fn offered() -> Value {
     json!({"code":200,"programs":[{"musics":[
-        {"id":91,"bitrate":320000,"size":3145728},
+        {"id":91,"bitrate":320000},
         {"id":91,"bitrate":192000,"size":2359296},
         {"id":91,"bitrate":128000,"size":2048},
         {"id":91,"bitrate":64000,"size":1024},
@@ -117,7 +117,7 @@ async fn voice_quality_single_prepares_over_signed_pc_then_uses_the_real_media_i
         json!([
             {"quality":"standard","label":"普通（1KB）"},
             {"quality":"higher","label":"较高（2.3M）"},
-            {"quality":"exhigh","label":"极高（3.0M）"}
+            {"quality":"exhigh","label":"极高（0b）"}
         ])
     );
     let svc =

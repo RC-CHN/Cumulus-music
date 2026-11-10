@@ -130,7 +130,13 @@ fn single_choices(value: &Value) -> Vec<VoiceDownloadChoice> {
         .iter()
         .filter_map(|row| {
             let bitrate = row["bitrate"].as_u64().filter(|n| *n > 0)?;
-            let bytes = row["size"].as_u64().filter(|n| *n < 1 << 40)?;
+            // M/32.d presents a missing/null size as "0b". This does not
+            // turn a missing or nonpositive bitrate into an offered choice.
+            let bytes = if row["size"].is_null() {
+                0
+            } else {
+                row["size"].as_u64().filter(|n| *n < 1 << 40)?
+            };
             Some((bitrate, bytes))
         })
         .collect();
