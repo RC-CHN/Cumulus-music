@@ -772,7 +772,7 @@ def main():
     if args.voice_download_submit:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['voiceDownloadSubmitVerified'] and complete['stageCount'] == 6
-        assert complete['voiceDownloadService'] == {'rights': 1, 'urls': 1, 'gets': 1}
+        assert complete['voiceDownloadService'] == {'rights': 4, 'options': 3, 'urls': 1, 'gets': 1}
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (6 if args.screenshots else 0)
         with closing(sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True)) as db:
@@ -780,6 +780,8 @@ def main():
                 "SELECT value FROM state WHERE owner='2' AND kind='download_tasks_v1'"))
         assert task['origin'] == {'kind': 'voice', 'voice_id': '401'} and task['song_id'] == '1'
         assert task['status'] == 'complete' and task['authorization_count'] == 1
+        assert task['options']['quality'] == 'higher' and task['options']['container'] == 'audio'
+        assert not task['options']['lyrics']
         verify_voice_download_file(task['target'], root / 'voice-media')
         summary = dict(ok=True, actualWebView=True, voiceId='401', mediaId='1', stageCount=6,
                        nativePublished=True, privateSyntheticMedia=True, requestCounts=complete['voiceDownloadService'])

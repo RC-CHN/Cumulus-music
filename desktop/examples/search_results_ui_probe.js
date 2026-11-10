@@ -2114,7 +2114,7 @@
       };
       core.downloadCommand=(...args)=>{
         downloadCommands++;
-        if(window.__cumulusVoiceDownloadDirectory&&args[1].kind==='start_voice'){
+        if(window.__cumulusVoiceDownloadDirectory&&args[1].kind==='confirm_voice'){
           startCommands.push(args[1]);
           holdBadgeRead=true;
         }
@@ -2237,6 +2237,21 @@
       assert(one('.download-dialog').textContent.includes('下载 1 个单集')&&
         one('.download-dialog').textContent.includes(first.track.name),'confirmation shows the exact current episode');
       assert(!downloadCommands,'opening the dialog does not enqueue a download');
+      const choices=()=>all('.download-dialog input[name="voice-download-quality"]');
+      if(window.__cumulusVoiceDownloadDirectory){
+        const submit=()=>one('.download-dialog form .primary');
+        await wait(()=>one('.download-dialog [role="alert"]')?.textContent.includes('暂未获得可选下载音质'),
+          'empty signed quality reply visibly prevents submit');
+        assert(submit()?.disabled&&choices().length===0&&!downloadCommands,
+          'empty options never fall back to the saved music quality');
+        const retry=all('.download-dialog button').find(n=>n.textContent.trim()==='重试');
+        click(retry);
+        await wait(()=>choices().length===2&&choices()[0].checked,'explicit retry reads the verified first choice');
+        assert(choices().map(n=>n.value).join(',')==='standard,higher'&&
+          choices().map(n=>n.closest('label').textContent.trim()).join(',')==='普通（1.0M）,较高（2.0M）',
+          'voice options use sorted native tiers and reported sizes only');
+        assert(!downloadCommands,'retry is read-only');
+      }
       await capture('voice_download_confirmation');
       click(one('.download-dialog footer button[type="button"]'));
       await wait(()=>!one('.download-dialog'),'cancel current voice confirmation');
@@ -2246,6 +2261,9 @@
       if(window.__cumulusVoiceDownloadDirectory){
         click(badge());
         await wait(()=>one('.download-dialog[open]'),'reopen exact episode confirmation');
+        await wait(()=>choices().length===2&&choices()[0].checked,'reopen reads options and defaults to first');
+        click(choices()[1]);
+        assert(choices()[1].checked,'explicitly select the second offered tier');
         const directory=one('.download-dialog [aria-label="下载目录"]');
         directory.value=window.__cumulusVoiceDownloadDirectory;
         directory.dispatchEvent(new Event('input',{bubbles:true}));
@@ -2256,9 +2274,10 @@
         await wait(()=>submit()&&!submit().disabled,'synthetic download directory accepted');
         click(submit());
         await wait(()=>heldBadgeRead&&!one('.download-dialog'),'native submit succeeded and footer read is held');
-        assert(startCommands.length===1&&startCommands[0].voice_ids.join(',')==='401'&&
-          startCommands[0].options.container==='audio'&&!startCommands[0].options.lyrics,
-          'native submit uses exact voice ID and permitted output options');
+        assert(startCommands.length===1&&startCommands[0].quality==='higher'&&
+          /^[a-f0-9]{32}$/.test(startCommands[0].receipt)&&
+          Object.keys(startCommands[0]).sort().join(',')==='cover,kind,quality,receipt,tags',
+          'native submit uses only the quality receipt and selected offered tier');
         assert(badge()?.disabled&&badge().dataset.downloadState==='reading',
           'pre-command none must not allow another download while its follow-up read is held');
         await capture('voice_download_waiting_readback');

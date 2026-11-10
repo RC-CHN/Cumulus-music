@@ -43,7 +43,7 @@
   step='download';const ordinary=(await downloads('active')).options;
   await click(el(`[data-voice-id="${input.voice}"] [aria-label="下载单集"]`));await wait(()=>el('.download-dialog'),'voice_download_dialog');
   if(el('[aria-label="保存格式"]')||el('.download-dialog').textContent.includes('同时保存 LRC 歌词'))throw Error('unsupported_voice_download_option');
-  change('下载目录',input.root+'/media');change('下载音质','standard');await wait(()=>!el('.download-dialog button.primary').disabled,'download_form_ready');await click(el('.download-dialog button.primary'));
+  change('下载目录',input.root+'/media');const quality=await wait(()=>el('input[name="voice-download-quality"][value="standard"]:not(:disabled)'),'voice_standard_offered');if(!quality.checked)await click(quality);await wait(()=>!el('.download-dialog button.primary').disabled,'download_form_ready');await click(el('.download-dialog button.primary'));
   await wait(()=>el('.downloads-page')&&!el('.download-dialog'),'download_created');
   const completed=await wait(async()=>{const v=await downloads('completed');return v.tasks.length===1&&!v.tasks[0].cleanupPending?v:null;},'voice_download_complete',140000);
   const task=completed.tasks[0];taskId=task.id;

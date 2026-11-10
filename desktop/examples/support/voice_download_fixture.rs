@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 const AUDIO: &[u8] = include_bytes!("../../../core/tests/fixtures/tag_audio/seed.mp3");
 const MEDIA: &str = "https://m1.music.126.net/cumulus-voice-download-fixture.mp3";
 static RIGHTS: AtomicUsize = AtomicUsize::new(0);
+static OPTIONS: AtomicUsize = AtomicUsize::new(0);
 static URLS: AtomicUsize = AtomicUsize::new(0);
 static GETS: AtomicUsize = AtomicUsize::new(0);
 static RELEASE: AtomicBool = AtomicBool::new(false);
@@ -24,7 +25,7 @@ pub fn release() {
 
 pub fn report() -> Value {
     json!({"rights": RIGHTS.load(Ordering::Acquire), "urls": URLS.load(Ordering::Acquire),
-        "gets": GETS.load(Ordering::Acquire)})
+        "gets": GETS.load(Ordering::Acquire), "options": OPTIONS.load(Ordering::Acquire)})
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
@@ -42,14 +43,28 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             Some(Ok(json!({"code":200,"data":{"allowDownloadVoiceIds":[401],
                 "forbidDownloadVoiceIds":[],"downloadCheckResultList":[{"voiceId":401,"canDownload":true}]}})))
         }
+        "/api/dj/program/song/musics" => {
+            if args != &json!({"ids":["401"]}) {
+                return Some(Err(Error::State(
+                    "wrong synthetic episode quality identity",
+                )));
+            }
+            let number = OPTIONS.fetch_add(1, Ordering::AcqRel);
+            let musics = if number == 0 {
+                json!([])
+            } else {
+                json!([{"bitrate":192000,"size":2097152},{"bitrate":128000,"size":1048576}])
+            };
+            Some(Ok(json!({"code":200,"programs":[{"musics":musics}]})))
+        }
         "/api/song/enhance/download/url/v1" => {
-            if args != &json!({"id":"1","level":"standard","immerseType":"c51"}) {
+            if args != &json!({"id":"1","level":"higher","immerseType":"c51"}) {
                 return Some(Err(Error::State("wrong synthetic voice media identity")));
             }
             URLS.fetch_add(1, Ordering::AcqRel);
             Some(Ok(
                 json!({"code":200,"data":{"id":1,"code":200,"url":MEDIA,"type":"mp3",
-                "md5":"485aa2633a203a9ea13fd7416caeb9f9","size":AUDIO.len(),"level":"standard"}}),
+                "md5":"485aa2633a203a9ea13fd7416caeb9f9","size":AUDIO.len(),"level":"higher"}}),
             ))
         }
         _ => None,
