@@ -124,6 +124,12 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     实窗、41 项 Rust 音效测试及生产前端验证见
     .build/ui-proof/phase242-applied-effect/build-receipt.json。权限端点仅为
     合成夹具；未连接实服账号或实体声卡。
+  - 离线「添加全部」在 186d438c 的生产前端中通过普通缓存 7 态和已下载
+    曲目 15 态。核对无可播内容、文本筛选仅影响显示、追加保留暂停实例、
+    空队列起播及本机下一首；Rust 另核对过期快照无法改动持久化队列。
+    独立回执见 .build/ui-proof/phase240-cached-playlist-add-all/receipt.json。
+    搜索空队列与随机队列的 11 个实窗状态另见
+    .build/ui-proof/phase242-search-group-extended/receipt.json。
   - 候选树 318ace291fe91ab50ba55129dda0f3dadfa8f1ed 重走合成主流程：
     扫码接入并重开恢复、读取账号资源、日推与搜索、原生播放、私密歌单
     创建/编辑/增删/清理、下载暂停和续传、完成核对、离线播放及本地清理。
