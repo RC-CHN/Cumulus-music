@@ -81,10 +81,43 @@
     assert(!one('.playback-message'),'room operation is not an audio retry');
     await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,visible:document.visibilityState==='visible',focused:document.hasFocus(),theme:document.documentElement.dataset.theme,empty,playId:bar().dataset.playId||null,warning:!!one('.queue-clear-together'),completion:one('.queue-clear-completion')?.textContent.trim()??null,active:{tag:document.activeElement?.tagName,text:document.activeElement?.textContent.trim().slice(0,90)},dialogs:d?[{open:d.open,opacity:getComputedStyle(d).opacity,background:getComputedStyle(d).backgroundColor,rect:dr}]:[],paintSamples:p&&!d?[{x:r.left+4,y:r.top+4,color:getComputedStyle(p).backgroundColor}]:[]});
   }
+  async function queueRoomLoss(){
+    const loss=()=>one('[data-together-room-loss][open]:not(.modal-leave-active)');
+    const action=()=>loss()&&button('结束一起听',loss());
+    async function observation(label){
+      last=label;
+      await wait(()=>!one('.modal-enter-active,.modal-leave-active'),'room-loss dialog animation');
+      const d=loss();
+      const dr=d&&rect(d);
+      if(d)assert(dr.left>=8&&dr.right<=innerWidth-8&&dr.top>=8&&dr.bottom<=innerHeight-8,'room-loss dialog contained');
+      assert(bar().dataset.state==='paused'&&bar().dataset.playId===playId&&Math.abs(Number(bar().dataset.position)-12)<.1,'same paused audio');
+      assert(!one('.playback-message'),'not an audio retry');
+      await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{roomLoss:true,width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,visible:document.visibilityState==='visible',focused:document.hasFocus(),theme:document.documentElement.dataset.theme,playId,roomLossDialog:!!d,dialogs:d?[{open:d.open,opacity:getComputedStyle(d).opacity,background:getComputedStyle(d).backgroundColor,rect:dr}]:[]});
+    }
+    click(button('一起听'));await wait(()=>one('.together-page')&&button('创建房间'),'together route');
+    await create(true);
+    click(button('每日推荐'));await wait(()=>!one('.together-page'),'leave together page, not the room');
+    await fixture('reject_queue_loss');await fixture('lose_end');await fixture('hold_im_close');
+    click(one('.mode-control > button'));
+    await wait(()=>action()&&document.activeElement===action(),'global room-loss modal takes focus');
+    assert(loss().textContent.includes('一起听已失效')&&!one('.together-page'),'loss dialog belongs to the active shell');
+    await observation('loss_prompt');
+    click(action());await wait(()=>loss()?.textContent.includes('正在结束…'),'one confirmation');
+    // The probe snapshots native state without using IPC to end the room.
+    await fixture('wait_im_close_started');await observation('loss_closing_im');
+    await fixture('release_im_close');
+    await wait(async()=>{const v=await room();return !loss()&&v.pending.some(op=>op.action==='end')&&!!button('核对状态');},'lost success opens recovery route');
+    await observation('loss_reconcile');
+    click(button('核对状态'));
+    await wait(async()=>{const v=await room();return !v.room&&!v.attached&&!v.localRecovery&&!v.pending.length&&bar().dataset.speed==='1.25';},'read-back restores local preferences');
+    await observation('loss_restored');
+    await emit('complete',{ok:true,roomLoss:true,stageCount:count});
+  }
   try{
     await wait(()=>one('.account-button')?.textContent.includes('本地验证账号'),'fixture account');
     const provides=one('#app').__vue_app__._context.provides;client=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];epoch=(await client.accountSnapshot()).epoch;
     await resize(1120,760);await prepare();await client.playerAction(epoch,{kind:'speed',value:1.25});await client.playerAction(epoch,{kind:'mode',mode:'sequential'});
+    if(window.__queueRoomLossProof){await queueRoomLoss();return;}
     await openQueue();await openClear(false);await capture('ordinary_confirmation');
     await fixture('observe_room');click(button('确认清空',modal()));await wait(()=>button('确认清空',modal())?.disabled&&modal().textContent.includes('播放列表已变化'),'room change rejected');assert(!one('.queue-clear-together'),'old consent is not rewritten for a new room');await capture('room_changed');await cancel();await capture('unattached_room');
     click(button('查看一起听状态',panel()));await wait(()=>!panel()&&one('.together-page')&&button('继续本机控制'),'observed room page');await capture('observed_room');click(button('退出房间'));await wait(()=>one('.together-leave'),'captured exit');await capture('exit_confirmation');await fixture('replace_room');await wait(()=>button('确认退出')?.disabled&&one('.together-leave').textContent.includes('房间已变化'),'changed exit is disabled');await capture('exit_room_changed');click(button('继续收听'));await fixture('erase_room');click(button('刷新一起听'));await wait(()=>button('创建房间')&&!button('创建房间').disabled,'room absent');
