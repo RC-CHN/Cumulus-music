@@ -33,8 +33,11 @@ Rust 候选：MusicClient::podcast_liked_page(epoch, query)
   游标原始 JSON 类型，数字/文本同值重复也拒绝。失败、缺失字段或不前进时
   保留已提交前缀和可显式重试的游标；区别于官方非 200 空对象分支，不将失败
   误呈现为翻页结束。单页限 100，最多 500 页，截断明确标为 capped。
-- podcast_liked_count 独立执行上述计数请求，缺失/失败不视为 0。只给仍活动且未
-  续页的同一 visit 更新计数，不更改前缀成员或完整快照。页面仍丢弃失效路由的回复。
+- podcast_liked_count 独立执行上述计数请求，缺失/失败不视为 0。在点赞页先取得
+  本地 Open 回执再查计数，无需等首个网络页。同一活动 visit 中，不带 count 的
+  续页不取消这次读取；明确带 count 的后续页替代旧观察，迟到的计数不覆盖它。
+  Next 的 countUpdated 区分新的页计数和携带的旧值。计数不改变前缀成员、游标或
+  完整快照，失效路由的回复不复用。
 
 主窗口 IPC 已提供 podcast_liked_page、podcast_liked_count 和
 podcast_liked_page_program。TypeScript adapter 只发送类型规定的字段并核对回复 epoch。
@@ -153,3 +156,13 @@ Linux WebKit 实窗验收
 - 合成回归 core/tests/podcast/liked_paging.rs 覆盖账号/代次/时限、字段剥离、
   数据库拒绝写入时的本进程回退、旧回执拒绝、原始游标续页、退出保存和清理范围。
   无真实账号、服务调用或跨进程页面恢复。
+- 正式 Linux 可执行文件的隔离客态验证：实际点击关闭后选“保留窗口”，五条
+  合成 SQLite 记录均保留；确认退出后进程正常结束，仅删除两条满七天的点赞
+  前缀，近期前缀、同类型不同键和无关类型不变。该证明未用应用内测试夹具，
+  不代替登录态的活动视图保存测试；相关边界有原生合成回归。
+  回执与实窗截图：`.build/ui-proof/phase274-liked-clean-exit/`。
+- 在合并后的 Tauri 播客实窗探针，列表响应未给 count，独立计数返回 145。
+  旧代码在评论页的 SQLite 记录有 137 条和游标，但 count 为空；修复后
+  同一时刻存有 137 条、count 145 和数字游标 1700000000863，两次返回后
+  缓存均已消费。滚动、虚拟挂载上限、焦点、下一次实际请求和两次独立
+  计数均核对；未访问真实服务。`.build/ui-proof/phase274-liked-count/`。
