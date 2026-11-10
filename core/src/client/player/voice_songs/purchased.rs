@@ -7,7 +7,11 @@ use super::{
 };
 use crate::{
     Error, Result,
-    client::{dto::DownloadResult, pc_experiments::PcExperimentHost},
+    client::{
+        downloads::purchased::{purchased_quality_guide_url, vivid_available},
+        dto::DownloadResult,
+        pc_experiments::PcExperimentHost,
+    },
     download::service::DownloadOptions,
     membership::Quality,
 };
@@ -16,55 +20,6 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct Offer {
-    max_song_kbps: Option<u64>,
-    flags: u32,
-}
-
-impl Offer {
-    pub(super) fn from_privilege(p: &serde_json::Value) -> Option<Self> {
-        // M/35.h is a purchase mask, not a truthiness test. Numeric wire
-        // fields and unsigned bounds avoid admitting malformed service data.
-        if p["payed"].as_u64().and_then(|n| u32::try_from(n).ok())? & 6 == 0
-            || p["st"].as_i64()? < 0
-            || p["dl"].as_u64()? == 0
-            || crate::protocol::wire::serialization::js_truthy(&p["bd"])
-        {
-            return None;
-        }
-        Some(Self {
-            // M/21.A keeps the old maxbr-derived maxSongBr even if
-            // maxBrLevel is available. Missing maxbr only removes base rows.
-            max_song_kbps: p["maxbr"].as_u64().map(|n| n.div_ceil(1000)),
-            flags: u32::try_from(p["flag"].as_u64().unwrap_or(0)).ok()?,
-        })
-    }
-
-    pub(super) fn qualities(self, vivid: bool) -> Vec<Quality> {
-        use Quality::*;
-        // M/40.c + M/23.v, then M/3051 filters by tagSelectionMeta and
-        // sorts by bitrate descending. No VIP or trial adds a choice here.
-        [
-            (Vivid, vivid && self.flags & (1 << 21) != 0),
-            (Sky, self.flags & (1 << 18) != 0),
-            (JyMaster, self.flags & (1 << 16) != 0),
-            (JyEffect, self.flags & (1 << 17) != 0),
-            (HiRes, self.flags & (1 << 12) != 0),
-            (Lossless, self.base(999)),
-            (ExHigh, self.base(320)),
-            (Standard, self.base(128)),
-        ]
-        .into_iter()
-        .filter_map(|(quality, offered)| offered.then_some(quality))
-        .collect()
-    }
-
-    fn base(self, kbps: u64) -> bool {
-        self.max_song_kbps.is_some_and(|max| max >= kbps)
-    }
-}
 
 pub(super) struct Selection {
     pub(super) index: usize,
@@ -197,21 +152,8 @@ pub enum VoiceSongPurchasedDownloadResult {
 
 pub(super) fn vivid_enabled(experiments: &PcExperimentHost, page: &Page) -> Result<bool> {
     let api = page.api.upgrade().ok_or(Error::StaleResponse)?;
-    Ok(experiments
-        .observed_groups(&page.token, &api, &page.revision)?
-        .is_some_and(|groups| {
-            groups.group("PH-PC-hyyinzhi") == Some("t1")
-                && groups.group("PH-PC-zhenyingn") == Some("t1")
-        }))
-}
-
-/// M/31 opens this fixed M/40 public help page in the system browser.
-pub(super) fn purchased_quality_guide_url(vivid: bool) -> &'static str {
-    if vivid {
-        "https://music.163.com/g/st-vip-audio-quality"
-    } else {
-        "https://y.music.163.com/m/at/648fba3cbe7c73d87cbc2e81"
-    }
+    let groups = experiments.observed_groups(&page.token, &api, &page.revision)?;
+    Ok(vivid_available(groups.as_ref()))
 }
 
 impl MusicClient {

@@ -6,12 +6,18 @@ use super::{
     collect::Privilege,
     download::Class,
     id,
-    purchased::{Offer, purchased_quality_guide_url, vivid_enabled},
+    purchased::vivid_enabled,
 };
 use crate::{
     Error, Result,
     account::resources::{AccountResources, ResourceKind},
-    client::{downloads::GuardedSongBatch, dto::DownloadResult},
+    client::{
+        downloads::{
+            GuardedSongBatch,
+            purchased::{purchased_qualities, purchased_quality_guide_url},
+        },
+        dto::DownloadResult,
+    },
     download::service::SongBatchAdmission,
     membership::Quality,
     protocol::wire::serialization::js_truthy,
@@ -21,7 +27,6 @@ pub use playlist::{VoiceSongGroupPlaylistCreation, VoiceSongGroupPlaylistResult}
 use serde::Serialize;
 use serde_json::Value;
 use std::{
-    cmp::Reverse,
     collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex, OnceLock,
@@ -222,16 +227,6 @@ fn membership(
             None => D::MembershipUnknown,
         },
     )
-}
-
-fn purchased_qualities(offers: Vec<Offer>, vivid: bool) -> Vec<Quality> {
-    let mut union = offers
-        .into_iter()
-        .flat_map(|offer| offer.qualities(vivid))
-        .collect::<Vec<_>>();
-    union.sort_unstable_by_key(|quality| Reverse(quality.bitrate()));
-    union.dedup();
-    union
 }
 
 impl MusicClient {

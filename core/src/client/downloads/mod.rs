@@ -4,6 +4,7 @@ mod commands;
 mod comments;
 mod dto;
 mod jobs;
+pub(in crate::client) mod purchased;
 mod quality;
 mod resource;
 mod song_status;
