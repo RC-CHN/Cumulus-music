@@ -1191,7 +1191,7 @@ fn main() {
                         fixture.reject_held_page();
                         return;
                     }
-                    value["likedWaterfallTrace"] = fixture.trace();
+                    value["likedWaterfallTrace"] = Value::Array(fixture.trace());
                 }
                 if (liked_withdrawn || recent_program_menu) && stage == "voice_list_cohort" {
                     let compact = value["compact"].as_bool().expect("synthetic voice list assignment");
