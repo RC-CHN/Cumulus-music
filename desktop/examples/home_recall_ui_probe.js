@@ -4,23 +4,44 @@
   const emit = (stage, rest = {}) => invoke('plugin:event|emit', {
     event: 'ux-proof', payload: { stage, ...rest },
   });
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const originalTimeout = window.setTimeout;
+  const sleep = (ms) => new Promise((resolve) => originalTimeout.call(window, resolve, ms));
   const paint = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const play = () => document.querySelector('.playerbar .play-toggle');
   const guide = () => document.querySelector('[data-home-recall-guide]');
   const timing = {
     insertedAt: null, firstPollAt: null, captureRequestedAt: null, captureReturnedAt: null,
-    closingAt: null, removedAt: null,
+    closingAt: null, removedAt: null, timer: null,
   };
+  const closing = (bubble) => !bubble || bubble.classList.contains('recall-play-guide-leave-active');
+  // Observe the timer that causes the Vue DOM transition. Pass the original
+  // delay and arguments to WebKit; never mock the clock or shorten the wait.
+  function recordTimeout(handler, delay, ...args) {
+    if (typeof handler !== 'function' || closing(guide()))
+      return originalTimeout.call(window, handler, delay, ...args);
+    const scheduledAt = performance.now();
+    return originalTimeout.call(window, function (...values) {
+      const wasOpen = !closing(guide());
+      const firedAt = performance.now();
+      try {
+        return handler.apply(this, values);
+      } finally {
+        if (wasOpen) queueMicrotask(() => {
+          if (closing(guide()) && timing.timer === null)
+            timing.timer = { requestedMs: Number(delay), scheduledAt, firedAt };
+        });
+      }
+    }, delay, ...args);
+  }
+  window.setTimeout = recordTimeout;
   // Use the DOM lifecycle before Home navigation. A busy WebView can wake
   // the test's polling loop late, and screenshot IPC has its own latency.
   const observe = () => {
     const now = performance.now();
     const bubble = guide();
     if (bubble && timing.insertedAt === null) timing.insertedAt = now;
-    if (timing.insertedAt !== null && timing.closingAt === null &&
-        (!bubble || bubble.classList.contains('recall-play-guide-leave-active')))
+    if (timing.insertedAt !== null && timing.closingAt === null && closing(bubble))
       timing.closingAt = now;
     if (timing.insertedAt !== null && timing.removedAt === null && !bubble)
       timing.removedAt = now;
@@ -85,8 +106,9 @@
     assert(guide()?.isConnected, 'guide closed too soon');
     await wait(() => !guide() && timing.removedAt !== null, 'guide closed automatically', 3500);
     const visibleMs = timing.removedAt - timing.insertedAt;
-    assert(visibleMs > 2700 && visibleMs < 3850,
-      `guide did not last approximately three seconds (${visibleMs.toFixed(1)} ms)`);
+    assert(timing.timer?.requestedMs === 3000 &&
+      timing.timer.firedAt - timing.timer.scheduledAt >= 2900 && visibleMs > 2700,
+      `guide did not close on its three-second timer (${JSON.stringify(timing)})`);
     await paint();
     const closed = await player();
     assert(closed.state === 'idle' && closed.queueRevision === ready.queueRevision &&
@@ -124,5 +146,6 @@
     });
   } finally {
     observer.disconnect();
+    window.setTimeout = originalTimeout;
   }
 })();

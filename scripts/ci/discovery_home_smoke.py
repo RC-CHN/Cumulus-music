@@ -119,11 +119,14 @@ def verify_recall(output, complete, screenshots):
     assert ready['mediaCalls'] == closed['mediaCalls'] == []
     for key in ('state', 'entryId', 'playId', 'queueRevision', 'position'):
         assert playing['beforePlay'][key] == closed['closed'][key], key
-    assert 2700 < closed['visibleMs'] < 3850 and complete['guideShown'] is True
+    assert closed['visibleMs'] > 2700 and complete['guideShown'] is True
     clock = closed['timing']
     assert (clock['insertedAt'] <= clock['firstPollAt'] <= clock['captureRequestedAt']
             <= clock['captureReturnedAt'] <= clock['removedAt']), clock
     assert clock['insertedAt'] <= clock['closingAt'] <= clock['removedAt'], clock
+    timer = clock['timer']
+    assert timer['requestedMs'] == 3000 and timer['firedAt'] - timer['scheduledAt'] >= 2900, clock
+    assert clock['insertedAt'] <= timer['scheduledAt'] <= timer['firedAt'] <= clock['closingAt'], clock
     assert closed['visibleMs'] == clock['removedAt'] - clock['insertedAt'], clock
     assert playing['playing']['state'] == 'playing' and playing['playing']['position'] > .25
     assert playing['playing']['entryId'] == ready['ready']['entryId']
