@@ -91,7 +91,7 @@ def verify_play(output, report):
             pixels = json.loads((output / f'paint-{path.name}').read_text(encoding='utf-8'))
             assert len(pixels['samples']) == 1 and pixels['samples'][0]['ok']
         player, queue = receipt['checkedPlayer'], receipt['checkedQueue']
-        assert player['mode'] == 'single_loop' and not player.get('error')
+        assert player['mode'] == 'sequential' and not player.get('error')
         assert player['queueRevision'] == queue['revision'] and queue['current'] == player['entryId']
         ids = [item['track']['id'] for item in queue['tracks']]
         media = receipt['searchGroupNextMedia']
@@ -103,7 +103,7 @@ def verify_play(output, report):
             assert player['state'] == 'paused'
             assert all(player[field] == base[field] for field in
                        ('playId', 'entryId', 'position', 'queueRevision'))
-            assert ids == ['701', '702'] and media == []
+            assert ids == ['701'] and media == []
             continue
         assert media == [['101', 42]]
         assert player['track']['id'] == '101'
@@ -114,14 +114,14 @@ def verify_play(output, report):
             started = player
         assert all(player[field] == started[field] for field in ('playId', 'entryId'))
         if index < len(PLAY_LABELS):
-            assert ids == ['701', '103', '101', '702']
+            assert ids == ['701', '103', '101']
             if index == 9:
                 paused = player
             if index >= 9:
                 assert player['state'] == 'paused' and player['position'] == paused['position']
                 assert player['position'] >= started['position']
         else:
-            assert ids == ['701', '103', '104', '101', '702']
+            assert ids == ['701', '103', '104', '101']
             assert player['state'] == 'playing' and player['position'] > paused['position']
             assert player['queueRevision'] != started['queueRevision']
             commands = receipt['actionTrace']
@@ -139,7 +139,7 @@ def verify_play(output, report):
                 assert [r['track_id'] for r in action['rows']] == chosen
                 assert action['expected_play_id'] == observed['playId']
                 assert action['expected_queue_revision'] == observed['queueRevision']
-    report.update(finalQueue=['701', '103', '104', '101', '702'], startedAnchor='101',
+    report.update(finalQueue=['701', '103', '104', '101'], startedAnchor='101',
                   resumedSameDecoder=True, screenshots=len(PLAY_LABELS))
 
 

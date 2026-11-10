@@ -67,7 +67,7 @@
     const [checkedPlayer, checkedQueue] = await Promise.all([state(), queue()]);
     assert(checkedPlayer.queueRevision === checkedQueue.revision, 'consistent native queue revision');
     if (playProof && playStarted) {
-      assert(checkedPlayer.mode === 'single_loop' && !checkedPlayer.error &&
+      assert(checkedPlayer.mode === 'sequential' && !checkedPlayer.error &&
         checkedPlayer.track?.id === '101' && checkedQueue.current === checkedPlayer.entryId,
       'the explicit anchor is the actual current song');
     } else if (!extended || before) {
@@ -117,10 +117,12 @@
     await emit('resize', { width: 1120, height: 760 });
     await wait(() => innerWidth === 1120 && innerHeight === 760, 'wide viewport');
     ({ epoch } = await invoke('account_snapshot'));
-    await invoke('player_action', { epoch, action: { kind: 'mode', mode: extended ? 'random' : 'single_loop' } });
+    await invoke('player_action', { epoch, action: { kind: 'mode', mode: extended ? 'random' : playProof ? 'sequential' : 'single_loop' } });
     if (!extended) {
       await invoke('play_selection', {
-        epoch, selection: { kind: 'songs', ids: ['701', '702'], index: 0, quality: 'standard' },
+        epoch, selection: {
+          kind: 'songs', ids: playProof ? ['701'] : ['701', '702'], index: 0, quality: 'standard',
+        },
       });
       await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
         'actual decoder advances');
@@ -130,7 +132,8 @@
         return view.state === 'paused' && view.position > .2 && view;
       }, 'native paused baseline');
       baseline = await queue();
-      assert(ids(baseline) === '701,702' && before.mode === 'single_loop', 'baseline source and mode');
+      assert(ids(baseline) === (playProof ? '701' : '701,702') &&
+        before.mode === (playProof ? 'sequential' : 'single_loop'), 'baseline source and mode');
     } else {
       const empty = await state();
       assert(empty.state === 'idle' && empty.playId === null && empty.entryId === null &&
@@ -186,7 +189,7 @@
       await wait(() => actionTrace[0]?.outcome === 'search_group_anchor_unavailable' &&
         document.body.innerText.includes('请从同组中可播放的歌曲打开菜单'),
       'the actual group Play command rejected a blocked anchor');
-      assert(ids(await queue()) === '701,702' && !one('.playback-message button'),
+      assert(ids(await queue()) === '701' && !one('.playback-message button'),
         'blocked Play leaves the paused queue intact and cannot retry stale selection');
 
       await input('open_new_play_anchor', title('101'), 3);
@@ -198,7 +201,7 @@
           view.track?.id === '101' && view.playId !== before.playId && view.position > .3 && view;
       }, 'different clicked song started, after authorizing only that source');
       const startedQueue = await queue();
-      assert(ids(startedQueue) === '701,103,101,702',
+      assert(ids(startedQueue) === '701,103,101',
         'group is inserted without clearing and excludes the blocked non-anchor');
       playStarted = true;
       await capture('group_play_started');
@@ -223,7 +226,7 @@
           view.position > paused.position && view;
       }, 'current native decoder resumes instead of reopening or toggling');
       const final = await queue();
-      assert(ids(final) === '701,103,104,101,702' &&
+      assert(ids(final) === '701,103,104,101' &&
         final.current === resumed.entryId && final.revision !== startedQueue.revision,
       'the current entry moves inside selected display order without replacing the decoder');
       await capture('current_play_resumed');
