@@ -968,3 +968,191 @@ async fn cached_playlist_header_plays_a_later_page_and_leaves_the_queue_on_empty
     assert_eq!(device.state.lock().unwrap().loads, loads);
     assert_eq!(network.calls(), calls);
 }
+
+#[tokio::test]
+async fn cached_add_all_uses_full_mixed_order_and_preserves_the_paused_decoder() {
+    use cumulus_core::client::dto::PlayerAction;
+
+    let temp = tempfile::tempdir().unwrap();
+    let profile = temp.path().join("profile");
+    let network = Arc::new(Network::new());
+    let device = Arc::new(playback_support::Device::default());
+    device
+        .pinned_search_supported
+        .store(true, Ordering::Release);
+    let native = device.clone();
+    let (client, session, library) = open(&profile, network.clone(), Some(9));
+    let client =
+        client.with_audio_factory(move || Ok(playback_support::audio_engine(native.clone())));
+    let media = temp.path().join("local");
+    std::fs::create_dir(&media).unwrap();
+    for name in ["01 incumbent", "02 tail", "03 playlist member"] {
+        std::fs::write(media.join(format!("{name}.wav")), b"synthetic local audio").unwrap();
+    }
+    library.scan(&media).unwrap();
+    let query = LocalQuery {
+        descending: false,
+        ..Default::default()
+    };
+    let local_page = client.local_page(query.clone()).await.unwrap();
+    let [incumbent, tail, member] = local_page.tracks.as_slice() else {
+        panic!("expected three indexed files");
+    };
+    assert_eq!(member.track.name, "03 playlist member");
+    let membership = PlaylistLocalRef {
+        id: member.track.id.clone(),
+        revision: member.revision.clone(),
+    };
+    let task = publish_fixture_song(
+        &profile,
+        &session,
+        &temp.path().join("last.flac"),
+        "42",
+        false,
+    );
+    let mut rows = (60_000..60_100)
+        .map(|id| json!({"id":id,"v":-1}))
+        .collect::<Vec<_>>();
+    rows.push(json!({"id":42,"v":0}));
+    network.upstream.detail.lock().unwrap()["trackIds"] = json!(rows);
+    let previous = project(&session, &network.upstream);
+    client
+        .mutate_playlist_local("1", "73", &previous.revision, add(&[membership]))
+        .await
+        .unwrap();
+    let first = || PageRequest {
+        offset: 0,
+        limit: 100,
+        revision: None,
+    };
+    let live = client
+        .playlist_page_at("73", first(), None)
+        .await
+        .unwrap()
+        .value;
+    client
+        .playlist_page_at(
+            "73",
+            PageRequest {
+                offset: 100,
+                limit: 100,
+                revision: live.revision,
+            },
+            Some(live.playlist_local.unwrap().revision),
+        )
+        .await
+        .unwrap();
+    network.set(1);
+    let page = client
+        .playlist_page_at("73", first(), None)
+        .await
+        .unwrap()
+        .value;
+    assert!(page.more && page.tracks.iter().all(|row| row.id != "42"));
+    let cache = page.playlist_offline.unwrap();
+    let revision = page.playlist_local.unwrap().revision;
+    let add_all =
+        |expected_queue_revision: String, cached_at_ms| PlayerAction::QueueOfflinePlaylist {
+            id: "73".into(),
+            revision: revision.clone(),
+            cached_at_ms,
+            expected_queue_revision,
+        };
+    let calls = network.calls();
+    let empty = client.player_snapshot("1").await.unwrap();
+    assert_eq!(empty.queue_len, 0);
+    client
+        .player_action("1", add_all(empty.queue_revision, cache.cached_at_ms))
+        .await
+        .unwrap();
+    let playing = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            if view.state == PlaybackStatus::Playing {
+                break view;
+            }
+            assert_ne!(view.state, PlaybackStatus::Error);
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(playing.track.unwrap().id, member.track.id);
+    assert_eq!(playing.queue_len, 2);
+
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Local {
+                query,
+                start_id: Some(incumbent.track.id.clone()),
+                revision: local_page.revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            assert_ne!(view.state, PlaybackStatus::Error);
+            if view.state == PlaybackStatus::Playing {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 21.0 })
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let loads = device.state.lock().unwrap().loads;
+    assert!(matches!(
+        client
+            .player_action(
+                "1",
+                add_all(paused.queue_revision.clone(), cache.cached_at_ms - 1)
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let updated = client
+        .player_action(
+            "1",
+            add_all(paused.queue_revision.clone(), cache.cached_at_ms),
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.state, PlaybackStatus::Paused);
+    assert_eq!(updated.play_id, paused.play_id);
+    assert_eq!(updated.position, Some(21.0));
+    assert_eq!(device.state.lock().unwrap().loads, loads);
+    let store = ProfileRegistry::open(&profile, ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let queue = store.get("9", "playback", "queue").unwrap().unwrap();
+    let items = queue["items"].as_array().unwrap();
+    assert_eq!(items.len(), 4);
+    assert_eq!(items[0]["resource"]["local_id"], incumbent.track.id);
+    assert_eq!(items[1]["resource"]["local_id"], member.track.id);
+    assert_eq!(items[2]["resource"]["download_task_id"], task);
+    assert!(items[2]["resource"]["offline_playlist_download"].is_object());
+    assert_eq!(items[3]["resource"]["local_id"], tail.track.id);
+    assert_eq!(queue["current"], items[0]["entry_id"]);
+    assert!(matches!(
+        client
+            .player_action("1", add_all(paused.queue_revision, cache.cached_at_ms))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(
+        network.calls(),
+        calls,
+        "cached Add All may not authorize or hydrate online"
+    );
+}

@@ -31,6 +31,7 @@ pub use queue_catalog_reveal::QueueCatalogFileReveal;
 mod queue_click;
 mod queue_collection;
 mod queue_download_menu;
+mod queue_offline_playlist;
 pub use queue_download_menu::QueueDownloadFileReveal;
 mod queue_drop;
 mod queue_edit;
@@ -1046,6 +1047,23 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueOfflinePlaylist {
+            id,
+            revision,
+            cached_at_ms,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_offline_playlist(
+                    epoch,
+                    &id,
+                    &revision,
+                    cached_at_ms,
+                    &expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueMixedPlaylist {
             id,
             revision,
@@ -1867,6 +1885,7 @@ impl MusicClient {
             | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::SearchGroupNextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueueOfflinePlaylist { .. }
             | PlayerAction::QueueMixedPlaylist { .. }
             | PlayerAction::QueueVoice { .. }
             | PlayerAction::QueueRecentProgram { .. }

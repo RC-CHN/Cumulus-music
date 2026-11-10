@@ -1,6 +1,10 @@
 //! CAS-protected publication of queue, quality and coordinator ownership.
 use super::*;
-use crate::playback::controller::FmRestore;
+use crate::{
+    playback::{controller::FmRestore, engine::Cancellation},
+    playlist::offline_snapshot::OfflinePlaylistFence,
+    storage::StateTransaction,
+};
 use serde_json::json;
 
 enum SideEffect<'a> {
@@ -9,6 +13,7 @@ enum SideEffect<'a> {
     More(Option<bool>),
     Recall(i64),
     NativeGuard(&'a dyn Fn() -> Result<()>),
+    CachedPlaylist(&'a OfflinePlaylistFence, &'a Cancellation),
 }
 
 struct FmCommit<'a> {
@@ -18,6 +23,41 @@ struct FmCommit<'a> {
 }
 
 impl PlaybackQueue {
+    pub(crate) fn install_offline_playlist(
+        &mut self,
+        candidate: QueueSnapshot,
+        owner: &str,
+        binding: &OfflinePlaylistFence,
+        authority: &Cancellation,
+    ) -> Result<()> {
+        if self.owner != owner {
+            return Err(Error::StaleResponse);
+        }
+        candidate.validate()?;
+        for entry in &candidate.items {
+            super::super::PlaybackConstraint::from_resource(&entry.resource)?;
+        }
+        if candidate == self.state {
+            let store = self
+                .store
+                .as_ref()
+                .ok_or(Error::State("cached playlist requires persistent queue"))?;
+            return store.read_snapshot(|tx| {
+                if tx.get(owner, "playback", "queue")? != self.persisted {
+                    return Err(Error::QueueChanged);
+                }
+                check_cached_playlist(tx, owner, binding, authority)
+            });
+        }
+        self.commit_owned_with_side_effect(
+            candidate,
+            false,
+            None,
+            None,
+            SideEffect::CachedPlaylist(binding, authority),
+        )
+    }
+
     pub(crate) fn install_recall(&mut self, resources: Vec<Value>, now: i64) -> Result<()> {
         use rand::seq::SliceRandom;
         if !self.state.items.is_empty()
@@ -374,11 +414,15 @@ impl PlaybackQueue {
                 if let SideEffect::NativeGuard(guard) = side_effect {
                     guard()?;
                 }
+                if let SideEffect::CachedPlaylist(binding, authority) = side_effect {
+                    check_cached_playlist(tx, &self.owner, binding, authority)?;
+                }
                 Ok(stamp)
             });
             if let Err(error) = result {
                 // No candidate state is published after a failed write. On a
                 // competing edit, expose the newest valid committed queue.
+                let mut changed = true;
                 if let Ok(OwnedRead {
                     queue: raw,
                     session: intelligence_raw,
@@ -388,13 +432,16 @@ impl PlaybackQueue {
                     && let Ok(intelligence) =
                         Self::load_intelligence(&state, intelligence_raw.as_deref())
                 {
+                    changed = self.persisted != raw || self.intelligence_raw != intelligence_raw;
                     self.state = state;
                     self.persisted = raw;
                     self.intelligence_raw = intelligence_raw;
                     self.intelligence = intelligence;
                     self.store_stamp = store_stamp;
                 }
-                self.revision = revision;
+                if changed || !matches!(&side_effect, SideEffect::CachedPlaylist(..)) {
+                    self.revision = revision;
+                }
                 return Err(error);
             }
             self.store_stamp = Some(result?);
@@ -408,6 +455,22 @@ impl PlaybackQueue {
         self.revision = revision;
         Ok(())
     }
+}
+
+fn check_cached_playlist(
+    tx: &StateTransaction<'_>,
+    owner: &str,
+    binding: &OfflinePlaylistFence,
+    authority: &Cancellation,
+) -> Result<()> {
+    if tx
+        .get(owner, super::super::queue_more::ROOM_BINDING, "current")?
+        .is_some()
+        || !binding.matches(tx, owner)?
+    {
+        return Err(Error::QueueChanged);
+    }
+    authority.check()
 }
 
 fn recall_due(previous: Option<Value>, now: i64) -> Result<()> {
@@ -427,6 +490,56 @@ fn recall_due(previous: Option<Value>, now: i64) -> Result<()> {
 mod guarded_native_tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn retired_cache_cannot_commit_a_prepared_queue() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(dir.path()).unwrap());
+        let owner = "9";
+        let mut queue = PlaybackQueue::new(Some(store.clone()), owner).unwrap();
+        queue
+            .replace(vec![json!({"id":"2"})], 0, json!({"kind":"songs"}))
+            .unwrap();
+        let saved = store.get(owner, "playback", "queue").unwrap();
+        let revision = queue.revision();
+        let binding = OfflinePlaylistFence {
+            id: "73".into(),
+            revision: "source".into(),
+            local_generation: None,
+            cached_at_ms: 100,
+        };
+        let stamp = |timestamp| json!({"local_revision":"source","cached_at_ms":timestamp});
+        store
+            .put(
+                owner,
+                crate::playlist::OFFLINE_SNAPSHOT_KIND,
+                "73",
+                &stamp(100),
+            )
+            .unwrap();
+        let mut candidate = queue.snapshot();
+        candidate.items.push(QueueEntry {
+            entry_id: "new".into(),
+            resource: json!({"local_id":"fixture"}),
+            source: json!({"kind":"playlist","id":"73","offline_playlist":true}),
+        });
+        candidate.order.push("new".into());
+        store
+            .put(
+                owner,
+                crate::playlist::OFFLINE_SNAPSHOT_KIND,
+                "73",
+                &stamp(101),
+            )
+            .unwrap();
+        assert!(matches!(
+            queue.install_offline_playlist(candidate, owner, &binding, &Cancellation::default()),
+            Err(Error::QueueChanged)
+        ));
+        assert_eq!(store.get(owner, "playback", "queue").unwrap(), saved);
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue.revision(), revision);
+    }
 
     #[test]
     fn native_commit_rechecks_authority_inside_the_write_transaction() {

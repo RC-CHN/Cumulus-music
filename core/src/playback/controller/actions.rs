@@ -43,6 +43,7 @@ impl Actor {
                 | PlaybackCommand::MoveDisplayed(_)
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
                 | PlaybackCommand::ApplyLocalBatch(_)
+                | PlaybackCommand::ApplyOfflinePlaylistQueue(_)
                 | PlaybackCommand::RecallPrefill(_)
         ) && request.guard.is_none()
         {
@@ -118,6 +119,7 @@ impl Actor {
                 | PlaybackCommand::RepairLoudness
                 | PlaybackCommand::RepairQuality
         ) && !matches!(&request.command, PlaybackCommand::ApplyLocalBatch(update) if !update.start)
+            && !matches!(&request.command, PlaybackCommand::ApplyOfflinePlaylistQueue(update) if !update.start)
         {
             // A user/remote transport intent wins over a delayed UI connect.
             self.startup_pending = false;
@@ -162,6 +164,12 @@ impl Actor {
             return;
         }
         if let PlaybackCommand::ApplyLocalBatch(value) = &request.command
+            && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
+        if let PlaybackCommand::ApplyOfflinePlaylistQueue(value) = &request.command
             && value.expected != self.snapshot().fence()
         {
             self.reply(request.reply, Err(Error::QueueChanged));
@@ -330,6 +338,11 @@ impl Actor {
                 let authority = &request.guard.as_ref().expect("guarded local batch").1;
                 self.apply_local_batch(update, authority)
                     .await
+                    .map(|value| options = value)
+            }
+            PlaybackCommand::ApplyOfflinePlaylistQueue(update) => {
+                let authority = &request.guard.as_ref().expect("guarded cached playlist").1;
+                self.apply_offline_playlist_queue(update, authority)
                     .map(|value| options = value)
             }
             PlaybackCommand::RetainCurrentQueueAndPlay(queue) => self

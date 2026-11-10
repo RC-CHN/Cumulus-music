@@ -4486,7 +4486,27 @@ const searchKnownPlaylistIds = computed(() =>
     : undefined,
 );
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
-  if (cachedPlaylist.value && playlistPanelId() === list.id) return [];
+  if (cachedPlaylist.value && playlistPanelId() === list.id) {
+    if (scene !== 'detail') return [];
+    const special =
+      player.view.value?.fm || !!player.view.value?.intelligence || !!together.view.value?.attached;
+    return [
+      {
+        key: 'queue-offline',
+        label: '添加全部至播放列表',
+        icon: 'list',
+        disabled:
+          !cachedPlaylistHeaderSelection.value ||
+          loading.value ||
+          !player.ready.value ||
+          player.busy.value ||
+          player.queueBusy.value ||
+          !!playlistActions.value?.busy ||
+          special,
+        hint: special ? '请先切换到普通播放队列' : undefined,
+      },
+    ];
+  }
   return playlistMenuItems(list, scene, {
     lists: playlists.value,
     busy: playlistManager.busy.value || downloads.busy.value || !!playlistActions.value?.busy,
@@ -4494,6 +4514,23 @@ function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection
     preparing: player.busy.value || player.queueBusy.value,
     fm: player.view.value?.fm,
   });
+}
+function scopedOfflinePlaylistQueue(id: string) {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  const selection = cachedPlaylistHeaderSelection.value;
+  if (route.kind !== 'playlist' || route.id !== id || !selection) return;
+  return async () => {
+    const shown = cachedPlaylistHeaderSelection.value;
+    if (
+      account.value.epoch !== epoch ||
+      page.value !== route ||
+      shown?.revision !== selection.revision ||
+      shown.cached_at_ms !== selection.cached_at_ms
+    )
+      return;
+    return player.queueOfflinePlaylist(selection.id, selection.revision, selection.cached_at_ms);
+  };
 }
 function scopedPlaylistQueue(id: string, track?: TrackView) {
   const route = page.value;
@@ -4546,7 +4583,10 @@ function scopedPlaylistQueue(id: string, track?: TrackView) {
 function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
   const item = playlistMenu(list, scene).find((item) => item.key === key);
   if (!item || item.disabled) return;
-  if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
+  if (key === 'queue-offline') {
+    const scoped = scopedOfflinePlaylistQueue(list.id);
+    if (scoped) playlistActions.value?.show(list, 'queue', scoped);
+  } else if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
   else if (key === 'batch') openBatch(list, scene);
   else if (key === 'play') {
     if (

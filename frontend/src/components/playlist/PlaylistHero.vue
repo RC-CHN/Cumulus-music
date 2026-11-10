@@ -27,6 +27,9 @@ const coverCount = computed(() =>
   playlistCoverCount(props.playlist.playCount, props.playlist.private),
 );
 const date = computed(() => playlistDate(props.playlist.headerDate?.timestampMs));
+const menuItems = computed(() =>
+  props.offline ? props.items.filter((item) => item.key === 'queue-offline') : props.items,
+);
 const failedAvatar = ref<string>();
 const emit = defineEmits<{
   edit: [];
@@ -193,9 +196,9 @@ function play(event: MouseEvent) {
           </button>
           <ActionMenu
             variant="song"
-            v-if="!offline && items.length"
+            v-if="menuItems.length"
             label="更多歌单操作"
-            :items="items"
+            :items="menuItems"
             @select="$emit('action', $event)"
           />
         </div>

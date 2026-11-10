@@ -935,13 +935,29 @@ pub(super) fn insert_zone_batch(
 }
 
 pub(super) fn insert_collection_bound(
-    mut queue: QueueSnapshot,
+    queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,
     downloaded: bool,
     rebind: bool,
     replace_current: bool,
 ) -> QueueSnapshot {
+    insert_collection_by_key(queue, resources, source, rebind, replace_current, |row| {
+        resource_key(row, downloaded)
+    })
+}
+
+pub(super) fn insert_collection_by_key<F>(
+    mut queue: QueueSnapshot,
+    resources: Vec<Value>,
+    source: Value,
+    rebind: bool,
+    replace_current: bool,
+    resource_key: F,
+) -> QueueSnapshot
+where
+    F: for<'a> Fn(&'a Value) -> Option<(PlayerResourceKind, &'a str)>,
+{
     let bind_recommendation_origin = matches!(
         source["kind"].as_str(),
         Some("daily_recommendations" | "style_recommendations")
@@ -953,22 +969,22 @@ pub(super) fn insert_collection_bound(
         .cloned();
     let current_key = current
         .as_ref()
-        .and_then(|entry| resource_key(&entry.resource, downloaded));
+        .and_then(|entry| resource_key(&entry.resource));
     let inserts_current = replace_current
         && current_key.is_some()
         && resources
             .iter()
-            .any(|resource| resource_key(resource, downloaded) == current_key);
+            .any(|resource| resource_key(resource) == current_key);
     let existing: HashMap<_, _> = queue
         .items
         .iter()
-        .filter_map(|e| resource_key(&e.resource, downloaded).map(|id| (id, e)))
+        .filter_map(|e| resource_key(&e.resource).map(|id| (id, e)))
         .collect();
     let mut seen = HashSet::new();
     let inserted: Vec<_> = resources
         .into_iter()
         .filter_map(|resource| {
-            let id = resource_key(&resource, downloaded)?;
+            let id = resource_key(&resource)?;
             if !seen.insert((id.0, id.1.to_owned())) || !replace_current && current_key == Some(id)
             {
                 return None;
@@ -1000,16 +1016,15 @@ pub(super) fn insert_collection_bound(
     // This avoids restarting or changing the paused position of current audio.
     let replaced: HashSet<_> = inserted
         .iter()
-        .filter_map(|e| resource_key(&e.resource, downloaded))
+        .filter_map(|e| resource_key(&e.resource))
         .collect();
     let split = queue
         .items
         .iter()
         .position(|e| Some(&e.entry_id) == queue.current.as_ref())
         .map_or(0, |i| i + 1);
-    let keep = |e: &&QueueEntry| {
-        !resource_key(&e.resource, downloaded).is_some_and(|id| replaced.contains(&id))
-    };
+    let keep =
+        |e: &&QueueEntry| !resource_key(&e.resource).is_some_and(|id| replaced.contains(&id));
     let space = QUEUE_LIMIT - inserted.len();
     let mut prefix: Vec<_> = queue.items[..split]
         .iter()

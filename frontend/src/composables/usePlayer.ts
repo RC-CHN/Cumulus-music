@@ -451,6 +451,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
+  function queueOfflinePlaylist(id: string, revision: string, cached_at_ms: number) {
+    return queueAction({ kind: 'queue_offline_playlist', id, revision, cached_at_ms });
+  }
   function queueMixedPlaylist(
     id: string,
     revision: string,
@@ -593,6 +596,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_downloads'
             | 'queue_local'
             | 'queue_playlist'
+            | 'queue_offline_playlist'
             | 'queue_mixed_playlist'
             | 'queue_voice'
             | 'queue_recent_program'
@@ -1406,6 +1410,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   return {
     queuePlaylist,
+    queueOfflinePlaylist,
     queueMixedPlaylist,
     queueZonePlaylistBatch,
     queueZonePlaylistDetail,

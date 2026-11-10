@@ -672,6 +672,13 @@ export type PlayerAction =
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
   | {
+      kind: 'queue_offline_playlist';
+      id: string;
+      revision: string;
+      cached_at_ms: number;
+      expected_queue_revision: string;
+    }
+  | {
       kind: 'queue_mixed_playlist';
       id: string;
       revision: string;

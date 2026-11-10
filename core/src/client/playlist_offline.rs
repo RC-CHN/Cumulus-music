@@ -16,7 +16,10 @@ use crate::{
     },
     library::LocalResource,
     playback::engine::Cancellation,
-    playlist::{OFFLINE_DELETED_KIND, OFFLINE_SNAPSHOT_KIND, PlaylistLocalRef, PlaylistLocalStore},
+    playlist::{
+        OFFLINE_DELETED_KIND, OFFLINE_SNAPSHOT_KIND, PlaylistLocalRef, PlaylistLocalStore,
+        offline_snapshot::OfflinePlaylistFence,
+    },
     protocol::api::identifier,
     storage::OperationLock,
 };
@@ -24,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -67,15 +70,10 @@ fn digest(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-struct SnapshotIdentity {
-    revision: String,
-    local_generation: Option<u64>,
-    cached_at_ms: u64,
-}
-
 impl Snapshot {
-    fn identity(&self) -> SnapshotIdentity {
-        SnapshotIdentity {
+    fn identity(&self) -> OfflinePlaylistFence {
+        OfflinePlaylistFence {
+            id: self.playlist.id.clone(),
             revision: self.local_revision.clone(),
             local_generation: self.local_generation,
             cached_at_ms: self.cached_at_ms,
@@ -254,26 +252,13 @@ pub(super) fn invalidates_cache(error: &Error) -> bool {
 }
 
 fn snapshot_is_current(
-    session: &Arc<AccountSession>,
+    session: &AccountSession,
     token: &SessionToken,
-    id: &str,
-    identity: &SnapshotIdentity,
+    identity: &OfflinePlaylistFence,
 ) -> Result<bool> {
-    if PlaylistLocalStore::new(session.clone())?.generation(token, id)? != identity.local_generation
-    {
-        return Ok(false);
-    }
     let store = session.persistent_store()?;
     session.with_token(token, |owner| {
-        store.read_snapshot(|tx| {
-            Ok(tx.get(owner, OFFLINE_DELETED_KIND, id)?.is_none()
-                && tx.offline_playlist_snapshot_matches(
-                    owner,
-                    id,
-                    &identity.revision,
-                    identity.cached_at_ms,
-                )?)
-        })
+        store.read_snapshot(|tx| identity.matches(tx, owner))
     })
 }
 
@@ -282,6 +267,7 @@ pub(super) struct OfflineQueue {
     pub index: usize,
     pub source: Value,
     pub guard: Cancellation,
+    pub binding: OfflinePlaylistFence,
     // Directory membership and current index revision must remain fenced
     // until the native actor commits the queue.
     pub _local_lease: Option<OperationLock>,
@@ -494,7 +480,7 @@ impl MusicClient {
             })
             .collect::<Vec<_>>();
         let total = snapshot.rows.len();
-        if !snapshot_is_current(&self.session, token, id, &snapshot.identity())? {
+        if !snapshot_is_current(&self.session, token, &snapshot.identity())? {
             return Err(Error::QueueChanged);
         }
         Ok(Some(TrackPage {
@@ -537,7 +523,7 @@ impl MusicClient {
         if snapshot.local_revision != revision || snapshot.cached_at_ms != cached_at_ms {
             return Err(Error::QueueChanged);
         }
-        let stamp = snapshot.identity();
+        let binding = snapshot.identity();
         let picked = |id: &str, local: bool| !selected_only || start == Some((id, local));
         let refs = snapshot
             .rows
@@ -608,8 +594,9 @@ impl MusicClient {
             "kind":"playlist", "id":id, "name":snapshot.playlist.name, "offline_playlist":true,
             "history_resource": {"id":id, "name":snapshot.playlist.name},
         });
+        let stamp = binding.clone();
         let guard = Cancellation::new(move || {
-            snapshot_is_current(&session, &token, &id, &stamp).unwrap_or(false)
+            snapshot_is_current(&session, &token, &stamp).unwrap_or(false)
         });
         if guard.is_cancelled() {
             return Err(Error::QueueChanged);
@@ -626,6 +613,7 @@ impl MusicClient {
             index,
             source,
             guard,
+            binding,
             _local_lease: local_lease,
         })
     }

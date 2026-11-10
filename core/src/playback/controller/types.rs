@@ -167,6 +167,14 @@ pub struct LocalBatchUpdate {
     pub(crate) index: crate::storage::OperationLock,
     pub(crate) start: bool,
 }
+/// Install an owned cache selection while its index and durable stamp still match.
+pub struct OfflinePlaylistQueueUpdate {
+    pub(crate) expected: PlaybackFence,
+    pub(crate) queue: QueueSnapshot,
+    pub(crate) start: bool,
+    pub(crate) binding: crate::playlist::offline_snapshot::OfflinePlaylistFence,
+    pub(crate) index: Option<crate::storage::OperationLock>,
+}
 /// Native-only homepage metadata publication. It never supplies a media URL,
 /// claims the output device, or asks the actor to load its selected entry.
 pub struct RecallPrefill {
@@ -250,6 +258,7 @@ pub enum PlaybackCommand {
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
     },
     ApplyLocalBatch(LocalBatchUpdate),
+    ApplyOfflinePlaylistQueue(OfflinePlaylistQueueUpdate),
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.
     PlaySearchCatalog(Option<QueueUpdate>),

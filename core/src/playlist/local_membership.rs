@@ -219,6 +219,18 @@ impl PlaylistLocalStore {
         })
     }
 
+    pub(super) fn generation_in(
+        tx: &crate::storage::StateTransaction<'_>,
+        owner: &str,
+        id: &str,
+    ) -> Result<Option<u64>> {
+        Ok(tx
+            .get(owner, RECORDS, id)?
+            .map(Record::parse)
+            .transpose()?
+            .map(|record| record.generation))
+    }
+
     pub(crate) async fn mutate(
         &self,
         token: &SessionToken,

@@ -718,6 +718,12 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    QueueOfflinePlaylist {
+        id: String,
+        revision: String,
+        cached_at_ms: u64,
+        expected_queue_revision: String,
+    },
     QueueMixedPlaylist {
         id: String,
         revision: String,

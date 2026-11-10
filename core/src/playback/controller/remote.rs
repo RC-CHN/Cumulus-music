@@ -153,6 +153,32 @@ impl Actor {
         Ok(None)
     }
 
+    pub(super) fn apply_offline_playlist_queue(
+        &mut self,
+        update: super::OfflinePlaylistQueueUpdate,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<LoadOptions>> {
+        if self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || update.queue.fm_source.is_some()
+            || update.queue.intelligence.is_some()
+            || self.queue.is_empty() != update.start
+            || (update.start && (self.pending.is_some() || update.queue.selected().is_none()))
+            || (!update.start && self.queue.selected() != update.queue.selected())
+        {
+            return Err(Error::QueueChanged);
+        }
+        self.session.with_token(&self.token, |owner| {
+            self.queue
+                .install_offline_playlist(update.queue, owner, &update.binding, authority)
+        })?;
+        // Keep the local index lease through the transaction. A selected
+        // file is revalidated by the usual native decoder path afterwards.
+        drop(update.index);
+        // No reload, playback toggle or position change for an existing queue.
+        Ok(update.start.then(LoadOptions::default))
+    }
+
     pub(super) async fn apply_local_batch(
         &mut self,
         update: super::LocalBatchUpdate,
