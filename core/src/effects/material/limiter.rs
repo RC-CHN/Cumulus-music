@@ -37,7 +37,7 @@ pub enum LimiterBeginCall {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterialLimiterPlan {
     pub schema: MaterialSchema,
@@ -108,13 +108,24 @@ impl MaterialLimiterPlan {
     /// Prepare the recovered final node on a fresh stream. This is a single
     /// component renderer; it does not load the rest of the material graph.
     pub fn pcm_stage(&self, format: Format) -> Result<LimiterStage> {
-        let parameters = self.parameters;
+        Self::stage_with_parameters(format, self.enabled, self.parameters)
+    }
+
+    pub(super) fn stage_with_parameters(
+        format: Format,
+        enabled: bool,
+        parameters: LimiterParameters,
+    ) -> Result<LimiterStage> {
         LimiterStage::new(
             format,
             LimiterSettings {
-                enabled: self.enabled,
+                enabled,
                 threshold_db: parameters.threshold,
-                attack_seconds: self.attack(),
+                attack_seconds: if parameters.attack > 0.0 {
+                    parameters.attack
+                } else {
+                    MATERIAL_BEGIN_LIMITER.attack
+                },
                 release_seconds: if parameters.release > 0.0 {
                     parameters.release
                 } else {

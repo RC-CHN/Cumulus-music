@@ -67,13 +67,17 @@ impl Slot50Tone {
     /// sets target bypass and flat shelves; subsequent setters write both
     /// requested gains and reopen the component if either is nonzero.
     pub fn apply_material(&mut self, material: Slot50Material) -> Result<()> {
-        self.master_bypass()?;
-        self.shelves(0.0, 0.0)?;
+        self.apply_material_begin_defaults()?;
         if material != Slot50Material::default() {
             self.shelves(material.bass_db as f32, material.treble_db as f32)?;
             self.0.set_bypass(false)?;
         }
         Ok(())
+    }
+
+    pub(crate) fn apply_material_begin_defaults(&mut self) -> Result<()> {
+        self.master_bypass()?;
+        self.shelves(0.0, 0.0)
     }
 
     /// Modern EF8CA0 dispatch has an independent on flag. Both neutral

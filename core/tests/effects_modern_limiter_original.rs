@@ -18,6 +18,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+#[path = "effects_modern_limiter_original/live.rs"]
+mod live;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Oracle {

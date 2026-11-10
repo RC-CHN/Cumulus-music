@@ -93,6 +93,21 @@ impl LimiterStream {
         self.stage.lookahead_frames()
     }
 
+    pub(crate) fn control_format(&self) -> Result<super::Format> {
+        if self.input_end {
+            return Err(Error::State("limiter stream has ended"));
+        }
+        Ok(self.stage.format)
+    }
+
+    /// A verified B0 parameter setup replaces that node alone. In particular,
+    /// this does not discard pending decoder PCM, produced PCM or its clock.
+    pub(crate) fn replace_stage_for_setup(&mut self, stage: LimiterStage) {
+        debug_assert!(!self.input_end);
+        debug_assert_eq!(stage.format, self.stage.format);
+        self.stage = stage;
+    }
+
     fn input_ready(&self) -> usize {
         self.input.len() / self.stage.format.channels()
     }

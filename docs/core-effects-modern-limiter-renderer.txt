@@ -55,6 +55,67 @@ and quarantines a deterministic overflowing DSP input.
 The Rust code is platform independent and calls existing owned C FFI.
 The original SDK source data requires no live requests and the checked-in
 regression uses no vendor binary. The assembly does not own a decoder,
-media descriptor, auth receipt, player state, hot switches or a sound
-output. No preset availability, route, lease or native playback defaults
-are changed; those require a separate owned decoder and seek/EOF proof.
+media descriptor, auth receipt, player state or a sound output. No preset
+availability, route, lease or native playback defaults are changed.
+
+Live control of an owned PCM stream
+----------------------------------
+
+`renderer.set_material_active(false)` follows outer 68770 → 6B960:
+send default B0 controls (0 dB, 5 ms attack, 100 ms release, 0 dB output,
+infinite ratio, ratio 4) and run processor 1C590(true). It targets dry for
+GEQ, modern BT and PEQ while retaining their previous wrapper state and
+parameters for the next quantum. B0 remains enabled in this topology.
+Already buffered output is untouched. Pending input remains in the same
+FIFO and participates in the next whole quantum, under its new controls.
+
+`set_material_active(true)` after off follows the same-material apply
+sequence: 68000 → 1BBA0 defaults (GEQ flat/off, BT flat/off, PEQ off,
+0 dB with nine disabled default bands), clear master bypass, B0 defaults,
+then GEQ/BT/PEQ setters and B0 material parameters. Already-off siblings
+do not affect PCM. The next quantum consumes the pending native wrapper
+mix; applying both commands before the next quantum does not add a fake
+dry block. Repeating the requested target is a local no-op. Different
+materials are not accepted by this API. After source EOF controls are
+rejected until an explicit reset; draining remains available.
+
+The B0 timing setters 65581/655A0 set +C5. On the next process, 64F40
+rebuilds the B0 delay/envelope and initializes its new skip and EOF drain
+debt, even when only release changed at a fixed attack and identical
+lookahead length. The Rust owner replaces only that private node; no
+read of its state intervenes before its next graph call. If the entire
+B0 setting matches the defaults, it keeps the old envelope and pending
+lookahead. An equal-timing change to gain/ratio is outside the supported
+live scope and is rejected before modifying the graph or FIFOs. That is
+not a restriction on the existing fresh-renderer API. No output silence
+or padding is inserted to make up for the discarded old B0 history; the
+ordinary EOF sentinel and native B0 drain remain distinct.
+
+The frozen `effects-modern-limiter-switch-official.json` uses original
+native graph and outer FIFO calls at 44.1 and 48 kHz, with the two existing
+synthetic materials plus exact-default and release-only timing variants.
+In each of 24 runs, the first output has 31 frames read and unread PCM
+retained; controls arrive with 511 and 257 pending input frames. The
+receipt records full little-endian f32 hashes of three output segments,
+all graph frame counts, B0 +C4/+C5 observations and setup calls. There
+are steady, separated off/reapply and coalesced off/reapply controls.
+Neither hot call invokes graph Reset 1B960 or B0 Reset marker 65490.
+The Rust test compares the PCM hashes and counts, checks that the
+existing source clock still advances by the accepted input frames, and
+verifies that rejecting an unsupported gain-only switch retains all PCM.
+Fixture SHA-256: `7a1be03d74b6d3e9f6e9e8d320fe0beb9217715ac2d68fa17b18bd810d9f12d0`.
+
+To regenerate the fixture with a local copy of the pinned original and
+the optional `capstone`, `pefile` and `unicorn` Python packages, use a
+loopback-only namespace:
+
+    unshare -Urn python3 scripts/research/freeze_modern_limiter_switch.py \
+      --dll LOCAL_ORIGINAL_NEAUDIOEFFECTS_DLL --out NEW.json
+
+The Rust tests require neither those dependencies nor any DLL. This is
+PCM and FIFO verification. It does not verify controller takeover, device
+queue latency, current authorization, decoder fallback or audible output
+on a physical device. The host clock contract is separate from this
+renderer, as is the held-source seek/drain path. The focused Linux x86_64
+Cargo batch passed 13 tests: modern renderer (5), material preflight (4),
+old fixed master (2) and slot-50 tone (2). No Windows device was tested.

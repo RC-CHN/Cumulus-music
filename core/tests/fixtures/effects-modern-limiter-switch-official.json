@@ -1,0 +1,1080 @@
+{
+  "sdkSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "cases": [
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1873,
+        2048,
+        2048,
+        182
+      ],
+      "frames": [
+        1873,
+        2048,
+        2230
+      ],
+      "sha256": [
+        "ba90b9b9a700fbd6bfcd5896ccdfe16fc567ca50dc8f3d6d89c15baf1c65d3ee",
+        "41adce813e4810e1d947134a6015bd05ab9d90f3528ba0333108585b01941e17",
+        "d78b8dee2644e7c5a7534ae993ef95b998671d86bf6dfb50bddfe7f3a7d8220d"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1873,
+        1829,
+        1873,
+        182
+      ],
+      "frames": [
+        1873,
+        1829,
+        2055
+      ],
+      "sha256": [
+        "ba90b9b9a700fbd6bfcd5896ccdfe16fc567ca50dc8f3d6d89c15baf1c65d3ee",
+        "466e59832021c54e7ac538e7653928ec4a969e57f8030a4f087c6be320d90ac7",
+        "8877981c69c82c3f6407aeb32e38ce04939fd94722e3b3591fa19c9ed5788d1f"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1873,
+        1873,
+        2048,
+        182
+      ],
+      "frames": [
+        1873,
+        1873,
+        2230
+      ],
+      "sha256": [
+        "ba90b9b9a700fbd6bfcd5896ccdfe16fc567ca50dc8f3d6d89c15baf1c65d3ee",
+        "7ad83d0edfdf0c0902986f4463dddf375deed989195da864778b15234e69a963",
+        "fc69a24932e74235f2a23ccc75ee018a9331160678408801c31ef1384360fc50"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1857,
+        2048,
+        2048,
+        198
+      ],
+      "frames": [
+        1857,
+        2048,
+        2246
+      ],
+      "sha256": [
+        "7d02243f9f2d04a28ccd2fe3172685a6855fee6a962c2f5b80135db640dc8edb",
+        "9a697c449856f82861f2fddd27b59bf189e14a66aba3d9290d5ac97202158de1",
+        "dbaf673cb39dce8cd8841719621d4a7dfd4a6dcf9963c21d7961efaaad922f17"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1857,
+        1810,
+        1857,
+        198
+      ],
+      "frames": [
+        1857,
+        1810,
+        2055
+      ],
+      "sha256": [
+        "7d02243f9f2d04a28ccd2fe3172685a6855fee6a962c2f5b80135db640dc8edb",
+        "d35de60b4f310227bfa5cfe152ffeffad92aa4bb00876d16b4163578bd87d3f0",
+        "51e0d829de78f18d0ebcd721c3735eb25d2b0e9d4518abbd75911b1027e59937"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1857,
+        1857,
+        2048,
+        198
+      ],
+      "frames": [
+        1857,
+        1857,
+        2246
+      ],
+      "sha256": [
+        "7d02243f9f2d04a28ccd2fe3172685a6855fee6a962c2f5b80135db640dc8edb",
+        "fb008a0e00a569528d1eb35cfdae80709888ab6dada6fca4dbf52d146d8448c8",
+        "e498cb64f71a39b55f2f7952b3d980837437487e6eb27ada1413e5ac6f650c30"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1785,
+        2048,
+        2048,
+        270
+      ],
+      "frames": [
+        1785,
+        2048,
+        2318
+      ],
+      "sha256": [
+        "a78dc183cc9f07357b5f205b2b597df51cbfabf3cbc706b749655cb84e4002d9",
+        "7ecd733bd7ee26f09ff9970dc726e87b0242aa720f4e1e153593dddc339183d6",
+        "537e8173f0c0586a582c8be72d78063180dce7663526c5430f92643851042f8d"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1785,
+        1829,
+        1785,
+        270
+      ],
+      "frames": [
+        1785,
+        1829,
+        2055
+      ],
+      "sha256": [
+        "a78dc183cc9f07357b5f205b2b597df51cbfabf3cbc706b749655cb84e4002d9",
+        "84a8f77edb5b9c2bf5ec8eb4c8accaa1c942691853919b5711e6742b4d1de58a",
+        "96a338db7afb398a9910abbfd514f8ab01745e6dce6f7a3153fde692d36aaa42"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1785,
+        1785,
+        2048,
+        270
+      ],
+      "frames": [
+        1785,
+        1785,
+        2318
+      ],
+      "sha256": [
+        "a78dc183cc9f07357b5f205b2b597df51cbfabf3cbc706b749655cb84e4002d9",
+        "8abb092a1d23eabf5bdc38ba5a3b3a6fab1dc5e9b31abaeaba5c0753b6de6597",
+        "20222943af591c978b1560d5829668685419122cc3df77d41ff369258a9fd126"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1761,
+        2048,
+        2048,
+        294
+      ],
+      "frames": [
+        1761,
+        2048,
+        2342
+      ],
+      "sha256": [
+        "d5db0a23401d030b4cfbda5c728c9e8a80cf2809487a6f43346a0f2a0ebfbe9a",
+        "21807eee1354670f9e0de027db6058b6631bf3df4dca91948e21fc7a57a455e1",
+        "38443ce7bad2cd0a8bb06bd8a241c7b0c393370566d729e23600698d3fa582aa"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1761,
+        1810,
+        1761,
+        294
+      ],
+      "frames": [
+        1761,
+        1810,
+        2055
+      ],
+      "sha256": [
+        "d5db0a23401d030b4cfbda5c728c9e8a80cf2809487a6f43346a0f2a0ebfbe9a",
+        "9a2c46e31b83256d6b2923aaea93b75e34fdbd5dce9c0c3f3e098f570b1df751",
+        "04b4984504fba9099737f1b39806e01ba7ef42bb43fab699087ef0089d685988"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1761,
+        1761,
+        2048,
+        294
+      ],
+      "frames": [
+        1761,
+        1761,
+        2342
+      ],
+      "sha256": [
+        "d5db0a23401d030b4cfbda5c728c9e8a80cf2809487a6f43346a0f2a0ebfbe9a",
+        "64e3521509f7830a37a28d68ca9d6ab82f3f95a8ba171609bf0e4c9679b4a21e",
+        "ed63ac9a8f718ae0d943d3f7b4420ec151287d3b80c190a2e923b46481ce788b"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 44100,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "a03a9d5998ac16d274a95c3eb47263e8906b6df52d20e8b789b7a25d87679b93",
+        "301a36d5fc269f82aea0e192be67accc42d1db61660e258eef04d2134ed4da79",
+        "304fe4e0bdb76d2520e1e2a7ea45d2615f5df330c5211707afc0b59858b1b4ce"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 44100,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "a03a9d5998ac16d274a95c3eb47263e8906b6df52d20e8b789b7a25d87679b93",
+        "53e31f3b6f7ed2e0dc88681f278883d82d3465f7faf508b8871dca20c3413936",
+        "3cb21961f96d8b650da73e5cdf70f82a07607c47ef3dad3e9684047b1d341426"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 44100,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "a03a9d5998ac16d274a95c3eb47263e8906b6df52d20e8b789b7a25d87679b93",
+        "5355de53e25cd96e612d207c15d3cd5f6c29510546c8a4679f34a9434075e4c4",
+        "97331d3f3fa1e29aa26c8e25aa948502644a50890a22936dfaadc2a2c57bed10"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 48000,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "8d57a38d2c102e2e9164f1823259e118b5f0ee27e6a6d1f491e9d2ee03764a19",
+        "cff63cf66bef6758c642c96b1bc09eb77c53004c7fab7e88bffc8f5c8e2a43b7",
+        "a5a052368700afe9b43c8296ea788029906cdb0d1747c7f08c361f9033b67915"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 48000,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "8d57a38d2c102e2e9164f1823259e118b5f0ee27e6a6d1f491e9d2ee03764a19",
+        "730128be4b5b1e591b510543ee0eb2760ceefe70597253aff6019b0da7c823a2",
+        "e0e7956a006ac70b8637b6a082722a1e52d8109fe5564d5883cb0f75ae228e37"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "defaultTiming",
+      "rate": 48000,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "8d57a38d2c102e2e9164f1823259e118b5f0ee27e6a6d1f491e9d2ee03764a19",
+        "05ab3948c3d6e194e3c9a4c737734c14b4c7117899fb72af1b1f90f366b6a0c4",
+        "f6f174881cb19d2d1c97e416fe5b3dabbbaa69d681ebf0400e5649f2441f8a0f"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "releaseOnlyTiming",
+      "rate": 44100,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        2048,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        2048,
+        2274
+      ],
+      "sha256": [
+        "7ba13e7e70f319b1ad49adcc140fc74e278bcf002f4e942151c959bc49f2033c",
+        "4828fafe4023b5c6756a15e42dc22b9efab02341d42a8e94f49ee50509752eb9",
+        "0591c5c29e57344f51c48c8a06a13abb9619dd30d30816ef00eb6667a9720683"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "releaseOnlyTiming",
+      "rate": 44100,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1829,
+        1829,
+        226
+      ],
+      "frames": [
+        1829,
+        1829,
+        2055
+      ],
+      "sha256": [
+        "7ba13e7e70f319b1ad49adcc140fc74e278bcf002f4e942151c959bc49f2033c",
+        "84a8f77edb5b9c2bf5ec8eb4c8accaa1c942691853919b5711e6742b4d1de58a",
+        "2448c6b16891b5e43a6a9bfbec0d9faef38eba03fa9a40e93bad2ca775d24fe9"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "releaseOnlyTiming",
+      "rate": 44100,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1829,
+        1829,
+        2048,
+        226
+      ],
+      "frames": [
+        1829,
+        1829,
+        2274
+      ],
+      "sha256": [
+        "7ba13e7e70f319b1ad49adcc140fc74e278bcf002f4e942151c959bc49f2033c",
+        "997fc0f185a78b9d31fb884eb50f948f84c2ef8978b2aa2fad6bd614e8b46a18",
+        "770e8bbf886ee428a5da9ee9cf9668c0a335f3179679d6bce9bd20d0b13e7d7f"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "releaseOnlyTiming",
+      "rate": 48000,
+      "mode": "steady",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        2048,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        2048,
+        2293
+      ],
+      "sha256": [
+        "32a2b5093add94b4abc26d6b7676bf6eac0ff4f982e64a91e2ba4da65cf901cb",
+        "b093d505c044e8ea0220c73cf4985746d17fe33ae3ebbf728b8ec726c6ed146e",
+        "b02499fe46552441e2b1d8c64bafbb1bcb5e5a06d1d15c5f2ba015d04375e19e"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "releaseOnlyTiming",
+      "rate": 48000,
+      "mode": "switch",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1810,
+        1810,
+        245
+      ],
+      "frames": [
+        1810,
+        1810,
+        2055
+      ],
+      "sha256": [
+        "32a2b5093add94b4abc26d6b7676bf6eac0ff4f982e64a91e2ba4da65cf901cb",
+        "9a2c46e31b83256d6b2923aaea93b75e34fdbd5dce9c0c3f3e098f570b1df751",
+        "15511f0b1ae1eeb19c8aa80f98c0782b7efae6c4eb24f5c4fc76f4cd903711e6"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40",
+        "0x64f40"
+      ]
+    },
+    {
+      "profile": "releaseOnlyTiming",
+      "rate": 48000,
+      "mode": "coalesced",
+      "inputs": [
+        2048,
+        2048,
+        2048,
+        7
+      ],
+      "outputs": [
+        1810,
+        1810,
+        2048,
+        245
+      ],
+      "frames": [
+        1810,
+        1810,
+        2293
+      ],
+      "sha256": [
+        "32a2b5093add94b4abc26d6b7676bf6eac0ff4f982e64a91e2ba4da65cf901cb",
+        "c6c77b2b7d9005aad3ba12c3bab6f9c99f3641ed634dde7c2c30d86361efba63",
+        "30e4cf921756944065daa9230318573e2fbfc74d53d41bd306862105e05bafc2"
+      ],
+      "flags": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "nativeB0Calls": [
+        "0x64f40",
+        "0x64f40"
+      ]
+    }
+  ],
+  "schema": "cumulus.modern-limiter-x64-hot.v1"
+}

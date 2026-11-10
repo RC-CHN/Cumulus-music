@@ -1,8 +1,8 @@
 //! A bounded, offline graph for one recovered modern material topology.
 //! Neither decoding JSON nor constructing this graph authorizes a source.
 use super::{
-    Component, EqualizationCall, MaterialLimiterPlan, PeqCall, apply_peq, bass_treble_calls,
-    graphic_calls, material_limiter_plan, number, peq_calls,
+    Component, EqualizationCall, MATERIAL_BEGIN_LIMITER, MaterialLimiterPlan, PeqCall, apply_peq,
+    bass_treble_calls, graphic_calls, material_limiter_plan, number, peq_calls,
 };
 use crate::{
     Error, Result,
@@ -26,9 +26,9 @@ const COMPONENTS: [(Component, bool); 7] = [
 const UNSUPPORTED: Error = Error::InvalidInput("unsupported modern limiter material");
 
 /// Validated parameter program for GEQ → modern BT → PEQ → explicit B0.
-/// This admits no legacy fallback, extra siblings, hot updates or material
-/// authorization. Constructing it does not open files, play audio or use IO.
-#[derive(Debug)]
+/// This admits no legacy fallback, extra siblings or material authorization.
+/// Constructing it does not open files, play audio or use IO.
+#[derive(Clone, Debug)]
 pub struct ModernLimiterPlan {
     geq: [f32; 10],
     bass: f32,
@@ -126,6 +126,8 @@ impl ModernLimiterPlan {
         Ok(ModernLimiterRenderer {
             stages: self.stages(format)?,
             stream: self.limiter.pcm_stream(format, fifo_capacity)?,
+            plan: self.clone(),
+            material_active: true,
             quarantined: false,
         })
     }
@@ -165,30 +167,36 @@ impl ModernLimiterPlan {
         bt.apply_enabled_modern(self.bass, self.treble)?;
 
         let mut peq = ParametricEq::new(format, false, true)?;
-        for index in 0..9 {
-            let (kind, frequency) = match index {
-                0 => (ParametricKind::LowShelfQ, 100.0),
-                1 => (ParametricKind::Peak, 1_000.0),
-                2 => (ParametricKind::HighShelfQ, 10_000.0),
-                _ => (ParametricKind::HighShelfQ, 18_000.0),
-            };
-            peq.set_band(
-                index,
-                ParametricBand {
-                    kind,
-                    gain_db: 0.0,
-                    frequency,
-                    q: 1.0,
-                    enabled: false,
-                },
-            )?;
-        }
-        peq.set_bypass(true)?;
+        begin_peq_defaults(&mut peq)?;
         peq.reset()?;
         apply_peq(&mut peq, &self.peq)?;
 
         Ok(ModernLimiterStages { geq, bt, peq })
     }
+}
+
+fn begin_peq_defaults(peq: &mut ParametricEq) -> Result<()> {
+    peq.set_bypass(true)?;
+    peq.set_gain(0.0)?;
+    for index in 0..9 {
+        let (kind, frequency) = match index {
+            0 => (ParametricKind::LowShelfQ, 100.0),
+            1 => (ParametricKind::Peak, 1_000.0),
+            2 => (ParametricKind::HighShelfQ, 10_000.0),
+            _ => (ParametricKind::HighShelfQ, 18_000.0),
+        };
+        peq.set_band(
+            index,
+            ParametricBand {
+                kind,
+                gain_db: 0.0,
+                frequency,
+                q: 1.0,
+                enabled: false,
+            },
+        )?;
+    }
+    Ok(())
 }
 
 fn checked_gain(value: Option<f32>, limit: f32) -> Result<f32> {
@@ -250,6 +258,8 @@ fn require_peq_controls(peq: &Value) -> Result<()> {
 pub struct ModernLimiterRenderer {
     stages: ModernLimiterStages,
     stream: LimiterStream,
+    plan: ModernLimiterPlan,
+    material_active: bool,
     quarantined: bool,
 }
 
@@ -260,6 +270,26 @@ pub(crate) struct ModernLimiterStages {
 }
 
 impl ModernLimiterStages {
+    fn disable_master(&mut self) -> Result<()> {
+        self.geq.set_bypass(true)?;
+        self.bt.master_bypass()?;
+        self.peq.set_bypass(true)
+    }
+
+    fn reapply_material(&mut self, plan: &ModernLimiterPlan) -> Result<()> {
+        // EFB760 -> 68000/1BBA0 first sends the default component settings.
+        // None of those setters settles the previous wrapper state or
+        // advances audio; the next graph quantum still owns the bypass mix.
+        self.geq.set_bypass(true)?;
+        self.geq.set_gains(&[0.0; 10])?;
+        self.bt.apply_material_begin_defaults()?;
+        begin_peq_defaults(&mut self.peq)?;
+        self.geq.set_gains(&plan.geq)?;
+        self.geq.set_bypass(false)?;
+        self.bt.apply_enabled_modern(plan.bass, plan.treble)?;
+        apply_peq(&mut self.peq, &plan.peq)
+    }
+
     pub(crate) fn reset(&mut self) -> Result<()> {
         self.geq.reset()?;
         self.bt.reset()?;
@@ -300,6 +330,56 @@ impl ModernLimiterStages {
 impl ModernLimiterRenderer {
     pub fn lookahead_frames(&self) -> u32 {
         self.stream.lookahead_frames()
+    }
+
+    /// Change the current graph between the material installed at creation
+    /// and the official master-off state. Off fades GEQ/BT/PEQ to dry while
+    /// B0 remains enabled at native defaults. A second call with the same
+    /// target is a no-op; this API does not hot-swap other material.
+    ///
+    /// The pending input/output FIFOs and clock are retained. Changing B0
+    /// timing discards only that node's old lookahead and restarts its
+    /// output debt; an identical default B0 keeps its existing PCM history.
+    /// Live gain/ratio-only B0 changes are outside this verified scope.
+    pub fn set_material_active(&mut self, active: bool) -> Result<()> {
+        self.ensure_live()?;
+        let format = self.stream.control_format()?;
+        if self.material_active == active {
+            return Ok(());
+        }
+        let material = self.plan.limiter.parameters;
+        let defaults = MATERIAL_BEGIN_LIMITER;
+        let replacement = if material == defaults {
+            None
+        } else if material.attack != defaults.attack || material.release != defaults.release {
+            // Native B0 setter +C5 and the next active 64F40 setup reset
+            // node PCM and restart skip/drain even when geometry is unchanged.
+            // With no processing or reads of B0 state in between, preparing
+            // the new private node here has the same output/EOF semantics.
+            let params = if active { material } else { defaults };
+            Some(MaterialLimiterPlan::stage_with_parameters(
+                format, true, params,
+            )?)
+        } else {
+            return Err(Error::InvalidInput(
+                "unsupported live limiter parameter change without timing change",
+            ));
+        };
+
+        let configured = if active {
+            self.stages.reapply_material(&self.plan)
+        } else {
+            self.stages.disable_master()
+        };
+        if let Err(error) = configured {
+            self.quarantined = true;
+            return Err(error);
+        }
+        if let Some(stage) = replacement {
+            self.stream.replace_stage_for_setup(stage);
+        }
+        self.material_active = active;
+        Ok(())
     }
 
     /// Empty input submits EOF. The source FIFO inserts the native sentinel

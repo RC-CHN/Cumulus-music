@@ -116,8 +116,10 @@ Production wiring and its remaining gates
   release-only change to the native default set `[C4,C5]=[0,1]` and emitted
   1829/1810 frames at 44.1/48 kHz respectively. Receipt SHA-256
   `c591c0c3cd174320eb2eb2e33bae7b2a2839a3ce9fef8ebad5f830803ad7a024`.
-- Recover the exact hot bypass/reapply state, including the in-node
-  limiter update and source-clock accounting, then verify real controller
+- The owned PCM renderer now verifies same-material hot bypass/reapply
+  and in-node limiter setup against original sample bytes (see
+  core-effects-modern-limiter-renderer.txt). The held worker/controller
+  does not apply those controls. Verify its source-clock accounting,
   takeover and failed handoff before enabling this selection. Do not
   silently fall back to stock after an audible failure or reopen a revoked
   descriptor or request a new stream. Authorized online/cache decoder
