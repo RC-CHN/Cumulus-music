@@ -1,0 +1,39 @@
+name: Linux APT mirror A/B
+
+on:
+  push:
+    branches: [validation/apt-mirror-ab-20261110]
+    paths:
+      - .github/workflows/linux-apt-mirror-ab.yml
+      - scripts/ci/apt_mirror_ab.sh
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    name: APT ${{ matrix.priority }} / ${{ matrix.replica }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        priority: [azure-first, canonical-first]
+        replica: [1, 2]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Time signed index and archive acquisition
+        shell: bash
+        env:
+          APT_MIRROR_PRIORITY: ${{ matrix.priority }}
+        run: bash scripts/ci/apt_mirror_ab.sh "$APT_MIRROR_PRIORITY" "$RUNNER_TEMP/apt-evidence"
+      - name: Preserve package plan and timing
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: apt-${{ matrix.priority }}-${{ matrix.replica }}
+          path: ${{ runner.temp }}/apt-evidence
+          if-no-files-found: error
+          retention-days: 5
