@@ -234,6 +234,49 @@ enable public registration, activation, or a desktop command. The
 receipt says the exact graph is eligible to attempt first apply; it is
 not a material or authorization receipt. No live auth request was sent.
 
+Synthetic actor ownership and local revocation
+---------------------------------------------
+
+The opt-in actor fixture uses the actual actor, exact native source
+receipt, held WAV worker and libmpv null output. Its API panics on any
+request. The only active effect grant is synthetic; attachment commands
+and their worker lease are compiled solely for tests. No production
+message, effect binding upgrade, engine-wrapper forwarding, registration
+or UI is added.
+
+Attach checks the actor account/playback generation and exact entry, then
+atomically compares the worker's applied graph revision before queuing.
+The worker checks the independent effect grant before first apply and
+uses a distinct per-attachment owner key for Close and legacy return.
+The admission receipt is stale after a queued attach, so lifecycle
+commands use the exact owner, entry and subsequent worker revision. The
+actor only reports attachment after both the successful command result
+and the matching applied revision. A dropped or superseded owner revokes
+its grant, even if an already queued command was applied.
+
+The worker checks that grant before each quantum. Once it observes
+revocation it runs the original master-off transition, independently of
+the actor's next supervision call; the actor can then acknowledge local
+Close without restarting playback. It does not auto-select a legacy
+equalizer. An explicit local selection can apply the bounded old GEQ to
+the same graph. A stale generation sends no close/restore command to a
+different owner. Old authorized PCM already in a queue, the native fade
+and audio in the device cannot be retroactively revoked by this model.
+This is a quantum-boundary proof, not a guarantee of immediate silence.
+
+The Linux x86_64 libmpv 0.41.0-2ubuntu4 null-output run rejected a stale
+revision and a pre-revoked policy without attaching. It then attached,
+observed revocation in the worker before the actor's Close acknowledgement,
+selected legacy GEQ explicitly and reached natural EOF on native entry 1.
+It decoded all 147463 frames and delivered 147034: the old 238 and modern
+191 lookahead frames were discarded at their transitions; returning to
+legacy retained the already running default B0. A separate test advanced
+the actor generation before the first modern block. No stale Close was
+queued and the next quantum used default B0 on the still-held source.
+
+    cargo test --locked -p cumulus-core --lib modern_actor \
+      -- --ignored --test-threads=1 --nocapture
+
 Observed failed handoff
 -----------------------
 

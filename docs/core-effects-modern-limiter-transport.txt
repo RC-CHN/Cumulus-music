@@ -186,6 +186,11 @@ Production wiring and its remaining gates
   and the current applied graph revision, and is invalidated by queued
   controls, source EOF, or intentional native retirement. This does not
   extend ownership forwarding or registration reachability.
+- The same handoff audit now also separates official regular Close from
+  an explicit old GEQ selection. A test-only actor exercised stamped
+  attach, quantum-boundary revocation, local Close and legacy return on
+  one native entry with synthetic authority. No product route or server
+  cleanup is provided by that proof.
 - The ordinary official type-4 cache/online source feeds the device PCM
   route (`10555B0` negotiated geometry; `1055EF0` SDK write/read); it does
   not infer the graph format from song bitrate. The ordinary seek discards

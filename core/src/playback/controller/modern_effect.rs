@@ -9,6 +9,11 @@ use crate::{
 use std::sync::{Arc, Weak};
 use tokio::sync::oneshot;
 
+#[cfg(test)]
+mod actor_test;
+#[cfg(test)]
+pub(super) use actor_test::TestModernOwner;
+
 pub(crate) struct ModernEffectSource {
     native: NativeModernEffectSource,
     playback: Cancellation,

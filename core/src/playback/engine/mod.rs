@@ -25,6 +25,8 @@ pub(crate) use limiter_segment::{
 pub use mpv::{MpvConfig, MpvEngine};
 pub use output::{OutputDevice, OutputDevices};
 pub use runtime::MpvRuntime;
+#[cfg(test)]
+pub(crate) use stereo_pcm::TestModernCommand;
 pub use stereo_pcm::{StereoPcmControl, StereoPcmReader, StereoPcmSnapshot};
 pub use stereo_transport::{StereoGeneration, StereoRead, StereoSourceTransport};
 pub use types::*;

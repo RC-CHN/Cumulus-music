@@ -4,6 +4,8 @@ use crate::effects::{
     dsp::LimiterStage,
     material::{ModernLimiterPlan, ModernLimiterStages},
 };
+#[cfg(test)]
+use crate::playback::engine::{Cancellation, stereo_pcm::TestModernCommand};
 use crate::{
     Error, Result,
     effects::{
@@ -19,6 +21,8 @@ use crate::{
 pub(super) struct SourceGraph {
     material: Material,
     driven: bool,
+    #[cfg(test)]
+    actor_modern: Option<TestModernLease>,
 }
 enum Material {
     Cold(LocalFixedStereoMaterial),
@@ -31,12 +35,16 @@ impl SourceGraph {
         Ok(Self {
             material: Material::Cold(LocalFixedStereoMaterial::new(format, plan)?),
             driven: false,
+            #[cfg(test)]
+            actor_modern: None,
         })
     }
     pub fn new_local(format: Format, plan: LocalEqualizerMaterialPlan) -> Result<Self> {
         Ok(Self {
             material: Material::Local(LocalEqualizerStereoMaterial::new(format, plan)?),
             driven: false,
+            #[cfg(test)]
+            actor_modern: None,
         })
     }
     #[cfg(test)]
@@ -52,6 +60,7 @@ impl SourceGraph {
                 failed: false,
             })),
             driven: false,
+            actor_modern: None,
         })
     }
     pub fn format(&self) -> Format {
@@ -109,6 +118,12 @@ impl SourceGraph {
                 let _ = outcome.try_send(result);
                 Ok(())
             }
+            #[cfg(test)]
+            (Material::Local(graph), StereoGraphControl::ActorModern { command, outcome }) => {
+                let result = TestModernLease::apply(&mut self.actor_modern, graph, command);
+                let _ = outcome.try_send(result);
+                Ok(())
+            }
             _ => Err(Error::InvalidInput(
                 "control belongs to another stereo graph",
             )),
@@ -130,12 +145,78 @@ impl SourceGraph {
         // A failed invocation cannot be treated as an unused graph either;
         // the underlying material's numerical quarantine remains authoritative.
         self.driven = true;
+        #[cfg(test)]
+        if let (Material::Local(graph), Some(lease)) = (&mut self.material, &mut self.actor_modern)
+            && lease.authority.is_cancelled()
+        {
+            // An observed revocation cannot authorize another active quantum.
+            // Existing PCM/native buffering retains its original timeline.
+            lease.close(graph)?;
+        }
         match &mut self.material {
             Material::Cold(graph) => graph.process(pcm, frames, end),
             Material::Local(graph) => graph.process(pcm, frames, end),
             #[cfg(test)]
             Material::Modern(graph) => graph.process(pcm, frames, end),
         }
+    }
+}
+
+#[cfg(test)]
+struct TestModernLease {
+    owner: uuid::Uuid,
+    authority: Cancellation,
+    active: bool,
+}
+
+#[cfg(test)]
+impl TestModernLease {
+    fn apply(
+        current: &mut Option<Self>,
+        graph: &mut LocalEqualizerStereoMaterial,
+        command: TestModernCommand,
+    ) -> Result<()> {
+        match command {
+            TestModernCommand::Attach {
+                owner,
+                plan,
+                authority,
+            } => {
+                if current.is_some() {
+                    return Err(Error::State("synthetic modern graph already has an owner"));
+                }
+                authority.check()?;
+                graph.apply_initial_modern(&plan)?;
+                *current = Some(Self {
+                    owner,
+                    authority,
+                    active: true,
+                });
+            }
+            TestModernCommand::Close(owner) => {
+                current
+                    .as_mut()
+                    .filter(|lease| lease.owner == owner)
+                    .ok_or(Error::StaleResponse)?
+                    .close(graph)?;
+            }
+            TestModernCommand::ReturnToGeq(owner, plan) => {
+                if current.as_ref().is_none_or(|lease| lease.owner != owner) {
+                    return Err(Error::StaleResponse);
+                }
+                graph.return_to_legacy_geq(plan)?;
+                *current = None;
+            }
+        }
+        Ok(())
+    }
+
+    fn close(&mut self, graph: &mut LocalEqualizerStereoMaterial) -> Result<()> {
+        if self.active {
+            graph.set_modern_material_active(false)?;
+            self.active = false;
+        }
+        Ok(())
     }
 }
 

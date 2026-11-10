@@ -94,6 +94,40 @@ impl NativeModernEffectSource {
     }
 
     #[cfg(test)]
+    pub(crate) fn test_graph_revision(&self) -> u64 {
+        self.graph_revision
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_native_entry(&self) -> i64 {
+        self.entry
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_modern_command(
+        &self,
+        revision: u64,
+        command: super::stereo_pcm::TestModernCommand,
+    ) -> Result<u64> {
+        let wait = Duration::from_secs(2);
+        let (outcome, receipt) = std::sync::mpsc::sync_channel(1);
+        let revision = self
+            .control
+            .queue_test_owned_modern(self.entry, revision, command, outcome)?;
+        let applied = receipt
+            .recv_timeout(wait)
+            .map_err(|_| Error::State("synthetic modern command was not handled"))?;
+        self.control.wait_applied(revision, wait)?;
+        applied?;
+        Ok(revision)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_pcm_snapshot(&self) -> Result<super::StereoPcmSnapshot> {
+        self.control.snapshot()
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_source(
         rate: u32,
         lifetime: Cancellation,

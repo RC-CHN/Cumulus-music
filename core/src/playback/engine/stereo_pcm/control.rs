@@ -29,6 +29,22 @@ pub(crate) enum StereoGraphControl {
         plan: Box<crate::effects::material::ModernLimiterPlan>,
         outcome: std::sync::mpsc::SyncSender<Result<()>>,
     },
+    #[cfg(test)]
+    ActorModern {
+        command: TestModernCommand,
+        outcome: std::sync::mpsc::SyncSender<Result<()>>,
+    },
+}
+
+#[cfg(test)]
+pub(crate) enum TestModernCommand {
+    Attach {
+        owner: uuid::Uuid,
+        plan: Box<crate::effects::material::ModernLimiterPlan>,
+        authority: Cancellation,
+    },
+    Close(uuid::Uuid),
+    ReturnToGeq(uuid::Uuid, LocalEqualizerMaterialPlan),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -371,6 +387,10 @@ impl StereoPcmControl {
         }
         let mut state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
         self.0.check()?;
+        self.enqueue_control(&mut state, control)
+    }
+
+    fn enqueue_control(&self, state: &mut State, control: StereoGraphControl) -> Result<u64> {
         if state.failed || state.end || state.controls.len() == MAX_CONTROLS {
             return Err(Error::State("stereo controls unavailable"));
         }
@@ -383,6 +403,29 @@ impl StereoPcmControl {
         state.modern_ready = false;
         self.0.wake.notify_all();
         Ok(revision)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queue_test_owned_modern(
+        &self,
+        entry: i64,
+        revision: u64,
+        command: TestModernCommand,
+        outcome: std::sync::mpsc::SyncSender<Result<()>>,
+    ) -> Result<u64> {
+        self.validate_host()?;
+        let mut state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
+        self.0.check()?;
+        if !self.is_current_local_graph(&state, entry)
+            || state.applied != revision
+            || (matches!(&command, TestModernCommand::Attach { .. }) && !state.modern_ready)
+        {
+            return Err(Error::StaleResponse);
+        }
+        self.enqueue_control(
+            &mut state,
+            StereoGraphControl::ActorModern { command, outcome },
+        )
     }
 
     /// Blocking native-worker acknowledgement, never call on a UI thread.
@@ -464,15 +507,21 @@ impl StereoPcmControl {
         self.validate_host()?;
         let state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
         self.0.check()?;
-        Ok((state.entry == Some(entry)
+        Ok(
+            (self.is_current_local_graph(&state, entry) && state.modern_ready)
+                .then_some(state.applied),
+        )
+    }
+
+    fn is_current_local_graph(&self, state: &State, entry: i64) -> bool {
+        self.0.local_controls
+            && state.entry == Some(entry)
             && !state.end
             && !state.seeking
             && !state.modern_admission_closed
-            && state.modern_ready
             && state.requested == state.applied
             && !self.0.reader_closed.load(Ordering::Acquire)
-            && !self.0.sink_retired.load(Ordering::Acquire))
-        .then_some(state.applied))
+            && !self.0.sink_retired.load(Ordering::Acquire)
     }
 
     /// Only an already-bound ordinary pass can begin a deliberate native

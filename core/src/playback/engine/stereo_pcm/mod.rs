@@ -2,6 +2,8 @@
 //! It is not a media grant, full SDK graph, or a renderer command.
 mod control;
 mod reader;
+#[cfg(test)]
+pub(crate) use control::TestModernCommand;
 pub(crate) use control::{Shared, StereoGraphControl, channel, native_channel};
 pub use control::{StereoPcmControl, StereoPcmSnapshot};
 pub use reader::StereoPcmReader;

@@ -69,6 +69,8 @@ pub(super) struct Actor {
     pub equalizer_source_latch: bool,
     pub local_equalizer_needs_sync: bool,
     pub parametric: super::parametric::State,
+    #[cfg(test)]
+    pub(super) test_modern: super::modern_effect::TestModernOwner,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub loudness_initialized: bool,
     pub session: Arc<AccountSession>,
@@ -167,6 +169,8 @@ impl Actor {
             equalizer_source_latch: false,
             local_equalizer_needs_sync: false,
             parametric: Default::default(),
+            #[cfg(test)]
+            test_modern: Default::default(),
             loudness: Default::default(),
             loudness_initialized: false,
             session,
