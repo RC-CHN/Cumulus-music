@@ -1363,11 +1363,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - &linux_webview_dependencies
-        name: Linux native dependencies
+      - name: Linux native dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
+          python3 scripts/ci/linux_webview_apt.py --publish "$RUNNER_TEMP/cumulus-webview-apt-cache"
           sudo locale-gen en_US.UTF-8
       - &linux_webview_python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -1400,6 +1398,9 @@ jobs:
           python3 scripts/ci/linux_webview_probe_artifact.py stage \
             --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
             --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
+          if test -d "$RUNNER_TEMP/cumulus-webview-apt-cache"; then
+            mv "$RUNNER_TEMP/cumulus-webview-apt-cache" "$RUNNER_TEMP/cumulus-webview-ux-probe/apt-cache"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
@@ -1420,7 +1421,11 @@ jobs:
         shell: bash
     steps:
       - *linux_webview_checkout
-      - *linux_webview_dependencies
+      - name: Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
+          sudo locale-gen en_US.UTF-8
       - *linux_webview_python
       - *linux_webview_toolchain
       - *linux_webview_rust_downloads
@@ -1464,7 +1469,17 @@ jobs:
         shell: bash
     steps:
       - *linux_webview_checkout
-      - *linux_webview_dependencies
+      - &linux_webview_probe_download
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-webview-ux-probe
+      - &linux_webview_cached_dependencies
+        name: Linux native dependencies
+        run: |
+          python3 scripts/ci/linux_webview_apt.py --reuse "$RUNNER_TEMP/cumulus-webview-ux-probe/apt-cache"
+          rm -rf -- "${RUNNER_TEMP:?}/cumulus-webview-ux-probe/apt-cache"
+          sudo locale-gen en_US.UTF-8
       - *linux_webview_python
       - *linux_webview_dist
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -1502,11 +1517,6 @@ jobs:
           printf 'CUMULUS_CI_PACKAGED_FLAC_SHA256=%s\n' "$flac_sha" >> "$GITHUB_ENV"
           test ! -d .build/target
           df -h .
-      - &linux_webview_probe_download
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cumulus-webview-ux-probe
       - &linux_webview_probe_restore
         name: Verify and install the same-attempt Linux WebView probe
         run: |
@@ -1674,7 +1684,8 @@ jobs:
         shell: bash
     steps:
       - *linux_webview_checkout
-      - *linux_webview_dependencies
+      - *linux_webview_probe_download
+      - *linux_webview_cached_dependencies
       - name: Native GTK folder chooser accessibility
         if: matrix.shard == 'local-desktop'
         run: sudo apt-get install -y gir1.2-atspi-2.0 at-spi2-core
@@ -1687,7 +1698,6 @@ jobs:
           test -f frontend/dist/index.html
           test ! -d .build/target
           df -h .
-      - *linux_webview_probe_download
       - *linux_webview_probe_restore
       - name: Verify player and queue workflows
         if: matrix.shard == 'playback'
@@ -2162,11 +2172,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Linux native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
-          sudo locale-gen en_US.UTF-8
+      - *linux_webview_probe_download
+      - *linux_webview_cached_dependencies
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -2174,10 +2181,6 @@ jobs:
         with:
           name: frontend-dist
           path: frontend/dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cumulus-webview-ux-probe
       - name: Verify and install the same-attempt Linux WebView probe
         run: |
           python3 scripts/ci/linux_webview_probe_artifact.py restore \

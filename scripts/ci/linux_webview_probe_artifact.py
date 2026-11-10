@@ -1,4 +1,4 @@
-"""Transfer only the exact CI-built Linux WebView probe and its receipt."""
+"""Transfer the exact CI-built Linux WebView probe and its receipt."""
 
 import argparse
 import hashlib
@@ -14,6 +14,7 @@ import tempfile
 
 BINARY = 'ux_ui_probe'
 RECEIPT = 'receipt.json'
+APT_CACHE = 'apt-cache'
 MAX_BINARY = 384 * 1024 * 1024
 MAX_DIST = 64 * 1024 * 1024
 MAX_FILES = 2048
@@ -91,7 +92,10 @@ def stage(binary, dist, artifact, identity):
 
 
 def restore(artifact, dist, binary, identity):
-    if not stat.S_ISDIR(artifact.lstat().st_mode) or {p.name for p in artifact.iterdir()} != {BINARY, RECEIPT}:
+    # The optional archives are not executable probe inputs; APT validates
+    # them independently against the consumer's own authenticated indexes.
+    if (not stat.S_ISDIR(artifact.lstat().st_mode)
+            or {p.name for p in artifact.iterdir()} - {APT_CACHE} != {BINARY, RECEIPT}):
         raise ValueError('unexpected Linux WebView probe artifact contents')
     manifest = artifact / RECEIPT
     checked_size(manifest, MAX_RECEIPT)
