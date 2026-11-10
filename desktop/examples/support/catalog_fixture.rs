@@ -70,6 +70,7 @@ fn duration_album_songs() -> Vec<Value> {
             let id = 11 + index as u64;
             let mut item = queue_credit_song(id);
             item["dt"] = json!(duration);
+            item["pop"] = json!([23, 100, 23, 0][index]);
             item["name"] = json!(if index == 3 {
                 "另一首歌".into()
             } else {

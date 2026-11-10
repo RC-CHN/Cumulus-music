@@ -545,13 +545,14 @@ def main():
     if args.album_duration_sort:
         assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         names = ('original', 'ascending', 'descending', 'restored', 'reset',
+                 'pop_descending', 'pop_ascending', 'pop_reset',
                  'filtered_row', 'same_row_pause', 'same_row_resume', 'full_album', 'paused_append',
                  'queue_source_ready', 'queue_source_opened', 'queue_source_back',
                  'queue_artist_ready', 'queue_artist_opened', 'queue_artist_back',
                  'queue_like_ready', 'queue_like_uncertain', 'queue_like_confirmed', 'queue_like_removed',
                  'queue_menu_other', 'queue_menu_fallback', 'queue_menu_group', 'queue_menu_collect',
                  'queue_menu_collect_cancelled', 'queue_menu_removed',
-                 'queue_menu_resumed', 'queue_menu_paused')
+                 'queue_menu_resumed', 'queue_menu_paused', 'pop_play_all', 'pop_add_all')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
@@ -580,6 +581,30 @@ def main():
                           '/api/song/enhance/player/url/v1')
         assert not any(call['path'] in playback_paths for call in delta('original', 'descending'))
         assert not any(call['path'] in playback_paths for call in delta('restored', 'reset'))
+        assert not any(call['path'] in playback_paths for call in delta('reset', 'pop_reset'))
+        scores = {'11': 23, '12': 100, '13': 23, '14': 0}
+        for name, direction, ids in (
+            ('pop_descending', 'descending', ['12','11','13','14']),
+            ('pop_ascending', 'ascending', ['14','11','13','12']),
+            ('pop_reset', 'none', ['11','12','13','14']),
+            ('pop_play_all', 'descending', ['12','11','13','14']),
+            ('pop_add_all', 'ascending', ['14','11','13','12']),
+        ):
+            stage = stages[name]
+            assert stage['popularityOrder'] == direction and stage['order'] == 'none'
+            assert stage['rows'] == ids and stage['meter'] == [[track, scores[track]] for track in ids]
+            if name in ('pop_descending', 'pop_ascending', 'pop_reset'):
+                assert stage['popularityFocus'] and stage['nativeQueue']['tracks'] == []
+        played = stages['pop_play_all']
+        assert played['nativePlayer']['state'] == 'playing' and played['nativePlayer']['position'] > .2
+        assert played['nativePlayer']['origin'] == {'kind': 'album', 'id': '8'}
+        assert [row['track']['id'] for row in played['nativeQueue']['tracks']] == ['12','11','13','14']
+        appended = stages['pop_add_all']
+        assert appended['nativePlayer']['state'] == 'paused' and appended['nativePlayer']['track']['id'] == '900'
+        assert [row['track']['id'] for row in appended['nativeQueue']['tracks']] == ['900','14','11','13','12','901']
+        for start, end in (('queue_menu_paused', 'pop_play_all'), ('pop_play_all', 'pop_add_all')):
+            assert [(call['path'], call['args']) for call in delta(start, end) if call['path'] in album_paths][-2:] == [
+                (path, {'id': '8'}) for path in album_paths]
         assert not any(call['path'] in album_paths for call in delta('reset', 'filtered_row'))
         assert not any(call['path'] in playback_paths for call in delta('filtered_row', 'same_row_resume'))
         for start, end in (('same_row_resume', 'full_album'), ('full_album', 'paused_append')):

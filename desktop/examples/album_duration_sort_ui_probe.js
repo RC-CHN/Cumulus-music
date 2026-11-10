@@ -29,8 +29,11 @@
   };
   const header = () => one('.catalog-page [aria-label="按时长排序"]');
   const order = () => header()?.parentElement.getAttribute('aria-sort');
+  const popularity = () => one('.catalog-page [aria-label="按热度排序"]');
+  const popularityOrder = () => popularity()?.parentElement.getAttribute('aria-sort');
   const rows = () => all('[data-album-panel="songs"] .track-row').map((row) => row.dataset.trackId);
   const original = '11,12,13,14', asc = '12,14,11,13', desc = '11,13,14,12';
+  const popAsc = '14,11,13,12', popDesc = '12,11,13,14';
   const albumName = '漫长的午后与未完的旋律 · A quiet afternoon / Extended edition';
   let epoch;
   const player = () => invoke('player_snapshot', { epoch });
@@ -84,6 +87,23 @@
     await wait(() => order() === expected && rows().join(',') === visible, `sort ${expected}`);
     assert(document.activeElement === header(), 'sort header lost keyboard focus');
   }
+  async function sortPopularity(expected, visible) {
+    click(popularity());
+    await wait(() => popularityOrder() === expected && rows().join(',') === visible, `popularity ${expected}`);
+    assert(document.activeElement === popularity() && order() === 'none',
+      'popularity focus and mutually exclusive duration sort');
+  }
+  function popularityFacts() {
+    const meter = all('[data-album-panel="songs"] .track-row').map((row) => {
+      const node = row.querySelector('[role="meter"][aria-label="热度"]');
+      const width = node.getBoundingClientRect().width;
+      const fill = node.firstElementChild.getBoundingClientRect().width;
+      const value = Number(node.getAttribute('aria-valuenow'));
+      assert(width > 0 && Math.abs(fill - width * value / 100) < 1, 'painted popularity fill');
+      return [row.dataset.trackId, value];
+    });
+    return { popularityOrder: popularityOrder(), meter, popularityFocus: document.activeElement === popularity() };
+  }
   async function openAlbum() {
     const card = await wait(() => one('[data-catalog-key="album:8"]'), 'album 8 card');
     click(card);
@@ -116,6 +136,13 @@
     await capture('restored');
     await sortTo('none', original);
     await capture('reset');
+    for (const [direction, visible, name] of [
+      ['descending', popDesc, 'pop_descending'], ['ascending', popAsc, 'pop_ascending'],
+      ['none', original, 'pop_reset'],
+    ]) {
+      await sortPopularity(direction, visible);
+      await capture(name, false, popularityFacts());
+    }
     await sortTo('ascending', asc);
 
     const field = one('[aria-label="搜索专辑歌曲"]');
@@ -471,6 +498,40 @@
     }, 'menu paused the current decoder');
     assert(retained(pausedFromMenu), 'menu Pause must not reopen the current entry');
     await captureOrigin('queue_menu_paused', { transport: 'pause' });
+
+    click(one('.queue-toggle'));
+    await wait(() => !one('.queue-panel'), 'close queue before popularity playback');
+    if (!albumPage()) {
+      if (!one('[data-catalog-key="album:8"]')) click(one('[data-catalog-tab="albums"]'));
+      await openAlbum();
+    }
+    const input = one('[aria-label="搜索专辑歌曲"]');
+    input.value = '';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await wait(() => rows().length === 4 && popularityOrder() === 'none', 'album is ready for full popularity order');
+    await sortPopularity('descending', popDesc);
+    click(one('.album-header:not(.album-header-compact) [data-album-play]'));
+    await untilPlayed('12', popDesc);
+    await capture('pop_play_all', true, popularityFacts());
+
+    await invoke('play_selection', { epoch, selection: {
+      kind: 'songs', ids: ['900', '901'], index: 0, quality: 'standard',
+    } });
+    await wait(async () => (await player()).state === 'playing' && queueIds(await queue()) === '900,901',
+      'fresh independent queue before popularity add');
+    await act({ kind: 'pause', paused: true });
+    const paused = await wait(async () => {
+      const view = await player();
+      return view.state === 'paused' && view.track?.id === '900' && view.playId && view.entryId && view;
+    }, 'independent track paused');
+    await sortPopularity('ascending', popAsc);
+    click(one('.album-header:not(.album-header-compact) [aria-label="更多专辑操作"]'));
+    click(await wait(() => button('添加全部至播放列表'), 'popularity album queue action'));
+    await wait(async () => queueIds(await queue()) === '900,14,11,13,12,901', 'popularity album appended in order');
+    const added = await player();
+    assert(added.state === 'paused' && added.playId === paused.playId && added.entryId === paused.entryId,
+      'popularity add preserves the paused source');
+    await capture('pop_add_all', false, popularityFacts());
     await emit('complete', { ok: true, states, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     const snapshot = transportAttempt ? await player().catch(() => null) : null;
