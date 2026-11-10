@@ -19,6 +19,9 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc, time::Duration};
 
+#[path = "search_group_download/purchased_creation.rs"]
+mod purchased_creation;
+
 const COOKIE: &str = "MUSIC_U=synthetic-search-group-download; Path=/; Secure";
 const AUTH: &str = "/api/song/enhance/download/url/v1";
 const LIKED: &str = "/api/song/like/get";
