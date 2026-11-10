@@ -130,6 +130,16 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     独立回执见 .build/ui-proof/phase240-cached-playlist-add-all/receipt.json。
     搜索空队列与随机队列的 11 个实窗状态另见
     .build/ui-proof/phase242-search-group-extended/receipt.json。
+  - 同一合并源码 6e8e457c 重新构建前端与原生探针：搜索空队列／随机队列
+    11 态，原生应用音效标记两套各 8 态，离线整单入队 15 态，合计 42 张
+    Linux WebKitGTK 截图。全部 1,055 项前端测试、全工作区严格 Clippy，
+    及 core 库和四个相关集成目标的 704 项 Rust 测试通过，25 项原配置忽略。
+    实窗回执 .build/ui-proof/phase243-combined-desktop/receipt.json 记录合并
+    源码、前端、原生探针及已校验滤镜摘要。仍为合成数据和 libmpv null 输出。
+  - 搜索多选「播放」在 a16b4529 上另通过 13 态及 10 态「下一首」回归。
+    验证受限锚点不修改队列、按点中项起播、同一暂停项恢复时不重开音源。
+    .build/ui-proof/phase244-search-group-play/receipt.json 保存 23 张截图
+    和报告；不是 Windows 实窗证据。
   - 候选树 318ace291fe91ab50ba55129dda0f3dadfa8f1ed 重走合成主流程：
     扫码接入并重开恢复、读取账号资源、日推与搜索、原生播放、私密歌单
     创建/编辑/增删/清理、下载暂停和续传、完成核对、离线播放及本地清理。
