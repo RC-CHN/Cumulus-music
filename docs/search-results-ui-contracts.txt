@@ -798,7 +798,11 @@ M/176:42–59 与 M/1384:5366–5376、5695–5725 重算遍历顺序，只将�
 可在隔离 Linux Xvfb 中使用 scripts/ci/search_group_next_smoke.py 验证。合成 API
 与 libmpv null 输出；实际鼠标加 Ctrl、右键和菜单点击，验证受限锚点无队列变化、
 同组其他锚点有序插入、组外右键回到单首，并核对同一暂停实例及严格的请求收据。
-这不证明实体声卡、实服歌曲权限或 Windows WebView2。
+加 `--extended` 验证空随机队列起播点击项（不是所选第一首）、保留显示顺序、随后
+暂停插入另一组以及实际原生授权的 trialMode 42；不要求后台合法预取为零。
+`client_player` 的 `search_group_next` 用例另核对随机遍历紧邻项、拒绝起播和晚回包，
+`full_search_queue` 用例核对 10000 条容量处的前缀和后缀取舍。这不证明实体声卡、
+实服歌曲权限或 Windows WebView2。
 
 独立 Linux 实窗证据：8a5d5505 使用真实 WebKitGTK 与 XTest 键鼠，
 10 个阶段包含组内右键、受限锚点的专用提示与无重试入口、合法整组插入、
@@ -806,3 +810,5 @@ M/176:42–59 与 M/1384:5366–5376、5695–5725 重算遍历顺序，只将�
 探针摘要和 10 张截图见 .build/ui-proof/phase242-search-group-next/receipt.json。
 未改变当前播放实例和暂停位置，也未新增搜索请求；没有真实服务请求和账号写入。
 这次验收只覆盖已有播放项的普通队列。
+扩展验收 48ed21a8（原生）与 b0021ca4（实窗脚本）覆盖 11 态。截图和
+授权顺序回执见 .build/ui-proof/phase242-search-group-extended/receipt.json。
