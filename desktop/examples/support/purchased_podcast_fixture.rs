@@ -29,6 +29,7 @@ fn episode(id: u64, playback: bool) -> Value {
     json!({
         "productType":1,"id":id,"name":format!("合成已购单集 {id}"),"programFeeType":10,"buyed":true,
         "mainSong":{"id":100+id,"duration":duration},"duration":duration,"displayStatus":"NORMAL",
+        "playCount":999,"programCount":99,
         "radio":radio(71,"合成所属播单 71")
     })
 }
@@ -47,6 +48,8 @@ impl Fixture {
                 if args == &json!({"limit":20,"offset":0}) {
                     let mut own = radio(81, "合成已购播单 81");
                     own["productType"] = json!(0);
+                    own["playCount"] = json!(145_000);
+                    own["programCount"] = json!(20);
                     json!({"code":200,"data":{"count":5,"hasMore":true,"list":[
                         own,episode(81,self.playback),{"productType":7,"id":95,"name":"未知产品 95"},
                         episode(82,self.playback)

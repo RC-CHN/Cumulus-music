@@ -38,6 +38,30 @@
   const row = (kind, id) => one(`[data-purchased-kind="${kind}"][data-purchased-id="${id}"]`, list());
   const rowOrder = () => all('[data-purchased-kind]', list()).map((node) =>
     `${node.dataset.purchasedKind}:${node.dataset.purchasedId}`);
+  function tableColumns() {
+    const header = all('.purchase-header [role="columnheader"]', list());
+    const columns = header.slice(0, 4).map((cell) => cell.textContent.trim());
+    const radio = row('radio', '81');
+    const episode = row('episode', '81');
+    const index = (target) => one('.purchase-index', target).textContent.trim();
+    const playCount = (target) => one('[data-purchased-play-count]', target).textContent.trim();
+    const programCount = (target) => one('[data-purchased-program-count]', target).textContent.trim();
+    assert(columns.join(',') === '#,标题,播放量,声音数' && header.length === 5,
+      'four official visible purchase columns plus the existing action controls');
+    assert(index(radio) === '01' && playCount(radio) === '14.5万' && programCount(radio) === '20期',
+      'verified purchased radio counters');
+    assert(index(episode) === '02' && playCount(episode) === '' && programCount(episode) === '',
+      'episode cannot inherit the radio counters');
+    const cells = all('[role="cell"]', radio);
+    assert(cells.length === header.length && cells.every((cell, i) =>
+      Math.abs(cell.getBoundingClientRect().left - header[i].getBoundingClientRect().left) < 1),
+      'purchase headings and cells share the same grid');
+    const tail = row('radio', '90');
+    if (tail) assert(index(tail) === '04' && playCount(tail) === '' && programCount(tail) === '0期',
+      'continued sequence and missing play count');
+    return { columns, radioPlayCount: playCount(radio), radioProgramCount: programCount(radio),
+      episodeCountersBlank: true, headerAligned: true };
+  }
   const dialog = () => one('dialog.download-dialog[open]:not([inert])');
   const submit = () => one('form button.primary', dialog());
   const choices = () => all('input[name="voice-download-quality"]', dialog());
@@ -83,7 +107,7 @@
     assert(button('加载更多', one('.podcast-page')) && !row('radio', '95') && !row('episode', '95'),
       'explicit continuation and no action for unknown product type');
     await noTasks();
-    await stage('mixed');
+    await stage('mixed', { table: tableColumns() });
 
     const episodeTitle = () => button('合成已购单集 81', row('episode', '81'));
     await click(episodeTitle, 'single program title selects the episode row');
@@ -118,7 +142,7 @@
     await click(() => button('加载更多', one('.podcast-page')), 'explicit purchased continuation');
     await wait(() => rowOrder().join(',') === originalOrder + ',radio:90', 'native offset appended in place');
     assert(!button('加载更多', one('.podcast-page')), 'server terminal cursor hides continuation');
-    await stage('more');
+    await stage('more', { table: tableColumns() });
 
     await click(() => download('82'), 'explicitly open permitted episode quality');
     await wait(() => choices().length === 2 && choices()[0].checked, 'first offered quality selected');
