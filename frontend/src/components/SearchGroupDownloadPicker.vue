@@ -23,6 +23,7 @@ const emit = defineEmits<{
 const core = useCore();
 const dialog = ref<HTMLDialogElement>();
 const title = useId();
+const nameCount = useId();
 const busy = ref(false);
 const error = ref('');
 const pending = ref(false);
@@ -251,7 +252,9 @@ async function submitCreation(action: 'create' | 'readback' | 'add') {
             ?.querySelector<HTMLElement>(
               creation.value === 'ready'
                 ? '[data-search-group-creation-add]'
-                : '[data-search-group-creation-reconcile]',
+                : creation.value === 'rejected'
+                  ? '.collect-close'
+                  : '[data-search-group-creation-reconcile]',
             )
             ?.focus();
       });
@@ -311,7 +314,7 @@ async function submit(choice?: Choice) {
       <button
         v-if="createForm"
         type="button"
-        class="icon-button"
+        class="icon-button collect-back"
         aria-label="返回下载歌单"
         @click="back"
       >
@@ -377,11 +380,12 @@ async function submit(choice?: Choice) {
           ref="nameInput"
           v-model="name"
           aria-label="歌单名称"
+          :aria-describedby="nameCount"
           :aria-invalid="!!name && !validName"
           placeholder="输入歌单标题"
           maxlength="80"
         />
-        <small>{{ playlistLength(name.trim()) }} / 40</small>
+        <small :id="nameCount">{{ playlistLength(name.trim()) }} / 40</small>
       </label>
       <label class="private-checkbox"
         ><input v-model="privatePlaylist" type="checkbox" />设为私密歌单</label
