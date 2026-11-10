@@ -594,14 +594,14 @@ def main():
             assert stage['popularityOrder'] == direction and stage['order'] == 'none'
             assert stage['rows'] == ids and stage['meter'] == [[track, scores[track]] for track in ids]
             if name in ('pop_descending', 'pop_ascending', 'pop_reset'):
-                assert stage['popularityFocus'] and stage['nativeQueue']['tracks'] == []
+                assert stage['popularityFocus'] and stage['queue']['tracks'] == []
         played = stages['pop_play_all']
         assert played['nativePlayer']['state'] == 'playing' and played['nativePlayer']['position'] > .2
         assert played['nativePlayer']['origin'] == {'kind': 'album', 'id': '8'}
         assert [row['track']['id'] for row in played['nativeQueue']['tracks']] == ['12','11','13','14']
         appended = stages['pop_add_all']
-        assert appended['nativePlayer']['state'] == 'paused' and appended['nativePlayer']['track']['id'] == '900'
-        assert [row['track']['id'] for row in appended['nativeQueue']['tracks']] == ['900','14','11','13','12','901']
+        assert appended['player']['state'] == 'paused' and appended['player']['track']['id'] == '900'
+        assert [row['track']['id'] for row in appended['queue']['tracks']] == ['900','14','11','13','12','901']
         for start, end in (('queue_menu_paused', 'pop_play_all'), ('pop_play_all', 'pop_add_all')):
             assert [(call['path'], call['args']) for call in delta(start, end) if call['path'] in album_paths][-2:] == [
                 (path, {'id': '8'}) for path in album_paths]
