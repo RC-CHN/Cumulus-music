@@ -14,11 +14,17 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--foreground', action='store_true',
+                        help='exercise a distinct real Linux foreground transition')
     args = parser.parse_args()
+    if args.foreground and not sys.platform.startswith('linux'):
+        parser.error('--foreground requires a Linux window manager')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root/'run')
+    if args.foreground:
+        env['CUMULUS_PROOF_RENEWAL_FOREGROUND'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -39,6 +45,8 @@ def main():
     command = [sys.executable, str(audit), str(root/'run')]
     if not args.screenshots:
         command.append('--no-screenshots')
+    if args.foreground:
+        command.append('--foreground')
     subprocess.run(command, check=True)
 
 

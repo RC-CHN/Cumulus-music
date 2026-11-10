@@ -1,6 +1,8 @@
 //! Production renewal pump, UI and IPC with synthetic in-process music HTTP.
 #[path = "support/auth.rs"]
 mod fixture;
+#[path = "support/relay_focus_fixture.rs"]
+mod focus_fixture;
 use cumulus_core::{
     Error,
     account::credentials::Credentials,
@@ -17,7 +19,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
@@ -58,6 +60,8 @@ struct Service {
     inner: fixture::Service,
     rotations: AtomicUsize,
     refuse_identity_once: AtomicBool,
+    foreground_proof: bool,
+    focus_events: Mutex<Vec<bool>>,
 }
 impl HttpBackend for Service {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
@@ -83,7 +87,9 @@ impl HttpBackend for Service {
                 return Err(Error::Response("fixture refresh fields"));
             }
             if self.rotations.fetch_add(1, Ordering::SeqCst) == 0 {
-                self.refuse_identity_once.store(true, Ordering::SeqCst);
+                if !self.foreground_proof {
+                    self.refuse_identity_once.store(true, Ordering::SeqCst);
+                }
                 Ok(fixture::reply(json!({"code":200}), Some(2)))
             } else {
                 Err(Error::Transport("synthetic response lost".into()))
@@ -110,7 +116,12 @@ fn main() {
             &before.revision,
         )
         .unwrap();
-    let service = Arc::new(Service::default());
+    let foreground_proof = std::env::var_os("CUMULUS_PROOF_RENEWAL_FOREGROUND").is_some();
+    let service = Arc::new(Service {
+        foreground_proof,
+        ..Default::default()
+    });
+    let focus_trace = service.clone();
     let clock_offset = Arc::new(AtomicU64::new(0));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move|app| {
   let client=MusicClient::open_with_http_backend(&root.join("state"),Some(&profile),service.clone())?;
@@ -120,6 +131,15 @@ fn main() {
   app.manage(client);cumulus_desktop::renewal::start(app.handle());
   if std::env::var_os("CUMULUS_PROOF_SMALL").is_some() { app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?; }
   app.add_capability(r#"{"identifier":"renewal-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
+  if foreground_proof {
+   let app_handle = app.handle().clone();
+   let focus_directory = root.join("focus-webview");
+   app.listen("renewal-focus-proof", move |event| {
+    let value:Value=serde_json::from_str(event.payload()).unwrap();
+    let id=value["id"].as_u64().filter(|id| (1..=2).contains(id)).unwrap();
+    focus_fixture::request(app_handle.clone(),focus_directory.clone(),value["outside"].as_bool().unwrap(),id);
+   });
+  }
   let clock_handle=app.handle().clone();
   app.listen("renewal-clock-proof",move|event| {
    let action: String=serde_json::from_str(event.payload()).unwrap();
@@ -139,11 +159,25 @@ fn main() {
    value["fixtureRequests"]=json!(*service.inner.paths.lock().unwrap());
    value["realMusicNetworkRequests"]=json!(0);
    value["rotationRequests"]=json!(service.rotations.load(Ordering::SeqCst));
-   if stage=="complete" && value["rotationRequests"]!=2 {value["ok"]=json!(false);}
+   if foreground_proof {
+    value["nativeFocusEvents"]=json!(*service.focus_events.lock().unwrap());
+    value["nativeMainForeground"]=json!(handle.get_webview_window("main").and_then(|window|cumulus_desktop::queue_tip_window_foreground(&window).ok()));
+    value["nativeForegroundEligible"]=json!(client.foreground_renewal_epoch().unwrap().as_deref()==Some(account.epoch.as_str()));
+   }
+   let expected=if foreground_proof{1}else{2};
+   if stage=="complete" && value["rotationRequests"]!=expected {value["ok"]=json!(false);}
    fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
    if stage=="complete"||stage=="failed" {handle.exit(if stage=="complete"&&value["ok"]==true {0}else{1});}
    else {acknowledge_stage(&handle,&output,stage);}
   });Ok(())
- }).on_page_load(|webview,payload| {if payload.event()==PageLoadEvent::Finished&&webview.label()=="main" {webview.eval(include_str!("renewal_ui_probe.js")).unwrap();}})
+ }).on_window_event(move |window,event| {
+    if foreground_proof && window.label()=="main" && let tauri::WindowEvent::Focused(focused)=event {
+        let mut trace=focus_trace.focus_events.lock().unwrap();
+        assert!(trace.len()<64);
+        trace.push(*focused);
+    }
+ }).on_page_load(move |webview,payload| {if payload.event()==PageLoadEvent::Finished&&webview.label()=="main" {
+    webview.eval(format!("window.__renewalForegroundProof={foreground_proof};{}",include_str!("renewal_ui_probe.js"))).unwrap();
+ }})
  .run(tauri::generate_context!()).expect("renewal UI proof");
 }

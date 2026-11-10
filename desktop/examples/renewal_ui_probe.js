@@ -7,12 +7,33 @@
  const fill=(label,value)=>{const n=el(`[aria-label="${label}"]`);n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
  const state=()=>el('.session-renewal')?.dataset.state;
  async function clock(action){window.__renewalClockAck='';await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'renewal-clock-proof',payload:action});await wait(()=>window.__renewalClockAck===action,'native_clock_ack');}
- async function stage(name){await sleep(400);const d=el('dialog'),r=d?.getBoundingClientRect();if(d&&(d.scrollWidth>d.clientWidth+1||r.top<0||r.bottom>innerHeight+1))throw Error('layout_overflow');window.__authAck='';await report(name,{state:state(),overflow:false});await wait(()=>window.__authAck===name,'native_ack');await sleep(900);}
+ async function stage(name){await sleep(400);const d=el('dialog'),r=d?.getBoundingClientRect();if(d&&(d.scrollWidth>d.clientWidth+1||r.top<0||r.bottom>innerHeight+1))throw Error('layout_overflow');window.__authAck='';await report(name,{state:state(),overflow:false,rendererFocused:document.hasFocus()});await wait(()=>window.__authAck===name,'native_ack');await sleep(900);}
  async function open(){await click(el('.account-button'));await wait(()=>state(),'renewal_ready');}
  async function reopen(){await click(el('.account-dialog .dialog-close'));await wait(()=>!el('dialog'),'chooser_closed');await open();}
  async function login(){await click(el('.account-add'));await wait(()=>el('.login-methods'),'login');await click(text('邮箱'));await wait(()=>el('[data-login-status]')?.dataset.loginStatus==='ready','email_ready');fill('登录邮箱','alice@example.test');fill('登录密码','fixture-password');await click(el('[aria-label="同意登录协议"]'));await click(el('.login-submit'));await wait(()=>!el('dialog'),'login_done');await open();}
+ async function nativeFocus(outside,id){
+  await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'renewal-focus-proof',payload:{outside,id}});
+  await wait(()=>window.__relayWindowFocusAck[id],'native_focus_receipt');
+  const receipt=window.__relayWindowFocusAck[id];
+  if(receipt.error||receipt.mainForeground!==!outside||(outside&&receipt.helperForeground!==true))throw Error('native_focus_not_owned');
+  await wait(()=>document.hasFocus()===!outside,'renderer_focus_matches_native');
+ }
  try {
   await wait(()=>el('.account-button')?.textContent.includes('邮箱验证账号'),'restored');await open();
+  if(window.__renewalForegroundProof){
+   window.__relayWindowFocusAck={};
+   await wait(()=>document.hasFocus(),'initial_real_foreground');
+   await login();await wait(()=>state()==='not_due','fresh_login_daily_gate');
+   await stage('renewal_foreground_fresh');
+   await clock('advance');await reopen();await wait(()=>state()==='ready','foreground_due_before_account_publish');
+   await window.__TAURI_INTERNALS__.invoke('restore_account');
+   await wait(()=>state()==='ready'&&document.hasFocus(),'account_restore_does_not_act_as_focus');
+   await stage('renewal_foreground_restore_only');
+   await nativeFocus(true,1);await stage('renewal_foreground_blurred');
+   await nativeFocus(false,2);await wait(()=>state()==='refreshed','focus_checked_real_signed_account');
+   await stage('renewal_foreground_refreshed');
+   await report('complete',{ok:true,state:state()});return;
+  }
   await wait(()=>state()==='missing_credentials','missing_credentials');await stage('renewal_missing');
   await login();await wait(()=>state()==='not_due','fresh_login_daily_gate');await stage('renewal_login');
   await clock('advance');await reopen();await wait(()=>state()==='ready','read_due_after_fresh_login');await stage('renewal_due');
