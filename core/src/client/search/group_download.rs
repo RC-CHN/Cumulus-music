@@ -783,7 +783,7 @@ impl MusicClient {
                 let mut existing = BTreeMap::new();
                 let mut collection = Vec::new();
                 let mut offers = Vec::new();
-                let mut has_existing = false;
+                let mut first_filter_count = 0;
                 let decision = session.with_token(&candidate.owner, |owner| {
                     store.read_snapshot(|tx| {
                         for (id, right) in &candidate.rows {
@@ -799,13 +799,15 @@ impl MusicClient {
                             if right.right == SearchGroupDownloadRight::CopyrightBlocked {
                                 continue;
                             }
+                            // M/3085:3806–3841 counts completed/local/blocked
+                            // filtering, not the later native task admission.
+                            first_filter_count += 1;
                             if right.collectable {
                                 collection.push(id.clone());
                             }
                             offers.extend(right.offer);
                             let mut current = tasks.iter().filter(|row| row.status != "cancelled");
                             if let Some(task) = current.next() {
-                                has_existing = true;
                                 if current.next().is_none()
                                     && let Some(previous) =
                                         ExistingSongAdmission::observe(tx, owner, id, &task.id)?
@@ -818,9 +820,14 @@ impl MusicClient {
                             }
                         }
                         if !offers.is_empty() {
-                            // A chosen level overrides every admitted task. A
-                            // prior raw/authorization must not be resumed here.
-                            return Ok(if !has_existing && songs.len() >= 2 {
+                            // A sole purchased survivor already passes the
+                            // M/27 preflight (positive dl, no BD or cloud);
+                            // observed anchors are either fee-free, paid or
+                            // copyright-blocked, never the original fee prompt.
+                            // The anchor remains independent of this list.
+                            // Reuse neither quiescent nor excluded old tasks.
+                            let all_new = existing.is_empty() && songs.len() == first_filter_count;
+                            return Ok(if all_new {
                                 D::PurchasedQualityRequired
                             } else {
                                 D::PurchasedSelectionUnavailable

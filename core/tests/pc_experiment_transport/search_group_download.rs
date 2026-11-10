@@ -11,7 +11,9 @@ use cumulus_core::{
             SongDownloadState,
         },
     },
-    download::service::{DownloadAction, DownloadOptions, DownloadService, DownloadStatus},
+    download::service::{
+        DownloadAction, DownloadOptions, DownloadPhase, DownloadService, DownloadStatus,
+    },
     membership::Quality,
     protocol::{http::ApiOrigin, mconfig::Snapshot},
     storage::StateStore,
@@ -1299,6 +1301,122 @@ async fn search_group_download_purchased_union_and_one_level_are_scoped_to_confi
 }
 
 #[tokio::test]
+async fn search_group_download_purchased_single_survivor_keeps_the_original_anchor() {
+    let exact_pc_body = |payload: &Value| {
+        let mut body = payload.clone();
+        let header = body.as_object_mut().unwrap().remove("header").unwrap();
+        let header: Value = serde_json::from_str(header.as_str().unwrap()).unwrap();
+        assert_eq!(header["os"], "pc");
+        assert_eq!(header["appver"], "3.1.42.205594");
+        assert_eq!(header["osver"], "Microsoft Windows 10");
+        assert_eq!(header["clientSign"], "synthetic-signature");
+        body
+    };
+    // Only one of the two IDs is liked. Reversing that observation while
+    // keeping the same ordered selection must switch only the destination.
+    for liked in [42, 43] {
+        let root = tempfile::tempdir().unwrap();
+        let replies = [
+            purchased_search_page(),
+            json!({"code":200,"ids":[liked]}).into(),
+        ]
+        .into_iter()
+        .chain((liked == 42).then(|| json!({"code":200,"data":{"code":403}}).into()));
+        let (api, http) = vinyl_http(root.path(), &[COOKIE], replies);
+        let (client, session, epoch) = client(root.path(), api);
+        let rows = search(&client, &epoch).await;
+        assert!(matches!(
+            client
+                .search_group_download(&epoch, prepare(&rows, 2, &[2]))
+                .await,
+            Err(Error::InvalidInput(_))
+        ));
+        let R::Prepared {
+            decision: D::PurchasedQualityRequired,
+            receipt: Some(receipt),
+            eligible_count: 1,
+            omitted_count: 1,
+            purchased_qualities,
+            ..
+        } = client
+            .search_group_download(&epoch, prepare(&rows, 1, &[2, 1]))
+            .await
+            .unwrap()
+        else {
+            panic!("only the first filter's one purchased survivor should offer a quality");
+        };
+        assert_eq!(
+            purchased_qualities,
+            [Quality::HiRes, Quality::ExHigh, Quality::Standard]
+        );
+        assert_eq!(
+            http.calls().len(),
+            1,
+            "no read for the omitted anchor or destination"
+        );
+        client.liked_ids().await.unwrap();
+        if liked == 42 {
+            directory(&client, &epoch, root.path()).await;
+        }
+        let result = client
+            .search_group_download(
+                &epoch,
+                C::ConfirmQuality {
+                    receipt: receipt.clone(),
+                    quality: Quality::HiRes,
+                },
+            )
+            .await
+            .unwrap();
+        let service = DownloadService::new(session).unwrap();
+        if liked == 42 {
+            let R::Accepted { result } = result else {
+                panic!("the omitted, liked right-click row must authorize direct admission");
+            };
+            let tasks = service.list().unwrap();
+            assert_eq!(result.accepted.len(), 1);
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].id, result.accepted[0]);
+            assert_eq!(tasks[0].song_id, "43");
+            assert_eq!(tasks[0].options.quality, Quality::HiRes);
+            http.wait(3).await;
+            let calls = http.calls();
+            assert_eq!(calls.len(), 3);
+            assert_eq!(calls[2].path, AUTH);
+            assert_eq!(
+                exact_pc_body(&calls[2].payload),
+                json!({"id":"43","level":"hires","immerseType":"c51"})
+            );
+        } else {
+            assert!(matches!(
+                result,
+                R::QualityConfirmed {
+                    decision: D::PlaylistRequired,
+                    receipt: Some(grant),
+                    quality: Quality::HiRes,
+                    ..
+                } if grant == receipt
+            ));
+            assert!(service.list().unwrap().is_empty());
+            assert_eq!(
+                http.calls().len(),
+                2,
+                "the liked survivor cannot bypass the picker"
+            );
+        }
+        let calls = http.calls();
+        assert_eq!(calls[1].path, LIKED);
+        assert_eq!(exact_pc_body(&calls[1].payload), json!({"uid":"71"}));
+        let fixture_cookie = COOKIE.split(';').next().unwrap();
+        assert!(calls.iter().all(|call| {
+            call.cookie
+                .as_deref()
+                .is_some_and(|header| header.split(';').any(|pair| pair.trim() == fixture_cookie))
+        }));
+    }
+}
+
+#[tokio::test]
 async fn search_group_download_purchased_refuses_a_prior_task_and_leaves_its_raw_file() {
     let root = tempfile::tempdir().unwrap();
     let (api, http) = vinyl_http(root.path(), &[COOKIE], [purchased_search_page()]);
@@ -1318,6 +1436,30 @@ async fn search_group_download_purchased_refuses_a_prior_task_and_leaves_its_raw
             &client,
             &epoch,
             prepare(&rows, 1, &[2, 1, 0, 3]),
+            D::PurchasedSelectionUnavailable,
+        )
+        .await
+        .is_none()
+    );
+    // A paused task already at Prepare is outside the dispatchable set.
+    // The original ordinary row still survived M/3085's first filter, so
+    // it must not collapse a two-survivor paid batch to one fresh task.
+    let mut nondispatchable = service.get(&prior.id).unwrap();
+    nondispatchable.phase = DownloadPhase::Prepare;
+    StateStore::open(root.path().join("host"))
+        .unwrap()
+        .put(
+            "71",
+            "download_tasks_v1",
+            &prior.id,
+            &serde_json::to_value(nondispatchable).unwrap(),
+        )
+        .unwrap();
+    assert!(
+        decision(
+            &client,
+            &epoch,
+            prepare(&rows, 1, &[2, 1, 0]),
             D::PurchasedSelectionUnavailable,
         )
         .await
