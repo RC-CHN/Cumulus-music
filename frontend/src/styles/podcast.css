@@ -217,46 +217,6 @@
 .episode-row.with-more {
   grid-template-columns: 32px minmax(0, 1fr) 52px 30px 30px 40px 30px;
 }
-.episode-row.liked-episode {
-  min-height: 64px;
-  --liked-cover-size: 48px;
-  --liked-cover-radius: 8px;
-  --liked-title-size: 16px;
-}
-.episode-row.liked-episode-compact {
-  min-height: 56px;
-  padding-block: 4px;
-  --liked-cover-size: 36px;
-  --liked-cover-radius: 4px;
-  --liked-title-size: 14px;
-}
-.liked-episode .episode-info-with-cover {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-}
-.liked-episode .episode-info strong {
-  font-size: var(--liked-title-size);
-}
-.liked-cover {
-  flex: 0 0 var(--liked-cover-size);
-  width: var(--liked-cover-size);
-  height: var(--liked-cover-size);
-  object-fit: cover;
-  border-radius: var(--liked-cover-radius);
-}
-.liked-cover-placeholder {
-  display: grid;
-  place-items: center;
-  color: var(--accent);
-  background: var(--surface);
-}
-@media (hover: hover) {
-  .liked-episode:not(:hover, :focus-within) [data-podcast-program-more] {
-    opacity: 0;
-    pointer-events: none;
-  }
-}
 .episode-row:nth-child(odd) {
   background: var(--surface-alt);
 }
@@ -283,8 +243,7 @@
   color: var(--text);
   pointer-events: none;
 }
-.episode-info,
-.episode-info-text {
+.episode-info {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -369,9 +328,6 @@
   }
   .episode-row.with-more {
     grid-template-columns: 26px minmax(0, 1fr) 40px 27px 27px 32px 30px;
-  }
-  .episode-row.liked-episode-compact {
-    padding-block: 4px;
   }
   .episode-comment {
     font-size: 12px;

@@ -79,9 +79,6 @@ fn subscribed(count: u64, latest: u64) -> HttpResponse {
     ]}})
     .into()
 }
-fn liked() -> HttpResponse {
-    json!({"code":200,"data":{"data":[],"hasMore":false}}).into()
-}
 fn query(offset: usize, limit: usize) -> PodcastQuery {
     PodcastQuery {
         scope: PodcastScope::Podcasts,
@@ -117,12 +114,9 @@ fn clear_wires(fixture: &Fixture) -> Vec<Value> {
 async fn subscribed_badge_clear_only_from_current_visible_row_and_exact_pc_wire() {
     let fixture = fixture([
         subscribed(108, 10),
-        liked(),
         json!({"code":200}).into(),
         subscribed(108, 10),
-        liked(),
         subscribed(108, 11),
-        liked(),
     ]);
     let c = &fixture.music;
     let page = c.podcast_page("1", query(0, 1), true).await.unwrap();
@@ -166,16 +160,28 @@ async fn subscribed_badge_clear_only_from_current_visible_row_and_exact_pc_wire(
             .contains("not-renderer-data")
     );
     assert_eq!(clear_wires(&fixture), [json!({"radioId":"7"})]);
+    assert_eq!(
+        fixture
+            .http
+            .calls()
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/my/podcast/page/list",
+            CLEAR,
+            "/api/my/podcast/page/list",
+            "/api/my/podcast/page/list"
+        ]
+    );
 }
 
 #[tokio::test]
 async fn subscribed_badge_clear_lost_reply_never_replays_and_revokes_on_credential_change() {
     let fixture = fixture([
         subscribed(2, 10),
-        liked(),
         HttpResponse::Ready(Err(Error::Transport("synthetic lost response".into()))),
         subscribed(2, 10),
-        liked(),
     ]);
     let c = &fixture.music;
     let first = c.podcast_page("1", query(0, 1), true).await.unwrap();
@@ -231,7 +237,7 @@ async fn subscribed_badge_clear_lost_reply_never_replays_and_revokes_on_credenti
 
 #[tokio::test]
 async fn subscribed_badge_clear_rejects_replaced_native_observation_with_equal_page_revision() {
-    let fixture = fixture([subscribed(2, 10), liked(), subscribed(2, 11), liked()]);
+    let fixture = fixture([subscribed(2, 10), subscribed(2, 11)]);
     let c = &fixture.music;
     let shown = c.podcast_page("1", query(0, 1), true).await.unwrap();
     let registry = ProfileRegistry::open(fixture._root.path(), ApiOrigin::Pc).unwrap();

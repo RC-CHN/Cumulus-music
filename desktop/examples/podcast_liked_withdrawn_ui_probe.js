@@ -26,19 +26,19 @@
   try {
     await wait(() => text('我的播客') && !text('我的播客').disabled, step);
     text('我的播客').click();
-    await wait(() => text('点赞的单集', pane()), 'liked tab');
+    await wait(() => one('[data-podcast-liked-tab]', pane()), 'liked tab');
     await emit('voice_list_cohort', { compact:true });
-    text('点赞的单集', pane()).click();
-    await wait(() => row(501) && row(504)?.classList.contains('liked-episode-compact'), 'treatment and all liked rows');
+    one('[data-podcast-liked-tab]', pane()).click();
+    await wait(() => row(501) && row(504)?.closest('.liked-voice-table.compact'), 'treatment and all liked rows');
     const epoch = (await invoke('account_snapshot')).epoch;
     const queue = () => invoke('player_queue', { epoch });
     const playerSnapshot = () => invoke('player_snapshot', { epoch });
     const ids = all('[data-voice-id]', pane()).map((node) => node.dataset.voiceId);
     assert(ids.join() === '501,502,503,504', 'original row order');
-    assert(row(501).classList.contains('episode-withdrawn') && row(501).textContent.includes('已下线'), 'masked row stays visible');
-    assert(one('button[aria-label^="播放"]', row(501)).disabled && one('button[aria-label="下载单集"]', row(501)).disabled, 'withdrawn playback controls');
-    assert(!row(504).classList.contains('episode-withdrawn'), 'normal sibling stays available');
-    assert(!one('[data-podcast-program-more]', row(501)) && one('[data-podcast-program-more]', row(504)), 'More belongs to normal rows only');
+    assert(row(501).classList.contains('withdrawn') && row(501).textContent.includes('已下线'), 'masked row stays visible');
+    assert(one('button[aria-label^="播放"]', row(501)).disabled && !one('button[aria-label="下载单集"]', row(501)), 'withdrawn playback controls');
+    assert(!row(504).classList.contains('withdrawn'), 'normal sibling stays available');
+    assert(!one('[data-liked-voice-more]', row(501)) && one('[data-liked-voice-more]', row(504)), 'More belongs to normal rows only');
     const height = (node) => Math.round(node.getBoundingClientRect().height);
     const width = (node) => Math.round(node.getBoundingClientRect().width);
     const font = (node) => parseInt(getComputedStyle(node).fontSize, 10);
@@ -46,14 +46,14 @@
     const dimensions = (node, cover, title) => ({
       height:height(node), cover:width(one(cover, node)), title:font(one(title, node)),
     });
-    const likedDimensions = (id) => dimensions(row(id), '.liked-cover', '.episode-info strong');
+    const likedDimensions = (id) => dimensions(row(id), '.liked-voice-title img, .liked-voice-art', '.liked-voice-info strong');
     const treatment = likedDimensions(504);
     assert(treatment.height === 56 && treatment.cover === 36 && treatment.title === 14, 'treatment liked geometry 56 / 36 / 14');
     await stage('ux_01_liked_rows', { ids, ...treatment });
 
     step = 'withdrawn gestures';
     const initial = await queue();
-    one('.episode-info strong', row(501)).click();
+    one('.liked-voice-info strong', row(501)).click();
     await wait(() => one('.podcast-withdrawn-notice', pane()), 'withdrawn click notice');
     const notice = one('.podcast-withdrawn-notice', pane());
     const box = notice.getBoundingClientRect(), content = pane().getBoundingClientRect();
@@ -67,7 +67,7 @@
     await stage('ux_02_withdrawn', { notice: notice.textContent.trim(), queue: stillEmpty.tracks.length });
 
     const popup = () => one('[role="menu"][aria-label^="单集菜单"]');
-    const more = (id) => one('[data-podcast-program-more]', row(id));
+    const more = (id) => one('[data-liked-voice-more]', row(id));
     const item = (label) => all('[role="menuitem"]', popup()).find((node) => node.textContent.trim() === label);
     const openMenu = async (id, keyboard = false) => {
       if (keyboard) {
@@ -85,9 +85,18 @@
     item('播放').click();
     await wait(() => row(504).classList.contains('current') && player()?.dataset.state === 'playing' && Number(player().dataset.position) > 0.08, 'native menu playback');
     const first = await playerSnapshot();
+    const index = one('.liked-voice-index', row(504));
+    assert(index.getAttribute('aria-label').startsWith('暂停 '), 'current row advertises Pause');
+    index.click();
+    await wait(() => player()?.dataset.state === 'paused', 'row index pauses native current playback');
+    const indexPause = await playerSnapshot();
+    assert(indexPause.playId === first.playId && indexPause.queueRevision === first.queueRevision, 'index only pauses the same native entry');
+    index.click();
+    await wait(() => player()?.dataset.state === 'playing', 'row index resumes current native playback');
+    assert((await playerSnapshot()).playId === first.playId, 'index resume retains the same native entry');
     const firstQueue = await queue();
     assert(firstQueue.tracks.map((entry) => entry.track.voiceId).join() === '504', 'menu Play does not replace with the liked collection');
-    await stage('ux_04_single_play', { voice:first.track.voiceId, queue:['504'] });
+    await stage('ux_04_single_play', { voice:first.track.voiceId, queue:['504'], indexPauseRetained:true });
 
     step = 'next, share and download preserve paused playback';
     const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused:true } });
@@ -119,9 +128,19 @@
     await wait(() => player()?.dataset.state === 'playing', 'menu resumes current voice');
     assert((await playerSnapshot()).playId === paused.playId, 'resume keeps current native instance');
 
-    step = 'double-click keeps the existing liked-list behaviour';
+    step = 'double-click distinguishes the current instance from a new collection start';
+    const doubleClick = () => one('.liked-voice-info strong', row(504)).dispatchEvent(
+      new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+    const beforeToggle = await playerSnapshot();
+    doubleClick();
+    await wait(() => player()?.dataset.state === 'paused', 'same-row double-click pauses');
+    const held = await playerSnapshot();
+    assert(held.playId === beforeToggle.playId && held.queueRevision === beforeToggle.queueRevision,
+      'double-click current keeps the instance and queue');
+    await invoke('player_action', { epoch, action: { kind: 'stop' } });
+    await wait(() => player()?.dataset.state !== 'playing' && player()?.dataset.state !== 'paused', 'native stop before fresh list start');
     const beforeDirect = await playerSnapshot();
-    one('.episode-info strong', row(504)).dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+    doubleClick();
     let playing;
     for (let i = 0; i < 240; i++) {
       const candidate = await playerSnapshot();
@@ -134,8 +153,10 @@
     assert(playing, 'new collection queue and native audio progression');
     await wait(() => Number(player().dataset.position) > playing.position + 0.08, 'native clock advances');
     const active = await queue();
-    assert(active.tracks.map((entry) => entry.track.voiceId).join() === '503,504' && active.current === active.tracks[1].entryId, 'filtered original order and exact start');
-    await stage('ux_08_valid_native', { voice: playing.track.voiceId, position: playing.position, queue: active.tracks.map((entry) => entry.track.voiceId) });
+    const rebuilt = active.tracks.map((entry) => entry.track.voiceId);
+    assert(rebuilt.join() === '504' && active.current === active.tracks[0].entryId,
+      'fresh loaded prefix skips withdrawn and unbound siblings: ' + rebuilt.join());
+    await stage('ux_08_valid_native', { voice: playing.track.voiceId, position: playing.position, queue: active.tracks.map((entry) => entry.track.voiceId), toggleRetained:true });
 
     step = 'explicit unavailable target retains playback';
     one('button[aria-label^="播放"]', row(502)).click();
@@ -150,12 +171,16 @@
     focusedMore.focus({ preventScroll:true });
     await emit('voice_list_cohort', { compact:false });
     await wait(() => row(504) && height(row(504)) === 64, 'control liked height');
-    assert(document.activeElement === focusedMore && more(504) === focusedMore && shown(focusedMore), 'focus and visible More survive the experiment update');
+    assert(document.activeElement === focusedMore && more(504) === focusedMore && shown(focusedMore.closest('.liked-voice-actions')), 'focus and visible More survive the experiment update');
     const control = likedDimensions(504);
     assert(control.cover === 48 && control.title === 16, 'control liked geometry 64 / 48 / 16');
     if (matchMedia('(hover: hover)').matches) {
       const idle = [502,503].map(more).find((node) => !node.closest('article').matches(':hover, :focus-within'));
-      assert(idle && !shown(idle) && getComputedStyle(idle).pointerEvents === 'none', 'idle row actions hidden and not pointer targets');
+      const actions = idle?.closest('.liked-voice-actions');
+      const hit = idle?.getBoundingClientRect();
+      assert(actions && hit && !shown(actions) && getComputedStyle(actions).pointerEvents === 'none' &&
+        !idle.contains(document.elementFromPoint(hit.left + hit.width / 2, hit.top + hit.height / 2)),
+        'idle action group is invisible and its button is not a pointer target');
     }
     const openKey = () => new KeyboardEvent('keydown', { key:'F10', shiftKey:true, bubbles:true, cancelable:true });
     const closeMenu = async (anchor) => {

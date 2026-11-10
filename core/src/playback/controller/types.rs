@@ -283,6 +283,12 @@ pub enum PlaybackCommand {
     PlayPodcastBrowse {
         update: QueueUpdate,
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
+        liked_visit: Option<crate::podcast::LikedPageQueueFence>,
+    },
+    /// Add a scoped programme without changing the selected entry or transport.
+    QueuePodcastBrowse {
+        update: QueueUpdate,
+        liked_visit: crate::podcast::LikedPageQueueFence,
     },
     /// Double click on an already loaded rank episode changes mode if
     /// required, then toggles transport without reopening or seeking.
@@ -290,6 +296,7 @@ pub enum PlaybackCommand {
         expected: PlaybackFence,
         paused: bool,
         mode: Option<crate::playback::PlaybackMode>,
+        liked_visit: Option<crate::podcast::LikedPageQueueFence>,
     },
     ApplyLocalBatch(LocalBatchUpdate),
     ApplyHistoryAdd(HistoryQueueUpdate),

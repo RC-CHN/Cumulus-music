@@ -334,6 +334,35 @@ pub async fn download_liked_voice_prepare<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LikedPageVoiceDownloadInput {
+    epoch: String,
+    target: PodcastLikedPageTarget,
+}
+
+#[tauri::command]
+pub async fn download_liked_page_voice_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    request: Request<'_>,
+) -> Result<VoiceDownloadPreparation, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("program download requires main window").into());
+    }
+    let invalid = || Error::InvalidInput("invalid liked program download selection");
+    let input = match request.body() {
+        InvokeBody::Json(body) if body.is_object() => {
+            LikedPageVoiceDownloadInput::deserialize(body).map_err(|_| invalid())?
+        }
+        _ => return Err(invalid().into()),
+    };
+    client
+        .download_liked_page_voice_prepare(&input.epoch, input.target)
+        .await
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub fn download_voice_discard<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,

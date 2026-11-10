@@ -1181,6 +1181,24 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueLikedPageProgram {
+            target,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "paged liked program queue used as native media command",
+                ));
+            }
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::LikedPageVoice(target),
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueDailyRecommendations {
             revision,
             indices,
@@ -1957,6 +1975,7 @@ impl MusicClient {
             | PlayerAction::QueueRecentProgram { .. }
             | PlayerAction::QueuePurchasedProgram { .. }
             | PlayerAction::QueueLikedProgram { .. }
+            | PlayerAction::QueueLikedPageProgram { .. }
             | PlayerAction::QueueAlbum { .. }
             | PlayerAction::QueueAlbumDetail { .. }
             | PlayerAction::QueueAlbumBatch { .. }

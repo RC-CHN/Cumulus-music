@@ -42,6 +42,7 @@ async function prepareVoice() {
       target.tracks.map((track) => track.id),
       target.purchased,
       target.liked,
+      target.pagedLiked,
     );
     if (!dialogOpen || !voiceIsCurrent() || props.target !== target || staleVoice.value) {
       if (plan) void props.model.discardVoice(plan);

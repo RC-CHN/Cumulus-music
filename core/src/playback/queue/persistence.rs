@@ -3,6 +3,7 @@ use super::*;
 use crate::{
     playback::{controller::FmRestore, engine::Cancellation},
     playlist::offline_snapshot::PlaylistQueueBinding,
+    podcast::LikedPageQueueFence,
     storage::StateTransaction,
 };
 use serde_json::json;
@@ -14,6 +15,7 @@ enum SideEffect<'a> {
     Recall(i64),
     NativeGuard(&'a dyn Fn() -> Result<()>),
     CachedPlaylist(&'a PlaylistQueueBinding, &'a Cancellation),
+    LikedPage(&'a LikedPageQueueFence),
     TogetherExternal(&'a str),
 }
 
@@ -24,6 +26,54 @@ struct FmCommit<'a> {
 }
 
 impl PlaybackQueue {
+    /// The caller holds the current account and active liked visit through
+    /// this operation. Do not use a Cancellation callback inside SQLite.
+    pub(crate) fn install_liked_page(
+        &mut self,
+        candidate: QueueSnapshot,
+        owner: &str,
+        visit: &LikedPageQueueFence,
+    ) -> Result<()> {
+        candidate.validate()?;
+        for item in &candidate.items {
+            super::super::PlaybackConstraint::from_resource(&item.resource)?;
+        }
+        if candidate == self.state {
+            return self.validate_liked_page(owner, visit);
+        }
+        if self.owner != owner {
+            return Err(Error::StaleResponse);
+        }
+        let release_fm = Self::releases_fm(&candidate, self.is_fm());
+        self.commit_owned_with_side_effect(
+            candidate,
+            release_fm,
+            None,
+            None,
+            SideEffect::LikedPage(visit),
+        )
+    }
+
+    pub(crate) fn validate_liked_page(
+        &self,
+        owner: &str,
+        visit: &LikedPageQueueFence,
+    ) -> Result<()> {
+        if self.owner != owner {
+            return Err(Error::StaleResponse);
+        }
+        let store = self
+            .store
+            .as_ref()
+            .ok_or(Error::State("liked page requires persistent queue"))?;
+        store.read_snapshot(|tx| {
+            if tx.get(owner, "playback", "queue")? != self.persisted {
+                return Err(Error::QueueChanged);
+            }
+            visit.verify_generation(tx, owner)
+        })
+    }
+
     pub(crate) fn install_together_external(
         &mut self,
         candidate: QueueSnapshot,
@@ -224,10 +274,14 @@ impl PlaybackQueue {
     }
 
     pub(super) fn commit(&mut self, candidate: QueueSnapshot) -> Result<()> {
-        let release_fm = candidate.fm_source.is_none()
-            && (candidate.items.iter().any(|e| e.source["kind"] != "fm")
-                || (candidate.items.is_empty() && self.is_fm()));
+        let release_fm = Self::releases_fm(&candidate, self.is_fm());
         self.commit_with_fm_release(candidate, release_fm)
+    }
+
+    fn releases_fm(candidate: &QueueSnapshot, was_fm: bool) -> bool {
+        candidate.fm_source.is_none()
+            && (candidate.items.iter().any(|e| e.source["kind"] != "fm")
+                || (candidate.items.is_empty() && was_fm))
     }
 
     pub(super) fn commit_with_fm_release(
@@ -365,6 +419,9 @@ impl PlaybackQueue {
                 {
                     return Err(Error::QueueChanged);
                 }
+                if let SideEffect::LikedPage(visit) = side_effect {
+                    visit.verify_generation(tx, &self.owner)?;
+                }
                 if let SideEffect::Fm(fm) = &side_effect {
                     if tx.get(&self.owner, "playback", FM_BACKUP_QUEUE)? != fm.expected.backup_queue
                         || tx.get(&self.owner, "playback", FM_BACKUP_POSITION)?
@@ -468,7 +525,12 @@ impl PlaybackQueue {
                     self.intelligence = intelligence;
                     self.store_stamp = store_stamp;
                 }
-                if changed || !matches!(&side_effect, SideEffect::CachedPlaylist(..)) {
+                if changed
+                    || !matches!(
+                        &side_effect,
+                        SideEffect::CachedPlaylist(..) | SideEffect::LikedPage(_)
+                    )
+                {
                     self.revision = revision;
                 }
                 return Err(error);

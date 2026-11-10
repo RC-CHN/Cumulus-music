@@ -484,6 +484,13 @@ pub enum PlaySelection {
     PodcastLikedEpisode {
         target: crate::client::dto::PodcastLikedProgramTarget,
     },
+    PodcastLikedPageEpisode {
+        target: crate::client::dto::PodcastLikedPageTarget,
+        #[serde(default)]
+        double_click: bool,
+        #[serde(default)]
+        toggle_current: bool,
+    },
     SearchResultVoice {
         id: String,
     },
@@ -775,6 +782,10 @@ pub enum PlayerAction {
     },
     QueueLikedProgram {
         target: crate::client::dto::PodcastLikedProgramTarget,
+        expected_queue_revision: String,
+    },
+    QueueLikedPageProgram {
+        target: crate::client::dto::PodcastLikedPageTarget,
         expected_queue_revision: String,
     },
     QueueDailyRecommendations {

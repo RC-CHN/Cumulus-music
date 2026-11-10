@@ -307,6 +307,7 @@ impl MusicClient {
             Some(first_source) => SearchPodcastRowPlan::Play(PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,
+                liked_visit: None,
             }),
             None => SearchPodcastRowPlan::QueueOnly(update),
         };

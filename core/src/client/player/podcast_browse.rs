@@ -67,7 +67,7 @@ pub(super) fn resource(voice: &Episode) -> Result<Value> {
     Ok(resource)
 }
 
-fn rank_replacement_mode(category: &Value, old_mode: PlaybackMode) -> PlaybackMode {
+pub(super) fn voice_replacement_mode(category: &Value, old_mode: PlaybackMode) -> PlaybackMode {
     if matches!(category.as_i64(), Some(3001 | 10002 | 2001)) {
         old_mode
     } else {
@@ -162,7 +162,7 @@ impl MusicClient {
                             })
                         })
                         .ok_or(Error::QueueChanged)?;
-                    Some(rank_replacement_mode(&raw["categoryId"], queue.mode))
+                    Some(voice_replacement_mode(&raw["categoryId"], queue.mode))
                         .filter(|mode| *mode != queue.mode)
                 } else {
                     None
@@ -172,6 +172,7 @@ impl MusicClient {
                         expected: before.fence(),
                         paused: !before.paused,
                         mode,
+                        liked_visit: None,
                     },
                     guard,
                 ));
@@ -276,7 +277,7 @@ impl MusicClient {
         let source = json!({"kind":source_name,"scene":"unknown","pldScene":"audio"});
         let queue = if replace {
             QueueSnapshot {
-                mode: rank_replacement_mode(
+                mode: voice_replacement_mode(
                     chart_category.as_ref().unwrap_or(&detail.raw["categoryId"]),
                     queue.mode,
                 ),
@@ -353,6 +354,7 @@ impl MusicClient {
                     }),
                 },
                 first_source,
+                liked_visit: None,
             },
             guard,
         ))

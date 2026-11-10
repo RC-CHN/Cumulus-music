@@ -33,6 +33,14 @@ export interface PodcastRecentProgramMenu {
   downloadComplete: boolean | null;
 }
 export interface PodcastProgramMenuClient {
+  podcastLikedPageProgramMenu(
+    epoch: string,
+    target: PodcastLikedPageTarget,
+  ): Promise<AccountData<PodcastRecentProgramMenu>>;
+  podcastOpenLikedPageProgramDownloadDirectory(
+    epoch: string,
+    target: PodcastLikedPageTarget,
+  ): Promise<void>;
   podcastLikedProgramMenu(
     epoch: string,
     target: PodcastLikedProgramTarget,
@@ -160,6 +168,7 @@ export interface PodcastPage {
   remoteTotal: number;
   radio: PodcastCard | null;
   likedIds: string[];
+  likedIdsKnown?: boolean;
   resumeEnabled: boolean | null;
   audiobookSkipEnabled?: boolean | null;
   operations: PodcastMutation[];
@@ -207,6 +216,36 @@ export interface PodcastClient {
   ): Promise<AccountData<PodcastPurchasedRow>>;
   podcastClearSubscribedBadge(epoch: string, receipt: string, id: string): Promise<void>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
+}
+export interface PodcastLikedVisit {
+  visit: string;
+  revision: string;
+}
+export type PodcastLikedQuery =
+  | { kind: 'open' }
+  | ({ kind: 'suspend' | 'restore' } & PodcastLikedVisit)
+  | ({ kind: 'next'; continuation: string } & PodcastLikedVisit);
+export interface PodcastLikedEpisode extends EpisodeView {
+  listenerCount?: number | null;
+}
+export interface PodcastLikedPage extends PodcastLikedVisit {
+  /** Next returns a delta; Open/Restore replace the prefix. */
+  episodes: PodcastLikedEpisode[];
+  loadedCount: number;
+  count: number | null;
+  continuation: string | null;
+  capped: boolean;
+}
+export interface PodcastLikedPageTarget extends PodcastLikedVisit {
+  voiceId: string;
+}
+export interface PodcastLikedClient {
+  podcastLikedPage(epoch: string, query: PodcastLikedQuery): Promise<AccountData<PodcastLikedPage>>;
+  podcastLikedCount(epoch: string): Promise<AccountData<number>>;
+  podcastLikedPageProgram(
+    epoch: string,
+    target: PodcastLikedPageTarget,
+  ): Promise<AccountData<EpisodeView>>;
 }
 export interface PodcastRecentEpisode extends EpisodeView {
   listenerCount: number | null;

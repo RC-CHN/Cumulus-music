@@ -218,6 +218,55 @@ pub async fn podcast_page(
         .await
         .map_err(Into::into)
 }
+fn require_liked_page_main<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "liked podcast pages require the main window",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn podcast_liked_page<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    query: PodcastLikedQuery,
+) -> Result<AccountData<PodcastLikedPage>, ClientError> {
+    require_liked_page_main(&window)?;
+    client
+        .podcast_liked_page(&epoch, query)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn podcast_liked_count<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<u64>, ClientError> {
+    require_liked_page_main(&window)?;
+    client.podcast_liked_count(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn podcast_liked_page_program<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastLikedPageTarget,
+) -> Result<AccountData<EpisodeView>, ClientError> {
+    require_liked_page_main(&window)?;
+    client
+        .podcast_liked_page_program(&epoch, &target)
+        .map_err(Into::into)
+}
+
 fn require_program_menu_main<R: tauri::Runtime>(
     window: &tauri::WebviewWindow<R>,
 ) -> Result<(), ClientError> {
@@ -299,6 +348,44 @@ pub async fn podcast_open_liked_program_download_directory<R: tauri::Runtime>(
     require_program_menu_main(&window)?;
     let path = client
         .podcast_liked_program_directory_path(&epoch, &target)
+        .await
+        .map_err(ClientError::from)?;
+    client
+        .validate_download_epoch(&epoch)
+        .map_err(ClientError::from)?;
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn podcast_liked_page_program_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastLikedPageTarget,
+) -> Result<AccountData<PodcastRecentProgramMenu>, ClientError> {
+    require_program_menu_main(&window)?;
+    client
+        .podcast_liked_page_program_menu(
+            &epoch,
+            &target,
+            crate::network_diagnostics::default_route(),
+        )
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn podcast_open_liked_page_program_download_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: PodcastLikedPageTarget,
+) -> Result<(), ClientError> {
+    require_program_menu_main(&window)?;
+    let path = client
+        .podcast_liked_page_program_directory_path(&epoch, &target)
         .await
         .map_err(ClientError::from)?;
     client

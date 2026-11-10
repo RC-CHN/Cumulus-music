@@ -505,6 +505,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   function queueLikedProgram(target: import('../services/podcast').PodcastLikedProgramTarget) {
     return queueAction({ kind: 'queue_liked_program', target });
   }
+  function queueLikedPageProgram(target: import('../services/podcast').PodcastLikedPageTarget) {
+    return queueAction({ kind: 'queue_liked_page_program', target });
+  }
   function queueLocal(query: LocalQuery, revision: string, trackId?: string) {
     return queueAction({ kind: 'queue_local', query, revision, track_id: trackId });
   }
@@ -619,6 +622,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_recent_program'
             | 'queue_purchased_program'
             | 'queue_liked_program'
+            | 'queue_liked_page_program'
             | 'queue_daily_recommendations'
             | 'queue_style_recommendations'
             | 'queue_playlist_batch'
@@ -1438,6 +1442,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueRecentProgram,
     queuePurchasedProgram,
     queueLikedProgram,
+    queueLikedPageProgram,
     queueLocal,
     dropIntoQueue,
     queueAlbum,

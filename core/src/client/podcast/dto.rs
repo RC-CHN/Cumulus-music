@@ -126,6 +126,8 @@ pub struct PodcastPage {
     pub remote_total: u64,
     pub radio: Option<PodcastCard>,
     pub liked_ids: Vec<String>,
+    /// False means no complete membership observation, even if the vector is empty.
+    pub liked_ids_known: bool,
     pub resume_enabled: Option<bool>,
     pub audiobook_skip_enabled: Option<bool>,
     pub operations: Vec<PodcastMutationView>,

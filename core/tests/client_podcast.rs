@@ -5,6 +5,8 @@ mod badges;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
+#[path = "client_podcast/liked_page_playback.rs"]
+mod liked_page_playback;
 #[path = "client_podcast/liked_playback.rs"]
 mod liked_playback;
 #[path = "client_podcast/program_menu.rs"]
@@ -44,6 +46,8 @@ struct Backend {
     resume: AtomicBool,
     liked: Mutex<Vec<u64>>,
     liked_cards: Mutex<Option<Vec<Value>>>,
+    liked_page_replies: Mutex<Vec<(Value, Value)>>,
+    liked_page_detail_hold: AtomicBool,
     liked_details: Mutex<std::collections::BTreeMap<u64, Value>>,
     lost: AtomicBool,
     offline: AtomicBool,
@@ -287,6 +291,15 @@ impl Api for Backend {
                     }).collect::<Vec<_>>(),"count":count,"more":offset+limit<count,"asc":p["asc"]}})
                 }
                 "/api/content/my/liked/voice" => {
+                    let pages = self.liked_page_replies.lock().unwrap();
+                    if !pages.is_empty() {
+                        assert_eq!(p["limit"], 100);
+                        let reply = pages
+                            .iter()
+                            .find(|(cursor, _)| *cursor == p["likeTime"])
+                            .expect("unexpected liked page cursor");
+                        return Ok(reply.1.clone());
+                    }
                     if let Some(cards) = self.liked_cards.lock().unwrap().as_ref() {
                         assert_eq!(p, json!({"limit":100,"likeTime":0}));
                         return Ok(json!({"code":200,"data":{"data":cards,"hasMore":false}}));
@@ -298,6 +311,10 @@ impl Api for Backend {
                 }
                 "/api/dj/program/detail" => {
                     let id = p["id"].as_str().unwrap().parse().unwrap();
+                    if id == 503 && self.liked_page_detail_hold.swap(false, Ordering::SeqCst) {
+                        self.search_playback_started.notify_one();
+                        self.search_playback_release.notified().await;
+                    }
                     if let Some(reply) = self.liked_details.lock().unwrap().get(&id) {
                         return Ok(reply.clone());
                     }
@@ -326,6 +343,10 @@ impl Api for Backend {
                         self.trial.load(Ordering::SeqCst) && (ids[0] == "1001" || ids[0] == 1001);
                     json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/program.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard",
                         "freeTrialInfo":trial.then(|| json!({"start":0,"end":20}))}]})
+                }
+                "/api/social/my/created/voicelist/v1" => {
+                    assert_eq!(p, json!({"limit":20}));
+                    json!({"code":200,"data":{"data":[radio()],"hasMore":false}})
                 }
                 "/api/my/podcast/page/list" => {
                     if self.recommendation_collect_fixture.load(Ordering::SeqCst)
@@ -476,6 +497,79 @@ fn scope() -> PodcastScope {
         ascending: true,
     }
 }
+#[tokio::test]
+async fn card_only_podcast_pages_reuse_complete_likes_without_requesting_them() {
+    let (_root, api, _, client) = fixture();
+    let scopes = [
+        PodcastScope::Podcasts,
+        PodcastScope::Audiobooks,
+        PodcastScope::Created,
+    ];
+    let liked_reads = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path == "/api/content/my/liked/voice")
+            .count()
+    };
+
+    for scope in &scopes {
+        let page = client
+            .podcast_page("1", query(scope.clone(), 0), true)
+            .await
+            .unwrap();
+        assert_eq!(page.cards.len(), 1);
+        assert!(!page.liked_ids_known && page.liked_ids.is_empty());
+    }
+    assert_eq!(liked_reads(), 0);
+    assert_eq!(
+        client
+            .podcast_state("1", true)
+            .await
+            .unwrap()
+            .value
+            .liked_ids,
+        Some(vec![])
+    );
+    let known_empty = client
+        .podcast_page("1", query(PodcastScope::Podcasts, 0), true)
+        .await
+        .unwrap();
+    assert!(known_empty.liked_ids_known && known_empty.liked_ids.is_empty());
+    assert_eq!(liked_reads(), 1);
+    let encoded = serde_json::to_value(known_empty).unwrap();
+    assert_eq!(encoded["likedIdsKnown"], true);
+    assert_eq!(encoded["likedIds"], json!([]));
+
+    api.liked.lock().unwrap().push(42);
+    let episode_page = client
+        .podcast_page("1", query(scope(), 0), true)
+        .await
+        .unwrap();
+    assert!(episode_page.liked_ids_known);
+    assert_eq!(episode_page.liked_ids, ["42"]);
+    assert!(
+        episode_page
+            .episodes
+            .iter()
+            .any(|row| row.id == "42" && row.liked)
+    );
+    for scope in scopes {
+        let page = client
+            .podcast_page("1", query(scope, 0), true)
+            .await
+            .unwrap();
+        assert!(page.liked_ids_known);
+        assert_eq!(page.liked_ids, ["42"]);
+    }
+    assert_eq!(
+        liked_reads(),
+        2,
+        "only explicit membership and the episode page read liked voices"
+    );
+}
+
 #[tokio::test]
 async fn podcast_search_write_rechecks_creator_and_never_repeats_already_applied_state() {
     let (_root, api, _, client) = fixture();

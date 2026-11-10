@@ -72,6 +72,7 @@ pub(super) enum QueueCollection {
     RecentVoice(crate::client::dto::PodcastRecentProgramTarget),
     PurchasedVoice(crate::client::dto::PodcastPurchasedTarget),
     LikedVoice(crate::client::dto::PodcastLikedProgramTarget),
+    LikedPageVoice(crate::client::dto::PodcastLikedPageTarget),
     Downloads(Vec<String>),
     Local {
         query: crate::library::catalog::LocalQuery,
@@ -302,9 +303,12 @@ impl MusicClient {
             }
         );
         let artist_favor = matches!(collection, QueueCollection::ArtistFavor { .. });
+        let paged_liked = matches!(collection, QueueCollection::LikedPageVoice(_));
         let scoped_voice = matches!(
             collection,
-            QueueCollection::PurchasedVoice(_) | QueueCollection::LikedVoice(_)
+            QueueCollection::PurchasedVoice(_)
+                | QueueCollection::LikedVoice(_)
+                | QueueCollection::LikedPageVoice(_)
         );
         let voice = matches!(
             collection,
@@ -312,6 +316,7 @@ impl MusicClient {
                 | QueueCollection::RecentVoice(_)
                 | QueueCollection::PurchasedVoice(_)
                 | QueueCollection::LikedVoice(_)
+                | QueueCollection::LikedPageVoice(_)
         );
         let mixed_playlist = matches!(collection, QueueCollection::MixedPlaylist { .. });
         let ordinary = daily
@@ -343,6 +348,7 @@ impl MusicClient {
         }
         let mut artist_batch_prepared = None;
         let mut scoped_program = None;
+        let mut liked_visit = None;
         let (recommendation_ids, mut source_guard) = match &collection {
             QueueCollection::DailyRecommendations {
                 revision, indices, ..
@@ -430,6 +436,23 @@ impl MusicClient {
                     false,
                 ));
                 (None, Some(guard))
+            }
+            QueueCollection::LikedPageVoice(target) => {
+                let scope = self.paged_liked_episode_scope(&token, target, None)?;
+                if queue.selected().is_some_and(|entry| {
+                    resource_key(&entry.resource, false)
+                        == Some((PlayerResourceKind::Voice, scope.row.id.as_str()))
+                }) {
+                    return project(&before, &token);
+                }
+                scoped_program = Some((
+                    scope.row,
+                    scope.api,
+                    super::podcast_purchased::ScopedProgram::PagedLiked(target).origin(),
+                    false,
+                ));
+                liked_visit = Some(scope.queue_fence);
+                (None, Some(scope.guard))
             }
             _ => (None, None),
         };
@@ -715,20 +738,25 @@ impl MusicClient {
                     .await?;
                 (selection.resources, super::origin::recent_podcast(), false)
             }
-            QueueCollection::PurchasedVoice(_) | QueueCollection::LikedVoice(_) => {
+            QueueCollection::PurchasedVoice(_)
+            | QueueCollection::LikedVoice(_)
+            | QueueCollection::LikedPageVoice(_) => {
                 let (cached, api, origin, purchased) = scoped_program.ok_or(Error::QueueChanged)?;
                 let guard = source_guard.as_ref().ok_or(Error::QueueChanged)?;
                 let start = queue.items.is_empty();
                 // M3085 reads details for an incomplete row. At an empty
                 // queue Cumulus also validates the actual first source before
                 // reserving playback focus or publishing the inserted row.
-                let episode =
-                    if (start && purchased) || identifier(&cached.raw["mainSong"]["id"]).is_err() {
-                        self.read_scoped_program_detail(&token, &cached, guard)
-                            .await?
-                    } else {
-                        cached
-                    };
+                let episode = if paged_liked {
+                    self.hydrate_paged_liked_episode(&token, cached, guard)
+                        .await?
+                } else if (start && purchased) || identifier(&cached.raw["mainSong"]["id"]).is_err()
+                {
+                    self.read_scoped_program_detail(&token, &cached, guard)
+                        .await?
+                } else {
+                    cached
+                };
                 let resource = super::podcast_browse::resource(&episode)?;
                 if start {
                     let position = self
@@ -851,12 +879,17 @@ impl MusicClient {
                 paused: false,
             }),
         };
-        let command = match scoped_start {
-            Some((first_source, _)) => PlaybackCommand::PlayPodcastBrowse {
+        let command = match (scoped_start, liked_visit) {
+            (Some((first_source, _)), liked_visit) => PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,
+                liked_visit,
             },
-            None => PlaybackCommand::UpdateQueue(update),
+            (None, Some(liked_visit)) => PlaybackCommand::QueuePodcastBrowse {
+                update,
+                liked_visit,
+            },
+            (None, None) => PlaybackCommand::UpdateQueue(update),
         };
         let value = if ordinary {
             let selection = self.player.selection.clone();

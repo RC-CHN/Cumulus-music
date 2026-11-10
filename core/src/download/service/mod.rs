@@ -20,6 +20,7 @@ pub(crate) use admission::CatalogAdmission;
 pub(crate) use batch::{ExistingSongAdmission, GuardedSongBatch, SongBatchAdmission};
 pub use manager::DownloadService;
 pub(super) use manager::{CONTROL as TASK_CONTROL, KIND as TASKS};
+pub(crate) use manager::{ScopedTaskAdmission, ScopedTaskLease};
 pub(crate) use missing_playback::MissingCatalogDownload;
 pub use records::{
     DownloadAction, DownloadDestination, DownloadOptions, DownloadOrigin, DownloadPhase,

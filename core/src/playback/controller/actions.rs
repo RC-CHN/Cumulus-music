@@ -37,6 +37,7 @@ impl Actor {
                 | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::PlayPodcastBrowse { .. }
+                | PlaybackCommand::QueuePodcastBrowse { .. }
                 | PlaybackCommand::TogglePodcastRank { .. }
                 | PlaybackCommand::ApplySearchGroupNext { .. }
                 | PlaybackCommand::ApplySearchGroupPlay { .. }
@@ -170,6 +171,7 @@ impl Actor {
         | PlaybackCommand::InsertNext(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
+        | PlaybackCommand::QueuePodcastBrowse { update: value, .. }
         | PlaybackCommand::ApplySearchGroupNext { update: value, .. }
         | PlaybackCommand::ApplySearchGroupPlay { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
@@ -355,26 +357,52 @@ impl Actor {
             PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,
+                liked_visit,
             } => {
+                let authority = &request.guard.as_ref().expect("guarded podcast browse").1;
                 if self.queue.is_fm()
                     || first_source.needs_renewal_for_reopen(self.resolver.now())
-                    || request
-                        .guard
-                        .as_ref()
-                        .is_none_or(|(_, guard)| guard.is_cancelled())
+                    || authority.is_cancelled()
                 {
                     Err(Error::StaleResponse)
                 } else {
-                    self.update_queue_with_source(update, Some(&request.reply), Some(first_source))
-                        .await
-                        .map(|value| options = value)
+                    self.apply_scoped_podcast_queue(
+                        update,
+                        first_source,
+                        &request.reply,
+                        authority,
+                        liked_visit.as_ref(),
+                    )
+                    .await
+                    .map(|value| options = value)
                 }
             }
-            PlaybackCommand::TogglePodcastRank { paused, mode, .. } => {
-                let result = mode.map_or(Ok(()), |mode| self.queue.set_mode(mode));
-                match result {
-                    Ok(()) => self.pause(paused).await,
-                    Err(error) => Err(error),
+            PlaybackCommand::QueuePodcastBrowse {
+                update,
+                liked_visit,
+            } => {
+                let authority = &request.guard.as_ref().expect("guarded podcast next").1;
+                self.queue_scoped_podcast(update, &request.reply, authority, &liked_visit)
+            }
+            PlaybackCommand::TogglePodcastRank {
+                paused,
+                mode,
+                liked_visit,
+                ..
+            } => {
+                let authority = &request.guard.as_ref().expect("guarded podcast row").1;
+                if request.reply.is_closed() || authority.is_cancelled() {
+                    Err(Error::StaleResponse)
+                } else {
+                    let result = if let Some(visit) = liked_visit {
+                        self.prepare_liked_page_toggle(mode, &visit, &request.reply)
+                    } else {
+                        mode.map_or(Ok(()), |mode| self.queue.set_mode(mode))
+                    };
+                    match result {
+                        Ok(()) => self.pause(paused).await,
+                        Err(error) => Err(error),
+                    }
                 }
             }
             PlaybackCommand::ApplyLocalBatch(update) => {

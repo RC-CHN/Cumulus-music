@@ -16,7 +16,18 @@ import type {
   PodcastPurchasedTarget,
 } from '../services/podcast.ts';
 
-export function usePodcasts(core: PodcastClient = useCore(), expired: () => void = () => {}) {
+type LikedRoute = {
+  open: () => Promise<void>;
+  restore: () => Promise<void>;
+  suspend: () => Promise<void>;
+  readCount: () => Promise<void>;
+};
+
+export function usePodcasts(
+  core: PodcastClient = useCore(),
+  expired: () => void = () => {},
+  likedRoute?: LikedRoute,
+) {
   const page = shallowRef<PodcastPage>();
   const recommendations = shallowRef<PodcastSubscriptionRecommendations>();
   const query = ref<PodcastQuery>({
@@ -41,6 +52,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     recommendationVisit = 0,
     recommendationsRequested = false,
     visible = false;
+  let likedVisible = false;
   let history: PodcastQuery[] = [];
   const canBack = ref(false);
   const recentSelected = ref(false);
@@ -72,6 +84,8 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     }
   }
   function dispose() {
+    if (likedVisible) void likedRoute?.suspend();
+    likedVisible = false;
     generation++;
     read++;
     write++;
@@ -106,7 +120,26 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     if (account.status !== 'authenticated') return;
     epoch.value = account.epoch;
     void state(false);
-    if (visible) void load(true);
+    if (visible) {
+      updateLikedRoute();
+      void load(true);
+    }
+  }
+  function updateLikedRoute(restore = false, reset = false) {
+    if (!likedRoute) return;
+    const active =
+      visible && !!epoch.value && !recentSelected.value && query.value.scope.kind === 'liked';
+    if (likedVisible && !active) void likedRoute.suspend();
+    if (active && (!likedVisible || reset))
+      void (restore ? likedRoute.restore() : likedRoute.open());
+    likedVisible = active;
+    if (
+      visible &&
+      epoch.value &&
+      (recentSelected.value || query.value.scope.kind !== 'radio') &&
+      !(active && restore)
+    )
+      void likedRoute.readCount();
   }
   function activateRecommendations() {
     if (
@@ -149,7 +182,13 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
   }
   async function load(refresh = false, purchaseOffset?: number) {
     activateRecommendations();
-    if (!epoch.value || busy.value || recentSelected.value) return;
+    if (
+      !epoch.value ||
+      busy.value ||
+      recentSelected.value ||
+      (likedRoute && query.value.scope.kind === 'liked')
+    )
+      return;
     if (
       purchaseOffset !== undefined &&
       (query.value.scope.kind !== 'purchased' ||
@@ -180,7 +219,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
         stateRead++;
         page.value = value;
         liked.value = new Set(value.likedIds);
-        likesKnown.value = true;
+        likesKnown.value = value.likedIdsKnown !== false;
         operations.value = value.operations;
         query.value = {
           ...request,
@@ -208,6 +247,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     error.value = '';
     recentReturn.value = false;
     recentSelected.value = true;
+    updateLikedRoute();
     activateRecommendations();
   }
   function navigate(scope: PodcastScope, libraryBack = true) {
@@ -231,13 +271,14 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     }
     changePage({ ...query.value, scope, keyword: '', offset: 0, revision: null });
   }
-  function changePage(next: PodcastQuery) {
+  function changePage(next: PodcastQuery, restore = false) {
     read++;
     page.value = undefined;
     loading.value = false;
     query.value = { ...next, revision: null };
     notice.value = '';
     error.value = '';
+    updateLikedRoute(restore, !restore && next.scope.kind === 'liked');
     if (visible) void load(true);
   }
   function openContextualRadio(id: string) {
@@ -392,7 +433,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       recentSelected.value = contextual.recent;
       recentReturn.value = contextual.recentBack;
       canBack.value = contextual.canBack;
-      changePage(contextual.query);
+      changePage(contextual.query, true);
       return;
     }
     if (recentReturn.value) {
@@ -405,10 +446,12 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     page.value = undefined;
     query.value = { ...previous, revision: null };
     canBack.value = history.length > 0;
+    updateLikedRoute(true);
     if (visible) void load(previous.scope.kind !== 'purchased');
   }
-  function show(value: boolean) {
+  function show(value: boolean, restore = false) {
     visible = value;
+    updateLikedRoute(restore);
     if (!value) {
       recommendationVisit++;
       recommendationsRequested = false;
@@ -487,6 +530,9 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     read++;
     stateRead++;
     loading.value = false;
+    // Even an unchanged or unresolved native Like attempt advances the
+    // podcast generation. Retire row receipts and reopen the lane once.
+    const refreshLiked = 'action' in value && value.action === 'like';
     try {
       const result = await core.podcastCommand(e, value);
       if (!valid(g, e) || n !== write || result.epoch !== e) return;
@@ -502,8 +548,10 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
         const failed = error.value;
         await state(false);
         if (valid(g, e) && n === write) {
-          if (visible) await load(true);
-          else await state(true);
+          if (visible) {
+            if (likedVisible && refreshLiked) updateLikedRoute(false, true);
+            await load(true);
+          } else await state(true);
           if (valid(g, e) && n === write && failed) error.value = failed;
         }
       }
@@ -536,8 +584,12 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     read++;
     stateRead++;
     loading.value = false;
-    if (visible && !busy.value) await load(true);
-    else await state(true);
+    if (visible && !busy.value) {
+      if (likedVisible) {
+        updateLikedRoute(false, true);
+        await state(false);
+      } else await load(true);
+    } else await state(true);
   }
   function change(action: PodcastAction, id: string, desired: boolean) {
     return command({ kind: 'change', action, id, desired });

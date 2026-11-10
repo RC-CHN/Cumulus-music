@@ -6,6 +6,8 @@ import type { MenuItem } from '../services/menu';
 import {
   podcastProgramPublicLink,
   type EpisodeView,
+  type PodcastLikedPage,
+  type PodcastLikedPageTarget,
   type PodcastLikedProgramTarget,
   type PodcastPage,
   type PodcastProgramTarget,
@@ -19,12 +21,14 @@ import ModalTransition from './ModalTransition.vue';
 import TrackShareDialog from './TrackShareDialog.vue';
 
 type RecentMenuPage = PodcastRecentPage & { epoch: string };
-type MenuPage = PodcastPage | RecentMenuPage;
+type LikedMenuPage = PodcastLikedPage & { epoch: string };
+type MenuPage = PodcastPage | RecentMenuPage | LikedMenuPage;
 type MenuTarget =
   | PodcastProgramTarget
   | PodcastRecentProgramTarget
   | PodcastPurchasedTarget
-  | { likedTarget: PodcastLikedProgramTarget };
+  | { likedTarget: PodcastLikedProgramTarget }
+  | { likedPageTarget: PodcastLikedPageTarget };
 
 const props = defineProps<{
   page?: MenuPage;
@@ -37,6 +41,14 @@ const props = defineProps<{
     target: PodcastLikedProgramTarget,
     live: () => boolean,
   ) => Promise<boolean>;
+  queueLikedPage?: (
+    epoch: string,
+    target: PodcastLikedPageTarget,
+    live: () => boolean,
+  ) => Promise<boolean>;
+  captureLikedPage?: (
+    row: EpisodeView,
+  ) => { epoch: string; target: PodcastLikedPageTarget; live: () => boolean } | undefined;
   queuePurchased?: (
     epoch: string,
     target: PodcastPurchasedTarget,
@@ -54,11 +66,13 @@ const emit = defineEmits<{
   play: [id: string];
   recentPlay: [epoch: string, program: PodcastRecentProgramTarget];
   likedPlay: [epoch: string, target: PodcastLikedProgramTarget, live: () => boolean];
+  likedPagePlay: [epoch: string, target: PodcastLikedPageTarget, live: () => boolean];
   purchasedPlay: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[]];
   purchasedDownload: [voice: EpisodeView, live: () => boolean, target: PodcastPurchasedTarget];
   likedDownload: [voice: EpisodeView, live: () => boolean, target: PodcastLikedProgramTarget];
+  likedPageDownload: [voice: EpisodeView, live: () => boolean, target: PodcastLikedPageTarget];
 }>();
 const client = useCore();
 const menu = ref<InstanceType<typeof ActionMenu>>();
@@ -73,6 +87,7 @@ type Selection = {
   target: MenuTarget;
   anchor: HTMLButtonElement;
   purchaseLive?: () => boolean;
+  likedPageLive?: () => boolean;
 };
 const selection = shallowRef<Selection>();
 const shared = shallowRef<Selection>();
@@ -80,7 +95,9 @@ const shareAnchor = shallowRef<HTMLButtonElement>();
 let preparing: Selection | undefined;
 function current(value: Selection) {
   return (
-    props.page === value.page &&
+    ('likedPageTarget' in value.target
+      ? value.likedPageLive?.() === true
+      : props.page === value.page) &&
     value.anchor.isConnected &&
     !value.anchor.closest('[inert]') &&
     (value.purchaseLive?.() ?? true)
@@ -133,7 +150,18 @@ function abandonForFocus(event: FocusEvent) {
 }
 watch(
   () => props.page,
-  () => {
+  (next, previous) => {
+    // Appending a page does not retire the displayed row or move its menu.
+    if (
+      next &&
+      previous &&
+      'visit' in next &&
+      'visit' in previous &&
+      next.epoch === previous.epoch &&
+      next.visit === previous.visit &&
+      next.revision === previous.revision
+    )
+      return;
     abandonPreparation();
     selection.value = undefined;
     shared.value = undefined;
@@ -173,7 +201,13 @@ async function open(
   const row = { revision: page.revision, voiceId: voice.id };
   let target: MenuTarget;
   let purchaseLive: (() => boolean) | undefined;
-  if ('scope' in page && page.scope.kind === 'purchased') {
+  let likedPageLive: (() => boolean) | undefined;
+  if ('visit' in page) {
+    const captured = !voice.withdrawn && props.captureLikedPage?.(voice);
+    if (!captured || captured.epoch !== page.epoch || !captured.live()) return;
+    target = { likedPageTarget: captured.target };
+    likedPageLive = captured.live;
+  } else if ('scope' in page && page.scope.kind === 'purchased') {
     const purchase = page.purchases?.rows.find(
       (candidate) => candidate.kind === 'episode' && candidate.item === voice,
     );
@@ -202,7 +236,7 @@ async function open(
   abandonPreparation();
   menu.value?.close();
   anchor.focus({ preventScroll: true });
-  const value: Selection = { page, voice, anchor, target, purchaseLive };
+  const value: Selection = { page, voice, anchor, target, purchaseLive, likedPageLive };
   clearFeedback();
   count.value = undefined;
   completed.value = undefined;
@@ -223,7 +257,9 @@ async function open(
         ? client.podcastPurchasedProgramMenu(page.epoch, target)
         : 'likedTarget' in target
           ? client.podcastLikedProgramMenu(page.epoch, target.likedTarget)
-          : client.podcastRecentProgramMenu(page.epoch, target));
+          : 'likedPageTarget' in target
+            ? client.podcastLikedPageProgramMenu(page.epoch, target.likedPageTarget)
+            : client.podcastRecentProgramMenu(page.epoch, target));
       if (!live() || result.epoch !== page.epoch) return;
       count.value = result.value.commentCount ?? undefined;
       completed.value = result.value.downloadComplete ?? undefined;
@@ -264,12 +300,14 @@ async function action(key: string) {
     ) {
       const result = await ('likedTarget' in target
         ? client.podcastLikedProgram(page.epoch, target.likedTarget)
-        : client.podcastRecentProgram(page.epoch, target));
+        : 'likedPageTarget' in target
+          ? client.podcastLikedPageProgram(page.epoch, target.likedPageTarget)
+          : client.podcastRecentProgram(page.epoch, target));
       if (
         selection.value !== value ||
         !current(value) ||
         result.epoch !== page.epoch ||
-        result.value.id !== ('likedTarget' in target ? target.likedTarget.voiceId : target.voiceId)
+        result.value.id !== value.voice.id
       )
         return;
       voice = result.value;
@@ -279,6 +317,8 @@ async function action(key: string) {
       else if ('kind' in target) emit('purchasedPlay', page.epoch, target, () => current(value));
       else if ('likedTarget' in target)
         emit('likedPlay', page.epoch, target.likedTarget, () => current(value));
+      else if ('likedPageTarget' in target)
+        emit('likedPagePlay', page.epoch, target.likedPageTarget, () => current(value));
       else emit('recentPlay', page.epoch, target);
     }
     if (key === 'comments') emit('comments', voice.id, voice.name);
@@ -286,6 +326,8 @@ async function action(key: string) {
       if ('kind' in target) emit('purchasedDownload', voice, () => current(value), target);
       else if ('likedTarget' in target)
         emit('likedDownload', voice, () => current(value), target.likedTarget);
+      else if ('likedPageTarget' in target)
+        emit('likedPageDownload', voice, () => current(value), target.likedPageTarget);
       else emit('download', [voice]);
     }
     if (key === 'share' && podcastProgramPublicLink(voice.id)) {
@@ -300,7 +342,11 @@ async function action(key: string) {
             ? await props.queuePurchased?.(page.epoch, target, () => current(value))
             : 'likedTarget' in target
               ? await props.queueLiked?.(page.epoch, target.likedTarget, () => current(value))
-              : await props.queueRecent?.(page.epoch, target);
+              : 'likedPageTarget' in target
+                ? await props.queueLikedPage?.(page.epoch, target.likedPageTarget, () =>
+                    current(value),
+                  )
+                : await props.queueRecent?.(page.epoch, target);
       if (queued) message = '已添加至播放列表';
     }
     if (key === 'copy') {
@@ -315,6 +361,11 @@ async function action(key: string) {
         await client.podcastOpenPurchasedProgramDownloadDirectory(page.epoch, target);
       else if ('likedTarget' in target)
         await client.podcastOpenLikedProgramDownloadDirectory(page.epoch, target.likedTarget);
+      else if ('likedPageTarget' in target)
+        await client.podcastOpenLikedPageProgramDownloadDirectory(
+          page.epoch,
+          target.likedPageTarget,
+        );
       else await client.podcastOpenRecentProgramDownloadDirectory(page.epoch, target);
     }
   } catch (error) {

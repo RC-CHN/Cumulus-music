@@ -247,6 +247,7 @@ import LocalPage from './components/LocalPage.vue';
 import LocalBatchPage from './components/LocalBatchPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
 import { usePodcastRecent } from './composables/usePodcastRecent';
+import { usePodcastLiked } from './composables/usePodcastLiked';
 import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
 import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
@@ -273,7 +274,7 @@ import {
   AUDIOBOOK_CATEGORY,
   type EpisodeView,
   type PodcastProgramTarget,
-  type PodcastLikedProgramTarget,
+  type PodcastLikedPageTarget,
   type PodcastPurchasedTarget,
   type PodcastRecentProgramTarget,
   type PodcastScope,
@@ -1877,9 +1878,18 @@ const podcastRecent = usePodcastRecent(
   () => music.account.value,
   () => void music.bootstrap(false),
 );
-const podcasts = usePodcasts(undefined, () => {
-  void music.bootstrap(false);
-});
+const podcastLiked = usePodcastLiked(
+  () => music.account.value,
+  () => void music.bootstrap(false),
+);
+const podcasts = usePodcasts(
+  undefined,
+  () => {
+    void music.bootstrap(false);
+  },
+  podcastLiked,
+);
+let podcastBackRoute: typeof page.value | undefined;
 const podcastCatalogue = usePodcastCatalogue(
   () => music.account.value,
   () => {
@@ -1915,37 +1925,42 @@ watch(
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
 }
-function likedProgramIsLive(epoch: string, target: PodcastLikedProgramTarget, live: () => boolean) {
-  const snapshot = podcasts.page.value;
+function pagedLikedIsLive(epoch: string, live: () => boolean) {
   return (
     page.value.kind === 'podcasts' &&
-    epoch === account.value.epoch &&
+    account.value.epoch === epoch &&
     !podcasts.recentSelected.value &&
     podcasts.query.value.scope.kind === 'liked' &&
-    snapshot?.epoch === epoch &&
-    snapshot.scope.kind === 'liked' &&
-    snapshot.revision === target.revision &&
-    snapshot.episodes.some((row) => row.id === target.voiceId && !row.unavailable) &&
     live()
   );
 }
-function playLikedProgram(epoch: string, target: PodcastLikedProgramTarget, live: () => boolean) {
-  const valid = () => likedProgramIsLive(epoch, target, live);
-  if (!ordinaryVoiceQueueable.value || !valid()) return;
+function playPagedLikedProgram(
+  epoch: string,
+  target: PodcastLikedPageTarget,
+  live: () => boolean,
+  doubleClick = false,
+  toggleCurrent = false,
+) {
+  if (!ordinaryVoiceQueueable.value || !pagedLikedIsLive(epoch, live)) return;
   void player.prepareSelection(async (owner) => {
-    if (owner !== epoch || !valid())
+    if (owner !== epoch || !pagedLikedIsLive(epoch, live))
       throw { code: 'stale', message: '点赞的单集已更新', retryable: false };
-    return { kind: 'podcast_liked_episode', target };
+    return {
+      kind: 'podcast_liked_page_episode',
+      target,
+      ...(doubleClick ? { double_click: true } : {}),
+      ...(toggleCurrent ? { toggle_current: true } : {}),
+    };
   });
 }
-async function queueLikedProgram(
+async function queuePagedLikedProgram(
   epoch: string,
-  target: PodcastLikedProgramTarget,
+  target: PodcastLikedPageTarget,
   live: () => boolean,
 ) {
-  if (!ordinaryVoiceQueueable.value || !likedProgramIsLive(epoch, target, live)) return false;
+  if (!ordinaryVoiceQueueable.value || !pagedLikedIsLive(epoch, live)) return false;
   const before = player.view.value;
-  const next = await player.queueLikedProgram(target);
+  const next = await player.queueLikedPageProgram(target);
   return !!before?.queueLen && !!next && next.queueRevision !== before.queueRevision;
 }
 function playPurchasedProgram(
@@ -4952,12 +4967,31 @@ async function reorderSidebar(move: SidebarPlaylistMove) {
   if (playlistManager.error.value || (change && !playlistSaved(change.phase)))
     sidebarOrderNotice.value = playlistManager.error.value || change!.message;
 }
+const pagedLikedPlayingObservation = shallowRef<{ epoch: string; entry: string; voice: string }>();
 watch(
-  () => player.view.value?.track?.voiceId,
-  (voice) => {
-    if (voice && !podcasts.likesKnown.value && !podcasts.loading.value) void podcasts.state(true);
+  [() => player.view.value?.track?.voiceId, () => player.view.value?.entryId],
+  ([voice, entry]) => {
+    const epoch = account.value.epoch;
+    const shown = podcastLiked.page.value;
+    const matched =
+      voice &&
+      entry &&
+      shown?.epoch === epoch &&
+      shown.episodes.some((row) => row.id === voice && row.liked);
+    pagedLikedPlayingObservation.value =
+      matched && voice && entry ? { epoch, entry, voice } : undefined;
+    if (voice && !matched && !podcasts.likesKnown.value && !podcasts.loading.value)
+      void podcasts.state(true);
   },
 );
+function observedPlayingVoiceLike(voice: string) {
+  const observed = pagedLikedPlayingObservation.value;
+  return (
+    observed?.epoch === account.value.epoch &&
+    observed?.entry === player.view.value?.entryId &&
+    observed?.voice === voice
+  );
+}
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
 // Ordinary rows follow catalog identity; a voice can use a song as its audio source.
@@ -5139,7 +5173,15 @@ const playingLikes = computed(() => {
   const voiceId = currentVoiceId.value;
   const trackId = currentTrackId.value;
   return voiceId && trackId
-    ? new Set(podcasts.liked.value.has(voiceId) ? [trackId] : [])
+    ? new Set(
+        (
+          podcasts.likesKnown.value
+            ? podcasts.liked.value.has(voiceId)
+            : observedPlayingVoiceLike(voiceId)
+        )
+          ? [trackId]
+          : [],
+      )
     : liked.value;
 });
 const playingLikeBusy = computed(() => {
@@ -5147,7 +5189,9 @@ const playingLikeBusy = computed(() => {
   const trackId = currentTrackId.value;
   return voiceId && trackId
     ? new Set(
-        podcasts.busy.value || !podcasts.likesKnown.value || podcasts.pending('like', voiceId)
+        podcasts.busy.value ||
+        (!podcasts.likesKnown.value && !observedPlayingVoiceLike(voiceId)) ||
+        podcasts.pending('like', voiceId)
           ? [trackId]
           : [],
       )
@@ -5438,6 +5482,13 @@ watch(
 watch(
   () => page.value,
   (value, previous) => {
+    if (previous.kind === 'podcasts' && value.kind !== 'podcasts') {
+      podcastBackRoute = previous;
+      podcasts.show(false);
+    } else if (value.kind === 'podcasts' && previous.kind !== 'podcasts') {
+      podcasts.show(true, value === podcastBackRoute);
+      podcastBackRoute = undefined;
+    }
     const saved = commentAuthorReturn.value;
     if (saved && value !== saved.origin && value !== saved.destination) {
       commentAuthorReturn.value = undefined;
@@ -5465,7 +5516,6 @@ watch(
     cloudDialogOpen.value = false;
     void cloud.show(kind === 'cloud');
     local.show(kind === 'local', previous === 'local_batch');
-    podcasts.show(kind === 'podcasts');
     together.show(kind === 'together');
     fm.show(kind === 'fm');
     member.show(kind === 'member');
@@ -6613,6 +6663,8 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'podcasts'"
                 :model="podcasts"
                 :recent="podcastRecent"
+                :liked="podcastLiked"
+                :current-active="player.loaded.value"
                 :purchases-compact="pcPresentation.podcastPurchasesCompact.value"
                 :playing="player.playing.value"
                 :playable="player.ready.value && !player.busy.value"
@@ -6620,11 +6672,11 @@ onUnmounted(() => {
                 :queueable="ordinaryVoiceQueueable"
                 :queue-program="queuePodcastProgram"
                 :queue-recent-program="queueRecentProgram"
-                :queue-liked-program="queueLikedProgram"
+                :queue-liked-page-program="queuePagedLikedProgram"
                 :queue-purchased-program="queuePurchasedProgram"
                 @back="backFromPodcastDetail"
                 @recent-program-play="playRecentProgram"
-                @liked-play="playLikedProgram"
+                @liked-page-play="playPagedLikedProgram"
                 @purchased-play="playPurchasedProgram"
                 @play="playPodcast"
                 :current-radio-id="currentPodcastRadioId"
@@ -6632,8 +6684,8 @@ onUnmounted(() => {
                 @recommended-play="playRecommendedPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="
-                  (tracks, live, purchased, liked) =>
-                    (downloadDialog = { kind: 'voice', tracks, live, purchased, liked })
+                  (tracks, live, purchased, pagedLiked) =>
+                    (downloadDialog = { kind: 'voice', tracks, live, purchased, pagedLiked })
                 "
               />
               <PodcastCataloguePage

@@ -2,7 +2,11 @@ use super::*;
 use cumulus_core::{
     Error,
     account::{credentials::Credentials, profiles::ProfileRegistry},
-    client::{MusicClient, dto::DownloadCommand},
+    client::{
+        MusicClient,
+        dto::{DownloadCommand, PodcastLikedPage, PodcastLikedPageTarget, PodcastLikedQuery},
+    },
+    podcast::{PodcastAction, PodcastService},
     protocol::http::{ApiOrigin, ClientProfile, MusicHttpClient, RequestOptions, RoutingPolicy},
 };
 use support::http::ScriptHttp;
@@ -421,4 +425,319 @@ async fn voice_quality_batch_admits_only_frozen_episode_ids_in_original_order() 
             ),
         ]
     );
+}
+
+const LIKED: &str = "/api/content/my/liked/voice";
+const DETAIL: &str = "/api/dj/program/detail";
+
+fn liked_response(episodes: Vec<Value>) -> Reply {
+    json!({"code":200,"data":{"data":episodes,"hasMore":false,"count":3}}).into()
+}
+
+fn reply_value(reply: Reply) -> Value {
+    let Reply::Ready(Ok(value)) = reply else {
+        panic!("not a ready fixture reply")
+    };
+    value
+}
+
+async fn open_liked(client: &MusicClient) -> PodcastLikedPage {
+    let opened = client
+        .podcast_liked_page("1", PodcastLikedQuery::Open {})
+        .await
+        .unwrap()
+        .value;
+    client
+        .podcast_liked_page(
+            "1",
+            PodcastLikedQuery::Next {
+                visit: opened.visit,
+                revision: opened.revision,
+                continuation: opened.continuation.unwrap(),
+            },
+        )
+        .await
+        .unwrap()
+        .value
+}
+
+fn liked_target(page: &PodcastLikedPage, voice_id: &str) -> PodcastLikedPageTarget {
+    PodcastLikedPageTarget {
+        visit: page.visit.clone(),
+        revision: page.revision.clone(),
+        voice_id: voice_id.into(),
+    }
+}
+
+async fn suspend_liked(client: &MusicClient, page: &PodcastLikedPage) {
+    client
+        .podcast_liked_page(
+            "1",
+            PodcastLikedQuery::Suspend {
+                visit: page.visit.clone(),
+                revision: page.revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+}
+
+async fn directory(f: &Fixture, client: &MusicClient) -> std::path::PathBuf {
+    let output = f.root.path().join("paged-liked-output");
+    client
+        .download_command(
+            "1",
+            DownloadCommand::Configure {
+                root: output.to_string_lossy().into_owned(),
+                path_type: 0,
+                file_type: 1,
+            },
+        )
+        .await
+        .unwrap();
+    output
+}
+
+fn paths(f: &Fixture) -> Vec<String> {
+    f.api.calls().into_iter().map(|call| call.path).collect()
+}
+
+#[tokio::test]
+async fn liked_page_quality_rejects_unknown_foreign_withdrawn_and_gray_rows_before_reading_rights()
+{
+    let mut withdrawn = program();
+    withdrawn["id"] = json!(82);
+    withdrawn["displayStatus"] = json!("UNDER_SHELF");
+    let mut gray = program();
+    gray["id"] = json!(83);
+    gray["grayDisplay"] = json!(true);
+    let f = Fixture::new(vec![liked_response(vec![program(), withdrawn, gray])]);
+    let host = client(&f);
+    let foreign = client(&f);
+    let page = open_liked(&host).await;
+    for id in ["82", "83", "999"] {
+        assert!(matches!(
+            host.download_liked_page_voice_prepare("1", liked_target(&page, id))
+                .await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    assert!(matches!(
+        foreign
+            .download_liked_page_voice_prepare("1", liked_target(&page, "81"))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        host.download_liked_page_voice_prepare("0", liked_target(&page, "81"))
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(paths(&f), [LIKED]);
+    assert!(
+        host.podcast_state("1", false)
+            .await
+            .unwrap()
+            .value
+            .liked_ids
+            .is_none()
+    );
+    assert!(f.service.list().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn liked_page_quality_rechecks_after_each_held_preparation_read() {
+    for hold_musics in [false, true] {
+        let (held, release) = support::gate();
+        let mut replies = vec![liked_response(vec![program()])];
+        if hold_musics {
+            replies.push(permission(true));
+        }
+        replies.push(held);
+        let f = Fixture::new(replies);
+        let client = Arc::new(client(&f));
+        let page = open_liked(&client).await;
+        let target = liked_target(&page, "81");
+        let reader = client.clone();
+        let pending =
+            tokio::spawn(
+                async move { reader.download_liked_page_voice_prepare("1", target).await },
+            );
+        f.api.wait_for_calls(if hold_musics { 3 } else { 2 }).await;
+        suspend_liked(&client, &page).await;
+        release
+            .send(Ok(if hold_musics {
+                offered()
+            } else {
+                reply_value(permission(true))
+            }))
+            .unwrap();
+        assert!(matches!(pending.await.unwrap(), Err(Error::QueueChanged)));
+        let expected = if hold_musics {
+            vec![LIKED, RIGHTS, MUSICS]
+        } else {
+            vec![LIKED, RIGHTS]
+        };
+        assert_eq!(paths(&f), expected);
+        assert!(f.service.list().unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn liked_page_quality_cannot_commit_after_held_detail_and_route_or_generation_revocation() {
+    for mutation in [false, true] {
+        let (held, release) = support::gate();
+        let mut replies = vec![
+            liked_response(vec![program()]),
+            permission(true),
+            offered().into(),
+            held,
+        ];
+        if mutation {
+            replies.push(json!({"code":200,"data":{"resumePlayValue":0}}).into());
+        }
+        let f = Fixture::new(replies);
+        let client = Arc::new(client(&f));
+        let output = directory(&f, &client).await;
+        let page = open_liked(&client).await;
+        let receipt = client
+            .download_liked_page_voice_prepare("1", liked_target(&page, "81"))
+            .await
+            .unwrap()
+            .receipt
+            .unwrap();
+        let submitter = client.clone();
+        let pending_receipt = receipt.clone();
+        let pending = tokio::spawn(async move {
+            submitter
+                .download_command("1", confirm(&pending_receipt, "standard"))
+                .await
+        });
+        f.api.wait_for_calls(4).await;
+        if mutation {
+            PodcastService::new(f.session.clone())
+                .unwrap()
+                .change_for(
+                    &f.session.token().unwrap(),
+                    PodcastAction::Resume,
+                    "71",
+                    false,
+                )
+                .await
+                .unwrap();
+        } else {
+            suspend_liked(&client, &page).await;
+            // An actual Back can reactivate the same prefix, but not an old confirmation.
+            client
+                .podcast_liked_page(
+                    "1",
+                    PodcastLikedQuery::Restore {
+                        visit: page.visit.clone(),
+                        revision: page.revision.clone(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        release.send(Ok(reply_value(detail()))).unwrap();
+        assert!(matches!(pending.await.unwrap(), Err(Error::QueueChanged)));
+        assert!(matches!(
+            client
+                .download_command("1", confirm(&receipt, "standard"))
+                .await,
+            Err(Error::StaleResponse)
+        ));
+        assert!(f.service.list().unwrap().is_empty());
+        assert!(f.media.audio.calls().is_empty() && f.media.cover.calls().is_empty());
+        assert!(
+            std::fs::read_dir(output).unwrap().next().is_none(),
+            "no staged directory left"
+        );
+        assert_eq!(&paths(&f)[..4], [LIKED, RIGHTS, MUSICS, DETAIL]);
+        assert_eq!(paths(&f).len(), if mutation { 5 } else { 4 });
+    }
+}
+
+#[tokio::test]
+async fn liked_page_quality_accepts_only_exact_live_episode_and_rejects_changed_detail() {
+    for change in ["available", "withdrawn", "gray", "media"] {
+        let mut selected = program();
+        match change {
+            "withdrawn" => selected["displayStatus"] = json!("UNDER_SHELF"),
+            "gray" => selected["grayDisplay"] = json!(true),
+            "media" => selected["mainSong"]["id"] = json!(92),
+            _ => (),
+        }
+        let mut replies = vec![
+            liked_response(vec![program()]),
+            permission(true),
+            offered().into(),
+            json!({"code":200,"program":selected}).into(),
+        ];
+        if change == "available" {
+            replies.extend([detail(), permission(true), resource()]);
+        }
+        let f = Fixture::new(replies);
+        let client = client(&f);
+        let _output = directory(&f, &client).await;
+        let page = open_liked(&client).await;
+        let receipt = client
+            .download_liked_page_voice_prepare("1", liked_target(&page, "81"))
+            .await
+            .unwrap()
+            .receipt
+            .unwrap();
+        assert!(f.service.list().unwrap().is_empty());
+        let result = client
+            .download_command("1", confirm(&receipt, "standard"))
+            .await;
+        if change != "available" {
+            assert!(matches!(result, Err(Error::QueueChanged)), "{change}");
+            assert!(f.service.list().unwrap().is_empty());
+            assert_eq!(paths(&f), [LIKED, RIGHTS, MUSICS, DETAIL]);
+            continue;
+        }
+        let result = result.unwrap();
+        assert!(result.failed.is_empty());
+        assert_eq!(result.accepted.len(), 1);
+        let downloaded = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let tasks = f.service.list().unwrap();
+                if let Some(task) = tasks
+                    .into_iter()
+                    .find(|task| task.status == DownloadStatus::Complete)
+                {
+                    break task;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(downloaded.id, result.accepted[0]);
+        assert_eq!(
+            downloaded.origin,
+            DownloadOrigin::Voice {
+                voice_id: "81".into()
+            }
+        );
+        assert_eq!(downloaded.song_id, "91");
+        assert_eq!(std::fs::read(downloaded.target.unwrap()).unwrap(), AUDIO);
+        let calls = f.api.calls();
+        assert_eq!(
+            paths(&f),
+            [
+                LIKED,
+                RIGHTS,
+                MUSICS,
+                DETAIL,
+                DETAIL,
+                RIGHTS,
+                "/api/song/enhance/download/url/v1"
+            ]
+        );
+        assert_eq!(calls[1].payload, json!({"voiceIdsStr":["81"]}));
+        assert_eq!(calls[2].payload, json!({"ids":["81"]}));
+        assert_eq!(calls[6].payload["id"], "91");
+    }
 }
