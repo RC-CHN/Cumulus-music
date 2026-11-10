@@ -19,6 +19,18 @@ fn calls(api: &Backend, suffix: &str) -> usize {
         .count()
 }
 
+fn media_reads(api: &Backend) -> Vec<String> {
+    api.calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(path, _)| path.ends_with("/player/url/v1"))
+        .flat_map(|(_, payload)| {
+            serde_json::from_str::<Vec<String>>(payload["ids"].as_str().unwrap()).unwrap()
+        })
+        .collect()
+}
+
 async fn queue_ids(client: &MusicClient) -> Vec<String> {
     client
         .player_queue("1")
@@ -49,7 +61,7 @@ async fn filters_known_catalog_denials_in_order_and_keeps_the_rejected_explicit_
         .await
         .unwrap();
     wait(&client, |v| !v.playing).await;
-    let media_reads = calls(&api, "/player/url/v1");
+    let before_reads = media_reads(&api).len();
     let writes = calls(&api, "/sync/list/command/report");
     let value = client
         .play_selection("1", songs(&["710", "712", "714", "713", "715", "711"], 0))
@@ -65,7 +77,26 @@ async fn filters_known_catalog_denials_in_order_and_keeps_the_rejected_explicit_
     let notice = after.external_selection.unwrap();
     assert!(!notice.blocked);
     assert_eq!(notice.skipped, 4);
-    assert_eq!(calls(&api, "/player/url/v1"), media_reads);
+    // The paused decoder is retained, but the actor can prefetch its new
+    // next playable row. Wait for the expected prefetch instead of racing
+    // it and comparing total endpoint counts across different queues.
+    let after_reads = tokio::time::timeout(Duration::from_secs(12), async {
+        loop {
+            let reads = media_reads(&api);
+            if reads[before_reads..].iter().any(|id| id == "714") {
+                break reads;
+            }
+            tokio::time::sleep(Duration::from_millis(30)).await;
+        }
+    })
+    .await
+    .expect("the retained decoder's new successor should be prefetched");
+    assert!(
+        after_reads[before_reads..]
+            .iter()
+            .all(|id| matches!(id.as_str(), "92" | "714")),
+        "only the previous or new successor may be prefetched: {after_reads:?}"
+    );
     assert_eq!(calls(&api, "/sync/list/command/report"), writes);
     assert_eq!(calls(&api, "/end/v2"), 0);
 
