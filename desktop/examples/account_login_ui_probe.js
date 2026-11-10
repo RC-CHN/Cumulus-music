@@ -90,11 +90,12 @@
       );
     return target === node || node.contains(target);
   }
-  function click(node) {
+  function click(node, beforeClick) {
     assert(node?.isConnected && !node.disabled, "enabled control");
     node.scrollIntoView({ block: "nearest" });
     node.focus({ preventScroll: true });
     assert(visible(node) && hit(node), "control visible and not occluded");
+    beforeClick?.();
     node.click();
   }
   function fill(label, value) {
@@ -541,9 +542,8 @@
     const scroll = () => one(".settings-scroll");
     await wait(() => direct(), "direct edit entry");
     await settle();
-    direct().scrollIntoView({ block: "nearest" });
-    const settingsScroll = scroll().scrollTop;
-    click(direct());
+    let settingsScroll;
+    click(direct(), () => { settingsScroll = scroll().scrollTop; });
     async function edit(signature) {
       await wait(() => state() === "ready" && test("profile-edit-signature"), "edit ready");
       await wait(() =>
@@ -573,13 +573,33 @@
     await stage("profile_edit_saved_light", { expectNickname });
     await edit("桌面验证：不会写入");
     click(button("返回设置"));
-    await wait(() => test("profile-edit-discard")?.closest("dialog")?.open, "direct back asks before discard");
+    const leavePrompt = () => test("profile-edit-discard")?.closest("dialog")?.open;
+    await wait(leavePrompt, "direct back asks before discard");
+    click(button("关闭未保存提示"));
+    await wait(() => !leavePrompt(), "closing the prompt keeps the editor");
+    // A topbar Back trigger survives the modal and route change; native
+    // focus restoration to that connected button must not win over the origin.
+    click(button("返回上一页"));
+    await wait(leavePrompt, "topbar back also asks before discard");
     click(test("profile-edit-discard"));
-    await wait(
-      () => !state() && visible(direct()) && document.activeElement === direct() &&
-        Math.abs(scroll().scrollTop - settingsScroll) <= 1,
-      "discard returns to the same settings action and scroll position",
-    );
+    const returned = () => ({
+      editorOpen: !!state(),
+      triggerVisible: visible(direct()),
+      triggerFocused: document.activeElement === direct(),
+      scroll: scroll()?.scrollTop,
+      focused: document.activeElement?.getAttribute("data-testid") ??
+        document.activeElement?.getAttribute("aria-label") ??
+        document.activeElement?.tagName,
+    });
+    try {
+      await wait(() => {
+        const { editorOpen, triggerVisible, triggerFocused, scroll } = returned();
+        return !editorOpen && triggerVisible && triggerFocused &&
+          Math.abs(scroll - settingsScroll) <= 1;
+      }, "discard returns to the same settings action and scroll position");
+    } catch (error) {
+      throw Error(`${error.message}: ${JSON.stringify({ expectedScroll: settingsScroll, ...returned() })}`);
+    }
     await settle();
     click(test("account-profile-open"));
     await wait(

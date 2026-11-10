@@ -84,13 +84,21 @@ watch(
   async (kind, previous) => {
     if (kind || !previous) return;
     await nextTick();
-    if (props.accountDetail || !settingsScroll.value) return;
-    settingsScroll.value.scrollTop = detailScroll;
+    const scroller = settingsScroll.value;
+    if (props.accountDetail || !scroller) return;
+    if (previous === 'profile_edit' && detailOrigin && scroller.contains(detailOrigin)) {
+      // Native dialog close can put focus on another connected control. An
+      // inline editor return belongs to the button that opened that editor.
+      detailOrigin.focus({ preventScroll: true });
+      scroller.scrollTop = detailScroll;
+      return;
+    }
+    scroller.scrollTop = detailScroll;
     const active = document.activeElement;
     if (active === document.body || !active?.isConnected || !active.getClientRects().length) {
       const fallback =
         previous === 'blacklist'
-          ? settingsScroll.value.querySelector<HTMLElement>('[data-open-user-blacklist]')
+          ? scroller.querySelector<HTMLElement>('[data-open-user-blacklist]')
           : undefined;
       const origin = detailOrigin ?? fallback;
       if (!detailOrigin && fallback) fallback.scrollIntoView({ block: 'nearest' });
