@@ -155,6 +155,55 @@ B0 and the 238-frame off B0 discarded at their respective transitions.
 The held descriptor is still owned at EOF. No physical sound device was
 used.
 
+Regular close and explicit return to local equalizer
+---------------------------------------------------
+
+Recovered M/342 `switchNew` (1697–1756) changes the saved `isOn`, sends
+native type 2 `isOpen:false` with the selected regular material path, then
+invokes `/api/vipauth/app/interests/auth/stop` (`interestsType:127`, the
+selected `interestsId`; M/15:1554–1557). It does not automatically select
+the previous equalizer. Its `updateSetting` action can reactivate an
+assigned track effect (M/342:332–354; M/1384:6845–6884); the held local
+scope here has no assigned track effect. In contrast, startup `restoreAudioEffect`
+(M/308:4713–4829) reads recycle eligibility for a saved enabled paid
+effect, sets it off on `canRecycle`, attempts the same stop inside the
+try/catch, then dispatches the updated setting and native off state. A
+failed recycle request is logged; it is not proof that the effect was
+revoked. No automatic server stop is performed by the Rust graph.
+
+Explicit local preset/sliders use a different path: M/3091:1278–1349
+dispatches the old `eq/bt/rvb/se` JSON write and the local setting update.
+M/28:434–454 selects `EQUALIZER_AE` and `webdata/file/equalizer_data`.
+M/342:1607–1640 waits for storage, rereads the current selection, and
+dispatches that local file with type 2 and saved `isOn` if it is the
+selected equalizer. There is no mandatory separate regular-off dispatch
+in that direct local selection branch. This records the local dispatch
+and post-write check; it does not claim every UI interleaving or assigned
+effect uses the same order.
+
+The original x64 SDK proof runs explicit modern close, direct old GEQ
+selection, off then old selection before another block, and off then old
+selection after one block. At each supported rate and on three B0/material
+profiles, it keeps unread output and 511/257/1023 pending input frames.
+Close remains dry after the original fade. Direct old selection and the
+coalesced sequence match one another; after a full off block the legacy
+GEQ begins with current/previous `[0,1]` instead of `[0,0]`. The old
+material Begin resets the modern PEQ defaults and restores default B0;
+only a timing change discards old B0 lookahead. Selecting the old material
+after a full off block does not reset the now-default B0 again.
+
+`return_to_legacy_geq` implements this bounded explicit action on the same
+graph. It restores ordinary legacy controls for a GEQ-only old material,
+retains the decoder and outer queues, and does not grant another initial
+modern admission on a previously converted graph. Rust matched frame
+counts and PCM hashes for all 24 frozen timelines. The sanitized fixture
+`effects-modern-limiter-legacy-return-official.json` has SHA-256
+`b7731f97667c4fa1015935636b2c4d25dba4301e8a1c55c84478d2f21a8bf893`.
+
+    unshare -Urn python3 scripts/research/freeze_modern_limiter_legacy_return.py \
+      --dll LOCAL_ORIGINAL_NEAUDIOEFFECTS_DLL --out NEW.json
+    cargo test --locked -p cumulus-core --lib shared_modern_legacy_return
+
 Read-only admission before any handoff
 --------------------------------------
 
@@ -219,8 +268,8 @@ run observations, not timing thresholds or physical playback proof.
 The same-graph initial apply supplies the bounded DSP/worker step. A
 production attach still needs to bind the acknowledged account/material
 receipt to this exact held entry, check revocation before graph use, and
-keep rejected/stale work distinct from successful controls. Returning to
-legacy controls on this same C graph still needs its own proof. Lease
+keep rejected/stale work distinct from successful controls. The bounded
+GEQ return above does not authorize a production effect lifecycle. Lease
 cleanup belongs to the production owner. An
 intentionally retired entry cannot be reused as an authorization proof.
 There is no stock decoder, network request, path reopen or synthetic

@@ -212,6 +212,14 @@ impl LocalFixedStage {
             unsafe { ffi::netease_local_equalizer_modern_master_off(self.state.pointer()) };
         Self::check_modern_control(status)
     }
+    pub(crate) fn return_legacy_geq(&mut self, geq: &[f32; 10]) -> Result<()> {
+        self.available()?;
+        // SAFETY: the initialized graph is exclusive and the C setter only
+        // reads the ten input gains during its bounded transaction.
+        let status =
+            unsafe { ffi::netease_local_equalizer_return_geq(self.state.pointer(), geq.as_ptr()) };
+        Self::check_modern_control(status)
+    }
     fn check_modern_control(status: i32) -> Result<()> {
         match status {
             0 => Ok(()),

@@ -284,24 +284,44 @@ enum SharedMode {
     SettledOff,
     Coalesced,
     InitialCoalesced,
+    CloseDry,
+    DirectLegacy,
+    CloseThenLegacyCoalesced,
+    CloseThenLegacySettled,
 }
 
 #[test]
 fn shared_modern_controls_match_original_pcm_with_and_without_an_off_quantum() {
-    let corpus: SharedCorpus = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/effects-modern-limiter-shared-controls-official.json"
-    )))
-    .unwrap();
+    compare_shared_corpus(
+        include_str!(
+            "../../../tests/fixtures/effects-modern-limiter-shared-controls-official.json"
+        ),
+        "cumulus.modern-limiter-x64-shared-controls.v1",
+    );
+}
+
+#[test]
+fn shared_modern_legacy_return_matches_original_direct_close_and_settled_cases() {
+    compare_shared_corpus(
+        include_str!("../../../tests/fixtures/effects-modern-limiter-legacy-return-official.json"),
+        "cumulus.modern-limiter-x64-legacy-return.v1",
+    );
+}
+
+enum Change {
+    Off,
+    Reapply,
+    Legacy,
+}
+
+fn compare_shared_corpus(document: &str, schema: &str) {
+    let corpus: SharedCorpus = serde_json::from_str(document).unwrap();
     let profiles: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/effects-modern-limiter-graph-official.json"
     )))
     .unwrap();
-    assert_eq!(
-        corpus.schema,
-        "cumulus.modern-limiter-x64-shared-controls.v1"
-    );
+    assert_eq!(corpus.schema, schema);
     assert_eq!(corpus.sdk_sha256, profiles["sdkSha256"].as_str().unwrap());
     assert_eq!(corpus.cases.len(), 24);
 
@@ -343,20 +363,39 @@ fn shared_modern_controls_match_original_pcm_with_and_without_an_off_quantum() {
                 material = Some(new);
                 new_b0 = b0;
             }
-            let switch = match (i, case.mode) {
-                (0, SharedMode::InitialCoalesced) | (1, SharedMode::Coalesced) => {
-                    [false, true].as_slice()
+            use Change::{Legacy, Off, Reapply};
+            let switches: &[Change] = match (i, case.mode) {
+                (0, SharedMode::InitialCoalesced) | (1, SharedMode::Coalesced) => &[Off, Reapply],
+                (
+                    1,
+                    SharedMode::SettledOff
+                    | SharedMode::CloseDry
+                    | SharedMode::CloseThenLegacySettled,
+                ) => &[Off],
+                (2, SharedMode::SettledOff) => &[Reapply],
+                (1, SharedMode::DirectLegacy) | (2, SharedMode::CloseThenLegacySettled) => {
+                    &[Legacy]
                 }
-                (1, SharedMode::SettledOff) => [false].as_slice(),
-                (2, SharedMode::SettledOff) => [true].as_slice(),
-                _ => [].as_slice(),
+                (1, SharedMode::CloseThenLegacyCoalesced) => &[Off, Legacy],
+                _ => &[],
             };
-            for active in switch {
-                new_b0 = material
-                    .as_mut()
-                    .unwrap()
-                    .set_active(&mut stage, format, *active)
-                    .unwrap();
+            for switch in switches {
+                let replacement = match switch {
+                    Off | Reapply => material.as_mut().unwrap().set_active(
+                        &mut stage,
+                        format,
+                        matches!(switch, Reapply),
+                    ),
+                    Legacy => material.take().unwrap().return_legacy_geq(
+                        &mut stage,
+                        format,
+                        &[0.0, 0.0, -4.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    ),
+                }
+                .unwrap();
+                if replacement.is_some() {
+                    new_b0 = replacement;
+                }
             }
             // More than one setup request before the next quantum coalesces
             // inside B0. Its old pending PCM is already invalidated by the

@@ -201,6 +201,21 @@ impl ModernLocalMaterial {
         self.active = active;
         Ok(limiter)
     }
+
+    fn return_legacy_geq(
+        &self,
+        stage: &mut LocalFixedStage,
+        format: Format,
+        gains: &[f32; 10],
+    ) -> Result<Option<LimiterStage>> {
+        let limiter = if self.active {
+            self.plan.prepare_control(format, false)?
+        } else {
+            None
+        };
+        stage.return_legacy_geq(gains)?;
+        Ok(limiter)
+    }
 }
 impl LocalEqualizerStereoMaterial {
     /// Reset the initialized nodes and apply the verified local material.
@@ -302,6 +317,33 @@ impl LocalEqualizerStereoMaterial {
         if let Some(limiter) = material.set_active(&mut self.graph.stage, format, active)? {
             self.graph.limiter = limiter;
         }
+        Ok(())
+    }
+
+    /// Explicitly select a GEQ-only old material on the converted graph.
+    /// A modern master-off alone does not restore the previous equalizer.
+    pub fn return_to_legacy_geq(&mut self, plan: LocalEqualizerMaterialPlan) -> Result<()> {
+        self.graph.available()?;
+        let LocalEqualizerMode::Modern(material) = &self.mode else {
+            return Err(Error::State("no modern material to replace"));
+        };
+        let gains = plan
+            .geq
+            .as_ref()
+            .filter(|_| plan.tone == [0; 2] && plan.stereo == [0; 2])
+            .ok_or(Error::InvalidInput(
+                "modern return requires a GEQ-only legacy material",
+            ))?;
+        if !self.has_pcm || self.ending {
+            return Err(Error::State("legacy return requires a live local graph"));
+        }
+        let format = self.graph.format();
+        if let Some(limiter) = material.return_legacy_geq(&mut self.graph.stage, format, gains)? {
+            self.graph.limiter = limiter;
+        }
+        // The old control semantics are available again. This graph has a
+        // modern history and cannot grant another initial admission receipt.
+        self.mode = LocalEqualizerMode::Legacy { geq_only: false };
         Ok(())
     }
     /// Original 1B960 node reset, separate from a full apply or master off.

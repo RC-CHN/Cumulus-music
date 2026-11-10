@@ -43,6 +43,7 @@ unsafe extern "C" {
         count: u32,
     ) -> i32;
     pub fn netease_local_equalizer_modern_master_off(state: *mut c_void) -> i32;
+    pub fn netease_local_equalizer_return_geq(state: *mut c_void, geq: *const f32) -> i32;
     pub fn netease_local_fixed_parameters(
         state: *mut c_void,
         presence: f32,

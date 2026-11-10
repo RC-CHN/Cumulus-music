@@ -138,6 +138,16 @@ int netease_local_equalizer_initial_modern_ready(const NeteaseLocalFixed *s) {
            s->off.peq.bypass && s->off.peq.previous;
 }
 
+static int local_equalizer_peq_defaults(NeteasePeq *peq) {
+    if(netease_peq_bypass(peq,1) || netease_peq_set_gain(peq,0))return -1;
+    for(unsigned i=0;i<9;i++) {
+        unsigned type=i==0?7:i==1?6:8;
+        float frequency=i==0?100.0f:i==1?1000.0f:i==2?10000.0f:18000.0f;
+        if(netease_peq_band(peq,i,type,0,frequency,1.0f,0))return -1;
+    }
+    return 0;
+}
+
 /* Modern EFB760 first apply on a settled GEQ-only graph, or reapply on the
  * same modern graph after master off. The previous flags can still be active
  * if no PCM ran during off; only the setters and the next block own them.
@@ -166,12 +176,7 @@ int netease_local_equalizer_apply_modern(NeteaseLocalFixed *s,uint32_t initial,
     const float flat[10]={0};
     if(netease_geq_stage_bypass(&next.geq,1) || netease_geq_stage_set(&next.geq,flat) ||
        netease_peq_bypass(&next.bt,1) || local_equalizer_tone(&next.bt,0,0) ||
-       netease_peq_bypass(&next.peq,1) || netease_peq_set_gain(&next.peq,0))return -1;
-    for(unsigned i=0;i<9;i++) {
-        unsigned type=i==0?7:i==1?6:8;
-        float frequency=i==0?100.0f:i==1?1000.0f:i==2?10000.0f:18000.0f;
-        if(netease_peq_band(&next.peq,i,type,0,frequency,1.0f,0))return -1;
-    }
+       local_equalizer_peq_defaults(&next.peq))return -1;
     if(netease_geq_stage_set(&next.geq,geq) || netease_geq_stage_bypass(&next.geq,0) ||
        local_equalizer_tone(&next.bt,bass,treble) || netease_peq_bypass(&next.bt,0) ||
        netease_peq_set_gain(&next.peq,peq_gain))return -1;
@@ -192,6 +197,24 @@ int netease_local_equalizer_modern_master_off(NeteaseLocalFixed *s) {
     NeteaseLocalOff next=s->off;
     if(netease_geq_stage_bypass(&next.geq,1) || netease_peq_bypass(&next.bt,1) ||
        netease_peq_bypass(&next.peq,1))return -1;
+    s->off=next;
+    return 0;
+}
+
+/* Old EFB760 after modern selection. Begin resets the modern PEQ program
+ * even though old JSON does not contain it. Active modern wrappers may
+ * still owe their dry edge; do not settle their previous flags early. */
+int netease_local_equalizer_return_geq(NeteaseLocalFixed *s,const float geq[10]) {
+    if(!geq || !local_equalizer_format(s))return -1;
+    if(!local_equalizer_modern_dry_siblings(s) || s->off.geq.bypass!=s->off.bt.bypass ||
+       s->off.geq.bypass!=s->off.peq.bypass)return 1;
+    for(unsigned i=0;i<10;i++)if(!isfinite(geq[i]) || fabsf(geq[i])>12)return -1;
+    NeteaseLocalOff next=s->off;
+    const float flat[10]={0};
+    if(netease_geq_stage_bypass(&next.geq,1) || netease_geq_stage_set(&next.geq,flat) ||
+       netease_peq_bypass(&next.bt,1) || local_equalizer_tone(&next.bt,0,0) ||
+       local_equalizer_peq_defaults(&next.peq) || netease_geq_stage_set(&next.geq,geq) ||
+       netease_geq_stage_bypass(&next.geq,0))return -1;
     s->off=next;
     return 0;
 }
