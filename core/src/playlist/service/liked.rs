@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum Origin {
+pub(crate) enum Origin {
     #[default]
     Voice,
     Download,
@@ -396,10 +396,11 @@ pub(super) fn verify_download_readback(
     owner: &str,
     id: &str,
     songs: &[String],
+    origin: Origin,
 ) -> Result<()> {
     let before: Observation = serde_json::from_value(record.before.clone())?;
     before.validate(id, owner)?;
-    if before.origin != Origin::Voice {
+    if before.origin != origin {
         return Err(Error::StaleResponse);
     }
     before.check_selected_membership(songs)?;
@@ -413,6 +414,9 @@ pub(super) fn verify_download_readback(
     let after: Observation =
         serde_json::from_value(record.observed.clone().ok_or(Error::StaleResponse)?)?;
     after.validate(id, owner)?;
+    if after.origin != origin {
+        return Err(Error::StaleResponse);
+    }
     after.check_selected_membership(songs)?;
     if record.phase == PlaylistPhase::Confirmed
         && !reconcile::tracks_added(&before.playlist, &after.playlist, songs)

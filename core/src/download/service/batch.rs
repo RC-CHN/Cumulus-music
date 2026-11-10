@@ -1,21 +1,32 @@
-//! One guarded, ordered admission of new catalog song tasks.
+//! One guarded, ordered admission of catalog song tasks.
 use super::{
-    DownloadDestination, DownloadOptions, DownloadOrigin, DownloadService, files,
-    manager::{KIND, TaskDestination, creation_clock},
+    DownloadAction, DownloadDestination, DownloadOptions, DownloadOrigin, DownloadPhase,
+    DownloadService, DownloadStatus, DownloadTask,
+    admission::catalog_admission_ids,
+    control::{Control, ObservedControl},
+    dispatch::Dispatch,
+    files,
+    manager::{CONTROL, KIND, StagedTask, TaskDestination, creation_clock},
 };
 use crate::{
     Error, Result,
     account::resources::{AccountResources, ResourceKind},
-    download::directory::{DirectorySettings, gate as directory_gate},
+    download::{
+        directory::{DirectorySettings, gate as directory_gate},
+        transfer::{TRANSFERS, TransferJob, TransferStatus},
+    },
     playlist::GroupDownloadPlaylistProof,
     protocol::api::identifier,
-    storage::{OperationLock, PlaybackDownloadKind},
+    storage::{OperationLock, PlaybackDownloadKind, StateTransaction},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
-    sync::atomic::{AtomicBool, Ordering},
+    collections::{BTreeMap, HashSet},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 const BATCH: &str = "download_song_batch_v1";
@@ -30,18 +41,188 @@ struct Commit {
 pub(crate) enum SongBatchAdmission {
     LikedAnchor(String),
     Playlist(GroupDownloadPlaylistProof),
+    SearchPlaylist {
+        proof: GroupDownloadPlaylistProof,
+        anchor: String,
+    },
+}
+
+pub(crate) struct GuardedSongBatch {
+    pub receipt: String,
+    pub admission: SongBatchAdmission,
+    pub songs: Arc<[String]>,
+    pub options: DownloadOptions,
+    pub existing: Arc<BTreeMap<String, ExistingSongAdmission>>,
+}
+
+/// Captured native row, including its exact raw and control generation. Never
+/// serialize this to a caller: the old records can contain authorized URLs.
+pub(crate) struct ExistingSongAdmission {
+    id: String,
+    row: Value,
+    raw: Option<Value>,
+    control: ObservedControl,
+    options: DownloadOptions,
+    bound_prefix: bool,
+}
+
+impl ExistingSongAdmission {
+    pub(crate) fn options(&self) -> &DownloadOptions {
+        &self.options
+    }
+
+    pub(crate) fn has_bound_prefix(&self) -> bool {
+        self.bound_prefix
+    }
+
+    pub(crate) fn observe(
+        tx: &StateTransaction<'_>,
+        owner: &str,
+        song: &str,
+        id: &str,
+    ) -> Result<Option<Self>> {
+        let Some(row) = tx.get(owner, KIND, id)? else {
+            return Err(Error::StaleResponse);
+        };
+        let task: DownloadTask = serde_json::from_value(row.clone())?;
+        let control = Control::observe(tx, owner, id)?;
+        if task.id != id
+            || task.song_id != song
+            || task.origin != DownloadOrigin::Song
+            || !matches!(task.status, DownloadStatus::Paused | DownloadStatus::Error)
+            || !matches!(
+                task.phase,
+                DownloadPhase::Authorize | DownloadPhase::Transfer
+            )
+            || task.file_operation.is_some()
+            || task.needs_transfer_restart()
+            || task.prepared.is_some()
+            || task.raw_integrity.is_some()
+            || task.output_integrity.is_some()
+            || task.cleanup_pending
+            || task.completed_ms.is_some()
+            || control.action == Some(DownloadAction::Cancel)
+        {
+            return Ok(None);
+        }
+        let raw = tx.get(owner, TRANSFERS, id)?;
+        let bound_prefix = if let Some(value) = &raw {
+            let job: TransferJob = serde_json::from_value(value.clone())?;
+            if job.id != id
+                || job.resource_id.as_deref() != Some(song)
+                || job.target != task.work.join("raw")
+                || !matches!(
+                    job.status,
+                    TransferStatus::Queued | TransferStatus::Paused | TransferStatus::Error
+                )
+                || job.cleanup_pending
+                || job.integrity.is_some()
+                || job.last_error.as_deref().is_some_and(|error| {
+                    error
+                        == Error::Media(crate::download::transfer::FINAL_INTEGRITY_MISMATCH)
+                            .to_string()
+                })
+            {
+                return Ok(None);
+            }
+            job.bytes == 0
+                || (job.resource.size.is_some_and(|size| size > 0)
+                    && job.resource.md5.as_ref().is_some_and(|md5| !md5.is_empty()))
+        } else if task.bytes != 0 {
+            return Ok(None);
+        } else {
+            files::absent(&task.work.join("raw")).is_ok()
+        };
+        Ok(Some(Self {
+            id: id.into(),
+            row,
+            raw,
+            control,
+            options: task.options,
+            bound_prefix,
+        }))
+    }
+
+    pub(crate) fn check(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
+        if tx.get(owner, KIND, &self.id)?.as_ref() != Some(&self.row)
+            || tx.get(owner, TRANSFERS, &self.id)? != self.raw
+            || Control::observe(tx, owner, &self.id)? != self.control
+        {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
+
+    pub(super) fn stage(&self, service: &DownloadService) -> Result<HeldSongAdmission> {
+        let task_lock = service.lock(&self.id)?;
+        let task: DownloadTask = serde_json::from_value(self.row.clone())?;
+        let raw = self.raw.clone().map(serde_json::from_value).transpose()?;
+        let transfer_lock = service.transfer.hold_quiescent(&task.id, raw.as_ref())?;
+        files::work(&task)?;
+        if raw.is_none() {
+            files::absent(&task.work.join("raw"))?;
+        }
+        if task.target.is_some() {
+            files::absent(files::target(&task)?)?;
+        }
+        Ok(HeldSongAdmission {
+            task,
+            _transfer: transfer_lock,
+            _task: task_lock,
+        })
+    }
+}
+
+pub(super) struct HeldSongAdmission {
+    pub(super) task: DownloadTask,
+    _transfer: OperationLock,
+    _task: OperationLock,
+}
+
+impl HeldSongAdmission {
+    pub(super) fn readmit(&mut self, tx: &mut StateTransaction<'_>, owner: &str) -> Result<()> {
+        tx.delete(owner, CONTROL, &self.task.id)?;
+        self.task.status = DownloadStatus::Queued;
+        self.task.last_error = None;
+        self.task.service_code = None;
+        Ok(())
+    }
+}
+
+enum BatchTask {
+    New(Box<StagedTask>),
+    Existing(Box<HeldSongAdmission>),
+}
+
+impl BatchTask {
+    fn task_mut(&mut self) -> &mut DownloadTask {
+        match self {
+            Self::New(task) => task.task_mut(),
+            Self::Existing(held) => &mut held.task,
+        }
+    }
+
+    fn commit(self) {
+        if let Self::New(task) = self {
+            task.commit();
+        }
+    }
 }
 
 impl DownloadService {
     pub(crate) fn create_guarded_song_batch(
         &self,
-        ids: &[String],
-        receipt: &str,
-        admission: SongBatchAdmission,
-        options: DownloadOptions,
+        batch: GuardedSongBatch,
         permission: &dyn Fn() -> Result<OperationLock>,
         cancelled: &AtomicBool,
     ) -> Result<Vec<String>> {
+        let GuardedSongBatch {
+            songs: ids,
+            receipt,
+            admission,
+            options,
+            existing,
+        } = batch;
         let _directory = directory_gate::lock(&self.store, &self.owner)?;
         let token = self.session.token()?;
         self.guard(&token)?;
@@ -92,26 +273,32 @@ impl DownloadService {
                 "invalid download batch size or duplicate songs",
             ));
         }
+        if existing.keys().any(|song| !ids.contains(song)) {
+            return Err(Error::StaleResponse);
+        }
         let created_ms = creation_clock()?;
-        // Both the worker and the durable list use (created_ms, id). Keep
-        // the real common timestamp and assign ascending random IDs to rows.
-        let mut task_ids: Vec<_> = ids
-            .iter()
+        // Preserve the existing display order for all-new batches (same
+        // creation time, ascending IDs); actual dispatch has its own key.
+        let mut new_ids: Vec<_> = (0..ids.len() - existing.len())
             .map(|_| uuid::Uuid::new_v4().simple().to_string())
             .collect();
-        task_ids.sort_unstable();
-        let staged = ids
+        new_ids.sort_unstable();
+        let mut new_ids = new_ids.into_iter();
+        let mut staged = ids
             .iter()
-            .zip(&task_ids)
-            .map(|(song, task)| {
-                self.stage_task(
-                    task.clone(),
-                    created_ms,
-                    identifier(&json!(song))?,
-                    &destination,
-                    options.clone(),
-                    (DownloadOrigin::Song, None),
-                )
+            .map(|song| {
+                if let Some(previous) = existing.get(song) {
+                    Ok(BatchTask::Existing(Box::new(previous.stage(self)?)))
+                } else {
+                    Ok(BatchTask::New(Box::new(self.stage_task(
+                        new_ids.next().expect("staged new ID"),
+                        created_ms,
+                        identifier(&json!(song))?,
+                        &destination,
+                        options.clone(),
+                        (DownloadOrigin::Song, None),
+                    )?)))
+                }
             })
             .collect::<Result<Vec<_>>>()?;
         files::sync(&destination.root)?;
@@ -120,7 +307,7 @@ impl DownloadService {
         // while holding a StateStore transaction or the account mutex.
         let _local = permission()?;
         check_cancelled()?;
-        self.session.with_token(&token, |owner| {
+        let task_ids = self.session.with_token(&token, |owner| {
             if owner != self.owner {
                 return Err(Error::StaleResponse);
             }
@@ -142,31 +329,67 @@ impl DownloadService {
                         }
                     }
                     SongBatchAdmission::Playlist(proof) => proof.verify_in(tx, owner)?,
-                }
-                for task in &staged {
-                    let task = task.task();
-                    if tx
-                        .playback_download_rows(owner, &task.song_id, PlaybackDownloadKind::Song)?
-                        .iter()
-                        .any(|row| row.status != "cancelled")
-                        || tx.get(owner, KIND, &task.id)?.is_some()
-                    {
-                        return Err(Error::State("song already has a download"));
+                    SongBatchAdmission::SearchPlaylist { proof, .. } => {
+                        proof.verify_in(tx, owner)?
                     }
-                    tx.put(owner, KIND, &task.id, &serde_json::to_value(task)?)?;
+                }
+                let anchor = match &admission {
+                    SongBatchAdmission::LikedAnchor(anchor)
+                    | SongBatchAdmission::SearchPlaylist { anchor, .. } => Some(anchor),
+                    SongBatchAdmission::Playlist(_) => None,
+                };
+                if let Some(anchor) = anchor
+                    && tx
+                        .playback_download_rows(owner, anchor, PlaybackDownloadKind::Song)?
+                        .iter()
+                        .any(|row| row.status == "complete")
+                {
+                    return Err(Error::State("song batch anchor is already downloaded"));
+                }
+                let sequence = Dispatch::reserve(tx, owner)?;
+                let mut task_ids = Vec::with_capacity(staged.len());
+                for (index, staged) in staged.iter_mut().enumerate() {
+                    let current = catalog_admission_ids(tx, owner, &staged.task_mut().song_id)?;
+                    match staged {
+                        BatchTask::Existing(held) => {
+                            let [row] = current.as_slice() else {
+                                return Err(Error::StaleResponse);
+                            };
+                            if *row != held.task.id {
+                                return Err(Error::StaleResponse);
+                            }
+                            existing
+                                .get(&held.task.song_id)
+                                .ok_or(Error::StaleResponse)?
+                                .check(tx, owner)?;
+                            held.readmit(tx, owner)?;
+                        }
+                        BatchTask::New(task) => {
+                            if !current.is_empty()
+                                || tx.get(owner, KIND, &task.task_mut().id)?.is_some()
+                            {
+                                return Err(Error::State("song already has a download"));
+                            }
+                        }
+                    }
+                    let task = staged.task_mut();
+                    task.dispatch = Some(Dispatch::new(sequence, index));
+                    tx.put(owner, KIND, &task.id, &serde_json::to_value(&*task)?)?;
+                    task_ids.push(task.id.clone());
                 }
                 tx.put(
                     owner,
                     BATCH,
                     LAST,
                     &serde_json::to_value(Commit {
-                        receipt: receipt.into(),
+                        receipt,
                         tasks: task_ids.clone(),
                     })?,
                 )?;
                 // No account/store lookups can be repeated from inside this
                 // transaction, but a dropped caller still revokes precommit.
-                check_cancelled()
+                check_cancelled()?;
+                Ok(task_ids)
             })
         })?;
         for task in staged {
@@ -175,3 +398,7 @@ impl DownloadService {
         Ok(task_ids)
     }
 }
+
+#[cfg(test)]
+#[path = "batch_tests.rs"]
+mod tests;

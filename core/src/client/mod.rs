@@ -11,6 +11,10 @@ pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
 pub use cloud::CloudFileReveal;
+pub use player::LyricBountyIntent;
+pub use player::{
+    QueueCatalogFileReveal, QueueDownloadFileReveal, QueueLocalFileReveal, QueueVoiceFileReveal,
+};
 mod cold_offline;
 pub use cold_offline::{ColdOfflinePageView, ColdOfflinePlayerView};
 mod collections;
@@ -34,6 +38,7 @@ mod fm;
 mod fm_discovery;
 mod focus;
 mod history;
+mod interface_font;
 mod likes;
 mod local;
 mod login_device_removal;
@@ -51,7 +56,10 @@ pub mod pc_experiments;
 mod player;
 mod playlist_cover;
 mod playlist_creator;
+mod playlist_duration;
 mod playlist_essential;
+mod playlist_local_membership;
+mod playlist_offline;
 mod playlist_square;
 mod playlist_tags_browse;
 mod playlists;
@@ -126,6 +134,8 @@ pub struct MusicClient {
     together: together::TogetherHost,
     scene_fm: scene_fm::SceneFmHost,
     playlist_cover: playlist_cover::CoverHost,
+    playlist_offline: playlist_offline::Host,
+    playlist_duration: playlist_duration::Host,
     account_avatar: account_avatar::AvatarHost,
     effect_material_backend: Option<Arc<dyn crate::download::transfer::MediaBackend>>,
     login_device_rows: login_devices::DeviceRows,
@@ -137,6 +147,7 @@ pub struct MusicClient {
     podcast_subscription_recommendations: podcast::PodcastSubscriptionRecommendationHost,
     listened_books: history::ListenedBooksHost,
     history_sync: Arc<history::HistorySyncHost>,
+    history_radio_chapters: history::RadioChaptersHost,
     audiobook_skip: podcast::AudiobookSkipHost,
     community: community::CommunityHost,
     community_topics: community::topic::TopicHost,
@@ -156,6 +167,7 @@ pub struct MusicClient {
     follow_latest: catalog::FollowLatestHost,
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_home: style_home::StyleHome,
+    home_recall: Arc<discovery_home::recall::Host>,
     seeded_style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     pc_experiments: Arc<pc_experiments::PcExperimentHost>,
@@ -286,6 +298,7 @@ impl MusicClient {
         let pc_experiments = Arc::new(pc_experiments::PcExperimentHost::default());
         let message_poll = Arc::new(messages::PcMessagePollHost::default());
         let together = together::TogetherHost::default();
+        let room_detachment = together.detachment();
         let skip = player::OrdinarySkipHost::new(
             session.clone(),
             message_poll.clone(),
@@ -299,6 +312,8 @@ impl MusicClient {
             membership: Default::default(),
             remote_skins: Default::default(),
             playlist_cover: playlist_cover::CoverHost::default(),
+            playlist_offline: Default::default(),
+            playlist_duration: Default::default(),
             artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),
             effect_material_backend: None,
@@ -311,6 +326,7 @@ impl MusicClient {
             podcast_subscription_recommendations: Default::default(),
             listened_books: Default::default(),
             history_sync: Default::default(),
+            history_radio_chapters: Default::default(),
             audiobook_skip: Default::default(),
             playlist_square: Default::default(),
             community: Default::default(),
@@ -330,6 +346,7 @@ impl MusicClient {
             follow_latest: Default::default(),
             daily_recommendations: Default::default(),
             style_home: Default::default(),
+            home_recall: Default::default(),
             seeded_style_recommendations: Default::default(),
             style_recommendations: Default::default(),
             pc_experiments: pc_experiments.clone(),
@@ -353,6 +370,7 @@ impl MusicClient {
                 output.clone(),
                 skip,
                 pc_experiments.song_speed(),
+                room_detachment,
             ),
             mv: mv::MvHost::new(session.clone(), focus.clone(), output.clone()),
             output,

@@ -56,7 +56,6 @@ const suggestionsPanel = ref<InstanceType<typeof SearchSuggestions>>();
 watch(query, () => suggestionsPanel.value?.clearPointer(), { flush: 'sync' });
 const position = ref({ left: '0px', top: '0px', width: '779px', maxHeight: '622px' });
 const confirm = ref(false);
-let suppressFocus = false;
 let historyPanelGeneration = 0;
 watch(
   [
@@ -97,13 +96,10 @@ async function show() {
   if (panel.value) panel.value.scrollTop = 0;
 }
 function focusInput() {
-  suppressFocus = true;
   input.value?.focus({ preventScroll: true });
-  suppressFocus = false;
 }
 function onFocus() {
   model.setInputFocused(true);
-  if (!suppressFocus) void show();
 }
 function onBlur() {
   model.setInputFocused(false);
@@ -344,7 +340,7 @@ onUnmounted(() => {
         :placeholder="defaultWord?.label || '搜索音乐、寻找好声音'"
         maxlength="256"
         :disabled="!enabled"
-        @input="model.input(($event.target as HTMLInputElement).value)"
+        @input="model.input(($event.currentTarget as HTMLInputElement).value, true)"
         @focus="onFocus"
         @blur="onBlur"
         @click="show"

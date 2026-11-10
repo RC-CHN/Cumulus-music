@@ -18,6 +18,7 @@ def main():
     mode.add_argument('--podcast-top-classic', action='store_true')
     mode.add_argument('--podcast-browse-around', action='store_true')
     mode.add_argument('--default-recovery', action='store_true')
+    mode.add_argument('--focus-activation', action='store_true')
     mode.add_argument('--guest-search', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
@@ -47,6 +48,8 @@ def main():
         env['CUMULUS_SEARCH_PODCAST_BROWSE_AROUND_PROOF'] = '1'
     if args.podcast_top_classic:
         prefix = 'window.__cumulusPodcastTopClassicProof = true;\n'
+    if args.focus_activation:
+        prefix = 'window.__cumulusSearchFocusActivationProof = true;\n'
     if args.default_recovery:
         prefix = 'window.__cumulusSearchDefaultRecoveryProof = true;\n'
         env['CUMULUS_SEARCH_DEFAULT_RECOVERY_PROOF'] = '1'
@@ -62,6 +65,9 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.focus_activation:
+        verify_focus_activation(root, args.screenshots)
+        return
     if args.default_recovery:
         verify_default_recovery(root, args.screenshots)
         return
@@ -76,7 +82,7 @@ def main():
         flag = ('podcastTopClassicVerified' if args.podcast_top_classic else
                 'historyLastVerified' if args.history_last else
                 'suggestionMatchesVerified' if args.suggestion_matches else 'exactFallbackVerified')
-        count = 5 if args.suggestion_matches else 3
+        count = 7 if args.suggestion_matches else 3
         assert complete['ok'] and complete[flag] and complete['stageCount'] == count
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (count if args.screenshots else 0)
@@ -141,6 +147,28 @@ def verify_guest_search(root, capture):
     print(json.dumps(report))
 
 
+def verify_focus_activation(root, capture):
+    directory = root / 'first'
+    complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
+    labels = ('focus_only', 'edit_opens_suggestions', 'refocus_only', 'composing_closed',
+              'composition_commit', 'empty_edit_opens_discovery', 'arrow_opens_discovery',
+              'click_opens_discovery')
+    assert complete['ok'] and complete['searchFocusActivationVerified']
+    assert complete['stageCount'] == len(labels) and complete['activationSubmissions'] == 0
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    for index, (label, count) in enumerate(zip(labels, (0, 1, 1, 1, 2, 7, 12, 17)), 1):
+        file = directory / f'ux_{index:02d}_{label}.json'
+        stage = json.loads(file.read_text(encoding='utf-8'))
+        assert stage['expanded'] == (label not in ('focus_only', 'refocus_only', 'composing_closed'))
+        assert len(stage['activationReads']) == count and stage['focused'] == '搜索音乐'
+        assert file.with_suffix('.png').is_file() == capture
+    result = dict(ok=True, actualWebView=True, stages=len(labels), screenshots=len(labels) if capture else 0,
+                  focusReads=0, suggestionReads=2, discoveryReads=6, chartDetailReads=9, searchSubmissions=0,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(result))
+
+
 def verify_default_recovery(root, capture):
     directory = root / 'first'
     complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
@@ -175,12 +203,20 @@ def verify_suggestion_matches(root, complete, capture):
                  'suggestionFirstSpaceVerified', 'suggestionRecommendationKeyboardVerified'):
         assert complete[name] is True
     stages = [
-        'suggestion_literal_matches', 'suggestion_pointer_active', 'suggestion_traditional_query',
-        'suggestion_simplified_query_not_reversed', 'suggestion_first_space',
+        'suggestion_literal_matches', 'suggestion_pointer_active', 'suggestion_pointer_selection',
+        'suggestion_traditional_query', 'suggestion_simplified_query_not_reversed',
+        'suggestion_first_space', 'suggestion_recommendation_selection',
     ]
     assert sorted(path.stem for path in (root / 'first').glob('ux_*.json')) == [
         f'ux_{index:02d}_{name}' for index, name in enumerate(stages, 1)
     ]
+    for index, popup, keyword, input_text in [
+        (3, 'İ A+B 和 a+b <plain>', '合成精确词', '合成输入栏文案'),
+        (7, 'B / C / A / b c', '合成分支推荐', '合成分支推荐'),
+    ]:
+        stage = json.loads((root / 'first' / f'ux_{index:02d}_{stages[index - 1]}.json').read_text(encoding='utf-8'))
+        assert stage['selection'] == {'popup': popup, 'result': keyword, 'input': input_text}, stage['selection']
+    assert complete['suggestionHistory'] == ['更改后的原词', '退出悬停', '合成分支推荐', '合成精确词']
     # These requests are recorded by the native synthetic backend, not by the
     # injected JS. The last edit and immediate Enter must not send a suggestion.
     expected = [

@@ -101,6 +101,12 @@ impl Api for Backend {
                         json!({"code":200,"lrc":{"version":1,"lyric":"[00:00]Shared song\n[00:02]Next line"}}),
                     )
                 }
+                "/api/v2/artist/songs" => {
+                    assert_eq!(payload, json!({"id":"12","offset":0,"limit":20}));
+                    Ok(
+                        json!({"code":200,"total":1,"more":false,"songs":[{"id":"7","name":"Song"}]}),
+                    )
+                }
                 "/api/v3/song/detail" => {
                     if self.hold_song.swap(false, Ordering::AcqRel) {
                         self.started.notify_one();
@@ -534,3 +540,69 @@ mod mini_tests;
 
 #[path = "support/desktop_lyric_client.rs"]
 mod desktop_lyric_tests;
+
+#[tokio::test]
+async fn stale_artist_batch_does_not_take_audio_focus_from_a_playing_mv() {
+    use cumulus_core::playback::PlaybackMode;
+    let f = Fixture::new();
+    f.client.video_action("1", open()).await.unwrap();
+    f.client.video_action("1", VideoAction::Play).await.unwrap();
+    let video = f.until(VideoStatus::Playing).await;
+    let before = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(before.queue_len, 0);
+    let query = CatalogQuery::ArtistSongs {
+        id: "12".into(),
+        offset: 0,
+        limit: 20,
+    };
+    let page = f
+        .client
+        .catalog_page("1", query.clone(), true)
+        .await
+        .unwrap()
+        .value
+        .unwrap();
+    f.api.hold_song.store(true, Ordering::Release);
+    let client = f.client.clone();
+    let pending = tokio::spawn(async move {
+        client
+            .player_action(
+                "1",
+                PlayerAction::QueueArtistSongsBatch {
+                    pages: vec![CatalogSelectionPage {
+                        query,
+                        revision: page.revision,
+                    }],
+                    ids: vec!["7".into()],
+                    quality: Quality::Standard,
+                    expected_queue_revision: before.queue_revision,
+                },
+            )
+            .await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(2), f.api.started.notified())
+        .await
+        .unwrap();
+    let changed = f
+        .client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(changed.mode, PlaybackMode::Random);
+    assert_eq!(
+        f.client.video_snapshot("1").await.unwrap().state,
+        VideoStatus::Playing
+    );
+    f.api.release.notify_one();
+    assert!(matches!(pending.await.unwrap(), Err(Error::QueueChanged)));
+    let still_playing = f.client.video_snapshot("1").await.unwrap();
+    assert_eq!(still_playing.state, VideoStatus::Playing);
+    assert_eq!(still_playing.play_id, video.play_id);
+    assert!(f.client.player_queue("1").await.unwrap().tracks.is_empty());
+    assert_eq!(f.audio.state.lock().unwrap().loads, 0);
+}

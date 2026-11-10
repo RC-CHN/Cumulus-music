@@ -5,13 +5,14 @@ use crate::{
     catalog::CatalogApi,
     membership::Quality,
     playback::{
-        QueueEntry,
+        PlaybackMode, QueueEntry, QueueSnapshot,
         controller::{QueueTransport, QueueUpdate},
     },
     protocol::api::identifier,
 };
+use rand::Rng;
 use serde_json::{Value, json};
-use std::sync::atomic::Ordering;
+use std::{collections::HashSet, sync::atomic::Ordering};
 
 pub(super) enum NextPlayOrigin {
     Song,
@@ -120,7 +121,7 @@ impl MusicClient {
         let value = controller
             .command(
                 &token,
-                PlaybackCommand::UpdateQueue(QueueUpdate {
+                PlaybackCommand::InsertNext(QueueUpdate {
                     expected: before.fence(),
                     queue,
                     transport: start.then_some(QueueTransport {
@@ -133,5 +134,367 @@ impl MusicClient {
         self.session.check_generation(&token)?;
         self.together_signal(&token, None);
         project(&value, &token)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum SearchGroupAction {
+    Play,
+    Next,
+}
+
+pub(super) struct SearchGroupRequest {
+    pub action: SearchGroupAction,
+    pub anchor: crate::client::search::SearchDropRow,
+    pub rows: Vec<crate::client::search::SearchDropRow>,
+    pub quality: Quality,
+    pub expected_play_id: Option<String>,
+    pub expected_queue_revision: String,
+}
+
+impl MusicClient {
+    pub(super) async fn search_group_playback(
+        &self,
+        epoch: &str,
+        request: SearchGroupRequest,
+    ) -> Result<PlayerView> {
+        use super::{super::focus::Owner, queue_playlist::queue_resource_for_track};
+        let SearchGroupRequest {
+            action,
+            anchor,
+            rows,
+            quality,
+            expected_play_id,
+            expected_queue_revision,
+        } = request;
+
+        let token = self.player_token(epoch)?;
+        let api = self.session.native_api(&token)?;
+        self.session
+            .with_verified_profile(&token, &api, |_, _| Ok(()))?;
+        let credentials = api
+            .search_privilege_credential_revision()?
+            .ok_or(Error::StaleResponse)?;
+        let pages = self.search.queue_drops.clone();
+        let chosen = pages.resolve_group_next(&token, &api, &credentials, &anchor, &rows)?;
+        let room = self.together_detached_guard(&token);
+        let auth = self.auth.pending_guard();
+        auth()?;
+        let controller = self.player.controller().await?;
+        let (before, queue) = controller.queue_with_state(&token).await?;
+        if expected_queue_revision != before.queue_revision.to_string()
+            || before.play_id != expected_play_id
+        {
+            return Err(Error::QueueChanged);
+        }
+        // Next promotes to Play only for a genuinely empty ordinary queue.
+        // Both menu actions leave stopped nonempty or pending queues alone.
+        let empty = queue.items.is_empty()
+            && queue.current.is_none()
+            && before.play_id.is_none()
+            && before.state == PlaybackStatus::Idle;
+        let active = !before.startup_pending
+            && queue.current.is_some()
+            && before.play_id.is_some()
+            && matches!(
+                before.state,
+                PlaybackStatus::Playing | PlaybackStatus::Paused
+            )
+            && before.timeline.is_some();
+        if (!empty && !active)
+            || before.fm
+            || queue.intelligence.is_some()
+            || queue.items.iter().any(|item| !item.visible_in_queue())
+            || room.is_cancelled()
+            || self.queue_clear_context(&token)?.room_id.is_some()
+        {
+            return Err(Error::State("search next requires a stable ordinary queue"));
+        }
+        let play = action == SearchGroupAction::Play;
+        let start = empty || play;
+        let retain = play
+            && active
+            && before
+                .selected
+                .as_ref()
+                .is_some_and(|entry| identity::online_song(&entry.resource, &anchor.track_id));
+        let focus = start.then(|| self.focus.snapshot()).transpose()?;
+        let source = search_track_source();
+        let resources = chosen
+            .tracks
+            .iter()
+            .map(|track| {
+                let mut resource = queue_resource_for_track(track, quality);
+                resource["trial_mode"] = source["trial_mode"].clone();
+                resource
+            })
+            .collect();
+        let next = search_group_queue(
+            queue.clone(),
+            resources,
+            source,
+            start.then_some(anchor.track_id.as_str()),
+            &mut rand::rng(),
+        )?;
+        let session = self.session.clone();
+        let selection = self.player.selection.clone();
+        let attempt = if !play && next == queue {
+            selection.load(Ordering::Acquire)
+        } else {
+            selection.fetch_add(1, Ordering::AcqRel) + 1
+        };
+        let owner = token.clone();
+        let expected_api = api.clone();
+        let mut guard = Cancellation::new(move || {
+            selection.load(Ordering::Acquire) == attempt
+                && auth().is_ok()
+                && !room.is_cancelled()
+                && session
+                    .with_verified_profile(&owner, &api, |_, _| Ok(()))
+                    .is_ok()
+                && api
+                    .search_privilege_credential_revision()
+                    .ok()
+                    .flatten()
+                    .as_ref()
+                    == Some(&credentials)
+                && pages.group_next_current(&chosen)
+        });
+        guard.check()?;
+        let expected = before.fence();
+        let first_source = if let Some(focus) = focus.filter(|_| !retain) {
+            let preparing = {
+                let guard = guard.clone();
+                let controller = controller.clone();
+                let media_focus = self.focus.clone();
+                let expected = expected.clone();
+                Cancellation::new(move || {
+                    !guard.is_cancelled()
+                        && controller.snapshot().fence() == expected
+                        && media_focus.check_snapshot(focus).is_ok()
+                })
+            };
+            let selected = next.selected().ok_or(Error::QueueChanged)?;
+            let first = controller
+                .source_resolver()
+                .prepare_scoped_search_song(&selected.resource, &token, &expected_api, &preparing)
+                .await?;
+            preparing.check()?;
+            Some(first)
+        } else {
+            None
+        };
+        // Do not hold the Together mutation gate while authorizing a source.
+        // A room transition may supersede that pending read.
+        let _room_gate = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        self.validate_queue_clear_room(&token, None)?;
+        guard.check()?;
+        if !play && next == queue {
+            return project(&before, &token);
+        }
+        if let Some(focus) = focus {
+            // Sync any durable queue edit before taking focus from other media.
+            let latest = controller
+                .command(&token, PlaybackCommand::Snapshot)
+                .await?;
+            if latest.fence() != expected {
+                return Err(Error::QueueChanged);
+            }
+            let lease = if retain && focus.owner == Some(Owner::Audio) {
+                self.focus.check_snapshot(focus)?;
+                focus.generation
+            } else {
+                let (lease, ()) = self.reserve_prepared_audio(&token, focus, || {
+                    guard.check()?;
+                    if controller.snapshot().fence() != expected {
+                        return Err(Error::StaleResponse);
+                    }
+                    Ok(())
+                })?;
+                self.finish_media_claim(&token, Owner::Audio, lease).await?;
+                lease
+            };
+            let media_focus = self.focus.clone();
+            guard = Cancellation::new(move || {
+                !guard.is_cancelled() && media_focus.check(lease, Owner::Audio).is_ok()
+            });
+        }
+        let update = QueueUpdate {
+            expected: expected.clone(),
+            queue: next,
+            transport: start.then_some(QueueTransport {
+                position: None,
+                paused: false,
+            }),
+        };
+        let command = if play {
+            PlaybackCommand::ApplySearchGroupPlay {
+                update,
+                first_source,
+            }
+        } else {
+            PlaybackCommand::ApplySearchGroupNext {
+                update,
+                first_source,
+            }
+        };
+        let value = controller
+            .command_guarded(&token, command, expected, guard)
+            .await?;
+        self.session.check_generation(&token)?;
+        project(&value, &token)
+    }
+}
+
+fn search_group_queue(
+    queue: QueueSnapshot,
+    resources: Vec<Value>,
+    source: Value,
+    start_id: Option<&str>,
+    rng: &mut impl Rng,
+) -> Result<QueueSnapshot> {
+    let incumbent = queue.current.clone();
+    let retain = queue
+        .selected()
+        .filter(|entry| start_id.is_some_and(|id| identity::online_song(&entry.resource, id)));
+    let wanted: HashSet<_> = resources
+        .iter()
+        .filter_map(|row| row["id"].as_str().map(str::to_owned))
+        .collect();
+    let mut next = super::queue_playlist::insert_collection_bound(
+        queue,
+        resources,
+        source,
+        false,
+        true,
+        start_id.is_some(),
+    );
+    if let Some(retained) = retain {
+        // Explicit Play may reposition this resource in display order. Its
+        // native decoder retains the exact same entry/source and clock.
+        let row = next
+            .items
+            .iter_mut()
+            .find(|row| row.entry_id == retained.entry_id)
+            .ok_or(Error::QueueChanged)?;
+        *row = retained;
+    }
+    let inserted: Vec<_> = next
+        .items
+        .iter()
+        .filter(|row| {
+            (start_id.is_some() || Some(&row.entry_id) != incumbent.as_ref())
+                && identity::collection_key(&row.resource, false).is_some_and(|(kind, id)| {
+                    kind == PlayerResourceKind::Catalog && wanted.contains(id)
+                })
+        })
+        .collect();
+    if let Some(id) = start_id {
+        // M3085 sets the clicked song as playId. Neither the selection's
+        // first row nor the random traversal may silently replace it.
+        next.current = Some(
+            inserted
+                .iter()
+                .find(|row| identity::online_song(&row.resource, id))
+                .ok_or(Error::QueueChanged)?
+                .entry_id
+                .clone(),
+        );
+    }
+    if next.mode == PlaybackMode::Random
+        && let Some(first) = inserted.first()
+    {
+        let batch = inserted.iter().map(|row| row.entry_id.as_str()).collect();
+        next.order = super::local_batch::random_order(
+            &next,
+            &batch,
+            &first.entry_id,
+            start_id.is_none(),
+            rng,
+        );
+    }
+    Ok(next)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    #[test]
+    fn full_search_queue_prefers_inserted_rows_then_closest_prefix_and_earliest_suffix() {
+        use super::super::queue_playlist::QUEUE_LIMIT;
+        for (index, first_old, last_old) in [
+            (1, 0, QUEUE_LIMIT - 4),
+            (QUEUE_LIMIT - 2, 2, QUEUE_LIMIT - 2),
+        ] {
+            let items: Vec<_> = (0..QUEUE_LIMIT)
+                .map(|i| QueueEntry {
+                    entry_id: format!("old-{i}"),
+                    resource: json!({"id":(i+1).to_string()}),
+                    source: json!({"kind":"songs"}),
+                })
+                .collect();
+            let current = items[index].clone();
+            let replaced = items[QUEUE_LIMIT - 1].clone();
+            let queue = QueueSnapshot {
+                order: items.iter().map(|row| row.entry_id.clone()).collect(),
+                items,
+                current: Some(current.entry_id.clone()),
+                mode: PlaybackMode::Sequential,
+                ..Default::default()
+            };
+            let resources = vec![
+                json!({"id":"20001","trial_mode":42}),
+                json!({"id":replaced.resource["id"],"trial_mode":42}),
+                json!({"id":"20002","trial_mode":42}),
+            ];
+            let next = search_group_queue(
+                queue,
+                resources,
+                search_track_source(),
+                None,
+                &mut StdRng::seed_from_u64(4),
+            )
+            .unwrap();
+            assert_eq!(next.items.len(), QUEUE_LIMIT);
+            assert_eq!(next.selected().as_ref(), Some(&current));
+            assert_eq!(
+                next.order,
+                next.items
+                    .iter()
+                    .map(|row| row.entry_id.clone())
+                    .collect::<Vec<_>>()
+            );
+            let gap = next
+                .items
+                .iter()
+                .position(|row| row.entry_id == current.entry_id)
+                .unwrap()
+                + 1;
+            assert_eq!(next.items[gap].resource["id"], "20001");
+            assert_eq!(next.items[gap + 1].entry_id, replaced.entry_id);
+            assert_eq!(next.items[gap + 1].source["scene"], "search");
+            assert_eq!(next.items[gap + 2].resource["id"], "20002");
+            let retained: Vec<_> = next
+                .items
+                .iter()
+                .filter(|row| row.source["scene"].is_null())
+                .map(|row| {
+                    row.resource["id"]
+                        .as_str()
+                        .unwrap()
+                        .parse::<usize>()
+                        .unwrap()
+                        - 1
+                })
+                .collect();
+            assert_eq!(retained, (first_old..=last_old).collect::<Vec<_>>());
+            next.validate().unwrap();
+        }
     }
 }

@@ -5,9 +5,10 @@ use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
     client::{MusicClient, dto::*},
+    lyrics::LyricBountyWrite,
     membership::Quality,
     protocol::{
-        api::{Api, ApiFuture},
+        api::{Api, ApiFuture, LyricBountyPermission},
         http::ApiOrigin,
     },
 };
@@ -23,6 +24,7 @@ struct Backend {
     calls: Mutex<Vec<String>>,
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
+    search_menu_revision: AtomicU64,
     deny_url_id: AtomicU64,
     playlist_cloud_song_id: AtomicU64,
     unavailable_url_id: AtomicU64,
@@ -32,8 +34,13 @@ struct Backend {
     url_started: Notify,
     url_release: Notify,
     trial: Mutex<Option<Value>>,
+    lyric_contribution_response: Mutex<Option<Value>>,
+    lyric_bounty_writes: AtomicU64,
+    playlist_trial: playlist_trial::Fixture,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
+    artist_first_replacement: AtomicU64,
+    artist_batch_blocked_song: AtomicU64,
     album_privileges: Mutex<Vec<Value>>,
     daily_tracks: Mutex<Option<Vec<Value>>>,
     style_tag_state: AtomicU64,
@@ -51,6 +58,7 @@ struct Backend {
     quality_release: Notify,
     vinyl_composer: vinyl_composer::Server,
     artist_cover: artist_search_cover::CoverFixture,
+    chorus: chorus::Backend,
     vinyl_comment_group: AtomicU64,
     vinyl_recommendation_group: AtomicU64,
     vinyl_similar: vinyl_similar::Server,
@@ -61,6 +69,44 @@ struct Backend {
     vinyl_comment_release: Notify,
 }
 impl Api for Backend {
+    fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        let revision = self.search_menu_revision.load(Ordering::SeqCst);
+        Ok((revision > 0).then(|| format!("synthetic-search-menu-{revision}")))
+    }
+
+    fn lyric_bounty_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(Some("synthetic-lyric-bounty-revision".into()))
+    }
+
+    fn request_lyric_bounty<'a>(
+        &'a self,
+        _: LyricBountyWrite,
+        revision: &'a str,
+        permission: &'a LyricBountyPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            assert_eq!(revision, "synthetic-lyric-bounty-revision");
+            permission().map_err(|error| Error::RequestNotSent(Box::new(error)))?;
+            self.lyric_bounty_writes.fetch_add(1, Ordering::SeqCst);
+            Ok(json!({"code":200}))
+        })
+    }
+
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        self.chorus.revision()
+    }
+
+    fn playback_chorus_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self.chorus.revision())
+    }
+    fn request_playback_chorus<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::PlaybackChorusRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.chorus.batch(read, revision, permission))
+    }
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
         if self.artist_cover.is_enabled() {
             return Ok(self.artist_cover.revision());
@@ -222,7 +268,13 @@ impl Api for Backend {
                 "/api/v2/artist/songs" => {
                     let offset = payload["offset"].as_u64().unwrap();
                     let limit = payload["limit"].as_u64().unwrap();
-                    json!({"code":200,"total":55,"more":offset+limit<55,"songs":((offset+1)..=(offset+limit).min(55)).map(|id|json!({"id":id,"name":"曲目"})).collect::<Vec<_>>()})
+                    let replacement = self.artist_first_replacement.load(Ordering::SeqCst);
+                    let songs = ((offset + 1)..=(offset + limit).min(55))
+                        .map(|id| {
+                            let id = if id == 1 && replacement != 0 { replacement } else { id };
+                            json!({"id":id,"name":"曲目"})
+                        }).collect::<Vec<_>>();
+                    json!({"code":200,"total":55,"more":offset+limit<55,"songs":songs})
                 }
                 "/api/artist/v3/detail" => {
                     json!({"code":200,"artist":{"id":payload["id"],"name":"已核对的歌手页"},"hotSongs":[{"id":1,"name":"曲目"}]})
@@ -237,8 +289,10 @@ impl Api for Backend {
                 "/api/album/v3/detail" => {
                     json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":self.album_tracks.lock().unwrap().clone().unwrap_or_else(||(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>())})
                 }
+                "/api/user/playlist" => self.playlist_trial.list(&payload),
                 "/api/v6/playlist/detail" => {
-                    json!({"code":200,"playlist":{"id":payload["id"],"name":"已核对的歌单","trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
+                    self.playlist_trial.detail(&payload).unwrap_or_else(||
+                        json!({"code":200,"playlist":{"id":payload["id"],"name":"已核对的歌单","trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}}))
                 }
                 "/api/homepage/category/daily/song/list" => {
                     let expected = if self.style_tag_after_ack.swap(false, Ordering::SeqCst) {
@@ -293,6 +347,7 @@ impl Api for Backend {
                         });
                     json!({"code":200,"data":{"dailySongs":tracks}})
                 }
+                "/api/song/chorus" => self.chorus.single(&payload),
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
@@ -305,12 +360,17 @@ impl Api for Backend {
                     if id == self.playlist_cloud_song_id.load(Ordering::SeqCst) {
                         response["privileges"] = json!([{"id":id,"cs":1}]);
                     }
+                    let denied = self.artist_batch_blocked_song.load(Ordering::SeqCst);
+                    if ids.iter().any(|song| song["id"].as_str().and_then(|id| id.parse().ok()) == Some(denied)) {
+                        response["privileges"] = json!([{"id":denied,"pl":0,"flag":0}]);
+                    }
                     response
                 }
                 "/api/song/enhance/player/url/v1" => {
                     *self.trial.lock().unwrap() = Some(payload["trialMode"].clone());
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
+                    self.playlist_trial.record_media(&ids, &payload["trialMode"]);
                     if ids[0].as_u64().or_else(|| ids[0].as_str()?.parse().ok())
                         == Some(self.hold_url_id.load(Ordering::SeqCst))
                     {
@@ -362,6 +422,9 @@ impl Api for Backend {
                     json!({"code":200,"data":true})
                 }
                 "/api/song/lyric/v1" => {
+                    if let Some(response) = self.lyric_contribution_response.lock().unwrap().clone() {
+                        return Ok(response);
+                    }
                     json!({"code":200,"lrc":{"lyric":"[00:01]第一行\n[00:03]第二行","version":1},"yrc":{"lyric":"[1000,1000](1000,500,0)你(1500,500,0)好","version":1},"ytlrc":{"lyric":"[1000,1000]hello"},"yromalrc":{"lyric":"[1000,1000]ni hao"},"lyricContributor":{"cookie":"SECRET"}})
                 }
                 _ => panic!("unexpected {path}"),
@@ -404,11 +467,20 @@ fn songs(id: &str) -> PlaySelection {
     }
 }
 
+#[path = "client_player/artist_batch_queue.rs"]
+mod artist_batch_queue;
+
 #[path = "client_player/artist_search_cover.rs"]
 mod artist_search_cover;
 
 #[path = "client_player/prepared_selection.rs"]
 mod prepared_selection;
+
+#[path = "client_player/chorus.rs"]
+mod chorus;
+
+#[path = "client_player/playlist_trial.rs"]
+mod playlist_trial;
 
 #[path = "client_player/voice_selection.rs"]
 mod voice_selection;
@@ -1059,6 +1131,210 @@ async fn complete_playlist_is_native_and_public_player_queue_lyrics_are_whitelis
         updated.state,
         cumulus_core::playback::controller::PlaybackStatus::Paused
     );
+}
+
+#[tokio::test]
+async fn lyric_contribution_opens_only_the_current_ordinary_song_with_a_resolved_document() {
+    let (_dir, api, _session, client, _) = fixture();
+    let cases = [
+        (json!({"code":200,"sgc":true}), json!("upload")),
+        (
+            json!({"code":200,"lrc":{"lyric":"普通歌词"}}),
+            json!("scrolling"),
+        ),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"[00:01]原词"}}),
+            json!("translation"),
+        ),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"普通歌词"}}),
+            json!("scrolling_and_translation"),
+        ),
+        (
+            json!({"code":200,"qfy":false,"lrc":{"lyric":"[00:01]原词"}}),
+            Value::Null,
+        ),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"纯音乐，请欣赏"}}),
+            Value::Null,
+        ),
+    ];
+    let mut previous: Option<String> = None;
+    for (index, (response, expected)) in cases.into_iter().enumerate() {
+        let song = (index + 1).to_string();
+        *api.lyric_contribution_response.lock().unwrap() = Some(response);
+        let playback = client.play_selection("1", songs(&song)).await.unwrap();
+        let play_id = playback.play_id.unwrap();
+        if let Some(previous) = previous {
+            assert!(matches!(
+                client.lyric_contribution_url("1", &previous).await,
+                Err(Error::StaleResponse)
+            ));
+        }
+        assert!(client.lyric_contribution_url("1", &play_id).await.is_err());
+        let document = client.player_lyrics("1", &play_id).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(document).unwrap()["contribution"],
+            expected
+        );
+        let calls = api.calls.lock().unwrap().len();
+        let result = client.lyric_contribution_url("1", &play_id).await;
+        if expected.is_null() {
+            assert!(result.is_err());
+        } else {
+            assert_eq!(
+                result.unwrap(),
+                format!("https://music.163.com/#/wiki/song?type=2&songId={song}")
+            );
+        }
+        assert_eq!(api.calls.lock().unwrap().len(), calls);
+        assert!(client.lyric_contribution_url("0", &play_id).await.is_err());
+        previous = Some(play_id);
+    }
+}
+
+#[tokio::test]
+async fn lyric_toolbar_uses_its_own_current_flags_even_without_parsed_lyric_lines() {
+    use LyricToolbarAction::{Translation, Upload};
+    let (_dir, api, _session, client, _) = fixture();
+    let cases = [
+        (
+            json!({"code":200,"sgc":true,"sfy":true,"tlyric":{"lyric":"[00:01]合成翻译"}}),
+            vec![Translation, Upload],
+            true,
+        ),
+        (
+            json!({"code":200,"sgc":true,"qfy":true,"lrc":{"lyric":"[00:01]合成原词"}}),
+            vec![Upload],
+            false,
+        ),
+        (
+            json!({"code":200,"sfy":true,"lrc":{"lyric":"[00:01]合成原词"}}),
+            vec![Translation],
+            false,
+        ),
+        (json!({"code":200,"sgc":true,"sfy":true}), vec![], true),
+        (
+            json!({"code":200,"qfy":true,"lrc":{"lyric":"[00:01]合成原词"}}),
+            vec![],
+            false,
+        ),
+    ];
+    let mut previous: Option<String> = None;
+    for (index, (response, expected, empty)) in cases.into_iter().enumerate() {
+        let song = (index + 1).to_string();
+        *api.lyric_contribution_response.lock().unwrap() = Some(response);
+        let play_id = client
+            .play_selection("1", songs(&song))
+            .await
+            .unwrap()
+            .play_id
+            .unwrap();
+        if let Some(previous) = previous {
+            assert!(matches!(
+                client
+                    .lyric_toolbar_contribution_url("1", &previous, Translation)
+                    .await,
+                Err(Error::StaleResponse)
+            ));
+        }
+        assert!(
+            client
+                .lyric_toolbar_contribution_url("1", &play_id, Upload)
+                .await
+                .is_err()
+        );
+        let document = client.player_lyrics("1", &play_id).await.unwrap();
+        assert_eq!(document.lines.is_empty(), empty, "song {song}");
+        assert_eq!(document.toolbar_contributions, expected, "song {song}");
+        let calls = api.calls.lock().unwrap().len();
+        for action in [Translation, Upload] {
+            let result = client
+                .lyric_toolbar_contribution_url("1", &play_id, action)
+                .await;
+            if expected.contains(&action) {
+                assert_eq!(
+                    result.unwrap(),
+                    format!("https://music.163.com/#/wiki/song?type=2&songId={song}")
+                );
+            } else {
+                assert!(result.is_err(), "song {song}: {action:?}");
+            }
+        }
+        assert!(
+            client
+                .lyric_toolbar_contribution_url("0", &play_id, Upload)
+                .await
+                .is_err()
+        );
+        assert_eq!(api.calls.lock().unwrap().len(), calls);
+        previous = Some(play_id);
+    }
+}
+
+#[tokio::test]
+async fn lyric_bounty_intent_cannot_outlive_the_current_player_document_or_owner() {
+    use cumulus_core::lyrics::{LyricBountyKind::MissingLyrics, LyricBountyStatus::Accepted};
+    let (_dir, api, session, client, _) = fixture();
+    *api.lyric_contribution_response.lock().unwrap() = Some(json!({"code":200,"sgc":false}));
+    let first = client
+        .play_selection("1", songs("1"))
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    assert!(
+        client
+            .prepare_lyric_bounty("1", &first, MissingLyrics)
+            .await
+            .is_err()
+    );
+    client.player_lyrics("1", &first).await.unwrap();
+    let before = api.calls.lock().unwrap().len();
+    let stale = client
+        .prepare_lyric_bounty("1", &first, MissingLyrics)
+        .await
+        .unwrap();
+    assert_eq!(stale.kind(), MissingLyrics);
+    assert_eq!(stale.existing_status(), None);
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    assert_eq!(api.lyric_bounty_writes.load(Ordering::SeqCst), 0);
+
+    let second = client
+        .play_selection("1", songs("2"))
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    assert!(matches!(
+        client.confirm_lyric_bounty(stale).await,
+        Err(Error::StaleResponse)
+    ));
+    client.player_lyrics("1", &second).await.unwrap();
+    let new = client
+        .prepare_lyric_bounty("1", &second, MissingLyrics)
+        .await
+        .unwrap();
+    let duplicate = client
+        .prepare_lyric_bounty("1", &second, MissingLyrics)
+        .await
+        .unwrap();
+    assert_eq!(client.confirm_lyric_bounty(new).await.unwrap(), Accepted);
+    assert_eq!(
+        client.confirm_lyric_bounty(duplicate).await.unwrap(),
+        Accepted
+    );
+    let retired = client
+        .prepare_lyric_bounty("1", &second, MissingLyrics)
+        .await
+        .unwrap();
+    assert_eq!(retired.existing_status(), Some(Accepted));
+    session.detach().unwrap();
+    assert!(matches!(
+        client.confirm_lyric_bounty(retired).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(api.lyric_bounty_writes.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

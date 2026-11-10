@@ -7,12 +7,13 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 use std::{fs, sync::Arc, time::Duration};
-const KIND: &str = "media_transfers_v1";
+pub(in crate::download) const KIND: &str = "media_transfers_v1";
 pub struct TransferManager {
     pub(super) store: Arc<StateStore>,
     pub(super) owner: String,
     pub(super) backend: Arc<dyn MediaBackend>,
     pub(super) limit: u64,
+    pub(super) rates: super::rates::LiveRates,
 }
 impl TransferManager {
     pub fn new(store: Arc<StateStore>, owner: String) -> Result<Self> {
@@ -37,7 +38,12 @@ impl TransferManager {
             owner,
             backend,
             limit,
+            rates: Default::default(),
         })
+    }
+
+    pub(crate) fn live_rates(&self) -> std::collections::HashMap<String, u64> {
+        self.rates.snapshot()
     }
     pub fn create(&self, mut input: CreateTransfer) -> Result<TransferJob> {
         input.resource.validate(self.limit)?;
@@ -117,6 +123,22 @@ impl TransferManager {
             &serde_json::to_string(&(&self.owner, id))?,
         )
     }
+    pub(in crate::download) fn hold_quiescent(
+        &self,
+        id: &str,
+        raw: Option<&TransferJob>,
+    ) -> Result<OperationLock> {
+        let lock = self.lock(id)?;
+        if let Some(job) = raw {
+            if job.id != id {
+                return Err(Error::StaleResponse);
+            }
+            files::ensure_unpublished(job)?;
+            files::absent(&job.target)?;
+            files::owned_part(job)?;
+        }
+        Ok(lock)
+    }
     /// Explicit authorization renewal. Preserve bytes only when an identical
     /// nonempty MD5 and total length prove the new response is the same media.
     pub fn refresh_resource(
@@ -132,6 +154,7 @@ impl TransferManager {
         files::ensure_unpublished(&job)?;
         let same = resource.md5.is_some()
             && resource.md5 == job.resource.md5
+            && resource.size.is_some()
             && resource.size == job.resource.size;
         if !same {
             let file = files::open_part(&job)?;

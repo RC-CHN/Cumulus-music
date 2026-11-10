@@ -192,6 +192,8 @@ impl MusicClient {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RetainedRow {
     Catalog,
+    Local,
+    OfflineDownload,
     DailyRecommendation,
     SearchCatalog,
     SearchSong,
@@ -204,6 +206,12 @@ pub(super) struct QueueClickSnapshot {
     before: PlaybackSnapshot,
     queue: QueueSnapshot,
 }
+
+impl QueueClickSnapshot {
+    pub(super) fn matches(&self, expected: &PlaybackFence, observed: u64) -> bool {
+        self.before.fence() == *expected && observed.checked_add(1) == Some(self.attempt)
+    }
+}
 pub(super) struct AlbumTableRows {
     pub resources: Vec<Value>,
     pub index: usize,
@@ -211,13 +219,33 @@ pub(super) struct AlbumTableRows {
     pub double_click: bool,
 }
 
-fn current_table_song(before: &PlaybackSnapshot, id: &str) -> bool {
+#[derive(Clone, Copy)]
+pub(super) enum TableSong<'a> {
+    Catalog(&'a str),
+    IndexedLocal(&'a Value),
+    OfflineDownload(&'a Value),
+}
+
+fn same_offline_download(entry: &Value, row: &Value) -> bool {
+    let marker = crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD;
+    entry[marker].is_object()
+        && entry[marker] == row[marker]
+        && entry["id"] == row["id"]
+        && entry["download_task_id"] == row["download_task_id"]
+}
+
+fn current_table_song(before: &PlaybackSnapshot, song: TableSong<'_>) -> bool {
     !before.fm
         && before.play_id.is_some()
-        && before
-            .selected
-            .as_ref()
-            .is_some_and(|entry| online_song(&entry.resource, id))
+        && before.selected.as_ref().is_some_and(|entry| match song {
+            TableSong::Catalog(id) => online_song(&entry.resource, id),
+            TableSong::IndexedLocal(row) => {
+                entry.resource["local_id"] == row["local_id"]
+                    && entry.resource["local_revision"] == row["local_revision"]
+                    && entry.resource["local_id"].is_string()
+            }
+            TableSong::OfflineDownload(row) => same_offline_download(&entry.resource, row),
+        })
         && matches!(
             before.state,
             PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
@@ -230,7 +258,7 @@ impl MusicClient {
     pub(super) async fn toggle_active_song_row(
         &self,
         token: &SessionToken,
-        id: &str,
+        song: TableSong<'_>,
         attempt: u64,
         lease: u64,
         source_guard: &Cancellation,
@@ -245,13 +273,13 @@ impl MusicClient {
             let Some(controller) = self.player.controller.get() else {
                 return Ok(None);
             };
-            if !current_table_song(&controller.snapshot(), id) {
+            if !current_table_song(&controller.snapshot(), song) {
                 return Ok(None);
             }
             let (before, queue) = controller.queue_with_state(token).await?;
             (before, queue.intelligence.is_some())
         };
-        if !current_table_song(&before, id) || intelligence {
+        if !current_table_song(&before, song) || intelligence {
             return Ok(None);
         }
         let _room = self
@@ -316,7 +344,7 @@ impl MusicClient {
             .ok_or(Error::QueueChanged)?
             .to_owned();
         let expected = before.fence();
-        let command = if current_table_song(&before, &id) {
+        let command = if current_table_song(&before, TableSong::Catalog(&id)) {
             if double_click {
                 PlaybackCommand::Pause(!before.paused)
             } else {
@@ -449,10 +477,10 @@ impl MusicClient {
             attempt,
             ..
         } = snapshot;
-        let identity = if policy == RetainedRow::SearchVoice {
-            "voice_id"
-        } else {
-            "id"
+        let identity = match policy {
+            RetainedRow::SearchVoice => "voice_id",
+            RetainedRow::Local => "local_id",
+            _ => "id",
         };
         let id = resource[identity]
             .as_str()
@@ -495,18 +523,35 @@ impl MusicClient {
         }
         let existing = queue.items.iter().position(|entry| {
             entry.visible_in_queue()
-                && if policy == RetainedRow::SearchVoice {
-                    super::identity::kind(&entry.resource) == super::PlayerResourceKind::Voice
-                        && entry.resource["voice_id"].as_str() == Some(id)
-                } else {
-                    online_song(&entry.resource, id)
+                && match policy {
+                    RetainedRow::SearchVoice => {
+                        super::identity::kind(&entry.resource) == super::PlayerResourceKind::Voice
+                            && entry.resource["voice_id"].as_str() == Some(id)
+                    }
+                    RetainedRow::Local => entry.resource["local_id"].as_str() == Some(id),
+                    RetainedRow::OfflineDownload => {
+                        same_offline_download(&entry.resource, &resource)
+                    }
+                    _ => online_song(&entry.resource, id),
                 }
         });
-        let search = policy != RetainedRow::Catalog;
+        let search = !matches!(
+            policy,
+            RetainedRow::Catalog | RetainedRow::Local | RetainedRow::OfflineDownload
+        );
         let entry = if let Some(index) = existing {
             let entry = &mut queue.items[index];
             let rebind = search && entry.source != source;
-            if rebind || entry.resource["missing"] == true {
+            let qualified_playlist = super::playlist_trial::inferred_playlist_source(&source);
+            // When retaining the queue, selecting an already queued *other*
+            // song from this verified playlist keeps its slot but uses the
+            // newly selected playlist authorization context. Never reload the
+            // currently selected decoder just to change its annotation.
+            let rebind_playlist = qualified_playlist
+                && queue.current.as_ref() != Some(&entry.entry_id)
+                && (entry.source != source || entry.resource["trial_mode"] != source["trial_mode"]);
+            let rebind_local = policy == RetainedRow::Local && entry.resource != resource;
+            if rebind || rebind_playlist || rebind_local || entry.resource["missing"] == true {
                 entry.resource = resource;
                 entry.source = source;
             }
@@ -559,7 +604,7 @@ impl MusicClient {
             .await
     }
 
-    async fn submit_retained_row(
+    pub(super) async fn submit_retained_row(
         &self,
         token: &SessionToken,
         command: PlaybackCommand,

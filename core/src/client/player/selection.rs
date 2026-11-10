@@ -1,6 +1,7 @@
 use super::super::recommendations::{
     RecommendationSource, daily_source, daily_subset, style_source,
 };
+use super::super::together::external;
 use super::{prepared_selection::PreparedSelection, queue_click::RetainedRow, *};
 use crate::playlist::MGC_TRIAL;
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
@@ -19,24 +20,50 @@ impl MusicClient {
         if index >= task_ids.len() {
             return Err(Error::InvalidInput("invalid download selection index"));
         }
+        if let Some(room) = self.together_external_room(&token)? {
+            let prepared = self
+                .stage_together_replacement(
+                    &token,
+                    self.together_external_authority(&token, Some(room)),
+                )
+                .await?;
+            let resources = self.download_resources(epoch, task_ids).await?;
+            let value = self
+                .submit_selection(
+                    &token,
+                    PlaybackCommand::Replace {
+                        resources,
+                        index,
+                        source: external::anchor(json!({"kind":"downloads"}), true),
+                    },
+                    prepared.observed,
+                    None,
+                    Some(&prepared),
+                )
+                .await?;
+            self.session.check_generation(&token)?;
+            return project(&value, &token);
+        }
         let lease = self
             .claim_media(&token, super::super::focus::Owner::Audio)
             .await?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let resources = self.download_resources(epoch, task_ids).await?;
-        let controller = self.player.controller().await?;
         if self.player.selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
         }
         self.focus.check(lease, super::super::focus::Owner::Audio)?;
-        let value = controller
-            .command(
+        let value = self
+            .submit_selection(
                 &token,
                 PlaybackCommand::Replace {
                     resources,
                     index,
-                    source: json!({"kind":"downloads"}),
+                    source: external::anchor(json!({"kind":"downloads"}), true),
                 },
+                attempt,
+                Some(lease),
+                None,
             )
             .await?;
         self.session.with_token(&token, |_| Ok(()))?;
@@ -74,6 +101,25 @@ impl MusicClient {
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
+            PlaySelection::SortedPlaylist {
+                scope,
+                start,
+                double_click,
+                quality,
+            } => {
+                self.play_sorted_playlist(epoch, scope, start, double_click, quality)
+                    .await
+            }
+            PlaySelection::OfflinePlaylist {
+                id,
+                revision,
+                cached_at_ms,
+                start_id: None,
+                ..
+            } => {
+                self.play_offline_playlist_header(epoch, &id, &revision, cached_at_ms)
+                    .await
+            }
             PlaySelection::PodcastSubscriptionRecommendation { .. } => Err(Error::InvalidInput(
                 "recommended podcast playback requires a preparation ticket",
             )),
@@ -88,8 +134,91 @@ impl MusicClient {
                     "search podcast playback requires a preparation ticket",
                 ))
             }
+            PlaySelection::SearchVoiceMenu { .. } => Err(Error::InvalidInput(
+                "search voice menu playback requires a preparation ticket",
+            )),
+            PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
+                "history chapter playback requires a preparation ticket",
+            )),
             input => self.play_selection_inner(epoch, input, None).await,
         }
+    }
+
+    async fn play_offline_playlist_header(
+        &self,
+        epoch: &str,
+        id: &str,
+        revision: &str,
+        cached_at_ms: u64,
+    ) -> Result<PlayerView> {
+        use super::super::focus::Owner;
+        let token = self.player_token(epoch)?;
+        let staged = if let Some(room) = self.together_external_room(&token)? {
+            Some(
+                self.stage_together_replacement(
+                    &token,
+                    self.together_external_authority(&token, Some(room)),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        let observed = self.player.selection.load(Ordering::Acquire);
+        let focus = self.focus.snapshot()?;
+        // Resolve the whole snapshot before claiming audio. An empty or
+        // retired cache must not interrupt incumbent playback, including video.
+        let queue = self
+            .offline_playlist_queue(&token, id, revision, cached_at_ms, None, false)
+            .await?;
+        if queue.guard.is_cancelled() {
+            return Err(Error::QueueChanged);
+        }
+        if let Some(staged) = staged.as_ref() {
+            let state = self
+                .submit_selection_with_source(
+                    &token,
+                    PlaybackCommand::Replace {
+                        resources: queue.resources,
+                        index: queue.index,
+                        source: queue.source,
+                    },
+                    staged.observed,
+                    None,
+                    Some(staged),
+                    Some(queue.guard),
+                )
+                .await?;
+            self.session.check_generation(&token)?;
+            return project(&state, &token);
+        }
+        let (lease, attempt) = self.reserve_prepared_audio(&token, focus, || {
+            let next = observed
+                .checked_add(1)
+                .ok_or(Error::State("playback selection exhausted"))?;
+            self.player
+                .selection
+                .compare_exchange(observed, next, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| Error::StaleResponse)?;
+            Ok(next)
+        })?;
+        self.finish_media_claim(&token, Owner::Audio, lease).await?;
+        let state = self
+            .submit_selection_with_source(
+                &token,
+                PlaybackCommand::Replace {
+                    resources: queue.resources,
+                    index: queue.index,
+                    source: queue.source,
+                },
+                attempt,
+                Some(lease),
+                None,
+                Some(queue.guard),
+            )
+            .await?;
+        self.session.with_token(&token, |_| Ok(()))?;
+        project(&state, &token)
     }
 
     pub(super) async fn play_selection_inner(
@@ -130,6 +259,50 @@ impl MusicClient {
         daily_origin: Option<super::super::daily_notification::PlaybackOrigin>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        let external_room = self.together_external_room(&token)?;
+        let stage_room_replacement = external_room.is_some()
+            && matches!(
+                &input,
+                PlaySelection::Songs { .. }
+                    | PlaySelection::Playlist { .. }
+                    | PlaySelection::MixedPlaylist {
+                        double_click: false,
+                        ..
+                    }
+                    | PlaySelection::OfflinePlaylist {
+                        double_click: false,
+                        ..
+                    }
+                    | PlaySelection::Local { .. }
+                    | PlaySelection::Downloads { .. }
+                    | PlaySelection::Cloud { .. }
+                    | PlaySelection::Voice { .. }
+            );
+        let explicit_anchor = match &input {
+            PlaySelection::Playlist { start_id, .. }
+            | PlaySelection::Album { start_id, .. }
+            | PlaySelection::VerticalZonePlaylistDetail { start_id, .. }
+            | PlaySelection::Downloads { start_id, .. }
+            | PlaySelection::Local { start_id, .. }
+            | PlaySelection::Cloud { start_id, .. } => start_id.is_some(),
+            PlaySelection::MixedPlaylist { start, .. } => start.is_some(),
+            PlaySelection::OfflinePlaylist { start_id, .. } => start_id.is_some(),
+            PlaySelection::AlbumDetail { row, .. } => row.is_some(),
+            PlaySelection::Songs { .. }
+            | PlaySelection::SearchResults { .. }
+            | PlaySelection::SongRowDoubleClick { .. }
+            | PlaySelection::History { .. } => true,
+            _ => false,
+        };
+        if let PlaySelection::SearchVoiceMenu { target } = &input {
+            return self
+                .play_search_voice_menu(
+                    &token,
+                    target,
+                    prepared.as_ref().ok_or(Error::StaleResponse)?,
+                )
+                .await;
+        }
         let (input, zone_detail) = match input {
             PlaySelection::VerticalZonePlaylistDetail {
                 id,
@@ -261,6 +434,19 @@ impl MusicClient {
                 };
                 (input, keep_queue.then_some(policy))
             }
+            input @ (PlaySelection::MixedPlaylist {
+                double_click: true,
+                start: Some(_),
+                ..
+            }
+            | PlaySelection::OfflinePlaylist {
+                double_click: true,
+                start_id: Some(_),
+                ..
+            }) => {
+                let keep_queue = !self.replace_queue_on_double_click(&token)?;
+                (input, keep_queue.then_some(RetainedRow::Catalog))
+            }
             input @ PlaySelection::AlbumDetail { row: Some(_), .. } => {
                 (input, Some(RetainedRow::Catalog))
             }
@@ -341,6 +527,17 @@ impl MusicClient {
             Some(self.queue_click_snapshot(&token).await?)
         } else {
             None
+        };
+        let prepared = if stage_room_replacement && prepared.is_none() && preserve.is_none() {
+            Some(
+                self.stage_together_replacement(
+                    &token,
+                    self.together_external_authority(&token, external_room.clone()),
+                )
+                .await?,
+            )
+        } else {
+            prepared
         };
         use super::super::focus::Owner;
         let (lease, attempt) = if let Some(prepared) = &prepared {
@@ -464,7 +661,7 @@ impl MusicClient {
                         PlaybackCommand::Replace {
                             resources,
                             index,
-                            source: json!({"kind":"downloads"}),
+                            source: external::anchor(json!({"kind":"downloads"}), explicit_anchor),
                         },
                         attempt,
                         lease,
@@ -580,6 +777,32 @@ impl MusicClient {
                     )
                     .await?;
                 self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+            PlaySelection::HistoryRadioChapter {
+                history_kind,
+                revision,
+                id,
+            } => {
+                let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
+                let (resources, index, source, cancellation) = self
+                    .history_radio_chapter_queue(&token, history_kind, &revision, &id)
+                    .await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::ReplaceListenedBook {
+                            resources,
+                            index,
+                            source,
+                        },
+                        attempt,
+                        lease,
+                        Some(prepared),
+                        Some(cancellation),
+                    )
+                    .await?;
+                self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
             PlaySelection::PodcastSubscriptionRecommendation {
@@ -728,7 +951,10 @@ impl MusicClient {
                         PlaybackCommand::Replace {
                             resources,
                             index,
-                            source: json!({"kind":"local","revision":revision}),
+                            source: external::anchor(
+                                json!({"kind":"local","revision":revision}),
+                                explicit_anchor,
+                            ),
                         },
                         attempt,
                         lease,
@@ -736,6 +962,178 @@ impl MusicClient {
                     )
                     .await?;
                 self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
+            PlaySelection::OfflinePlaylist {
+                id,
+                revision,
+                cached_at_ms,
+                start_id,
+                start_local,
+                double_click,
+            } => {
+                let offline = self
+                    .offline_playlist_queue(
+                        &token,
+                        &id,
+                        &revision,
+                        cached_at_ms,
+                        start_id.as_deref().map(|id| (id, start_local)),
+                        preserve.is_some(),
+                    )
+                    .await?;
+                if double_click && let Some(lease) = lease {
+                    let row = &offline.resources[offline.index];
+                    let song = if row["local_id"].is_string() {
+                        super::queue_click::TableSong::IndexedLocal(row)
+                    } else {
+                        super::queue_click::TableSong::OfflineDownload(row)
+                    };
+                    if let Some(state) = self
+                        .toggle_active_song_row(
+                            &token,
+                            song,
+                            attempt,
+                            lease,
+                            &offline.guard,
+                            preserve.as_ref(),
+                        )
+                        .await?
+                    {
+                        self.session.check_generation(&token)?;
+                        return project(&state, &token);
+                    }
+                }
+                let state = if let Some(snapshot) = preserve {
+                    let lease = lease.ok_or(Error::StaleResponse)?;
+                    self.focus.check(lease, Owner::Audio)?;
+                    let resource = offline
+                        .resources
+                        .into_iter()
+                        .next()
+                        .ok_or(Error::QueueChanged)?;
+                    let policy = if resource["local_id"].is_string() {
+                        RetainedRow::Local
+                    } else {
+                        RetainedRow::OfflineDownload
+                    };
+                    self.play_retained_queue_row_with_source(
+                        &token,
+                        snapshot,
+                        (resource, offline.source),
+                        lease,
+                        policy,
+                        Some(offline.guard),
+                    )
+                    .await?
+                } else {
+                    let room = self.together_external_authority(&token, external_room.clone());
+                    let offline_guard = offline.guard;
+                    self.submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources: offline.resources,
+                            index: offline.index,
+                            source: external::anchor(offline.source, explicit_anchor),
+                        },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
+                        Some(Cancellation::new(move || {
+                            !offline_guard.is_cancelled() && !room.is_cancelled()
+                        })),
+                    )
+                    .await?
+                };
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+            PlaySelection::MixedPlaylist {
+                id,
+                revision,
+                start,
+                quality,
+                double_click,
+            } => {
+                let mixed = self
+                    .mixed_playlist_selection(
+                        &token,
+                        super::mixed_playlist::MixedRequest {
+                            id: &id,
+                            revision: &revision,
+                            start,
+                            quality,
+                            selected_only: preserve.is_some(),
+                            attempt,
+                        },
+                    )
+                    .await?;
+                if double_click && let Some(lease) = lease {
+                    let row = &mixed.resources[mixed.index];
+                    let song = if row["local_id"].is_string() {
+                        super::queue_click::TableSong::IndexedLocal(row)
+                    } else {
+                        super::queue_click::TableSong::Catalog(
+                            row["id"].as_str().ok_or(Error::QueueChanged)?,
+                        )
+                    };
+                    if let Some(state) = self
+                        .toggle_active_song_row(
+                            &token,
+                            song,
+                            attempt,
+                            lease,
+                            &mixed.guard,
+                            preserve.as_ref(),
+                        )
+                        .await?
+                    {
+                        self.session.check_generation(&token)?;
+                        return project(&state, &token);
+                    }
+                }
+                let state = if let Some(snapshot) = preserve {
+                    let lease = lease.ok_or(Error::StaleResponse)?;
+                    self.focus.check(lease, Owner::Audio)?;
+                    let resource = mixed
+                        .resources
+                        .into_iter()
+                        .next()
+                        .ok_or(Error::QueueChanged)?;
+                    let policy = if resource["local_id"].is_string() {
+                        RetainedRow::Local
+                    } else {
+                        RetainedRow::Catalog
+                    };
+                    self.play_retained_queue_row_with_source(
+                        &token,
+                        snapshot,
+                        (resource, mixed.source),
+                        lease,
+                        policy,
+                        Some(mixed.guard),
+                    )
+                    .await?
+                } else {
+                    let room = self.together_external_authority(&token, external_room.clone());
+                    let mixed_guard = mixed.guard;
+                    self.submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources: mixed.resources,
+                            index: mixed.index,
+                            source: external::anchor(mixed.source, explicit_anchor),
+                        },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
+                        Some(Cancellation::new(move || {
+                            !mixed_guard.is_cancelled() && !room.is_cancelled()
+                        })),
+                    )
+                    .await?
+                };
+                self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
             PlaySelection::MvRelated {
@@ -957,7 +1355,11 @@ impl MusicClient {
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::ListenedBookChapter { .. }
+                    | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }
+                    | PlaySelection::MixedPlaylist { .. }
+                    | PlaySelection::SortedPlaylist { .. }
+                    | PlaySelection::OfflinePlaylist { .. }
                     | PlaySelection::LocalBatch { .. }
                     | PlaySelection::LocalBatchAdd { .. }
                     | PlaySelection::Podcast { .. }
@@ -967,6 +1369,7 @@ impl MusicClient {
                     | PlaySelection::SearchArtistCard { .. }
                     | PlaySelection::SearchPodcastCard { .. }
                     | PlaySelection::SearchPodcastRow { .. }
+                    | PlaySelection::SearchVoiceMenu { .. }
                     | PlaySelection::PodcastBrowseVoice { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {
@@ -1053,10 +1456,13 @@ impl MusicClient {
                         let detail = PlaylistApi::new(api).detail(&json!(id)).await?;
                         let ids =
                             super::playlist_batch::selected_ids(&id, &detail, &ids, &revision)?;
-                        let source = super::origin::named(
+                        let mut source = super::origin::named(
                             json!({"kind":"playlist","id":id}),
                             super::origin::resource_name(&detail, &id),
                         );
+                        if let Some(trial) = self.ordinary_playlist_trial(&selection_token, &id, &detail)? {
+                            source["trial_mode"] = json!(trial);
+                        }
                         Ok((ids, 0, quality, source))
                     }
                     PlaySelection::Playlist {
@@ -1106,7 +1512,11 @@ impl MusicClient {
                             json!({"kind":"playlist","id":id,"history_resource":history}),
                             super::origin::resource_name(detail, &id),
                         );
-                        if let Some(trial) = zone_trial {
+                        let trial = match zone_trial {
+                            Some(trial) => Some(trial),
+                            None => self.ordinary_playlist_trial(&selection_token, &id, detail)?,
+                        };
+                        if let Some(trial) = trial {
                             source["trial_mode"] = json!(trial);
                         }
                         if clears_playlist {
@@ -1138,7 +1548,7 @@ impl MusicClient {
             if let Some(state) = self
                 .toggle_active_song_row(
                     &token,
-                    id,
+                    super::queue_click::TableSong::Catalog(id),
                     attempt,
                     lease.ok_or(Error::StaleResponse)?,
                     guard,
@@ -1164,7 +1574,15 @@ impl MusicClient {
                 })
                 .await?;
             for (id, song) in chunk.iter().zip(songs.songs) {
-                let song = song.as_ref().map(mapping::song_metadata).transpose()?;
+                let song = song
+                    .as_ref()
+                    .map(|song| {
+                        mapping::song_metadata_with_privilege(
+                            song,
+                            id.as_str().and_then(|id| songs.privileges.get(id)),
+                        )
+                    })
+                    .transpose()?;
                 let mut resource = json!({"id":id,"level":quality.as_str(),"dt":song.as_ref().map(|s|&s["dt"]),"missing":song.is_none(),"song":song});
                 if let Some(trial) = source.get("trial_mode") {
                     resource["trial_mode"] = trial.clone();
@@ -1222,17 +1640,24 @@ impl MusicClient {
                 .await?
             }
         } else {
+            let room = self.together_external_authority(&token, external_room);
+            let source_guard = Cancellation::new(move || {
+                !room.is_cancelled()
+                    && source_guard
+                        .as_ref()
+                        .is_none_or(|source| !source.is_cancelled())
+            });
             self.submit_selection_with_source(
                 &token,
                 PlaybackCommand::Replace {
                     resources,
                     index,
-                    source,
+                    source: external::anchor(source, explicit_anchor),
                 },
                 attempt,
                 lease,
                 prepared.as_ref(),
-                source_guard,
+                Some(source_guard),
             )
             .await?
         };

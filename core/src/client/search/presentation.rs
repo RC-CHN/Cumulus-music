@@ -302,6 +302,8 @@ mod tests {
                         track: mapping::track(&json!({"id":id,"name":"合成曲目","ar":[],"al":{}}))
                             .unwrap(),
                         queue_drop_receipt: None,
+                        group_next_right: None,
+                        group_download: None,
                         mv_id: Some("9".into()),
                         replacement_mv: false,
                         vip_badge: None,
@@ -310,6 +312,7 @@ mod tests {
                         hint: Some(TrackHint::Alias {
                             text: format!("合成别名{id}"),
                         }),
+                        table_hint: None,
                         explicit: true,
                         original_recording: true,
                         reasons: vec![],
@@ -326,6 +329,7 @@ mod tests {
             next_offset: 0,
             correction: None,
             correction_parts: None,
+            correction_receipt: None,
             unavailable_count: 0,
             notice: None,
             empty_title: None,

@@ -1,4 +1,4 @@
-use super::{control::Control, files, *};
+use super::{admission::require_new_catalog_task, control::Control, dispatch::Dispatch, files, *};
 use crate::download::directory::gate as directory_gate;
 use crate::{
     Error, Result,
@@ -13,7 +13,10 @@ use crate::{
 use serde_json::Value;
 use std::{
     fs,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 pub(in crate::download) const KIND: &str = "download_tasks_v1";
@@ -35,6 +38,32 @@ pub(super) struct TaskDestination {
     pub(super) identity: files::Identity,
 }
 
+#[derive(Default)]
+struct CreateFence<'a> {
+    permission: Option<&'a dyn Fn() -> Result<()>>,
+    catalog_unique: bool,
+    cancelled: Option<&'a AtomicBool>,
+}
+
+impl CreateFence<'_> {
+    fn check_cancelled(&self) -> Result<()> {
+        if self
+            .cancelled
+            .is_some_and(|flag| flag.load(Ordering::Acquire))
+        {
+            return Err(Error::Cancelled);
+        }
+        Ok(())
+    }
+
+    fn check(&self) -> Result<()> {
+        if let Some(permission) = self.permission {
+            permission()?;
+        }
+        self.check_cancelled()
+    }
+}
+
 /// Owns a newly created, still private work directory until its task is durable.
 pub(super) struct StagedTask {
     task: Option<DownloadTask>,
@@ -42,8 +71,8 @@ pub(super) struct StagedTask {
 }
 
 impl StagedTask {
-    pub(super) fn task(&self) -> &DownloadTask {
-        self.task.as_ref().expect("staged download")
+    pub(super) fn task_mut(&mut self) -> &mut DownloadTask {
+        self.task.as_mut().expect("staged download")
     }
 
     pub(super) fn commit(mut self) -> DownloadTask {
@@ -72,6 +101,10 @@ pub(super) fn creation_clock() -> Result<u64> {
 }
 
 impl DownloadService {
+    pub(crate) fn has_transfer_control(&self, id: &str) -> Result<bool> {
+        Ok(self.store.get(&self.owner, CONTROL, id)?.is_some())
+    }
+
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
         Self::with_backend(
             session,
@@ -141,6 +174,36 @@ impl DownloadService {
         self.guard(token)?;
         self.read(id)
     }
+    pub(crate) fn get_ordered_for(
+        &self,
+        token: &SessionToken,
+        ids: &[String],
+    ) -> Result<Vec<DownloadTask>> {
+        self.guard(token)?;
+        for id in ids {
+            valid_id(id)?;
+        }
+        let records = self.store.get_ordered(&self.owner, KIND, ids)?;
+        if records.len() != ids.len() {
+            return Err(Error::State("download task count mismatch"));
+        }
+        let result = ids
+            .iter()
+            .zip(records)
+            .map(|(id, value)| {
+                let task: DownloadTask = serde_json::from_value(
+                    value.ok_or(Error::State("download does not belong to this account"))?,
+                )?;
+                if &task.id != id {
+                    return Err(Error::State("download task ID mismatch"));
+                }
+                Ok(task)
+            })
+            .collect::<Result<_>>()?;
+        self.guard(token)?;
+        Ok(result)
+    }
+
     pub fn list(&self) -> Result<Vec<DownloadTask>> {
         let token = self.session.token()?;
         self.guard(&token)?;
@@ -166,18 +229,43 @@ impl DownloadService {
         let value = store.completed_song_publication(&owner, song)?;
         session.check_generation(token)?;
         value
-            .map(|(id, value)| {
-                let task: DownloadTask = serde_json::from_value(value)?;
-                if task.id != id
-                    || task.song_id != song
-                    || task.origin != DownloadOrigin::Song
-                    || task.status != DownloadStatus::Complete
-                {
-                    return Err(Error::State("download publication identity mismatch"));
-                }
-                Ok(task)
-            })
+            .map(|(id, raw)| Self::publication(song, &id, raw))
             .transpose()
+    }
+
+    /// At most two rows per requested ID, through the exact owner/song index.
+    /// Do not enumerate unrelated publications to check a playlist page.
+    pub(crate) fn published_catalog_songs(
+        session: &AccountSession,
+        token: &SessionToken,
+        wanted: &[String],
+    ) -> Result<std::collections::HashMap<String, DownloadTask>> {
+        let store = session.persistent_store()?;
+        session.with_token(token, |owner| {
+            store.read_snapshot(|tx| {
+                let mut found = std::collections::HashMap::new();
+                for song in wanted {
+                    if let Some((id, raw)) = tx.completed_song_publication(owner, song)?
+                        && let Ok(task) = Self::publication(song, &id, raw)
+                    {
+                        found.insert(song.clone(), task);
+                    }
+                }
+                Ok(found)
+            })
+        })
+    }
+
+    fn publication(song: &str, id: &str, raw: Value) -> Result<DownloadTask> {
+        let task: DownloadTask = serde_json::from_value(raw)?;
+        if task.id != id
+            || task.song_id != song
+            || task.origin != DownloadOrigin::Song
+            || task.status != DownloadStatus::Complete
+        {
+            return Err(Error::State("download publication identity mismatch"));
+        }
+        Ok(task)
     }
 
     /// A downloaded queue row already carries a task key. Check that key in
@@ -279,7 +367,8 @@ impl DownloadService {
         origin: DownloadOrigin,
         song: Option<Value>,
     ) -> Result<DownloadTask> {
-        self.create_default_from_with(song_id, options, origin, song, None, || {})
+        let _directory = directory_gate::lock(&self.store, &self.owner)?;
+        self.create_configured(song_id, options, origin, song, CreateFence::default())
     }
 
     pub(crate) fn create_guarded_song(
@@ -287,39 +376,61 @@ impl DownloadService {
         song_id: &Value,
         options: DownloadOptions,
         permission: &dyn Fn() -> Result<()>,
+        cancelled: &AtomicBool,
         committed: impl FnOnce(),
     ) -> Result<DownloadTask> {
-        self.create_default_from_with(
+        let _directory = directory_gate::lock(&self.store, &self.owner)?;
+        let task = self.create_configured(
             song_id,
             options,
             DownloadOrigin::Song,
             None,
-            Some(permission),
-            committed,
+            CreateFence {
+                permission: Some(permission),
+                catalog_unique: true,
+                cancelled: Some(cancelled),
+            },
+        )?;
+        committed();
+        Ok(task)
+    }
+
+    pub(super) fn create_catalog_song_locked(
+        &self,
+        song_id: &Value,
+        options: DownloadOptions,
+        cancelled: &AtomicBool,
+    ) -> Result<DownloadTask> {
+        self.create_configured(
+            song_id,
+            options,
+            DownloadOrigin::Song,
+            None,
+            CreateFence {
+                catalog_unique: true,
+                cancelled: Some(cancelled),
+                ..Default::default()
+            },
         )
     }
 
-    fn create_default_from_with(
+    fn create_configured(
         &self,
         song_id: &Value,
         options: DownloadOptions,
         origin: DownloadOrigin,
         song: Option<Value>,
-        permission: Option<&dyn Fn() -> Result<()>>,
-        committed: impl FnOnce(),
+        fence: CreateFence<'_>,
     ) -> Result<DownloadTask> {
-        let _directory = directory_gate::lock(&self.store, &self.owner)?;
         self.guard(&self.session.token()?)?;
-        if let Some(permission) = permission {
-            permission()?;
-        }
+        fence.check()?;
         directory_gate::require(&self.store, &self.owner, None)?;
         let settings: crate::download::directory::DirectorySettings = serde_json::from_value(
             self.store
                 .get(&self.owner, directory_gate::SETTINGS, "settings")?
                 .ok_or(Error::State("download directory is not configured"))?,
         )?;
-        let task = self.create_inner_with(
+        self.create_inner_with(
             song_id,
             DownloadDestination::Named {
                 root: settings.root,
@@ -329,10 +440,8 @@ impl DownloadService {
             options,
             origin,
             song,
-            permission,
-        )?;
-        committed();
-        Ok(task)
+            fence,
+        )
     }
     pub fn create(
         &self,
@@ -351,7 +460,14 @@ impl DownloadService {
         origin: DownloadOrigin,
         song: Option<Value>,
     ) -> Result<DownloadTask> {
-        self.create_inner_with(song_id, destination, options, origin, song, None)
+        self.create_inner_with(
+            song_id,
+            destination,
+            options,
+            origin,
+            song,
+            CreateFence::default(),
+        )
     }
 
     fn create_inner_with(
@@ -361,7 +477,7 @@ impl DownloadService {
         options: DownloadOptions,
         origin: DownloadOrigin,
         song: Option<Value>,
-        permission: Option<&dyn Fn() -> Result<()>>,
+        fence: CreateFence<'_>,
     ) -> Result<DownloadTask> {
         let token = self.session.token()?;
         self.guard(&token)?;
@@ -403,7 +519,7 @@ impl DownloadService {
             destination,
             root,
         };
-        let staged = self.stage_task(
+        let mut staged = self.stage_task(
             uuid::Uuid::new_v4().simple().to_string(),
             creation_clock()?,
             song_id,
@@ -412,10 +528,21 @@ impl DownloadService {
             (origin, song),
         )?;
         files::sync(&destination.root)?;
-        if let Some(permission) = permission {
-            permission()?;
-        }
-        self.save_current(&token, staged.task())?;
+        fence.check()?;
+        self.session.with_token(&token, |owner| {
+            if owner != self.owner {
+                return Err(Error::StaleResponse);
+            }
+            self.store.transaction(|tx| {
+                let task = staged.task_mut();
+                if fence.catalog_unique {
+                    require_new_catalog_task(tx, owner, &task.song_id)?;
+                }
+                task.dispatch = Some(Dispatch::new(Dispatch::reserve(tx, owner)?, 0));
+                tx.put(owner, KIND, &task.id, &serde_json::to_value(&*task)?)?;
+                fence.check_cancelled()
+            })
+        })?;
         Ok(staged.commit())
     }
 
@@ -428,7 +555,7 @@ impl DownloadService {
         mut options: DownloadOptions,
         (origin, song): (DownloadOrigin, Option<Value>),
     ) -> Result<StagedTask> {
-        options.cover &= options.tags || options.container != OutputContainer::Audio;
+        options.normalize();
         files::directory(&location.root, &location.identity)?;
         let lock = self.lock(&id)?;
         let work = location.root.join(format!(".cumulus-{id}"));
@@ -444,6 +571,7 @@ impl DownloadService {
             status: DownloadStatus::Queued,
             phase: DownloadPhase::Authorize,
             created_ms,
+            dispatch: None,
             completed_ms: None,
             bytes: 0,
             authorization_count: 0,
@@ -490,14 +618,25 @@ impl DownloadService {
                 "download integrity failure requires an explicit restart",
             ));
         }
+        let readmission = matches!(task.status, DownloadStatus::Paused | DownloadStatus::Error);
         task.status = DownloadStatus::Queued;
         task.last_error = None;
         task.service_code = None;
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |owner| {
+            if owner != self.owner {
+                return Err(Error::StaleResponse);
+            }
             self.store.transaction(|tx| {
-                tx.delete(&self.owner, CONTROL, id)?;
-                tx.put(&self.owner, KIND, id, &serde_json::to_value(&task)?)?;
-                Ok(())
+                if Control::read_tx(tx, owner, id)? == Some(DownloadAction::Cancel) {
+                    return Err(Error::State("download cancellation already requested"));
+                }
+                // Explicit Resume of a stopped task is a new admission.
+                // Repeated enqueue of already runnable work does not move it.
+                if readmission {
+                    task.dispatch = Some(Dispatch::new(Dispatch::reserve(tx, owner)?, 0));
+                }
+                tx.delete(owner, CONTROL, id)?;
+                tx.put(owner, KIND, id, &serde_json::to_value(&task)?)
             })
         })?;
         Ok(task)
@@ -525,15 +664,24 @@ impl DownloadService {
                 }
                 let old = Control::read_tx(tx, &self.owner, id)?;
                 if old != Some(DownloadAction::Cancel) {
-                    tx.put(&self.owner, CONTROL, id, &serde_json::to_value(action)?)?;
+                    Control::record(tx, &self.owner, id, action)?;
                 }
                 Ok(())
             })
         })?;
+        self.settle_pending_control(&token, id)
+    }
+
+    pub(super) fn settle_pending_control(
+        &self,
+        token: &SessionToken,
+        id: &str,
+    ) -> Result<DownloadTask> {
+        self.guard(token)?;
         match self.lock(id) {
             Ok(_lock) => {
                 if directory_gate::active(&self.store, &self.owner)?.is_some() {
-                    return self.get(id);
+                    return self.get_for(token, id);
                 }
                 let mut task = self.read(id)?;
                 if matches!(
@@ -549,16 +697,16 @@ impl DownloadService {
                     .map(serde_json::from_value)
                     .transpose()?;
                 if pending == Some(DownloadAction::Cancel) {
-                    self.cancel_task(&token, &mut task)?;
-                } else if !task.needs_transfer_restart() {
+                    self.cancel_task(token, &mut task)?;
+                } else if pending == Some(DownloadAction::Pause) && !task.needs_transfer_restart() {
                     task.status = DownloadStatus::Paused;
-                    self.save_current(&token, &task)?;
+                    self.save_current(token, &task)?;
                 }
             }
             Err(Error::MutationBusy) => (),
             Err(e) => return Err(e),
         }
-        self.get(id)
+        self.get_for(token, id)
     }
 }
 fn valid_id(id: &str) -> Result<()> {
@@ -624,6 +772,7 @@ mod admission_tests {
                     Err(Error::StaleResponse)
                 }
             },
+            &AtomicBool::new(false),
             || panic!("stale intent was reported as committed"),
         );
         assert!(matches!(result, Err(Error::StaleResponse)));

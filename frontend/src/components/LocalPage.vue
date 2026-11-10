@@ -27,6 +27,7 @@ const props = defineProps<{
   matching: LocalMatchingModel;
   playable: boolean;
   queueable: boolean;
+  canAddToPlaylist?: boolean;
   queueDropEnabled?: boolean;
   queueLocal: (query: LocalQuery, revision: string, trackId?: string) => Promise<unknown>;
   currentId?: string;
@@ -35,6 +36,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   play: [query: LocalQuery, revision: string, id: string | null];
   comments: [id: string, title: string];
+  addToPlaylist: [track: LocalTrack, anchor: HTMLElement | null];
   queueDrag: [event: PointerEvent, source: LocalQueueDropSource];
   batch: [query: LocalQuery, checkpoint: LocalListCheckpoint];
 }>();
@@ -224,6 +226,16 @@ const trackMenuItems = computed(() => [
     icon: 'next' as const,
     disabled: !props.queueable || adding.value || !trackRow.value || trackRow.value.track.missing,
   },
+  ...(props.canAddToPlaylist
+    ? [
+        {
+          key: 'add_to_playlist',
+          label: '添加本地曲目到歌单',
+          icon: 'star' as const,
+          disabled: !trackRow.value || trackRow.value.track.missing,
+        },
+      ]
+    : []),
   {
     key: 'directory',
     label: '打开文件所在目录',
@@ -322,6 +334,17 @@ async function trackAction(action: string) {
   if (action === 'next') {
     if (props.queueable && !adding.value && !trackRow.value?.track.missing)
       await queueScope({ ...query.value }, target.listRevision, target.id);
+    return;
+  }
+  if (action === 'add_to_playlist') {
+    const row = trackRow.value;
+    if (!props.canAddToPlaylist || !row || row.track.missing) return;
+    const anchor = Array.from(
+      pageRoot.value?.querySelectorAll<HTMLElement>('[data-local-id]') ?? [],
+    )
+      .find((element) => element.dataset.localId === target.id)
+      ?.querySelector<HTMLElement>('[data-local-track-menu]');
+    emit('addToPlaylist', row, anchor ?? null);
     return;
   }
   if (action === 'hide_track') {

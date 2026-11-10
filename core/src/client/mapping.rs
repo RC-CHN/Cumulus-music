@@ -108,8 +108,19 @@ pub(super) fn online_play_all_eligible(row: &Value) -> bool {
 /// Whitelist catalog metadata for native queues. Signed media links stay out;
 /// bounded title arrays stay native until the selected-player projection.
 pub(super) fn song_metadata(value: &Value) -> Result<Value> {
+    song_metadata_with_privilege(value, None)
+}
+
+pub(super) fn song_metadata_with_privilege(
+    value: &Value,
+    privilege: Option<&Value>,
+) -> Result<Value> {
     let view = track(value)?;
-    Ok(projected_song_metadata(&view))
+    let mut song = projected_song_metadata(&view);
+    if super::together::external::catalog_unsupported(value, privilege) {
+        song[super::together::external::BLOCKED] = Value::Bool(true);
+    }
+    Ok(song)
 }
 
 pub(super) fn projected_song_metadata(view: &TrackView) -> Value {

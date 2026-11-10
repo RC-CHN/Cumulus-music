@@ -44,15 +44,45 @@ def verify(output, screenshots):
     return result
 
 
+def verify_batch(output, screenshots):
+    stages = ('batch_picker', 'batch_cancel', 'batch_uncertain', 'batch_reconciled')
+
+    def read(name):
+        return json.loads((output / name).read_text(encoding='utf-8'))
+
+    result = read('complete.json')
+    assert result['ok'] and result['batchCollect'] and result['stageCount'] == len(stages)
+    assert result['realMusicRequests'] == result['realAccountWrites'] == 0
+    assert len(list(output.glob('ux_*.json'))) == len(stages)
+    if screenshots:
+        assert len(list(output.glob('ux_*.png'))) == len(stages)
+    rows = [read(f'ux_{i:02d}_{stage}.json') for i, stage in enumerate(stages, 1)]
+    assert rows[0]['summary'] == '已选 4 项下载，将收藏 2 首歌曲。2 项歌曲无法收藏，已略过。'
+    assert rows[1]['exactReturnFocus']
+    assert rows[3]['confirmed'] == '已收藏到歌单'
+    if screenshots:
+        paint = read('paint-ux_03_batch_uncertain.json')
+        assert len(paint['samples']) == 1 and paint['samples'][0]['ok']
+    reports = [row['syntheticCollection'] for row in [*rows, result]]
+    assert [report['writes'] for report in reports] == [0, 0, 1, 1, 1]
+    expected = [{'pid': '2', 'trackIds': '["3","4"]', 'op': 'add'}]
+    for report in reports:
+        assert report['creates'] == 0
+        assert report['inlineAddPayloads'] == expected[:report['writes']]
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path, help='Same-run packaged Windows media runtime')
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--batch', action='store_true', help='Verify the native ordered batch collector')
     args = parser.parse_args()
-    if os.name != 'posix':
-        parser.error('this proof runner currently targets Linux GTK/WebKit')
+    if os.name == 'nt' and (args.runtime is None or args.screenshots):
+        parser.error('Windows requires --runtime and currently records JSON checkpoints only')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -66,21 +96,30 @@ def main():
         CUMULUS_DOWNLOAD_COLLECTION_PROOF='1',
         CUMULUS_PLAYLIST_COLLECT_PROOF='1',
     )
+    if args.batch:
+        env['CUMULUS_DOWNLOAD_BATCH_COLLECT_PROOF'] = '1'
     for key, name in (
         ('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
-        ('XDG_RUNTIME_DIR', 'runtime'),
+        ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local'),
     ):
         directory = root / 'os-profile' / name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
+    if args.runtime:
+        runtime = args.runtime.resolve(strict=True)
+        if os.name == 'nt' and not (runtime / 'libmpv-2.dll').is_file():
+            parser.error('Windows runtime does not contain libmpv-2.dll')
+        env['MPV_DLL_DIR_CUMULUS'] = str(runtime)
+        env['PATH'] = str(runtime) + os.pathsep + env.get('PATH', '')
     output = root / 'first'
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(strict=True), env, log, output, args.screenshots)
     failed = output / 'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, f'probe exit {status}'
-    result = verify(output, args.screenshots)
-    result.update(actualWebView=True, windowsVisualVerified=False)
+    result = (verify_batch if args.batch else verify)(output, args.screenshots)
+    result.update(actualWebView=True, webViewRuntime='WebView2' if os.name == 'nt' else 'WebKitGTK',
+                  windowsVisualVerified=False)
     (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({key: result[key] for key in ('ok', 'stageCount', 'syntheticCollection')}))
 

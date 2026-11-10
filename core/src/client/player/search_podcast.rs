@@ -124,20 +124,55 @@ impl MusicClient {
         {
             return Ok((SearchPodcastRowPlan::Play(command), guard));
         }
+        let preparing = {
+            let prepared = self.pending_preparation_guard(prepared, controller.clone());
+            let authority = guard.clone();
+            Cancellation::new(move || !authority.is_cancelled() && !prepared.is_cancelled())
+        };
+        let source =
+            json!({"kind":"search_podcast_row","id":radio.id,"scene":"unknown","pldScene":"audio"});
+        let next = gesture == SearchPodcastRowGesture::Next;
+        if next {
+            if matches!(
+                before.state,
+                PlaybackStatus::Preparing | PlaybackStatus::Loading
+            ) || (!queue.items.is_empty() && queue.current.is_none())
+            {
+                return Err(Error::State("search podcast queue is not settled"));
+            }
+            if !queue.items.is_empty() {
+                let plan = self
+                    .prepare_radio_playback(
+                        token,
+                        &api,
+                        &radio,
+                        &preparing,
+                        RadioPlaybackStart::QueueNext,
+                    )
+                    .await?;
+                // Keep the loaded entry verbatim and edit both queue orders
+                // without acquiring audio focus or preparing a new decoder.
+                let queue = search_podcast_next_queue(queue, plan.resources, source);
+                return Ok((
+                    SearchPodcastRowPlan::QueueOnly(QueueUpdate {
+                        expected: before.fence(),
+                        queue,
+                        transport: None,
+                    }),
+                    guard,
+                ));
+            }
+        }
         // M622's menu label 播放 is PlayAll; it is not the index's Play.
-        let replace = gesture == SearchPodcastRowGesture::Menu
-            || self.replace_queue_on_double_click(token)?;
+        let replace = !next
+            && (gesture == SearchPodcastRowGesture::Menu
+                || self.replace_queue_on_double_click(token)?);
         let mode =
             if replace && !matches!(radio.raw["categoryId"].as_i64(), Some(3001 | 10002 | 2001)) {
                 PlaybackMode::Sequential
             } else {
                 queue.mode
             };
-        let preparing = {
-            let prepared = self.pending_preparation_guard(prepared, controller.clone());
-            let authority = guard.clone();
-            Cancellation::new(move || !authority.is_cancelled() && !prepared.is_cancelled())
-        };
         let RadioPlaybackPlan { resources, start } = self
             .prepare_radio_playback(
                 token,
@@ -165,8 +200,6 @@ impl MusicClient {
                 "podcast checkpoint is not in the playback list",
             ));
         }
-        let source =
-            json!({"kind":"search_podcast_row","id":radio.id,"scene":"unknown","pldScene":"audio"});
         if let Some(start) = &start
             && before.play_id.is_some()
             && matches!(
@@ -279,6 +312,44 @@ impl MusicClient {
         };
         Ok((plan, guard))
     }
+}
+
+fn search_podcast_next_queue(
+    queue: crate::playback::QueueSnapshot,
+    resources: Vec<serde_json::Value>,
+    source: serde_json::Value,
+) -> crate::playback::QueueSnapshot {
+    use super::{local_batch::random_order, queue_playlist::insert_collection_bound};
+    use crate::playback::PlaybackMode;
+    use std::collections::HashSet;
+
+    let shuffled = (queue.mode == PlaybackMode::Random).then(|| {
+        resources
+            .iter()
+            .filter_map(|row| row["voice_id"].as_str().map(str::to_owned))
+            .collect::<HashSet<_>>()
+    });
+    let mut queue = insert_collection_bound(queue, resources, source, false, true, false);
+    if let Some(shuffled) = shuffled {
+        let inserted: Vec<_> = queue
+            .items
+            .iter()
+            .filter(|row| {
+                queue.current.as_ref() != Some(&row.entry_id)
+                    && row.resource["voice_id"]
+                        .as_str()
+                        .is_some_and(|id| shuffled.contains(id))
+            })
+            .map(|row| row.entry_id.as_str())
+            .collect();
+        if let Some(first) = inserted.first() {
+            // M1384 setRandomNextInPlayingList anchors the first inserted
+            // episode only. The visible collection keeps its listing order.
+            let batch = inserted.iter().copied().collect();
+            queue.order = random_order(&queue, &batch, first, true, &mut rand::rng());
+        }
+    }
+    queue
 }
 
 fn search_podcast_row_queue(

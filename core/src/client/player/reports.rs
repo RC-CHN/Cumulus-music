@@ -50,37 +50,21 @@ impl MusicClient {
         {
             return Err(Error::InvalidInput("podcasts do not accept lyric reports"));
         }
-        let song_id = match target {
-            LyricTarget::Song(id) | LyricTarget::Cloud(id) => id,
+        let song_id = match &target {
+            LyricTarget::Song(id) | LyricTarget::Cloud(id) => id.clone(),
             LyricTarget::Local(_) => {
-                let id = selected.resource["local_id"]
-                    .as_str()
-                    .ok_or(Error::StaleResponse)?
-                    .to_owned();
-                let context = self.local.context().await?;
-                let session = self.session.clone();
-                let expected = token.clone();
-                tokio::task::spawn_blocking(move || {
-                    context
-                        .library
-                        .online_mappings(&session, &expected, std::slice::from_ref(&id))?
-                        .remove(&id)
-                        .map(|v| v.song_id)
-                        .ok_or(Error::InvalidInput(
-                            "local lyric report requires an online match",
-                        ))
-                        .and_then(|id| {
-                            session.check_generation(&expected)?;
-                            Ok(id)
-                        })
-                })
-                .await
-                .map_err(|_| Error::State("lyric report mapping worker stopped"))??
+                return Err(Error::InvalidInput(
+                    "local lyric report requires an online match",
+                ));
             }
         };
         // Reuses M370's parsed selection. In particular a visible YRC layer
         // does not substitute yrc.version for the selected lrc.version.
         self.player_lyrics(epoch, play_id).await?;
+        let latest = self.lyric_context(epoch, play_id).await?;
+        if target != latest.target || !Arc::ptr_eq(&service, &latest.service) {
+            return Err(Error::StaleResponse);
+        }
         let parsed = service.snapshot()?.lyric;
         let current = self.player.controller().await?.snapshot();
         if current.account != token || current.play_id.as_deref() != Some(play_id) {

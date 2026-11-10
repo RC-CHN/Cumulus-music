@@ -1,13 +1,20 @@
-use cumulus_core::protocol::api::{Api, ApiFuture};
+use cumulus_core::{
+    Result,
+    protocol::{
+        api::{Api, ApiFuture},
+        pc_experiments::PcExperimentGroups,
+    },
+};
 use serde_json::{Value, json};
 use std::sync::{
     Mutex,
-    atomic::{AtomicBool, AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
 };
 
 use tokio::sync::Notify;
 
 pub const SETTING: &str = "/api/user/setting";
+pub const SETTING_UPDATE: &str = "/api/user/setting/update";
 pub const BATCH: &str = "/api/batch";
 pub const MIX: &str = "/api/pc/daily/rcmd/block";
 pub const RECENT: &str = "/api/pc/recent/listen/list";
@@ -23,9 +30,14 @@ pub const RANK_SONG: &str = "/api/single/sales-ranking/get";
 #[derive(Default)]
 pub struct Fixture {
     pub mode: AtomicU8,
+    pub recall: AtomicU8,
+    pub now: AtomicU64,
     pub hold_batch: AtomicBool,
     pub batch_started: Notify,
     pub release_batch: Notify,
+    pub hold_opt_out: AtomicBool,
+    pub opt_out_started: Notify,
+    pub release_opt_out: Notify,
     pub calls: Mutex<Vec<(String, Value, bool)>>,
 }
 
@@ -44,8 +56,8 @@ fn song(id: u64) -> Value {
             "url":"https://private.invalid/PRIVATE_MEDIA"}}
     })
 }
-fn general() -> Value {
-    json!({"code":200,"data":{"blocks":[
+fn general(recall: u8) -> Value {
+    let mut response = json!({"code":200,"data":{"blocks":[
         {"blockCode":"HOMEPAGE_BLOCK_PLAYLIST_RCMD","creatives":(701..712).map(playlist).collect::<Vec<_>>()},
         {"blockCode":"HOMEPAGE_BLOCK_ALL_LISTEN","creatives":[{"resources":[song(811),song(812),song(811),
             {"resourceId":999,"resourceExtInfo":{"songData":{"id":813,"name":"错配歌曲"}}}
@@ -56,7 +68,24 @@ fn general() -> Value {
         {"blockCode":"HOMEPAGE_MUSIC_PODCAST_RCMD_BLOCK","creatives":[{"resources":[
             {"resourceId":820,"resourceExtInfo":{"djProgram":{"id":820,"name":"合成单集","mainTrackId":901}}}
         ]}]}
-    ]}})
+    ]}});
+    if recall == 5 {
+        response["data"]["blocks"].as_array_mut().unwrap().push(json!({
+            "blockCode":"HOMEPAGE_BLOCK_HOT_RESOURCE",
+            "creatives":[{"resources":[{"resourceId":1,"resourceExtInfo":{"songData":{"id":2,"name":"错配召回"}}}]}]
+        }));
+    }
+    if recall == 1 || recall == 3 {
+        response["data"]["blocks"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "blockCode":"HOMEPAGE_BLOCK_HOT_RESOURCE",
+                "creatives":[{"resources":(911..919).map(song).collect::<Vec<_>>()},
+                             {"resources":(919..928).map(song).collect::<Vec<_>>()}]
+            }));
+    }
+    response
 }
 pub const SEED: &str = "/api/homepage/category/daily/song/list";
 fn mix() -> Value {
@@ -79,6 +108,30 @@ fn mix() -> Value {
     ]}}})
 }
 impl Api for Fixture {
+    fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        Ok((self.recall.load(Ordering::SeqCst) != 0).then(|| "fixture-bound".into()))
+    }
+
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, PcExperimentGroups> {
+        Box::pin(async move {
+            assert_eq!(revision, "fixture-bound");
+            let recall = self.recall.load(Ordering::SeqCst);
+            PcExperimentGroups::refreshed(&json!({"data":[
+                {"expName":"PH-PC-recallAndNewPlaylist","expGroupName":if recall == 3 { "c" } else { "t1" }},
+                {"expName":"PH-PC-RecallHomeContent","expGroupName":if recall == 4 { "c" } else { "t1" }},
+                {"expName":"PH-PC-newEcpm","expGroupName":"c"}
+            ]}))
+        })
+    }
+
+    fn observed_server_time_ms(&self) -> Option<u64> {
+        let now = self.now.load(Ordering::SeqCst);
+        (now > 0).then_some(now)
+    }
+
     fn request<'a>(&'a self, path: &'a str, args: Value, sensitive: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls
@@ -94,10 +147,17 @@ impl Api for Fixture {
                 SETTING => {
                     json!({"code":200,"setting":{"personalServiceSetting":if mode == 2 { 2 } else { 0 }}})
                 }
+                SETTING_UPDATE if self.hold_opt_out.load(Ordering::SeqCst) => {
+                    assert_eq!(args, json!({"personalServiceSetting":2}));
+                    self.opt_out_started.notify_one();
+                    self.release_opt_out.notified().await;
+                    self.mode.store(2, Ordering::SeqCst);
+                    json!({"code":200})
+                }
                 BATCH if mode == 1 => json!({"code":500}),
                 BATCH => json!({
                     "code":200,
-                    (GENERAL):general(),
+                    (GENERAL):general(self.recall.load(Ordering::SeqCst)),
                     (CUSTOM):{"code":200,"data":{"blocks":[{"creatives":[playlist(721)]}]}},
                     (BOOKS):{"code":200,"data":{"blockVOS":[{"creatives":[
                         {"creativeType":"voiceList","creativeId":837,"uiElement":{"mainTitle":{"title":"合成有声书"}}}
@@ -175,6 +235,16 @@ impl Api for Fixture {
                 }
                 "/api/w/nuser/account/get" | "/api/nuser/account/get" | "/api/login/status" => {
                     json!({"code":200,"account":{"id":42},"profile":{"userId":42,"nickname":"发现测试账号"}})
+                }
+                "/api/v3/song/detail" => {
+                    let ids: Vec<Value> =
+                        serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
+                    json!({"code":200,"songs":ids.iter().map(|row| json!({"id":row["id"],"name":"普通歌","dt":120_000})).collect::<Vec<_>>(),"privileges":[]})
+                }
+                "/api/song/enhance/player/url/v1" => {
+                    let ids: Vec<Value> =
+                        serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
+                    json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","md5":"fixture","expi":300,"level":"standard"}]})
                 }
                 "/api/user/playlist" => json!({"code":200,"playlist":[],"more":false}),
                 "/api/v6/playlist/detail" | "/api/v3/playlist/detail" => {

@@ -21,6 +21,10 @@ pub enum Error {
     Cancelled,
     #[error("queue changed in another host; reload before retrying")]
     QueueChanged,
+    #[error("the cached playlist has no eligible offline audio")]
+    OfflinePlaylistEmpty,
+    #[error("no selected resource is compatible with the current together room")]
+    TogetherSelectionUnsupported,
     #[error("playlist source changed after the drag was prepared")]
     PlaylistDropSourceChanged,
     #[error("album source changed after the drag was prepared")]

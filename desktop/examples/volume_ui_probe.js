@@ -23,12 +23,12 @@
   }
   const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'paused seek');playId=bar().dataset.playId;
  }
- async function capture(label){
+ async function capture(label,evidence={}){
   last=label;await sleep(300);
   assert(document.documentElement.scrollWidth<=innerWidth,'document overflow');assert(bar().dataset.state==='paused'&&Math.abs(Number(bar().dataset.position)-10)<.2,'transport unchanged');assert(bar().dataset.playId===playId,'volume/mode does not reload audio');assert(!one('.playback-message'),'no generic audio error or transport busy');assert(hit(trigger()),'volume icon reachable');
   const p=popup(),r=p&&rect(p),s=slider();
   if(p){assert(r.left>=8&&r.top>=8&&r.right<=innerWidth-8&&r.bottom<=innerHeight-8,'volume surface contained');assert(hit(s),'slider hit');assert(s.getAttribute('aria-orientation')==='vertical','vertical semantics');assert(Math.abs(rect(s).width-20)<.2&&Math.abs(rect(s).height-88)<.2,'native 88px vertical track');if(!p.classList.contains('volume-error'))assert(r.width===38&&r.height===132,'official volume surface dimensions');}
-  await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,visible:document.visibilityState==='visible',focused:document.hasFocus(),theme:document.documentElement.dataset.theme,volume:Number(bar().dataset.volume),unmuteVolume:Number(bar().dataset.unmuteVolume),mode:bar().dataset.mode,playId,position:Number(bar().dataset.position),contained:true,triggerHit:true,popup:p?{...r,displayed:Number(s.value),text:p.textContent,focusInside:p.contains(document.activeElement),sliderHit:hit(s),error:!!p.querySelector('[role="alert"]')}:null,paintSamples:r?[{x:r.left+5,y:r.top+8,color:getComputedStyle(p).backgroundColor}]:[]});
+  await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,visible:document.visibilityState==='visible',focused:document.hasFocus(),theme:document.documentElement.dataset.theme,volume:Number(bar().dataset.volume),unmuteVolume:Number(bar().dataset.unmuteVolume),mode:bar().dataset.mode,playId,position:Number(bar().dataset.position),contained:true,triggerHit:true,popup:p?{...r,displayed:Number(s.value),text:p.textContent,focusInside:p.contains(document.activeElement),sliderHit:hit(s),error:!!p.querySelector('[role="alert"]')}:null,paintSamples:r?[{x:r.left+5,y:r.top+8,color:getComputedStyle(p).backgroundColor}]:[],...evidence});
  }
  try{
   await wait(()=>trigger()&&!trigger().disabled&&one('.track-row .track-play:not(:disabled)'),'ready');
@@ -45,6 +45,24 @@
    const provides=one('#app').__vue_app__._context.provides;const client=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];const currentEpoch=(await invoke('account_snapshot')).epoch;
    const nativeVolume=value=>invoke('player_action',{epoch:currentEpoch,action:{kind:'volume',value}});
    const percent=()=>slider()?.getAttribute('aria-valuetext');
+   const page=one('.main-content'),control=one('.volume-control');
+   assert(page&&!control.contains(page)&&document.activeElement===slider(),'page wheel target outside focused volume control');
+   const pageWheel=deltaY=>!page.dispatchEvent(new WheelEvent('wheel',{deltaY,deltaX:deltaY===0?120:0,bubbles:true,cancelable:true}));
+   const runVolume=client.playerAction;let pageWrites=0;
+   client.playerAction=(...args)=>{if(args[1].kind==='volume')pageWrites++;return runVolume(...args);};
+   try{
+    assert(!pageWheel(0)&&pageWrites===0,'horizontal page wheel stays unhandled');
+    const openConsumed=pageWheel(-120);
+    assert(openConsumed,'visible volume popup consumes vertical wheel on the page');
+    await wait(()=>Number(bar().dataset.volume)===6,'page wheel adjusts the real volume by one step');
+    assert(pageWrites===1&&document.activeElement===slider(),'one native command, slider keeps focus');
+    await capture('wheel_page_open',{pageWheelConsumed:openConsumed,pageWheelWrites:pageWrites});
+    await close();
+    const closedConsumed=pageWheel(-120);
+    assert(!closedConsumed&&pageWrites===1,'closed volume popup leaves the page wheel alone');
+    await capture('wheel_page_closed',{pageWheelConsumed:closedConsumed,pageWheelWrites:pageWrites});
+   }finally{client.playerAction=runVolume;}
+   await open();slider().focus({preventScroll:true});
    await nativeVolume(.2);await wait(()=>Number(bar().dataset.volume)===.2&&percent()==='1%'&&slider().value==='1','nonzero fractional value displays 1%');await capture('fractional_low');
    click(trigger());await wait(()=>Number(bar().dataset.volume)===0&&Number(bar().dataset.unmuteVolume)===.2&&percent()==='0%','mute preserves the tiny original volume');
    click(trigger());await wait(()=>Number(bar().dataset.volume)===.2&&percent()==='1%','unmute restores exact tiny volume');

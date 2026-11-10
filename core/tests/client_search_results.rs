@@ -59,6 +59,15 @@ impl Api for Backend {
             self.request(path, args, false).await
         })
     }
+
+    fn request_search_with_correction_channel<'a>(
+        &'a self,
+        path: &'a str,
+        args: Value,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        self.request_search_with_default_context(path, args, revision)
+    }
 }
 fn fixture() -> (
     tempfile::TempDir,
@@ -95,6 +104,128 @@ fn query(category: C) -> SearchResultQuery {
     }
 }
 
+#[tokio::test]
+async fn voice_menu_reads_the_observed_episode_count_and_rejects_retired_authority() {
+    use cumulus_core::{client::dto::SearchVoiceMenuTarget, network_diagnostics::DefaultRoute};
+    const COUNT: &str = "/api/resource/commentInfo/list";
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let payloads: Value =
+        serde_json::from_str(include_str!("fixtures/search-results.json")).unwrap();
+    let mut all = payloads["all"].clone();
+    let best = json!({"blockCode":"search_block_best_match","resources":[payloads["voices"]["data"]["resources"][0].clone()]});
+    all["data"]["blocks"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, best);
+    *api.reply.lock().unwrap() = all;
+    let comprehensive = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::All))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let sections = comprehensive["sections"].as_array().unwrap();
+    let best = sections
+        .iter()
+        .find(|section| {
+            section["id"]
+                .as_str()
+                .unwrap()
+                .starts_with("search_block_best_match:")
+        })
+        .unwrap();
+    assert_eq!(best["items"][0]["kind"], "voice");
+    assert!(best["items"][0].get("menuReceipt").is_none());
+    let ordinary = sections
+        .iter()
+        .find(|section| section["category"] == "voices")
+        .unwrap();
+    assert!(ordinary["items"][0]["menuReceipt"].is_string());
+
+    *api.reply.lock().unwrap() = payloads["voices"].clone();
+    let classified = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::Voices))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let receipt = classified["sections"][0]["items"][0]["menuReceipt"]
+        .as_str()
+        .unwrap();
+    let target = |id: &str| -> SearchVoiceMenuTarget {
+        serde_json::from_value(json!({"receipt":receipt,"voiceId":id})).unwrap()
+    };
+    api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        client
+            .search_voice_menu(&epoch, target("402"), DefaultRoute::Present)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        client
+            .search_voice_directory_path(&epoch, target("402"))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let offline = client
+        .search_voice_menu(&epoch, target("401"), DefaultRoute::Missing)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(offline.value).unwrap(),
+        json!({"commentCount":null,"downloadComplete":false})
+    );
+    assert!(api.calls.lock().unwrap().is_empty());
+
+    *api.reply.lock().unwrap() =
+        json!({"code":200,"data":[{"threadId":"A_DJ_1_401","commentCount":54}]});
+    let online = client
+        .search_voice_menu(&epoch, target("401"), DefaultRoute::Present)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(online.value).unwrap(),
+        json!({"commentCount":54,"downloadComplete":false})
+    );
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        [(
+            COUNT.into(),
+            json!({"resourceType":1,"resourceIds":"[\"401\"]"})
+        )]
+    );
+    *api.reply.lock().unwrap() = json!({"code":503});
+    let fallback = client
+        .search_voice_menu(&epoch, target("401"), DefaultRoute::Present)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(fallback.value).unwrap()["commentCount"],
+        Value::Null
+    );
+
+    api.hold.store(true, Ordering::SeqCst);
+    let opening = client.search_voice_menu(&epoch, target("401"), DefaultRoute::Present);
+    let rotate = async {
+        api.started.notified().await;
+        api.revision.store(2, Ordering::SeqCst);
+        api.release.notify_one();
+    };
+    let (result, ()) = tokio::join!(opening, rotate);
+    assert!(matches!(
+        result,
+        Err(Error::StaleResponse | Error::QueueChanged)
+    ));
+}
+
+#[path = "support/search_correction_channel.rs"]
+mod search_correction_channel;
 #[path = "support/search_default_context.rs"]
 mod search_default_context;
 #[path = "support/search_privilege_refresh.rs"]
@@ -182,7 +313,7 @@ async fn podcast_search_projects_official_table_metadata_without_guessing() {
     query.offset = 6;
     query.limit = 10;
     let result = client.search_results(&epoch, query).await.unwrap().value;
-    assert!(result.more);
+    assert!(!result.more);
     assert_eq!(result.next_offset, 10);
     assert_eq!(result.unavailable_count, 1);
     let view = serde_json::to_value(result).unwrap();
@@ -910,4 +1041,94 @@ async fn comprehensive_voice_card_does_not_get_dedicated_table_author_action() {
         .unwrap();
     assert_eq!(voice["voice"]["creator"], "作者");
     assert!(voice.get("creatorId").is_none());
+}
+
+#[tokio::test]
+async fn dedicated_song_titles_keep_exact_row_alias_and_utf16_lyric_evidence() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"resources":[
+        {
+            "alia":["wrong outer alias"],
+            "extInfo":{
+                "songAlias":true,
+                "lyrics":{"txt":"🎵合成歌词","range":[{"first":2,"second":4}]}
+            },
+            "baseInfo":{"simpleSongData":{
+                "id":42,"name":"合成歌名","alia":["首选不是命中","别名合成段"],
+                "tns":["不应显示的翻译合成"],"extInfo":{"songAlias":"仅是标记"},
+                "lyrics":{"txt":"错误的内层歌词","range":[]}
+            }}
+        },
+        {
+            "extInfo":{"songAlias":false,"lyrics":{"txt":"另一行","range":[]}},
+            "baseInfo":{"simpleSongData":{
+                "id":42,"name":"同 ID 另一行","alia":["别名合成段"],"newSongExt":{"songAlias":true}
+            }}
+        },
+        {
+            "extInfo":{"songAlias":true,"lyrics":{"txt":"🎵合成","range":[{"first":1,"second":3}]}},
+            "baseInfo":{"simpleSongData":{"id":43,"name":"不完整范围","alia":[],"ala":["不能回退"]}}
+        },
+        {
+            "newSongExt":{"songAlias":true},
+            "lyric":{"txt":"旧字段歌词","range":[]},
+            "baseInfo":{"simpleSongData":{"id":44,"name":"旧别名键","ala":["第一普通别名","第二普通别名"]}}
+        },
+        {
+            "extInfo":{"songAlias":true},
+            "baseInfo":{"simpleSongData":{"id":45,"name":"不替换空别名","alia":["","第二合成别名"]}}
+        },
+        {
+            "extInfo":{"songAlias":true},
+            "baseInfo":{"simpleSongData":{"id":46,"name":"没有合并外层标签","extInfo":{},"alia":["合成别名"]}}
+        }
+    ]}});
+    let page = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::Songs))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let items = page["sections"][0]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 6);
+    assert_eq!(items[0]["track"]["id"], "42");
+    assert_eq!(items[1]["track"]["id"], "42");
+    assert_eq!(
+        items[0]["tableHint"],
+        json!({
+            "aliasParts":[{"text":"别名","match":false},{"text":"合成","match":true},{"text":"段","match":false}],
+            "lyricParts":[{"text":"🎵","highlight":false},{"text":"合成","highlight":true},{"text":"歌词","highlight":false}]
+        })
+    );
+    assert_eq!(
+        items[1]["tableHint"],
+        json!({"lyricParts":[{"text":"另一行","highlight":false}]})
+    );
+    assert_eq!(
+        items[3]["tableHint"],
+        json!({
+            "aliasParts":[{"text":"第一普通别名","match":false}],
+            "lyricParts":[{"text":"旧字段歌词","highlight":false}]
+        })
+    );
+    for index in [2, 4, 5] {
+        assert!(items[index].get("tableHint").is_none());
+    }
+    for row in items {
+        assert!(
+            row.get("hint").is_none(),
+            "the comprehensive hint is separate"
+        );
+        assert!(row.get("reasons").is_none());
+    }
+    assert_eq!(
+        api.calls.lock().unwrap().as_slice(),
+        [(
+            "/api/search/song/list/page".into(),
+            json!({"keyword":"合成","offset":0,"limit":30,"scene":"normal","needCorrect":true,"channel":"suggest"})
+        )]
+    );
 }

@@ -6,8 +6,16 @@ export interface PcPresentationView {
   searchExpanded: boolean;
   searchDense: boolean;
   guestSearchReady?: boolean;
+  podcastResume?: boolean;
+  effectCatalogueRevision?: string;
+  effectCatalogueNew?: boolean;
 }
 export interface PcPresentationClient {
   pcPresentation(epoch: string): Promise<PcPresentationView>;
   onPcPresentationChanged(listener: (view: PcPresentationView) => void): Promise<() => void>;
+}
+
+export interface EffectCataloguePresentation {
+  revision: string;
+  layout: 'legacy' | 'modern';
 }

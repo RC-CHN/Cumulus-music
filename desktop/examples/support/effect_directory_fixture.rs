@@ -10,6 +10,10 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_DIRECTORY_PROOF").is_some()
 }
 
+pub fn headphone_header() -> bool {
+    std::env::var_os("CUMULUS_EFFECT_HEADPHONE_HEADER_PROOF").is_some()
+}
+
 pub fn source_bypass_enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_DEVICE_SOURCE_BYPASS_PROOF").is_some()
 }
@@ -59,11 +63,51 @@ pub fn source_calls() -> Vec<Value> {
     SOURCE_CALLS.lock().unwrap().clone()
 }
 
+pub fn overview_enabled() -> bool {
+    std::env::var_os("CUMULUS_AUDIO_EFFECT_TABS_PROOF").is_some()
+        || effect_peq_fixture::applied_catalogue()
+        || headphone_header()
+}
+
+pub fn overview_revision() -> Option<String> {
+    overview_enabled().then(|| "synthetic-effect-catalogue".into())
+}
+
+pub fn overview_assignment(
+    revision: &str,
+) -> Result<cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
+    if overview_revision().as_deref() != Some(revision) {
+        return Err(Error::StaleResponse);
+    }
+    let minibar = if legacy_overview() { "c" } else { "t1" };
+    cumulus_core::protocol::pc_experiments::PcExperimentGroups::refreshed(&json!({
+        "code": 200,
+        "data": [
+            {"expName":"PH-PC-yinxiaogaiban2","expGroupName":"t1"},
+            {"expName":"PH-PC-minibarNew","expGroupName":minibar},
+            {"expName":"PH-PC-minibarNewLike","expGroupName":"c"}
+        ]
+    }))
+}
+
+pub(super) fn legacy_overview() -> bool {
+    overview_enabled() && std::env::var_os("CUMULUS_EFFECT_CATALOGUE_LEGACY").is_some()
+}
+
+fn legacy_sound(id: u64) -> Value {
+    json!({"id":id,"name":format!("合成旧版音效{id}"),"subTitle":"合成旧版描述",
+        "type":if id == 202 {3} else {1},"newAdd":if id == 201 {1} else {0},
+        "imgUrl":"https://p1.music.126.net/private-legacy-artwork.png",
+        "link":"https://example.invalid/private-legacy-material"})
+}
+
 fn sound(id: u64) -> Value {
     let (name, subtitle, tier) = match id {
         200 => ("合成空间音效", "合成强推荐", 15),
         300 => ("合成均衡音效", "合成推荐", 6),
         301 => ("合成未标识音效", "未知会员等级", 99),
+        302 | 303 => ("合成更多音效", "合成列表位", 99),
+        310..=315 => ("合成推荐备选", "合成普通推荐", 99),
         _ => unreachable!("validated effect fixture ID"),
     };
     let now = std::time::SystemTime::now()
@@ -110,16 +154,60 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         {
             json!([])
         }
-        "/api/usertool/sound/queryAllSound" => match args["exposeType"].as_u64() {
-            Some(5) if args == &json!({"exposeType":5}) => json!([sound(200)]),
-            Some(6) if args == &json!({"exposeType":6}) => json!([sound(300), sound(301)]),
-            Some(7) if args == &json!({"exposeType":7}) => json!([]),
-            _ => {
-                return Some(Err(Error::Response(
-                    "unexpected synthetic effect directory request",
-                )));
+        "/api/usertool/sound/mobile/promote" if legacy_overview() && args == &json!({}) => {
+            json!((201..=208).map(legacy_sound).collect::<Vec<_>>())
+        }
+        "/api/usertool/sound/mobile/all" if legacy_overview() && args == &json!({}) => {
+            if CALLS
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|call| call["path"] == path)
+            {
+                json!([])
+            } else {
+                json!(
+                    [208, 202, 211, 207, 201, 212]
+                        .into_iter()
+                        .map(legacy_sound)
+                        .collect::<Vec<_>>()
+                )
             }
-        },
+        }
+        "/api/usertool/sound/queryAllSound" if !legacy_overview() => {
+            match args["exposeType"].as_u64() {
+                Some(5) if args == &json!({"exposeType":5}) => json!([sound(200)]),
+                Some(6) if args == &json!({"exposeType":6}) && overview_enabled() => {
+                    let mut calls = CALLS.lock().unwrap();
+                    if calls
+                        .iter()
+                        .any(|call| call["path"] == path && call["args"] == *args)
+                    {
+                        calls.push(json!({"path":path,"args":args}));
+                        return Some(Err(Error::Response(
+                            "synthetic unavailable recommendation group",
+                        )));
+                    }
+                    json!(
+                        vec![300, 301]
+                            .into_iter()
+                            .chain(310..=315)
+                            .map(sound)
+                            .collect::<Vec<_>>()
+                    )
+                }
+                Some(6) if args == &json!({"exposeType":6}) => json!([sound(300), sound(301)]),
+                Some(7) if args == &json!({"exposeType":7}) && overview_enabled() => {
+                    json!([sound(302), sound(303)])
+                }
+                Some(7) if args == &json!({"exposeType":7}) => json!([]),
+                _ => {
+                    return Some(Err(Error::Response(
+                        "unexpected synthetic effect directory request",
+                    )));
+                }
+            }
+        }
         "/api/usertool/home/sound/info" => {
             let id = [200_u64, 300].into_iter().find(|id| {
                 let req = json!([{"soundId":id.to_string(),"soundType":10}]).to_string();

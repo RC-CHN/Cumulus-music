@@ -22,6 +22,11 @@ pub(super) struct Flags {
     pub(super) search_dense: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) song_speed: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) effect_catalogue_new: bool,
+    // A previous profile cache is not evidence for this newly bound action.
+    #[serde(skip)]
+    pub(super) podcast_resume: bool,
 }
 
 impl Flags {
@@ -32,6 +37,8 @@ impl Flags {
             search_expanded: groups.group("PH-PC-searchMore2") == Some("t1"),
             search_dense: groups.group("PH-PC-searchPageEfficiency") == Some("t1"),
             song_speed: song_speed_cohort(groups),
+            effect_catalogue_new: groups.effect_catalogue_new_assigned(),
+            podcast_resume: groups.group(crate::podcast::resume::EXPERIMENT) == Some("t1"),
         }
     }
 }
@@ -64,6 +71,10 @@ pub struct PcPresentationView {
     pub search_expanded: bool,
     pub search_dense: bool,
     pub guest_search_ready: bool,
+    pub effect_catalogue_revision: String,
+    pub effect_catalogue_new: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub podcast_resume: bool,
 }
 
 impl PcPresentationView {
@@ -75,11 +86,14 @@ impl PcPresentationView {
     ) -> Self {
         Self {
             epoch: token.generation.to_string(),
+            effect_catalogue_revision: revision.clone(),
             revision,
             search_footer: flags.search_footer,
             search_expanded: flags.search_expanded,
             search_dense: flags.search_dense,
             guest_search_ready,
+            effect_catalogue_new: flags.effect_catalogue_new,
+            podcast_resume: token.uid.is_some() && flags.podcast_resume,
         }
     }
 }
@@ -142,6 +156,9 @@ impl Default for PresentationHost {
             search_expanded: false,
             search_dense: false,
             guest_search_ready: false,
+            effect_catalogue_revision: "0".into(),
+            effect_catalogue_new: false,
+            podcast_resume: false,
         };
         Self {
             state: Mutex::new(None),
@@ -193,6 +210,15 @@ impl PresentationHost {
 }
 
 impl MusicClient {
+    pub(in crate::client) fn effect_catalogue_presentation(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+    ) -> Result<(String, bool)> {
+        let view = self.pc_presentation_context().snapshot(token, api)?.view;
+        Ok((view.effect_catalogue_revision, view.effect_catalogue_new))
+    }
+
     /// Pure native bootstrap/current snapshot. No request, timer or player lock.
     pub fn pc_presentation(&self) -> Result<PcPresentationView> {
         let token = self.session.token()?;
@@ -365,6 +391,9 @@ impl ScopeContext {
             host.cache_write_failed
                 .store(persisted.is_err(), Ordering::Release);
             if current.flags != flags {
+                let old_effect_revision = (current.flags.effect_catalogue_new
+                    == flags.effect_catalogue_new)
+                    .then(|| current.view.effect_catalogue_revision.clone());
                 current.flags = flags;
                 current.view = PcPresentationView::from_flags(
                     token,
@@ -372,6 +401,9 @@ impl ScopeContext {
                     flags,
                     current.view.guest_search_ready,
                 );
+                if let Some(revision) = old_effect_revision {
+                    current.view.effect_catalogue_revision = revision;
+                }
                 host.publish(token, current.view.clone(), flags.song_speed, false);
             }
             Ok(())

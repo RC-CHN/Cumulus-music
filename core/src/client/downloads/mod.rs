@@ -1,8 +1,10 @@
+mod clear;
 mod collect;
 mod commands;
 mod comments;
 mod dto;
 mod jobs;
+pub(in crate::client) mod purchased;
 mod quality;
 mod resource;
 mod song_status;
@@ -20,8 +22,8 @@ use crate::{
     storage::StateStore,
 };
 pub use collect::{
-    DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan,
-    DownloadLikedDestination,
+    DownloadBatchCollectPlan, DownloadCollectCreation, DownloadCollectCreationCommand,
+    DownloadCollectPlan, DownloadLikedDestination,
 };
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;
@@ -36,12 +38,7 @@ use std::{
 };
 use tokio::sync::Notify;
 
-pub(in crate::client) struct GuardedSongBatch {
-    pub receipt: String,
-    pub admission: crate::download::service::SongBatchAdmission,
-    pub songs: Arc<[String]>,
-    pub options: crate::download::service::DownloadOptions,
-}
+pub(in crate::client) use crate::download::service::GuardedSongBatch;
 
 const PREFERENCES: &str = "download_preferences_v1";
 
@@ -107,6 +104,8 @@ struct Host {
     worker: Mutex<Option<Worker>>,
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
     collect: Mutex<Option<collect::Visit>>,
+    clear: Mutex<Option<clear::ClearVisit>>,
+    collect_prepare: std::sync::atomic::AtomicU64,
 }
 struct Worker {
     token: SessionToken,
@@ -163,6 +162,8 @@ impl DownloadHost {
                 worker: Mutex::new(None),
                 jobs: Mutex::new(HashMap::new()),
                 collect: Mutex::new(None),
+                clear: Mutex::new(None),
+                collect_prepare: std::sync::atomic::AtomicU64::new(0),
             }),
         }
     }
@@ -218,7 +219,12 @@ impl Host {
                     break;
                 }
                 if captured.directory.active().ok().flatten().is_none() {
-                    let _ = jobs.run_pending().await;
+                    let _ = jobs.run_pending_notified(&wake).await;
+                }
+                // A wake may already have been observed inside the drain.
+                // Don't park a worker whose account was retired there.
+                if captured.guard().is_err() {
+                    break;
                 }
                 wake.notified().await;
             }
@@ -242,6 +248,15 @@ impl MusicClient {
                 // Do not abort a task in the middle of file recovery.
                 worker.scheduler.stop();
                 worker.notify.notify_one();
+            }
+        }
+        {
+            let mut clear = host.clear.lock().map_err(|_| Error::LockPoisoned)?;
+            if clear
+                .as_ref()
+                .is_some_and(|visit| visit.belongs_to(previous))
+            {
+                *clear = None;
             }
         }
         let jobs = host.jobs.lock().map_err(|_| Error::LockPoisoned)?;
@@ -363,10 +378,11 @@ impl MusicClient {
                     crate::download::service::DownloadOrigin::Voice { voice_id } => Some(voice_id),
                     _ => None,
                 };
-                let mut song = super::mapping::projected_song_metadata(&track);
+                let mut song = super::mapping::song_metadata(&metadata)?;
                 song["voice_id"] = serde_json::json!(track.voice_id);
                 resources.push(serde_json::json!({"id":task.song_id,"cloud_song_id":if task.origin.is_cloud(){Some(task.song_id.clone())}else{None},"download_task_id":task.id,"path":path,"dt":track.duration_ms,
                     "download_voice_id":download_voice_id,
+                    "_together_catalog_download":resource::catalogue_track_id(&task).as_ref() == Some(&task.song_id),
                     "voice":metadata["voice"],
                     "level":task.options.quality.as_str(),"song":song}));
             }
@@ -470,6 +486,21 @@ impl MusicClient {
         tokio::task::spawn_blocking(move || {
             context.guard()?;
             context.files.verify_reveal(&task_id)
+        })
+        .await
+        .map_err(|_| Error::State("download reveal worker stopped"))?
+    }
+
+    pub(super) async fn download_file_reveal_at(
+        &self,
+        epoch: &str,
+        task_id: String,
+        path: std::path::PathBuf,
+    ) -> Result<DownloadFileReveal> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            context.files.verify_reveal_at(&task_id, Some(&path))
         })
         .await
         .map_err(|_| Error::State("download reveal worker stopped"))?

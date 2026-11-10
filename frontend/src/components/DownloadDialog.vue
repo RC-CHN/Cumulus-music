@@ -2,16 +2,18 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { DownloadModel } from '../composables/useDownloads';
 import type {
+  DownloadClearPlan,
   DownloadDialogTarget,
   DownloadCommand,
   DownloadQualityPreferences,
 } from '../services/downloads';
 import { failure } from '../services/contracts';
+import { downloadAdmissionSummary } from '../services/downloadFeedback';
 import { defaultDownloadOptions, downloadStatus } from '../services/downloads';
 import DownloadOptions from './DownloadOptions.vue';
 import Icon from './Icon.vue';
 const props = defineProps<{ model: DownloadModel; target: DownloadDialogTarget }>();
-const emit = defineEmits<{ close: []; started: [] }>();
+const emit = defineEmits<{ close: []; started: []; manage: [tab: 'active' | 'completed'] }>();
 const { view, busy, error } = props.model;
 const dialog = ref<HTMLDialogElement>(),
   root = ref(view.value?.directory?.root ?? '');
@@ -22,6 +24,31 @@ const quality = shallowRef<DownloadQualityPreferences>();
 const loadingQuality = ref(false);
 const qualityError = ref('');
 let dialogOpen = true;
+const clearPlan = shallowRef<DownloadClearPlan>();
+const clearIsCurrent = props.model.captureVisit();
+const preparingClear = ref(false),
+  clearSubmitted = ref(false);
+const clearPreparationError = ref('');
+async function prepareClear() {
+  preparingClear.value = true;
+  try {
+    const plan = await props.model.prepareClear();
+    if (dialogOpen) {
+      if (plan) clearPlan.value = plan;
+      else clearPreparationError.value = '下载列表已变化，请返回后重新打开。';
+    } else if (plan) void props.model.discardClear(plan);
+  } catch (value) {
+    if (dialogOpen) clearPreparationError.value = failure(value).message;
+  } finally {
+    if (dialogOpen) preparingClear.value = false;
+  }
+}
+async function confirmClear() {
+  const receipt = clearPlan.value?.receipt;
+  if (!receipt || blocked.value || clearSubmitted.value || !clearIsCurrent()) return;
+  clearSubmitted.value = true;
+  await perform({ kind: 'confirm_clear', receipt });
+}
 async function loadQuality(refresh = false) {
   if (loadingQuality.value) return;
   loadingQuality.value = true;
@@ -48,6 +75,8 @@ const directoryMode = ref<'future' | 'migrate'>('future');
 const rename = ref(''),
   destination = ref(''),
   localError = ref(''),
+  admissionNotice = ref(''),
+  admissionTab = ref<'active' | 'completed' | undefined>(),
   choosing = ref(false);
 const confirmation = ref<'delete' | 'forget' | 'move' | 'rename' | undefined>(
   props.target.kind === 'file' ? props.target.action : undefined,
@@ -68,10 +97,12 @@ const stale = computed(
           ? !live.value.needsTransferRestart
           : live.value.status !== 'complete' || live.value.path !== original.path)),
 );
+const staleVoice = computed(() => props.target.kind === 'voice' && props.target.live?.() === false);
 const blocked = computed(
   () =>
     busy.value ||
     choosing.value ||
+    staleVoice.value ||
     (props.target.kind === 'voice_song' && (!props.target.live() || props.target.busy())) ||
     (props.target.kind === 'settings' &&
       (loadingQuality.value || !quality.value || !!qualityError.value)) ||
@@ -111,6 +142,7 @@ onMounted(() => {
   focus = document.activeElement as HTMLElement;
   dialog.value?.showModal();
   if (props.target.kind === 'settings') void loadQuality();
+  if (props.target.kind === 'clear') void prepareClear();
   rename.value =
     task.value?.path
       ?.split(/[\\/]/)
@@ -123,6 +155,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   dialogOpen = false;
+  if (clearPlan.value) void props.model.discardClear(clearPlan.value);
   focus?.focus();
 });
 async function focusForm() {
@@ -140,6 +173,12 @@ function close() {
   )
     emit('close');
 }
+function manageAdmission() {
+  const tab = admissionTab.value;
+  if (!tab || busy.value || choosing.value) return;
+  emit('close');
+  emit('manage', tab);
+}
 async function choose(kind: 'root' | 'file') {
   choosing.value = true;
   try {
@@ -155,20 +194,33 @@ async function choose(kind: 'root' | 'file') {
 async function perform(command: DownloadCommand) {
   if (blocked.value) return;
   const result = await props.model.command(command);
+  if (!dialogOpen || staleVoice.value) return;
+  if (command.kind === 'start' && result?.skipped?.length) {
+    admissionNotice.value = downloadAdmissionSummary(result) ?? '';
+    const reasons = result.skipped.map(({ reason }) => reason);
+    admissionTab.value =
+      result.accepted.length || reasons.some((r) => !['downloaded', 'missing', 'local'].includes(r))
+        ? 'active'
+        : reasons.some((r) => r !== 'local')
+          ? 'completed'
+          : undefined;
+    return;
+  }
   if (result?.failed.length)
     localError.value = `已受理 ${result.accepted.length} 项，${result.failed.length} 项未完成：${result.failed[0]?.message}`;
   if (result && !result.failed.length) {
     emit('close');
     if (
-      command.kind === 'start' ||
-      command.kind === 'start_cloud' ||
-      command.kind === 'start_voice'
+      result.accepted.length &&
+      (command.kind === 'start' || command.kind === 'start_cloud' || command.kind === 'start_voice')
     )
       emit('started');
   }
 }
 async function save() {
   localError.value = '';
+  admissionNotice.value = '';
+  admissionTab.value = undefined;
   if (!root.value.trim()) {
     localError.value = '请选择下载目录';
     return;
@@ -186,24 +238,32 @@ async function save() {
       revision: quality.value!.revision,
       options: { ...options.value },
     });
-    if (!settings || settings.failed.length) return;
+    if (!dialogOpen || !settings || settings.failed.length) return;
     const configured = await props.model.command({
       kind: 'configure',
       root: previousRoot,
       path_type: pathType.value,
       file_type: fileType.value,
     });
-    if (!configured || configured.failed.length) return;
+    if (!dialogOpen || !configured || configured.failed.length) return;
     await perform({ kind: 'migrate', root: root.value.trim() });
     return;
   }
-  const configured = await props.model.command({
-    kind: 'configure',
-    root: root.value.trim(),
-    path_type: pathType.value,
-    file_type: fileType.value,
-  });
-  if (!configured || configured.failed.length) return;
+  const currentDirectory = view.value?.directory;
+  if (
+    props.target.kind !== 'start' ||
+    currentDirectory?.root !== root.value.trim() ||
+    currentDirectory.path_type !== pathType.value ||
+    currentDirectory.file_type !== fileType.value
+  ) {
+    const configured = await props.model.command({
+      kind: 'configure',
+      root: root.value.trim(),
+      path_type: pathType.value,
+      file_type: fileType.value,
+    });
+    if (!dialogOpen || !configured || configured.failed.length) return;
+  }
   if (props.target.kind === 'voice_song') {
     if (props.target.live() && (await props.target.start({ ...options.value }))) emit('started');
     return;
@@ -281,6 +341,8 @@ async function fileAction() {
       </button>
     </header>
     <div v-if="error || localError" class="error-state" role="alert">{{ localError || error }}</div>
+    <div v-if="admissionNotice" class="muted" role="status">{{ admissionNotice }}</div>
+    <p v-if="staleVoice" class="form-warning" role="alert">所选节目已变化，请关闭后重新选择。</p>
     <p v-if="view?.migration" class="form-warning">目录迁移尚未完成，请在下载管理中继续或撤销。</p>
     <p v-if="stale" class="form-warning" role="alert">
       这条下载记录已改变或不在当前列表中，请关闭窗口后重新选择。
@@ -417,6 +479,15 @@ async function fileAction() {
         </fieldset>
       </div>
       <footer>
+        <button
+          v-if="admissionTab"
+          type="button"
+          class="text-button"
+          :disabled="busy || choosing"
+          @click="manageAdmission"
+        >
+          打开下载管理
+        </button>
         <button type="button" class="text-button" :disabled="busy || choosing" @click="close">
           取消</button
         ><button class="primary" :disabled="blocked || !root.trim()">
@@ -464,19 +535,28 @@ async function fileAction() {
         </button>
       </footer>
     </template>
-    <template v-else-if="target.kind === 'clear'"
-      ><p>取消本账号全部未完成的下载，并清理这些任务创建的临时文件。已完成的歌曲会保留。</p>
+    <template v-else-if="target.kind === 'clear'">
+      <p>确定清空全部下载任务？</p>
+      <p v-if="preparingClear" class="muted" role="status">正在核对未完成的下载…</p>
+      <p v-else-if="clearPreparationError" class="error" role="alert">
+        {{ clearPreparationError }}
+      </p>
+      <p v-else-if="clearPlan?.count" class="muted" data-download-clear-count>
+        取消已确认范围内的
+        {{ clearPlan.count }} 项下载，并清理对应临时文件。已完成和之后新增的下载会保留。
+      </p>
+      <p v-else class="muted">没有可取消的下载任务。</p>
       <footer>
-        <button class="text-button" :disabled="busy" @click="close">返回</button
-        ><button
+        <button class="text-button" autofocus :disabled="busy" @click="close">返回</button>
+        <button
           class="primary"
-          :disabled="blocked"
-          @click="perform({ kind: 'all', action: 'cancel' })"
+          :disabled="blocked || !clearPlan?.receipt || clearSubmitted || !clearIsCurrent()"
+          @click="confirmClear"
         >
           清空正在下载
         </button>
-      </footer></template
-    >
+      </footer>
+    </template>
     <template v-else-if="task">
       <h3>{{ task.track.name }}</h3>
       <p class="muted">{{ downloadStatus(task) }}</p>

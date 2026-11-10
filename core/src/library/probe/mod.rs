@@ -1,5 +1,7 @@
 //! FFprobe is an explicit cross-platform process adapter. No shell is used;
 //! network protocols are disabled. Hosts supply/bundle the executable.
+mod held_flac;
+mod held_mp3;
 mod process;
 mod response;
 use super::AudioMetadata;
@@ -81,7 +83,7 @@ impl AudioProbe for Ffprobe {
             .executable
             .as_deref()
             .ok_or(Error::State("audio metadata probe unavailable"))?;
-        let value = process::run(executable, &path, self.timeout)?;
+        let value = process::run(executable, process::Input::Path(&path), self.timeout)?;
         parse_ffprobe_response(&path, &value)
     }
 }

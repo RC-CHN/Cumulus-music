@@ -32,6 +32,7 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     guest = false,
     windowFocused = true,
     inputFocused = false,
+    compositionStartQuery = '',
     generation = 0,
     suggestionRequest = 0,
     homeRequest = 0;
@@ -169,10 +170,12 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     void recommendFromHistory();
     void load({ kind: 'charts' });
   }
-  function input(value: string) {
+  function input(value: string, reveal = false) {
     query.value = value;
     invalidateSuggestions();
-    if (!connected || !open.value || composing.value) return;
+    if (!connected || composing.value) return;
+    if (reveal) open.value = true;
+    if (!open.value) return;
     if (!value.trim()) {
       home();
       return;
@@ -197,9 +200,14 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     invalidateSuggestions();
   }
   function composition(start: boolean) {
+    if (composing.value === start) return;
     composing.value = start;
-    if (start) invalidateSuggestions();
-    else input(query.value);
+    if (start) {
+      compositionStartQuery = query.value;
+      invalidateSuggestions();
+    } else {
+      input(query.value, inputFocused && query.value !== compositionStartQuery);
+    }
   }
   async function connect(account: AccountView, guestReady = false) {
     dispose();

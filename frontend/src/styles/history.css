@@ -137,6 +137,19 @@
 .history-name-cell > div {
   min-width: 0;
 }
+.history-radio-collect {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  margin-inline-start: auto;
+}
+.history-radio-collect[aria-pressed='true'] {
+  color: var(--accent);
+}
+.history-collection-retry {
+  align-self: flex-start;
+}
 .history-name-cell p,
 .history-name {
   margin: 0;
@@ -161,6 +174,40 @@
   margin-top: 4px;
   font-size: 12px;
   color: var(--muted);
+}
+.history-chapter {
+  display: flex;
+  align-items: baseline;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.history-chapter button,
+.history-chapter-prefix,
+.history-chapter-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-chapter-prefix {
+  max-inline-size: 40%;
+}
+.history-chapter button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+}
+.history-chapter button:not(:disabled):is(:hover, :focus-visible) {
+  color: var(--text);
+  text-decoration: underline;
+}
+.history-chapter-progress {
+  flex: none;
+  margin-inline-start: 10px;
 }
 .history-time {
   display: flex;

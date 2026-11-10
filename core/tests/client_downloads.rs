@@ -1,5 +1,7 @@
 #[path = "support/download_collection.rs"]
 mod download_collection;
+#[path = "client_downloads/ordinary_admission.rs"]
+mod ordinary_admission;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback_support;
@@ -24,6 +26,28 @@ use std::{
     time::Duration,
 };
 const FLAC: &[u8] = include_bytes!("fixtures/tag_audio/seed.flac");
+
+struct MappedProbe;
+impl cumulus_core::library::probe::AudioProbe for MappedProbe {
+    fn inspect(
+        &self,
+        path: &std::path::Path,
+    ) -> cumulus_core::Result<cumulus_core::library::AudioMetadata> {
+        Ok(cumulus_core::library::AudioMetadata {
+            title: path.file_stem().unwrap().to_string_lossy().into(),
+            duration: 45.0,
+            album: String::new(),
+            artists: Vec::new(),
+            format: Some("flac".into()),
+            container: "flac".into(),
+            bitrate: None,
+            sample_rate: Some(8000),
+            channels: Some(1),
+            cover_bytes: None,
+        })
+    }
+}
+
 struct Fixture {
     root: tempfile::TempDir,
     session: Arc<AccountSession>,
@@ -1190,6 +1214,51 @@ async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_sele
     assert_eq!(f.api.count("player/url"), 0);
 }
 
+#[tokio::test]
+async fn matched_local_lyrics_use_only_the_owned_catalog_download_fallback() {
+    use cumulus_core::library::LocalLibrary;
+
+    let f = Fixture::new();
+    let (_, completed) = f.completed().await;
+    let download = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let download_sidecar = download.with_extension("lrc");
+    fs::write(&download_sidecar, "[00:01]已下载歌曲歌词").unwrap();
+    *f.api.lyric.lock().unwrap() = Ok(json!({"code":200}));
+
+    let local_root = f.root.path().join("mapped");
+    fs::create_dir(&local_root).unwrap();
+    let local_audio = local_root.join("unrelated.flac");
+    fs::write(&local_audio, FLAC).unwrap();
+    fs::write(local_audio.with_extension("lrc"), "[00:01]只属于原文件").unwrap();
+    let library = LocalLibrary::with_probe(f.store.clone(), Arc::new(MappedProbe)).unwrap();
+    library.scan(&local_root).unwrap();
+    let page = f.client.local_page(LocalQuery::default()).await.unwrap();
+    let id = &page.tracks[0].track.id;
+    library.map_online(&f.session, id, &json!(123)).unwrap();
+    let play = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Local {
+                query: LocalQuery::default(),
+                revision: page.revision,
+                start_id: Some(id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(play.download_task_id.is_none());
+    let play_id = play.play_id.as_deref().unwrap();
+    let lyric = f.client.player_lyrics("1", play_id).await.unwrap();
+    assert!(lyric.from_sidecar);
+    assert_eq!(lyric.lines[0].lyric, "已下载歌曲歌词");
+    let device = f.device.state.lock().unwrap();
+    assert!(matches!(&device.last_source, Some(MediaInput::File(path))
+        if path.canonicalize().unwrap() == local_audio.canonicalize().unwrap()));
+    assert_eq!(device.loads, 1);
+    assert_eq!(f.api.count("player/url"), 0);
+}
+
 async fn wait(
     client: &MusicClient,
     epoch: &str,
@@ -1489,6 +1558,86 @@ async fn commands_validate_epoch_and_ids_before_any_task_or_request_and_report_p
 }
 
 #[tokio::test]
+async fn active_download_speed_measures_this_body_and_is_retired_on_pause_and_resume() {
+    let f = Fixture::new();
+    let gate = Arc::new(support::transfer::ReadGate::default());
+    {
+        let mut settings = f.backend.audio.settings.lock().unwrap();
+        settings.gate = Some(gate.clone());
+        settings.gate_after = 2048;
+        settings.chunk_limit = 2048;
+    }
+    assert!(FLAC.len() > 2048);
+    let id = f.start().await;
+    tokio::time::timeout(Duration::from_secs(5), gate.reached.notified())
+        .await
+        .unwrap();
+    let active = wait(&f.client, "1", DownloadTab::Active, |v| {
+        v.tasks
+            .first()
+            .is_some_and(|t| t.speed_bytes_per_second.is_some_and(|n| n > 0))
+    })
+    .await;
+    assert_eq!(active.tasks[0].status, DownloadStatus::Downloading);
+    assert_eq!(active.tasks[0].id, id);
+    for kind in ["media_transfers_v1", "download_tasks_v1"] {
+        let raw = f.store.get("1", kind, &id).unwrap().unwrap();
+        assert!(!raw.to_string().contains("speed"));
+    }
+
+    let control = |action| DownloadCommand::Control {
+        task_ids: vec![id.clone()],
+        action,
+    };
+    let pause = f
+        .client
+        .download_command("1", control(TaskControl::Pause))
+        .await
+        .unwrap();
+    assert_eq!(pause.accepted.as_slice(), std::slice::from_ref(&id));
+    let pending = f.client.downloads("1", Default::default()).await.unwrap();
+    // The native network read is still held. A requested pause must already
+    // suppress the old measured rate before the durable status catches up.
+    assert_eq!(pending.tasks[0].status, DownloadStatus::Downloading);
+    assert_eq!(pending.tasks[0].speed_bytes_per_second, None);
+    gate.release.notify_one();
+    let paused = wait(&f.client, "1", DownloadTab::Active, |v| {
+        v.tasks
+            .first()
+            .is_some_and(|t| t.status == DownloadStatus::Paused)
+    })
+    .await;
+    assert_eq!(paused.tasks[0].bytes, 2048);
+    assert_eq!(paused.tasks[0].speed_bytes_per_second, None);
+
+    let resumed = Arc::new(support::transfer::ReadGate::default());
+    {
+        let mut settings = f.backend.audio.settings.lock().unwrap();
+        settings.gate = Some(resumed.clone());
+        settings.gate_after = 0;
+    }
+    let resume = f
+        .client
+        .download_command("1", control(TaskControl::Resume))
+        .await
+        .unwrap();
+    assert_eq!(resume.accepted.as_slice(), std::slice::from_ref(&id));
+    tokio::time::timeout(Duration::from_secs(5), resumed.reached.notified())
+        .await
+        .unwrap();
+    let running = f.client.downloads("1", Default::default()).await.unwrap();
+    assert_eq!(running.tasks[0].speed_bytes_per_second, Some(0));
+    assert_eq!(f.backend.audio.calls().last().unwrap().offset, 2048);
+    resumed.release.notify_one();
+    let complete = wait(&f.client, "1", DownloadTab::Completed, |v| {
+        v.completed_count == 1
+    })
+    .await;
+    assert_eq!(complete.tasks[0].speed_bytes_per_second, None);
+    assert_eq!(complete.tasks[0].progress, Some(1.0));
+}
+
+#[tokio::test]
 async fn paused_download_is_persistent_then_explicitly_resumes_and_complete_rejects_cancel() {
     let f = Fixture::new();
     let gate = Arc::new(support::transfer::ReadGate::default());
@@ -1584,6 +1733,267 @@ async fn completed_file_reveal_checks_the_published_bytes_and_exact_leaf() {
     assert!(reveal.check_current().is_err());
     assert!(f.client.download_file_reveal("1", id).await.is_err());
     assert_eq!(f.backend.audio.calls().len(), calls);
+}
+
+#[tokio::test]
+async fn queued_download_reveals_its_own_publication_without_a_same_song_fallback() {
+    use cumulus_core::download::service::{
+        DownloadDestination, DownloadRunOptions, DownloadService,
+    };
+
+    let f = Fixture::new();
+    let (first, view) = f.completed().await;
+    let first_path = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let second_path = first_path
+        .parent()
+        .unwrap()
+        .join("alternate same song.flac");
+    let service =
+        DownloadService::with_backend(f.session.clone(), f.backend.clone(), 1 << 24).unwrap();
+    let second = service
+        .create(
+            &json!("123"),
+            DownloadDestination::Path {
+                path: second_path.clone(),
+            },
+            options(),
+        )
+        .unwrap();
+    let completed = service
+        .run(&second.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(completed.status, DownloadStatus::Complete);
+
+    let started = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Downloads {
+                query: DownloadQuery {
+                    tab: DownloadTab::Completed,
+                    category: DownloadCategory::Song,
+                    ..Default::default()
+                },
+                start_id: Some(first),
+            },
+        )
+        .await
+        .unwrap();
+    let queue = f.client.player_queue("1").await.unwrap();
+    let first_entry = queue.current.as_deref().unwrap();
+    let second_entry = &queue
+        .tracks
+        .iter()
+        .find(|entry| entry.entry_id != first_entry)
+        .unwrap()
+        .entry_id;
+    assert!(queue.tracks.iter().all(|row| matches!(
+        row.download_menu,
+        Some(QueueDownloadMenuKind::Song)
+    ) && !row.local_menu
+        && !row.catalog_menu));
+    let first_file = f
+        .client
+        .player_queue_download_file_reveal("1", &queue.revision, first_entry)
+        .await
+        .unwrap();
+    let second_file = f
+        .client
+        .player_queue_download_file_reveal("1", &queue.revision, second_entry)
+        .await
+        .unwrap();
+    assert_eq!(first_file.path(), first_path);
+    assert_eq!(second_file.path(), second_path);
+    first_file.check_current(&f.client).await.unwrap();
+    second_file.check_current(&f.client).await.unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_download_file_reveal("1", &queue.revision, &second.id)
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+
+    let updated = f
+        .client
+        .player_action(
+            "1",
+            PlayerAction::QueueFor {
+                expected_queue_revision: queue.revision,
+                expected_room_id: None,
+                edit: QueueEdit::Remove {
+                    entry_ids: vec![second_entry.clone()],
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.play_id, started.play_id);
+    assert!(matches!(
+        first_file.check_current(&f.client).await,
+        Err(Error::QueueChanged)
+    ));
+    let mut changed = fs::read(&first_path).unwrap();
+    changed[0] ^= 1;
+    fs::write(&first_path, changed).unwrap();
+    let request_count = f.backend.audio.calls().len();
+    assert!(matches!(
+        f.client
+            .player_queue_download_file_reveal("1", &updated.queue_revision, first_entry)
+            .await,
+        Err(Error::State("queued download file is unavailable"))
+    ));
+    assert_eq!(fs::read(second_path).unwrap(), FLAC);
+    assert_eq!(f.backend.audio.calls().len(), request_count);
+
+    let old = f.session.token().unwrap();
+    f.session
+        .adopt(f.api.clone(), json!({"userId":2}), &old)
+        .unwrap();
+    assert!(matches!(
+        second_file.check_current(&f.client).await,
+        Err(Error::StaleResponse)
+    ));
+}
+
+#[tokio::test]
+async fn catalog_queue_location_keeps_the_offered_source_and_rejects_ambiguous_mappings() {
+    use cumulus_core::library::LocalLibrary;
+
+    let f = Fixture::new();
+    let (id, view) = f.completed().await;
+    let original = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let local_root = f.root.path().join("mapped");
+    fs::create_dir(&local_root).unwrap();
+    for name in ["mapped original.flac", "alternate local.flac"] {
+        fs::write(local_root.join(name), FLAC).unwrap();
+    }
+    let library = LocalLibrary::with_probe(f.store.clone(), Arc::new(MappedProbe)).unwrap();
+    library.scan(&local_root).unwrap();
+    let files = library.list(Default::default()).unwrap();
+    let item = |name| {
+        files
+            .iter()
+            .find(|item| item.path.file_name().unwrap() == name)
+            .unwrap()
+    };
+    let mapped = item("mapped original.flac");
+    let alternate = item("alternate local.flac");
+    library
+        .map_online(&f.session, &mapped.id, &json!("123"))
+        .unwrap();
+    f.api.catalog_menu_enabled.store(true, Ordering::Release);
+    f.client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["123".into()],
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let queue = f.client.player_queue("1").await.unwrap();
+    let entry = queue.current.as_deref().unwrap();
+    let menu = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap();
+    assert!(menu.downloaded);
+    assert_eq!(menu.comment_count, Some(9));
+    let ticket = menu.directory_receipt.unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_catalog_file_reveal("1", &queue.revision, &id, &ticket)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let download = f
+        .client
+        .player_queue_catalog_file_reveal("1", &queue.revision, entry, &ticket)
+        .await
+        .unwrap();
+    assert_eq!(download.path(), original);
+    download.check_current(&f.client).await.unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_catalog_file_reveal("1", &queue.revision, entry, &ticket)
+            .await,
+        Err(Error::QueueChanged)
+    ));
+
+    let failed = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap()
+        .directory_receipt
+        .unwrap();
+    let mut bytes = fs::read(&original).unwrap();
+    bytes[0] ^= 1;
+    fs::write(&original, bytes).unwrap();
+    assert!(
+        f.client
+            .player_queue_catalog_file_reveal("1", &queue.revision, entry, &failed)
+            .await
+            .is_err()
+    );
+    assert_eq!(fs::read(&mapped.path).unwrap(), FLAC);
+    fs::write(&original, FLAC).unwrap();
+
+    f.client
+        .download_command(
+            "1",
+            DownloadCommand::File {
+                task_id: id,
+                action: FileAction::Delete,
+                target: None,
+            },
+        )
+        .await
+        .unwrap();
+    wait(&f.client, "1", DownloadTab::Completed, |v| {
+        v.completed_count == 0 && v.jobs.iter().all(|j| !j.running)
+    })
+    .await;
+    let queue = f.client.player_queue("1").await.unwrap();
+    let entry = queue.current.as_deref().unwrap();
+    let menu = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap();
+    assert!(!menu.downloaded);
+    let file = f
+        .client
+        .player_queue_catalog_file_reveal(
+            "1",
+            &queue.revision,
+            entry,
+            &menu.directory_receipt.unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(file.path(), mapped.path);
+    file.check_current(&f.client).await.unwrap();
+    library
+        .map_online(&f.session, &alternate.id, &json!("123"))
+        .unwrap();
+    let ambiguous = f
+        .client
+        .player_queue_catalog_menu("1", &queue.revision, entry)
+        .await
+        .unwrap();
+    assert!(ambiguous.directory_receipt.is_none());
+    library
+        .map_online(&f.session, &mapped.id, &json!("124"))
+        .unwrap();
+    assert!(matches!(
+        file.check_current(&f.client).await,
+        Err(Error::QueueChanged)
+    ));
 }
 
 #[tokio::test]
@@ -2025,28 +2435,30 @@ async fn forgetting_a_download_keeps_suspended_ordinary_queues_playable() {
 }
 
 #[tokio::test]
-async fn bulk_cancel_covers_tasks_outside_visible_page_and_removes_owned_temporary_files() {
-    use cumulus_core::download::{
-        directory::DownloadDirectory,
-        service::{DownloadAction, DownloadService},
-    };
+async fn confirmed_clear_covers_its_full_snapshot_and_does_not_cancel_a_late_task() {
+    use cumulus_core::download::service::{DownloadAction, DownloadService};
     let f = Fixture::new();
-    // Configure directly so the download worker cannot see the fixture's
-    // queued tasks before all of them have been paused.
-    DownloadDirectory::new(f.session.clone())
-        .unwrap()
-        .configure(&f.root.path().join("media"), 2, 1)
-        .unwrap();
+    // Test setup controls each transient Queued → Paused transition directly.
+    let _scheduler = cumulus_core::storage::OperationLock::acquire(
+        f.store.directory(),
+        "download-scheduler",
+        "1",
+    )
+    .unwrap();
+    f.configure().await;
     let service =
         DownloadService::with_backend(f.session.clone(), f.backend.clone(), 512 * 1024 * 1024)
             .unwrap();
-    let task = service.create_default(&json!(123), options()).unwrap();
-    let paused = service.request(&task.id, DownloadAction::Pause).unwrap();
-    assert_eq!(paused.status, DownloadStatus::Paused);
-    assert!(paused.work.is_dir());
+    let paused = || {
+        let task = service.create_default(&json!(123), options()).unwrap();
+        service.request(&task.id, DownloadAction::Pause).unwrap()
+    };
+    let first = paused();
+    assert_eq!(first.status, DownloadStatus::Paused);
+    assert!(first.work.is_dir());
     let control = f
         .store
-        .get("1", "download_controls_v1", &paused.id)
+        .get("1", "download_controls_v1", &first.id)
         .unwrap()
         .unwrap();
     // Keep each native-created work directory and its recorded identity.
@@ -2055,7 +2467,7 @@ async fn bulk_cancel_covers_tasks_outside_visible_page_and_removes_owned_tempora
         .map(|_| {
             let mut task = service.create_default(&json!(123), options()).unwrap();
             assert!(task.work.is_dir());
-            task.status = paused.status;
+            task.status = first.status;
             task
         })
         .collect();
@@ -2076,27 +2488,154 @@ async fn bulk_cancel_covers_tasks_outside_visible_page_and_removes_owned_tempora
     let before = f.client.downloads("1", Default::default()).await.unwrap();
     assert_eq!(before.active_count, 103);
     assert_eq!(before.tasks.len(), 100);
+
+    let plan = f.client.download_clear_prepare("1").await.unwrap();
+    assert_eq!(plan.count, 103);
+    let receipt = plan.receipt.unwrap();
+    assert!(
+        service
+            .list()
+            .unwrap()
+            .iter()
+            .all(|t| t.status == DownloadStatus::Paused)
+    );
+    let late = paused();
+
+    // Reject the old all/cancel command even if a renderer supplies it.
+    assert!(matches!(
+        f.client
+            .download_command(
+                "1",
+                DownloadCommand::All {
+                    action: TaskControl::Cancel
+                }
+            )
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
     let result = f
         .client
         .download_command(
             "1",
-            DownloadCommand::All {
-                action: TaskControl::Cancel,
+            DownloadCommand::ConfirmClear {
+                receipt: receipt.clone(),
             },
         )
         .await
         .unwrap();
     assert!(result.failed.is_empty());
     assert_eq!(result.accepted.len(), 103);
-    wait(&f.client, "1", DownloadTab::Active, |v| v.active_count == 0).await;
+    assert!(!result.accepted.contains(&late.id));
+    assert!(
+        f.client
+            .download_command("1", DownloadCommand::ConfirmClear { receipt })
+            .await
+            .is_err()
+    );
+    wait(&f.client, "1", DownloadTab::Active, |v| v.active_count == 1).await;
     let tasks = service.list().unwrap();
-    assert_eq!(tasks.len(), 103);
+    assert_eq!(tasks.len(), 104);
     assert!(
         tasks
             .iter()
+            .filter(|t| t.id != late.id)
             .all(|t| t.status == DownloadStatus::Cancelled && !t.work.exists())
     );
+    let preserved = service.get(&late.id).unwrap();
+    assert_eq!(preserved.status, DownloadStatus::Paused);
+    assert!(preserved.work.is_dir());
     assert!(f.backend.audio.calls().is_empty());
+}
+
+#[tokio::test]
+async fn clear_receipt_is_one_visit_and_skips_a_task_completed_before_confirmation() {
+    use cumulus_core::download::service::{DownloadAction, DownloadRunOptions, DownloadService};
+    let f = Fixture::new();
+    // Test setup controls each transient Queued → Paused transition directly.
+    let _scheduler = cumulus_core::storage::OperationLock::acquire(
+        f.store.directory(),
+        "download-scheduler",
+        "1",
+    )
+    .unwrap();
+    f.configure().await;
+    let service =
+        DownloadService::with_backend(f.session.clone(), f.backend.clone(), 512 * 1024 * 1024)
+            .unwrap();
+    let task = service.create_default(&json!(123), options()).unwrap();
+    service.request(&task.id, DownloadAction::Pause).unwrap();
+    let first = f
+        .client
+        .download_clear_prepare("1")
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    let current = f
+        .client
+        .download_clear_prepare("1")
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    f.client.download_clear_discard("1", &first).unwrap();
+    let command = |receipt| DownloadCommand::ConfirmClear { receipt };
+    assert!(
+        f.client
+            .download_command("1", command(first))
+            .await
+            .is_err()
+    );
+    assert!(
+        f.client
+            .download_command("2", command(current.clone()))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service.get(&task.id).unwrap().status,
+        DownloadStatus::Paused
+    );
+
+    f.client.download_clear_discard("1", &current).unwrap();
+    assert!(
+        f.client
+            .download_command("1", command(current))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        service.get(&task.id).unwrap().status,
+        DownloadStatus::Paused
+    );
+
+    let ready = f
+        .client
+        .download_clear_prepare("1")
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    service.enqueue(&task.id).unwrap();
+    let complete = service
+        .run(&task.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(complete.status, DownloadStatus::Complete);
+    let result = f
+        .client
+        .download_command("1", command(ready))
+        .await
+        .unwrap();
+    assert!(result.accepted.is_empty() && result.failed.is_empty());
+    assert_eq!(
+        service.get(&task.id).unwrap().status,
+        DownloadStatus::Complete
+    );
+    assert_eq!(fs::read(complete.target.unwrap()).unwrap(), FLAC);
+    let empty = f.client.download_clear_prepare("1").await.unwrap();
+    assert_eq!(empty.count, 0);
+    assert!(empty.receipt.is_none());
 }
 
 #[tokio::test]

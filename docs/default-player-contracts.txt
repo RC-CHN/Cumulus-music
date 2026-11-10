@@ -33,23 +33,24 @@
   valid group 以 selectedData 送往 localTrack 播放分支。
   没有使用 YesPlayMusic。
 
-当前迁移：原生冷启动与 Linux 暖转交
+当前迁移：原生冷启动与 Linux／Windows 暖转交
 - 新启动的 Cumulus 接受 --play=ABSOLUTE_PATH 或 --play ABSOLUTE_PATH …
   （最多 8 个）。路径保留为 OS 原生参数/PathBuf，不经过 shell、HTTP、
   file URI 或 WebView IPC；落入现有 Rust 队列存储前要求可无损表达的 UTF-8。
   Windows 拒绝 UNC/设备路径；相对路径和其他参数不作为打开授权。无法
   无损解码的 --play= 仍是失败的显式打开，不退化成普通启动。
-- Linux 在正式窗口与业务初始化前取得规范化资料目录的独占进程锁；
-  同目录普通重复启动退出 2，不创建第二套活跃播放会话。Windows 仍用原冷启动
-  锁：普通进程共享，冷文件打开独占，已有实例时拒绝。自动启动 --autostart
-  分支独立；旧版本/不同网络命名空间、组或其他用户可写的资料目录、以及
-  CUMULUS_SESSION_DIR 指向历史会话的启动不承诺暖转交。
+- Linux 和 Windows 的可识别本地资料目录在正式窗口与业务初始化前取得独占
+  进程锁。同目录普通重复启动退出 2；显式打开才尝试转交，不创建第二个播放器。
+  自动启动 --autostart 独立；旧版、不可识别的 Windows 目录或安全令牌、
+  Linux 不同网络命名空间或可共享目录、以及 CUMULUS_SESSION_DIR 指向历史
+  会话的启动不承诺暖转交。
 - 冷启动的第一条主 WebView player stream 到达有效账号代次后一次性取走原生参数；
   它不会在后续注册或失败重试中重新消费。显式打开会抑制旧队列本次自动播放，
   即使所有候选无效也保留旧队列和时钟。错误消息为固定本地文本，无原始路径。
-- 当前只接受普通 MP3/FLAC：原生后缀、签名、ffprobe 音频编码和指纹都必须
-  一致，按官方模式跳过无效文件、保留有效顺序。元数据准备最多等待 12 秒；
-  新代次/显式播放动作可使已准备请求失效，不用旧结果覆盖新队列。
+- MP3/FLAC 的后缀、签名、ffprobe 音频编码和指纹必须一致。受支持的
+  PCM WAV 由原生 RIFF/PCM 检查确定格式、采样率、有效范围和时长，不调用
+  ffprobe。按官方模式跳过无效文件、保留有效顺序。元数据准备最多等待
+  12 秒；新代次/显式播放动作可使已准备请求失效，不用旧结果覆盖新队列。
 - 经过现有播放许可和账号代次/焦点栅栏，播放器在真正加载时检查打开句柄
   的文件身份，使用 libmpv 的受限 pinned stream 与固定解码格式，防止把
   伪装清单当作可联网媒体。只保存显式队列条目，不扫描或添加父目录、不创建
@@ -73,6 +74,141 @@ Linux 暖转交
   2 为原实例/账号播放器未就绪等不可用，3 为不支持的请求/文件，4 表示
   未确认（先看现有播放器），5 表示已有文件打开处理中。只接收 CLI 路径，
   不转发环境、账号、媒体 URL 或 WebView 命令。
+
+Windows 暖转交候选（尚不进入主线／安装包）
+- 原版证据确认暖回调与冷启动复用本地路径播放模型，未确认其内核协议。
+  这里使用与独立 Win32 实验共用的单实例重叠 I/O 管道。地址由持有的资料目录
+  的卷 GUID、卷和文件 ID、登录 SID、完整性及提升状态派生；窗口初始化时
+  重新走不跟随重解析的路径核对同一身份。地址不是凭据。保护 DACL 仅允许
+  当前登录 SID，拒绝远端；
+  两端按内核管道 PID 查询活跃进程主令牌，要求用户、登录、完整性及提升
+  一致。服务端先读取单字节握手（没有路径），再通过仅可识别的连接令牌
+  核对实际连接线程；主令牌与连接令牌的可访问组、特权、账户/LUID、完整性
+  策略和虚拟化状态须匹配。拒绝 AppContainer、显式受限 SID 和动态用户/
+  设备声明；未知令牌信息也拒绝。读完路径后重复核对；恢复原线程上下文
+  失败即永久退出该 relay worker，不执行任何应用操作。
+- 显式第二次启动在自身图形检测前完成。仅已绑定账号的主播放器订阅才给
+  ready，且一直保留发出 ready 时的同一份订阅许可。主窗口重载、销毁、
+  退出、订阅被替换或结束均撤销旧许可，即使新订阅仍属同一账号代次。
+  一次帧只含最多 8 条本地磁盘 UTF-8 路径（每条 4096 字节、整体 32 KiB）。
+  写回执后等待消费字节或关闭，最多 2 秒；停止时先确认内核 I/O 结束再回收
+  缓冲。请求送入核心后的错误或失去回执均表示未确认，先查看原播放器；
+  不因可能已持久提交的结果错误而重发。
+- 收帧后的业务调用同一原生播放器；它不接 WebView 文件路径。候选已通过
+  GNU Windows 目标严格 Clippy；两项真实管道测试须在 Windows 运行，尚不能
+  代替正式 app 转交、本地解码或系统关联验收。另有同登录但受限线程能打开
+  受保护管道、却不能得到 ready 的 Windows 负向用例；也尚未在 Windows 实跑。
+  未新增 NSIS 关联或写 Explorer 默认值。
+- 暖资料目录解析：RoamingAppData 用 KF_FLAG_DONT_VERIFY 查询原配置，不预先探测
+  重定向文件夹。盘符只用 QueryDosDeviceW 查询对象映射，拒绝 UNC、网络盘、
+  SUBST、相对/替代流及其它不受支持命名；仅打开已冻结的 NT 本地卷目标。
+  卷设备属性、文件系统及卷 GUID 从同一持有句柄取得，要求非远程、非可移除
+  NTFS。逐层以父目录句柄和 OBJ_DONT_REPARSE 打开或创建；过程锁是最后一个
+  目录内相对打开的普通单链接文件，不截断，不走同名回退。锁持有期间保存各
+  级目录句柄并禁共享删除。无法验证的资料目录只保留既有冷启动（其显式配置
+  路径仍可由旧流程访问）；已验证目录内可疑锁文件直接拒绝。获准的资料
+  目录给 Rust 和 SQLite 的路径取自最后一个持有句柄，使用同一卷的 GUID；
+  后续资料文件打开不再解析可变盘符；这不改变 SQLite 对单个文件的常规
+  Win32 打开方式。SQLite 同库与日志可见性仍待原生验证。
+  资料目录纯解析向量在 Linux 执行；同文件竞争、目录换位及锁链接用例与
+  FFI 已通过独立 Windows GNU 链接/严格 Clippy，未在 Windows 运行。实际 Windows
+  固定 NTFS 可执行 cargo test -p cumulus-desktop --locked --lib
+  native_open::windows::profile::tests；重解析用例需相应建符号链接权限。
+- Windows 持有媒体候选只接受固定本地 NTFS 的普通 MP3/FLAC 和受支持的 PCM WAV 文件。先通过
+  QueryDosDeviceW 读取当前盘符的直接本机磁盘设备名，再用 NtCreateFile
+  打开那个 NT 卷根，而不重新解析盘符。卷根和相对路径打开不跟随重解析；
+  远程/可移除卷、SUBST 子目录、UNC、流名、链接与需回迁数据的文件不进入。
+  元数据使用同一个持有文件：受支持 PCM WAV 由 Rust 解析，纯 FLAC 与
+  MP3 通过受信 ffprobe 的 fd: 标准输入适配器，子进程从不接收媒体文件名。
+  MP3 先验证有界 ID3 与连续 Layer III 起始帧，再要求子进程实际解码有界
+  起始音频，并由 libmpv 验证最终加载的编码。任一检查失败不会回退到按
+  路径读取；这不代表整文件已预先解码。候选未接伴随歌词和本地 EQ 专用
+  解码链。
+- Windows 桌面冷暖入口调用独立的持有媒体方法，不更改系统文件关联。
+  冷启动先建立订阅，再由确切的保留许可一次性消费进程参数；同代次的
+  重绑不重放参数或自动播放被恢复的旧队列。每批最多八个文件，只有在
+  队列写事务最后通过账号、订阅和选中代际检查后，才会装入本进程播放器。
+  事务内的桌面许可只读原子状态，不重进会话或订阅锁。队列记录只有不透明键，不保存
+  可重开的路径或文件句柄；进程重启、账号切换和离开现有队列后不能用
+  旧键再开。MPV stock 解码读取原文件句柄，用独立逻辑游标处理 seek，
+  从不重新解析媒体路径。把同名文件换成不同内容不会改变现有持有对象。
+  确认退出时，先停止受理原生文件打开，再等待一起听退房及窗口销毁。
+  退出失败恢复受理时，只有新发出的许可有效；旧的冷启动参数和已作废的
+  暖转交不会重放。仅隐藏到托盘时继续受理。
+- 原生 Windows 固定 NTFS/reparse 验收以及打包 ffprobe 9.0.2 与实际
+  libmpv 的完整媒体验收须在 Windows 运行；GNU 交叉检查不算这些通过。
+  真实 NTFS、连接令牌、文件解码、原生窗口与持久队列交接均须原生 Windows
+  验证。当前候选不作为已发布的 Windows 暖转交。
+  平台依据：https://learn.microsoft.com/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient
+  与 https://learn.microsoft.com/windows/win32/secauthz/restricted-tokens 。
+  卷 GUID 路径：https://learn.microsoft.com/windows/win32/fileio/naming-a-volume
+  及 https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew 。
+
+Windows 原生复验入口
+- 在包含候选的 ref 上手动运行 CI，将 windows_native_file_output 设为
+  default 或 null。手动专项仅运行前端、Windows 包和独立的
+  Windows native open diagnostic，不运行发布门禁，也不会取消同一提交的完整 CI。
+  默认 off 运行完整 CI。诊断作业从同次校验后的便携包读取媒体库并运行受限连接令牌、持有资料目录、重解析
+  拒绝、SQLite 日志以及同句柄 FFprobe/libmpv 用例。媒体测试用空输出，
+  测量真实解码，不作声卡听感证明。
+- scripts/ci/windows_native_open_smoke.py 复核同一提交、运行及尝试的 portable
+  ZIP 及其 FLAC 校验清单，提取全新副本。仅 Windows x64 GitHub 托管 runner
+  执行：独立配置、WebView 数据及合成音频，检查临时程序精确出站阻断规则，
+  在退出时移除。它不加载账号凭据或安装文件关联。规则只针对提取的 app
+  路径，不声称整个 runner 或 WebView2 的宿主进程被隔离。
+  图形预检子进程独立设置 WEBVIEW2_USER_DATA_FOLDER 指向自己的临时目录，
+  以免 WebView2 的环境覆盖使预检复用主应用资料；验收先确认主应用资料为空。
+- 测试从冷启动 WAV 的原生时钟开始，经无效文件和旧会话目录拒绝、最小化
+  原 HWND，再由两个短命 sender 热交接 FLAC 与 MP3。读取 SQLite 验证
+  现有窗口恢复、队列只保留持有文件键、条目更换与解码时钟继续。它记录
+  Windows 是否授予前台焦点，窗口恢复是硬断言，不能用测试脚本抢焦点。
+  默认输出模式必须在同一个 runner 上读到可用的默认渲染端点，并通过全部原生时钟
+  断言；若端点不存在或不可验证，该模式失败并保留分类。仍不等同于听感验证。
+- 单独的合成空输出模式只用于手动构建的诊断包。构建开关
+  CUMULUS_BUILD_WINDOWS_NATIVE_OPEN_NULL_PROOF=1 不用于正常构建或发布；
+  诊断启动也须同时指定临时资料目录和空输出标记。它使用相同的文件激活、窗口和
+  持有解码路径，逐项执行 WAV/FLAC/MP3 原生时钟断言；报告中
+  proofAudioOutput=null，defaultOutputClockVerified=false，不能代替默认输出验收。
+  默认输出模式不会自动降级为空输出。两个模式都读取同机默认渲染端点分类。
+  诊断只上传 report.json 与已有的两个程序日志，绑定 CI 运行和包内 exe 摘要；
+  SQLite、WebView 数据和媒体另置临时目录，不进入通用失败诊断归档。
+  失败日志只记录最后的合成条目 ID、时钟、解码格式和进程窗口观察。
+- Linux 已验证合成 WAV/FLAC/MP3、快照读回和路径拒绝；Windows 候选运行
+  42656675830 已通过令牌、资料目录与持有解码检查，但便携包冷启动 WAV 的
+  持久时钟未前进，未执行热交接。那次运行未采样默认端点；不能确认失败原因。
+  原生 proof 所在 job 失败即失败，不作为 RC 已通过的依据。
+  2026-11-10 的独立空输出运行 42679410870 复用 42667945952 attempt 1 的
+  ad461a94 诊断包，先复核产物、尝试、包内 exe 摘要。此 runner 的默认渲染端点
+  缺失（find_default_endpoint，0x80070490）；合成冷 WAV 使用证明空输出，
+  真实 HWND 可见、所有者仍存活、SQLite 时钟已到 1.040 秒。
+  暖打开的无效文件未获得原协议的受理结果：发送方返回 2（无法转交），
+  停在该步骤，未验证后续暖 FLAC/MP3。保留独立报告与日志，不推断根因、
+  默认输出、物理声卡或 Windows 暖交接已通过。
+- 保留包复验 42691269400 attempt 1 用 42682251677 attempt 1 的 5453e0ad
+  便携诊断包（产物 13705703308）。托管 Windows x64 的同一个 Python 进程
+  用同一绝对 exe、工作目录和隔离资料启动双方；暖发送端的无效渲染器环境值
+  用于检查图形旁路。冷 WAV 的空输出时钟走到 1.240711 秒，原 HWND 和进程
+  仍在；同机默认输出端点缺失（0x80070490）。无效媒体发送端打开管道，
+  双方随后各记录对端进程拒绝，发送端返回 2，未到 HELLO、READY、媒体选择或
+  暖 FLAC/MP3。日志没有共同时间顺序；一边先关闭也可能导致另一边 PID 查询、
+  回读或存活检查失败，不能认定是两次独立的令牌不匹配。
+- 对照该包源码：desktop/src/lib.rs::run 在图形前调用 windows::claim，持有
+  NTFS 目录、锁与按目录身份和登录上下文派生的管道。宿主在桌面初始化后由
+  windows/host.rs::install 读取 AccessShape，发送端在图形前由 forward 读取。
+  host.rs::send 和 effective.rs::authenticate 都先调用 verify_process；
+  identity.rs::verified_peer_token 用 GetNamedPipeClientProcessId 或
+  GetNamedPipeServerProcessId 取 PID，以 PROCESS_QUERY_LIMITED_INFORMATION
+  和 SYNCHRONIZE 打开进程、用 TOKEN_QUERY 打开主令牌，再回读 PID 并用
+  WaitForSingleObject 检查存活。用户、登录、完整性和提升级别都须一致，
+  effective.rs 再比较完整的令牌访问形状；通过后才可发送 HELLO 并验证实际
+  连接线程身份。便携 exe 摘要是独立的产物证据，不替代对端令牌检查。
+- 53e4de55 仅为下一次合成诊断的候选，尚无该候选的 Windows GUI 回执。
+  它只细分这些失败阶段，保留原认证、权限、失败出口和路由范围。
+  已有结果不证明安装版文件关联、默认输出、暖文件选择或暖播放；发布门槛不变。
+  Windows API 依据：
+  https://learn.microsoft.com/powershell/module/netsecurity/new-netfirewallrule
+  https://learn.microsoft.com/windows/win32/winmsg/about-windows
+  https://learn.microsoft.com/microsoft-edge/webview2/reference/win32/webview2-idl
 
 Debian 打开方式候选与系统默认归属
 - Cumulus 不写系统默认、Explorer UserChoice/Hash 或 Linux mimeapps.list，
@@ -148,3 +284,18 @@ global_remove 不受 monitor 开关限制，独立输出 [{id}]、[{id,info:null
 官方源码：同上 global_remove:1391–1415，on_core_done:1477–1494；
 Git blob 066685f90201627ff7fc61d6ab01dab132dda053，SHA-256
 53be0fb23add47d15ea969443c6ce21aaa0d17ab8ec732085175ab592f1a0acc。
+
+Windows 保留包诊断（2026-11-10）
+- 独立 run 42685394622 的 MSVC 多进程 transport lab 实际通过：普通同令牌
+  accept/ACK/consumed、未就绪、受限连接者拒绝和无效输入。它不启动 Tauri
+  发行包、也不证明实际热打开。
+- run 42691269400 attempt 1 复用 42682251677 attempt 1 构建的便携包，
+  校验 artifact、ZIP、应用和 FLAC 后，Windows 真实冷启动 WAV 以 null
+  输出推进到 1.240711 秒，并保有原窗口；热交接被拒绝。
+  owner.pipe_connected 后为 owner.sender_process_denied；
+  sender.pipe_opened 后为 sender.owner_process_denied。没有握手、文件挑选
+  或热解码成功证据；日志没有跨进程顺序，不能判定是两次独立令牌差异。
+- 受保护的同配置命名管道只允许已确认对端进入交接。先前单独的默认输出
+  运行 42678733088 在应用启动前报告 default_endpoint_absent（0x80070490）。
+  两次诊断均不证明 Windows 物理声卡输出。保留包收据和两端日志见
+  .build/ui-proof/phase209-windows-retained-trace/。

@@ -3,12 +3,15 @@ use crate::{
     Error, Result,
     account::resources::{AccountResources, MutationPhase, MutationRecord, ResourceKind},
     catalog::{CatalogApi, SearchOptions},
-    playlist::PlaylistApi,
+    playlist::{PlaylistApi, playlist_entry_id},
     protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::Arc};
+#[path = "playlist_mixed_read.rs"]
+mod mixed;
+use mixed::PlaylistPageSlot;
 
 pub(super) const PLAYLIST_COLLECT_LAST_PAGE: u32 = 999;
 
@@ -42,13 +45,46 @@ pub(super) async fn playlist_track_page(
     {
         return Err(Error::QueueChanged);
     }
-    let slice: Vec<_> = ids.iter().skip(page.offset).take(page.limit).collect();
-    let loaded_row = |index| loaded.and_then(|rows| rows.get(&(page.offset + index)));
-    let wanted: Vec<_> = slice
+    let slots = ids
+        .iter()
+        .skip(page.offset)
+        .take(page.limit)
+        .map(PlaylistPageSlot::Service)
+        .collect();
+    let tracks = playlist_rows(api, slots, page.offset, trial_mode, loaded).await?;
+    Ok(TrackPage {
+        daily: None,
+        style_tags: None,
+        revision: Some(revision),
+        more: page.offset.saturating_add(tracks.len()) < ids.len(),
+        tracks,
+        total: ids.len(),
+        offset: page.offset,
+        playlist: Some(playlist),
+        playlist_local: None,
+        playlist_offline: None,
+    })
+}
+
+async fn playlist_rows(
+    api: Arc<dyn Api>,
+    slots: Vec<PlaylistPageSlot<'_>>,
+    offset: usize,
+    trial_mode: Option<i32>,
+    loaded: Option<&BTreeMap<usize, TrackView>>,
+) -> Result<Vec<TrackView>> {
+    let loaded_row = |index| loaded.and_then(|rows| rows.get(&(offset + index)));
+    let wanted: Vec<_> = slots
         .iter()
         .enumerate()
-        .filter(|(index, item)| item["v"].as_i64() != Some(-1) && loaded_row(*index).is_none())
-        .map(|(_, item)| item["id"].clone())
+        .filter_map(|(index, slot)| match slot {
+            PlaylistPageSlot::Service(item)
+                if item["v"].as_i64() != Some(-1) && loaded_row(index).is_none() =>
+            {
+                Some(item["id"].clone())
+            }
+            _ => None,
+        })
         .collect();
     let songs = CatalogApi::new(api)
         .songs_with_trial(
@@ -58,8 +94,15 @@ pub(super) async fn playlist_track_page(
         )
         .await?;
     let mut returned = songs.songs.into_iter();
-    let mut tracks = Vec::with_capacity(slice.len());
-    for (index, item) in slice.into_iter().enumerate() {
+    let mut tracks = Vec::with_capacity(slots.len());
+    for (index, slot) in slots.into_iter().enumerate() {
+        let item = match slot {
+            PlaylistPageSlot::Service(item) => item,
+            PlaylistPageSlot::Local(row) => {
+                tracks.push(*row);
+                continue;
+            }
+        };
         if let Some(loaded) = loaded_row(index) {
             tracks.push(loaded.clone());
             continue;
@@ -72,38 +115,33 @@ pub(super) async fn playlist_track_page(
         };
         tracks.push(match song {
             Some(song) => mapping::track(&song)?,
-            None => TrackView {
-                id: identifier(&item["id"])?,
-                voice_id: None,
-                title_names: Default::default(),
-                name: if local {
-                    "本地音乐"
-                } else {
-                    "暂不可用的歌曲"
-                }
-                .into(),
-                artists: vec![],
-                artist_refs: vec![],
-                album: String::new(),
-                album_id: None,
-                cover_url: None,
-                duration_ms: 0,
-                fee: 0,
-                missing: true,
-                local,
-            },
+            None => missing_playlist_row(playlist_entry_id(item)?, local),
         });
     }
-    Ok(TrackPage {
-        daily: None,
-        style_tags: None,
-        revision: Some(revision),
-        more: page.offset.saturating_add(tracks.len()) < ids.len(),
-        tracks,
-        total: ids.len(),
-        offset: page.offset,
-        playlist: Some(playlist),
-    })
+    Ok(tracks)
+}
+
+pub(super) fn missing_playlist_row(id: String, local: bool) -> TrackView {
+    TrackView {
+        id,
+        voice_id: None,
+        title_names: Default::default(),
+        name: if local {
+            "本地音乐"
+        } else {
+            "暂不可用的歌曲"
+        }
+        .into(),
+        artists: vec![],
+        artist_refs: vec![],
+        album: String::new(),
+        album_id: None,
+        cover_url: None,
+        duration_ms: 0,
+        fee: 0,
+        missing: true,
+        local,
+    }
 }
 
 impl MusicClient {
@@ -355,6 +393,8 @@ impl MusicClient {
                     total,
                     offset: page.offset,
                     playlist: None,
+                    playlist_local: None,
+                    playlist_offline: None,
                 })
             })
             .await?;

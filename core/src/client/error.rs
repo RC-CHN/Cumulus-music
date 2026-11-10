@@ -305,10 +305,35 @@ impl From<Error> for ClientError {
                 ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::OfflinePlaylistEmpty => (
+                    "offline_playlist_empty",
+                    "歌单中没有可离线播放的曲目",
+                    false,
+                ),
+                Error::TogetherSelectionUnsupported => (
+                    "together_selection_unsupported",
+                    "该资源暂不支持一起听，当前播放列表未变化",
+                    false,
+                ),
                 Error::AlbumDropSourceChanged => (
                     "album_drop_source_changed",
                     "专辑歌曲列表已更新，请刷新专辑后重新拖入",
                     true,
+                ),
+                Error::State("selected search song is unavailable online") => (
+                    "search_group_anchor_unavailable",
+                    "这首歌当前无法播放，请从同组中可播放的歌曲打开菜单",
+                    false,
+                ),
+                Error::State("search selection has unverified playback rights") => (
+                    "search_group_rights_unknown",
+                    "所选歌曲中有未核实播放权限的条目，请重新选择",
+                    false,
+                ),
+                Error::State("search next requires a stable ordinary queue") => (
+                    "search_group_queue_unavailable",
+                    "仅能向当前普通播放队列添加这组选中的歌曲",
+                    false,
                 ),
                 Error::State("search drop results expired") => (
                     "search_drop_source_changed",
@@ -454,6 +479,21 @@ impl From<Error> for ClientError {
                 Error::Response("saved account identity changed") => (
                     "saved_account_changed",
                     "该账号的登录身份已变化，请重新登录",
+                    false,
+                ),
+                Error::State("queued catalog file is unavailable") => (
+                    "queue_catalog_file_unavailable",
+                    "关联的原文件已移动、变化或无法读取，请检查本地音乐或下载管理",
+                    false,
+                ),
+                Error::State("queued download file is unavailable") => (
+                    "queue_download_file_unavailable",
+                    "原下载文件已移动、变化或无法读取，请到「下载管理」检查原文件",
+                    false,
+                ),
+                Error::State("queued local file is unavailable") => (
+                    "queue_local_file_unavailable",
+                    "原文件已移动、变化或无法读取。请在「本地音乐」重新扫描后再试",
                     false,
                 ),
                 Error::State("cloud upload source unavailable") => (

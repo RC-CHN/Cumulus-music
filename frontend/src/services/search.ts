@@ -36,6 +36,10 @@ export interface SearchResultQuery {
   correct: boolean;
   channel?: SearchChannel;
 }
+export interface SearchSongTableHint {
+  aliasParts?: readonly SearchTextPart[];
+  lyricParts?: readonly { text: string; highlight: boolean }[];
+}
 export type SearchTrackHint =
   | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
   | { kind: 'alias'; text: string };
@@ -59,6 +63,8 @@ export type SearchItem =
       track: TrackView;
       excerpt: string[];
       queueDropReceipt?: string;
+      groupNextRight?: 'playable' | 'copyright_blocked';
+      groupDownload?: { receipt: string; right: 'ordinary' | 'purchased' | 'copyright_blocked' };
       excerptTruncated?: boolean;
       mvId?: string;
       replacementMv?: boolean;
@@ -66,6 +72,7 @@ export type SearchItem =
       limitedFree?: boolean;
       qualityBadge?: SearchQualityBadge;
       hint?: SearchTrackHint;
+      tableHint?: SearchSongTableHint;
       explicit?: boolean;
       originalRecording?: boolean;
       reasons?: SearchReasonTag[];
@@ -73,7 +80,13 @@ export type SearchItem =
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string; knownEmpty?: boolean }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
-  | { kind: 'voice'; voice: EpisodeView; listenerCount?: number; creatorId?: string }
+  | {
+      kind: 'voice';
+      voice: EpisodeView;
+      listenerCount?: number;
+      creatorId?: string;
+      menuReceipt?: string;
+    }
   | { kind: 'podcast'; podcast: PodcastCard; table?: PodcastSearchTable; playbackReceipt?: string }
   | { kind: 'mv'; mv: CatalogVideoCard }
   | { kind: 'user'; user: FollowUser }
@@ -131,6 +144,7 @@ export interface SearchResultView {
   nextOffset: number;
   correction: string | null;
   correctionParts?: { text: string; highlight: boolean }[];
+  correctionReceipt?: string;
   unavailableCount: number;
   emptyTitle?: string;
   notice: string | null;
@@ -191,6 +205,7 @@ export interface SearchResultsClient {
     epoch: string,
     query: SearchResultQuery,
     defaultReceipt?: string,
+    correctionReceipt?: string,
   ): Promise<AccountData<SearchResultView>>;
 }
 export interface SearchPresentationPatch {
@@ -216,6 +231,8 @@ export interface SearchWord {
   defaultReceipt?: string;
 }
 export interface SearchSuggestionWord extends SearchWord {
+  /** Value written to the input after selection; defaults to the visible label. */
+  inputLabel?: string;
   labelParts: SearchTextPart[];
 }
 export type SearchChartDestination = 'podcasts' | 'audiobooks';
@@ -249,10 +266,113 @@ export type SearchDiscovery =
 export type SearchHistoryCommand =
   | { kind: 'read' | 'clear' }
   | { kind: 'remember' | 'remove'; keyword: string };
+export interface SearchGroupDownloadTarget {
+  receipt: string;
+  trackId: string;
+}
+export interface SearchGroupDownloadSelection {
+  anchor: SearchGroupDownloadTarget;
+  rows: SearchGroupDownloadTarget[];
+}
+export type SearchGroupDownloadSort = 'default' | 'recently';
+export type SearchPurchasedQuality = import('./voiceSongs').VoiceSongPurchasedQuality;
+export type SearchGroupDownloadCommand =
+  | ({ kind: 'prepare' } & SearchGroupDownloadSelection)
+  | { kind: 'start' | 'status' | 'cancel' | 'reconcile'; receipt: string }
+  | { kind: 'confirm_quality'; receipt: string; quality: SearchPurchasedQuality }
+  | { kind: 'destinations'; receipt: string; sort: SearchGroupDownloadSort; page: number }
+  | { kind: 'choose'; receipt: string; playlistId: string }
+  | { kind: 'choose_liked'; receipt: string; destinationReceipt: string }
+  | { kind: 'create_playlist'; receipt: string; name: string; privatePlaylist: boolean }
+  | { kind: 'creation_status'; receipt: string; reconcile: boolean }
+  | { kind: 'add_created'; receipt: string }
+  | { kind: 'start_from_playlist'; receipt: string; continuation: string };
+export interface SearchGroupDownloadPlaylistResult {
+  epoch: string;
+  receipt: string;
+  playlistId: string;
+  phase: import('./playlists').PlaylistPhase;
+  addFailed: boolean;
+  continuation: string | null;
+  likedIds: string[];
+}
+export interface SearchGroupDownloadCreation {
+  epoch: string;
+  receipt: string;
+  createPhase: import('./playlists').PlaylistPhase;
+  playlistId: string | null;
+  canAdd: boolean;
+  add: SearchGroupDownloadPlaylistResult | null;
+}
+export type SearchGroupDownloadReply =
+  | {
+      kind: 'prepared';
+      epoch: string;
+      decision:
+        | 'ready'
+        | 'purchased_quality_required'
+        | 'purchased_selection_unavailable'
+        | 'playlist_required'
+        | 'playlist_unavailable'
+        | 'membership_unknown'
+        | 'directory_required'
+        | 'anchor_unavailable'
+        | 'unavailable';
+      receipt: string | null;
+      eligibleCount: number;
+      omittedCount: number;
+      purchasedQualities?: SearchPurchasedQuality[];
+      existingPurchasedQuality?: SearchPurchasedQuality;
+    }
+  | {
+      kind: 'quality_confirmed';
+      epoch: string;
+      decision: 'playlist_required' | 'playlist_unavailable' | 'membership_unknown';
+      receipt: string | null;
+      quality: SearchPurchasedQuality;
+    }
+  | {
+      kind: 'existing_quality_mismatch';
+      epoch: string;
+      receipt: string;
+      requiredQuality: SearchPurchasedQuality;
+    }
+  | { kind: 'accepted'; result: import('./downloads').DownloadResult }
+  | {
+      kind: 'destinations';
+      page: AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>;
+      systemLikedReceipt: string | null;
+      canCreate: boolean;
+    }
+  | {
+      kind: 'playlist';
+      result: SearchGroupDownloadPlaylistResult;
+    }
+  | { kind: 'creation'; result: SearchGroupDownloadCreation }
+  | { kind: 'pending' | 'not_started' | 'cancelled' | 'directory_required' };
+
 export interface SearchClient {
+  searchGroupDownload(
+    epoch: string,
+    command: SearchGroupDownloadCommand,
+  ): Promise<SearchGroupDownloadReply>;
+  openSearchGroupPurchasedQualityGuide(epoch: string, receipt: string): Promise<void>;
   searchDiscovery(
     epoch: string,
     query: SearchDiscoveryQuery,
   ): Promise<AccountData<SearchDiscovery>>;
   searchHistory(epoch: string, command: SearchHistoryCommand): Promise<AccountData<string[]>>;
+  searchVoiceMenu(
+    epoch: string,
+    target: SearchVoiceMenuTarget,
+  ): Promise<AccountData<SearchVoiceMenu>>;
+  searchOpenVoiceDirectory(epoch: string, target: SearchVoiceMenuTarget): Promise<void>;
+}
+export interface SearchVoiceMenuTarget {
+  receipt: string;
+  voiceId: string;
+}
+export interface SearchVoiceMenu {
+  commentCount: number | null;
+  downloadComplete: boolean | null;
 }

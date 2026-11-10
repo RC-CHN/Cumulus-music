@@ -1,3 +1,5 @@
+#[path = "pc_experiment_transport/listened_books_resume.rs"]
+mod listened_books_resume;
 #[path = "pc_experiment_transport/minibar_skip.rs"]
 mod minibar_skip;
 #[path = "pc_experiment_transport/natural_eof.rs"]
@@ -7,8 +9,14 @@ mod pc_presentation;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback;
+#[path = "pc_experiment_transport/player_podcast_resume.rs"]
+mod player_podcast_resume;
 #[path = "pc_experiment_transport/search_footer.rs"]
 mod search_footer;
+#[path = "pc_experiment_transport/search_group_download.rs"]
+mod search_group_download;
+#[path = "pc_experiment_transport/search_podcast_batches.rs"]
+mod search_podcast_batches;
 #[path = "pc_experiment_transport/search_presentation.rs"]
 mod search_presentation;
 mod support;

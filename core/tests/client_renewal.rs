@@ -508,21 +508,7 @@ async fn duplicate_checks_and_aborted_request_preserve_single_flight_and_recover
     assert_eq!(w.http.calls().len(), 2);
 }
 
-#[tokio::test]
-async fn switching_accounts_during_refresh_does_not_publish_old_account_or_hold_switch_gate() {
-    let (response, sender) = gate();
-    let w = World::new(
-        [response, rotated(), identity(2)],
-        true,
-        None,
-        Arc::new(DesktopDeviceToken),
-    )
-    .await;
-    let client = w.client.clone();
-    let epoch = w.epoch();
-    let old_epoch = epoch.clone();
-    let task = tokio::spawn(async move { client.renew_session(&epoch, Action::Check).await });
-    w.http.wait(2).await;
+async fn switch_to_second_account(w: &World) {
     let flow = w
         .client
         .begin_login(&w.epoch(), LoginMode::Email, None)
@@ -544,11 +530,226 @@ async fn switching_accounts_during_refresh_does_not_publish_old_account_or_hold_
         login.status,
         cumulus_core::account::login::LoginStatus::Authenticated
     );
+}
+
+#[derive(Default)]
+struct HeldRefreshContext {
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+impl TokenProvider for HeldRefreshContext {
+    fn token<'a>(&'a self, _: &'a str) -> ApiFuture<'a, String> {
+        Box::pin(async move {
+            self.entered.notify_one();
+            self.release.notified().await;
+            Ok("synthetic-held-context".into())
+        })
+    }
+}
+
+fn held_refresh_context(provider: Arc<HeldRefreshContext>) -> Arc<RequestContext> {
+    Arc::new(RequestContext::new(
+        json!({"yidun#paths":{"whiteList":[{"businessId":"fixture","list":["/api/login/token/refresh/v1"]}]}}),
+        ApiOrigin::Pc.as_str().into(),
+        provider,
+    ))
+}
+
+fn renewal_record(w: &World) -> serde_json::Value {
+    StateStore::open(w.root.path().join("profile"))
+        .unwrap()
+        .get("1", "login_refresh", "jsk")
+        .unwrap()
+        .unwrap()
+}
+
+fn spawn_check(
+    w: &World,
+) -> tokio::task::JoinHandle<cumulus_core::Result<cumulus_core::client::dto::SessionRenewalView>> {
+    let client = w.client.clone();
+    let epoch = w.epoch();
+    tokio::spawn(async move { client.renew_session(&epoch, Action::Check).await })
+}
+
+#[tokio::test]
+async fn switching_accounts_while_preparing_refresh_prevents_first_dispatch() {
+    let provider = Arc::new(HeldRefreshContext::default());
+    let w = World::new(
+        [rotated(), identity(2)],
+        true,
+        Some(held_refresh_context(provider.clone())),
+        Arc::new(DesktopDeviceToken),
+    )
+    .await;
+    let old_revision = w.credentials().login_credentials().unwrap().revision;
+    let task = spawn_check(&w);
+    provider.entered.notified().await;
+    assert_eq!(w.http.calls().len(), 1);
+    assert_eq!(renewal_record(&w)["pending"], true);
+
+    switch_to_second_account(&w).await;
+    assert_eq!(
+        w.credentials().login_credentials().unwrap().revision,
+        old_revision
+    );
+    provider.release.notify_one();
+    assert!(matches!(task.await.unwrap(), Err(Error::StaleResponse)));
+    assert_eq!(renewal_record(&w)["pending"], false);
+    assert!(renewal_record(&w)["last_success"].is_null());
+    assert_eq!(
+        w.client.account().unwrap().nickname.as_deref(),
+        Some("账号2")
+    );
+    let calls = w.http.calls();
+    assert_eq!(calls.len(), 3);
+    assert!(
+        calls
+            .iter()
+            .all(|c| c.path != "/api/login/token/refresh/v1")
+    );
+}
+
+#[tokio::test]
+async fn changed_cookie_scope_while_preparing_refresh_never_sends_and_releases_intent() {
+    let provider = Arc::new(HeldRefreshContext::default());
+    let w = World::new(
+        [],
+        true,
+        Some(held_refresh_context(provider.clone())),
+        Arc::new(DesktopDeviceToken),
+    )
+    .await;
+    let task = spawn_check(&w);
+    provider.entered.notified().await;
+    let credentials = w.credentials();
+    let revision = credentials.login_credentials().unwrap().revision;
+    credentials
+        .record_response(
+            &ApiOrigin::Pc.url(),
+            &["MUSIC_U=synthetic-other-path; Path=/eapi/w/nuser/account/get; Secure".into()],
+            None,
+            &revision,
+        )
+        .unwrap();
+    provider.release.notify_one();
+    assert!(
+        matches!(task.await.unwrap(), Err(Error::RequestNotSent(error)) if matches!(*error, Error::CredentialChanged))
+    );
+    assert_eq!(renewal_record(&w)["pending"], false);
+    assert_eq!(w.http.calls().len(), 1);
+    assert!(matches!(w.client.account(), Err(Error::CredentialChanged)));
+
+    // A fresh host owns the new revision but still cannot send a refresh
+    // whose Cookie scope is ambiguous at the identity URL.
+    let http = Arc::new(ScriptHttp::new([identity(1)]));
+    let reopened = w.reopened(http.clone());
+    let account = reopened.restore_account().await.unwrap();
+    assert!(matches!(
+        reopened.renew_session(&account.epoch, Action::Check).await,
+        Err(Error::CredentialChanged)
+    ));
+    assert_eq!(http.calls().len(), 1);
+    assert_eq!(http.calls()[0].path, "/api/w/nuser/account/get");
+}
+
+#[tokio::test(start_paused = true)]
+async fn deadline_while_preparing_refresh_releases_only_unsent_intent() {
+    let provider = Arc::new(HeldRefreshContext::default());
+    let w = World::new(
+        [],
+        true,
+        Some(held_refresh_context(provider.clone())),
+        Arc::new(DesktopDeviceToken),
+    )
+    .await;
+    let task = spawn_check(&w);
+    provider.entered.notified().await;
+    assert_eq!(renewal_record(&w)["pending"], true);
+    tokio::time::advance(std::time::Duration::from_secs(46)).await;
+    assert!(matches!(task.await.unwrap(), Err(Error::Transport(_))));
+    assert_eq!(renewal_record(&w)["pending"], false);
+    assert_eq!(w.http.calls().len(), 1);
+    assert_eq!(
+        w.client.session_renewal(&w.epoch()).unwrap().state,
+        State::Failed
+    );
+}
+
+#[tokio::test]
+async fn rotated_pair_outside_identity_scope_does_not_verify_against_another_cookie() {
+    let HttpResponse::Ready(Ok(mut response)) = rotated() else {
+        unreachable!()
+    };
+    // The old root Cookie would authenticate account/get, while this new
+    // narrower Cookie is usable only for the refresh URL.
+    response.set_cookies = vec![
+        "MUSIC_U=; Path=/; Max-Age=0; Secure".into(),
+        "MUSIC_U=synthetic-new; Path=/eapi/login/token/refresh/v1; Secure".into(),
+        "MUSIC_U=synthetic-old; Path=/eapi/w/nuser/account/get; Secure".into(),
+    ];
+    let w = World::new(
+        [HttpResponse::Ready(Ok(response))],
+        true,
+        None,
+        Arc::new(DesktopDeviceToken),
+    )
+    .await;
+    assert!(matches!(w.check().await, Err(Error::CredentialChanged)));
+    assert!(
+        w.credentials()
+            .login_credentials()
+            .unwrap()
+            .rotation
+            .is_some()
+    );
+    assert_eq!(renewal_record(&w)["pending"], true);
+    assert!(renewal_record(&w)["last_success"].is_null());
+    let epoch = w.epoch();
+    assert_eq!(
+        w.client.session_renewal(&epoch).unwrap().state,
+        State::RecoveryRequired
+    );
+    assert!(matches!(
+        w.client.renew_session(&epoch, Action::Reconcile).await,
+        Err(Error::CredentialChanged)
+    ));
+    let calls = w.http.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1].path, "/api/login/token/refresh/v1");
+}
+
+#[tokio::test]
+async fn switching_accounts_during_refresh_does_not_publish_old_account_or_hold_switch_gate() {
+    let (response, sender) = gate();
+    let w = World::new(
+        [response, rotated(), identity(2)],
+        true,
+        None,
+        Arc::new(DesktopDeviceToken),
+    )
+    .await;
+    let client = w.client.clone();
+    let epoch = w.epoch();
+    let old_epoch = epoch.clone();
+    let task = tokio::spawn(async move { client.renew_session(&epoch, Action::Check).await });
+    w.http.wait(2).await;
+    switch_to_second_account(&w).await;
     let HttpResponse::Ready(r) = rotated() else {
         unreachable!()
     };
     assert!(sender.send(r).is_ok());
     assert!(matches!(task.await.unwrap(), Err(Error::StaleResponse)));
+    assert_eq!(renewal_record(&w)["pending"], true);
+    assert!(renewal_record(&w)["last_success"].is_null());
+    assert_eq!(
+        w.credentials()
+            .login_credentials()
+            .unwrap()
+            .token
+            .as_deref(),
+        Some("synthetic-new")
+    );
     assert_ne!(w.epoch(), old_epoch);
     assert_eq!(
         w.client.account().unwrap().nickname.as_deref(),

@@ -1,4 +1,37 @@
-import type { DownloadCommand, DownloadControl } from './downloads';
+import type {
+  DownloadCommand,
+  DownloadControl,
+  DownloadResult,
+  DownloadSkipReason,
+} from './downloads';
+
+const admission: Record<DownloadSkipReason, string> = {
+  downloaded: '资源已下载',
+  local: '已有对应本地文件',
+  waiting: '等待下载中',
+  working: '现有任务正在处理',
+  cancelling: '请等待取消完成后再下载',
+  options_changed: '现有任务的设置不同；可按原设置继续，或取消后按新设置下载',
+  existing: '已有任务，请到下载管理继续或修复',
+  missing: '原下载文件缺失或已变化，请核对下载记录',
+  conflict: '已有多条下载记录，请先核对',
+};
+
+export function downloadAdmissionSummary(result: DownloadResult): string | undefined {
+  const skipped = result.skipped;
+  if (!skipped?.length) return;
+  const counts = new Map<DownloadSkipReason, number>();
+  for (const { reason } of skipped) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  return [
+    ...(result.accepted.length ? [`已受理 ${result.accepted.length} 项`] : []),
+    ...[...counts].map(([reason, count]) =>
+      skipped.length === 1 ? admission[reason] : `${count} 项：${admission[reason]}`,
+    ),
+    ...(result.failed.length
+      ? [`${result.failed.length} 项未完成：${result.failed[0]?.message}`]
+      : []),
+  ].join('；');
+}
 
 const control: Record<DownloadControl, string> = {
   pause: '暂停下载',
@@ -22,11 +55,9 @@ export function downloadCommandLabel(command: DownloadCommand): string {
     case 'control':
       return `${control[command.action]}（${command.task_ids.length}项）`;
     case 'all':
-      return command.action === 'pause'
-        ? '暂停全部下载'
-        : command.action === 'resume'
-          ? '继续全部下载'
-          : '清空下载任务';
+      return command.action === 'pause' ? '暂停全部下载' : '继续全部下载';
+    case 'confirm_clear':
+      return '清空下载任务';
     case 'preferences':
       return '保存下载设置';
     case 'configure':

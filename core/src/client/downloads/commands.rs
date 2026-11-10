@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    download::service::{DownloadAction, DownloadStatus},
+    download::service::{CatalogAdmission, DownloadAction, DownloadOptions, DownloadStatus},
     protocol::api::identifier,
 };
 use serde_json::json;
@@ -23,35 +23,35 @@ impl MusicClient {
         on_commit: impl FnOnce() + Send + 'static,
     ) -> Result<DownloadResult> {
         let context = self.downloads.inner.context(epoch)?;
-        let captured = context.clone();
+        let host = self.downloads.inner.clone();
+        let runtime = tokio::runtime::Handle::current();
         let cancelled = Arc::new(AtomicBool::new(false));
         let _retire = Retire(cancelled.clone());
         let task = tokio::task::spawn_blocking(move || {
-            captured.service.create_guarded_song(
+            let task = context.service.create_guarded_song(
                 &json!(id),
                 options,
                 &|| {
                     if super::song_status::download_state(
-                        &captured.store,
-                        &captured.owner,
+                        &context.store,
+                        &context.owner,
                         &id,
                         crate::storage::PlaybackDownloadKind::Song,
                     )? != super::SongDownloadState::None
                     {
                         return Err(Error::State("song already has a download"));
                     }
-                    permission()?;
-                    if cancelled.load(Ordering::Acquire) {
-                        return Err(Error::Cancelled);
-                    }
-                    Ok(())
+                    permission()
                 },
+                &cancelled,
                 on_commit,
-            )
+            )?;
+            let _runtime = runtime.enter();
+            host.kick(&context)?;
+            Ok::<_, Error>(task)
         })
         .await
         .map_err(|_| Error::State("download command worker stopped"))??;
-        self.downloads.inner.kick(&context)?;
         Ok(DownloadResult {
             epoch: epoch.into(),
             accepted: vec![task.id],
@@ -73,14 +73,10 @@ impl MusicClient {
         let runtime = tokio::runtime::Handle::current();
         let operation_id = batch.receipt.clone();
         let accepted = tokio::task::spawn_blocking(move || {
-            let accepted = context.service.create_guarded_song_batch(
-                &batch.songs,
-                &batch.receipt,
-                batch.admission,
-                batch.options,
-                &permission,
-                &cancelled,
-            )?;
+            let accepted =
+                context
+                    .service
+                    .create_guarded_song_batch(batch, &permission, &cancelled)?;
             // The worker wakes even if the caller lost its response after the
             // transaction committed. The callback also retires the one lease.
             on_commit(&accepted);
@@ -113,6 +109,10 @@ impl MusicClient {
         let context = self.downloads.inner.context(epoch)?;
         let host = self.downloads.inner.clone();
         match command {
+            DownloadCommand::Start { song_ids, options } => {
+                self.start_catalog_downloads(context, song_ids, options)
+                    .await
+            }
             DownloadCommand::StartVoice { voice_ids, options } => {
                 validate_ids(&voice_ids)?;
                 let ids = voice_ids
@@ -244,6 +244,9 @@ impl MusicClient {
                     ..Default::default()
                 })
             }
+            DownloadCommand::ConfirmClear { receipt } => {
+                clear::confirm(host, context, receipt).await
+            }
             DownloadCommand::StopOperation { operation_id } => {
                 host.stop(&context, &operation_id)?;
                 Ok(DownloadResult {
@@ -294,6 +297,110 @@ impl MusicClient {
             }
         }
     }
+
+    async fn start_catalog_downloads(
+        &self,
+        context: Context,
+        song_ids: Vec<String>,
+        options: DownloadOptions,
+    ) -> Result<DownloadResult> {
+        validate_ids(&song_ids)?;
+        let mut unique = std::collections::HashSet::new();
+        let ids = song_ids
+            .iter()
+            .map(|id| identifier(&json!(id)))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .filter(|id| unique.insert(id.clone()))
+            .collect();
+        let local = self.local.context().await?;
+        let host = self.downloads.inner.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let _retire = Retire(cancelled.clone());
+        let runtime = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || {
+            let outcomes = context.service.admit_catalog_songs(
+                &context.token,
+                &local.library,
+                ids,
+                options,
+                &cancelled,
+            )?;
+            context.guard()?;
+            if outcomes
+                .iter()
+                .any(|(_, outcome)| matches!(outcome, Ok(CatalogAdmission::Admitted(_))))
+            {
+                // Wake committed work even after a lost reply, before checking
+                // any already published files for the duplicate summary.
+                let _runtime = runtime.enter();
+                host.kick(&context)?;
+            }
+            let mut result = DownloadResult {
+                epoch: context.token.generation.to_string(),
+                ..Default::default()
+            };
+            use CatalogAdmission as A;
+            use DownloadSkipReason as R;
+            for (id, outcome) in outcomes {
+                let reason = match outcome {
+                    Ok(A::Admitted(task)) => {
+                        result.accepted.push(task);
+                        continue;
+                    }
+                    Ok(A::VerifyComplete(task)) => {
+                        match context.service.verify_catalog_completion(
+                            &context.token,
+                            &id,
+                            &task,
+                            &cancelled,
+                        ) {
+                            Ok(true) => R::Downloaded,
+                            Ok(false) => R::Missing,
+                            Err(Error::MutationBusy) => R::Working,
+                            Err(Error::Cancelled) => return Err(Error::Cancelled),
+                            Err(_) => {
+                                context.guard()?;
+                                result.failed.push(DownloadFailure {
+                                    id,
+                                    message: "原下载文件状态未能核对，请检查下载记录",
+                                });
+                                continue;
+                            }
+                        }
+                    }
+                    Ok(A::Local) => R::Local,
+                    Ok(A::Waiting) => R::Waiting,
+                    Ok(A::Working) => R::Working,
+                    Ok(A::Cancelling) => R::Cancelling,
+                    Ok(A::OptionsChanged) => R::OptionsChanged,
+                    Ok(A::Existing) => R::Existing,
+                    Ok(A::Conflict) => R::Conflict,
+                    Err(Error::MutationBusy) => R::Working,
+                    Err(Error::StaleResponse | Error::Cancelled) => {
+                        context.guard()?;
+                        result.failed.push(DownloadFailure {
+                            id,
+                            message: "下载任务状态已变化，请核对后再试",
+                        });
+                        continue;
+                    }
+                    Err(_) => {
+                        result.failed.push(DownloadFailure {
+                            id,
+                            message: "未能创建或继续任务，请核对下载目录和现有文件",
+                        });
+                        continue;
+                    }
+                };
+                result.skipped.push(DownloadSkip { id, reason });
+            }
+            context.guard()?;
+            Ok(result)
+        })
+        .await
+        .map_err(|_| Error::State("download command worker stopped"))?
+    }
 }
 fn validate_ids(ids: &[String]) -> Result<()> {
     if ids.is_empty() || ids.len() > 5000 {
@@ -309,8 +416,16 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
     };
     match command {
         DownloadCommand::All { action } => {
-            if matches!(action, TaskControl::Repair) {
-                return Err(Error::InvalidInput("repair requires explicit tasks"));
+            match action {
+                TaskControl::Pause | TaskControl::Resume => (),
+                TaskControl::Cancel => {
+                    return Err(Error::InvalidInput(
+                        "bulk cancellation requires a prepared confirmation",
+                    ));
+                }
+                TaskControl::Repair => {
+                    return Err(Error::InvalidInput("repair requires explicit tasks"));
+                }
             }
             let ids: Vec<String> = context
                 .service
@@ -328,11 +443,7 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                             | DownloadStatus::Downloading
                             | DownloadStatus::Processing
                     ),
-                    TaskControl::Cancel => !matches!(
-                        t.status,
-                        DownloadStatus::Complete | DownloadStatus::Cancelled
-                    ),
-                    TaskControl::Repair => false,
+                    TaskControl::Cancel | TaskControl::Repair => false,
                 })
                 .map(|t| t.id)
                 .collect();
@@ -346,26 +457,6 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                 )?;
                 result.accepted.extend(next.accepted);
                 result.failed.extend(next.failed);
-            }
-        }
-        DownloadCommand::Start { song_ids, options } => {
-            validate_ids(&song_ids)?;
-            // Reject malformed IDs before the first task is created.
-            let ids = song_ids
-                .iter()
-                .map(|id| identifier(&json!(id)))
-                .collect::<Result<Vec<_>>>()?;
-            let mut unique = std::collections::HashSet::new();
-            for id in ids.into_iter().filter(|id| unique.insert(id.clone())) {
-                context.guard()?;
-                match context.service.create_default(&json!(id), options.clone()) {
-                    Ok(task) => result.accepted.push(task.id),
-                    Err(Error::StaleResponse) => return Err(Error::StaleResponse),
-                    Err(_) => result.failed.push(DownloadFailure {
-                        id,
-                        message: "未能创建任务，请先设置下载目录并检查文件冲突",
-                    }),
-                }
             }
         }
         DownloadCommand::Control { task_ids, action } => {

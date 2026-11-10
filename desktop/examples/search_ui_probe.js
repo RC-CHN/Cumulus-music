@@ -54,11 +54,16 @@
     release,
     holdKind,
     held = false;
-  const checks = [];
+  const checks = [], activationReads = [];
+  let activationSubmissions = 0;
   const nativeFetch = window.fetch;
   window.fetch = async function (url, options) {
     const match = String(url).endsWith("/search_discovery");
     const query = match ? JSON.parse(options.body).query : undefined;
+    if (window.__cumulusSearchFocusActivationProof) {
+      if (query && query.kind !== "defaults") activationReads.push(query);
+      if (String(url).endsWith("/search_results")) activationSubmissions++;
+    }
     const delay = query?.kind === holdKind ? gate : undefined;
     const response = await nativeFetch.call(window, url, options);
     if (delay) {
@@ -85,7 +90,7 @@
     await emit("search-fixture", { mode });
     await wait(() => window.__searchFixtureAck, "fixture");
   }
-  async function capture(label) {
+  async function capture(label, extra = {}) {
     await wait(
       () =>
         all(".search-panel,.search-history-confirm").every((n) =>
@@ -156,6 +161,7 @@
       searchPanelText: p?.textContent,
       tagLayout,
       focused: document.activeElement?.getAttribute("aria-label"),
+      ...extra,
     });
     await sleep(700);
   }
@@ -241,9 +247,7 @@
       );
       await capture("default_recovery_initial");
       input().focus({ preventScroll: true });
-      await wait(() => panel() && document.activeElement === input(), "focused search input");
-      key(input(), "Escape");
-      await wait(() => !panel() && document.activeElement === input(), "Escape keeps input focus");
+      await wait(() => !panel() && document.activeElement === input(), "focus does not open search");
       await sleep(5200);
       assert(input().placeholder === missing, "focused input did not retry after the popover closed");
       await capture("default_recovery_input_focused");
@@ -284,6 +288,79 @@
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",
     );
+    if (window.__cumulusSearchFocusActivationProof) {
+      const typed = "合成键入激活", committed = "合成输入法激活";
+      const expanded = () => input().getAttribute("aria-expanded") === "true";
+      const focus = () => input().focus({ preventScroll: true });
+      const compose = (phase, data) => input().dispatchEvent(
+        new CompositionEvent(`composition${phase}`, { bubbles: true, data }),
+      );
+      const chartIds = ["HOT_SEARCH_SONG#@#", "HOT_SEARCH_STYLE_ROCK#@#", "HOT_SEARCH_STYLE_ACG#@#"];
+      const state = async (label, expected, visible) => {
+        await wait(() => expanded() === visible && !!panel() === visible, label);
+        await sleep(350); // Observe beyond the production suggestion debounce.
+        const reads = activationReads.map(({ kind, keyword, id }) => [kind, keyword ?? id ?? null]);
+        const primary = reads.filter(([kind]) => kind !== "chart");
+        const details = reads.filter(([kind]) => kind === "chart").map(([, id]) => id);
+        const expectedDetails = expected.flatMap(([kind]) => kind === "charts" ? chartIds : []);
+        assert(JSON.stringify(primary) === JSON.stringify(expected), `${label}: ${JSON.stringify(primary)}`);
+        assert(JSON.stringify(details) === JSON.stringify(expectedDetails), `${label}: ${JSON.stringify(details)}`);
+        assert(document.activeElement === input(), `${label}: input must retain focus`);
+        assert(!one(".search-results-page") && activationSubmissions === 0, `${label}: no search submission`);
+        await capture(label, { activationReads: reads, expanded: visible });
+      };
+      const discovery = [["charts", null], ["recommendations", null]];
+      const typedReads = [["suggestions", typed]];
+      const committedReads = [...typedReads, ["suggestions", committed]];
+      const awaitHome = () => wait(
+        () => panel() && one(".search-chart") && !panel().textContent.includes("正在加载"),
+        "discovery content",
+      );
+      button("开始搜索").focus({ preventScroll: true });
+      const inactiveBackground = getComputedStyle(input().form).backgroundImage;
+      focus();
+      assert(getComputedStyle(input().form).backgroundImage !== inactiveBackground,
+        "focus still has a visible selected background");
+      await state("focus_only", [], false);
+
+      type(typed);
+      await wait(() => panel()?.textContent.includes(typed + " · 联想结果 1"), "typing opens suggestions");
+      await state("edit_opens_suggestions", typedReads, true);
+
+      key(input(), "Escape");
+      await wait(() => !panel(), "Escape removes the panel");
+      button("开始搜索").focus({ preventScroll: true });
+      focus();
+      assert(input().value === typed, "refocus retains the entered text");
+      await state("refocus_only", typedReads, false);
+
+      compose("start", "");
+      type("yin");
+      key(input(), "Enter", { isComposing: true });
+      await state("composing_closed", typedReads, false);
+      type(committed);
+      compose("end", committed);
+      await wait(() => panel()?.textContent.includes(committed + " · 联想结果 1"), "commit opens suggestions");
+      await state("composition_commit", committedReads, true);
+
+      key(input(), "Escape");
+      type("");
+      await awaitHome();
+      await state("empty_edit_opens_discovery", [...committedReads, ...discovery], true);
+      key(input(), "Escape");
+      await wait(() => !panel(), "close before keyboard open");
+      key(input(), "ArrowDown");
+      await awaitHome();
+      await state("arrow_opens_discovery", [...committedReads, ...discovery, ...discovery], true);
+      key(input(), "Escape");
+      await wait(() => !panel(), "close before pointer open");
+      input().click();
+      await awaitHome();
+      await state("click_opens_discovery", [...committedReads, ...discovery, ...discovery, ...discovery], true);
+      await emit("complete", { ok: true, stageCount: count, searchFocusActivationVerified: true,
+        activationSubmissions, realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     if (window.__cumulusPodcastBrowseAroundProof) {
       await fixture("audio_ranks");
       const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
@@ -479,7 +556,10 @@
       await capture("suggestion_pointer_active");
       key(input(), "Enter");
       await result("合成精确词");
-      assert(input().value === literal, "hover selection preserves the display label");
+      assert(input().value === "合成输入栏文案", "hover selection uses toUserWord in the input");
+      await capture("suggestion_pointer_selection", {
+        selection: { popup: literal, result: one(".search-heading-copy h1").textContent, input: input().value },
+      });
 
       await open("音樂", "原字形 音樂 / 音乐");
       verifyRow(row("suggestions"), "原字形 音樂 / 音乐", ["音乐"]);
@@ -502,8 +582,11 @@
       assert(document.activeElement === recommendation, "keyboard advances to the recommendation");
       key(recommendation, "Enter");
       await result("合成分支推荐");
-      assert(input().value === "B / C / A / b c",
-        "recommended keyboard selection preserves the display label");
+      assert(input().value === "合成分支推荐",
+        "recommended keyboard selection without toUserWord fills the actual keyword");
+      await capture("suggestion_recommendation_selection", {
+        selection: { popup: "B / C / A / b c", result: one(".search-heading-copy h1").textContent, input: input().value },
+      });
 
       await open("退出悬停", "退出候选");
       point(row("suggestions"));
@@ -515,6 +598,16 @@
       type("更改后的原词");
       key(input(), "Enter");
       await result("更改后的原词");
+      const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
+      const { epoch } = await invoke("account_snapshot");
+      let history;
+      for (let n = 0; n < 50; n++) {
+        history = (await invoke("search_history", { epoch, command: { kind: "read" } })).value.slice(0, 4);
+        if (history[0] === "更改后的原词") break;
+        await sleep(25);
+      }
+      assert(history.join("|") === "更改后的原词|退出悬停|合成分支推荐|合成精确词",
+        "native history remembers only the selected search keywords");
       await emit("complete", {
         ok: true,
         suggestionMatchesVerified: true,
@@ -522,6 +615,7 @@
         suggestionGlyphDirectionVerified: true,
         suggestionFirstSpaceVerified: true,
         suggestionRecommendationKeyboardVerified: true,
+        suggestionHistory: history,
         stageCount: count,
         realMusicRequests: 0,
         realAccountWrites: 0,
@@ -657,7 +751,7 @@
           one(".search-heading-copy h1")?.textContent === "合成推荐",
         "search navigation",
       );
-      assert(input().value.includes("推荐结果"), "suggestion label stays in input, not the search term");
+      assert(input().value === "合成推荐", "missing toUserWord leaves the actual keyword in the input");
       await capture(`results_${w}_${t}`);
       await home();
       click(button("清空搜索历史"));

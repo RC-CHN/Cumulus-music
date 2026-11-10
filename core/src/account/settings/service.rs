@@ -38,6 +38,22 @@ pub struct AccountSettings {
     pub(super) store: Arc<StateStore>,
 }
 impl AccountSettings {
+    /// Homepage prefill may not commit over an in-flight or unknown opt-out.
+    /// The lock is nonblocking and this method does not enter AccountSession.
+    pub(crate) fn reserve_recall(store: &StateStore, owner: &str) -> Result<OperationLock> {
+        let lock = OperationLock::acquire(store.directory(), NAMESPACE, owner)?;
+        for (_, raw) in store.values(owner, JOURNAL)? {
+            let operation: SettingsMutation = serde_json::from_value(raw)?;
+            if operation.change.key == super::SettingKey::PersonalServiceSetting
+                && operation.change.value == super::SettingValue::Number(2)
+                && operation.phase.unresolved()
+            {
+                return Err(Error::MutationUncertain);
+            }
+        }
+        Ok(lock)
+    }
+
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
         Ok(Self {
             store: session.persistent_store()?,

@@ -3,7 +3,7 @@ use cumulus_core::{
     effects::{
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
-        directory::{EffectDirectoryDetail, EffectDirectoryRow},
+        directory::{EffectDirectoryDetail, EffectDirectoryOverview, EffectDirectoryRow},
         service::DeviceMaterialCheck,
     },
     playback::engine::{MpvConfig, MpvEngine, TrustedFlacRuntime},
@@ -95,6 +95,24 @@ pub async fn effect_catalogue(
 ) -> Result<Vec<EffectDirectoryRow>, ClientError> {
     client
         .effect_catalogue(&epoch, kind)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn effect_directory_overview<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<EffectDirectoryOverview, ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "effect directory overview is main-window only",
+        )
+        .into());
+    }
+    client
+        .effect_directory_overview(&epoch)
         .await
         .map_err(Into::into)
 }

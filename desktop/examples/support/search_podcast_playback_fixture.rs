@@ -141,13 +141,13 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         }
         "/api/dj/program/detail" => {
             let id: u64 = args["id"].as_str().unwrap().parse().unwrap();
-            assert!(id == 1 || row_mode() && id == 400);
+            assert!(id == 1 || row_mode() && matches!(id, 251 | 400));
             assert_eq!(*args, json!({"id":id.to_string()}));
             json!({"code":200,"program":episode(id)})
         }
         "/api/dj/play/url/check" => {
             let id: u64 = args["voiceId"].as_str().unwrap().parse().unwrap();
-            assert!(id == 1 || row_mode() && id == 400);
+            assert!(id == 1 || row_mode() && matches!(id, 251 | 400));
             json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":true}})
         }
         "/api/song/enhance/player/url/v1" => {
@@ -156,7 +156,7 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
             let id: u64 = ids[0]
                 .as_u64()
                 .unwrap_or_else(|| ids[0].as_str().unwrap().parse().unwrap());
-            assert!(id == 1001 || row_mode() && id == 1400);
+            assert!(id == 1001 || row_mode() && matches!(id, 1251 | 1400));
             json!({"code":200,"data":[{"id":id,"code":200,"level":"standard","expi":120,
                 "url":"https://m1.music.126.net/cumulus-relay-fixture.wav","md5":"fixture"}]})
         }

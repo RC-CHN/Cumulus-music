@@ -8,6 +8,7 @@ use crate::{
     protocol::api::{Api, GuardedPlaylistAdd, PlaylistAddPermission, identifier},
     storage::{OperationLock, StateStore, StateTransaction},
 };
+pub(crate) use liked::Origin as GroupDownloadLikedOrigin;
 use serde_json::{Value, json};
 use std::{
     sync::{
@@ -17,21 +18,21 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const JOURNAL: &str = "playlist-mutations";
+pub(super) const JOURNAL: &str = "playlist-mutations";
 
 pub(crate) struct GroupDownloadPlaylistProof {
     pub operation: String,
     pub playlist: String,
     pub songs: Arc<[String]>,
     pub creation: Option<String>,
-    pub system_liked: bool,
+    pub liked_origin: Option<GroupDownloadLikedOrigin>,
 }
 
 impl GroupDownloadPlaylistProof {
     pub(crate) fn outcome(&self, record: &PlaylistMutation, owner: &str) -> Result<(bool, bool)> {
         if record.operation_id != self.operation
             || record.local_batch_favorite
-            || record.system_liked_group != self.system_liked
+            || record.system_liked_group != self.liked_origin.is_some()
             || record.playlist_id.as_deref() != Some(self.playlist.as_str())
             || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
                 if id == &self.playlist && ids.as_slice() == self.songs.as_ref())
@@ -39,8 +40,10 @@ impl GroupDownloadPlaylistProof {
             return Err(Error::StaleResponse);
         }
         let outcome = record.download_picker_outcome(self.creation.is_none());
-        if outcome.0 && self.system_liked {
-            liked::verify_download_readback(record, owner, &self.playlist, &self.songs)?;
+        if outcome.0
+            && let Some(origin) = self.liked_origin
+        {
+            liked::verify_download_readback(record, owner, &self.playlist, &self.songs, origin)?;
         }
         Ok(outcome)
     }
@@ -80,7 +83,10 @@ enum GuardedReadback<'a> {
 
 enum AddDestination<'a> {
     Owned(&'a str),
-    DownloadPicker(&'a str),
+    DownloadPicker {
+        playlist: &'a str,
+        regular_only: bool,
+    },
     LocalPicker(&'a str),
     DownloadCreated(&'a str),
     Created(&'a str),
@@ -183,6 +189,18 @@ impl PlaylistService {
     pub fn operations(&self, token: &SessionToken) -> Result<Vec<PlaylistMutation>> {
         self.session.with_token(token, |uid| self.records(uid))
     }
+
+    /// Caller already holds the common playlist writer lease.
+    pub(super) fn require_no_pending_playlist(&self, uid: &str, id: &str) -> Result<()> {
+        if self.records(uid)?.iter().any(|record| {
+            record.phase.pending()
+                && (record.playlist_id.as_deref() == Some(id)
+                    || record.command.playlist_id() == Some(id))
+        }) {
+            return Err(Error::MutationUncertain);
+        }
+        Ok(())
+    }
     pub async fn list(&self, token: &SessionToken) -> Result<PlaylistList> {
         let value = self.read_list(token).await?;
         self.session.save_result(
@@ -272,6 +290,9 @@ impl PlaylistService {
             return Err(Error::InvalidInput("clear takes no caller-supplied ids"));
         }
         let _lock = OperationLock::acquire(self.store.directory(), &uid, JOURNAL)?;
+        if let PlaylistCommand::Tracks { id, .. } | PlaylistCommand::Delete { id, .. } = &command {
+            super::local_membership::reorder::require_settled(&self.store, &uid, id)?;
+        }
         let records = self.records(&uid)?;
         if let Some(record) = records.iter().find(|r| r.operation_id == operation_id) {
             if serde_json::to_value(&record.command)? != serde_json::to_value(&command)? {
@@ -376,14 +397,18 @@ impl PlaylistService {
         &self,
         token: &SessionToken,
         playlist: &str,
-        song: &str,
+        songs: &[String],
+        regular_only: bool,
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
-            AddDestination::DownloadPicker(playlist),
-            &[song.into()],
+            AddDestination::DownloadPicker {
+                playlist,
+                regular_only,
+            },
+            songs,
             operation_id,
             permission,
             |api| api.download_collection_scope_revision(),
@@ -395,14 +420,14 @@ impl PlaylistService {
         &self,
         token: &SessionToken,
         creation_operation: &str,
-        song: &str,
+        songs: &[String],
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
             AddDestination::DownloadCreated(creation_operation),
-            &[song.into()],
+            songs,
             operation_id,
             permission,
             |api| api.download_collection_scope_revision(),
@@ -458,10 +483,28 @@ impl PlaylistService {
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
+        self.guarded_collect_download_liked_group(
+            token,
+            playlist,
+            &[song.into()],
+            operation_id,
+            permission,
+        )
+        .await
+    }
+
+    pub(crate) async fn guarded_collect_download_liked_group(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        songs: &[String],
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
             AddDestination::DownloadSystemLiked(playlist),
-            &[song.into()],
+            songs,
             operation_id,
             permission,
             |api| api.download_system_liked_scope_revision(),
@@ -480,6 +523,14 @@ impl PlaylistService {
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
         let local_picker = matches!(destination, AddDestination::LocalPicker(_));
+        let regular_picker = local_picker
+            || matches!(
+                destination,
+                AddDestination::DownloadPicker {
+                    regular_only: true,
+                    ..
+                }
+            );
         let system_liked_group = matches!(
             destination,
             AddDestination::SystemLiked(_) | AddDestination::DownloadSystemLiked(_)
@@ -522,13 +573,13 @@ impl PlaylistService {
         };
         let (playlist, revision, before) = match destination {
             owned @ (AddDestination::Owned(_)
-            | AddDestination::DownloadPicker(_)
+            | AddDestination::DownloadPicker { .. }
             | AddDestination::LocalPicker(_)
             | AddDestination::DownloadCreated(_)
             | AddDestination::Created(_)) => {
                 let (playlist, creation) = match owned {
                     AddDestination::Owned(playlist)
-                    | AddDestination::DownloadPicker(playlist)
+                    | AddDestination::DownloadPicker { playlist, .. }
                     | AddDestination::LocalPicker(playlist) => {
                         (identifier(&json!(playlist))?, None)
                     }
@@ -560,15 +611,17 @@ impl PlaylistService {
                         matches!(owned, AddDestination::DownloadCreated(_)),
                     )
                     .await?
-                } else if local_picker || matches!(owned, AddDestination::DownloadPicker(_)) {
-                    self.read_picker_detail(token, &playlist, &uid, local_picker)
+                } else if local_picker || matches!(owned, AddDestination::DownloadPicker { .. }) {
+                    self.read_picker_detail(token, &playlist, &uid, regular_picker)
                         .await?
                 } else {
                     self.read_detail(token, &playlist).await?
                 };
                 check()?;
                 detail.writable(&uid)?;
-                if detail.has_local {
+                if detail.has_local
+                    || super::local_membership::has_entries(&self.store, &uid, &playlist)?
+                {
                     return Err(Error::State(
                         "local-only playlist entries require native matching before editing",
                     ));
@@ -630,7 +683,7 @@ impl PlaylistService {
         token: &SessionToken,
         playlist: &str,
         uid: &str,
-        local_picker: bool,
+        regular_only: bool,
     ) -> Result<PlaylistSnapshot> {
         self.session
             .run_for(token, |api, _| async move {
@@ -644,7 +697,7 @@ impl PlaylistService {
                         return Err(Error::StaleResponse);
                     }
                 }
-                if (local_picker && row["specialType"].as_i64() != Some(0))
+                if (regular_only && row["specialType"].as_i64() != Some(0))
                     || (!row["specialType"].is_null() && row["specialType"].as_i64().is_none())
                 {
                     return Err(Error::StaleResponse);
@@ -1151,12 +1204,21 @@ impl PlaylistService {
         };
         record.observed = Some(observed);
         record.checked_at = Some(now()?);
-        self.session.save_result(
-            token,
-            JOURNAL,
-            &record.operation_id,
-            &serde_json::to_value(&record)?,
-        )?;
+        let persisted = serde_json::to_value(&record)?;
+        if record.phase == PlaylistPhase::Confirmed
+            && let PlaylistCommand::Delete { id, .. } = &record.command
+        {
+            self.session.with_token(token, |owner| {
+                self.store.transaction(|tx| {
+                    tx.delete(owner, OFFLINE_SNAPSHOT_KIND, id)?;
+                    tx.put(owner, OFFLINE_DELETED_KIND, id, &Value::Bool(true))?;
+                    tx.put(owner, JOURNAL, &record.operation_id, &persisted)
+                })
+            })?;
+        } else {
+            self.session
+                .save_result(token, JOURNAL, &record.operation_id, &persisted)?;
+        }
         // Return the actual readback even for a partial/rejected/uncertain
         // result, so hosts cannot accidentally paint an optimistic success.
         Ok(record)
@@ -1214,7 +1276,13 @@ impl PlaylistService {
                     return Err(Error::QueueChanged);
                 }
                 if let PlaylistCommand::Tracks { change, ids, .. } = command {
-                    if detail.has_local {
+                    if detail.has_local
+                        || super::local_membership::has_entries(
+                            &self.store,
+                            &uid,
+                            &detail.summary.id,
+                        )?
+                    {
                         return Err(Error::State(
                             "local-only playlist entries require native matching before editing",
                         ));

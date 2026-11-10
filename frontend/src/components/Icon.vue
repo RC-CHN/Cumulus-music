@@ -30,6 +30,7 @@ const paths: Record<string, string> = {
   star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   upload: 'M12 15V3m-5 5 5-5 5 5M4 16v5h16v-5',
+  translate: 'M3 5h11M8.5 2v3M5 8c1 4 4 7 8 9M11 5c0 4-3 9-8 12M13 21l4.5-10L22 21m-7.5-3h6',
   headphones: 'M4 14v-3a8 8 0 0 1 16 0v3M4 12H2v8h5v-8zM20 12h2v8h-5v-8z',
   comment: 'M4 4h16v12H9l-5 4zM8 8h8M8 12h5',
   chatPair:

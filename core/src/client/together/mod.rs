@@ -1,5 +1,6 @@
 mod connection;
 mod dto;
+pub(super) mod external;
 mod incoming;
 mod lifecycle;
 mod progress;
@@ -59,6 +60,7 @@ pub(super) struct TogetherHost {
     error: Arc<Mutex<Option<String>>>,
     factory: Option<Arc<dyn crate::listen_together::transport::ImFactory>>,
     cleanup_uncertain: Arc<Mutex<bool>>,
+    external: Arc<Mutex<Option<external::Notice>>>,
 }
 #[derive(Clone)]
 pub(super) struct RoomDetachment(Weak<Mutex<Option<Runtime>>>);
@@ -226,6 +228,20 @@ impl MusicClient {
         let removing = matches!(&command, TogetherCommand::Remove { .. });
         if matches!(
             &command,
+            TogetherCommand::Attach { .. }
+                | TogetherCommand::Reconnect { .. }
+                | TogetherCommand::Publish { .. }
+                | TogetherCommand::Select { .. }
+                | TogetherCommand::Remove { .. }
+        ) && service
+            .state_for(&token)?
+            .end_notice
+            .is_some_and(|notice| notice.queue_loss.is_some())
+        {
+            return Err(Error::State("confirm the together room loss first"));
+        }
+        if matches!(
+            &command,
             TogetherCommand::Create | TogetherCommand::Attach { .. }
         ) {
             let queue = self.player.controller().await?.queue(&token).await?;
@@ -320,7 +336,26 @@ impl MusicClient {
                 self.together_notify(&token, runtime::Signal::Publish);
             }
             TogetherCommand::Reconcile { operation_id } => {
-                service.reconcile_for(&token, &operation_id, now()).await?;
+                let op = service.reconcile_for(&token, &operation_id, now()).await?;
+                if let crate::listen_together::WriteIntent::End {
+                    room_id,
+                    queue_loss_report: Some(_),
+                    ..
+                } = &op.intent
+                    && op.phase == TogetherPhase::Confirmed
+                    && !self.together_attached(&token, None)?
+                    && service
+                        .state_for(&token)?
+                        .room
+                        .as_ref()
+                        .is_none_or(|r| &r.room_id != room_id)
+                    && self
+                        .together_binding(&token)?
+                        .is_some_and(|b| &b.room_id == room_id)
+                {
+                    self.together_stop().await?;
+                    self.together_restore_local(&token).await?;
+                }
             }
             TogetherCommand::Select { room_id, song_id }
             | TogetherCommand::Remove { room_id, song_id } => {
@@ -359,6 +394,40 @@ impl MusicClient {
                     return Err(Error::MutationUncertain);
                 }
                 self.together_stop().await?;
+                self.together_restore_local(&token).await?;
+            }
+            TogetherCommand::ResolveExternalSelection {
+                room_id,
+                notice_id,
+                confirm,
+            } => {
+                self.consume_external_notice(&token, &room_id, &notice_id, confirm)
+                    .await?;
+                if confirm {
+                    let op = service.leave_for(&token, &room_id, now()).await?;
+                    if op.phase != TogetherPhase::Confirmed {
+                        return Err(Error::MutationUncertain);
+                    }
+                    self.together_stop().await?;
+                    self.together_restore_local(&token).await?;
+                }
+            }
+            TogetherCommand::ConfirmQueueRoomLoss { room_id, report_id } => {
+                service.check_queue_room_loss_for(&token, &room_id, &report_id)?;
+                if self
+                    .together_binding(&token)?
+                    .is_some_and(|b| b.room_id != room_id)
+                {
+                    return Err(Error::StaleResponse);
+                }
+                // M/75 closes the message connection before the normal end
+                // endpoint. A failed close must still be reported locally.
+                let cleanup = self.together_stop().await;
+                let ending = service
+                    .resolve_queue_room_loss_for(&token, &room_id, &report_id, now())
+                    .await;
+                cleanup?;
+                ending?;
                 self.together_restore_local(&token).await?;
             }
             TogetherCommand::RestoreLocal => {

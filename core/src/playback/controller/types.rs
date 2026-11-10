@@ -67,6 +67,8 @@ pub struct PlaybackSnapshot {
     pub intelligence_operation: Option<String>,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub bound_parametric: Option<super::parametric::ParametricBindingStatus>,
+    /// Public catalogue identity for the confirmed binding, including source bypass.
+    pub applied_effect_id: Option<crate::effects::catalog::EffectId>,
     /// PCM observed for the configured component on the current playing entry.
     pub parametric_processing: bool,
     pub device_parametric: Option<super::parametric::DeviceParametricView>,
@@ -94,6 +96,7 @@ pub struct PlaybackSnapshot {
     pub can_change_quality: bool,
     /// A catalog search row is currently decoded from its verified publication.
     pub catalog_file_source: bool,
+    pub(crate) search_download_pending: bool,
     pub quality_preferences_apply: bool,
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,
@@ -164,6 +167,21 @@ pub struct LocalBatchUpdate {
     pub(crate) index: crate::storage::OperationLock,
     pub(crate) start: bool,
 }
+/// Install an owned cache selection while its index and durable stamp still match.
+pub struct OfflinePlaylistQueueUpdate {
+    pub(crate) expected: PlaybackFence,
+    pub(crate) queue: QueueSnapshot,
+    pub(crate) start: bool,
+    pub(crate) binding: crate::playlist::offline_snapshot::PlaylistQueueBinding,
+    pub(crate) index: Option<crate::storage::OperationLock>,
+}
+/// Native-only homepage metadata publication. It never supplies a media URL,
+/// claims the output device, or asks the actor to load its selected entry.
+pub struct RecallPrefill {
+    pub(crate) api: std::sync::Arc<dyn crate::protocol::api::Api>,
+    pub(crate) resources: Vec<Value>,
+    pub(crate) login_check: Box<dyn Fn() -> crate::Result<()> + Send + Sync>,
+}
 pub struct QueueTransport {
     pub position: Option<f64>,
     pub paused: bool,
@@ -173,6 +191,12 @@ pub struct QueueUpdate {
     pub expected: PlaybackFence,
     pub queue: QueueSnapshot,
     pub transport: Option<QueueTransport>,
+}
+/// Authorized external Together list change without a transport selection.
+pub struct TogetherExternalQueueUpdate {
+    pub(crate) expected: PlaybackFence,
+    pub(crate) queue: QueueSnapshot,
+    pub(crate) room_id: String,
 }
 /// Native FM exit receipt. Both values are read together; the queue writer
 /// compares them with the current SQLite rows before consuming the backup.
@@ -225,12 +249,29 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    ApplyTogetherExternalQueue(TogetherExternalQueueUpdate),
+    RecallPrefill(RecallPrefill),
+    /// Explicit next-play insertion; only this durable edit starts a chorus read.
+    InsertNext(QueueUpdate),
+    /// Search selection with a native receipt. A real empty queue can
+    /// promote Next to Play with its exact freshly authorized clicked song.
+    ApplySearchGroupNext {
+        update: QueueUpdate,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+    },
+    /// Explicit group Play inserts the selection, then starts or retains
+    /// the clicked member; independent of the queue-only Next command.
+    ApplySearchGroupPlay {
+        update: QueueUpdate,
+        first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+    },
     /// M71 browse list insertion with the exact freshly authorized first episode.
     PlayPodcastBrowse {
         update: QueueUpdate,
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
     },
     ApplyLocalBatch(LocalBatchUpdate),
+    ApplyOfflinePlaylistQueue(OfflinePlaylistQueueUpdate),
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.
     PlaySearchCatalog(Option<QueueUpdate>),
@@ -260,6 +301,9 @@ pub enum PlaybackCommand {
         index: usize,
         source: Value,
     },
+    /// Native Windows file ingress with process-held rooted media handles.
+    #[cfg(windows)]
+    ReplaceWindowsNative(crate::library::WindowsNativeOpenBatch),
     /// M404's explicit recommended-radio play-all, with first-load position.
     ReplacePodcastCollection {
         resources: Vec<Value>,

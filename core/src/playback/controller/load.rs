@@ -230,6 +230,13 @@ impl Actor {
         let generation = self.generation();
         let cancel = self.guard();
         self.cancel = cancel.clone();
+        let prefer_search_download = options.prefer_search_download
+            && matches!(&options.source, LoadSource::CurrentPreference)
+            && self.ordinary_online_song(&item)
+            && item.source["kind"] == "songs"
+            && item.source["scene"] == "search"
+            && item.resource["trial_mode"] == 42
+            && self.token.uid.is_some();
         self.pending = Some(Pending {
             history,
             podcast_progress,
@@ -237,6 +244,7 @@ impl Actor {
             item: item.clone(),
             reply: reply.take(),
             paused: options.paused,
+            prefer_search_download,
             timeline: None,
             authorized_position: None,
             seek: None,
@@ -249,13 +257,6 @@ impl Actor {
         let token = self.token.clone();
         let engine = self.engine.clone();
         let sender = self.sender.clone();
-        let prefer_search_download = options.prefer_search_download
-            && matches!(&options.source, LoadSource::CurrentPreference)
-            && self.ordinary_online_song(&item)
-            && item.source["kind"] == "songs"
-            && item.source["scene"] == "search"
-            && item.resource["trial_mode"] == 42
-            && token.uid.is_some();
         let streaming_revision = resolver
             .streaming_cache
             .as_ref()
@@ -268,22 +269,38 @@ impl Actor {
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
                 let reopen_guard = cancel.clone();
-                let (streaming_revision, pinned_search, native_indexed, reopened_local_sink) =
-                    super::engine(engine.clone(), cancel.clone(), move |engine| {
-                        engine.stop()?;
-                        let reopened =
-                            reopen_local_sink && engine.reopen_retired_local_sink(&reopen_guard)?;
-                        // Discard the previous track's gain before priming a new decoder.
-                        engine.reset_track_loudness()?;
-                        Ok((
-                            streaming_revision.filter(|_| engine.streaming_audio_available()),
-                            engine.supports_pinned_search_download(),
-                            indexed_equalizer.is_some() && engine.supports_indexed_flac_equalizer(),
-                            reopened,
-                        ))
-                    })
-                    .await?;
+                let (
+                    streaming_revision,
+                    pinned_search,
+                    native_indexed,
+                    native_publication_equalizer,
+                    reopened_local_sink,
+                ) = super::engine(engine.clone(), cancel.clone(), move |engine| {
+                    engine.stop()?;
+                    let reopened =
+                        reopen_local_sink && engine.reopen_retired_local_sink(&reopen_guard)?;
+                    // Discard the previous track's gain before priming a new decoder.
+                    engine.reset_track_loudness()?;
+                    Ok((
+                        streaming_revision.filter(|_| engine.streaming_audio_available()),
+                        engine.supports_pinned_search_download(),
+                        indexed_equalizer.is_some() && engine.supports_indexed_flac_equalizer(),
+                        local_material.is_some() && engine.supports_local_equalizer(),
+                        reopened,
+                    ))
+                })
+                .await?;
                 cancel.check()?;
+                if item
+                    .resource
+                    .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                    .is_some()
+                    && !pinned_search
+                {
+                    return Err(Error::State(
+                        "offline playlist download requires a pinned file decoder",
+                    ));
+                }
                 let (download, initial_file) = if prefer_search_download && pinned_search {
                     resolver
                         .search_catalog_download(&item.resource, &token, &cancel)
@@ -414,6 +431,27 @@ impl Actor {
                 };
                 let load_cancel = with_stock_fallback(cancel.clone(), stock_fallback.clone());
                 let held_file = held_file.map(|file| (file, item.clone()));
+                let publication_equalizer = local_material.filter(|_| {
+                    native_publication_equalizer
+                        && held_file
+                            .as_ref()
+                            .is_some_and(|(file, _)| file.is_plain_flac())
+                        && snapshot.mode == TimelineMode::Full
+                        && snapshot.media_start == 0.0
+                        && source.info["volume_delta"].is_null()
+                        && source.info["loudness_invalid"] != true
+                });
+                if publication_equalizer.is_some() {
+                    let (accepted, ready) = tokio::sync::oneshot::channel();
+                    sender
+                        .send(Message::SearchEqualizerHandoff {
+                            generation,
+                            accepted,
+                        })
+                        .map_err(|_| Error::Cancelled)?;
+                    ready.await.map_err(|_| Error::Cancelled)?;
+                    load_cancel.check()?;
+                }
                 let indexed = if native_indexed
                     && held_file.is_none()
                     && stream_reader.is_none()
@@ -435,6 +473,13 @@ impl Actor {
                                 file.into_native(&expected, &load_cancel)?;
                             if encrypted {
                                 engine.load_pinned_ncm(file, authority, &load_cancel)?
+                            } else if let Some(settings) = publication_equalizer {
+                                engine.load_pinned_audio_with_local_equalizer(
+                                    file,
+                                    authority,
+                                    settings,
+                                    &load_cancel,
+                                )?
                             } else {
                                 engine.load_pinned_audio(file, authority, &load_cancel)?
                             }

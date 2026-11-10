@@ -305,6 +305,7 @@ def main():
         prefix = 'window.__cumulusSearchAlbumArtistProof = true;\n'
     if args.correction_original:
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
+        env['CUMULUS_SEARCH_CORRECTION_PROOF'] = '1'
     if args.artist_gallery:
         prefix = 'window.__cumulusArtistGalleryProof = true;\n'
     if args.artist_top50:
@@ -477,7 +478,20 @@ def main():
     if args.carousel:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['searchCarouselVerified'] and complete['searchBestThirdVerified'] and complete['stageCount'] == 6
+        assert complete['ok'] and complete['searchCarouselVerified'] and complete['searchBestThirdVerified'] and complete['stageCount'] == 7
+        before, resized, category_back = (
+            json.loads((first / name).read_text(encoding='utf-8')) for name in (
+                'ux_04_carousel_detail_back_reset.json', 'ux_05_carousel_same_columns_reset.json',
+                'ux_07_carousel_category_back.json'))
+        old, new = resized['beforeResize'], resized['afterResize']
+        assert old['columns'] == new['columns'] == 6 and old['start'] == 4 and new['start'] == 0
+        assert old['reads'] == new['reads'] == ['all'] and old['player'] == new['player']
+        assert before['start'] == 0 and before['rendererReads'] == ['all']
+        assert before['syntheticSearchCalls'] == resized['syntheticSearchCalls'] == 1
+        assert before['searchCarouselCalls'] == resized['searchCarouselCalls']
+        assert before['signedSearch']['calls'] == resized['signedSearch']['calls']
+        assert category_back['start'] == 0 and category_back['rendererReads'] == ['all', 'playlists']
+        assert category_back['syntheticSearchCalls'] == 2
         calls = complete['searchCarouselCalls']
         assert [call['path'] for call in calls] == ['/api/search/pc/complex/page'], calls
         assert calls[0]['args'] == {
@@ -487,9 +501,10 @@ def main():
         }, calls
         reads = signed_result_reads(complete, len(calls), 2)
         assert complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (7 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchCarouselVerified=True,
-                              searchBestThirdVerified=True, stageCount=6,
+                              searchBestThirdVerified=True, mountedResizeReset=True,
+                              detailBackReset=True, categoryBackReset=True, stageCount=7,
                               nativeAssignmentAndResultReads=reads, realAccountWrites=0)))
         return
     if args.filtered_pagination:
@@ -699,9 +714,11 @@ def main():
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['voiceQueueVerified'] and complete['audioWaterfallVerified']
-        assert complete['voiceTableVerified'] and complete['podcastTableVerified'] and complete['stageCount'] == 8
+        assert complete['voiceTableVerified'] and complete['podcastTableVerified'] and complete['stageCount'] == 11
         assert complete['audioReads'] == [['voices', 0, 10], ['voices', 10, 10],
-                                          ['podcasts', 0, 10], ['podcasts', 10, 10]]
+                                          ['podcasts', 0, 10], ['podcasts', 10, 10],
+                                          ['podcasts', 10, 10]]
+        assert complete['emptyAudioReads'] == [['合成播客空值', 0, 10], ['合成播客空列表', 0, 10]]
         first = root / 'first'
         played = json.loads((first / 'ux_01_search_episode_joins_ordinary_queue.json').read_text(encoding='utf-8'))
         paused = json.loads((first / 'ux_02_search_episode_pauses_in_place.json').read_text(encoding='utf-8'))
@@ -712,19 +729,25 @@ def main():
             {'all': True, 'userId': '501'}, {'uid': '501', 'offset': 0, 'limit': 1000},
         ]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list((root / 'first').glob('ux_*.png'))) == (8 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (11 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, voiceQueueVerified=True,
                               voiceTableVerified=True, podcastTableVerified=True,
-                              audioWaterfallVerified=True, stageCount=8)))
+                              audioWaterfallVerified=True, stageCount=11)))
         return
     if args.song_waterfall:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['songWaterfallVerified'] and complete['stageCount'] == 5
         assert complete['songReads'] == [[0, 10], [10, 10], [0, 30], [10, 10], [20, 10]]
+        assert complete['songTitleHints'] == [
+            dict(alias='前缀合成连续单曲别名', lyric=f'🎵合成连续单曲歌词 {song_id}',
+                 aliasMark='合成连续单曲', lyricMark='合成连续单曲')
+            for song_id in [101, 130]
+        ]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (5 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, songWaterfallVerified=True,
-                              stageCount=5, songReads=complete['songReads'])))
+                              songTitleHintsVerified=True, stageCount=5,
+                              songReads=complete['songReads'])))
         return
     if args.artist_gallery:
         first = root / 'first'
@@ -769,7 +792,7 @@ def main():
                 'peopleCategoriesVerified' if args.people_categories else
                 'originalCorrectionVerified' if args.correction_original else
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
-        stages = 8 if args.voice_direct else 4 if args.people_categories else 3 if args.correction_original or args.card_matches else 2
+        stages = 8 if args.voice_direct else 4 if args.people_categories or args.correction_original else 3 if args.card_matches else 2
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
         if args.people_categories:
             assert complete['searchArtistMenuVerified']
@@ -778,6 +801,14 @@ def main():
         if args.correction_original:
             assert complete['correctionPartsVerified']
             assert complete['categoryCorrectionPartsVerified'] and complete['staleCorrectionPartsSuppressed']
+            path = '/api/search/pc/complex/page'
+            originals = [payload for name, payload in complete['correctionResultCalls']
+                         if name == path and payload['needCorrect'] is False]
+            assert [payload['channel'] for payload in originals] == ['synthetic_qc_reminder', 'suggest']
+            assert all(payload['keyword'] == '合成错词' and payload['bizQueryInfo'] == '' for payload in originals)
+            signed = [call for call in complete['signedSearch']['calls'] if call['path'] == path]
+            assert len(signed) == 1 and signed[0]['args'] == dict(originals[0], needCorrect='false')
+            assert signed[0]['signedPcContextVerified'] and signed[0]['sameAccountCredential']
         if args.voice_direct:
             assert complete['preparedTicketFenceVerified'] and complete['searchSongNamespaceVerified']
             assert complete['voiceDownloadVerified'] and complete['voicePendingTransportVerified']

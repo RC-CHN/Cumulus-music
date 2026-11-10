@@ -10,6 +10,8 @@ mod directory_selection;
 mod lyric_reports;
 #[path = "support/lyric_wave.rs"]
 mod lyric_wave;
+#[path = "client_local/matched_lyrics.rs"]
+mod matched_lyrics;
 #[path = "support/native_lyric_wave.rs"]
 mod native_lyric_wave;
 #[path = "client_local/queue_drop.rs"]
@@ -36,6 +38,23 @@ use std::{
     },
     time::Duration,
 };
+use unicode_casefold::UnicodeCaseFold;
+
+// Search includes the full path. Pick a term that cannot match the test's
+// parent directory, even when the runner supplies a descriptive TMPDIR.
+fn fixture_query_term(media: &Path, role: &str) -> String {
+    let parent: String = media
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .case_fold()
+        .collect();
+    (0..)
+        .map(|suffix| format!("batch-{role}-fixture-{suffix}"))
+        .find(|term| !parent.contains(term))
+        .unwrap()
+}
+
 struct Offline;
 impl Api for Offline {
     fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -1067,7 +1086,7 @@ async fn local_file_reveal_uses_current_index_and_original_cue_and_ncm_sources()
         "FILE \"sources/album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"Cue track\"\nINDEX 01 00:00:00\n",
     )
     .unwrap();
-    let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
+    let (session, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
     library.scan(&media).unwrap();
     let page = client.local_page(LocalQuery::default()).await.unwrap();
     let cue = page.tracks.iter().find(|row| row.cue).unwrap();
@@ -1102,7 +1121,111 @@ async fn local_file_reveal_uses_current_index_and_original_cue_and_ncm_sources()
             .await
             .is_err()
     );
-    std::fs::write(source, "different source bytes").unwrap();
+    let epoch = session.token().unwrap().generation.to_string();
+    let initial = client
+        .play_selection(
+            &epoch,
+            PlaySelection::Local {
+                query: LocalQuery::default(),
+                revision: page.revision.clone(),
+                start_id: Some(cue.track.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    let queue = client.player_queue(&epoch).await.unwrap();
+    let entry = |id: &str| queue.tracks.iter().find(|row| row.track.id == id).unwrap();
+    let mut receipts = vec![];
+    for (row, expected) in [(cue, &source), (ordinary, &ordinary_path), (ncm, &ncm_path)] {
+        let entry = entry(&row.track.id);
+        assert!(entry.local_menu && !entry.catalog_menu && !entry.voice_menu);
+        let reveal = client
+            .player_queue_local_file_reveal(&epoch, &queue.revision, &entry.entry_id)
+            .await
+            .unwrap();
+        assert_eq!(reveal.path(), expected.canonicalize().unwrap());
+        reveal.check_current(&client).await.unwrap();
+        receipts.push(reveal);
+    }
+    assert!(matches!(
+        client
+            .player_queue_local_file_reveal(&epoch, &queue.revision, &cue.track.id)
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    let after = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(after.play_id, initial.play_id);
+    assert_eq!(after.queue_revision, queue.revision);
+    std::fs::write(&source, "different source bytes").unwrap();
+    assert!(matches!(
+        receipts[0].check_current(&client).await,
+        Err(Error::State("queued local file is unavailable"))
+    ));
+    receipts[1].check_current(&client).await.unwrap();
+    let removed = client
+        .player_action(
+            &epoch,
+            PlayerAction::QueueFor {
+                expected_queue_revision: queue.revision.clone(),
+                expected_room_id: None,
+                edit: QueueEdit::Remove {
+                    entry_ids: vec![entry(&ordinary.track.id).entry_id.clone()],
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(removed.play_id, initial.play_id);
+    assert!(matches!(
+        receipts[2].check_current(&client).await,
+        Err(Error::QueueChanged)
+    ));
+    let next = client
+        .player_queue_local_file_reveal(
+            &epoch,
+            &removed.queue_revision,
+            &entry(&ncm.track.id).entry_id,
+        )
+        .await
+        .unwrap();
+    session
+        .adopt(
+            Arc::new(Offline),
+            json!({"userId":9}),
+            &session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        next.check_current(&client).await,
+        Err(Error::StaleResponse)
+    ));
+    let current = session.token().unwrap().generation.to_string();
+    let query = LocalQuery {
+        keyword: "归途".into(),
+        ..Default::default()
+    };
+    let account_page = client.local_page(query.clone()).await.unwrap();
+    client
+        .play_selection(
+            &current,
+            PlaySelection::Local {
+                query,
+                revision: account_page.revision,
+                start_id: Some(ncm.track.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    let account_queue = client.player_queue(&current).await.unwrap();
+    let signed_in_reveal = client
+        .player_queue_local_file_reveal(
+            &current,
+            &account_queue.revision,
+            &account_queue.tracks[0].entry_id,
+        )
+        .await
+        .unwrap();
+    assert_eq!(signed_in_reveal.path(), ncm_path.canonicalize().unwrap());
     assert!(
         client
             .local_track_file(cue.track.id.clone(), cue.revision.clone())

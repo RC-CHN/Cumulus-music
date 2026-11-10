@@ -246,6 +246,10 @@ async fn finish_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>, operation: u6
     if !proceed {
         return;
     }
+    #[cfg(windows)]
+    let native_quit = app
+        .try_state::<crate::player::PlayerStreams>()
+        .and_then(|streams| streams.close_native_open_for_quit());
     change(app, |_| {});
     // Same room cleanup used by the previous close handler; a failed leave
     // retains a reachable window. Merely hiding never comes through here.
@@ -255,6 +259,10 @@ async fn finish_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>, operation: u6
                 && window.destroy().is_err()
             {
                 fail(app, operation, "关闭窗口失败，请重试。".into());
+                #[cfg(windows)]
+                if let Some(recovery) = native_quit {
+                    recovery.reopen();
+                }
             }
         }
         Err(error) => {
@@ -267,6 +275,10 @@ async fn finish_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>, operation: u6
                     public.message
                 ),
             );
+            #[cfg(windows)]
+            if let Some(recovery) = native_quit {
+                recovery.reopen();
+            }
         }
     }
 }

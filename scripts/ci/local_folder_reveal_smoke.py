@@ -17,7 +17,7 @@ XML = '''<node><interface name="org.freedesktop.FileManager1">
 </interface></node>'''
 
 
-def serve(root, once=False):
+def serve(root, *, exact_successes=None):
     import gi
     gi.require_version('Gio', '2.0')
     from gi.repository import Gio, GLib
@@ -38,9 +38,9 @@ def serve(root, once=False):
         calls += 1
         with (root / 'show-items.jsonl').open('a', encoding='utf-8') as output:
             output.write(json.dumps(parameters.unpack()) + '\n')
-        if calls == 1:
+        if calls <= (exact_successes if exact_successes is not None else 1):
             invocation.return_value(GLib.Variant('()', ()))
-        elif once:
+        elif exact_successes is not None:
             invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'unexpected retry')
         elif calls == 2:
             invocation.return_dbus_error('org.freedesktop.DBus.Error.UnknownMethod', 'synthetic absence')
@@ -62,11 +62,14 @@ def serve(root, once=False):
 
 
 @contextmanager
-def fake_file_manager(root, env, *, once=False):
+def fake_file_manager(root, env, *, once=False, exact_successes=None):
     """Start the test service on the caller's private D-Bus session."""
     with (root / 'shell.log').open('x', encoding='utf-8') as log:
-        mode = '--serve-once' if once else '--serve'
-        service = subprocess.Popen(['/usr/bin/python3', __file__, mode, str(root)],
+        assert not once or exact_successes is None
+        count = 1 if once else exact_successes
+        argv = (['--serve', str(root)] if count is None
+                else ['--serve-exact', str(root), str(count)])
+        service = subprocess.Popen(['/usr/bin/python3', __file__, *argv],
                                    env=env, stdout=log, stderr=log)
         try:
             limit = time.monotonic() + 5
@@ -129,8 +132,13 @@ def verify(binary, root, screenshots):
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] in ('--serve', '--serve-once'):
-        serve(Path(sys.argv[2]), once=sys.argv[1] == '--serve-once')
+    if len(sys.argv) == 3 and sys.argv[1] == '--serve':
+        serve(Path(sys.argv[2]))
+        return
+    if len(sys.argv) == 4 and sys.argv[1] == '--serve-exact':
+        count = int(sys.argv[3])
+        assert 1 <= count <= 16
+        serve(Path(sys.argv[2]), exact_successes=count)
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)

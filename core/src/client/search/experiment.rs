@@ -27,9 +27,12 @@ const FOOTER_EXPERIMENT: &str = "PH-PC-search-result";
 pub(crate) struct SearchHost {
     pub(crate) enabled: bool,
     pub(super) podcast_playbacks: super::podcast_playback::SearchPodcastPlaybacks,
-    pub(super) queue_drops: super::queue_drop::SearchDropPages,
+    pub(super) voice_menu_pages: super::voice_menu::SearchVoiceMenuPages,
+    pub(super) group_downloads: Arc<super::group_download::SearchGroupDownloads>,
+    pub(in crate::client) queue_drops: Arc<super::queue_drop::SearchDropPages>,
     pub(super) audio_toplist: super::audio_toplist::AudioToplist,
     pub(super) privilege_pages: super::privilege::SearchPrivilegePages,
+    pub(super) correction_channels: super::correction_channel::CorrectionChannels,
     pub(super) default_contexts: super::default_context::DefaultContexts,
     pub(super) guest_default_contexts: super::default_context::DefaultContexts,
     pub(super) preview_config: Option<Arc<crate::protocol::mconfig::PcConfig>>,

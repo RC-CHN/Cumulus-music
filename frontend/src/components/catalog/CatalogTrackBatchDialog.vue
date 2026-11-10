@@ -42,7 +42,7 @@ function all(force?: boolean) {
 }
 function choose(kind: 'play' | 'collect' | 'download' | 'queue') {
   if (!chosen.value.length || (kind === 'play' && !props.playable)) return;
-  if (kind === 'queue' && (props.scope !== 'album' || !props.queueable)) return;
+  if (kind === 'queue' && (props.scope === 'reason' || !props.queueable)) return;
   if (kind === 'collect' && props.scope === 'reason') return;
   emit(
     'choose',
@@ -104,7 +104,7 @@ onMounted(() => dialog.value?.showModal());
         }}
       </button>
       <button
-        v-if="scope === 'album'"
+        v-if="scope !== 'reason'"
         type="button"
         class="secondary"
         :disabled="!chosen.length || !queueable"
@@ -113,7 +113,7 @@ onMounted(() => dialog.value?.showModal());
         添加所选至播放列表
       </button>
       <button
-        v-if="scope !== 'reason'"
+        v-if="scope === 'album'"
         type="button"
         class="secondary"
         :disabled="!chosen.length"
@@ -128,6 +128,15 @@ onMounted(() => dialog.value?.showModal());
         @click="choose('download')"
       >
         下载所选歌曲
+      </button>
+      <button
+        v-if="scope === 'artist'"
+        type="button"
+        class="secondary"
+        :disabled="!chosen.length"
+        @click="choose('collect')"
+      >
+        添加到歌单
       </button>
     </footer>
   </dialog>

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   centeredRowTop,
+  expandedRows,
   rowBoundary,
   rowExtent,
   rowTop,
@@ -72,4 +73,19 @@ test('one 74px separator row preserves window boundaries, centering and pointer 
   });
   assert.equal(centeredRowTop(50, count, height, 200, expansion), top + 37 - 100);
   assert.equal(centeredRowTop(99, count, height, 200, expansion), 6210);
+});
+
+test('multiple title extensions preserve ordinary row heights and late-page alignment', () => {
+  const original = expandedRows([30, 0, 15, 0]);
+  const appended = expandedRows([30, 0, 15, 0, 0, 30]);
+  assert.deepEqual(
+    Array.from({ length: 7 }, (_, i) => rowTop(i, 56, appended)),
+    [0, 86, 142, 213, 269, 325, 411],
+  );
+  assert.equal(rowTop(4, 56, appended), rowTop(4, 56, original));
+  assert.equal(rowExtent(1, 56, appended), 56);
+  assert.equal(rowExtent(2, 56, appended), 71);
+  assert.deepEqual(rowWindow(6, 56, 90, 135, undefined, 0, appended), { start: 1, end: 4 });
+  assert.deepEqual(rowWindow(6, 56, 50, 330, undefined, 0, appended), { start: 5, end: 6 });
+  assert.equal(centeredRowTop(5, 6, 56, 150, appended), 261);
 });

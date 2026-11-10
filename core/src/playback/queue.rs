@@ -20,6 +20,9 @@ use uuid::Uuid;
 
 pub(crate) const FM_BACKUP_QUEUE: &str = "fm-backup-queue";
 pub(crate) const FM_BACKUP_POSITION: &str = "fm-backup-position";
+pub(crate) const RECALL_STATE: &str = "home-recall-v1";
+pub(crate) const RECALL_LAST_TIME: &str = "prefill";
+pub(crate) const RECALL_GUIDE_SHOWN: &str = "guide-shown";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -208,6 +211,15 @@ impl PlaybackQueue {
             .as_ref()
             .is_some_and(|more| self.current_id().is_some_and(|id| more.active.contains(id)))
     }
+    #[cfg(windows)]
+    pub(super) fn has_exact_native_file(&self, resource: &Value) -> bool {
+        self.state.items.iter().any(|entry| {
+            entry.source["kind"] == "local"
+                && entry.source["nativeOpen"] == true
+                && &entry.resource == resource
+        })
+    }
+
     pub fn revision(&self) -> u64 {
         self.revision
     }
@@ -271,7 +283,7 @@ impl PlaybackQueue {
         source: Value,
         retain: Option<String>,
     ) -> Result<()> {
-        self.replace_inner(resources, index, source, retain, None)
+        self.replace_inner(resources, index, source, retain, None, None)
     }
 
     pub(super) fn replace_with_mode(
@@ -281,7 +293,17 @@ impl PlaybackQueue {
         source: Value,
         mode: Option<PlaybackMode>,
     ) -> Result<()> {
-        self.replace_inner(resources, index, source, None, mode)
+        self.replace_inner(resources, index, source, None, mode, None)
+    }
+
+    #[cfg(any(windows, test))]
+    pub(super) fn replace_guarded_native(
+        &mut self,
+        resources: Vec<Value>,
+        source: Value,
+        guard: &dyn Fn() -> Result<()>,
+    ) -> Result<()> {
+        self.replace_inner(resources, 0, source, None, None, Some(guard))
     }
 
     fn replace_inner(
@@ -291,6 +313,7 @@ impl PlaybackQueue {
         source: Value,
         retain: Option<String>,
         mode: Option<PlaybackMode>,
+        guard: Option<&dyn Fn() -> Result<()>>,
     ) -> Result<()> {
         if !resources.is_empty() && index >= resources.len() {
             return Err(Error::InvalidInput("invalid initial queue index"));
@@ -310,7 +333,7 @@ impl PlaybackQueue {
         if mode == PlaybackMode::Random {
             order.shuffle(&mut self.rng)
         }
-        self.commit_with_fm_release(
+        self.commit_replacement(
             QueueSnapshot {
                 items,
                 order,
@@ -321,6 +344,7 @@ impl PlaybackQueue {
                 more: super::queue_more::QueueMoreOrigin::new(&source),
             },
             source["kind"] != "fm",
+            guard,
         )
     }
 

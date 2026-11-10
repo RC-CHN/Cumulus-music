@@ -40,6 +40,7 @@ export function useSearchResults(
     position = shallowRef<SearchPosition>({ top: 0, tracks: 0 });
   const presentationChange = ref(0);
   let activeKey = '';
+  let activeCorrectionReceipt: string | undefined;
   let generation = 0,
     account: AccountView | undefined;
   let privilegeSerial = 0;
@@ -220,6 +221,7 @@ export function useSearchResults(
     generation++;
     if (next.epoch !== account?.epoch || next.status !== account?.status) observed = undefined;
     account = next;
+    activeCorrectionReceipt = undefined;
     guest = guestReady && (next.status === 'unknown' || next.status === 'signed_out');
     memory.connect(next);
     view.value = undefined;
@@ -234,6 +236,19 @@ export function useSearchResults(
   function savePosition(next: SearchPosition) {
     position.value = next;
     save();
+  }
+  function resetPreviewPages() {
+    function firstPages(value: SearchPosition): SearchPosition {
+      if (!value.previewPositions) return value;
+      return { ...value, previewPositions: undefined };
+    }
+    position.value = firstPages(position.value);
+    const epoch = account?.epoch;
+    const saved = epoch && activeKey ? memory.get(activeKey, epoch) : undefined;
+    // Category changes can arrive while a cached comprehensive view is
+    // still restoring. Clear its rail positions even before it has a panel.
+    if (epoch && saved?.position.previewPositions)
+      memory.set(activeKey, { ...saved, position: firstPages(saved.position) }, epoch);
   }
   function save() {
     if (view.value)
@@ -254,11 +269,13 @@ export function useSearchResults(
     session = 0,
     originalKeyword = query.keyword,
     defaultReceipt?: string,
+    correctionReceipt?: string,
   ) {
     if (!account || !canRead()) return;
     const epoch = account.epoch,
       current = ++generation;
     activeKey = memory.key(query, session);
+    activeCorrectionReceipt = query.correct ? undefined : correctionReceipt;
     const cached = reuse ? memory.get(activeKey, epoch) : undefined;
     tabs.value = memory.getTabs(session, epoch);
     const updateReminder = (view?: SearchResultView) => {
@@ -267,7 +284,11 @@ export function useSearchResults(
         view?.query.category === 'all' &&
         view.correction &&
         view.correctionParts?.length
-          ? { rewrite: view.correction, parts: view.correctionParts }
+          ? {
+              rewrite: view.correction,
+              parts: view.correctionParts,
+              ...(view.correctionReceipt ? { receipt: view.correctionReceipt } : {}),
+            }
           : undefined;
       correctionReminder.value = reminder;
       memory.setReminder(session, originalKeyword, epoch, reminder);
@@ -307,7 +328,9 @@ export function useSearchResults(
       const result =
         query.category === 'all' && query.channel === 'defaultquery' && defaultReceipt
           ? await core.searchResults(epoch, query, defaultReceipt)
-          : await core.searchResults(epoch, query);
+          : activeCorrectionReceipt
+            ? await core.searchResults(epoch, query, undefined, activeCorrectionReceipt)
+            : await core.searchResults(epoch, query);
       if (current === generation && account?.epoch === epoch && result.epoch === epoch) {
         const observation = memory.presentation(epoch);
         const projected = await projectPresentation(result.value, epoch, observation);
@@ -351,12 +374,15 @@ export function useSearchResults(
     try {
       if (previous.nextOffset <= previous.query.offset || previous.nextOffset > 10000)
         throw { code: 'unavailable', message: '暂时无法继续加载，请重新搜索' };
-      const result = await core.searchResults(epoch, {
+      const nextQuery = {
         ...previous.query,
         keyword:
           (previous.query.correct ? previous.correction : undefined) ?? previous.query.keyword,
         offset: previous.nextOffset,
-      });
+      };
+      const result = activeCorrectionReceipt
+        ? await core.searchResults(epoch, nextQuery, undefined, activeCorrectionReceipt)
+        : await core.searchResults(epoch, nextQuery);
       if (current !== generation || account?.epoch !== epoch || result.epoch !== epoch) return;
       const next = result.value;
       if (next.nextOffset <= previous.nextOffset && next.more)
@@ -493,6 +519,7 @@ export function useSearchResults(
     open,
     more,
     savePosition,
+    resetPreviewPages,
     dispose,
   };
 }

@@ -15,24 +15,41 @@ export async function readPlaylistBatch(
   const tracks: TrackPage['tracks'] = [];
   while (active()) {
     const offset = result?.tracks.length ?? 0;
+    const localRevision = result?.playlistLocal?.revision;
     const response = await readPage({
       offset,
       limit: 100,
       revision: origin?.revision ?? result?.revision ?? null,
+      ...(localRevision ? { localRevision } : {}),
     });
     if (!active() || response.epoch !== epoch) throw { code: 'stale', message: '读取已取消' };
     const page = response.value;
+    if (page.playlistOffline)
+      throw { code: 'playlist_offline', message: '离线歌单暂不支持批量操作，请联网后重试' };
     if (!page.revision) throw { code: 'invalid_response', message: '歌单信息不完整，请重新读取' };
     if (
       page.offset !== offset ||
       (origin && page.revision !== origin.revision) ||
-      (result && page.revision !== result.revision)
+      (result &&
+        (page.revision !== result.revision || page.playlistLocal?.revision !== localRevision))
     )
       throw { code: 'snapshot_changed', message: '歌单已改变，请重新读取' };
     if (page.total > 50000 || offset + page.tracks.length > 50000)
       throw { code: 'invalid_input', message: '歌单过大，无法一次读取' };
     tracks.push(...page.tracks);
-    result = { ...page, offset: 0, tracks };
+    result = {
+      ...page,
+      offset: 0,
+      tracks,
+      ...(page.playlistLocal
+        ? {
+            playlistLocal: {
+              ...page.playlistLocal,
+              rows: { ...result?.playlistLocal?.rows, ...page.playlistLocal.rows },
+            },
+          }
+        : {}),
+    };
     progress(tracks.length, page.total);
     if (!page.more) return { ...result, revision: page.revision };
     if (!page.tracks.length) throw { code: 'invalid_response', message: '歌单读取未完成，请重试' };

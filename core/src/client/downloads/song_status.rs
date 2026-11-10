@@ -86,6 +86,43 @@ impl MusicClient {
         .map_err(|_| Error::State("program download directory worker stopped"))?
     }
 
+    pub(in crate::client) async fn completed_voice_file_candidate(
+        &self,
+        epoch: &str,
+        voice: &str,
+        media: &str,
+    ) -> Result<(String, std::path::PathBuf)> {
+        let context = self.downloads.inner.context(epoch)?;
+        let voice = identifier(&json!(voice))?;
+        let media = identifier(&json!(media))?;
+        tokio::task::spawn_blocking(move || {
+            let mut found = None;
+            for row in context.store.playback_download_rows(
+                &context.owner,
+                &voice,
+                PlaybackDownloadKind::Voice,
+            )? {
+                if row.status != "complete" || row.moving {
+                    continue;
+                }
+                let Ok(path) = context
+                    .files
+                    .voice_reveal_candidate(&row.id, &voice, &media)
+                else {
+                    continue;
+                };
+                if found.is_some() {
+                    return Err(Error::State("program has multiple completed files"));
+                }
+                found = Some((row.id, path));
+            }
+            context.guard()?;
+            found.ok_or(Error::DownloadedFileMissing)
+        })
+        .await
+        .map_err(|_| Error::State("program download file worker stopped"))?
+    }
+
     pub async fn song_download_state(&self, epoch: &str, id: &str) -> Result<SongDownloadState> {
         self.playback_download_state(epoch, id, PlaybackDownloadKind::Song)
             .await

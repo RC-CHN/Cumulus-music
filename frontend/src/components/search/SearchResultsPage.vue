@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SearchPodcastRowGesture } from '../../services/player';
+import type { SearchVoiceMenuTarget } from '../../services/search';
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
@@ -69,6 +70,7 @@ const props = defineProps<{
   category?: SearchCategory;
   channel?: SearchChannel;
   defaultReceipt?: string;
+  correctionReceipt?: string;
   pagination?: SearchPageStep;
   correct?: boolean;
   rewrittenKeyword?: string;
@@ -78,7 +80,7 @@ const props = defineProps<{
   queueable: boolean;
   queueDropEnabled: boolean;
   voiceQueueable: boolean;
-  voiceQueueFeedback: string;
+  cardQueueFeedback: string;
   playlistActionBusy: boolean;
   knownPlaylistIds?: ReadonlySet<string>;
   observedAlbumMembership: ReadonlyMap<string, boolean>;
@@ -90,6 +92,7 @@ const props = defineProps<{
   playbackState?: PlaybackStatus;
   currentVoiceId?: string;
   memory: SearchViewportMemory;
+  detailDeparture: () => boolean;
   searchId?: number;
   guestReady?: boolean;
 }>();
@@ -102,7 +105,7 @@ const emit = defineEmits<{
     rewrittenKeyword?: string,
   ];
   search: [keyword: string];
-  searchOriginal: [keyword: string];
+  searchOriginal: [keyword: string, receipt?: string];
   login: [];
   open: [item: SearchItem];
   hotTarget: [target: SearchHotTarget, anchor: HTMLButtonElement];
@@ -126,6 +129,7 @@ const emit = defineEmits<{
   mv: [id: string];
   expired: [];
   playCard: [item: SearchItem, gesture?: SearchPodcastRowGesture];
+  voiceMenuPlay: [target: SearchVoiceMenuTarget];
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queueCard: [request: SearchQueueRequest];
   queueDrag: [
@@ -163,10 +167,11 @@ const rewrite = computed(() =>
     ? undefined
     : (view.value?.correction ?? (category.value !== 'all' ? props.rewrittenKeyword : undefined)),
 );
-const correctionParts = computed(() => {
+const matchingReminder = computed(() => {
   const reminder = model.correctionReminder.value;
-  return reminder && reminder.rewrite === rewrite.value ? reminder.parts : undefined;
+  return reminder && reminder.rewrite === rewrite.value ? reminder : undefined;
 });
+const correctionParts = computed(() => matchingReminder.value?.parts);
 const requestKeyword = computed(() =>
   category.value !== 'all' && props.correct !== false
     ? (props.rewrittenKeyword ?? props.keyword)
@@ -195,6 +200,8 @@ const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, c
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
+const songTableHints = (section: SearchSection) =>
+  section.items.flatMap((item) => (item.kind === 'song' ? [item.tableHint] : []));
 function startQueueDrop(
   event: PointerEvent,
   section: SearchSection,
@@ -286,6 +293,66 @@ function oneRowPreview(section: SearchSection) {
 }
 function showTrackMenu(request: TrackMenuRequest) {
   emit('more', { ...request, nextOrigin: 'search' });
+}
+function showSelectedTrackMenu(
+  section: SearchSection,
+  request: TrackMenuRequest,
+  anchorIndex: number,
+  rows: { track: TrackView; index: number }[],
+  selectionCurrent: () => boolean,
+) {
+  const owner = panel.value;
+  const snapshot = view.value;
+  const epoch = props.account.epoch;
+  const visit = props.searchId;
+  const current = () =>
+    props.account.status === 'authenticated' &&
+    props.account.epoch === epoch &&
+    props.searchId === visit &&
+    category.value === 'songs' &&
+    !loading.value &&
+    view.value === snapshot &&
+    panel.value === owner &&
+    !!owner?.isConnected &&
+    !owner.closest('[inert], .page-leave-active, .search-results-leave-active') &&
+    selectionCurrent();
+  if (!current()) return;
+  const items = section.items.filter((item) => item.kind === 'song');
+  const tickets = rows.map(({ track, index }) => {
+    const item = items[index];
+    if (item?.track !== track || !item.queueDropReceipt || !item.groupNextRight) return;
+    return { receipt: item.queueDropReceipt, trackId: track.id };
+  });
+  const anchor = tickets[rows.findIndex((row) => row.index === anchorIndex)];
+  const action =
+    anchor && tickets.every((ticket) => !!ticket) ? { anchor, rows: tickets } : undefined;
+  const allCopyrightBlocked = rows.every(
+    ({ index }) => items[index]?.groupNextRight === 'copyright_blocked',
+  );
+  const downloadRows = rows.map(({ track, index }) => {
+    const item = items[index];
+    if (item?.track !== track || !item.groupDownload) return;
+    return { receipt: item.groupDownload.receipt, trackId: track.id };
+  });
+  const downloadAnchor = downloadRows[rows.findIndex((row) => row.index === anchorIndex)];
+  const download =
+    downloadAnchor && downloadRows.every((row) => !!row)
+      ? { anchor: downloadAnchor, rows: downloadRows }
+      : undefined;
+  const allDownloadsBlocked = rows.every(
+    ({ index }) => items[index]?.groupDownload?.right === 'copyright_blocked',
+  );
+  emit('more', {
+    ...request,
+    searchGroup: {
+      epoch,
+      action,
+      allCopyrightBlocked,
+      live: current,
+      download,
+      allDownloadsBlocked,
+    },
+  });
 }
 function playComprehensiveAll(section: SearchSection) {
   const rows = comprehensivePlayAllTracks(section);
@@ -466,7 +533,11 @@ function trackFocusKey(row?: HTMLElement | null) {
     ? `song-row:${row.getAttribute('aria-rowindex')}:${row.dataset.trackId}`
     : undefined;
 }
-function checkpoint(focus = false, explicit?: HTMLElement) {
+function checkpoint(focus = false, explicit?: HTMLElement, freshPreviews = false) {
+  if (freshPreviews) {
+    previewPositions.value = {};
+    model.resetPreviewPages();
+  }
   if (!panel.value || (!explicit && (restoring || loading.value))) return;
   const active =
     explicit && panel.value.contains(explicit)
@@ -575,6 +646,7 @@ async function restore() {
   )
     return;
   const generation = loadGeneration;
+  const navigationFocus = document.activeElement;
   expandedLyrics.value = new Set(model.position.value.expandedLyrics ?? []);
   previewPositions.value = { ...model.position.value.previewPositions };
   await nextTick();
@@ -612,14 +684,28 @@ async function restore() {
         node.dataset.resultKey === position.focus ||
         (category.value === 'songs' && trackFocusKey(node) === position.focus),
     );
-    const controls = [
-      ...(card?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
-    ];
-    (
-      controls.find(
-        (n) => position.focusAction && n.dataset.resultAction === position.focusAction,
-      ) ?? controls[0]
-    )?.focus({ preventScroll: true });
+    if (card && !card.closest('[inert]')) {
+      const controls = [...card.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      (
+        controls.find(
+          (n) => position.focusAction && n.dataset.resultAction === position.focusAction,
+        ) ?? controls[0]
+      )?.focus({ preventScroll: true });
+    } else {
+      const rail = card?.closest('.search-carousel') ?? section?.querySelector('.search-carousel');
+      const active = document.activeElement;
+      // A reset may put the returning card on an inert page. Keep focus in
+      // its rail unless the user already moved to another control.
+      if (
+        active === document.body ||
+        (active === navigationFocus && active?.matches('.back-button'))
+      )
+        rail
+          ?.querySelector<HTMLButtonElement>(
+            '[data-grid-index]:not([inert]) .search-card-open:not(:disabled)',
+          )
+          ?.focus({ preventScroll: true });
+    }
   }
   restoring = false;
   maybeMore();
@@ -646,6 +732,7 @@ async function load(reuse = false) {
     props.searchId ?? 0,
     props.keyword,
     props.defaultReceipt,
+    props.correctionReceipt,
   );
   if (generation === loadGeneration) void restore();
 }
@@ -713,10 +800,12 @@ watch(
     props.correct,
     props.channel,
     props.defaultReceipt,
+    props.correctionReceipt,
     props.searchId,
   ],
   () => {
-    if (activeCategory) checkpoint(true);
+    if (activeCategory)
+      checkpoint(true, undefined, activeCategory === 'all' && category.value !== 'all');
     hotDeparture = undefined;
     void load(true);
   },
@@ -724,7 +813,7 @@ watch(
 );
 onBeforeUnmount(() => {
   clearVoiceLink();
-  checkpoint(true, hotDeparture);
+  checkpoint(true, hotDeparture, activeCategory === 'all' && props.detailDeparture());
   loadGeneration++;
   observer?.disconnect();
   cancelAnimationFrame(frame);
@@ -749,7 +838,7 @@ onBeforeUnmount(() => {
             type="button"
             class="text-button"
             :aria-label="`仍然搜索“${keyword}”`"
-            @click="emit('searchOriginal', keyword)"
+            @click="emit('searchOriginal', keyword, matchingReminder?.receipt)"
           >
             {{ part.text }}
           </button>
@@ -767,8 +856,8 @@ onBeforeUnmount(() => {
                 : '综合结果'
         }}
       </p>
-      <p v-if="voiceQueueFeedback" class="search-voice-next-notice" role="status">
-        {{ voiceQueueFeedback }}
+      <p v-if="cardQueueFeedback" class="search-voice-next-notice" role="status">
+        {{ cardQueueFeedback }}
       </p>
       <p
         v-if="voiceLinkStatus"
@@ -1090,7 +1179,10 @@ onBeforeUnmount(() => {
               v-else-if="section.items.some((i) => i.kind === 'song')"
               ref="searchSongTables"
               :tracks="tracks(section)"
+              :search-title-hints="category === 'songs' ? songTableHints(section) : undefined"
               :queue-drop-enabled="category === 'songs' && queueDropEnabled"
+              :selected-menu-enabled="category === 'songs' && playable"
+              :selection-label="category === 'songs' ? '单曲搜索结果' : undefined"
               :playlist-selection-scope="
                 category === 'songs'
                   ? JSON.stringify([account.epoch, searchId, keyword, offset, section.id])
@@ -1113,6 +1205,10 @@ onBeforeUnmount(() => {
               @toggle-pending="(target, anchor) => emit('togglePendingTrack', target, anchor)"
               @like="emit('like', $event)"
               @more="showTrackMenu"
+              @selected-more="
+                (request, anchor, rows, current) =>
+                  showSelectedTrackMenu(section, request, anchor, rows, current)
+              "
               @artist="emit('artist', $event)"
               @album="emit('album', $event)"
             />
@@ -1136,6 +1232,12 @@ onBeforeUnmount(() => {
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"
+                :podcast-next-enabled="
+                  category === 'podcasts' &&
+                  voiceQueueable &&
+                  playbackState !== 'preparing' &&
+                  playbackState !== 'loading'
+                "
                 :voice-next="
                   category === 'voices' || (category === 'all' && section.category === 'voices')
                     ? voiceQueueable
@@ -1145,6 +1247,11 @@ onBeforeUnmount(() => {
                 "
                 :voice-links="
                   account.status === 'authenticated' && searchVoiceLinkSection(category, section)
+                "
+                :voice-menu-epoch="
+                  account.status === 'authenticated' && searchVoiceLinkSection(category, section)
+                    ? account.epoch
+                    : undefined
                 "
                 :playlist-action-busy="playlistActionBusy"
                 :playlist-known="
@@ -1182,6 +1289,8 @@ onBeforeUnmount(() => {
                 @queue="emit('queueCard', $event)"
                 @queue-voice="emit('queueVoice', $event)"
                 @voice-link="activateVoiceLink(section, $event)"
+                @voice-menu-error="voiceLinkStatus = $event"
+                @voice-menu-play="emit('voiceMenuPlay', $event)"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
                 @playlist-subscribe="emit('playlistSubscribe', $event)"

@@ -7,6 +7,9 @@ impl Api for ReportsApi {
         Box::pin(async move {
             self.0.lock().unwrap().push((path.into(), payload));
             Ok(match path {
+                "/api/song/lyric/v1" => json!({
+                    "code":200, "lrc":{"version":17,"lyric":"[00:01]线上合成歌词"}
+                }),
                 "/api/feedback/correct/lyric/type" => {
                     json!({"code":200,"data":{"10":"歌词缺失/错误"}})
                 }
@@ -17,7 +20,8 @@ impl Api for ReportsApi {
     }
 }
 #[tokio::test]
-async fn lyric_report_uses_valid_local_mapping_and_sidecar_version_without_leaking_paths() {
+async fn lyric_report_uses_current_local_mapping_and_displayed_song_version_without_leaking_paths()
+{
     let root = tempfile::tempdir().unwrap();
     let media = root.path().join("media");
     std::fs::create_dir(&media).unwrap();
@@ -68,10 +72,17 @@ async fn lyric_report_uses_valid_local_mapping_and_sidecar_version_without_leaki
         .unwrap();
     assert_eq!(result.phase, cumulus_core::lyrics::reports::Phase::Sent);
     let calls = api.0.lock().unwrap().clone();
-    assert_eq!(calls.len(), 2);
+    assert_eq!(calls.len(), 3);
     assert_eq!(
-        calls[1].1,
-        json!({"songId":"123","lyricVersion":-1,"correctType":10,"content":"本地歌词内容需要核对"})
+        calls[0],
+        (
+            "/api/song/lyric/v1".into(),
+            json!({"id":"123","lv":-1,"tv":-1,"rv":-1,"yv":-1})
+        )
+    );
+    assert_eq!(
+        calls[2].1,
+        json!({"songId":"123","lyricVersion":17,"correctType":10,"content":"本地歌词内容需要核对"})
     );
     let public = serde_json::to_string(&result).unwrap();
     assert!(
@@ -103,5 +114,5 @@ async fn lyric_report_uses_valid_local_mapping_and_sidecar_version_without_leaki
             "local lyric report requires an online match"
         ))
     ));
-    assert_eq!(api.0.lock().unwrap().len(), 2);
+    assert_eq!(api.0.lock().unwrap().len(), 3);
 }

@@ -7,14 +7,41 @@ use std::{future::Future, pin::Pin};
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
 pub type VinylCommentWritePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type LyricBountyPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type VinylPlaybackReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type VinylWikiReadPermission<'a> = VinylPlaybackReadPermission<'a>;
 pub type SongLikePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type PlaylistAddPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type PlaybackChorusPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
 pub(crate) const MESSAGE_COUNT_PATH: &str = "/api/pl/count";
 pub(crate) const MESSAGE_READ_ALL_PATH: &str = "/api/msg/count/clear";
+pub(crate) const PODCAST_RESUME_WRITE_PATH: &str = "/api/dj/user/setting/resumeplay/update";
+pub(crate) const PODCAST_RESUME_READ_PATH: &str = "/api/dj/user/setting/resumeplay/get";
+
+/// One original chorus endpoint batch. The IDs are selected by the native queue.
+pub struct PlaybackChorusRead(Vec<Value>);
+
+impl PlaybackChorusRead {
+    pub(crate) const PATH: &str = "/api/song/chorus";
+    pub(crate) const LIMIT: usize = 500;
+
+    pub(crate) fn new(ids: Vec<Value>) -> Result<Self> {
+        if ids.is_empty() || ids.len() > Self::LIMIT || ids.iter().any(|id| identifier(id).is_err())
+        {
+            return Err(Error::InvalidInput("invalid chorus batch"));
+        }
+        Ok(Self(ids))
+    }
+
+    pub fn into_request(self) -> Result<(&'static str, Value)> {
+        Ok((
+            Self::PATH,
+            json!({ "ids": serde_json::to_string(&self.0)? }),
+        ))
+    }
+}
 
 /// Fixed native reads needed to identify and confirm the system-liked playlist.
 pub struct SystemLikedRead(SystemLikedQuery);
@@ -263,6 +290,47 @@ impl VinylVoiceDetailRead {
 
     pub fn into_request(self) -> (&'static str, Value) {
         (Self::PATH, json!({"id":self.0}))
+    }
+}
+
+/// Fixed, native-only preflight/read-back for the current playback radio.
+pub struct PlayerPodcastResumeRead(String);
+
+impl PlayerPodcastResumeRead {
+    pub(crate) fn new(radio: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(radio) {
+            return Err(Error::InvalidInput("invalid current podcast"));
+        }
+        Ok(Self(radio.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (PODCAST_RESUME_READ_PATH, json!({"radioId":self.0}))
+    }
+}
+
+/// Fixed, native-only update for the radio bound to the current playback entry.
+pub struct PlayerPodcastResumeWrite {
+    radio: String,
+    enabled: bool,
+}
+
+impl PlayerPodcastResumeWrite {
+    pub(crate) fn new(radio: &str, enabled: bool) -> Result<Self> {
+        if !canonical_vinyl_comment_id(radio) {
+            return Err(Error::InvalidInput("invalid current podcast"));
+        }
+        Ok(Self {
+            radio: radio.into(),
+            enabled,
+        })
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (
+            PODCAST_RESUME_WRITE_PATH,
+            json!({"radioId":self.radio,"resumePlayValue":u8::from(self.enabled)}),
+        )
     }
 }
 
@@ -529,8 +597,81 @@ impl PodcastBadgeClear {
 
 pub type PodcastBadgePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
+pub type EffectCataloguePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+
+#[derive(Clone, Copy)]
+pub enum EffectCatalogueRead {
+    LegacyRecommended,
+    LegacyAll,
+    HighlyRecommended,
+    Recommended,
+    More,
+}
+
+impl EffectCatalogueRead {
+    pub fn into_request(self) -> (&'static str, Value) {
+        use EffectCatalogueRead::*;
+        match self {
+            LegacyRecommended => ("/api/usertool/sound/mobile/promote", json!({})),
+            LegacyAll => ("/api/usertool/sound/mobile/all", json!({})),
+            HighlyRecommended | Recommended | More => {
+                let expose_type = match self {
+                    HighlyRecommended => 5,
+                    Recommended => 6,
+                    More => 7,
+                    _ => unreachable!(),
+                };
+                (
+                    "/api/usertool/sound/queryAllSound",
+                    json!({"exposeType":expose_type}),
+                )
+            }
+        }
+    }
+}
+
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
+
+    /// Account-side revision for the ordinary catalogue, available even when
+    /// the profile has not enabled the signed PC experiment transport.
+    fn effect_catalogue_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// Fixed catalogue read. Native HTTP rechecks the account and current
+    /// presentation at the actual dispatch boundary after obtaining its gate.
+    fn request_effect_catalogue<'a>(
+        &'a self,
+        read: EffectCatalogueRead,
+        _revision: Option<&'a str>,
+        current: &'a EffectCataloguePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            current()?;
+            let (path, payload) = read.into_request();
+            self.call(path, payload, false, &[200]).await
+        })
+    }
+
+    fn lyric_bounty_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// A native PC capability must check authorization at the one dispatch
+    /// boundary. Generic adapters do not gain a fallback write.
+    fn request_lyric_bounty<'a>(
+        &'a self,
+        _write: crate::lyrics::LyricBountyWrite,
+        _revision: &'a str,
+        _permission: &'a LyricBountyPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::RequestNotSent(Box::new(Error::State(
+                "signed lyric bounty transport unavailable",
+            ))))
+        })
+    }
 
     /// The count, clear and account profile endpoints must see the same native
     /// authenticated cookie scope. Generic adapters have no write authority.
@@ -655,10 +796,62 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Cheap native commit observation for actor scheduling. The revision is
+    /// not a permission and must be re-proved off actor before dispatch.
+    fn observed_playback_chorus_revision(&self) -> Option<String> {
+        None
+    }
+
+    /// Admits a queue chorus read only with exact native account credentials.
+    fn playback_chorus_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_playback_chorus<'a>(
+        &'a self,
+        _read: PlaybackChorusRead,
+        _revision: &'a str,
+        _permission: &'a PlaybackChorusPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("queue chorus read is unavailable")) })
+    }
+
     /// Scoped native credential revision for the episode progress write.
     /// Ordinary adapters do not opt into automatic account writes.
     fn podcast_progress_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    /// Same native PC account, assignment, and resume-setting cookie scope.
+    /// An ordinary read still works when this optional presentation proof is absent.
+    fn podcast_resume_observation_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn player_podcast_resume_write_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_player_podcast_resume_read<'a>(
+        &'a self,
+        _read: PlayerPodcastResumeRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("current podcast resume read is unavailable")) })
+    }
+
+    fn request_player_podcast_resume_write<'a>(
+        &'a self,
+        _write: PlayerPodcastResumeWrite,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::RequestNotSent(Box::new(Error::State(
+                "current podcast resume setting is unavailable",
+            ))))
+        })
     }
 
     fn upload_podcast_progress<'a>(
@@ -921,6 +1114,19 @@ pub trait Api: Send + Sync + std::any::Any {
         _revision: &'a str,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async { Err(Error::State("search default context authority unavailable")) })
+    }
+
+    fn request_search_with_correction_channel<'a>(
+        &'a self,
+        _path: &'a str,
+        _payload: Value,
+        _revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "search correction context authority unavailable",
+            ))
+        })
     }
 
     fn playback_power_experiment(

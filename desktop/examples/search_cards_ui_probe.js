@@ -98,7 +98,9 @@
     await hover(voice);
     await wait(()=>actions&&Number(getComputedStyle(actions).opacity)>.99,'direct voice download on hover');
     click(voice.querySelector('.menu-trigger'));await wait(()=>one('.action-menu'),'voice menu');
-    assert(button('下载声音'),'context menu still exposes voice download');
+    const menuDownload=one('.action-menu [data-menu-key="download"]');
+    assert(menuDownload?.textContent.trim()==='下载'&&!menuDownload.disabled,
+      'receipt-bound context menu still exposes voice download');
     one('.action-menu').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
     await wait(()=>!one('.action-menu'),'voice menu closes before direct action');
     await pointer(innerWidth-3,75);direct.focus({preventScroll:true});

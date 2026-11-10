@@ -8,12 +8,13 @@ use crate::{
     catalog::{CatalogApi, details::CatalogQuery},
     membership::Quality,
     playback::{
-        QueueEntry, QueueSnapshot,
+        PlaybackMode, QueueEntry, QueueSnapshot,
         controller::{QueueTransport, QueueUpdate},
     },
     playlist::PlaylistApi,
     protocol::api::identifier,
 };
+use rand::{Rng, seq::IndexedRandom};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -40,6 +41,7 @@ pub(super) enum QueueCollection {
     ArtistSongs {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         quality: Quality,
+        selected: Option<Vec<String>>,
     },
     AlbumBatch {
         id: String,
@@ -56,6 +58,12 @@ pub(super) enum QueueCollection {
         id: String,
         quality: Quality,
         selection: Option<(Vec<String>, String)>,
+    },
+    MixedPlaylist {
+        id: String,
+        revision: String,
+        track: Option<MixedPlaylistStart>,
+        quality: Quality,
     },
     Voice {
         id: String,
@@ -163,7 +171,7 @@ impl MusicClient {
         quality: Quality,
         selection: Option<(Vec<String>, String)>,
         attempt: u64,
-    ) -> Result<(Vec<Value>, Option<String>)> {
+    ) -> Result<(Vec<Value>, Value)> {
         let detail = self
             .session
             .run_for(token, |api, _| async {
@@ -190,11 +198,20 @@ impl MusicClient {
                 .map(Value::from)
                 .collect::<Vec<_>>()
         };
-        let name = super::origin::resource_name(&detail, id).map(str::to_owned);
-        let resources = self
+        let mut source = super::origin::named(
+            json!({"kind":"playlist","id":id}),
+            super::origin::resource_name(&detail, id),
+        );
+        let mut resources = self
             .online_queue_resources(token, &ids, quality, attempt)
             .await?;
-        Ok((resources, name))
+        if let Some(trial) = self.ordinary_playlist_trial(token, id, &detail)? {
+            source["trial_mode"] = json!(trial);
+            for resource in &mut resources {
+                resource["trial_mode"] = json!(trial);
+            }
+        }
+        Ok((resources, source))
     }
     async fn online_queue_resources(
         &self,
@@ -202,6 +219,18 @@ impl MusicClient {
         ids: &[Value],
         quality: Quality,
         attempt: u64,
+    ) -> Result<Vec<Value>> {
+        self.online_queue_resources_for(token, ids, quality, attempt, false)
+            .await
+    }
+
+    async fn online_queue_resources_for(
+        &self,
+        token: &SessionToken,
+        ids: &[Value],
+        quality: Quality,
+        attempt: u64,
+        direct_artist_batch: bool,
     ) -> Result<Vec<Value>> {
         let mut resources = Vec::new();
         for chunk in ids.chunks(100) {
@@ -215,7 +244,17 @@ impl MusicClient {
                     CatalogApi::new(api).songs(chunk, 100).await
                 })
                 .await?;
-            for song in songs.songs.into_iter().flatten() {
+            for mut song in songs.songs.into_iter().flatten() {
+                if direct_artist_batch {
+                    // M59.j -> M23.z admits direct online songs with positive
+                    // play bitrate or a trial; this does not grant media rights.
+                    if let Some(privilege) = songs.privileges.get(&identifier(&song["id"])?) {
+                        song["privilege"] = privilege.clone();
+                    }
+                    if !mapping::online_play_all_eligible(&song) {
+                        continue;
+                    }
+                }
                 resources.push(catalog_queue_resource(&song, quality)?);
             }
             if resources.len() >= QUEUE_LIMIT {
@@ -245,6 +284,13 @@ impl MusicClient {
         let style = matches!(collection, QueueCollection::StyleRecommendations { .. });
         let local = matches!(collection, QueueCollection::Local { .. });
         let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
+        let artist_batch = matches!(
+            collection,
+            QueueCollection::ArtistSongs {
+                selected: Some(_),
+                ..
+            }
+        );
         let album_batch = matches!(collection, QueueCollection::AlbumBatch { .. });
         let album_detail = matches!(
             collection,
@@ -258,7 +304,9 @@ impl MusicClient {
             collection,
             QueueCollection::Voice { .. } | QueueCollection::RecentVoice(_)
         );
+        let mixed_playlist = matches!(collection, QueueCollection::MixedPlaylist { .. });
         let ordinary = daily
+            || mixed_playlist
             || style
             || local
             || artist
@@ -276,13 +324,16 @@ impl MusicClient {
             "album queue requires ordinary playback"
         } else if voice {
             "voice next requires ordinary playback"
+        } else if mixed_playlist {
+            "mixed playlist queue requires ordinary playback"
         } else {
             "local queue requires ordinary playback"
         };
         if ordinary && (queue.intelligence.is_some() || self.together_attached(&token, None)?) {
             return Err(Error::State(special_queue));
         }
-        let (recommendation_ids, source_guard) = match &collection {
+        let mut artist_batch_prepared = None;
+        let (recommendation_ids, mut source_guard) = match &collection {
             QueueCollection::DailyRecommendations {
                 revision, indices, ..
             } => {
@@ -307,6 +358,27 @@ impl MusicClient {
                 detail: Some(scope),
                 ..
             } => (None, Some(self.album_playback_guard(&token, scope)?)),
+            QueueCollection::ArtistSongs {
+                pages,
+                selected: Some(selected),
+                ..
+            } => {
+                if selected.is_empty() || selected.len() > QUEUE_LIMIT {
+                    return Err(Error::InvalidInput("invalid artist batch size"));
+                }
+                if pages.is_empty() || pages.len() > 500 {
+                    return Err(Error::InvalidInput("invalid artist song page count"));
+                }
+                let details = crate::catalog::details::CatalogDetails::new(self.session.clone())?;
+                let receipts = pages
+                    .iter()
+                    .map(|page| (&page.query, page.revision.as_str()))
+                    .collect::<Vec<_>>();
+                let fence = details.artist_songs_fence(&token, &receipts)?;
+                let (loaded, _, source) = self.catalog_song_selection(&token, pages, 0).await?;
+                artist_batch_prepared = Some((selected_artist_ids(loaded, selected)?, source));
+                (None, Some(Cancellation::new(move || fence.is_current())))
+            }
             QueueCollection::RecentVoice(target) => {
                 let (row, guard) = self.recent_program_for(&token, target, true)?;
                 if queue.selected().is_some_and(|entry| {
@@ -339,6 +411,7 @@ impl MusicClient {
         };
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
+        let mut _mixed_local_lease = None;
         let (resources, source, downloaded) = match collection {
             QueueCollection::ArtistFavor { ids, quality } => {
                 let ids = ids.into_iter().map(Value::from).collect::<Vec<_>>();
@@ -414,19 +487,31 @@ impl MusicClient {
                     false,
                 )
             }
-            QueueCollection::ArtistSongs { pages, quality } => {
-                if pages.is_empty()
-                    || pages
-                        .iter()
-                        .any(|page| !matches!(page.query, CatalogQuery::ArtistSongs { .. }))
+            QueueCollection::ArtistSongs { pages, quality, .. } => {
+                let (ids, source) = if let Some(prepared) = artist_batch_prepared {
+                    prepared
+                } else {
+                    if pages.is_empty()
+                        || pages
+                            .iter()
+                            .any(|page| !matches!(page.query, CatalogQuery::ArtistSongs { .. }))
+                    {
+                        return Err(Error::InvalidInput("expected artist song pages"));
+                    }
+                    let (mut ids, _, source) =
+                        self.catalog_song_selection(&token, &pages, 0).await?;
+                    let mut seen = HashSet::new();
+                    ids.retain(|id| seen.insert(id.clone()));
+                    (ids, source)
+                };
+                if source_guard
+                    .as_ref()
+                    .is_some_and(Cancellation::is_cancelled)
                 {
-                    return Err(Error::InvalidInput("expected artist song pages"));
+                    return Err(Error::QueueChanged);
                 }
-                let (mut ids, _, source) = self.catalog_song_selection(&token, &pages, 0).await?;
-                let mut seen = HashSet::new();
-                ids.retain(|id| seen.insert(id.clone()));
                 let mut resources = self
-                    .online_queue_resources(&token, &ids, quality, attempt)
+                    .online_queue_resources_for(&token, &ids, quality, attempt, artist_batch)
                     .await?;
                 if resources.is_empty() {
                     return Err(Error::State("artist has no online tracks"));
@@ -531,17 +616,33 @@ impl MusicClient {
             } => {
                 self.session.with_token(&token, |_| Ok(()))?;
                 let id = identifier(&json!(id))?;
-                let (resources, name) = self
+                let (resources, source) = self
                     .playlist_queue_resources(&token, &id, quality, selection, attempt)
                     .await?;
                 if resources.is_empty() {
                     return Err(Error::State("playlist has no online tracks"));
                 }
-                (
-                    resources,
-                    super::origin::named(json!({"kind":"playlist","id":id}), name.as_deref()),
-                    false,
-                )
+                (resources, source, false)
+            }
+            QueueCollection::MixedPlaylist {
+                id,
+                revision,
+                track,
+                quality,
+            } => {
+                let mixed = self
+                    .mixed_playlist_insert(
+                        &token,
+                        &id,
+                        &revision,
+                        quality,
+                        attempt,
+                        super::mixed_playlist::MixedInsert::Next(track.as_ref()),
+                    )
+                    .await?;
+                source_guard = Some(mixed.guard);
+                _mixed_local_lease = mixed.local_lease;
+                (mixed.resources, mixed.source, false)
             }
             QueueCollection::Voice { id, .. } => {
                 // M3085: a context-menu next action uses just the selected
@@ -588,8 +689,19 @@ impl MusicClient {
                 false,
             ),
         };
-        let start = queue.current.is_none();
-        let queue = insert_collection(queue, resources, source, downloaded);
+        let (queue, start) = if artist_batch {
+            let start = queue.items.is_empty();
+            (
+                insert_selected_artist(queue, resources, source, &mut rand::rng())?,
+                start,
+            )
+        } else {
+            let start = queue.current.is_none();
+            (
+                insert_collection(queue, resources, source, downloaded),
+                start,
+            )
+        };
         self.session.check_generation(&token)?;
         if self.player.selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
@@ -613,7 +725,33 @@ impl MusicClient {
         } else {
             None
         };
-        if start && !artist_favor {
+        let expected = before.fence();
+        let mut artist_focus = None;
+        if start && artist_batch {
+            // A mode-only or external queue change does not supersede the
+            // detail request. Sync the actor before taking focus from an MV.
+            let current = controller
+                .command(&token, PlaybackCommand::Snapshot)
+                .await?;
+            if current.fence() != expected
+                || source_guard
+                    .as_ref()
+                    .is_some_and(Cancellation::is_cancelled)
+            {
+                return Err(Error::QueueChanged);
+            }
+            let (lease, ()) = self.reserve_prepared_audio(&token, focus, || {
+                if controller.snapshot().fence() != expected
+                    || self.player.selection.load(Ordering::Acquire) != attempt
+                {
+                    return Err(Error::StaleResponse);
+                }
+                Ok(())
+            })?;
+            self.finish_media_claim(&token, super::super::focus::Owner::Audio, lease)
+                .await?;
+            artist_focus = Some(lease);
+        } else if start && !artist_favor {
             self.claim_native_media(&token, super::super::focus::Owner::Audio, focus)
                 .await?;
             if self.player.selection.load(Ordering::Acquire) != attempt {
@@ -623,7 +761,6 @@ impl MusicClient {
         if let Some(program) = &program {
             self.require_podcast_program(&token, program, true)?;
         }
-        let expected = before.fence();
         let command = PlaybackCommand::UpdateQueue(QueueUpdate {
             expected: expected.clone(),
             queue,
@@ -634,6 +771,7 @@ impl MusicClient {
         });
         let value = if ordinary {
             let selection = self.player.selection.clone();
+            let media_focus = self.focus.clone();
             controller
                 .command_guarded(
                     &token,
@@ -644,6 +782,11 @@ impl MusicClient {
                             && source_guard
                                 .as_ref()
                                 .is_none_or(|guard| !guard.is_cancelled())
+                            && artist_focus.is_none_or(|lease| {
+                                media_focus
+                                    .check(lease, super::super::focus::Owner::Audio)
+                                    .is_ok()
+                            })
                     }),
                 )
                 .await?
@@ -656,12 +799,81 @@ impl MusicClient {
     }
 }
 
+fn selected_artist_ids(loaded: Vec<Value>, selected: &[String]) -> Result<Vec<Value>> {
+    if selected.is_empty() || selected.len() > QUEUE_LIMIT {
+        return Err(Error::InvalidInput("invalid artist batch size"));
+    }
+    let mut wanted = selected
+        .iter()
+        .map(|id| identifier(&json!(id)).map(Value::from))
+        .collect::<Result<HashSet<_>>>()?;
+    if wanted.len() != selected.len() {
+        return Err(Error::InvalidInput("duplicate artist selection"));
+    }
+    let ids = loaded.into_iter().filter(|id| wanted.remove(id)).collect();
+    if !wanted.is_empty() {
+        return Err(Error::QueueChanged);
+    }
+    Ok(ids)
+}
+
+fn insert_selected_artist(
+    queue: QueueSnapshot,
+    resources: Vec<Value>,
+    source: Value,
+    rng: &mut impl Rng,
+) -> Result<QueueSnapshot> {
+    let start = queue.items.is_empty();
+    let current = queue.current.clone();
+    let random = queue.mode == PlaybackMode::Random;
+    let selected = resources
+        .iter()
+        .map(|resource| match resource_key(resource, false) {
+            Some((PlayerResourceKind::Catalog, id)) => Ok(id.to_owned()),
+            _ => Err(Error::State("artist batch requires ordinary songs")),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let first = selected.first().ok_or(Error::State("empty artist batch"))?;
+    let mut queue = insert_collection_bound(queue, resources, source, false, false, true);
+    if !start {
+        // No selected entry in a nonempty queue is not an invitation to start.
+        // A duplicate may move within the insertion, but its decoder keeps
+        // the exact same resource, source, and entry identity.
+        queue.current = current;
+        if queue.current.is_some() && queue.selected().is_none() {
+            return Err(Error::QueueChanged);
+        }
+    }
+    if random {
+        let entries: HashMap<_, _> = queue
+            .items
+            .iter()
+            .filter_map(|entry| match resource_key(&entry.resource, false) {
+                Some((PlayerResourceKind::Catalog, id)) => Some((id, entry.entry_id.as_str())),
+                _ => None,
+            })
+            .collect();
+        let first_entry = entries.get(first.as_str()).ok_or(Error::QueueChanged)?;
+        let inserted = selected
+            .iter()
+            .filter_map(|id| entries.get(id.as_str()).copied())
+            .collect();
+        if start {
+            let id = selected.choose(rng).ok_or(Error::QueueChanged)?;
+            queue.current =
+                Some((*entries.get(id.as_str()).ok_or(Error::QueueChanged)?).to_owned());
+        }
+        queue.order = super::local_batch::random_order(&queue, &inserted, first_entry, !start, rng);
+    }
+    Ok(queue)
+}
+
 pub(super) fn catalog_queue_resource(song: &Value, quality: Quality) -> Result<Value> {
     let v = mapping::track(song)?;
     Ok(queue_resource_for_track(&v, quality))
 }
 
-pub(super) fn queue_resource_for_track(
+pub(in crate::client) fn queue_resource_for_track(
     v: &super::super::dto::TrackView,
     quality: Quality,
 ) -> Value {
@@ -679,7 +891,8 @@ fn insert_collection(
     source: Value,
     downloaded: bool,
 ) -> QueueSnapshot {
-    insert_collection_bound(queue, resources, source, downloaded, false, false)
+    let rebind = super::playlist_trial::inferred_playlist_source(&source);
+    insert_collection_bound(queue, resources, source, downloaded, rebind, false)
 }
 
 pub(super) fn insert_zone_batch(
@@ -722,13 +935,29 @@ pub(super) fn insert_zone_batch(
 }
 
 pub(super) fn insert_collection_bound(
-    mut queue: QueueSnapshot,
+    queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,
     downloaded: bool,
     rebind: bool,
     replace_current: bool,
 ) -> QueueSnapshot {
+    insert_collection_by_key(queue, resources, source, rebind, replace_current, |row| {
+        resource_key(row, downloaded)
+    })
+}
+
+pub(super) fn insert_collection_by_key<F>(
+    mut queue: QueueSnapshot,
+    resources: Vec<Value>,
+    source: Value,
+    rebind: bool,
+    replace_current: bool,
+    resource_key: F,
+) -> QueueSnapshot
+where
+    F: for<'a> Fn(&'a Value) -> Option<(PlayerResourceKind, &'a str)>,
+{
     let bind_recommendation_origin = matches!(
         source["kind"].as_str(),
         Some("daily_recommendations" | "style_recommendations")
@@ -740,22 +969,22 @@ pub(super) fn insert_collection_bound(
         .cloned();
     let current_key = current
         .as_ref()
-        .and_then(|entry| resource_key(&entry.resource, downloaded));
+        .and_then(|entry| resource_key(&entry.resource));
     let inserts_current = replace_current
         && current_key.is_some()
         && resources
             .iter()
-            .any(|resource| resource_key(resource, downloaded) == current_key);
+            .any(|resource| resource_key(resource) == current_key);
     let existing: HashMap<_, _> = queue
         .items
         .iter()
-        .filter_map(|e| resource_key(&e.resource, downloaded).map(|id| (id, e)))
+        .filter_map(|e| resource_key(&e.resource).map(|id| (id, e)))
         .collect();
     let mut seen = HashSet::new();
     let inserted: Vec<_> = resources
         .into_iter()
         .filter_map(|resource| {
-            let id = resource_key(&resource, downloaded)?;
+            let id = resource_key(&resource)?;
             if !seen.insert((id.0, id.1.to_owned())) || !replace_current && current_key == Some(id)
             {
                 return None;
@@ -787,16 +1016,15 @@ pub(super) fn insert_collection_bound(
     // This avoids restarting or changing the paused position of current audio.
     let replaced: HashSet<_> = inserted
         .iter()
-        .filter_map(|e| resource_key(&e.resource, downloaded))
+        .filter_map(|e| resource_key(&e.resource))
         .collect();
     let split = queue
         .items
         .iter()
         .position(|e| Some(&e.entry_id) == queue.current.as_ref())
         .map_or(0, |i| i + 1);
-    let keep = |e: &&QueueEntry| {
-        !resource_key(&e.resource, downloaded).is_some_and(|id| replaced.contains(&id))
-    };
+    let keep =
+        |e: &&QueueEntry| !resource_key(&e.resource).is_some_and(|id| replaced.contains(&id));
     let space = QUEUE_LIMIT - inserted.len();
     let mut prefix: Vec<_> = queue.items[..split]
         .iter()

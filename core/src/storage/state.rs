@@ -179,6 +179,32 @@ impl StateStore {
         .get(owner, kind, key)
     }
 
+    /// Observe only the requested keys, in request order, in one read snapshot.
+    pub(crate) fn get_ordered(
+        &self,
+        owner: &str,
+        kind: &str,
+        keys: &[String],
+    ) -> Result<Vec<Option<Value>>> {
+        let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut statement = connection.prepare_cached(
+            "SELECT state.value FROM json_each(?3) AS requested
+             LEFT JOIN state ON state.owner=?1 AND state.kind=?2 AND state.key=requested.value
+             ORDER BY requested.key",
+        )?;
+        let keys = serde_json::to_string(keys)?;
+        let values = statement.query_map(params![owner, kind, keys], |row| {
+            row.get::<_, Option<String>>(0)
+        })?;
+        values
+            .map(|value| {
+                value?
+                    .map(|value| serde_json::from_str(&value).map_err(Error::from))
+                    .transpose()
+            })
+            .collect()
+    }
+
     pub(crate) fn playback_download_rows(
         &self,
         owner: &str,
@@ -200,20 +226,10 @@ impl StateStore {
         song: &str,
     ) -> Result<Option<(String, Value)>> {
         let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
-        let mut query = connection.prepare_cached(&format!(
-            "SELECT key, value FROM state INDEXED BY download_song_v1
-             WHERE owner=? AND {DOWNLOAD_SONG_TASK} AND ({DOWNLOAD_SONG_ID})=?
-               AND json_extract(value,'$.status')='complete' LIMIT 2"
-        ))?;
-        let mut rows = query.query([owner, song])?;
-        let Some(first) = rows.next()? else {
-            return Ok(None);
-        };
-        let (key, value): (String, String) = (first.get(0)?, first.get(1)?);
-        if rows.next()?.is_some() {
-            return Ok(None);
+        StateTransaction {
+            connection: &connection,
         }
-        Ok(Some((key, serde_json::from_str(&value)?)))
+        .completed_song_publication(owner, song)
     }
 
     /// Whether this exact ordinary source is represented by a visible task in
@@ -361,6 +377,56 @@ impl StateStore {
 }
 
 impl StateTransaction<'_> {
+    /// Compare the saved header without materializing all playlist rows.
+    pub(crate) fn offline_playlist_snapshot_matches(
+        &self,
+        owner: &str,
+        id: &str,
+        revision: &str,
+        cached_at_ms: u64,
+    ) -> Result<bool> {
+        let cached_at_ms = i64::try_from(cached_at_ms)
+            .map_err(|_| Error::State("invalid cached playlist timestamp"))?;
+        let mut query = self.connection.prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM state
+             WHERE owner=?1 AND kind=?2 AND key=?3 AND CASE WHEN json_valid(value) THEN
+               json_extract(value,'$.local_revision')=?4
+               AND json_extract(value,'$.cached_at_ms')=?5
+             ELSE 0 END)",
+        )?;
+        Ok(query.query_row(
+            params![
+                owner,
+                crate::playlist::OFFLINE_SNAPSHOT_KIND,
+                id,
+                revision,
+                cached_at_ms
+            ],
+            |row| row.get(0),
+        )?)
+    }
+
+    pub(crate) fn completed_song_publication(
+        &self,
+        owner: &str,
+        song: &str,
+    ) -> Result<Option<(String, Value)>> {
+        let mut query = self.connection.prepare_cached(&format!(
+            "SELECT key, value FROM state INDEXED BY download_song_v1
+             WHERE owner=? AND {DOWNLOAD_SONG_TASK} AND ({DOWNLOAD_SONG_ID})=?
+               AND json_extract(value,'$.status')='complete' LIMIT 2"
+        ))?;
+        let mut rows = query.query([owner, song])?;
+        let Some(first) = rows.next()? else {
+            return Ok(None);
+        };
+        let (key, value): (String, String) = (first.get(0)?, first.get(1)?);
+        if rows.next()?.is_some() {
+            return Ok(None);
+        }
+        Ok(Some((key, serde_json::from_str(&value)?)))
+    }
+
     pub(crate) fn playback_download_rows(
         &self,
         owner: &str,

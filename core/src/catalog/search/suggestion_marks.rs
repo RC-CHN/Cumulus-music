@@ -16,31 +16,23 @@ pub(super) struct SuggestionMatcher {
 
 impl SuggestionMatcher {
     pub(super) fn new(query: &str) -> Self {
-        let (mut first, mut second) = (Vec::new(), Vec::new());
-        if query.chars().nth(MAX_SCALARS).is_none() {
-            let collapsed = query
-                .split(js_whitespace)
-                .filter(|piece| !piece.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            let normalized = collapsed
-                .to_lowercase()
-                .chars()
-                .map(|c| simplified(width(c)))
-                .collect::<String>();
-            // M/123 escapes literal syntax, then replaces only the first
-            // ASCII space with an alternative. Keep both clauses literal.
-            let pattern = normalized
-                .trim_matches(js_whitespace)
-                .split(' ')
-                .filter(|piece| !piece.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            let (left, right) = pattern.split_once(' ').unwrap_or((&pattern, ""));
-            first.extend(left.chars().map(legacy_case));
-            second.extend(right.chars().map(legacy_case));
+        Self::from_normalized(&normalize(query))
+    }
+
+    fn from_normalized(normalized: &str) -> Self {
+        // M/123 escapes literal syntax, then replaces only the first
+        // ASCII space with an alternative. Keep both clauses literal.
+        let pattern = normalized
+            .trim_matches(js_whitespace)
+            .split(' ')
+            .filter(|piece| !piece.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let (left, right) = pattern.split_once(' ').unwrap_or((&pattern, ""));
+        Self {
+            first: left.chars().map(legacy_case).collect(),
+            second: right.chars().map(legacy_case).collect(),
         }
-        Self { first, second }
     }
 
     pub(super) fn parts<'a>(&self, label: &'a str) -> Vec<Part<'a>> {
@@ -96,6 +88,44 @@ impl SuggestionMatcher {
         }
         parts
     }
+}
+
+fn normalize(query: &str) -> String {
+    if query.chars().nth(MAX_SCALARS).is_some() {
+        return String::new();
+    }
+    query
+        .split(js_whitespace)
+        .filter(|piece| !piece.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+        .chars()
+        .map(|c| simplified(width(c)))
+        .collect()
+}
+
+// M/123.f searches the normalized query, then calls u with that already
+// normalized query. On a miss, u receives no query and displays the first
+// alias plainly. Preserve the original filtered-index behavior for "".
+pub(super) fn first_alias<'a>(aliases: &[&'a str], query: &str) -> Vec<Part<'a>> {
+    let normalized = normalize(query);
+    let matcher = SuggestionMatcher::from_normalized(&normalized);
+    let found = aliases
+        .iter()
+        .filter(|alias| !alias.is_empty())
+        .position(|alias| matcher.parts(alias).iter().any(|part| part.marked));
+    let parts = if let Some(index) = found {
+        SuggestionMatcher::new(&normalized).parts(aliases[index])
+    } else if let Some(alias) = aliases.first() {
+        SuggestionMatcher::new("").parts(alias)
+    } else {
+        vec![]
+    };
+    parts
+        .into_iter()
+        .filter(|part| !part.text.is_empty())
+        .collect()
 }
 
 fn js_whitespace(c: char) -> bool {

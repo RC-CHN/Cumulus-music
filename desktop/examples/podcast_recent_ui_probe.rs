@@ -44,13 +44,14 @@ use cumulus_core::{
     protocol::{
         api::{
             Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
-            PlaylistAddPermission, PodcastBadgeClear, PodcastBadgePermission,
-            PodcastProgressPermission, SongCardLikedRead, SongLikePermission,
-            VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
-            VinylPodcastSubscriptionWrite, VinylVoiceDetailRead, VinylVoiceRecommendationsRead,
-            VinylVoiceSongsRead,
+            PlayerPodcastResumeRead, PlayerPodcastResumeWrite, PlaylistAddPermission,
+            PodcastBadgeClear, PodcastBadgePermission, PodcastProgressPermission,
+            SongCardLikedRead, SongLikePermission, VinylPlaybackReadPermission,
+            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylVoiceDetailRead,
+            VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
         },
         http::ApiOrigin,
+        pc_experiments::PcExperimentGroups,
     },
 };
 use serde_json::{Value, json};
@@ -90,6 +91,7 @@ struct Library {
     voice_detail: Option<voice_detail_fixture::VoiceDetail>,
     voice_page: Option<Arc<voice_page_fixture::Fixture>>,
     voice_fresh_actions: Option<voice_fresh_actions_fixture::Fixture>,
+    player_resume_proof: bool,
     voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
     voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
     voice_songs: Option<Arc<voice_songs_fixture::Fixture>>,
@@ -154,6 +156,70 @@ impl Api for Library {
                 "scene-home-fixture-revision".to_owned()
             }
         }))
+    }
+
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, PcExperimentGroups> {
+        if !self.player_resume_proof {
+            return Box::pin(async { Err(Error::State("sealed podcast assignment unavailable")) });
+        }
+        self.voice_fresh_actions
+            .as_ref()
+            .expect("signed resume fixture")
+            .client
+            .verified_pc_experiment_groups(revision)
+    }
+
+    fn podcast_resume_observation_revision(&self) -> Result<Option<String>> {
+        if !self.player_resume_proof {
+            return Ok(None);
+        }
+        self.voice_fresh_actions
+            .as_ref()
+            .expect("signed resume fixture")
+            .client
+            .podcast_resume_observation_revision()
+    }
+
+    fn player_podcast_resume_write_revision(&self) -> Result<Option<String>> {
+        if !self.player_resume_proof {
+            return Ok(None);
+        }
+        self.voice_fresh_actions
+            .as_ref()
+            .expect("signed resume fixture")
+            .client
+            .player_podcast_resume_write_revision()
+    }
+
+    fn request_player_podcast_resume_read<'a>(
+        &'a self,
+        read: PlayerPodcastResumeRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        assert!(self.player_resume_proof);
+        self.voice_fresh_actions
+            .as_ref()
+            .expect("signed resume fixture")
+            .client
+            .request_player_podcast_resume_read(read, revision, permission)
+    }
+
+    fn request_player_podcast_resume_write<'a>(
+        &'a self,
+        write: PlayerPodcastResumeWrite,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        assert!(self.player_resume_proof);
+        self.voice_fresh_actions
+            .as_ref()
+            .expect("signed resume fixture")
+            .client
+            .request_player_podcast_resume_write(write, revision, permission)
     }
 
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
@@ -467,9 +533,15 @@ impl Api for Library {
                 }
             }
             if let Some(actions) = &self.voice_fresh_actions {
-                if path == voice_fresh_actions_fixture::ACCOUNT {
+                if path == voice_fresh_actions_fixture::ACCOUNT
+                    || self.player_resume_proof && path == voice_fresh_actions_fixture::RESUME_READ
+                {
                     return actions.client.request(path, body, cache).await;
                 }
+                assert!(
+                    !self.player_resume_proof || path != voice_fresh_actions_fixture::RESUME_WRITE,
+                    "resume proof bypassed typed update authority"
+                );
                 if let Some(reply) = actions.route(path, &body) {
                     return reply;
                 }
@@ -725,6 +797,9 @@ fn main() {
     let voice_fresh_actions_enabled =
         std::env::var("CUMULUS_VOICE_FRESH_ACTIONS_PROOF").as_deref() == Ok("1");
     assert!(!voice_fresh_actions_enabled || voice_page_proof);
+    let player_resume_proof =
+        std::env::var("CUMULUS_PLAYER_PODCAST_RESUME_PROOF").as_deref() == Ok("1");
+    assert!(!player_resume_proof || (!voice_fresh_actions_enabled && !voice_detail_enabled));
     let voice_podcast_collect_enabled =
         std::env::var("CUMULUS_VOICE_PODCAST_COLLECT_PROOF").as_deref() == Ok("1");
     let voice_recommendations_enabled =
@@ -771,6 +846,12 @@ fn main() {
         .or_else(|| palette_enabled.then(|| "automatic".to_owned()))
         .map(scene_home_fixture::SceneHome::new);
     let scene_enabled = scene_home.is_some();
+    assert!(
+        !player_resume_proof
+            || scene_home
+                .as_ref()
+                .is_some_and(|scene| scene.case == "manual")
+    );
     assert!(!(scene_enabled && progress_enabled));
     assert!(
         !voice_podcast_collect_enabled
@@ -806,13 +887,14 @@ fn main() {
             voice_fresh_actions_enabled,
         ))
     });
-    let voice_fresh_actions = voice_fresh_actions_enabled.then(|| {
+    let voice_fresh_actions = (voice_fresh_actions_enabled || player_resume_proof).then(|| {
         voice_fresh_actions_fixture::Fixture::open(
             registry.store(),
             voice_page
                 .as_ref()
                 .expect("isolated VoicePage mode")
                 .clone(),
+            player_resume_proof,
         )
         .unwrap()
     });
@@ -863,6 +945,7 @@ fn main() {
         voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
         voice_page,
         voice_fresh_actions,
+        player_resume_proof,
         voice_podcast_collect: voice_podcast_collect_enabled
             .then(voice_podcast_collect_fixture::Fixture::default),
         voice_recommendations: voice_recommendations_enabled
@@ -905,7 +988,9 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let source = std::env::var_os("CUMULUS_UX_SCRIPT").map_or_else(
         || {
-            if recent_program_menu {
+            if player_resume_proof {
+                include_str!("player_podcast_resume_ui_probe.js").to_owned()
+            } else if recent_program_menu {
                 include_str!("podcast_recent_program_menu_ui_probe.js").to_owned()
             } else if program_menu {
                 include_str!("podcast_program_menu_ui_probe.js").to_owned()
@@ -987,6 +1072,18 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let mut value: Value = serde_json::from_str(event.payload()).unwrap();
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
+                if player_resume_proof && stage == "player_resume_refresh" {
+                    let nonce = value["nonce"].as_u64().expect("resume refresh sequence");
+                    let handle = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let client = handle.state::<MusicClient>();
+                        let view = client.refresh_pc_presentation().await.expect("sealed resume cohort refresh");
+                        handle.get_webview_window("main").unwrap().eval(format!(
+                            "window.__playerResumeCohort = [{nonce}, {}];", json!(view)
+                        )).unwrap();
+                    });
+                    return;
+                }
                 if recent_program_menu && stage == "recent_program_menu_poll" {
                     let status = json!({
                         "held":api.recent_menu_count_held.load(Ordering::SeqCst),

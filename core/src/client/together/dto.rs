@@ -34,6 +34,22 @@ pub struct TogetherOperationView {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QueueRoomLossView {
+    pub room_id: String,
+    pub report_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalSelectionNotice {
+    pub id: String,
+    pub room_id: String,
+    pub skipped: usize,
+    pub blocked: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TogetherView {
     pub room: Option<TogetherRoomView>,
     pub tracks: Vec<TrackView>,
@@ -49,6 +65,9 @@ pub struct TogetherView {
     pub checked_at_ms: Option<u64>,
     pub local_recovery: bool,
     pub ending: bool,
+    pub queue_room_loss: Option<QueueRoomLossView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_selection: Option<ExternalSelectionNotice>,
     pub lifecycle_notice: Option<String>,
     pub shared_phase: Option<crate::listen_together::IncomingPhase>,
     pub common_access: Vec<TogetherAccessView>,
@@ -67,12 +86,37 @@ pub struct TogetherAccessView {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TogetherCommand {
     Create,
-    Attach { room_id: String },
-    Reconnect { room_id: String },
-    Publish { room_id: String },
-    Select { room_id: String, song_id: String },
-    Remove { room_id: String, song_id: String },
-    End { room_id: String },
-    Reconcile { operation_id: String },
+    Attach {
+        room_id: String,
+    },
+    Reconnect {
+        room_id: String,
+    },
+    Publish {
+        room_id: String,
+    },
+    Select {
+        room_id: String,
+        song_id: String,
+    },
+    Remove {
+        room_id: String,
+        song_id: String,
+    },
+    End {
+        room_id: String,
+    },
+    ConfirmQueueRoomLoss {
+        room_id: String,
+        report_id: String,
+    },
+    ResolveExternalSelection {
+        room_id: String,
+        notice_id: String,
+        confirm: bool,
+    },
+    Reconcile {
+        operation_id: String,
+    },
     RestoreLocal,
 }

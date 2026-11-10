@@ -33,13 +33,38 @@
       key: name, bubbles: true, cancelable: true,
     }));
   }
-  let epoch, step = 'startup', stageCount = 0, baseline, expectedEqualizer, masterControl, last;
+  let layout, epoch, step = 'startup', stageCount = 0, baseline, expectedEqualizer, masterControl, last;
   const snapshot = async () => (last = await invoke('player_snapshot', { epoch }));
   let online = true;
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online });
   function connectivity(next) {
     online = next;
     window.dispatchEvent(new Event(online ? 'online' : 'offline'));
+  }
+  const overviewGroups = () => [...(pane('catalogue')?.querySelectorAll('[data-effect-group]') ?? [])]
+    .map((group) => [group.querySelector('h3')?.textContent.trim(),
+      [...group.querySelectorAll('[data-effect-id]')].map((card) => Number(card.dataset.effectId))]);
+  const hasPartial = () => !!pane('catalogue')?.textContent.includes('部分音效暂时无法读取');
+  const completeOverview = [['官方精选音效', [200, 300, 301, 310, 311, 312, 313]], ['更多音效', [302, 303]]];
+  const partialOverview = [completeOverview[1]];
+  const legacyOverview = [['推荐音效', [201, 202, 203, 204, 205, 206]], ['全部音效', [208, 211, 207, 212]]];
+  const legacyEmpty = legacyOverview.map(([title]) => [title, []]);
+  const catalogueLayout = () => pane('catalogue')?.querySelector('[data-effect-layout]')?.dataset.effectLayout;
+  function verifyLegacyGeometry() {
+    const recommended = pane('catalogue').querySelector('.effect-directory-grid-legacy_recommended');
+    const all = pane('catalogue').querySelector('.effect-directory-grid-legacy_all');
+    const columns = (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+    const cardHeight = (grid) => grid.querySelector('button').offsetHeight;
+    assert(columns(recommended) === 2 && columns(all) === 3 &&
+      cardHeight(recommended) === 94 && cardHeight(all) === 66,
+      'legacy recommended/all grids have the two official geometries');
+    const fresh = recommended.querySelector('[data-effect-id="201"] [data-effect-new]');
+    assert(fresh?.textContent.trim() === 'NEW' && fresh.getAttribute('aria-label') === '新音效' &&
+      fresh.offsetWidth === 28 && fresh.offsetHeight === 16 &&
+      getComputedStyle(fresh).backgroundImage.startsWith('linear-gradient(') &&
+      recommended.querySelector('[data-effect-id="202"] [data-effect-membership="vip"]')?.textContent.trim() === 'VIP' &&
+      recommended.textContent.includes('合成旧版描述') && !all.textContent.includes('合成旧版描述') &&
+      !pane('catalogue').querySelector('[data-effect-group] img'), 'legacy markers and subtitle do not use modern artwork');
   }
   function selected(key, focus = tab(key)) {
     const active = tab(key);
@@ -59,6 +84,12 @@
       (key === active || tab(key).tabIndex === -1 && tab(key).getAttribute('aria-selected') === 'false')),
       'all three official tabs and roving tabindex');
     const box = shell().getBoundingClientRect();
+    const frame = shell();
+    assert(frame.dataset.audioEffectLayout === layout &&
+      frame.offsetWidth === Math.min(layout === 'legacy' ? 768 : 574, innerWidth - 32) &&
+      frame.offsetHeight === Math.min(layout === 'legacy' ? 480 : 560, innerHeight - 32),
+      `native cohort drives one modal across tabs: expected ${layout}, observed
+      ${frame.dataset.audioEffectLayout} ${frame.offsetWidth}x${frame.offsetHeight}`);
     assert(box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight,
       'dialog remains inside the short window');
     if (master === null) {
@@ -86,7 +117,8 @@
     await sleep(120);
     const stage = `ux_${String(++stageCount).padStart(2, '0')}_${label}`;
     await emit(stage, { active, online, stageCount, headerMaster: master, observedPosition: state.position,
-      connectedTabs: [...shell().querySelectorAll('[role="tab"]')].map((node) => node.textContent.trim()) });
+      connectedTabs: [...shell().querySelectorAll('[role="tab"]')].map((node) => node.textContent.trim()),
+      overview: overviewGroups(), partialOverview: hasPartial(), catalogueLayout: catalogueLayout() ?? null });
     await wait(() => window.__audioEffectTabRecorded === stage, `native receipt for ${label}`);
   }
   async function close(owner) {
@@ -119,6 +151,7 @@
       return account.status === 'authenticated' && ready(launcher()) &&
         ready(one('.track-row .track-play')) && !one('.page-enter-active,.page-leave-active') && account;
     }, 'authenticated current window, player and daily row'));
+    layout = (await invoke('pc_presentation', { epoch })).effectCatalogueNew ? 'modern' : 'legacy';
     step = 'native-playing';
     click(one('.track-row .track-play'));
     await wait(async () => {
@@ -171,8 +204,18 @@
     await capture('offline_catalogue_master_off', 'catalogue', false, masterControl);
     click(tab('catalogue'));
     connectivity(true);
-    await wait(() => selected('catalogue') && pane('catalogue').textContent.includes('合成空间音效'),
-      'online catalogue mounts and reads its first group');
+    await wait(() => selected('catalogue') &&
+      catalogueLayout() === layout &&
+      JSON.stringify(overviewGroups()) === JSON.stringify(layout === 'legacy' ? legacyOverview : completeOverview),
+      'the selected cohort shows only the ordered and capped groups for its route');
+    if (layout === 'legacy') verifyLegacyGeometry();
+    else {
+      const featured = pane('catalogue').querySelector('.effect-directory-grid-selection');
+      const [wide, regular] = [...featured.querySelectorAll('button')].map((button) => button.getBoundingClientRect().width);
+      assert(wide > regular * 2 && wide < regular * 2 + 12 &&
+        !pane('catalogue').querySelector('[aria-label="音效分类"]') && !hasPartial(),
+        'the featured card is double width and placement groups are not tabs');
+    }
     await capture('online_catalogue', 'catalogue', false);
     key('ArrowRight');
     await wait(() => selected('devices') && pane('devices').textContent.includes('合成耳机品牌'),
@@ -197,8 +240,10 @@
     click(await wait(() => ready(trigger()), 'current track menu trigger'));
     const menu = await wait(() => ready(one('[data-menu-key="effects"]')), 'current track effects action');
     click(menu);
-    await wait(() => selected('catalogue') && pane('catalogue').textContent.includes('合成空间音效'),
-      'menu opens same default route, not the previous Equalizer tab');
+    await wait(() => selected('catalogue') && catalogueLayout() === layout &&
+      hasPartial() === (layout === 'modern') &&
+      JSON.stringify(overviewGroups()) === JSON.stringify(layout === 'legacy' ? legacyEmpty : partialOverview),
+      'menu opens the default route and handles the authoritative group failure/empty case for its cohort');
     masterControl = headerMaster();
     await capture('menu_default', 'catalogue', true);
     await close(trigger);

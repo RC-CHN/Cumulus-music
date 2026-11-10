@@ -30,7 +30,7 @@ fn song(id: &Value) -> Value {
     json!({"id":id,"name":"曲目","ar":[{"id":"9007199254740993","name":"歌手"}],"al":{"id":"56","name":"专辑","picUrl":"http://p1.music.126.net/cover.jpg?token=DO_NOT_EXPORT"},"dt":240123,"fee":1,"url":"https://private/signed?MUSIC_U=DO_NOT_EXPORT","cookie":"DO_NOT_EXPORT"})
 }
 fn playlist() -> Value {
-    json!({"id":"7","userId":"9","name":"喜欢的音乐","specialType":5,"privacy":10,"creator":{"nickname":"用户"},"trackCount":999,"subscribedCount":25,"coverImgUrl":"http://p2.music.126.net/a.jpg","trackIds":[{"id":"1"},{"id":"2","v":-1},{"id":"3"},{"id":"4"}]})
+    json!({"id":"7","userId":"9","name":"喜欢的音乐","specialType":5,"privacy":10,"creator":{"nickname":"用户"},"trackCount":999,"subscribedCount":25,"coverImgUrl":"http://p2.music.126.net/a.jpg","trackIds":[{"id":"1"},{"id":"1234abcd0000efab1234abcd0000efab","v":-1},{"id":"3"},{"id":"4"}]})
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _cache: bool) -> ApiFuture<'a, Value> {
@@ -233,7 +233,7 @@ async fn boundary_preserves_authoritative_order_and_redacts_native_fields() {
             .iter()
             .map(|v| v.id.as_str())
             .collect::<Vec<_>>(),
-        ["1", "2", "3"]
+        ["1", "1234abcd0000efab1234abcd0000efab", "3"]
     );
     assert!(first.value.tracks[1].local && first.value.tracks[1].missing);
     assert_eq!(
@@ -270,6 +270,18 @@ async fn boundary_preserves_authoritative_order_and_redacts_native_fields() {
         Err(Error::QueueChanged)
     ));
     assert_eq!(last.value.tracks[0].id, "4");
+    {
+        let requests = backend.requests.lock().unwrap();
+        let page_request = requests
+            .iter()
+            .find(|(path, _)| path == "/api/v3/song/detail")
+            .unwrap();
+        let rows: Vec<Value> = serde_json::from_str(page_request.1["c"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            rows.iter().map(|row| &row["id"]).collect::<Vec<_>>(),
+            [&json!("1"), &json!("3")]
+        );
+    }
     let search = client
         .search_songs("test", PageRequest::default())
         .await

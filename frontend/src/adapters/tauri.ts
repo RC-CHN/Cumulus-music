@@ -109,8 +109,16 @@ export function createTauriClient(): CoreClient {
       listen<SearchPrivilegeObservation>('cumulus:search-privilege-changed', (event) =>
         handler(event.payload),
       ),
-    searchResults: (epoch, query, defaultReceipt) =>
-      invoke('search_results', { epoch, query, ...(defaultReceipt ? { defaultReceipt } : {}) }),
+    searchResults: (epoch, query, defaultReceipt, correctionReceipt) =>
+      invoke('search_results', {
+        epoch,
+        query,
+        ...(defaultReceipt ? { defaultReceipt } : {}),
+        ...(correctionReceipt ? { correctionReceipt } : {}),
+      }),
+    searchGroupDownload: (epoch, command) => invoke('search_group_download', { epoch, command }),
+    openSearchGroupPurchasedQualityGuide: (epoch, receipt) =>
+      invoke('open_search_group_purchased_quality_guide', { target: { epoch, receipt } }),
     searchReasonPage: (epoch, target) => invoke('search_reason_page', { epoch, target }),
     communityComposerSearch: (epoch, kind, keyword, offset) =>
       invoke('community_composer_search', { epoch, kind, keyword, offset }),
@@ -148,7 +156,11 @@ export function createTauriClient(): CoreClient {
     copyText: (text) => invoke('copy_text', { text }),
     searchDiscovery: (epoch, query) => invoke('search_discovery', { epoch, query }),
     searchHistory: (epoch, command) => invoke('search_history', { epoch, command }),
+    searchVoiceMenu: (epoch, target) => invoke('search_voice_menu', { epoch, target }),
+    searchOpenVoiceDirectory: (epoch, target) =>
+      invoke('search_open_voice_directory', { epoch, target }),
     effectCatalogue: (epoch, kind) => invoke('effect_catalogue', { epoch, kind }),
+    effectDirectoryOverview: (epoch) => invoke('effect_directory_overview', { epoch }),
     effectDetail: (epoch, id) => invoke('effect_detail', { epoch, id }),
     effectPeqPending: (epoch) => invoke('effect_peq_pending', { epoch }),
     effectPeqStatus: (epoch, id) => invoke('effect_peq_status', { epoch, id }),
@@ -277,6 +289,8 @@ export function createTauriClient(): CoreClient {
     ordinaryEssentialBooks: (epoch, category) =>
       invoke('ordinary_essential_books', { epoch, category }),
     discoveryHome: (epoch) => invoke('discovery_home', { epoch }),
+    acknowledgeHomeRecallGuide: (epoch, receipt) =>
+      invoke('acknowledge_home_recall_guide', { epoch, receipt }),
     verticalZoneMenu: (epoch) => invoke('vertical_zone_menu', { epoch }),
     verticalZoneFmPreview: (epoch, viewId, cardKey) =>
       invoke('vertical_zone_fm_preview', { epoch, viewId, cardKey }),
@@ -334,6 +348,8 @@ export function createTauriClient(): CoreClient {
     accountSettingsCommand: (epoch, command) =>
       invoke('account_settings_command', { epoch, command }),
     historyCommand: (epoch, kind, command) => invoke('history_command', { epoch, kind, command }),
+    historyRadioCollection: (epoch, kind, revision, id, action) =>
+      invoke('history_radio_collection', { epoch, kind, revision, id, action }),
     catalogMembership: (epoch, resource, action) =>
       invoke('catalog_membership', { epoch, resource, action }),
     onNativeLikeChanged: (handler) =>
@@ -387,6 +403,8 @@ export function createTauriClient(): CoreClient {
       invoke('podcast_subscription_recommendations', { epoch }),
     podcastClearSubscribedBadge: (epoch, receipt, id) =>
       invoke('podcast_clear_subscribed_badge', { epoch, receipt, id }),
+    playerPodcastResume: (epoch, playId, entryId, action) =>
+      invoke('player_podcast_resume', { epoch, playId, entryId, action }),
     audiobookSkipSettings: (epoch, context, action) =>
       invoke('audiobook_skip_settings', { epoch, context, action }),
     podcastRecent: (epoch, query) => invoke('podcast_recent', { epoch, query }),
@@ -488,6 +506,8 @@ export function createTauriClient(): CoreClient {
       invoke('download_song_share_access', { epoch, taskId }),
     downloadCollectPrepare: (epoch, taskId) =>
       invoke('download_collect_prepare', { epoch, taskId }),
+    downloadBatchCollectPrepare: (epoch, taskIds) =>
+      invoke('download_batch_collect_prepare', { epoch, taskIds }),
     downloadCollectDestinations: (epoch, receipt, sort, page) =>
       invoke('download_collect_destinations', { epoch, receipt, sort, page }),
     downloadCollectExisting: (epoch, receipt, playlistId) =>
@@ -513,6 +533,8 @@ export function createTauriClient(): CoreClient {
       invoke('download_collect_cancel', { epoch, receipt }),
     downloadQualityPreferences: (epoch, refresh) =>
       invoke('download_quality_preferences', { epoch, refresh }),
+    downloadClearPrepare: (epoch) => invoke('download_clear_prepare', { epoch }),
+    downloadClearDiscard: (epoch, receipt) => invoke('download_clear_discard', { epoch, receipt }),
     downloadCommand: (epoch, command) => invoke('download_command', { epoch, command }),
     songDownloadState: (epoch, id) => invoke('song_download_state', { epoch, id }),
     voiceDownloadState: (epoch, id) => invoke('voice_download_state', { epoch, id }),
@@ -532,6 +554,14 @@ export function createTauriClient(): CoreClient {
     mutatePlaylist: (epoch, command) => invoke('mutate_playlist', { epoch, command }),
     reconcilePlaylist: (epoch, operationId) => invoke('reconcile_playlist', { epoch, operationId }),
     playlistOperations: (epoch) => invoke('playlist_operations', { epoch }),
+    reorderPlaylistMixed: (epoch, id, revision, rows) =>
+      invoke('reorder_playlist_mixed', { epoch, id, revision, rows }),
+    movePlaylistMixed: (epoch, id, revision, selected, gap) =>
+      invoke('move_playlist_mixed', { epoch, id, revision, selected, gap }),
+    playlistMixedReorderReceipt: (epoch, id) =>
+      invoke('playlist_mixed_reorder_receipt', { epoch, id }),
+    reconcilePlaylistMixedReorder: (epoch, id, operationId) =>
+      invoke('reconcile_playlist_mixed_reorder', { epoch, id, operationId }),
     async watchPlayer(epoch, update) {
       const streamId = crypto.randomUUID();
       const onUpdate = new Channel<PlayerUpdate>();
@@ -569,6 +599,16 @@ export function createTauriClient(): CoreClient {
       invoke('player_queue_like', { epoch, revision, entryId, liked }),
     playerQueueCatalogMenu: (epoch, revision, entryId) =>
       invoke('player_queue_catalog_menu', { epoch, revision, entryId }),
+    playerQueueOpenCatalogDirectory: (epoch, revision, entryId, receipt) =>
+      invoke('player_queue_open_catalog_directory', { epoch, revision, entryId, receipt }),
+    playerQueueVoiceMenu: (epoch, revision, entryId) =>
+      invoke('player_queue_voice_menu', { epoch, revision, entryId }),
+    playerQueueOpenVoiceDirectory: (epoch, revision, entryId) =>
+      invoke('player_queue_open_voice_directory', { epoch, revision, entryId }),
+    playerQueueOpenLocalDirectory: (epoch, revision, entryId) =>
+      invoke('player_queue_open_local_directory', { epoch, revision, entryId }),
+    playerQueueOpenDownloadDirectory: (epoch, revision, entryId) =>
+      invoke('player_queue_open_download_directory', { epoch, revision, entryId }),
     playerChorus: (epoch, playId) => invoke('player_chorus', { epoch, playId }),
     playerCommentCount: (epoch, playId) => invoke('player_comment_count', { epoch, playId }),
     playerVinylSimilarAvailable: (epoch) => invoke('player_vinyl_similar_available', { epoch }),
@@ -702,6 +742,14 @@ export function createTauriClient(): CoreClient {
       invoke('player_vinyl_write_command', { epoch, playId, id, command }),
     playerLyrics: (epoch, playId, cachedOnly) =>
       invoke('player_lyrics', { epoch, playId, cachedOnly }),
+    openLyricContribution: (epoch, playId) => invoke('lyric_contribution_open', { epoch, playId }),
+    lyricBountyActions: (epoch, playId) => invoke('lyric_bounty_actions', { epoch, playId }),
+    lyricBountyPrepare: (epoch, playId, action) =>
+      invoke('lyric_bounty_prepare', { epoch, playId, action }),
+    lyricBountyConfirm: (id) => invoke('lyric_bounty_confirm', { id }),
+    lyricBountyCancel: (id) => invoke('lyric_bounty_cancel', { id }),
+    openLyricToolbarContribution: (epoch, playId, action) =>
+      invoke('lyric_toolbar_contribution_open', { epoch, playId, action }),
     lyricPreferences: (epoch, playId, preferences) =>
       invoke('lyric_preferences', { epoch, playId, preferences }),
     lyricOffset: (epoch, playId, gain) => invoke('lyric_offset', { epoch, playId, gain }),
@@ -737,7 +785,12 @@ export function createTauriClient(): CoreClient {
       invoke('playlist_square_recommendations', { epoch, continuation }),
     playlistSubscribers: (epoch, id, offset) =>
       invoke('playlist_subscribers', { epoch, id, offset }),
-    playlistPage: (id, page) => invoke('playlist_page', { id, page }),
+    playlistDurationPrepare: (epoch, id, source) =>
+      invoke('playlist_duration_prepare', { epoch, id, source }),
+    playlistPage: (id, { localRevision, ...page }) =>
+      invoke('playlist_page', { id, page, localRevision: localRevision ?? null }),
+    mutatePlaylistLocal: (epoch, id, revision, change) =>
+      invoke('mutate_playlist_local', { epoch, id, revision, change }),
     searchSongs: (keyword, page) => invoke('search_songs', { keyword, page }),
     dailySongs: () => invoke('daily_songs'),
     styleRecommendations: (epoch) => invoke('style_recommendations', { epoch }),

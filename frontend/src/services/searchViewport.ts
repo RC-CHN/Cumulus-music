@@ -46,6 +46,7 @@ interface Snapshot {
 export interface SearchCorrectionReminder {
   rewrite: string;
   parts: NonNullable<SearchResultView['correctionParts']>;
+  receipt?: string;
 }
 /** Application-owned, account-isolated browsing memory; never persisted to disk. */
 export function createSearchViewportMemory(capacity = 16) {

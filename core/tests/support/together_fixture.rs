@@ -16,7 +16,7 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU16, Ordering},
 };
 #[derive(Default)]
 pub(crate) struct RoomState {
@@ -30,6 +30,8 @@ pub(crate) struct RoomState {
 pub(crate) struct Backend {
     pub(crate) state: Mutex<RoomState>,
     pub(crate) calls: Mutex<Vec<(String, Value)>>,
+    pub(crate) queue_rejection: AtomicU16,
+    pub(crate) deny_queue_http: AtomicBool,
     pub(super) drop_play: AtomicBool,
     pub(crate) drop_end: AtomicBool,
     pub(crate) hold_end: AtomicBool,
@@ -88,7 +90,34 @@ impl Api for Backend {
             Ok(match path {
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> = serde_json::from_str(p["c"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"songs":ids.iter().map(|v|{let mut row=song(&v["id"]);if self.shell.load(Ordering::SeqCst){row["al"]["picUrl"]=Value::Null;}row}).collect::<Vec<_>>(),"privileges":[]})
+                    let songs = ids
+                        .iter()
+                        .map(|v| {
+                            let mut row = song(&v["id"]);
+                            if self.shell.load(Ordering::SeqCst) {
+                                row["al"]["picUrl"] = Value::Null;
+                            }
+                            match v["id"].as_str() {
+                                Some("712") => row["programId"] = json!(12),
+                                Some("713") => row["t"] = json!(1),
+                                Some("714") => row["fee"] = json!(16),
+                                _ => {}
+                            }
+                            row
+                        })
+                        .collect::<Vec<_>>();
+                    let privileges = ids
+                        .iter()
+                        .filter_map(|v| match v["id"].as_str() {
+                            Some("710") => Some(json!({"id":710,"sp":0})),
+                            Some("711") => Some(json!({"id":711,"sp":null})),
+                            Some("713") => Some(json!({"id":713,"cs":true,"sp":1})),
+                            Some("714") => Some(json!({"id":714,"fee":16})),
+                            Some("715") => Some(json!({"id":715,"cs":true,"sp":"1"})),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    json!({"code":200,"songs":songs,"privileges":privileges})
                 }
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> = serde_json::from_str(p["ids"].as_str().unwrap()).unwrap();
@@ -113,6 +142,19 @@ impl Api for Backend {
                     json!({"code":200,"data":{"playlist":state.playlist,"playCommand":state.play}})
                 }
                 "/api/listen/together/sync/list/command/report" => {
+                    if self.deny_queue_http.swap(false, Ordering::SeqCst) {
+                        return Err(Error::HttpStatus {
+                            status: 403,
+                            endpoint: Some(path.into()),
+                            body: Some(Box::new(json!({"code":488}))),
+                        });
+                    }
+                    let code = self.queue_rejection.swap(0, Ordering::SeqCst);
+                    if code != 0 {
+                        return Ok(
+                            json!({"code":code,"message":"never serialize service body","data":{"result":false}}),
+                        );
+                    }
                     let c: Value =
                         serde_json::from_str(p["playlistParam"].as_str().unwrap()).unwrap();
                     assert_eq!(c["commandType"], "REPLACE");

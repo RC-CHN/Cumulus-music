@@ -37,14 +37,32 @@ impl Actor {
                 | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplacePodcastCollection { .. }
                 | PlaybackCommand::PlayPodcastBrowse { .. }
+                | PlaybackCommand::ApplySearchGroupNext { .. }
+                | PlaybackCommand::ApplySearchGroupPlay { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
                 | PlaybackCommand::ApplyLocalBatch(_)
+                | PlaybackCommand::ApplyOfflinePlaylistQueue(_)
+                | PlaybackCommand::ApplyTogetherExternalQueue(_)
+                | PlaybackCommand::RecallPrefill(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
+            return;
+        }
+        #[cfg(windows)]
+        if matches!(&request.command, PlaybackCommand::ReplaceWindowsNative(_))
+            && request.guard.is_none()
+        {
+            self.reply(request.reply, Err(Error::StaleResponse));
+            return;
+        }
+        if let PlaybackCommand::RecallPrefill(value) = request.command {
+            let authority = &request.guard.as_ref().expect("guarded recall prefill").1;
+            let result = self.recall_prefill(value, authority);
+            self.reply(request.reply, result);
             return;
         }
         if matches!(request.command, PlaybackCommand::Queue) {
@@ -90,6 +108,7 @@ impl Actor {
             request.command,
             PlaybackCommand::Snapshot
                 | PlaybackCommand::SyncQueue
+                | PlaybackCommand::ApplyTogetherExternalQueue(_)
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Speed(_)
                 | PlaybackCommand::SpeedFor { .. }
@@ -103,6 +122,7 @@ impl Actor {
                 | PlaybackCommand::RepairLoudness
                 | PlaybackCommand::RepairQuality
         ) && !matches!(&request.command, PlaybackCommand::ApplyLocalBatch(update) if !update.start)
+            && !matches!(&request.command, PlaybackCommand::ApplyOfflinePlaylistQueue(update) if !update.start)
         {
             // A user/remote transport intent wins over a delayed UI connect.
             self.startup_pending = false;
@@ -136,8 +156,11 @@ impl Actor {
             return;
         }
         if let PlaybackCommand::UpdateQueue(value)
+        | PlaybackCommand::InsertNext(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
+        | PlaybackCommand::ApplySearchGroupNext { update: value, .. }
+        | PlaybackCommand::ApplySearchGroupPlay { update: value, .. }
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
             && value.expected != self.snapshot().fence()
         {
@@ -145,6 +168,18 @@ impl Actor {
             return;
         }
         if let PlaybackCommand::ApplyLocalBatch(value) = &request.command
+            && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
+        if let PlaybackCommand::ApplyOfflinePlaylistQueue(value) = &request.command
+            && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
+        if let PlaybackCommand::ApplyTogetherExternalQueue(value) = &request.command
             && value.expected != self.snapshot().fence()
         {
             self.reply(request.reply, Err(Error::QueueChanged));
@@ -199,20 +234,32 @@ impl Actor {
         }
         let mut options = None;
         let mut resume_after_removal = None;
-        if matches!(
-            request.command,
-            PlaybackCommand::Replace { .. }
-                | PlaybackCommand::ReplaceListenedBook { .. }
-                | PlaybackCommand::ReplacePodcastCollection { .. }
-                | PlaybackCommand::ReplaceFollowLatest { .. }
-                | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
-                | PlaybackCommand::Select(_)
-                | PlaybackCommand::Next
-                | PlaybackCommand::Previous
-                | PlaybackCommand::StepPreservingState(_)
-                | PlaybackCommand::Remove(_)
-                | PlaybackCommand::RemoveAndResume { .. }
-        ) && let Err(error) = self.save_position()
+        let native_replace = {
+            #[cfg(windows)]
+            {
+                matches!(&request.command, PlaybackCommand::ReplaceWindowsNative(_))
+            }
+            #[cfg(not(windows))]
+            {
+                false
+            }
+        };
+        if (native_replace
+            || matches!(
+                request.command,
+                PlaybackCommand::Replace { .. }
+                    | PlaybackCommand::ReplaceListenedBook { .. }
+                    | PlaybackCommand::ReplacePodcastCollection { .. }
+                    | PlaybackCommand::ReplaceFollowLatest { .. }
+                    | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
+                    | PlaybackCommand::Select(_)
+                    | PlaybackCommand::Next
+                    | PlaybackCommand::Previous
+                    | PlaybackCommand::StepPreservingState(_)
+                    | PlaybackCommand::Remove(_)
+                    | PlaybackCommand::RemoveAndResume { .. }
+            ))
+            && let Err(error) = self.save_position()
         {
             self.reply(request.reply, Err(error));
             return;
@@ -221,11 +268,14 @@ impl Actor {
             &request.command,
             PlaybackCommand::ReplaceListenedBook { .. }
         );
-        let relay_hint = crate::relay::publisher::player::Hint::from_command(&request.command);
+        let mut relay_hint = crate::relay::publisher::player::Hint::from_command(&request.command);
+        relay_hint.replace |= native_replace;
         let prefer_search_download =
             matches!(&request.command, PlaybackCommand::PlaySearchCatalog(_));
         let explicit_local_recovery = !request.verified_skip_selection
             && match &request.command {
+                #[cfg(windows)]
+                PlaybackCommand::ReplaceWindowsNative(_) => true,
                 PlaybackCommand::Replace { source, .. } => source["kind"] == "local",
                 PlaybackCommand::Play
                 | PlaybackCommand::PlayFromStart
@@ -258,11 +308,33 @@ impl Actor {
             PlaybackCommand::RetryLoudness => self.loudness_retry().await,
             PlaybackCommand::RepairLoudness => self.loudness_repair().await,
             PlaybackCommand::RepairQuality => self.quality_repair(),
+            PlaybackCommand::InsertNext(value) => self
+                .insert_next(value, Some(&request.reply))
+                .await
+                .map(|value| options = value),
             PlaybackCommand::UpdateQueue(value)
             | PlaybackCommand::PlaySearchCatalog(Some(value)) => self
                 .update_queue(value, Some(&request.reply))
                 .await
                 .map(|value| options = value),
+            PlaybackCommand::ApplySearchGroupNext {
+                update,
+                first_source,
+            } => {
+                let authority = &request.guard.as_ref().expect("guarded search next").1;
+                self.apply_search_group_next(update, first_source, &request.reply, authority)
+                    .await
+                    .map(|value| options = value)
+            }
+            PlaybackCommand::ApplySearchGroupPlay {
+                update,
+                first_source,
+            } => {
+                let authority = &request.guard.as_ref().expect("guarded search Play").1;
+                self.apply_search_group_play(update, first_source, &request.reply, authority)
+                    .await
+                    .map(|value| options = value)
+            }
             PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,
@@ -286,6 +358,15 @@ impl Actor {
                 self.apply_local_batch(update, authority)
                     .await
                     .map(|value| options = value)
+            }
+            PlaybackCommand::ApplyOfflinePlaylistQueue(update) => {
+                let authority = &request.guard.as_ref().expect("guarded cached playlist").1;
+                self.apply_offline_playlist_queue(update, authority)
+                    .map(|value| options = value)
+            }
+            PlaybackCommand::ApplyTogetherExternalQueue(value) => {
+                let authority = &request.guard.as_ref().expect("guarded together list").1;
+                self.apply_together_external_queue(value, &request.reply, authority)
             }
             PlaybackCommand::RetainCurrentQueueAndPlay(queue) => self
                 .retain_current_queue_and_play(queue)
@@ -359,6 +440,29 @@ impl Actor {
                             })
                         })
                 }
+            }
+            #[cfg(windows)]
+            PlaybackCommand::ReplaceWindowsNative(batch) => {
+                let authority = &request.guard.as_ref().expect("guarded native open").1;
+                let resources = batch.resources();
+                let guard = || {
+                    if request.reply.is_closed() || authority.is_cancelled() {
+                        return Err(Error::StaleResponse);
+                    }
+                    Ok(())
+                };
+                self.session
+                    .with_local_owner(&self.token, |_| {
+                        self.resolver
+                            .replace_windows_native_files(&self.token, batch, || {
+                                self.queue.replace_guarded_native(
+                                    resources,
+                                    serde_json::json!({"kind":"local", "nativeOpen":true}),
+                                    &guard,
+                                )
+                            })
+                    })
+                    .map(|_| options = Some(LoadOptions::default()))
             }
             PlaybackCommand::Replace {
                 mut resources,
@@ -597,6 +701,10 @@ impl Actor {
                     Err(Error::StaleResponse)
                 } else if let Some(entry) = self.queue.selected().filter(|entry| {
                     entry.resource["download_task_id"].is_string()
+                        && entry
+                            .resource
+                            .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                            .is_none()
                         && entry.resource["id"] == resource["id"]
                 }) {
                     self.session
@@ -615,6 +723,7 @@ impl Actor {
                     Err(Error::StaleResponse)
                 }
             }
+            PlaybackCommand::RecallPrefill(_) => unreachable!("handled before transport intents"),
             PlaybackCommand::Snapshot | PlaybackCommand::SyncQueue => Ok(()),
             PlaybackCommand::Quality(_)
             | PlaybackCommand::TrialQuality { .. }
@@ -639,6 +748,15 @@ impl Actor {
             self.reply(request.reply, result);
         }
     }
+    pub(super) fn ordinary_chorus_trigger(&self, trigger: super::ChorusTrigger) {
+        if !self.queue.is_fm()
+            && self.queue.intelligence_context().is_none()
+            && let Some(triggers) = &self.chorus_triggers
+        {
+            triggers(&self.token, trigger);
+        }
+    }
+
     async fn retain_current_queue_and_play(
         &mut self,
         queue: crate::playback::QueueSnapshot,

@@ -16,7 +16,7 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 pub use reveal::DownloadFileReveal;
-pub(crate) use reveal::verify_reveal_bytes;
+pub(crate) use reveal::{DownloadFileCandidate, verify_reveal_bytes};
 use std::sync::Arc;
 pub(crate) use types::DeleteSource;
 pub use types::{

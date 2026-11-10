@@ -63,6 +63,21 @@ impl PlaylistList {
             .collect()
     }
 }
+// The official native file fallback uses an MD5-shaped ID. Accept that
+// opaque identifier only for a row explicitly tagged as local in the snapshot;
+// all catalogue and mutation command identifiers keep the decimal validator.
+pub(crate) fn playlist_entry_id(entry: &Value) -> Result<String> {
+    let value = &entry["id"];
+    if entry["v"].as_i64() == Some(-1)
+        && let Some(id) = value.as_str()
+        && id.len() == 32
+        && id.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Ok(id.into());
+    }
+    identifier(value)
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PlaylistSnapshot {
     #[serde(flatten)]
@@ -102,7 +117,7 @@ impl PlaylistSnapshot {
             .collect::<Result<Vec<_>>>()?;
         let tracks = entries
             .iter()
-            .map(|t| identifier(&t["id"]))
+            .map(playlist_entry_id)
             .collect::<Result<Vec<_>>>()?;
         let has_local = entries.iter().any(|t| t["v"].as_i64() == Some(-1));
         let description = match &value["description"] {

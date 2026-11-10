@@ -241,6 +241,42 @@ test('download account switch discards late reads, writes and native picker sele
   assert.equal(model.busy.value, false);
   model.dispose();
 });
+
+test('a confirmed old directory cannot admit songs after its refresh changes account', async () => {
+  const entered = deferred<void>();
+  const held = deferred<DownloadsView>();
+  let oldReads = 0;
+  const commands: string[] = [];
+  const model = useDownloads({
+    downloads: async (epoch) => {
+      if (epoch === '1' && ++oldReads === 2) {
+        entered.resolve();
+        return held.promise;
+      }
+      return state(epoch);
+    },
+    downloadCommand: async (epoch, command) => {
+      commands.push(`${epoch}:${command.kind}`);
+      return { epoch, accepted: [], failed: [], operationId: null };
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  const configured = model
+    .command({ kind: 'configure', root: '/old', path_type: 0, file_type: 1 })
+    .then(async (result) => {
+      if (result)
+        await model.command({ kind: 'start', song_ids: ['123'], options: state().options });
+      return result;
+    });
+  await entered.promise;
+  await model.connect(account('2'));
+  held.resolve(state('1'));
+  assert.equal(await configured, undefined);
+  assert.deepEqual(commands, ['1:configure']);
+  assert.equal(model.view.value?.epoch, '2');
+  model.dispose();
+});
+
 test('newer download query wins and resets a growing window to its initial prefix', async () => {
   const old = deferred<DownloadsView>();
   const limits: number[] = [];
@@ -436,5 +472,25 @@ test('overlay visibility refresh retains loaded controls while its read is pendi
   assert.equal(model.view.value, loaded);
   pending.resolve(state());
   await turn();
+  model.dispose();
+});
+
+test('a held clear preparation cannot restore a previous download visit', async () => {
+  const pending = deferred<import('../src/services/downloads.ts').DownloadClearPlan>();
+  const discarded: [string, string][] = [];
+  const model = useDownloads({
+    downloads: async (epoch) => state(epoch),
+    downloadClearPrepare: async () => pending.promise,
+    downloadClearDiscard: async (epoch, receipt) => {
+      discarded.push([epoch, receipt]);
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  model.enterVisit({}, { tab: 'active' });
+  const old = model.prepareClear();
+  model.enterVisit({}, { tab: 'active' });
+  pending.resolve({ epoch: '1', receipt: 'prior-visit', count: 2 });
+  assert.equal(await old, undefined);
+  assert.deepEqual(discarded, [['1', 'prior-visit']]);
   model.dispose();
 });

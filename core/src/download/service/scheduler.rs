@@ -1,14 +1,14 @@
-use super::{DownloadRunOptions, DownloadService, DownloadStatus};
+use super::{DownloadRunOptions, DownloadService, DownloadStatus, run::ScheduledRun};
 use crate::{Error, Result, storage::OperationLock};
 use serde::Serialize;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
-use tokio::task::JoinSet;
+use tokio::{sync::Notify, task::JoinSet};
 
 pub struct DownloadScheduler {
     service: DownloadService,
@@ -41,20 +41,36 @@ impl DownloadScheduler {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
     }
+
+    pub(crate) fn live_rates(&self) -> std::collections::HashMap<String, u64> {
+        if self.stop.load(Ordering::Acquire) {
+            return Default::default();
+        }
+        self.service.transfer.live_rates()
+    }
     /// Finite drain. Each task is attempted once; paused/errors need enqueue.
     /// A slot includes authorization, media, tags, publication and sidecars.
     pub async fn run_pending(&self) -> Result<Vec<ScheduledResult>> {
-        self.drain(None).await
+        self.drain(None, None).await
     }
+
+    pub(crate) async fn run_pending_notified(&self, wake: &Notify) -> Result<Vec<ScheduledResult>> {
+        self.drain(None, Some(wake)).await
+    }
+
     /// Drain only explicitly selected tasks, preserving the same account-wide
     /// scheduler lock and full-task concurrency bound.
     pub async fn run_selected(&self, ids: &[String]) -> Result<Vec<ScheduledResult>> {
         for id in ids {
             self.service.get(id)?;
         }
-        self.drain(Some(ids.iter().cloned().collect())).await
+        self.drain(Some(ids.iter().cloned().collect()), None).await
     }
-    async fn drain(&self, selected: Option<HashSet<String>>) -> Result<Vec<ScheduledResult>> {
+    async fn drain(
+        &self,
+        selected: Option<HashSet<String>>,
+        wake: Option<&Notify>,
+    ) -> Result<Vec<ScheduledResult>> {
         let token = self.service.session.token()?;
         self.service.guard(&token)?;
         crate::download::directory::gate::require(&self.service.store, &self.service.owner, None)?;
@@ -67,6 +83,7 @@ impl DownloadScheduler {
         let _stop = StopOnDrop(self.stop.clone());
         let mut active = JoinSet::new();
         let mut attempted = HashSet::new();
+        let mut active_dispatch = HashMap::new();
         let mut results = Vec::new();
         loop {
             if self.service.guard(&token).is_err()
@@ -79,26 +96,53 @@ impl DownloadScheduler {
                 self.stop();
             }
             if !self.stop.load(Ordering::SeqCst) {
-                for task in self
-                    .service
-                    .list()?
-                    .into_iter()
-                    .filter(|t| selected.as_ref().is_none_or(|ids| ids.contains(&t.id)))
-                    .filter(|t| {
-                        matches!(
-                            t.status,
+                let mut tasks = self.service.list()?;
+                // Legacy rows with no key were admitted before the counter
+                // existed. Keep their old creation order, then use the
+                // exact private admission order for all new batches.
+                tasks.sort_by(|a, b| {
+                    (a.dispatch, a.created_ms, &a.id).cmp(&(b.dispatch, b.created_ms, &b.id))
+                });
+                for task in tasks {
+                    if active.len() == self.concurrency {
+                        break;
+                    }
+                    if selected.as_ref().is_some_and(|ids| !ids.contains(&task.id))
+                        || !matches!(
+                            task.status,
                             DownloadStatus::Queued
                                 | DownloadStatus::Authorizing
                                 | DownloadStatus::Downloading
                                 | DownloadStatus::Processing
                                 | DownloadStatus::Cancelling
                         )
-                    })
-                    .filter(|t| !attempted.contains(&t.id))
-                    .take(self.concurrency - active.len())
-                    .collect::<Vec<_>>()
-                {
-                    attempted.insert(task.id.clone());
+                    {
+                        continue;
+                    }
+                    if let Some(active) = active_dispatch.get(&task.id) {
+                        if *active != task.dispatch {
+                            // Do not admit later rows ahead of a newly
+                            // ranked row whose stale worker hasn't exited.
+                            break;
+                        }
+                        continue;
+                    }
+                    let key = (task.id.clone(), task.dispatch);
+                    if attempted.contains(&key) {
+                        continue;
+                    }
+                    // The batch commits its order while still holding staged
+                    // task locks. Stop at a held queued row; its postcommit
+                    // wake can retry it. Never count it as an attempted job
+                    // or let a later row pass it.
+                    let task_lock = match self.service.lock(&task.id) {
+                        Ok(lock) => lock,
+                        Err(Error::MutationBusy) if task.status == DownloadStatus::Queued => break,
+                        Err(Error::MutationBusy) => continue,
+                        Err(error) => return Err(error),
+                    };
+                    attempted.insert(key);
+                    active_dispatch.insert(task.id.clone(), task.dispatch);
                     let service = self.service.clone();
                     let stop = self.stop.clone();
                     let lock = lock.clone();
@@ -111,7 +155,11 @@ impl DownloadScheduler {
                                     byte_budget: None,
                                     stop,
                                 },
-                                Some(lock),
+                                Some(ScheduledRun {
+                                    scheduler: lock,
+                                    task: task_lock,
+                                    expected: task.dispatch,
+                                }),
                                 token,
                             )
                             .await;
@@ -130,11 +178,26 @@ impl DownloadScheduler {
             if active.is_empty() {
                 break;
             }
-            let result = active
-                .join_next()
-                .await
-                .ok_or(Error::State("download scheduler lost a worker"))?
-                .map_err(|_| Error::State("download worker stopped unexpectedly"))?;
+            // A held FIFO head can be released after the transaction, or
+            // entirely new work can arrive after the snapshot. With spare
+            // capacity a desktop wake must reach this drain even if an
+            // unrelated body is blocked. An empty drain above leaves the
+            // notification for the outer worker, which starts the next drain.
+            let result = if let Some(wake) = wake
+                && active.len() < self.concurrency
+                && !self.stop.load(Ordering::SeqCst)
+            {
+                tokio::select! {
+                    biased;
+                    result = active.join_next() => result,
+                    () = wake.notified() => continue,
+                }
+            } else {
+                active.join_next().await
+            }
+            .ok_or(Error::State("download scheduler lost a worker"))?
+            .map_err(|_| Error::State("download worker stopped unexpectedly"))?;
+            active_dispatch.remove(&result.id);
             results.push(result);
         }
         Ok(results)

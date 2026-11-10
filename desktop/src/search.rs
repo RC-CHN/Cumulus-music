@@ -41,14 +41,59 @@ pub async fn search_results<R: tauri::Runtime>(
     epoch: String,
     query: SearchResultQuery,
     default_receipt: Option<String>,
+    correction_receipt: Option<String>,
 ) -> Result<AccountData<SearchResultView>, ClientError> {
     search_window(&window)?;
     observe(window.app_handle(), &client);
     client
-        .search_results_with_default(&epoch, query, default_receipt.as_deref())
+        .search_results_with_context(
+            &epoch,
+            query,
+            default_receipt.as_deref(),
+            correction_receipt.as_deref(),
+        )
         .await
         .map_err(Into::into)
 }
+#[tauri::command]
+pub async fn search_group_download<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: SearchGroupDownloadCommand,
+) -> Result<SearchGroupDownloadReply, ClientError> {
+    search_window(&window)?;
+    client
+        .search_group_download(&epoch, command)
+        .await
+        .map_err(Into::into)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SearchPurchasedGuide {
+    epoch: String,
+    receipt: String,
+}
+
+#[tauri::command]
+pub async fn open_search_group_purchased_quality_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    target: SearchPurchasedGuide,
+) -> Result<(), ClientError> {
+    search_window(&window)?;
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = app
+            .state::<MusicClient>()
+            .search_group_purchased_quality_guide(&target.epoch, &target.receipt)?;
+        crate::browser::launch(url)
+    })
+    .await
+    .map_err(|_| ClientError::from(cumulus_core::Error::State("browser worker stopped")))?
+    .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn search_refresh_privileges(
     client: tauri::State<'_, MusicClient>,
@@ -58,6 +103,39 @@ pub async fn search_refresh_privileges(
 ) -> Result<AccountData<SearchPrivilegePatch>, ClientError> {
     client
         .search_refresh_privileges(&epoch, &receipt, observation.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn search_voice_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: SearchVoiceMenuTarget,
+) -> Result<AccountData<SearchVoiceMenu>, ClientError> {
+    search_window(&window)?;
+    client
+        .search_voice_menu(
+            &epoch,
+            target,
+            crate::network_diagnostics::observed_default_route(&window),
+        )
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn search_open_voice_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: SearchVoiceMenuTarget,
+) -> Result<(), ClientError> {
+    search_window(&window)?;
+    let path = client.search_voice_directory_path(&epoch, target).await?;
+    client.validate_download_epoch(&epoch)?;
+    crate::file_manager::open_directory(path)
         .await
         .map_err(Into::into)
 }

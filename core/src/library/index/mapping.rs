@@ -3,12 +3,15 @@ use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
     library::{ListOptions, LocalRevision},
-    protocol::api::identifier,
+    protocol::{api::identifier, wire::serialization::js_truthy},
     storage::{OperationLock, StateTransaction},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -65,14 +68,26 @@ impl LocalLibrary {
         token: &SessionToken,
         song_ids: &BTreeSet<&str>,
     ) -> Result<OperationLock> {
-        let lock = self.lock()?;
-        if !self
-            .files_for_online_songs(session, token, song_ids)?
-            .is_empty()
-        {
+        let (lock, matches) = self.hold_online_song_matches(session, token, song_ids)?;
+        if !matches.is_empty() {
             return Err(Error::State("download selection gained a local file"));
         }
         Ok(lock)
+    }
+
+    pub(crate) fn hold_online_song_matches(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        song_ids: &BTreeSet<&str>,
+    ) -> Result<(OperationLock, BTreeSet<String>)> {
+        let lock = self.lock()?;
+        let matches = self
+            .files_for_online_songs(session, token, song_ids)?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        Ok((lock, matches))
     }
 
     fn files_for_online_songs(
@@ -125,6 +140,38 @@ impl LocalLibrary {
                 })?,
             )
         })
+    }
+
+    /// Lyric source for an exact queued local resource. An account's mapping
+    /// is looked up by that one index ID, never by scanning all song mappings.
+    pub(crate) fn indexed_lyric_source(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        id: &str,
+        revision: &LocalRevision,
+    ) -> Result<(PathBuf, Option<String>)> {
+        let item = self.item(id)?;
+        if &item.revision != revision {
+            return Err(Error::QueueChanged);
+        }
+        let song_id = if token.uid.is_some() {
+            session.with_token(token, |owner| {
+                let mapped = self
+                    .store
+                    .get(owner, MAPS, id)?
+                    .map(serde_json::from_value::<LocalMapping>)
+                    .transpose()?;
+                Ok(mapped
+                    .filter(|mapping| &mapping.revision == revision)
+                    .and_then(ordinary_lyric_song))
+            })?
+        } else {
+            None
+        };
+        Self::check_current(&item)?;
+        session.check_generation(token)?;
+        Ok((item.path, song_id))
     }
 
     /// One index read for the requested page; account and file revisions are
@@ -259,4 +306,30 @@ impl LocalLibrary {
             .remove(id)
             .map(|m| m.song_id))
     }
+}
+
+/// A current plain-ID legacy link is supported. Typed podcast/cloud mappings
+/// cannot silently be turned into a catalogue lyric read.
+fn ordinary_lyric_song(mapping: LocalMapping) -> Option<String> {
+    let id = identifier(&Value::String(mapping.song_id)).ok()?;
+    if let Some(song) = mapping.song
+        && (identifier(&song["id"]).ok().as_deref() != Some(id.as_str())
+            || song["songType"] == 1
+            || [
+                "voice",
+                "voice_id",
+                "voiceId",
+                "djProgramId",
+                "_cloud_public_id",
+                "_cloud_catalog_id",
+            ]
+            .into_iter()
+            .any(|field| js_truthy(&song[field]))
+            || ["cs", "cloudSong"]
+                .into_iter()
+                .any(|field| js_truthy(&song["privilege"][field])))
+    {
+        return None;
+    }
+    Some(id)
 }

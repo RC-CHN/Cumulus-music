@@ -1,6 +1,6 @@
 //! Event-driven Win32 server: one retained handle and one operation at a time.
-//! This is an isolated native lab adapter, not a desktop runtime.
-use crate::wire;
+//! The native lab exercises this same retained listener.
+use super::wire;
 use std::{
     cell::UnsafeCell,
     fmt, io, mem,
@@ -11,8 +11,9 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::{
-        ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED,
-        HANDLE, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_PIPE_CONNECTED,
+        ERROR_PIPE_NOT_CONNECTED, HANDLE, INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0,
+        WAIT_TIMEOUT,
     },
     Security::SECURITY_ATTRIBUTES,
     Storage::FileSystem::{
@@ -37,6 +38,7 @@ impl Stop {
     pub(crate) fn new() -> io::Result<Self> {
         event().map(|handle| Self(Arc::new(handle)))
     }
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(crate) fn wait(&self, deadline: Instant) -> io::Result<()> {
         // SAFETY: a live event and bounded non-alertable wait.
         match unsafe { WaitForSingleObject(self.0.as_raw_handle(), wait_ms(deadline)) } {
@@ -95,6 +97,7 @@ impl End {
         io::Error::new(kind, self)
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(crate) fn is(&self, error: &io::Error) -> bool {
         error
             .get_ref()
@@ -192,6 +195,7 @@ impl Server {
         })
     }
 
+    #[allow(dead_code, reason = "exercised by the standalone Windows lab")]
     pub(crate) fn notify_next_pending(&mut self, notice: Stop) {
         self.pending_notice = Some(notice);
     }
@@ -203,7 +207,18 @@ impl Server {
                 "pipe client still active",
             ));
         }
-        self.run(Kind::Connect, Vec::new(), deadline)?;
+        if let Err(error) = self.run(Kind::Connect, Vec::new(), deadline) {
+            // A client can open and close the just-created endpoint before
+            // the app has installed its worker. Explicitly reset that slot.
+            if error.raw_os_error() == Some(ERROR_NO_DATA as i32)
+                && let Err(reset) = disconnect(self.as_raw_handle())
+                && reset.raw_os_error() != Some(ERROR_PIPE_NOT_CONNECTED as i32)
+            {
+                self.disabled = true;
+                return Err(reset);
+            }
+            return Err(error);
+        }
         self.connected = true;
         Ok(())
     }

@@ -8,7 +8,7 @@ use cumulus_core::{
     },
     identity::{IdentityService, WINDOWS_COMPATIBILITY_DESCRIPTION, collect_linux_identity},
     protocol::{
-        api::ApiFuture,
+        api::{ApiFuture, identifier},
         context::{RequestContext, TokenProvider},
         http::{
             APP_VERSION, ApiOrigin, ClientProfile, HttpBackend, HttpReply, RequestPlan,
@@ -23,6 +23,7 @@ use cumulus_core::{
 use rusqlite::{Connection, OpenFlags, ffi};
 use serde_json::{Value, json};
 use std::{
+    ffi::OsString,
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -37,6 +38,10 @@ const ACCOUNT: &str = "/api/w/nuser/account/get";
 const LEGACY: &str = "/api/search/pc/complex/page";
 const V3: &str = "/api/search/pc/complex/page/v3";
 const TABS: &str = "/api/search/pc/result/tab";
+const PLAYLISTS: &str = "/api/user/playlist";
+const LIKED: &str = "/api/song/like/get";
+const PAGE_SIZE: u64 = 200;
+const MAX_PLAYLIST_PAGES: usize = 16;
 const QUERY: &str = "夜空中最亮的星";
 const KEYS: [&str; 4] = [
     "PH-PC-searchHot",
@@ -72,12 +77,29 @@ struct Observations {
     calls: Vec<Value>,
     groups: Option<[bool; 4]>,
     denied: usize,
+    account_matched: bool,
+    playlist_next: Option<u64>,
+    playlist_pages: usize,
 }
 struct ReadOnly {
     backend: ReqwestBackend,
     observed: Mutex<Observations>,
+    expected_uid: String,
+    include_resources: bool,
 }
-fn permitted(plan: &RequestPlan) -> Result<(String, bool)> {
+struct Admitted {
+    path: String,
+    encrypted: bool,
+    playlist_offset: Option<u64>,
+}
+
+fn exact_decimal(value: &Value) -> Option<u64> {
+    let raw = value.as_str()?;
+    let parsed: u64 = raw.parse().ok()?;
+    (parsed.to_string() == raw).then_some(parsed)
+}
+
+fn permitted(plan: &RequestPlan, resource_uid: Option<&str>) -> Result<Admitted> {
     if plan.route != WireRoute::Eapi {
         return Err(Error::State("read proof requires EAPI"));
     }
@@ -91,21 +113,91 @@ fn permitted(plan: &RequestPlan) -> Result<(String, bool)> {
     if ApiOrigin::Pc.request_url(WireRoute::Eapi, &path)? != plan.url {
         return Err(Error::State("read proof route mismatch"));
     }
+    let offset = exact_decimal(&args["offset"]).filter(|_| path == PLAYLISTS);
     let allowed = match path.as_str() {
         ACCOUNT => true,
         ASSIGNMENT_PATH => args["expNames"] == assignment_arguments()["expNames"],
         LEGACY | V3 | TABS => args["keyword"] == QUERY,
+        PLAYLISTS => {
+            resource_uid.is_some_and(|uid| args["uid"].as_str() == Some(uid))
+                && args["includeVideo"] == "true"
+                && exact_decimal(&args["limit"]) == Some(PAGE_SIZE)
+                && offset.is_some()
+        }
+        LIKED => resource_uid.is_some_and(|uid| args["uid"].as_str() == Some(uid)),
         _ => false,
     };
     if !allowed {
         return Err(Error::State("outside signed search read proof"));
     }
-    Ok((path, plan.decrypt_response))
+    Ok(Admitted {
+        playlist_offset: offset,
+        path,
+        encrypted: plan.decrypt_response,
+    })
+}
+
+impl Observations {
+    fn next(&mut self, read: &Admitted) -> Result<usize> {
+        let path = read.path.as_str();
+        let allowed = match path {
+            ACCOUNT => self.calls.is_empty(),
+            _ if !self.account_matched => false,
+            PLAYLISTS => {
+                self.playlist_pages < MAX_PLAYLIST_PAGES
+                    && self.playlist_next.is_some()
+                    && self.playlist_next == read.playlist_offset
+            }
+            _ => !self.calls.iter().any(|seen| {
+                seen["path"] == path
+                    || (matches!(path, LEGACY | V3)
+                        && matches!(seen["path"].as_str(), Some(LEGACY | V3)))
+            }),
+        };
+        if !allowed {
+            self.denied += 1;
+            return Err(Error::RequestNotSent(Box::new(Error::State(
+                "unexpected read sequence",
+            ))));
+        }
+        if path == PLAYLISTS {
+            self.playlist_pages += 1;
+            self.playlist_next = None;
+        }
+        let index = self.calls.len();
+        self.calls.push(json!({"path":path,"outcome":"dispatched"}));
+        Ok(index)
+    }
+
+    fn playlist_reply(&mut self, offset: u64, reply: &Value) -> Result<()> {
+        let count = reply["playlist"]
+            .as_array()
+            .map(Vec::len)
+            .and_then(|count| u64::try_from(count).ok())
+            .filter(|count| *count <= PAGE_SIZE)
+            .ok_or(Error::Response("invalid playlist page size"))?;
+        let flag = reply.get("more").or_else(|| reply.get("hasMore"));
+        let more = match flag {
+            None | Some(Value::Null) => count == PAGE_SIZE,
+            Some(Value::Bool(value)) => *value,
+            _ => return Err(Error::Response("invalid playlist page flag")),
+        };
+        if more && count == 0 {
+            return Err(Error::Response("playlist page made no progress"));
+        }
+        self.playlist_next = if more {
+            offset.checked_add(count)
+        } else {
+            None
+        };
+        Ok(())
+    }
 }
 impl HttpBackend for ReadOnly {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
         Box::pin(async move {
-            let (path, encrypted) = match permitted(&plan) {
+            let resource_uid = self.include_resources.then_some(self.expected_uid.as_str());
+            let read = match permitted(&plan, resource_uid) {
                 Ok(value) => value,
                 Err(error) => {
                     self.observed
@@ -115,14 +207,12 @@ impl HttpBackend for ReadOnly {
                     return Err(Error::RequestNotSent(Box::new(error)));
                 }
             };
-            let index = {
-                let mut observed = self.observed.lock().map_err(|_| Error::LockPoisoned)?;
-                let index = observed.calls.len();
-                observed
-                    .calls
-                    .push(json!({"path":path,"outcome":"dispatched"}));
-                index
-            };
+            let index = self
+                .observed
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?
+                .next(&read)?;
+            let path = read.path.as_str();
             let response = match self.backend.post(plan).await {
                 Ok(response) => response,
                 Err(error) => {
@@ -131,7 +221,7 @@ impl HttpBackend for ReadOnly {
                     return Err(error);
                 }
             };
-            let bytes = if encrypted {
+            let bytes = if read.encrypted {
                 eapi::decrypt_response(&response.body).ok()
             } else {
                 None
@@ -139,7 +229,25 @@ impl HttpBackend for ReadOnly {
             let parsed =
                 serde_json::from_slice::<Value>(bytes.as_deref().unwrap_or(&response.body)).ok();
             let mut observed = self.observed.lock().map_err(|_| Error::LockPoisoned)?;
-            observed.calls[index] = json!({"path":path,"httpStatus":response.status,"code":parsed.as_ref().and_then(|v|v["code"].as_i64())});
+            let code = parsed.as_ref().and_then(|v| v["code"].as_i64());
+            observed.calls[index] = json!({"path":path,"httpStatus":response.status,"code":code});
+            if response.status == 200 && code == Some(200) {
+                let body = parsed
+                    .as_ref()
+                    .ok_or(Error::Response("missing read reply"))?;
+                if path == ACCOUNT {
+                    if identifier(&body["profile"]["userId"]).ok().as_deref()
+                        != Some(self.expected_uid.as_str())
+                    {
+                        return Err(Error::CredentialChanged);
+                    }
+                    observed.account_matched = true;
+                    observed.playlist_next = self.include_resources.then_some(0);
+                }
+                if let Some(offset) = read.playlist_offset {
+                    observed.playlist_reply(offset, body)?;
+                }
+            }
             if path == ASSIGNMENT_PATH
                 && let Some(groups) = parsed
                     .as_ref()
@@ -236,7 +344,55 @@ fn native_profile(
             WINDOWS_COMPATIBILITY_DESCRIPTION,
         )?)
 }
-async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
+async fn resource_counts(client: &MusicClient, epoch: &str, report: &mut Value) -> bool {
+    let playlists = match client.playlists().await {
+        Ok(rows) if rows.epoch == epoch => {
+            report["playlistCount"] = json!(rows.value.len());
+            report["ownedPlaylistCount"] = json!(rows.value.iter().filter(|row| row.owned).count());
+            report["hasOwnedFavoritePlaylist"] =
+                json!(rows.value.iter().any(|row| row.favorite && row.owned));
+            true
+        }
+        Ok(_) => {
+            report["playlistFailure"] = json!("identity_changed");
+            false
+        }
+        Err(error) => {
+            report["playlistFailure"] = json!(failure(&error));
+            false
+        }
+    };
+    let liked = match client.liked_ids().await {
+        Ok(rows) if rows.epoch == epoch => {
+            report["likedCount"] = json!(rows.value.len());
+            true
+        }
+        Ok(_) => {
+            report["likedFailure"] = json!("identity_changed");
+            false
+        }
+        Err(error) => {
+            report["likedFailure"] = json!(failure(&error));
+            false
+        }
+    };
+    playlists && liked
+}
+
+fn saved_account_uid(store: &StateStore, selection: &str) -> Result<String> {
+    let profiles = store.values("transport", "saved-profiles-v1")?;
+    let mut matching = profiles
+        .iter()
+        .filter(|(_, record)| record["session_id"].as_str() == Some(selection));
+    match (matching.next(), matching.next()) {
+        (Some((uid, record)), None) if record["uid"].as_str() == Some(uid.as_str()) => {
+            identifier(&record["uid"])
+        }
+        _ => Err(Error::State("selected saved account is not uniquely bound")),
+    }
+}
+
+async fn verify(source: &Path, output: &Path, fresh: bool, resources: bool) -> Result<Value> {
     if !cfg!(target_os = "linux") || !fs::symlink_metadata(source)?.is_dir() {
         return Err(Error::State("existing Linux desktop state required"));
     }
@@ -256,6 +412,7 @@ async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         })
         .ok_or(Error::State("invalid selected profile"))?;
+    let expected_uid = saved_account_uid(&store, id)?;
     for parent in [source.join("sessions"), source.join("sessions").join(id)] {
         if !fs::symlink_metadata(parent)?.is_dir() {
             return Err(Error::State("selected profile directory is redirected"));
@@ -290,6 +447,8 @@ async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
     let transport = Arc::new(ReadOnly {
         backend: ReqwestBackend::new(Duration::from_secs(15))?,
         observed: Mutex::default(),
+        expected_uid,
+        include_resources: resources,
     });
     let client = MusicClient::open_with_request_context(
         &state,
@@ -307,6 +466,8 @@ async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
     });
     match client.restore_account().await {
         Ok(account) if account.status == SessionStatus::Authenticated => {
+            let resources_ok =
+                !resources || resource_counts(&client, &account.epoch, &mut report).await;
             match client
                 .official_pc_ordinary_skip_assignment(&account.epoch)
                 .await
@@ -341,7 +502,11 @@ async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
                                 }
                             }
                         }
-                        report["status"] = json!("ok");
+                        report["status"] = json!(if resources_ok {
+                            "ok"
+                        } else {
+                            "account_resources_incomplete"
+                        });
                         report["songCount"] = json!(songs);
                         report["hintCount"] = json!(hints);
                         report["reasonCount"] = json!(reasons);
@@ -366,6 +531,8 @@ async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
     let observed = transport.observed.lock().map_err(|_| Error::LockPoisoned)?;
     report["reads"] = json!(observed.calls);
     report["groups"] = json!(observed.groups);
+    report["expectedSavedAccountMatched"] = json!(observed.account_matched);
+    report["accountResourcesRequested"] = json!(resources);
     report["deniedRequests"] = json!(observed.denied);
     report["sdkTokenDemands"] = json!(denied_auxiliary.tokens.load(Ordering::Relaxed));
     report["configDownloadsDenied"] = json!(denied_auxiliary.configs.load(Ordering::Relaxed));
@@ -378,27 +545,44 @@ async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
     )?;
     Ok(report)
 }
+
+fn modes(flags: &[OsString]) -> Option<(bool, bool)> {
+    let (mut fresh, mut resources) = (false, false);
+    for flag in flags {
+        if flag == "--fresh-local-identity" && !fresh {
+            fresh = true;
+        } else if flag == "--include-account-resources" && !resources {
+            resources = true;
+        } else {
+            return None;
+        }
+    }
+    Some((fresh, resources))
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     let report = match args.as_slice() {
         [] => json!({"status":"skipped","reads":[],"writes":0}),
-        [flag, source, output] if flag == "--existing-pc-state" => {
-            match verify(&PathBuf::from(source), &PathBuf::from(output), false).await {
-                Ok(value) => value,
-                Err(error) => json!({"status":"setup_failed","failure":failure(&error),"writes":0}),
-            }
-        }
-        [flag, source, output, mode]
-            if flag == "--existing-pc-state" && mode == "--fresh-local-identity" =>
-        {
-            match verify(&PathBuf::from(source), &PathBuf::from(output), true).await {
-                Ok(value) => value,
-                Err(error) => {
-                    json!({"status":"setup_failed","identityMode":"fresh_local_initialization","failure":failure(&error),"writes":0})
+        [flag, source, output, flags @ ..] if flag == "--existing-pc-state" => match modes(flags) {
+            Some((fresh, resources)) => {
+                match verify(
+                    &PathBuf::from(source),
+                    &PathBuf::from(output),
+                    fresh,
+                    resources,
+                )
+                .await
+                {
+                    Ok(value) => value,
+                    Err(error) => {
+                        json!({"status":"setup_failed","failure":failure(&error),"writes":0})
+                    }
                 }
             }
-        }
+            None => json!({"status":"invalid_arguments","writes":0}),
+        },
         _ => json!({"status":"invalid_arguments","writes":0}),
     };
     println!("{report}");
@@ -414,6 +598,7 @@ mod tests {
     use super::*;
 
     fn plan(path: &str, args: Value) -> RequestPlan {
+        let args = cumulus_core::protocol::wire::serialization::official_data(&args).unwrap();
         let params = eapi::encrypt(path, &args).unwrap();
         RequestPlan {
             url: ApiOrigin::Pc.request_url(WireRoute::Eapi, path).unwrap(),
@@ -429,17 +614,17 @@ mod tests {
 
     #[test]
     fn allowlist_accepts_only_full_assignment_and_fixed_search_not_refresh_or_writes() {
-        assert!(permitted(&plan(ASSIGNMENT_PATH, assignment_arguments())).is_ok());
-        assert!(permitted(&plan(ACCOUNT, json!({}))).is_ok());
+        assert!(permitted(&plan(ASSIGNMENT_PATH, assignment_arguments()), None).is_ok());
+        assert!(permitted(&plan(ACCOUNT, json!({})), None).is_ok());
         for path in [LEGACY, V3, TABS] {
-            assert!(permitted(&plan(path, json!({"keyword":QUERY}))).is_ok());
-            assert!(permitted(&plan(path, json!({"keyword":"different"}))).is_err());
+            assert!(permitted(&plan(path, json!({"keyword":QUERY})), None).is_ok());
+            assert!(permitted(&plan(path, json!({"keyword":"different"})), None).is_err());
         }
         assert!(
-            permitted(&plan(
-                ASSIGNMENT_PATH,
-                json!({"expNames":"PH-PC-search-result"})
-            ))
+            permitted(
+                &plan(ASSIGNMENT_PATH, json!({"expNames":"PH-PC-search-result"})),
+                None,
+            )
             .is_err()
         );
         for path in [
@@ -449,13 +634,87 @@ mod tests {
             "/api/resource/comments/add",
             "/api/song/enhance/player/url/v1",
         ] {
-            assert!(permitted(&plan(path, json!({}))).is_err());
+            assert!(permitted(&plan(path, json!({})), None).is_err());
         }
         let mut wrong_origin = plan(ACCOUNT, json!({}));
         wrong_origin.url = ApiOrigin::Interface
             .request_url(WireRoute::Eapi, ACCOUNT)
             .unwrap();
-        assert!(permitted(&wrong_origin).is_err());
+        assert!(permitted(&wrong_origin, None).is_err());
+    }
+
+    #[test]
+    fn own_resources_cannot_run_early_for_another_account_or_replay_pages() {
+        let playlist = |offset| {
+            plan(
+                PLAYLISTS,
+                json!({"uid":"42","includeVideo":true,"limit":200,"offset":offset}),
+            )
+        };
+        assert!(permitted(&playlist(0), None).is_err());
+        assert!(permitted(&playlist(0), Some("43")).is_err());
+        let noncanonical = plan(
+            PLAYLISTS,
+            json!({"uid":"42","includeVideo":true,"limit":200,"offset":"00"}),
+        );
+        assert!(permitted(&noncanonical, Some("42")).is_err());
+        let first = permitted(&playlist(0), Some("42")).unwrap();
+        let account = permitted(&plan(ACCOUNT, json!({})), Some("42")).unwrap();
+        let liked_plan = plan(LIKED, json!({"uid":"42"}));
+        assert!(permitted(&liked_plan, Some("43")).is_err());
+        let liked = permitted(&liked_plan, Some("42")).unwrap();
+        let mut state = Observations::default();
+        assert!(state.next(&liked).is_err());
+        assert!(state.next(&first).is_err());
+        state.next(&account).unwrap();
+        assert!(state.next(&account).is_err());
+        state.account_matched = true;
+        state.playlist_next = Some(0);
+        state.next(&first).unwrap();
+        assert!(state.next(&first).is_err());
+        assert!(
+            state
+                .playlist_reply(0, &json!({"playlist":[],"more":true}))
+                .is_err()
+        );
+        state
+            .playlist_reply(0, &json!({"playlist":[{},{}],"more":true}))
+            .unwrap();
+        assert!(state.next(&first).is_err());
+        state
+            .next(&permitted(&playlist(2), Some("42")).unwrap())
+            .unwrap();
+        state
+            .playlist_reply(2, &json!({"playlist":[{}],"more":false}))
+            .unwrap();
+        assert!(
+            state
+                .next(&permitted(&playlist(3), Some("42")).unwrap())
+                .is_err()
+        );
+        state.next(&liked).unwrap();
+        assert!(state.next(&liked).is_err());
+    }
+
+    #[test]
+    fn saved_uid_requires_one_matching_record_with_the_same_key() {
+        let root = tempfile::tempdir().unwrap();
+        let state = StateStore::open(root.path()).unwrap();
+        assert!(saved_account_uid(&state, "selected").is_err());
+        for uid in ["42", "43"] {
+            state
+                .put(
+                    "transport",
+                    "saved-profiles-v1",
+                    uid,
+                    &json!({"uid":uid,"session_id":"selected"}),
+                )
+                .unwrap();
+            if uid == "42" {
+                assert_eq!(saved_account_uid(&state, "selected").unwrap(), "42");
+            }
+        }
+        assert!(saved_account_uid(&state, "selected").is_err());
     }
 
     #[test]

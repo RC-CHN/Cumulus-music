@@ -62,6 +62,7 @@ pub(super) fn shared_selection(
     let all = queue
         .items
         .iter()
+        .filter(|i| i.visible_in_queue())
         .filter_map(|i| entries.get(&i.entry_id).cloned())
         .collect::<Vec<_>>();
     let display = crate::listen_together::shared_window(&all, current.as_deref())?;

@@ -1,4 +1,5 @@
 import type { AccountDetailKind } from '../services/accountDetail';
+import { samePlaylistReadSource } from '../services/offlinePlaylist.ts';
 import { computed, ref, shallowRef } from 'vue';
 import type {
   AccountData,
@@ -64,7 +65,12 @@ type Destination =
   | { kind: 'daily_batch' }
   | { kind: 'style_recommendations'; seed?: StyleSeedHandle; origin?: 'home_recent' }
   | { kind: 'library' }
-  | { kind: 'downloads'; downloadVisit?: number; initialTab?: DownloadTab }
+  | {
+      kind: 'downloads';
+      downloadVisit?: number;
+      initialTab?: DownloadTab;
+      initialCategory?: 'song' | 'voice';
+    }
   | { kind: 'cloud' }
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }
@@ -100,6 +106,7 @@ type Destination =
       keyword: string;
       displayKeyword?: string;
       defaultReceipt?: string;
+      correctionReceipt?: string;
       category?: import('../services/search').SearchCategory;
       channel?: import('../services/search').SearchChannel;
       pagination?: import('../services/searchPagination').SearchPageStep;
@@ -109,6 +116,27 @@ type Destination =
     };
 
 export type Page = Destination & { choice?: true };
+
+function mergePlaylistPages(before: TrackPage, page: TrackPage, tracks: TrackView[]): TrackPage {
+  const incoming = page.playlistLocal;
+  const offline = page.playlistOffline;
+  const beforeDownloads = before.playlistOffline?.downloadIds;
+  return {
+    ...page,
+    tracks,
+    ...(offline && beforeDownloads?.length && samePlaylistReadSource(before, page)
+      ? {
+          playlistOffline: {
+            ...offline,
+            downloadIds: [...new Set([...beforeDownloads, ...(offline.downloadIds ?? [])])],
+          },
+        }
+      : {}),
+    ...(incoming && before.playlistLocal?.revision === incoming.revision
+      ? { playlistLocal: { ...incoming, rows: { ...before.playlistLocal.rows, ...incoming.rows } } }
+      : {}),
+  };
+}
 
 export function useMusic(
   core: CoreClient = useCore(),
@@ -233,6 +261,7 @@ export function useMusic(
     retainDailyCache = false,
     prefix?: TrackPage,
     styleBack?: string,
+    retainOfflinePlaylist = false,
   ) {
     const current = ++request;
     error.value = '';
@@ -240,8 +269,15 @@ export function useMusic(
     const target = page.value;
     const keepingCache =
       retainDailyCache && signedIn.value && target.kind === 'daily' && result.value?.daily?.cached;
-    const offset = more ? (result.value?.tracks.length ?? 0) : 0;
-    if (!more && !keepingCache) result.value = undefined;
+    const previous = result.value;
+    const holdingOffline =
+      retainOfflinePlaylist &&
+      signedIn.value &&
+      target.kind === 'playlist' &&
+      previous?.playlist?.id === target.id &&
+      !!previous.playlistOffline;
+    const offset = more ? (previous?.tracks.length ?? 0) : 0;
+    if (!more && !keepingCache && !holdingOffline) result.value = undefined;
     try {
       if (
         !signedIn.value ||
@@ -298,7 +334,13 @@ export function useMusic(
           : null;
       // Do not request a new style list after this Back navigation was replaced.
       if (current !== request) return;
-      const playlistPage = { offset, limit: 100, revision: more ? result.value?.revision : null };
+      const localRevision = more ? result.value?.playlistLocal?.revision : undefined;
+      const playlistPage = {
+        offset,
+        limit: 100,
+        revision: more ? result.value?.revision : null,
+        ...(localRevision ? { localRevision } : {}),
+      };
       const data =
         restored ??
         (target.kind === 'daily' || target.kind === 'daily_batch'
@@ -318,29 +360,102 @@ export function useMusic(
       if (current !== request) return;
       const value = accept(data);
       if (!value) {
-        if (keepingCache) result.value = undefined;
+        if (keepingCache || holdingOffline) result.value = undefined;
         return;
+      }
+      if (more && previous && !samePlaylistReadSource(previous, value)) {
+        // Never continue showing actionable live rows after native reports
+        // an offline projection. Reopen at page zero for a consistent view.
+        if (value.playlistOffline && !previous.playlistOffline) result.value = undefined;
+        throw { code: 'snapshot_changed', message: '歌单的联网状态已变化，请重新读取后再加载。' };
       }
       result.value =
         more && result.value
-          ? { ...value, tracks: [...result.value.tracks, ...value.tracks] }
+          ? mergePlaylistPages(result.value, value, [...result.value.tracks, ...value.tracks])
           : prefix?.revision &&
+              !prefix.playlistOffline &&
+              !value.playlistOffline &&
               prefix.revision === value.revision &&
+              prefix.playlistLocal?.revision === value.playlistLocal?.revision &&
               prefix.tracks.length > value.tracks.length
             ? {
-                ...value,
-                tracks: [...value.tracks, ...prefix.tracks.slice(value.tracks.length)],
+                ...mergePlaylistPages(prefix, value, [
+                  ...value.tracks,
+                  ...prefix.tracks.slice(value.tracks.length),
+                ]),
                 more: prefix.more,
               }
             : value;
     } catch (e) {
       if (current === request) {
-        if (keepingCache) result.value = undefined;
+        if (
+          keepingCache ||
+          holdingOffline ||
+          (more && previous?.playlistOffline && failure(e).code !== 'snapshot_changed')
+        )
+          result.value = undefined;
         handle(e);
       }
     } finally {
       if (current === request) loading.value = false;
     }
+  }
+  async function reloadReorderedPlaylist(owns: () => boolean) {
+    const target = page.value;
+    const before = result.value;
+    if (
+      !owns() ||
+      target.kind !== 'playlist' ||
+      target.zonePlaylistReceipt ||
+      before?.playlist?.id !== target.id
+    )
+      return false;
+    const current = ++request;
+    const epoch = account.value.epoch;
+    const live = () =>
+      current === request && page.value === target && account.value.epoch === epoch && owns();
+    loading.value = true;
+    error.value = '';
+    try {
+      let next: TrackPage | undefined;
+      do {
+        const offset = next?.tracks.length ?? 0;
+        const response = await core.playlistPage(target.id, {
+          offset,
+          limit: 100,
+          revision: next?.revision ?? null,
+          ...(next?.playlistLocal ? { localRevision: next.playlistLocal.revision } : {}),
+        });
+        if (!live() || response.epoch !== epoch) return false;
+        const incoming = response.value;
+        if (
+          incoming.playlist?.id !== target.id ||
+          incoming.offset !== offset ||
+          !incoming.revision ||
+          !incoming.playlistLocal ||
+          !!incoming.playlistOffline ||
+          (incoming.more && !incoming.tracks.length) ||
+          (next &&
+            (incoming.revision !== next.revision ||
+              incoming.playlistLocal.revision !== next.playlistLocal?.revision))
+        )
+          throw { code: 'snapshot_changed', message: '歌单已变化，请重新读取' };
+        next = next
+          ? mergePlaylistPages(next, incoming, [...next.tracks, ...incoming.tracks])
+          : incoming;
+      } while (next.more && next.tracks.length < before.tracks.length);
+      result.value = next;
+      return true;
+    } catch (e) {
+      if (live()) handle(e);
+      return false;
+    } finally {
+      if (current === request) loading.value = false;
+    }
+  }
+  function retryOfflinePlaylist() {
+    if (!loading.value && page.value.kind === 'playlist' && result.value?.playlistOffline)
+      return load(false, false, undefined, undefined, true);
   }
   function retryDailyCache() {
     if (!loading.value && page.value.kind === 'daily' && result.value?.daily?.cached)
@@ -622,6 +737,8 @@ export function useMusic(
     mergeVerifiedPlaylistLikes,
     load,
     retryDailyCache,
+    retryOfflinePlaylist,
+    reloadReorderedPlaylist,
     bootstrap,
     navigate: (next: Page) => navigate(next),
     openSubscriberProfile: (id: string, token: number) =>

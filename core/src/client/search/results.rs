@@ -1,5 +1,5 @@
 //! Whitelisted presentation models for recovered PC result pages.
-use super::track_hint::{self, TrackHint};
+use super::track_hint::{self, SongTableHint, TrackHint};
 use crate::{
     Error, Result,
     catalog::search::results::{self as api, reason},
@@ -19,6 +19,10 @@ pub enum SearchItem {
         track: TrackView,
         #[serde(rename = "queueDropReceipt", skip_serializing_if = "Option::is_none")]
         queue_drop_receipt: Option<String>,
+        #[serde(rename = "groupNextRight", skip_serializing_if = "Option::is_none")]
+        group_next_right: Option<super::SearchNextRight>,
+        #[serde(rename = "groupDownload", skip_serializing_if = "Option::is_none")]
+        group_download: Option<super::SearchGroupDownloadRow>,
         #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
         mv_id: Option<String>,
         #[serde(rename = "replacementMv", skip_serializing_if = "std::ops::Not::not")]
@@ -31,6 +35,8 @@ pub enum SearchItem {
         quality_badge: Option<SearchQualityBadge>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hint: Option<TrackHint>,
+        #[serde(rename = "tableHint", skip_serializing_if = "Option::is_none")]
+        table_hint: Option<SongTableHint>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         explicit: bool,
         #[serde(
@@ -59,6 +65,8 @@ pub enum SearchItem {
     },
     Voice {
         voice: EpisodeView,
+        #[serde(rename = "menuReceipt", skip_serializing_if = "Option::is_none")]
+        menu_receipt: Option<String>,
         #[serde(rename = "creatorId", skip_serializing_if = "Option::is_none")]
         creator_id: Option<String>,
         #[serde(rename = "listenerCount", skip_serializing_if = "Option::is_none")]
@@ -213,6 +221,8 @@ pub struct SearchResultView {
     pub correction: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correction_parts: Option<Vec<SearchCorrectionPart>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correction_receipt: Option<String>,
     pub unavailable_count: usize,
     pub notice: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -267,12 +277,23 @@ impl MusicClient {
         query: SearchResultQuery,
         default_receipt: Option<&str>,
     ) -> Result<AccountData<SearchResultView>> {
+        self.search_results_with_context(epoch, query, default_receipt, None)
+            .await
+    }
+
+    pub async fn search_results_with_context(
+        &self,
+        epoch: &str,
+        query: SearchResultQuery,
+        default_receipt: Option<&str>,
+        correction_receipt: Option<&str>,
+    ) -> Result<AccountData<SearchResultView>> {
         let token = self.player_token(epoch)?;
         if token.uid.is_none() {
             return Ok(AccountData {
                 epoch: epoch.into(),
                 value: self
-                    .guest_search_results(&token, query, default_receipt)
+                    .guest_search_results(&token, query, default_receipt, correction_receipt)
                     .await?,
             });
         }
@@ -280,6 +301,24 @@ impl MusicClient {
         let value = self
             .session
             .run_for(token, |api, uid| async move {
+                let correction_revision = (query.category == SearchCategory::All && query.correct)
+                    .then(|| api.search_default_context_revision().ok().flatten())
+                    .flatten();
+                let correction_context = || {
+                    self.search.correction_channels.resolve(
+                        &self.session,
+                        token,
+                        &api,
+                        &query,
+                        correction_receipt,
+                    )
+                };
+                let download_credentials = (query.category == SearchCategory::Songs)
+                    .then(|| api.song_card_download_scope_revision().ok().flatten())
+                    .flatten();
+                let group_credentials = (query.category == SearchCategory::Songs)
+                    .then(|| api.search_privilege_credential_revision().ok().flatten())
+                    .flatten();
                 let credentials = if query.category == SearchCategory::All {
                     api.search_privilege_credential_revision().ok()
                 } else {
@@ -288,21 +327,22 @@ impl MusicClient {
                 let mut footer_revision = None;
                 let mut presentation_credentials = None;
                 let mut podcast_credentials = None;
+                let voice_menu_credentials =
+                    matches!(query.category, SearchCategory::All | SearchCategory::Voices)
+                        .then(|| api.search_privilege_credential_revision().ok())
+                        .flatten();
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
                     let keyword = api::validate_query(&query)?;
-                    let default_context = || {
+                    let search_context = || {
                         if query.channel != Some(api::SearchChannel::Defaultquery) {
-                            return Ok(None);
+                            return correction_context();
                         }
-                        self.search.default_contexts.resolve(
-                            &self.session,
-                            token,
-                            &api,
-                            &keyword,
-                            default_receipt,
-                        )
+                        self.search
+                            .default_contexts
+                            .resolve(&self.session, token, &api, &keyword, default_receipt)
+                            .map(|context| context.map(api::ResultContext::Default))
                     };
                     let assignment = self.search_assignment_for(token, &api).await?;
                     let mut flags = assignment.flags;
@@ -335,7 +375,7 @@ impl MusicClient {
                     };
                     let layout = SearchPreviewLayout::from_experiments(flags.expanded, flags.dense);
                     if flags.v3 {
-                        let context = default_context()?;
+                        let context = search_context()?;
                         presentation_credentials =
                             api.pc_presentation_credential_revision().ok().flatten();
                         podcast_credentials = api.search_privilege_credential_revision().ok();
@@ -374,7 +414,7 @@ impl MusicClient {
                         };
                         (api::v3::PATH, tabs, layout, projected)
                     } else {
-                        let context = default_context()?;
+                        let context = search_context()?;
                         presentation_credentials =
                             api.pc_presentation_credential_revision().ok().flatten();
                         podcast_credentials = api.search_privilege_credential_revision().ok();
@@ -382,14 +422,20 @@ impl MusicClient {
                             api::COMPREHENSIVE_PATH,
                             None,
                             layout,
-                            api::request_with_default(api.as_ref(), &query, context).await,
+                            api::request_with_context(api.as_ref(), &query, context).await,
                         )
                     }
                 } else {
                     if query.category == SearchCategory::Podcasts {
                         podcast_credentials = api.search_privilege_credential_revision().ok();
                     }
-                    ("", None, None, api::request(api.as_ref(), &query).await)
+                    (
+                        "",
+                        None,
+                        None,
+                        api::request_with_context(api.as_ref(), &query, correction_context()?)
+                            .await,
+                    )
                 };
                 let mut view = match raw {
                     Ok(raw) => {
@@ -402,7 +448,16 @@ impl MusicClient {
                         };
                         let replacement_mv =
                             endpoint == api::v3::PATH && self.search_replacement_mv_enabled();
-                        let (mut view, preview) = project(raw, query, &uid, replacement_mv)?;
+                        let (mut view, preview, correction_channel) =
+                            project(raw, query, &uid, replacement_mv)?;
+                        view.correction_receipt = self.search.correction_channels.capture(
+                            &self.session,
+                            token,
+                            &api,
+                            correction_revision.as_deref(),
+                            view.query.keyword.trim(),
+                            correction_channel,
+                        )?;
                         if let (Some(preview), Some(credentials)) = (preview, credentials) {
                             self.session.require_api(token, &api)?;
                             if api.search_privilege_credential_revision().ok()
@@ -481,9 +536,49 @@ impl MusicClient {
                         .podcast_playbacks
                         .capture(token, &api, credentials, &mut view)?;
                 }
+                if let Some(credentials) = voice_menu_credentials
+                    && !self.login_pending()?
+                {
+                    self.session.require_api(token, &api)?;
+                    self.search
+                        .voice_menu_pages
+                        .capture(token, &api, credentials, &mut view)?;
+                }
                 if view.query.category == SearchCategory::Songs {
+                    let group = group_credentials.filter(|before| {
+                        api.search_privilege_credential_revision()
+                            .ok()
+                            .flatten()
+                            .as_ref()
+                            == Some(before)
+                    });
+                    let group = if !self.login_pending()? {
+                        group.map(|credentials| {
+                            super::queue_drop::GroupAuthority::new(&view.query, &api, credentials)
+                        })
+                    } else {
+                        None
+                    };
+                    let download_revision = if self.login_pending()? {
+                        None
+                    } else {
+                        download_credentials.filter(|revision| {
+                            api.song_card_download_scope_revision()
+                                .ok()
+                                .flatten()
+                                .as_ref()
+                                == Some(revision)
+                        })
+                    };
+                    self.session.require_api(token, &api)?;
                     self.session.with_token(token, |_| {
-                        view.publish_drop_receipts(&self.search.queue_drops, token)
+                        view.publish_download_receipts(
+                            &self.search.group_downloads,
+                            token,
+                            &api,
+                            download_revision,
+                        )?;
+                        view.publish_drop_receipts(&self.search.queue_drops, token, group)
                     })?;
                 }
                 Ok(view)
@@ -500,6 +595,29 @@ fn array<'a>(v: &'a Value, key: &str) -> Result<&'a [Value]> {
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .ok_or(Error::Response("missing search result list"))
+}
+
+fn podcast_page(data: &Value) -> Result<(&[Value], Option<u64>)> {
+    let resources = data
+        .as_object()
+        .ok_or(Error::Response("missing search result list"))?
+        .get("resources");
+    let rows = match resources {
+        None | Some(Value::Null) => &[],
+        Some(_) => array(data, "resources")?,
+    };
+    // M/15.Jn keeps the reported total for explicit null resources, but an
+    // empty mapped list with a truthy hasMore instead clears the total.
+    // M/21.D defaults undefined to [], and otherwise maps one item per row.
+    let reported = &data["totalCount"];
+    let total = if !js_truthy(reported)
+        || (rows.is_empty() && resources != Some(&Value::Null) && js_truthy(&data["hasMore"]))
+    {
+        Some(0)
+    } else {
+        reported.as_u64()
+    };
+    Ok((rows, total))
 }
 pub(super) fn clean(s: &str) -> String {
     s.replace("<em>", "")
@@ -553,6 +671,7 @@ fn voice_table_item(base: &Value) -> Result<Option<SearchItem>> {
         .filter(|id| id.len() <= 32);
     Ok(Some(SearchItem::Voice {
         voice,
+        menu_receipt: None,
         creator_id,
         listener_count: voice_listener_count(base),
     }))
@@ -723,12 +842,15 @@ fn item(
             SearchItem::Song {
                 track,
                 queue_drop_receipt: None,
+                group_next_right: None,
+                group_download: None,
                 mv_id,
                 replacement_mv: is_replacement,
                 vip_badge: None,
                 limited_free: false,
                 quality_badge: None,
                 hint,
+                table_hint: None,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
                 original_recording: v["originCoverType"].as_f64() == Some(1.0),
@@ -760,6 +882,7 @@ fn item(
         },
         "voice" => SearchItem::Voice {
             voice: view::episode(&Episode::from_official(v)?, &[]),
+            menu_receipt: None,
             creator_id: None,
             listener_count: voice_listener_count(v),
         },
@@ -803,10 +926,63 @@ fn correction(v: &Value) -> Option<String> {
         .find_map(|key| crate::catalog::search::keyword(v[key].as_str()?).ok())
 }
 impl SearchResultView {
+    fn publish_download_receipts(
+        &mut self,
+        pages: &super::group_download::SearchGroupDownloads,
+        token: &crate::account::SessionToken,
+        api: &Arc<dyn crate::protocol::api::Api>,
+        revision: Option<String>,
+    ) -> Result<()> {
+        let all = |item: &SearchItem| match item {
+            SearchItem::Song {
+                track,
+                group_download,
+                ..
+            } => Some((
+                track.id.clone(),
+                group_download
+                    .as_ref()
+                    .map(super::group_download::RowRights::from),
+            )),
+            _ => None,
+        };
+        let page = if let Some(revision) = revision {
+            pages.capture(
+                token,
+                api,
+                revision,
+                &self.query,
+                self.sections
+                    .iter()
+                    .flat_map(|section| &section.items)
+                    .filter_map(all)
+                    .collect(),
+            )?
+        } else {
+            None
+        };
+        for item in self
+            .sections
+            .iter_mut()
+            .flat_map(|section| &mut section.items)
+        {
+            if let SearchItem::Song {
+                track,
+                group_download,
+                ..
+            } = item
+            {
+                *group_download = page.as_ref().and_then(|page| page.row(&track.id));
+            }
+        }
+        Ok(())
+    }
+
     fn publish_drop_receipts(
         &mut self,
         pages: &super::queue_drop::SearchDropPages,
         token: &crate::account::SessionToken,
+        group: Option<super::queue_drop::GroupAuthority>,
     ) -> Result<()> {
         let candidates = self
             .sections
@@ -816,12 +992,14 @@ impl SearchResultView {
                 SearchItem::Song {
                     track,
                     queue_drop_receipt: Some(_),
+                    group_next_right,
                     ..
-                } => Some(track.clone()),
+                } => Some((track.clone(), *group_next_right)),
                 _ => None,
             })
             .collect();
-        let receipt = pages.capture(token, candidates)?;
+        let has_group = group.is_some();
+        let receipt = pages.capture(token, candidates, group)?;
         for item in self
             .sections
             .iter_mut()
@@ -829,10 +1007,14 @@ impl SearchResultView {
         {
             if let SearchItem::Song {
                 queue_drop_receipt: ticket @ Some(_),
+                group_next_right,
                 ..
             } = item
             {
                 *ticket = receipt.clone();
+                if !has_group {
+                    *group_next_right = None;
+                }
             }
         }
         Ok(())
@@ -850,6 +1032,7 @@ impl SearchResultView {
             more: false,
             correction: None,
             correction_parts: None,
+            correction_receipt: None,
             unavailable_count: 0,
             notice: None,
             empty_title: None,
@@ -881,9 +1064,14 @@ pub(super) fn project(
     query: SearchResultQuery,
     uid: &str,
     allow_replacement_mv: bool,
-) -> Result<(SearchResultView, Option<super::privilege::Preview>)> {
+) -> Result<(
+    SearchResultView,
+    Option<super::privilege::Preview>,
+    Option<String>,
+)> {
     use SearchCategory::*;
     let mut privilege_preview = None;
+    let mut correction_channel = None;
     let mut result = SearchResultView::empty(query.clone());
     if query.category == All {
         for (index, block) in array(&raw["data"], "blocks")?.iter().take(50).enumerate() {
@@ -906,6 +1094,9 @@ pub(super) fn project(
                                 part.highlight && part.text.trim() == query.keyword.trim()
                             })
                         });
+                        if result.correction_parts.is_some() {
+                            correction_channel = api::correction_channel(dto).map(str::to_owned);
+                        }
                     }
                 }
                 continue;
@@ -1005,7 +1196,7 @@ pub(super) fn project(
         if raw["data"]["hasMore"] == true {
             result.notice = Some("综合结果为分类预览，可通过区块标题入口查看完整分类。".into());
         }
-        return Ok((result, privilege_preview));
+        return Ok((result, privilege_preview, correction_channel));
     }
     let (container, list, total, kind) = match query.category {
         Playlists => (&raw["result"], "playlists", "playlistCount", "playlist"),
@@ -1020,21 +1211,27 @@ pub(super) fn project(
         All => unreachable!(),
     };
     let lyrics = query.category == Lyrics;
-    // M/15.Wn treats an explicitly null resources list as an empty lyric
-    // result. A missing or malformed list is still a retryable response error.
-    let rows = if lyrics && container.get(list).is_some_and(Value::is_null) {
-        &[]
+    let podcasts = query.category == Podcasts && !uid.is_empty();
+    let (rows, reported_total) = if podcasts {
+        podcast_page(container)?
     } else {
-        array(container, list)?
+        // M/15.Wn treats explicitly null as empty. Other invalid lyric lists
+        // retain their existing retryable error.
+        let rows = if lyrics && container.get(list).is_some_and(Value::is_null) {
+            &[]
+        } else {
+            array(container, list)?
+        };
+        (rows, container[total].as_u64())
     };
     if rows.len() > 100 {
         return Err(Error::Response("oversized search result page"));
     }
-    result.total = container[total].as_u64();
+    result.total = reported_total;
     result.next_offset = query.offset + rows.len();
-    let remote_more = if lyrics {
-        // M/3001 uses the length of the lyric batch, not totalCount or
-        // hasMore. Advance by the raw count even if a row cannot be displayed.
+    let remote_more = if lyrics || podcasts {
+        // M/3001 uses the length of the mapped batch, not totalCount or
+        // hasMore. The native cursor still counts rows that IPC cannot expose.
         rows.len() == query.limit
     } else {
         container["hasMore"].as_bool().unwrap_or_else(|| {
@@ -1048,9 +1245,9 @@ pub(super) fn project(
         result.notice =
             Some("服务返回了结果数量，但本页没有可展示的内容。可重试或更换关键词。".into());
     }
-    if query.correct && !lyrics {
-        // M/15.Wn never supplies a category rewrite. The effective term
-        // selected before entering lyrics remains in the request query.
+    if query.correct && !lyrics && !podcasts {
+        // M/15.Wn and Jn do not supply a category rewrite; keep the effective
+        // term from before entering either classified flow.
         result.correction = [
             &container["queryRewriteInfo"],
             &raw["queryRewriteInfo"],
@@ -1103,16 +1300,26 @@ pub(super) fn project(
                     && let SearchItem::Song {
                         track,
                         queue_drop_receipt,
+                        group_next_right,
+                        group_download,
+                        table_hint,
                         ..
                     } = &mut item
-                    && !track.missing
-                    && !track.local
-                    && track.voice_id.is_none()
-                    && !js_truthy(&base["privilege"]["cs"])
-                    && super::queue_drop::bounded_track(track)
                 {
-                    // Only the song-tab projector may mark a row for issuance.
-                    *queue_drop_receipt = Some(String::new());
+                    *table_hint = track_hint::song_table(base, resource, &query.keyword);
+                    if !track.missing
+                        && !track.local
+                        && track.voice_id.is_none()
+                        && !js_truthy(&base["privilege"]["cs"])
+                        && super::queue_drop::bounded_track(track)
+                    {
+                        // Only the song-tab projector may mark a row for issuance.
+                        *queue_drop_receipt = Some(String::new());
+                        *group_next_right = super::SearchNextRight::from_song(base, &track.id);
+                        *group_download =
+                            super::group_download::RowRights::observe(base, &track.id)
+                                .map(|rights| rights.row(String::new()));
+                    }
                 }
                 section.items.push(item);
             }
@@ -1120,5 +1327,5 @@ pub(super) fn project(
         }
     }
     result.sections.push(section);
-    Ok((result, None))
+    Ok((result, None, None))
 }

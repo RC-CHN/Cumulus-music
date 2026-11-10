@@ -151,6 +151,9 @@ def launch(binary, env, log, output, capture):
                     picture = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
                     assert picture is not None
                     picture.savev(str(path.with_suffix('.png')), 'png', [], [])
+                if env.get('CUMULUS_INTERFACE_FONT_PROOF') and value.get('captureHandshake'):
+                    path.with_suffix('.captured').write_text(
+                        'captured\n' if capture else 'recorded\n', encoding='ascii')
                 seen.add(path)
             time.sleep(.05)
         (output / 'native-input.json').write_text(json.dumps({'keys': sent, 'regions': regions}, indent=2)+'\n', encoding='utf-8')

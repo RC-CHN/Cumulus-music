@@ -6,6 +6,8 @@ use crate::{
 use serde_json::{Value, json};
 use std::{fmt, sync::Arc};
 
+pub(super) const LIST_COMMAND_REPORT: &str = "/api/listen/together/sync/list/command/report";
+
 #[derive(Clone)]
 pub struct TogetherApi {
     api: Arc<dyn Api>,
@@ -113,7 +115,7 @@ impl TogetherApi {
         )
     }
     pub async fn list_command(&self, room: &str, command: &ListCommand) -> Result<()> {
-        self.result("/api/listen/together/sync/list/command/report",json!({"roomId":opaque(room)?,"playlistParam":serde_json::to_string(&command.wire()?)?}),"result").await
+        self.result(LIST_COMMAND_REPORT,json!({"roomId":opaque(room)?,"playlistParam":serde_json::to_string(&command.wire()?)?}),"result").await
     }
     pub async fn play_command(&self, room: &str, command: &PlayCommand) -> Result<()> {
         self.result(

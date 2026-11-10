@@ -54,8 +54,12 @@ impl MusicClient {
                     Ok(QueueTrack {
                         more_recommendation: false,
                         origin: None,
+                        source_label: None,
                         like_song_id: None,
                         catalog_menu: false,
+                        voice_menu: false,
+                        local_menu: false,
+                        download_menu: None,
                         collectible: false,
                         entry_id: i.entry_id.clone(),
                         track: super::super::player::track(&i.resource)?,

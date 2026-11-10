@@ -62,10 +62,19 @@ impl ResolverClock for Monotonic {
     }
 }
 
+#[cfg(windows)]
+struct LiveWindowsNativeFiles {
+    token: SessionToken,
+    batch: crate::library::WindowsNativeOpenBatch,
+    queue_revision: Option<u64>,
+}
+
 pub struct SourceResolver {
     session: Arc<AccountSession>,
     library: Option<Arc<LocalLibrary>>,
     state: Arc<Mutex<CacheState>>,
+    #[cfg(windows)]
+    windows_native_files: Mutex<Option<LiveWindowsNativeFiles>>,
     clock: Arc<dyn ResolverClock>,
     pub(crate) streaming_cache: Option<Arc<super::stream_cache::StreamingCache>>,
 }
@@ -107,6 +116,9 @@ impl SourceResolver {
             return Ok(None);
         };
         if resource.get("local_id").is_some()
+            || resource
+                .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                .is_some()
             || !resource["cloud_song_id"].is_null()
             || !resource["voice_id"].is_null()
             || !resource["song"]["voice_id"].is_null()
@@ -151,10 +163,84 @@ impl SourceResolver {
             session,
             library,
             state: Arc::new(Mutex::new(CacheState::default())),
+            #[cfg(windows)]
+            windows_native_files: Mutex::new(None),
             clock,
             streaming_cache: None,
         }
     }
+    #[cfg(windows)]
+    pub(crate) fn replace_windows_native_files(
+        &self,
+        token: &SessionToken,
+        batch: crate::library::WindowsNativeOpenBatch,
+        commit: impl FnOnce() -> Result<()>,
+    ) -> Result<()> {
+        let mut live = self
+            .windows_native_files
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        commit()?;
+        *live = Some(LiveWindowsNativeFiles {
+            token: token.clone(),
+            batch,
+            queue_revision: None,
+        });
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn clear_windows_native_files(&self) -> Result<()> {
+        self.windows_native_files
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .take();
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn retain_windows_native_files(
+        &self,
+        token: &SessionToken,
+        queue: &super::PlaybackQueue,
+    ) -> Result<()> {
+        let mut slot = self
+            .windows_native_files
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        if let Some(live) = slot.as_mut().filter(|live| &live.token == token)
+            && live.queue_revision != Some(queue.revision())
+        {
+            live.batch
+                .retain(|resource| queue.has_exact_native_file(resource));
+            live.queue_revision = Some(queue.revision());
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn resolve_windows_native_file(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+    ) -> Result<Arc<ResolvedSource>> {
+        self.session.check_generation(token)?;
+        let file = self
+            .windows_native_files
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|live| &live.token == token)
+            .and_then(|live| live.batch.resolve(resource))
+            .ok_or(Error::StaleResponse)?;
+        let local: LocalResource = serde_json::from_value(resource.clone())?;
+        Ok(Arc::new(ResolvedSource {
+            input: MediaInput::WindowsNativeFile(file),
+            info: json!({"kind":"local","metadata":local.metadata}),
+            expires_at: None,
+        }))
+    }
+
     pub fn revision(&self) -> Result<u64> {
         Ok(self.state.lock().map_err(|_| Error::LockPoisoned)?.revision)
     }
@@ -171,6 +257,14 @@ impl SourceResolver {
         Ok(())
     }
     fn key(&self, resource: &Value, token: &SessionToken) -> Result<Key> {
+        if resource
+            .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+            .is_some()
+        {
+            return Err(Error::InvalidInput(
+                "offline playlist downloads cannot authorize online media",
+            ));
+        }
         self.session.with_token(token, |_| Ok(()))?;
         let level = Quality::parse(
             resource
@@ -442,6 +536,16 @@ impl SourceResolver {
         resource: &Value,
         token: &SessionToken,
     ) -> Result<Arc<ResolvedSource>> {
+        if resource
+            .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+            .is_some()
+        {
+            return self.offline_playlist_download(resource, token).await;
+        }
+        #[cfg(windows)]
+        if resource["native_open_file"].get("held_id").is_some() {
+            return self.resolve_windows_native_file(resource, token);
+        }
         if resource.get("local_id").is_some() || resource.get("path").is_some() {
             return self.local(resource.clone(), token, None).await;
         }
@@ -452,7 +556,12 @@ impl SourceResolver {
         resource: &Value,
         token: &SessionToken,
     ) -> Result<Arc<ResolvedSource>> {
-        if resource.get("local_id").is_some() || resource.get("path").is_some() {
+        if resource.get("local_id").is_some()
+            || resource.get("path").is_some()
+            || resource
+                .get(crate::download::offline::OFFLINE_PLAYLIST_DOWNLOAD)
+                .is_some()
+        {
             return Err(Error::InvalidInput(
                 "fresh authorization requires online media",
             ));
@@ -497,6 +606,38 @@ impl SourceResolver {
         guard.check()?;
         self.session.require_api(token, expected)?;
         // Check response timing/rights data before committing a replacement.
+        source.timeline(None)?;
+        Ok(Arc::new(source))
+    }
+
+    /// Authorize only the clicked online song before a scoped search group
+    /// starts it. Keep the URL out of both IPC and the shared source cache.
+    pub(crate) async fn prepare_scoped_search_song(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        expected: &Arc<dyn Api>,
+        guard: &Cancellation,
+    ) -> Result<Arc<ResolvedSource>> {
+        guard.check()?;
+        let key = self.key(resource, token)?;
+        if key.voice_id.is_some()
+            || key.trial != 42
+            || resource.get("local_id").is_some()
+            || resource.get("path").is_some()
+            || resource.get("download_task_id").is_some()
+            || resource.get("cloud_song_id").is_some()
+        {
+            return Err(Error::InvalidInput(
+                "scoped search preparation requires an online song",
+            ));
+        }
+        let source = self
+            .fetch(resource, &key, Some(expected), Some(guard), None)
+            .await?
+            .source;
+        guard.check()?;
+        self.session.require_api(token, expected)?;
         source.timeline(None)?;
         Ok(Arc::new(source))
     }

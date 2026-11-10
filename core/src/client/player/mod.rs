@@ -7,6 +7,8 @@ mod dto;
 mod identity;
 mod intelligence;
 mod local_batch;
+mod mixed_playlist;
+pub use lyrics::LyricBountyIntent;
 mod lyrics;
 mod minibar_skip;
 mod ordinary_skip_authority;
@@ -17,23 +19,35 @@ mod next_play;
 pub(in crate::client) mod origin;
 mod output;
 mod playlist_batch;
+mod playlist_trial;
 mod podcast_browse;
 mod podcast_recommended;
 mod power;
 mod preferences;
 mod prepared_selection;
 mod quality;
+mod queue_catalog_reveal;
+pub use queue_catalog_reveal::QueueCatalogFileReveal;
+mod playlist_duration;
 mod queue_click;
 mod queue_collection;
+mod queue_download_menu;
+mod queue_offline_playlist;
+pub use queue_download_menu::QueueDownloadFileReveal;
 mod queue_drop;
 mod queue_edit;
 mod queue_like;
+mod queue_local_menu;
+pub use queue_local_menu::QueueLocalFileReveal;
 mod queue_menu;
 mod queue_more_playlist;
-mod queue_playlist;
+pub(super) mod queue_playlist;
+mod queue_voice_menu;
+pub use queue_voice_menu::QueueVoiceFileReveal;
 mod reports;
 mod search_artist;
 mod search_podcast;
+mod search_voice_menu;
 mod selection;
 mod source_control;
 mod startup;
@@ -47,10 +61,12 @@ mod vinyl_similar;
 pub use vinyl_similar::{
     VinylRecommendationPlacement, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
 };
+mod podcast_resume;
 mod vinyl_wiki;
 mod voice_detail;
 mod voice_recommendations;
 mod voice_scope;
+pub use podcast_resume::{PlayerPodcastResumeAction, PlayerPodcastResumeView};
 pub use voice_recommendations::{
     VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
 };
@@ -136,6 +152,7 @@ pub(super) struct PlayerHost {
     song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
     power_assignment: tokio::sync::Mutex<Option<power::Assignment>>,
     queue_more_memberships: queue_more_playlist::MembershipCache,
+    queue_catalog_reveal: queue_catalog_reveal::Host,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     pub(super) factory: EngineFactory,
@@ -149,6 +166,8 @@ pub(super) struct PlayerHost {
     prepared_generation: Arc<AtomicU64>,
     focus: Arc<super::focus::MediaFocus>,
     lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
+    chorus: Arc<chorus::Host>,
+    room_detachment: super::together::RoomDetachment,
     vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
     streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
     vinyl_similar: Arc<vinyl_similar::Host>,
@@ -164,6 +183,7 @@ impl PlayerHost {
         output: Arc<crate::playback::output::OutputRuntime>,
         ordinary_skip: OrdinarySkipHost,
         song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
+        room_detachment: super::together::RoomDetachment,
     ) -> Self {
         Self {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
@@ -175,6 +195,7 @@ impl PlayerHost {
             song_speed,
             power_assignment: Default::default(),
             queue_more_memberships: Default::default(),
+            queue_catalog_reveal: Default::default(),
             session,
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),
@@ -185,6 +206,8 @@ impl PlayerHost {
             prepared_selection: Mutex::new(None),
             prepared_generation: Arc::new(AtomicU64::new(0)),
             lyrics: Mutex::new(None),
+            chorus: Default::default(),
+            room_detachment,
             vinyl_draft: Mutex::new(None),
             streaming_cache: None,
             vinyl_similar: Default::default(),
@@ -210,7 +233,7 @@ impl PlayerHost {
                 let mut resolver = SourceResolver::new(self.session.clone(), Some(library));
                 resolver.streaming_cache = self.streaming_cache.clone();
                 let resolver = Arc::new(resolver);
-                Ok(Arc::new(PlaybackController::start_inner(
+                let controller = Arc::new(PlaybackController::start_inner(
                     self.session.clone(),
                     self.store.clone(),
                     resolver,
@@ -224,12 +247,18 @@ impl PlayerHost {
                         queue_more_enabled: self.queue_more_enabled,
                         power: self.power.clone(),
                         song_speed: Some(self.song_speed.clone()),
+                        chorus_triggers: Some(
+                            self.chorus
+                                .triggers(self.session.clone(), self.room_detachment.clone()),
+                        ),
                         ordinary_eof: Some(
                             self.ordinary_skip
                                 .eof(self.focus.clone(), self.selection.clone()),
                         ),
                     },
-                )?))
+                )?);
+                self.chorus.bind(&controller)?;
+                Ok(controller)
             })
             .await
     }
@@ -342,6 +371,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             source_bypassed: value.equalizer.source_bypassed,
         },
         bound_parametric: value.bound_parametric,
+        applied_effect_id: value.applied_effect_id,
         parametric_processing: value.parametric_processing,
         device_parametric: value.device_parametric.clone(),
         epoch: token.generation.to_string(),
@@ -769,6 +799,45 @@ impl MusicClient {
                 .player_mode_for(epoch, mode, &expected_queue_revision, fm)
                 .await;
         }
+        let search_group_play = matches!(action, PlayerAction::SearchGroupPlay { .. });
+        if let PlayerAction::SearchGroupNextPlay {
+            anchor,
+            rows,
+            quality,
+            expected_play_id,
+            expected_queue_revision,
+        }
+        | PlayerAction::SearchGroupPlay {
+            anchor,
+            rows,
+            quality,
+            expected_play_id,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() || policy != NativeTransportPolicy::Ordinary {
+                return Err(Error::InvalidInput(
+                    "search group used as native media command",
+                ));
+            }
+            return self
+                .search_group_playback(
+                    epoch,
+                    next_play::SearchGroupRequest {
+                        action: if search_group_play {
+                            next_play::SearchGroupAction::Play
+                        } else {
+                            next_play::SearchGroupAction::Next
+                        },
+                        anchor,
+                        rows,
+                        quality,
+                        expected_play_id,
+                        expected_queue_revision,
+                    },
+                )
+                .await;
+        }
         let next_origin = if matches!(action, PlayerAction::SearchNextPlay { .. }) {
             next_play::NextPlayOrigin::Search
         } else {
@@ -804,6 +873,32 @@ impl MusicClient {
                     .drop_into_queue(
                         epoch,
                         DropSource::Album {
+                            id,
+                            revision,
+                            rows,
+                            quality,
+                        },
+                        DropTarget {
+                            expected_queue_revision,
+                            expected_play_id,
+                            before_entry_id,
+                        },
+                    )
+                    .await;
+            }
+            PlayerAction::DropMixedPlaylistSongsIntoQueue {
+                id,
+                revision,
+                rows,
+                quality,
+                expected_queue_revision,
+                expected_play_id,
+                before_entry_id,
+            } => {
+                return self
+                    .drop_into_queue(
+                        epoch,
+                        DropSource::MixedPlaylist {
                             id,
                             revision,
                             rows,
@@ -968,6 +1063,54 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueSortedPlaylist {
+            scope,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_sorted_playlist(epoch, scope, quality, &expected_queue_revision)
+                .await;
+        }
+        if let PlayerAction::QueueOfflinePlaylist {
+            id,
+            revision,
+            cached_at_ms,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_offline_playlist(
+                    epoch,
+                    &id,
+                    &revision,
+                    cached_at_ms,
+                    &expected_queue_revision,
+                )
+                .await;
+        }
+        if let PlayerAction::QueueMixedPlaylist {
+            id,
+            revision,
+            track,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::MixedPlaylist {
+                        id,
+                        revision,
+                        track,
+                        quality,
+                    },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueVoice {
             id,
             program,
@@ -1057,7 +1200,35 @@ impl MusicClient {
             return self
                 .queue_collection(
                     epoch,
-                    queue_playlist::QueueCollection::ArtistSongs { pages, quality },
+                    queue_playlist::QueueCollection::ArtistSongs {
+                        pages,
+                        quality,
+                        selected: None,
+                    },
+                    expected_queue_revision,
+                )
+                .await;
+        }
+        if let PlayerAction::QueueArtistSongsBatch {
+            pages,
+            ids,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "artist batch queue used as native media command",
+                ));
+            }
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::ArtistSongs {
+                        pages,
+                        quality,
+                        selected: Some(ids),
+                    },
                     expected_queue_revision,
                 )
                 .await;
@@ -1738,7 +1909,12 @@ impl MusicClient {
             }
             PlayerAction::NextPlay { .. }
             | PlayerAction::SearchNextPlay { .. }
+            | PlayerAction::SearchGroupNextPlay { .. }
+            | PlayerAction::SearchGroupPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueueSortedPlaylist { .. }
+            | PlayerAction::QueueOfflinePlaylist { .. }
+            | PlayerAction::QueueMixedPlaylist { .. }
             | PlayerAction::QueueVoice { .. }
             | PlayerAction::QueueRecentProgram { .. }
             | PlayerAction::QueueAlbum { .. }
@@ -1747,11 +1923,13 @@ impl MusicClient {
             | PlayerAction::QueueDailyRecommendations { .. }
             | PlayerAction::QueueStyleRecommendations { .. }
             | PlayerAction::QueueArtistSongs { .. }
+            | PlayerAction::QueueArtistSongsBatch { .. }
             | PlayerAction::QueueDownloads { .. }
             | PlayerAction::QueueLocal { .. }
             | PlayerAction::DropLocalIntoQueue { .. }
             | PlayerAction::DropPlaylistSongIntoQueue { .. }
             | PlayerAction::DropPlaylistSongsIntoQueue { .. }
+            | PlayerAction::DropMixedPlaylistSongsIntoQueue { .. }
             | PlayerAction::DropSearchSongsIntoQueue { .. }
             | PlayerAction::DropAlbumSongsIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
@@ -1945,14 +2123,32 @@ impl MusicClient {
                     } else {
                         (false, false)
                     };
+                    let origin = ordinary_queue.then(|| origin::queue(i)).flatten();
+                    let source_label = origin
+                        .as_ref()
+                        .and_then(|origin| origin::local_queue_source_name(i, origin))
+                        .map(str::to_owned);
                     Ok(QueueTrack {
                         entry_id: i.entry_id.clone(),
                         track: track(&i.resource)?,
                         more_recommendation: more_visible
                             && crate::playback::queue_more::active(&queue, i),
-                        origin: ordinary_queue.then(|| origin::queue(i)).flatten(),
+                        origin,
+                        source_label,
                         like_song_id,
                         catalog_menu,
+                        voice_menu: ordinary_queue
+                            && token.uid.is_some()
+                            && queue.intelligence.is_none()
+                            && queue_voice_menu::eligible(&i.resource),
+                        local_menu: ordinary_queue
+                            && queue.intelligence.is_none()
+                            && queue_local_menu::eligible(i),
+                        download_menu: (ordinary_queue
+                            && token.uid.is_some()
+                            && queue.intelligence.is_none())
+                        .then(|| queue_download_menu::kind(i))
+                        .flatten(),
                         collectible,
                     })
                 })

@@ -3,7 +3,7 @@ use super::{
     MusicClient,
     actions::{Page, Row},
     id,
-    purchased::{Offer, Selection, vivid_enabled},
+    purchased::{Selection, vivid_enabled},
 };
 use crate::{
     Error, Result,
@@ -11,7 +11,10 @@ use crate::{
         AccountSession, SessionToken,
         resources::{AccountResources, ResourceKind},
     },
-    client::dto::{DownloadResult, SongDownloadState},
+    client::{
+        downloads::purchased::Offer,
+        dto::{DownloadResult, SongDownloadState},
+    },
     download::service::DownloadOptions,
     membership::Quality,
     protocol::wire::serialization::js_truthy,

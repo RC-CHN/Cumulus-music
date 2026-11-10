@@ -73,10 +73,28 @@ fn main() {
                 },
                 "shared_preview"|"shared_blocked"|"shared_exit"=>{},
                 "lifecycle_preview"|"lifecycle_auto"|"lifecycle_pending"|"lifecycle_recovered"=>{},
+                "external_partial"|"external_prompt"|"external_dismissed"|"external_ended"=>{},
                 "complete"|"failed"=>{},
                 _=>return,
             }
             std::fs::write(root.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+            if stage.starts_with("external_") && std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
+                let handle=handle.clone();
+                let stage=stage.to_owned();
+                let captured=root.join(format!("{stage}.captured"));
+                tauri::async_runtime::spawn_blocking(move || {
+                    let start=std::time::Instant::now();
+                    while start.elapsed()<std::time::Duration::from_secs(12) {
+                        if captured.is_file() {
+                            if let Some(window)=handle.get_webview_window("main") {
+                                let _=window.eval(format!("window.__togetherExternalCaptured={stage:?};"));
+                            }
+                            return;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(30));
+                    }
+                });
+            }
             if matches!(stage,"complete"|"failed")&&!ending.swap(true,Ordering::SeqCst){
                 let handle=handle.clone();let root=root.clone();let ok=stage=="complete";let api=api.clone();let im=im.clone();
                 tauri::async_runtime::spawn(async move{
@@ -88,6 +106,11 @@ fn main() {
                 });
             }
         });Ok(())
-    }).on_page_load(|window,event|{if event.event()==PageLoadEvent::Finished{window.eval(if std::env::var_os("CUMULUS_LIFECYCLE_PROOF").is_some(){include_str!("together_lifecycle_ui_probe.js")}else{include_str!("shared_queue_ui_probe.js")}).unwrap();}})
+    }).on_page_load(|window,event|{if event.event()==PageLoadEvent::Finished{
+        if std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
+            window.eval("window.__togetherExternalCaptureEnabled=true;").unwrap();
+        }
+        window.eval(if std::env::var_os("CUMULUS_LIFECYCLE_PROOF").is_some(){include_str!("together_lifecycle_ui_probe.js")}else if std::env::var_os("CUMULUS_EXTERNAL_SELECTION_PROOF").is_some(){include_str!("together_external_selection_ui_probe.js")}else{include_str!("shared_queue_ui_probe.js")}).unwrap();
+    }})
         .run(tauri::generate_context!()).expect("production WebView with local fixtures");
 }

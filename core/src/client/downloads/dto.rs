@@ -93,6 +93,8 @@ pub struct DownloadTaskView {
     pub bytes: u64,
     pub total: Option<u64>,
     pub progress: Option<f64>,
+    /// Native measured bytes per second; absent outside this session's live transfer.
+    pub speed_bytes_per_second: Option<u64>,
     pub requested_quality: String,
     pub actual_quality: Option<String>,
     pub requested_resolution: Option<u32>,
@@ -185,6 +187,9 @@ pub enum DownloadCommand {
     All {
         action: TaskControl,
     },
+    ConfirmClear {
+        receipt: String,
+    },
     Preferences {
         revision: String,
         options: DownloadOptions,
@@ -223,9 +228,33 @@ pub enum DownloadCommand {
     },
 }
 #[derive(Serialize)]
+pub struct DownloadClearPlan {
+    pub epoch: String,
+    pub receipt: Option<String>,
+    pub count: usize,
+}
+#[derive(Serialize)]
 pub struct DownloadFailure {
     pub id: String,
     pub message: &'static str,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadSkipReason {
+    Downloaded,
+    Local,
+    Waiting,
+    Working,
+    Cancelling,
+    OptionsChanged,
+    Existing,
+    Missing,
+    Conflict,
+}
+#[derive(Serialize)]
+pub struct DownloadSkip {
+    pub id: String,
+    pub reason: DownloadSkipReason,
 }
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -233,5 +262,7 @@ pub struct DownloadResult {
     pub epoch: String,
     pub accepted: Vec<String>,
     pub failed: Vec<DownloadFailure>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skipped: Vec<DownloadSkip>,
     pub operation_id: Option<String>,
 }

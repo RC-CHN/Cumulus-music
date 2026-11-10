@@ -1,4 +1,5 @@
-//! M/21 song tags and the M/123 one-line lyric match used by TrackCard.
+//! M/21 song tags and M/123 marks for the separate card and table surfaces.
+use crate::{catalog::search, protocol::wire::serialization::js_truthy};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -13,6 +14,57 @@ pub enum TrackHint {
 pub struct LyricPart {
     text: String,
     highlight: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SongTableHint {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    alias_parts: Vec<search::SearchSuggestionPart>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lyric_parts: Option<Vec<LyricPart>>,
+}
+
+pub(super) fn song_table(base: &Value, resource: &Value, keyword: &str) -> Option<SongTableHint> {
+    // M/15.Un first spreads the resource and its simpleSongData, then
+    // unconditionally replaces lyrics with the original resource extInfo.
+    // M/21.x then merges newSongExt and extInfo and uses lyrics || lyric.
+    let merged = |key: &str| base.get(key).unwrap_or(&resource[key]);
+    let tag = merged("extInfo")
+        .get("songAlias")
+        .unwrap_or(&merged("newSongExt")["songAlias"]);
+    let aliases = if js_truthy(merged("alia")) {
+        merged("alia")
+    } else {
+        merged("ala")
+    };
+    let alias_parts = if js_truthy(tag) {
+        aliases
+            .as_array()
+            .filter(|rows| rows.len() <= 16)
+            .and_then(|rows| {
+                rows.iter()
+                    .map(|row| {
+                        row.as_str()
+                            .filter(|text| text.is_empty() || safe_text(text))
+                    })
+                    .collect::<Option<Vec<_>>>()
+            })
+            .map(|aliases| search::song_table_alias_parts(&aliases, keyword))
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let lyrics = &resource["extInfo"]["lyrics"];
+    let lyric_parts = lyric(if js_truthy(lyrics) {
+        lyrics
+    } else {
+        merged("lyric")
+    });
+    (!alias_parts.is_empty() || lyric_parts.is_some()).then_some(SongTableHint {
+        alias_parts,
+        lyric_parts,
+    })
 }
 
 pub(super) fn project(base: &Value, resource: &Value) -> Option<TrackHint> {

@@ -2,16 +2,17 @@ pub use super::account_binding_qr::AccountBindingQrView;
 pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::community::topic::{CommunityTopic, CommunityTopicAction, CommunityTopicSlice};
 pub use super::downloads::{
-    DownloadCategory, DownloadCollectCreation, DownloadCollectCreationCommand, DownloadCollectPlan,
-    DownloadCommand, DownloadFailure, DownloadJobView, DownloadLikedDestination,
-    DownloadQualityPreferences, DownloadQuery, DownloadResult, DownloadShareAccess, DownloadSort,
+    DownloadBatchCollectPlan, DownloadCategory, DownloadClearPlan, DownloadCollectCreation,
+    DownloadCollectCreationCommand, DownloadCollectPlan, DownloadCommand, DownloadFailure,
+    DownloadJobView, DownloadLikedDestination, DownloadQualityPreferences, DownloadQuery,
+    DownloadResult, DownloadShareAccess, DownloadSkip, DownloadSkipReason, DownloadSort,
     DownloadTab, DownloadTaskView, DownloadsView, SongDownloadState, TaskControl,
 };
 pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};
 pub use super::history::{
     HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage, HistoryPlaylistCard,
-    HistoryResource, ListenedBooksPage, ListenedBooksQuery,
+    HistoryRadioCollection, HistoryResource, ListenedBooksPage, ListenedBooksQuery,
 };
 pub use super::local::{
     DirectoryChoice, DirectorySelection, LocalCollectPlan, LocalCollectResult,
@@ -39,29 +40,34 @@ pub use super::mv::{
 pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
 pub use super::pc_experiments::PcPresentationView;
 pub use super::player::{
-    IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
-    OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
-    PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount,
-    PlayerVoiceRadio, PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction,
-    QualityChoiceView, QualityDetailsView, QualityMenuPresentation, QualityTrialCommand,
-    QualityTrialOutcome, QualityTrialView, QueueCatalogMenu, QueueClearContext,
-    QueueClickPreferencesCommand, QueueClickPreferencesView, QueueCollectionView, QueueEdit,
-    QueueMoreTipAction, QueueTrack, QueueView, SearchPodcastRowGesture, SearchResultPlayback,
-    SongRowSelection, StartupPreferencesCommand, StartupPreferencesView, VoiceSongAction,
-    VoiceSongCollectCreation, VoiceSongCollectPlan, VoiceSongCollectResult,
-    VoiceSongDownloadCreation, VoiceSongDownloadDecision, VoiceSongDownloadPicker,
-    VoiceSongDownloadPlan, VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision,
-    VoiceSongGroupDownloadHint, VoiceSongGroupDownloadPlan, VoiceSongGroupPlaylistCreation,
-    VoiceSongGroupPlaylistResult, VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand,
-    VoiceSongPurchasedDownloadResult, VoiceSongRowAvailability, VoiceSongSelectionAction,
-    VoiceSongSelectionKind,
+    IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView,
+    MixedPlaylistDropRow, MixedPlaylistStart, OutputCommand, OutputEngineView, OutputView,
+    PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin, PlayerPodcastResumeAction,
+    PlayerPodcastResumeView, PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail,
+    PlayerVoicePlayCount, PlayerVoiceRadio, PlayerVoiceSongsView, PlaylistDropRow,
+    PodcastRecommendationAction, QualityChoiceView, QualityDetailsView, QualityMenuPresentation,
+    QualityTrialCommand, QualityTrialOutcome, QualityTrialView, QueueCatalogMenu,
+    QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,
+    QueueCollectionView, QueueDownloadMenuKind, QueueEdit, QueueMoreTipAction, QueueTrack,
+    QueueView, QueueVoiceMenu, SearchPodcastRowGesture, SearchResultPlayback, SongRowSelection,
+    StartupPreferencesCommand, StartupPreferencesView, VoiceSongAction, VoiceSongCollectCreation,
+    VoiceSongCollectPlan, VoiceSongCollectResult, VoiceSongDownloadCreation,
+    VoiceSongDownloadDecision, VoiceSongDownloadPicker, VoiceSongDownloadPlan,
+    VoiceSongGroupDownloadConfirmation, VoiceSongGroupDownloadDecision, VoiceSongGroupDownloadHint,
+    VoiceSongGroupDownloadPlan, VoiceSongGroupPlaylistCreation, VoiceSongGroupPlaylistResult,
+    VoiceSongLikedDestination, VoiceSongPurchasedDownloadCommand, VoiceSongPurchasedDownloadResult,
+    VoiceSongRowAvailability, VoiceSongSelectionAction, VoiceSongSelectionKind,
 };
+pub use super::player::{LyricContribution, LyricToolbarAction};
 pub use super::player::{
     VinylVoiceDetailTarget, VinylVoiceDetailView, VinylVoiceRecommendationCard,
     VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlist_creator::PlaylistCreatorProfile;
+pub use super::playlist_duration::{
+    PlaylistDurationOrder, PlaylistDurationPage, PlaylistDurationScope, PlaylistDurationSource,
+};
 pub use super::playlist_essential::{PlaylistEssentialCategory, PlaylistEssentialPage};
 pub use super::playlist_square::PlaylistSquarePage;
 pub use super::playlist_tags_browse::{
@@ -109,10 +115,12 @@ pub use super::scene_fm::{
     SceneFmPaletteResult, SceneFmView, home::SceneFmHomeView,
 };
 pub use super::search::{
-    ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,
-    SearchItem, SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
-    SearchPrivilegePatch, SearchQualityBadge, SearchReasonPage, SearchResultQuery,
-    SearchResultView, SearchSection,
+    ReasonTarget, SearchCategory, SearchGroupDownloadCommand, SearchGroupDownloadDecision,
+    SearchGroupDownloadReply, SearchGroupDownloadRow, SearchGroupDownloadTarget,
+    SearchHistoryCommand, SearchHotAction, SearchHotTarget, SearchItem, SearchPresentationItem,
+    SearchPresentationPatch, SearchPresentationSection, SearchPrivilegePatch, SearchQualityBadge,
+    SearchReasonPage, SearchResultQuery, SearchResultView, SearchSection, SearchVoiceMenu,
+    SearchVoiceMenuTarget,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,
@@ -171,7 +179,7 @@ pub struct AccountData<T> {
     pub value: T,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistView {
     pub id: String,
@@ -213,14 +221,14 @@ pub struct PlaylistCollectPage {
     pub next_page: Option<u32>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistHeaderDate {
     pub kind: PlaylistHeaderDateKind,
     pub timestamp_ms: u64,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlaylistHeaderDateKind {
     Created,
@@ -244,7 +252,7 @@ pub struct PlaylistSubscribersPage {
     pub next_offset: Option<u32>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistReference {
     /// Missing/zero IDs denote display-only credits, never a navigable artist.
@@ -252,7 +260,7 @@ pub struct ArtistReference {
     pub name: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackView {
     pub id: String,
@@ -283,9 +291,33 @@ pub struct TrackPage {
     pub more: bool,
     pub playlist: Option<PlaylistView>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub playlist_local: Option<PlaylistLocalPage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playlist_offline: Option<PlaylistOfflinePage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub daily: Option<DailyRecommendationState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style_tags: Option<super::style_tags::StyleCategory>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistOfflinePage {
+    pub cached_at_ms: u64,
+    /// Page-scoped checked publication hints, not cached media grants.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub download_ids: Vec<String>,
+}
+
+/// Display-only local membership fence. TrackPage::revision continues to
+/// refer to the raw online order for existing queue and batch callers.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistLocalPage {
+    pub revision: String,
+    pub has_members: bool,
+    pub has_unbound_legacy: bool,
+    pub rows: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Clone, Serialize)]

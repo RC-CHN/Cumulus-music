@@ -25,6 +25,7 @@ pub(super) struct PreparedSelection {
     pub(super) observed: u64,
     generation: u64,
     issued: Instant,
+    room_authority: Option<Cancellation>,
 }
 
 impl PreparedSelection {
@@ -34,6 +35,10 @@ impl PreparedSelection {
             || current.account != self.token
             || current.fence() != self.fence
             || client.player.selection.load(Ordering::Acquire) != self.observed
+            || self
+                .room_authority
+                .as_ref()
+                .is_some_and(Cancellation::is_cancelled)
         {
             return Err(Error::StaleResponse);
         }
@@ -42,7 +47,51 @@ impl PreparedSelection {
     }
 }
 
+#[derive(Clone, Copy)]
+enum NativeFileAdmission {
+    Legacy,
+    #[cfg(windows)]
+    RootedWindows,
+}
+
 impl MusicClient {
+    pub(super) async fn stage_together_replacement(
+        &self,
+        token: &SessionToken,
+        room_authority: Cancellation,
+    ) -> Result<PreparedSelection> {
+        let observed = self.player.selection.load(Ordering::Acquire);
+        let focus = self.focus.snapshot()?;
+        let actor = self.player.controller().await?;
+        let current = actor.command(token, PlaybackCommand::Snapshot).await?;
+        let _slot = self
+            .player
+            .prepared_selection
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        if self.player.selection.load(Ordering::Acquire) != observed {
+            return Err(Error::StaleResponse);
+        }
+        let generation = self
+            .player
+            .prepared_generation
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+                value.checked_add(1)
+            })
+            .map_err(|_| Error::State("playback preparation generation exhausted"))?
+            + 1;
+        Ok(PreparedSelection {
+            id: uuid::Uuid::new_v4().simple().to_string(),
+            token: token.clone(),
+            fence: current.fence(),
+            focus,
+            observed,
+            generation,
+            issued: Instant::now(),
+            room_authority: Some(room_authority),
+        })
+    }
+
     pub(super) fn pending_preparation_guard(
         &self,
         prepared: &PreparedSelection,
@@ -180,6 +229,7 @@ impl MusicClient {
             observed,
             generation: previous,
             issued: Instant::now(),
+            room_authority: None,
         };
         ticket.check(self, &controller.snapshot())?;
         ticket.generation = previous
@@ -217,7 +267,9 @@ impl MusicClient {
                 | PlaySelection::SearchArtistCard { .. }
                 | PlaySelection::SearchPodcastCard { .. }
                 | PlaySelection::SearchPodcastRow { .. }
+                | PlaySelection::SearchVoiceMenu { .. }
                 | PlaySelection::PodcastBrowseVoice { .. }
+                | PlaySelection::HistoryRadioChapter { .. }
                 | PlaySelection::Songs { .. }
         ) {
             return Err(Error::InvalidInput(
@@ -254,7 +306,8 @@ impl MusicClient {
         epoch: &str,
         paths: Vec<std::path::PathBuf>,
     ) -> Result<PlayerView> {
-        self.open_native_files(epoch, paths, true, None).await
+        self.open_native_files(epoch, paths, true, None, NativeFileAdmission::Legacy)
+            .await
     }
 
     /// Trusted same-user native relay only. Uses the live selection fence and
@@ -265,8 +318,53 @@ impl MusicClient {
         paths: Vec<std::path::PathBuf>,
         authority: Cancellation,
     ) -> Result<PlayerView> {
-        self.open_native_files(epoch, paths, false, Some(authority))
-            .await
+        self.open_native_files(
+            epoch,
+            paths,
+            false,
+            Some(authority),
+            NativeFileAdmission::Legacy,
+        )
+        .await
+    }
+
+    /// Candidate Windows cold entry: paths come only from native shell input.
+    /// The native readiness predicate has the same constraints as for warm.
+    #[cfg(windows)]
+    pub async fn play_windows_native_open_files(
+        &self,
+        epoch: &str,
+        paths: Vec<std::path::PathBuf>,
+        authority: Cancellation,
+    ) -> Result<PlayerView> {
+        self.open_native_files(
+            epoch,
+            paths,
+            true,
+            Some(authority),
+            NativeFileAdmission::RootedWindows,
+        )
+        .await
+    }
+
+    /// Candidate Windows warm entry. The source authority is a cheap native
+    /// window/relay check, including at the final queue commit. Its predicate
+    /// must not access the account session, playback host, or state database.
+    #[cfg(windows)]
+    pub async fn play_windows_native_open_files_warm(
+        &self,
+        epoch: &str,
+        paths: Vec<std::path::PathBuf>,
+        authority: Cancellation,
+    ) -> Result<PlayerView> {
+        self.open_native_files(
+            epoch,
+            paths,
+            false,
+            Some(authority),
+            NativeFileAdmission::RootedWindows,
+        )
+        .await
     }
 
     async fn open_native_files(
@@ -275,6 +373,7 @@ impl MusicClient {
         paths: Vec<std::path::PathBuf>,
         cold: bool,
         authority: Option<Cancellation>,
+        admission: NativeFileAdmission,
     ) -> Result<PlayerView> {
         use crate::{
             library::{
@@ -319,6 +418,8 @@ impl MusicClient {
             let probe = Ffprobe::for_native_open();
             let deadline = Instant::now() + Duration::from_secs(10);
             let mut resources = Vec::new();
+            #[cfg(windows)]
+            let mut rooted = crate::library::WindowsNativeOpenBatch::new();
             for path in paths {
                 session.check_generation(&worker_token)?;
                 if let Some(authority) = &worker_authority {
@@ -327,27 +428,39 @@ impl MusicClient {
                 if Instant::now() >= deadline {
                     break;
                 }
-                if let Ok(resource) = inspect_opened_file(&path, &probe) {
-                    resources.push(resource);
+                match admission {
+                    NativeFileAdmission::Legacy => {
+                        if let Ok(resource) = inspect_opened_file(&path, &probe) {
+                            resources.push(resource);
+                        }
+                    }
+                    #[cfg(windows)]
+                    NativeFileAdmission::RootedWindows => {
+                        let _ = rooted.push(path, &probe);
+                    }
                 }
             }
-            Ok::<_, Error>(resources)
+            #[cfg(windows)]
+            if matches!(admission, NativeFileAdmission::RootedWindows) && !rooted.is_empty() {
+                return Ok(PlaybackCommand::ReplaceWindowsNative(rooted));
+            }
+            if resources.is_empty() {
+                return Err(Error::InvalidInput("no supported native local audio files"));
+            }
+            Ok(PlaybackCommand::Replace {
+                resources,
+                index: 0,
+                source: serde_json::json!({"kind":"local", "nativeOpen":true}),
+            })
         });
-        let resources = tokio::time::timeout(Duration::from_secs(12), worker)
+        let command = tokio::time::timeout(Duration::from_secs(12), worker)
             .await
             .map_err(|_| Error::Media("native local audio probe timed out"))?
             .map_err(|_| Error::State("native local audio worker stopped"))??;
-        if resources.is_empty() {
-            return Err(Error::InvalidInput("no supported native local audio files"));
-        }
         let state = self
             .submit_selection_with_source(
                 &token,
-                PlaybackCommand::Replace {
-                    resources,
-                    index: 0,
-                    source: serde_json::json!({"kind":"local", "nativeOpen":true}),
-                },
+                command,
                 ticket.observed,
                 None,
                 Some(&ticket),
@@ -379,6 +492,99 @@ impl MusicClient {
         prepared: Option<&PreparedSelection>,
         source_guard: Option<Cancellation>,
     ) -> Result<PlaybackSnapshot> {
+        if source_guard
+            .as_ref()
+            .is_some_and(Cancellation::is_cancelled)
+        {
+            return Err(Error::QueueChanged);
+        }
+        if let Some(prepared) = prepared {
+            if matches!(&command, PlaybackCommand::Replace { .. })
+                && self.together_external_room(token)?.is_some()
+            {
+                let actor = self.player.controller().await?;
+                let current = actor.command(token, PlaybackCommand::Snapshot).await?;
+                prepared.check(self, &current)?;
+            }
+        } else if self.player.selection.load(Ordering::Acquire) != attempt {
+            return Err(Error::StaleResponse);
+        }
+        let source_guard = if let Some(room) = prepared.and_then(|p| p.room_authority.clone()) {
+            Some(Cancellation::new(move || {
+                !room.is_cancelled()
+                    && source_guard
+                        .as_ref()
+                        .is_none_or(|source| !source.is_cancelled())
+            }))
+        } else {
+            source_guard
+        };
+        let (command, together) = self
+            .filter_together_external(
+                token,
+                command,
+                prepared.map(|p| &p.fence),
+                source_guard.as_ref(),
+            )
+            .await?;
+        let source_guard = if let Some(filtered) = &together {
+            let room = self.filtered_external_authority(filtered);
+            Some(Cancellation::new(move || {
+                !room.is_cancelled()
+                    && source_guard
+                        .as_ref()
+                        .is_none_or(|source| !source.is_cancelled())
+            }))
+        } else {
+            source_guard
+        };
+        let result = match (command, prepared, together.as_ref()) {
+            (
+                command @ PlaybackCommand::ApplyTogetherExternalQueue(_),
+                Some(prepared),
+                Some(room),
+            ) => {
+                self.submit_prepared_queue_edit(
+                    token,
+                    prepared,
+                    room.fence.clone(),
+                    command,
+                    source_guard.ok_or(Error::StaleResponse)?,
+                )
+                .await
+            }
+            (command, prepared, together) => {
+                self.submit_selection_authorized(
+                    token,
+                    command,
+                    attempt,
+                    lease,
+                    prepared,
+                    source_guard,
+                    together.map(|scope| &scope.fence),
+                )
+                .await
+            }
+        };
+        if result.is_ok()
+            && let Some(together) = together
+        {
+            let _ = self.finish_external_filter(together);
+        }
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn submit_selection_authorized(
+        &self,
+        token: &SessionToken,
+        command: PlaybackCommand,
+        attempt: u64,
+        lease: Option<u64>,
+        prepared: Option<&PreparedSelection>,
+        source_guard: Option<Cancellation>,
+        external_fence: Option<&crate::playback::controller::PlaybackFence>,
+    ) -> Result<PlaybackSnapshot> {
         let check_source = || {
             if source_guard
                 .as_ref()
@@ -396,11 +602,15 @@ impl MusicClient {
             }
             let lease = lease.ok_or(Error::StaleResponse)?;
             self.focus.check(lease, Owner::Audio)?;
-            if let Some(source) = source_guard {
+            if source_guard.is_some() || external_fence.is_some() {
                 // The last published view can still belong to the prior
                 // account. Bind and sync the actor before taking its fence.
                 let current = controller.command(token, PlaybackCommand::Snapshot).await?;
-                if source.is_cancelled() {
+                if source_guard
+                    .as_ref()
+                    .is_some_and(Cancellation::is_cancelled)
+                    || external_fence.is_some_and(|expected| current.fence() != *expected)
+                {
                     return Err(Error::QueueChanged);
                 }
                 if self.player.selection.load(Ordering::Acquire) != attempt {
@@ -415,7 +625,9 @@ impl MusicClient {
                         command,
                         current.fence(),
                         Cancellation::new(move || {
-                            !source.is_cancelled()
+                            source_guard
+                                .as_ref()
+                                .is_none_or(|source| !source.is_cancelled())
                                 && selection.load(Ordering::Acquire) == attempt
                                 && focus.check(lease, Owner::Audio).is_ok()
                         }),
@@ -427,6 +639,9 @@ impl MusicClient {
 
         // Sync an externally written queue before making any focus changes.
         let current = controller.command(token, PlaybackCommand::Snapshot).await?;
+        if external_fence.is_some_and(|expected| current.fence() != *expected) {
+            return Err(Error::QueueChanged);
+        }
         let (lease, reserved) = {
             let _slot = self
                 .player

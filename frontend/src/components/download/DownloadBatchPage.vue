@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, shallowRef } from 'vue';
-import type { AccountView, PlaylistView } from '../../services/contracts';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import type { AccountView, PlaylistView, TrackView } from '../../services/contracts';
 import { failure } from '../../services/contracts';
-import { downloadPlaybackReady, type DownloadQuery } from '../../services/downloads';
+import {
+  downloadPlaybackReady,
+  type DownloadCollectScope,
+  type DownloadQuery,
+} from '../../services/downloads';
 import type { BatchCategory } from '../../services/downloadBatch';
+import type { PlaylistMutationView } from '../../services/playlists';
 import type { DownloadModel } from '../../composables/useDownloads';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import type { PlayerModel } from '../../composables/usePlayer';
@@ -25,8 +30,9 @@ const props = defineProps<{
   playlists: PlaylistView[];
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
+const core = useCore();
 const batch = useDownloadBatch(
-  useCore(),
+  core,
   () => props.account,
   props.query,
   props.category,
@@ -35,6 +41,7 @@ const batch = useDownloadBatch(
 );
 const { rows, chosen, selected, order, loading, error, migration } = batch;
 const done = ref<HTMLButtonElement>(),
+  favorite = ref<HTMLButtonElement>(),
   dialog = ref<'collect' | 'delete'>(),
   confirmIds = shallowRef<string[]>([]),
   acting = ref(false),
@@ -51,9 +58,26 @@ const locked = computed(
 );
 const usable = computed(() => chosen.value.length > 0 && !locked.value);
 const playableSelection = computed(() => usable.value && chosen.value.every(downloadPlaybackReady));
-const collectable = computed(() =>
-  chosen.value.map((t) => t.track).filter((t) => !t.local && !t.missing),
-);
+const collection = shallowRef<{
+  scope: DownloadCollectScope;
+  tracks: TrackView[];
+  summary: { total: number; unsupported: number; duplicates: number };
+}>();
+function retireCollection(epoch: string, receipt: string) {
+  void core.downloadCollectCancel(epoch, receipt).catch(() => {});
+}
+function closeCollection() {
+  const scope = collection.value?.scope;
+  if (scope) retireCollection(scope.epoch, scope.receipt);
+  collection.value = undefined;
+  if (dialog.value === 'collect') dialog.value = undefined;
+}
+function showCollectionResult(result: PlaylistMutationView) {
+  if (!batch.active() || !collection.value) return;
+  failed.value = false;
+  message.value = result.phase === 'confirmed' ? '已收藏到歌单' : result.message;
+}
+onBeforeUnmount(closeCollection);
 onMounted(() => done.value?.focus({ preventScroll: true }));
 function requestLeave(continuation?: () => void) {
   if (dialog.value || acting.value || props.manager.busy.value) return;
@@ -106,6 +130,56 @@ async function play(queue: boolean) {
       fail(problem.message);
       if (['profile_changed', 'session_expired'].includes(problem.code)) emit('expired');
     }
+  } finally {
+    if (batch.active()) acting.value = false;
+  }
+}
+async function askCollect() {
+  if (!usable.value || dialog.value || !batch.active()) return;
+  const tasks = [...chosen.value];
+  if (tasks.length > 100) {
+    fail('单次最多收藏 100 项下载，请减少选择后重试。');
+    return;
+  }
+  const epoch = props.account.epoch;
+  const ids = tasks.map((task) => task.id);
+  acting.value = true;
+  failed.value = false;
+  message.value = '';
+  try {
+    const result = await core.downloadBatchCollectPrepare(epoch, ids);
+    const { receipt, acceptedTaskIds } = result.value;
+    if (!batch.active() || result.epoch !== epoch) {
+      retireCollection(epoch, receipt);
+      return;
+    }
+    const accepted = new Set(acceptedTaskIds);
+    const tracks = tasks.filter((task) => accepted.has(task.id)).map((task) => task.track);
+    if (
+      chosen.value.length !== ids.length ||
+      chosen.value.some((task, index) => task.id !== ids[index]) ||
+      !tracks.length ||
+      tracks.length !== acceptedTaskIds.length
+    ) {
+      retireCollection(epoch, receipt);
+      fail('所选下载已改变，请重新选择。');
+      return;
+    }
+    collection.value = {
+      scope: { epoch, receipt, canCreate: false, ownedOnly: true },
+      tracks,
+      summary: { total: tasks.length, unsupported: tasks.length - tracks.length, duplicates: 0 },
+    };
+    dialog.value = 'collect';
+  } catch (e) {
+    if (!batch.active()) return;
+    const problem = failure(e);
+    fail(
+      problem.code === 'invalid_input'
+        ? '所选下载没有可收藏的目录歌曲，或包含无法核对的记录。请选择其他下载。'
+        : problem.message,
+    );
+    if (['profile_changed', 'session_expired'].includes(problem.code)) emit('expired');
   } finally {
     if (batch.active()) acting.value = false;
   }
@@ -196,11 +270,7 @@ defineExpose({ requestLeave });
         >
           <Icon name="list" />添加到播放列表
         </button>
-        <button
-          v-if="category === 'song'"
-          :disabled="!usable || !collectable.length"
-          @click="dialog = 'collect'"
-        >
+        <button v-if="category === 'song'" ref="favorite" :disabled="!usable" @click="askCollect">
           <Icon name="star" />收藏
         </button>
         <button :disabled="!usable" @click="askDelete"><Icon name="trash" />删除</button>
@@ -235,14 +305,20 @@ defineExpose({ requestLeave });
       @all="batch.all"
       @sort="batch.sort"
     />
-    <ModalTransition :fallback-focus="() => done ?? null">
+    <ModalTransition
+      :return-focus="() => (collection ? (favorite ?? null) : null)"
+      :fallback-focus="() => done ?? null"
+    >
       <PlaylistCollectDialog
-        v-if="dialog === 'collect'"
+        v-if="dialog === 'collect' && collection"
         :manager="manager"
         :epoch="account.epoch"
-        :tracks="collectable"
+        :tracks="collection.tracks"
+        :selection-summary="collection.summary"
+        :download-collection="collection.scope"
         :playlists="playlists"
-        @close="dialog = undefined"
+        @close="closeCollection"
+        @collected="showCollectionResult"
         @expired="emit('expired')"
       />
       <DownloadBatchConfirm

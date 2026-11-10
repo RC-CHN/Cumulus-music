@@ -45,7 +45,7 @@ SHA256
   发送及恢复；独立Rust，不依赖Tauri/WebView/Python。
 - core/src/client/player/reports.rs：实际播放/歌词版本、本地匹配绑定和UI投影。
   标准歌曲及云盘编号沿用LyricTarget；本地音乐须有当前账号有效在线匹配，使用
-  匹配编号与本地歌词版本，不把路径或散列当成服务端歌曲编号。
+  同一匹配编号和实际展示的歌曲歌词版本，读取后再次核对来源。路径或散列不是服务端歌曲编号。
 - core/src/client/mini/reports.rs检查捕获的小窗媒体及音频所有权。
   desktop/src/player/reports.rs提供主窗open/read/types/submit/abandon窄IPC；
   desktop/src/mini/menu.rs的小窗mini_lyric_report检查代次/媒体后返回主窗，复用

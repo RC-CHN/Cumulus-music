@@ -16,13 +16,17 @@ pub struct Library {
     pub offline: AtomicBool,
     pub resume: tokio::sync::Notify,
     credits: bool,
+    matched: bool,
+    pub matched_calls: Mutex<Vec<Value>>,
+    pub matched_audio_requests: AtomicUsize,
     pub omit_credits: AtomicBool,
     pub credit_calls: Mutex<Vec<Value>>,
 }
 impl Library {
-    pub fn with_credit_proof(credits: bool) -> Self {
+    pub fn new(credits: bool, matched: bool) -> Self {
         Self {
             credits,
+            matched,
             ..Self::default()
         }
     }
@@ -36,6 +40,25 @@ impl Drop for Loading<'_> {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if self.matched && path.starts_with("/api/song/enhance/player/") {
+                self.matched_audio_requests.fetch_add(1, Ordering::AcqRel);
+                return Err(Error::Response("synthetic CUE proof refused online audio"));
+            }
+            if self.matched && path == "/api/song/lyric/v1" {
+                self.matched_calls.lock().unwrap().push(args.clone());
+                self.lyrics.fetch_add(1, Ordering::AcqRel);
+                if cache
+                    || args
+                        != json!({"id":super::matched_local_lyric_fixture::SONG_ID,
+                    "lv":-1,"tv":-1,"rv":-1,"yv":-1})
+                {
+                    return Err(Error::Response(
+                        "unexpected synthetic matched lyric request",
+                    ));
+                }
+                return Ok(json!({"code":200,"qfy":true,"sfy":true,"sgc":true,
+                    "lrc":{"version":17,"lyric":"[00:00]线上匹配歌词第一句\n[00:02]线上匹配歌词第二句"}}));
+            }
             if path != "/api/song/lyric/v1" {
                 if self.credits
                     && let Some(id) = path.strip_prefix("/api/w/v1/user/detail/")

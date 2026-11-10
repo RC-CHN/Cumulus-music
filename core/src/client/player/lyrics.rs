@@ -1,4 +1,9 @@
+mod bounty;
+pub use bounty::LyricBountyIntent;
+mod contribution;
 mod contributors;
+mod indexed;
+use indexed::IndexedLyricSelection;
 mod segment;
 use super::*;
 use crate::{
@@ -11,7 +16,9 @@ use crate::{
     playback::QueueEntry,
     protocol::api::ApiFuture,
 };
+pub use contribution::{LyricContribution, LyricToolbarAction};
 use std::path::{Path, PathBuf};
+use std::sync::Weak;
 
 #[derive(Clone, PartialEq)]
 struct ForgottenLyricSelection {
@@ -101,6 +108,7 @@ pub(super) struct ActiveLyrics {
     token: SessionToken,
     download: Option<DownloadLyricSource>,
     native: Option<NativeLyricSelection>,
+    indexed: Option<IndexedLyricSelection>,
     service: Arc<LyricsService>,
 }
 
@@ -117,6 +125,27 @@ pub(super) struct LyricContext {
     pub downloaded_audio: Option<PathBuf>,
     forgotten_entry: Option<QueueEntry>,
     native_open: bool,
+    indexed: Option<IndexedLyricSelection>,
+}
+
+pub(in crate::client) struct CachedPlayerLyrics {
+    pub revision: String,
+    pub value: LyricsView,
+    pub failed: bool,
+    pub indexed_source: Option<Weak<LyricsService>>,
+}
+
+impl LyricContext {
+    fn require_indexed_source(&self, source: &Weak<LyricsService>) -> Result<()> {
+        if self.indexed.is_none() || !same_indexed_source(source, &self.service) {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
+}
+
+fn same_indexed_source(expected: &Weak<LyricsService>, active: &Arc<LyricsService>) -> bool {
+    std::ptr::eq(expected.as_ptr(), Arc::as_ptr(active))
 }
 
 fn auxiliary(text: Option<&str>) -> Vec<crate::lyrics::LyricLine> {
@@ -141,6 +170,16 @@ impl MusicClient {
             .selected
             .as_ref()
             .ok_or(Error::State("no selected song"))?;
+        #[cfg(windows)]
+        if selected.resource["native_open_file"]
+            .get("held_id")
+            .is_some()
+        {
+            // The rooted audio grant contains no path for adjacent lyrics.
+            return Err(Error::State(
+                "rooted native audio does not include a lyric source",
+            ));
+        }
         let native = if let Some(value) = selected.resource.get("native_open_file") {
             let file: OpenedFile = serde_json::from_value(value.clone())?;
             let local: LocalResource = serde_json::from_value(selected.resource.clone())?;
@@ -152,24 +191,24 @@ impl MusicClient {
         } else {
             None
         };
+        let indexed = if native.is_none() && selected.resource["local_id"].is_string() {
+            let resource: LocalResource = serde_json::from_value(selected.resource.clone())?;
+            Some(
+                self.indexed_lyric_selection(
+                    &token,
+                    play_id,
+                    resource.local_id,
+                    resource.local_revision,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let target = if let Some(native) = &native {
             LyricTarget::Local(native.file.path.clone())
-        } else if selected.resource["local_id"].is_string() {
-            let resource: LocalResource = serde_json::from_value(selected.resource.clone())?;
-            let context = self.local.context().await?;
-            let path = tokio::task::spawn_blocking(move || {
-                let item = context.library.item(&resource.local_id)?;
-                let current = context.library.resource(&resource.local_id)?;
-                if current.local_revision != resource.local_revision
-                    || item.revision != resource.local_revision
-                {
-                    return Err(Error::QueueChanged);
-                }
-                Ok(item.path)
-            })
-            .await
-            .map_err(|_| Error::State("local lyric worker stopped"))??;
-            LyricTarget::Local(path)
+        } else if let Some(indexed) = &indexed {
+            indexed.target.clone()
         } else {
             let id = crate::protocol::api::identifier(&selected.resource["id"])?;
             if selected.resource["cloud_song_id"].as_str() == Some(id.as_str()) {
@@ -178,8 +217,11 @@ impl MusicClient {
                 LyricTarget::Song(id)
             }
         };
-        let download = match &target {
-            LyricTarget::Song(id) | LyricTarget::Cloud(id) => {
+        let download = match (&indexed, &target) {
+            (Some(_), LyricTarget::Song(id)) => {
+                indexed::downloaded_lyric_source(&self.session, &token, id)?
+            }
+            (_, LyricTarget::Song(id) | LyricTarget::Cloud(id)) => {
                 let cloud = matches!(target, LyricTarget::Cloud(_));
                 selected.resource["path"].as_str().and_then(|path| {
                     let (task_id, forgotten) = match selected.resource.get("download_task_id") {
@@ -215,13 +257,14 @@ impl MusicClient {
                     })
                 })
             }
-            LyricTarget::Local(_) => None,
+            (_, LyricTarget::Local(_)) => None,
         };
         let mut lyrics = self.player.lyrics.lock().map_err(|_| Error::LockPoisoned)?;
         let current = controller.snapshot();
         if current.account != token
             || current.play_id.as_deref() != Some(play_id)
-            || (native.is_some() && current.selected.as_ref() != Some(selected))
+            || ((native.is_some() || indexed.is_some())
+                && current.selected.as_ref() != Some(selected))
         {
             return Err(Error::StaleResponse);
         }
@@ -229,7 +272,10 @@ impl MusicClient {
         // The remote cache remains keyed by song/cloud ID. A downloaded
         // sidecar must never be a cached UI document for a different source.
         if lyrics.as_ref().is_none_or(|old| {
-            old.token != token || old.download != download || old.native != native
+            old.token != token
+                || old.download != download
+                || old.native != native
+                || old.indexed != indexed
         }) {
             let service = if let Some(source) = &download {
                 LyricsService::with_files(
@@ -252,6 +298,7 @@ impl MusicClient {
                 token: token.clone(),
                 download: download.clone(),
                 native,
+                indexed: indexed.clone(),
                 service: Arc::new(service),
             });
         }
@@ -260,6 +307,7 @@ impl MusicClient {
             service: lyrics.as_ref().expect("initialized").service.clone(),
             target,
             native_open,
+            indexed,
             forgotten_entry: download.as_ref().and_then(|source| {
                 source
                     .forgotten
@@ -273,6 +321,7 @@ impl MusicClient {
         &self,
         token: &SessionToken,
         play_id: &str,
+        target: &LyricTarget,
         value: LyricSnapshot,
         forgotten_entry: Option<&QueueEntry>,
     ) -> Result<LyricsView> {
@@ -292,6 +341,9 @@ impl MusicClient {
             require_current_entry(&self.session, token, expected)?;
         }
         let (lyric_contributor, translation_contributor) = contributors::project(&value, &player);
+        let resource = player.selected.as_ref().map(|entry| &entry.resource);
+        let contribution = contribution::option(&value, resource, target);
+        let toolbar_contributions = contribution::toolbar_actions(&value, resource, target);
         let lyric = value.lyric;
         let mut result = LyricsView {
             word_translation: auxiliary(lyric.yrc_info.yrc_trans.as_deref()),
@@ -306,6 +358,8 @@ impl MusicClient {
             romanization: lyric.roma_lyric_lines,
             lyric_contributor,
             translation_contributor,
+            contribution,
+            toolbar_contributions,
             words: lyric.yrc_info,
             offset: lyric.offset,
             scrollable: lyric.scrollable,
@@ -321,7 +375,11 @@ impl MusicClient {
             from_sidecar: value.from_sidecar,
             from_embedded: value.from_embedded,
         };
-        if let Some((start, length)) = segment::bounds(&player)? {
+        // Online lyrics are already in the selected song's clock. Only
+        // local file text is aligned to the physical album/CUE timeline.
+        if matches!(target, LyricTarget::Local(_))
+            && let Some((start, length)) = segment::bounds(&player)?
+        {
             segment::apply(&mut result, start, length);
         }
         result.from_sidecar &= !result.lines.is_empty();
@@ -336,9 +394,10 @@ impl MusicClient {
             downloaded_audio,
             forgotten_entry,
             native_open,
+            indexed,
         } = self.lyric_context(epoch, play_id).await?;
         let request = LyricRequest {
-            target,
+            target: target.clone(),
             demand: LyricDemand {
                 detail_page: true,
                 ..Default::default()
@@ -355,7 +414,11 @@ impl MusicClient {
             }
             service.fetch(request).await?
         };
-        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+        if let Some(indexed) = indexed {
+            self.require_indexed_lyric_selection(&token, indexed)
+                .await?;
+        }
+        self.lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
             .await
     }
     pub(in crate::client) async fn cached_player_lyrics(
@@ -363,30 +426,51 @@ impl MusicClient {
         epoch: &str,
         play_id: &str,
         observed: Option<&str>,
-    ) -> Result<Option<(String, LyricsView, bool)>> {
+        expected_source: Option<&Weak<LyricsService>>,
+    ) -> Result<Option<CachedPlayerLyrics>> {
+        let context = self.lyric_context(epoch, play_id).await?;
+        if let Some(source) = expected_source {
+            context.require_indexed_source(source)?;
+        }
         let LyricContext {
             token,
             service,
             target,
             forgotten_entry,
+            indexed,
             ..
-        } = self.lyric_context(epoch, play_id).await?;
+        } = context;
         let Some((revision, value)) = service.snapshot_if_changed(&target, observed)? else {
             return Ok(None);
         };
         let failed = value.is_lyric_fetch_failed;
-        Ok(Some((
+        Ok(Some(CachedPlayerLyrics {
             revision,
-            self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+            value: self
+                .lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
                 .await?,
             failed,
-        )))
+            indexed_source: indexed.map(|_| Arc::downgrade(&service)),
+        }))
+    }
+    pub(in crate::client) fn check_cached_indexed_lyrics(
+        &self,
+        expected: &Weak<LyricsService>,
+    ) -> Result<()> {
+        let active = self.player.lyrics.lock().map_err(|_| Error::LockPoisoned)?;
+        if active
+            .as_ref()
+            .is_none_or(|active| !same_indexed_source(expected, &active.service))
+        {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
     }
     /// Project the active shared document without refreshing its source.
     pub async fn player_cached_lyrics(&self, epoch: &str, play_id: &str) -> Result<LyricsView> {
-        self.cached_player_lyrics(epoch, play_id, None)
+        self.cached_player_lyrics(epoch, play_id, None, None)
             .await?
-            .map(|(_, document, _)| document)
+            .map(|cached| cached.value)
             .ok_or(Error::StaleResponse)
     }
     pub async fn lyric_preferences(
@@ -403,19 +487,33 @@ impl MusicClient {
             ..
         } = self.lyric_context(epoch, play_id).await?;
         let value = service.set_target_preferences(&target, preferences)?;
-        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+        self.lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
             .await
     }
     pub async fn lyric_offset(&self, epoch: &str, play_id: &str, gain: f64) -> Result<LyricsView> {
+        self.lyric_offset_for_source(epoch, play_id, gain, None)
+            .await
+    }
+    pub(in crate::client) async fn lyric_offset_for_source(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        gain: f64,
+        expected_source: Option<&Weak<LyricsService>>,
+    ) -> Result<LyricsView> {
+        let context = self.lyric_context(epoch, play_id).await?;
+        if let Some(source) = expected_source {
+            context.require_indexed_source(source)?;
+        }
         let LyricContext {
             token,
             service,
             target,
             forgotten_entry,
             ..
-        } = self.lyric_context(epoch, play_id).await?;
+        } = context;
         let value = service.adjust_target_offset(&target, gain)?;
-        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+        self.lyric_result(&token, play_id, &target, value, forgotten_entry.as_ref())
             .await
     }
 }

@@ -1,8 +1,10 @@
 //! Official stage ordering with account-scoped, recoverable download tasks.
+mod admission;
 mod authorize;
 mod batch;
 mod cloud;
 mod control;
+mod dispatch;
 pub(super) mod files;
 mod lyrics;
 mod manager;
@@ -14,7 +16,8 @@ mod records;
 mod run;
 mod scheduler;
 mod voice;
-pub(crate) use batch::SongBatchAdmission;
+pub(crate) use admission::CatalogAdmission;
+pub(crate) use batch::{ExistingSongAdmission, GuardedSongBatch, SongBatchAdmission};
 pub use manager::DownloadService;
 pub(super) use manager::{CONTROL as TASK_CONTROL, KIND as TASKS};
 pub(crate) use missing_playback::MissingCatalogDownload;

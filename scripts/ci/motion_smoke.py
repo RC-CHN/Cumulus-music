@@ -22,7 +22,7 @@ def set_webview2_motion_preference(env, *, reduced):
 
 
 def paint_checks(picture, payload):
-    """Check declared opaque padding/cover samples after CSS settles.
+    """Check declared opaque samples and small painted glyph regions after CSS settles.
 
     This detects a stale compositor frame, not whole-dialog visual correctness.
     Other probes without dialog coordinates still use their own settled checks.
@@ -35,22 +35,61 @@ def paint_checks(picture, payload):
         rect = dialog['rect']
         samples.append({'x': rect['left'] + 4, 'y': rect['top'] + rect['height'] / 2,
                         'color': dialog['background']})
-    for sample in samples:
-        color = re.fullmatch(r'rgb\((\d+), (\d+), (\d+)\)', sample['color'])
-        if color is None:
-            continue
+    def pixel(point):
         # CSS coordinates name a point inside a physical pixel, not its
         # nearest integer boundary. At 125%, rounding a right-hand outline
-        # sample can move it into the adjacent background pixel.
-        x = math.floor((payload.get('screenX', 0) + sample['x']) * ratio)
-        y = math.floor((payload.get('screenY', 0) + sample['y']) * ratio)
-        expected = tuple(map(int, color.groups()))
+        # sample can move it to the adjacent background pixel.
+        x = math.floor((payload.get('screenX', 0) + point['x']) * ratio)
+        y = math.floor((payload.get('screenY', 0) + point['y']) * ratio)
         if not (0 <= x < picture.get_width() and 0 <= y < picture.get_height()):
             raise AssertionError('paint sample outside captured root window')
         offset = y * picture.get_rowstride() + x * picture.get_n_channels()
-        actual = tuple(picture.get_pixels()[offset:offset + 3])
-        checks.append({'point': [x, y], 'expected': expected, 'actual': actual,
-                       'ok': actual == expected})
+        return [x, y], list(picture.get_pixels()[offset:offset + 3])
+
+    for sample in samples:
+        color = re.fullmatch(r'rgb\((\d+), (\d+), (\d+)\)', sample['color'])
+        alpha = re.fullmatch(r'rgba\((\d+), (\d+), (\d+), (0(?:\.\d+)?|1)\)', sample['color'])
+        under = sample.get('under')
+        if color is not None:
+            expected = list(map(int, color.groups()))
+            tolerance = 0
+        elif alpha is not None and under is not None:
+            # A neighboring point on the same painted rail records its
+            # actual color, including the active track and buffered fill.
+            _, base = pixel(under)
+            opacity = float(alpha[4])
+            expected = [round(int(alpha[i + 1]) * opacity + base[i] * (1 - opacity)) for i in range(3)]
+            tolerance = 1  # 8-bit compositor rounding
+        else:
+            continue
+        point, actual = pixel(sample)
+        checks.append({'point': point, 'expected': expected, 'actual': actual,
+                       'ok': all(abs(a - b) <= tolerance for a, b in zip(actual, expected, strict=True))})
+    regions = payload.get('paintRegions', [])
+    if regions:
+        pixels = picture.get_pixels()
+        stride, channels = picture.get_rowstride(), picture.get_n_channels()
+        for region in regions:
+            color = re.fullmatch(r'rgb\((\d+), (\d+), (\d+)\)', region['color'])
+            assert color is not None, 'expected an opaque paint region color'
+            expected = list(map(int, color.groups()))
+            left, top = (payload.get('screenX', 0) + region['left'],
+                         payload.get('screenY', 0) + region['top'])
+            x0, y0 = math.floor(left * ratio), math.floor(top * ratio)
+            x1, y1 = (math.ceil((left + region['width']) * ratio),
+                      math.ceil((top + region['height']) * ratio))
+            assert (0 <= x0 < x1 <= picture.get_width() and 0 <= y0 < y1 <= picture.get_height()
+                    and x1 - x0 <= 64 and y1 - y0 <= 64), 'paint region outside captured root window'
+            count = 0
+            # Small antialiased SVG marks need not paint an exact RGB pixel.
+            for y in range(y0, y1):
+                for x in range(x0, x1):
+                    offset = y * stride + x * channels
+                    if max(abs(a - b) for a, b in zip(pixels[offset:offset + 3], expected, strict=True)) <= 75:
+                        count += 1
+            checks.append({'region': region['name'], 'rect': [x0, y0, x1, y1],
+                           'expected': expected, 'nearColorPixels': count, 'present': region['present'],
+                           'ok': count >= 3 if region['present'] else count == 0})
     return checks
 
 

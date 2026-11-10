@@ -80,6 +80,14 @@ impl TogetherService {
         {
             return Err(Error::MutationUncertain);
         }
+        if self
+            .state_for(token)?
+            .end_notice
+            .as_ref()
+            .is_some_and(|notice| notice.room_id == room && notice.queue_loss.is_some())
+        {
+            return Err(Error::State("confirm the together room loss first"));
+        }
         let found = self
             .status(token)
             .await?
@@ -92,6 +100,7 @@ impl TogetherService {
             WriteIntent::End {
                 room_id: room.into(),
                 count,
+                queue_loss_report: None,
             },
             now,
         )
@@ -269,7 +278,7 @@ impl TogetherService {
                             is_new: false,
                         })
                     }),
-                    WriteIntent::End { room_id, count } => {
+                    WriteIntent::End { room_id, count, .. } => {
                         api.end(room_id, *count).await.map(|()| None)
                     }
                     WriteIntent::Queue {
@@ -303,6 +312,31 @@ impl TogetherService {
                 } else {
                     TogetherPhase::Uncertain
                 };
+                if let WriteIntent::Queue { room_id, .. } = &op.intent
+                    && matches!(
+                        state.role,
+                        Some(RoomRole::TogetherOwner | RoomRole::Together)
+                    )
+                    && state.end_notice.is_none()
+                    && super::lifecycle::queue_report_room_loss(&error)
+                {
+                    state.end_notice = Some(EndNotice {
+                        room_id: room_id.clone(),
+                        received_at_ms: now,
+                        queue_loss: Some(super::lifecycle::QueueRoomLoss {
+                            report_id: op.id.clone(),
+                            end_sent: false,
+                        }),
+                    });
+                    match self
+                        .session
+                        .with_token(token, |owner| self.save(owner, &state, Some(&op)))
+                    {
+                        Err(Error::StaleResponse) => self.save_operation(&owner, &op)?,
+                        result => result?,
+                    }
+                    return Err(error);
+                }
                 // This obligation remains with the originating account if a
                 // response races logout/switch; it cannot reach the new UI.
                 if op.phase == TogetherPhase::Rejected

@@ -214,11 +214,36 @@ pub async fn latest_releases(
 }
 
 #[tauri::command]
-pub async fn discovery_home(
+pub async fn discovery_home<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
 ) -> Result<AccountData<cumulus_core::client::discovery_home::DiscoveryHomePage>, ClientError> {
+    require_home_window(window.label())?;
     client.discovery_home(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn acknowledge_home_recall_guide<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    require_home_window(window.label())?;
+    client
+        .acknowledge_home_recall_guide(&epoch, &receipt)
+        .map_err(Into::into)
+}
+
+fn require_home_window(label: &str) -> Result<(), ClientError> {
+    if label != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "homepage discovery requires the main window",
+        )
+        .into());
+    }
+    Ok(())
 }
 
 #[tauri::command]

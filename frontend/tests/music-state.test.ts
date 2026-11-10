@@ -47,6 +47,7 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     watchPlayer: unused,
     playSelection: unused,
     effectCatalogue: unused,
+    effectDirectoryOverview: unused,
     effectDetail: unused,
     effectDeviceBrands: unused,
     effectDeviceModels: unused,
@@ -782,4 +783,198 @@ test('late style Back lookup cannot fetch or replace another page', async () => 
   assert.deepEqual(calls, ['fresh', 'back']);
   assert.deepEqual(music.page.value, { kind: 'daily' });
   assert.equal(music.result.value?.revision, null);
+});
+
+test('offline playlist pagination never blends live rows into a cached prefix', async () => {
+  const cached: TrackPage = {
+    ...page,
+    playlist: {
+      id: '73',
+      name: 'cache',
+      coverUrl: null,
+      description: '',
+      creator: '',
+      trackCount: 2,
+      owned: true,
+      private: true,
+      favorite: false,
+    },
+    revision: 'raw',
+    total: 2,
+    more: true,
+    playlistLocal: { revision: 'overlay', hasMembers: false, rows: {} },
+    playlistOffline: { cachedAtMs: 1000 },
+    tracks: [{ ...song, missing: true }],
+  };
+  const reconnect = deferred<AccountData<TrackPage>>();
+  let reads = 0;
+  const music = useMusic(
+    backend({
+      playlistPage: async (_id, request) => {
+        reads++;
+        if (reads === 1) return data(cached);
+        if (reads === 2) {
+          assert.equal(request?.offset, 1);
+          assert.equal(request?.localRevision, 'overlay');
+          return data({
+            ...cached,
+            offset: 1,
+            more: false,
+            playlistOffline: undefined,
+            tracks: [song],
+          });
+        }
+        assert.equal(request?.offset, 0);
+        assert.equal(request?.revision, null);
+        return reconnect.promise;
+      },
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'playlist', id: '73' });
+  await turn();
+  assert.equal(music.result.value, cached);
+  await music.load(true);
+  assert.equal(music.result.value, cached);
+  assert.match(music.error.value, /联网状态/);
+  const pending = music.retryOfflinePlaylist();
+  assert.equal(music.result.value, cached);
+  assert.equal(music.retryOfflinePlaylist(), undefined);
+  const live = { ...cached, playlistOffline: undefined, tracks: [song] };
+  reconnect.resolve(data(live));
+  await pending;
+  assert.equal(music.result.value, live);
+  assert.equal(music.error.value, '');
+});
+
+test('a hard denial on explicit retry removes the previously visible private cache', async () => {
+  const cached: TrackPage = {
+    ...page,
+    playlist: {
+      id: '73',
+      name: 'cache',
+      coverUrl: null,
+      description: '',
+      creator: '',
+      trackCount: 1,
+      owned: true,
+      private: true,
+      favorite: false,
+    },
+    playlistOffline: { cachedAtMs: 1000 },
+  };
+  let allowed = true;
+  const music = useMusic(
+    backend({
+      playlistPage: async () => {
+        if (!allowed) throw { code: 'service', message: '拒绝访问' };
+        return data(cached);
+      },
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'playlist', id: '73' });
+  await turn();
+  assert.equal(music.result.value, cached);
+  allowed = false;
+  await music.retryOfflinePlaylist();
+  assert.equal(music.result.value, undefined);
+  assert.equal(music.error.value, '拒绝访问');
+});
+
+test('an offline continuation cannot leave actionable live rows on the screen', async () => {
+  const live: TrackPage = {
+    ...page,
+    playlist: {
+      id: '73',
+      name: 'cache',
+      coverUrl: null,
+      description: '',
+      creator: '',
+      trackCount: 2,
+      owned: true,
+      private: true,
+      favorite: false,
+    },
+    revision: 'raw',
+    total: 2,
+    more: true,
+  };
+  const music = useMusic(
+    backend({
+      playlistPage: async (_id, request) =>
+        data(
+          request?.offset
+            ? {
+                ...live,
+                offset: 1,
+                more: false,
+                playlistOffline: { cachedAtMs: 1000 },
+                tracks: [{ ...song, missing: true }],
+              }
+            : live,
+        ),
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'playlist', id: '73' });
+  await turn();
+  assert.equal(music.result.value, live);
+  await music.load(true);
+  assert.equal(music.result.value, undefined);
+  assert.match(music.error.value, /联网状态/);
+});
+
+test('cached pagination retains per-page download hints only within the same snapshot', async () => {
+  const cached: TrackPage = {
+    ...page,
+    playlist: {
+      id: '73',
+      name: 'cache',
+      coverUrl: null,
+      description: '',
+      creator: '',
+      trackCount: 3,
+      owned: true,
+      private: true,
+      favorite: false,
+    },
+    revision: 'raw',
+    total: 3,
+    more: true,
+    playlistLocal: { revision: 'overlay', hasMembers: false, rows: {} },
+    playlistOffline: { cachedAtMs: 1000, downloadIds: ['701'] },
+    tracks: [{ ...song, id: '701' }],
+  };
+  const music = useMusic(
+    backend({
+      playlistPage: async (_id, request) => {
+        if (request?.offset === 1)
+          return data({
+            ...cached,
+            offset: 1,
+            tracks: [{ ...song, id: '702' }],
+            playlistOffline: { cachedAtMs: 1000, downloadIds: ['702'] },
+          });
+        if (request?.offset === 2)
+          return data({
+            ...cached,
+            offset: 2,
+            more: false,
+            tracks: [{ ...song, id: '703' }],
+            playlistOffline: { cachedAtMs: 2000, downloadIds: ['703'] },
+          });
+        return data(cached);
+      },
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'playlist', id: '73' });
+  await turn();
+  await music.load(true);
+  assert.deepEqual(music.result.value?.playlistOffline?.downloadIds, ['701', '702']);
+  await music.load(true);
+  assert.deepEqual(music.result.value?.playlistOffline?.downloadIds, ['701', '702']);
+  assert.equal(music.result.value?.tracks.length, 2);
+  assert.match(music.error.value, /联网状态/);
 });

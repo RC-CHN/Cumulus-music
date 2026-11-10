@@ -1,4 +1,8 @@
 pub mod intelligence;
+pub mod lyric_bounty;
+mod native_authority;
+#[cfg(any(windows, test))]
+mod native_quit;
 pub mod power;
 pub mod quality;
 pub mod reports;
@@ -13,6 +17,11 @@ use cumulus_core::{
     lyrics::LyricPreferences,
     playback::controller::OrdinarySkipNotice,
 };
+use native_authority::{Lease, RevokeOnDrop};
+#[cfg(windows)]
+pub(crate) use native_quit::Recovery as NativeQuitRecovery;
+#[cfg(windows)]
+use native_quit::{Gate as NativeQuitGate, Permit as NativeQuitPermit};
 use serde::Serialize;
 use std::{collections::HashMap, sync::Mutex};
 use tauri::{Manager, ipc::Channel};
@@ -20,52 +29,117 @@ use tauri::{Manager, ipc::Channel};
 struct Running {
     id: String,
     epoch: u64,
+    lease: Lease,
     task: Option<tauri::async_runtime::JoinHandle<()>>,
 }
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        self.lease.revoke();
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+#[cfg(windows)]
+#[derive(Clone)]
+pub(crate) struct NativeOpenPermit {
+    pub(crate) epoch: String,
+    lease: Lease,
+    quit: NativeQuitPermit,
+}
+
+#[cfg(windows)]
+impl NativeOpenPermit {
+    pub(crate) fn ready(&self) -> bool {
+        self.lease.ready() && self.quit.active()
+    }
+}
+
 #[derive(Default)]
-pub struct PlayerStreams(Mutex<HashMap<String, Running>>);
+pub struct PlayerStreams {
+    streams: Mutex<HashMap<String, Running>>,
+    #[cfg(windows)]
+    native_quit: NativeQuitGate,
+}
 impl PlayerStreams {
-    fn reserve(&self, window: &str, id: &str, epoch: u64) -> cumulus_core::Result<()> {
-        let mut values = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+    fn reserve(&self, window: &str, id: &str, epoch: u64) -> cumulus_core::Result<Lease> {
+        let mut values = self.streams.lock().map_err(|_| Error::LockPoisoned)?;
         if values
             .get(window)
             .is_some_and(|current| current.epoch > epoch)
         {
             return Err(Error::StaleResponse);
         }
-        if let Some(Running {
-            task: Some(old), ..
-        }) = values.insert(
+        let lease = Lease::default();
+        values.insert(
             window.into(),
             Running {
                 id: id.into(),
                 epoch,
+                lease: lease.clone(),
                 task: None,
             },
-        ) {
-            old.abort();
-        }
-        Ok(())
+        );
+        Ok(lease)
     }
+
+    #[cfg(any(target_os = "linux", windows))]
+    fn ready_lease(&self, epoch: &str) -> Option<Lease> {
+        let values = self.streams.lock().ok()?;
+        let current = values.get("main")?;
+        (current.epoch.to_string() == epoch
+            && current.lease.ready()
+            && current
+                .task
+                .as_ref()
+                .is_some_and(|task| !task.inner().is_finished()))
+        .then(|| current.lease.clone())
+    }
+
     #[cfg(target_os = "linux")]
     pub(crate) fn ready_for_native_open(&self, epoch: &str) -> bool {
-        self.0.lock().is_ok_and(|values| {
-            values
-                .get("main")
-                .is_some_and(|current| current.task.is_some() && current.epoch.to_string() == epoch)
+        self.ready_lease(epoch).is_some()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn native_open_permit(&self, epoch: String) -> Option<NativeOpenPermit> {
+        Some(NativeOpenPermit {
+            lease: self.ready_lease(&epoch)?,
+            quit: self.native_quit.permit()?,
+            epoch,
         })
     }
 
+    #[cfg(windows)]
+    pub(crate) fn close_native_open_for_quit(&self) -> Option<NativeQuitRecovery> {
+        self.native_quit.close()
+    }
+
+    #[cfg(windows)]
+    fn take_pending_native_open(
+        &self,
+        lease: &Lease,
+        epoch: u64,
+        pending: &crate::native_open::Pending,
+    ) -> Option<(Vec<std::path::PathBuf>, NativeQuitPermit)> {
+        let values = self.streams.lock().ok()?;
+        let current = values.get("main")?;
+        if !current.lease.same(lease) || !lease.active() {
+            return None;
+        }
+        let quit = self.native_quit.permit()?;
+        Some((pending.take_for_epoch(epoch)?, quit))
+    }
+
     pub fn stop(&self, window: &str, id: Option<&str>) {
-        if let Ok(mut values) = self.0.lock()
+        if let Ok(mut values) = self.streams.lock()
             && values
                 .get(window)
                 .is_some_and(|current| id.is_none_or(|id| id == current.id))
-            && let Some(Running {
-                task: Some(task), ..
-            }) = values.remove(window)
         {
-            task.abort();
+            values.remove(window);
         }
     }
 }
@@ -104,9 +178,11 @@ pub async fn watch_player<R: tauri::Runtime>(
     let generation = epoch
         .parse()
         .map_err(|_| ClientError::from(Error::InvalidInput("invalid epoch")))?;
-    streams
+    let lease = streams
         .reserve(window.label(), &stream_id, generation)
         .map_err(ClientError::from)?;
+    let mut registration = RevokeOnDrop::new(&lease);
+    #[cfg(not(windows))]
     let native_open_error = if window.label() == "main"
         && let Some(pending) = window.try_state::<crate::native_open::Pending>()
         && let Some(paths) = pending.take()
@@ -132,24 +208,46 @@ pub async fn watch_player<R: tauri::Runtime>(
     } else {
         None
     };
+    #[cfg(windows)]
+    let native_open_error = if window.label() == "main"
+        && let Some(pending) = window.try_state::<crate::native_open::Pending>()
+        && let Some((paths, quit)) = streams.take_pending_native_open(&lease, generation, &pending)
+    {
+        let opening = lease.clone();
+        let authority = cumulus_core::playback::engine::Cancellation::new(move || {
+            opening.active() && quit.active()
+        });
+        client
+            .play_windows_native_open_files(&epoch, paths, authority)
+            .await
+            .err()
+            .map(crate::native_open::public_error)
+    } else {
+        None
+    };
+    // Account access happens outside the stream map lock. The exact lease
+    // is checked again before publishing this first state.
+    let initial = source.current().map_err(ClientError::from)?;
     let mut values = streams
-        .0
+        .streams
         .lock()
         .map_err(|_| ClientError::from(Error::LockPoisoned))?;
     let Some(current) = values.get_mut(window.label()) else {
         return Err(Error::Cancelled.into());
     };
-    if current.id != stream_id {
+    if !current.lease.same(&lease) {
         return Err(Error::Cancelled.into());
     }
     on_update
         .send(PlayerUpdate::State {
-            value: Box::new(source.current().map_err(ClientError::from)?),
+            value: Box::new(initial),
             native_open_error,
         })
         .map_err(|_| ClientError::from(Error::Cancelled))?;
     let app = window.app_handle().clone();
-    current.task = Some(tauri::async_runtime::spawn(async move {
+    let task_revocation = RevokeOnDrop::new(&lease);
+    let task = tauri::async_runtime::spawn(async move {
+        let _task_revocation = task_revocation;
         loop {
             let event = tokio::select! {
                 next = source.changed() => match next {
@@ -186,7 +284,13 @@ pub async fn watch_player<R: tauri::Runtime>(
                 break;
             }
         }
-    }));
+    });
+    if !lease.install() {
+        task.abort();
+        return Err(Error::Cancelled.into());
+    }
+    current.task = Some(task);
+    registration.disarm();
     Ok(())
 }
 #[tauri::command]
@@ -253,6 +357,27 @@ pub async fn player_action<R: tauri::Runtime>(
     ) && window.label() != "main"
     {
         return Err(Error::InvalidInput("podcast program queue requires the main window").into());
+    }
+    if matches!(
+        &action,
+        PlayerAction::QueueOfflinePlaylist { .. } | PlayerAction::QueueSortedPlaylist { .. }
+    ) && window.label() != "main"
+    {
+        return Err(Error::InvalidInput("cached playlist queue requires the main window").into());
+    }
+    if matches!(&action, PlayerAction::SearchGroupNextPlay { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("search selection requires the main window").into());
+    }
+    #[cfg(windows)]
+    if matches!(&action, PlayerAction::Startup)
+        && window.label() == "main"
+        && window
+            .try_state::<crate::native_open::Pending>()
+            .is_some_and(|pending| pending.blocks_startup(&epoch))
+    {
+        // An explicit process launch is one-shot. If a rebind superseded the
+        // opening stream, the replacement cannot autoplay the restored queue.
+        return client.player_snapshot(&epoch).await.map_err(Into::into);
     }
     client
         .player_action(&epoch, action)
@@ -371,6 +496,146 @@ pub async fn player_queue_catalog_menu<R: tauri::Runtime>(
         .player_queue_catalog_menu(&epoch, &revision, &entry_id)
         .await
         .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_queue_open_catalog_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue catalog directory requires the main window").into());
+    }
+    let reveal = client
+        .player_queue_catalog_file_reveal(&epoch, &revision, &entry_id, &receipt)
+        .await?;
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        let client = app.state::<MusicClient>();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                reveal.check_current(&client),
+            )
+            .await
+            .map_err(|_| Error::State("queue catalog file validation timed out"))?
+        })
+    })
+    .await
+    .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_queue_voice_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<QueueVoiceMenu, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue voice menu requires the main window").into());
+    }
+    client
+        .player_queue_voice_menu(
+            &epoch,
+            &revision,
+            &entry_id,
+            crate::network_diagnostics::observed_default_route(&window),
+        )
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_queue_open_voice_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue voice directory requires the main window").into());
+    }
+    let reveal = client
+        .player_queue_voice_file_reveal(&epoch, &revision, &entry_id)
+        .await?;
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        let client = app.state::<MusicClient>();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                reveal.check_current(&client),
+            )
+            .await
+            .map_err(|_| Error::State("queue voice file reveal validation timed out"))?
+        })
+    })
+    .await
+    .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_queue_open_local_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue local directory requires the main window").into());
+    }
+    let reveal = client
+        .player_queue_local_file_reveal(&epoch, &revision, &entry_id)
+        .await?;
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        let client = app.state::<MusicClient>();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                reveal.check_current(&client),
+            )
+            .await
+            .map_err(|_| Error::State("queue local file validation timed out"))?
+        })
+    })
+    .await
+    .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_queue_open_download_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(
+            Error::InvalidInput("queue download directory requires the main window").into(),
+        );
+    }
+    let reveal = client
+        .player_queue_download_file_reveal(&epoch, &revision, &entry_id)
+        .await?;
+    let app = window.app_handle().clone();
+    crate::file_manager::reveal_file_checked(reveal.path().to_owned(), move || {
+        let client = app.state::<MusicClient>();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                reveal.check_current(&client),
+            )
+            .await
+            .map_err(|_| Error::State("queue download file validation timed out"))?
+        })
+    })
+    .await
+    .map_err(Into::into)
 }
 #[tauri::command]
 pub async fn player_chorus(
@@ -540,6 +805,43 @@ pub async fn player_lyrics(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn lyric_contribution_open<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    launch_lyric_contribution(client.lyric_contribution_url(&epoch, &play_id).await?).await
+}
+
+#[tauri::command]
+pub async fn lyric_toolbar_contribution_open<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    action: LyricToolbarAction,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    let url = client
+        .lyric_toolbar_contribution_url(&epoch, &play_id, action)
+        .await?;
+    launch_lyric_contribution(url).await
+}
+
+async fn launch_lyric_contribution(url: String) -> Result<(), ClientError> {
+    tauri::async_runtime::spawn_blocking(move || crate::browser::launch(&url))
+        .await
+        .map_err(|_| Error::State("browser worker stopped"))?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn lyric_preferences(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
@@ -573,6 +875,115 @@ pub fn close<R: tauri::Runtime>(window: &tauri::Window<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn warm_file_open_requires_a_live_main_subscription() {
+        let streams = PlayerStreams::default();
+        let lease = streams.reserve("main", "player", 42).unwrap();
+        assert!(!streams.ready_for_native_open("42"));
+        let (finish, waiting) = tokio::sync::oneshot::channel::<()>();
+        let task = tauri::async_runtime::spawn(async move {
+            let _ = waiting.await;
+        });
+        streams
+            .streams
+            .lock()
+            .unwrap()
+            .get_mut("main")
+            .unwrap()
+            .task = Some(task);
+        assert!(lease.install());
+        assert!(streams.ready_for_native_open("42"));
+        assert!(!streams.ready_for_native_open("43"));
+        finish.send(()).unwrap();
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while streams.ready_for_native_open("42") {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+        });
+        // The terminated handle is still present until the WebView unbinds.
+        assert!(
+            streams
+                .streams
+                .lock()
+                .unwrap()
+                .get("main")
+                .unwrap()
+                .task
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn same_epoch_rebind_never_resurrects_a_captured_permit() {
+        let streams = PlayerStreams::default();
+        let first = streams.reserve("main", "same-id", 42).unwrap();
+        assert!(first.install());
+        let next = streams.reserve("main", "same-id", 42).unwrap();
+        assert!(!first.ready());
+        assert!(!first.install());
+        assert!(!first.same(&next));
+        let guard = RevokeOnDrop::new(&next);
+        let unpolled = async move { drop(guard) };
+        drop(unpolled);
+        assert!(!next.install());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn pending_open_is_bound_once_and_suppresses_startup_after_a_same_epoch_rebind() {
+        let streams = PlayerStreams::default();
+        let pending = crate::native_open::Pending::from_args(["--play".into()].into_iter());
+        let old = streams.reserve("main", "first", 42).unwrap();
+        let (paths, quit) = streams
+            .take_pending_native_open(&old, 42, &pending)
+            .unwrap();
+        assert!(paths.is_empty());
+        assert!(quit.active());
+        let replacement = streams.reserve("main", "replacement", 42).unwrap();
+        assert!(!old.active());
+        assert!(
+            streams
+                .take_pending_native_open(&replacement, 42, &pending)
+                .is_none()
+        );
+        assert!(pending.blocks_startup("42"));
+        assert!(!pending.blocks_startup("43"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn confirmed_quit_cancels_a_consumed_cold_selection_without_enabling_old_startup() {
+        let streams = PlayerStreams::default();
+        let pending = crate::native_open::Pending::from_args(["--play".into()].into_iter());
+        let lease = streams.reserve("main", "first", 42).unwrap();
+        let first_quit = streams.close_native_open_for_quit().unwrap();
+        assert!(
+            streams
+                .take_pending_native_open(&lease, 42, &pending)
+                .is_none()
+        );
+        assert!(pending.blocks_startup("42"));
+        assert!(first_quit.reopen());
+        let (_, permit) = streams
+            .take_pending_native_open(&lease, 42, &pending)
+            .unwrap();
+        let second_quit = streams.close_native_open_for_quit().unwrap();
+        assert!(second_quit.reopen());
+        assert!(!permit.active());
+        assert!(
+            streams
+                .take_pending_native_open(&lease, 42, &pending)
+                .is_none()
+        );
+        assert!(pending.blocks_startup("42"));
+        assert!(!pending.blocks_startup("43"));
+    }
+
     #[test]
     fn old_account_subscription_and_late_unwatch_cannot_remove_the_new_stream() {
         let streams = PlayerStreams::default();
@@ -583,8 +994,11 @@ mod tests {
             Err(Error::StaleResponse)
         ));
         streams.stop("main", Some("old"));
-        assert_eq!(streams.0.lock().unwrap().get("main").unwrap().id, "new");
+        assert_eq!(
+            streams.streams.lock().unwrap().get("main").unwrap().id,
+            "new"
+        );
         streams.stop("main", Some("new"));
-        assert!(streams.0.lock().unwrap().is_empty());
+        assert!(streams.streams.lock().unwrap().is_empty());
     }
 }

@@ -63,6 +63,14 @@ fn main() {
                         "hold_end"=>{api.end_started.store(false,Ordering::SeqCst);api.hold_end.store(true,Ordering::SeqCst);},
                         "release_end"=>{api.hold_end.store(false,Ordering::SeqCst);api.end_release.notify_one();},
                         "lose_end"=>api.drop_end.store(true,Ordering::SeqCst),
+                        "reject_queue_loss"=>api.queue_rejection.store(488,Ordering::SeqCst),
+                        "hold_im_close"=>im.hold_close.store(true,Ordering::SeqCst),
+                        "release_im_close"=>im.hold_close.store(false,Ordering::SeqCst),
+                        "wait_im_close_started"=>tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                            while !im.close_started.load(Ordering::SeqCst) {
+                                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                            }
+                        }).await.unwrap(),
                         "fail_statistics"=>api.fail_statistics.store(true,Ordering::SeqCst),
                         "peer"=>{
                             api.state.lock().unwrap().peer=true;
@@ -88,6 +96,9 @@ fn main() {
                     .filter(|(path,_)|path.ends_with("statistics/get/v2")).count());
                 value["endStarted"]=json!(api.end_started.load(Ordering::SeqCst));
                 value["imClosed"]=json!(im.closed.load(Ordering::SeqCst));
+                value["imCloseStarted"]=json!(im.close_started.load(Ordering::SeqCst));
+                value["queueReports"]=json!(api.calls.lock().unwrap().iter()
+                    .filter(|(path,_)|path.ends_with("sync/list/command/report")).count());
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await{return;}
                 if stage.starts_with("ux_") {
@@ -95,6 +106,7 @@ fn main() {
                 }
                 if ["complete","failed"].contains(&stage.as_str()) {
                     api.hold_end.store(false,Ordering::SeqCst);api.end_release.notify_one();
+                    im.hold_close.store(false,Ordering::SeqCst);
                     let clean=client.close_together().await.is_ok()&&!client.has_together_cleanup().unwrap_or(true);
                     fs::write(output.join("host-final.json"),serde_json::to_vec_pretty(&json!({"clean":clean,"fixtureApi":true,"fixtureIm":true,"fixtureAudio":true,"realMusicRequests":0,"realAccountWrites":0,"realPeerVerified":false,"physicalAudioOutputVerified":false})).unwrap()).unwrap();
                     handle.exit(if stage=="complete"&&clean{0}else{1});
@@ -104,7 +116,12 @@ fn main() {
         tauri::WebviewWindowBuilder::from_config(app,&config)?.data_directory(root.join("webview")).build()?;
         Ok(())
     }).on_page_load(|window,event|{if event.event()==PageLoadEvent::Finished{
-        let script=include_str!("queue_room_ui_probe.js");
+        let script=if std::env::var("CUMULUS_PROOF_QUEUE_ROOM_LOSS").as_deref()==Ok("1") {
+            concat!("window.__queueRoomLossProof=true;
+", include_str!("queue_room_ui_probe.js"))
+        } else {
+            include_str!("queue_room_ui_probe.js")
+        };
         if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1"){window.eval(capture_ack::script(script)).unwrap();}
         else {window.eval(script).unwrap();}
     }})

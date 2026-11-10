@@ -5,76 +5,21 @@ identity covers every installed dependency plus the recipe and build scripts;
 cached packages are authenticated and the installed filter is checked every run.
 """
 import argparse
-import hashlib
-import http.client
 import json
 import os
 from pathlib import Path
 import re
-import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
-import urllib.error
-import urllib.request
+import uuid
 
-ROOT = Path(__file__).resolve().parents[2]
-HERE = Path(__file__).resolve().parent
-BUILD = ROOT / '.build/windows-media'
-PACKAGE = 'mingw-w64-ucrt-x86_64-ffmpeg'
-
-
-def sha256(path):
-    with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
-
-
-def configuration(version):
-    line = next(line for line in version.splitlines() if line.lstrip().startswith('configuration:'))
-    return shlex.split(line.split('configuration:', 1)[1])
-
-
-def patch_recipe(original):
-    """Fail closed when the locked upstream recipe no longer has this shape."""
-    replacements = [
-        ('pkgrel=3\n', 'pkgrel=3.2\n'),
-        ('    --enable-gpl\n', '    --enable-gpl\n    --enable-ladspa\n'),
-        ('depends=("${MINGW_PACKAGE_PREFIX}-aom"',
-         'depends=("${MINGW_PACKAGE_PREFIX}-dlfcn"\n         "${MINGW_PACKAGE_PREFIX}-aom"'),
-        ('makedepends=("${MINGW_PACKAGE_PREFIX}-cc"',
-         'makedepends=("${MINGW_PACKAGE_PREFIX}-ladspa-sdk"\n             "${MINGW_PACKAGE_PREFIX}-cc"'),
-        ('${_realname}-${pkgver}.tar.xz{,.asc}', '${_realname}-${pkgver}.tar.xz'),
-        ("            'SKIP'\n", ''),
-        ('  mv VERSION VERSION.txt\n',
-         '  mv VERSION VERSION.txt\n  patch -Nbp1 -i "${startdir}/ffmpeg-ladspa-windows.patch"\n'),
-    ]
-    result = original
-    for before, after in replacements:
-        assert result.count(before) == 1, f'upstream recipe changed: {before!r}'
-        result = result.replace(before, after)
-    assert result.count('for _variant in -static -shared; do') == 3
-    result = result.replace('for _variant in -static -shared; do', 'for _variant in -shared; do')
-    start, end = result.index('check() {\n'), result.index('\npackage() {\n')
-    # Unlike upstream's `make check || true`, a missing runtime feature fails.
-    # Full current-DSP/PCM/GUI validation runs against the installed package.
-    result = result[:start] + '''check() {
-  cd "${srcdir}/build-${MSYSTEM}-shared"
-  local runtime_path="$PWD/libavcodec:$PWD/libavdevice:$PWD/libavfilter:$PWD/libavformat:$PWD/libavutil:$PWD/libswresample:$PWD/libswscale:$PATH"
-  PATH="$runtime_path" ./ffmpeg.exe -hide_banner -filters > cumulus-filters.txt
-  grep -Eq '[[:space:]]ladspa[[:space:]]' cumulus-filters.txt
-}
-''' + result[end:]
-    return result
-
-
-def output(command, **kwargs):
-    return subprocess.check_output(list(map(str, command)), text=True, encoding='utf-8', errors='strict', **kwargs)
-
-
-def write_json(path, value):
-    path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+import windows_media_seed as seed
+from windows_media_recipe import (
+    BUILD, HERE, PACKAGE, ROOT, build_package, configuration, download, output,
+    patch_recipe, prepare, sha256, write_json,
+)
 
 
 def native_pcm_report(stdout, destination, stderr):
@@ -93,59 +38,14 @@ def native_pcm_report(stdout, destination, stderr):
     return report
 
 
-def prepare(msys):
-    BUILD.mkdir(parents=True, exist_ok=True)
-    lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
-    installed = output([msys / 'usr/bin/pacman.exe', '-Q'])
-    version = dict(line.split(' ', 1) for line in installed.splitlines())[PACKAGE]
-    assert version == lock['upstreamPackage'], f'update/review the runtime lock for FFmpeg {version}'
-    binary = msys / 'ucrt64/bin'
-    baseline = output([binary / 'ffmpeg.exe', '-version'])
-    identity = hashlib.sha256()
-    for path in (HERE / 'windows_media.lock.json', HERE / 'windows_media.py',
-                 HERE / 'windows_media_build.sh', HERE / 'ffmpeg-ladspa-windows.patch'):
-        identity.update(path.read_bytes())
-    identity.update(installed.encode())
-    key = 'windows-media-ucrt64-' + identity.hexdigest()
-    write_json(BUILD / 'plan.json', {'key': key, 'packages': installed, 'configuration': configuration(baseline)})
-    with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
-        stream.write(f'cache-key={key}\n')
-    print(f'Prepared {key}, baseline FFmpeg {version}', flush=True)
-
-
-def download(url, path, expected, *, mirror=None):
-    if path.exists():
-        raise FileExistsError(path)
-    sources = (url, mirror, url, mirror) if mirror else (url,) * 3
-    for attempt, source_url in enumerate(sources):
-        # Partial transfers never become recipe inputs. Each attempt owns only
-        # its temporary file and retains the same pinned SHA-256 requirement.
-        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + '.', suffix='.part', delete=False) as stream:
-            temporary = Path(stream.name)
-        try:
-            with urllib.request.urlopen(source_url, timeout=60) as response, temporary.open('wb') as destination:
-                shutil.copyfileobj(response, destination)
-            if sha256(temporary) != expected:
-                raise ValueError(f'source checksum mismatch: {path.name}')
-            temporary.rename(path)
-            return
-        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as error:
-            if isinstance(error, urllib.error.HTTPError) and error.code not in {429, 500, 502, 503, 504}:
-                raise
-            if attempt + 1 == len(sources):
-                raise
-            next_source = 'mirror' if mirror and sources[attempt + 1] == mirror else 'primary'
-            print(f'Retrying source transfer {path.name} ({attempt + 2}/{len(sources)}, {next_source})', flush=True)
-            time.sleep(2 ** attempt)
-        finally:
-            temporary.unlink(missing_ok=True)
-
-
 def verify_cache(cache, plan, lock=None):
     if lock is None:
         lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
     receipt = json.loads((cache / 'build.json').read_text(encoding='utf-8'))
     assert receipt['key'] == plan['key'], 'runtime cache identity mismatch'
+    assert receipt['packages'] == plan['packages'], 'runtime cache package inventory mismatch'
+    assert receipt['recipeCommit'] == lock['recipeCommit'] and receipt['source'] == lock['source'], (
+        'runtime cache recipe or source identity mismatch')
     for name, expected in receipt['files'].items():
         assert Path(name).name == name, 'invalid runtime cache member'
         assert sha256(cache / name) == expected, f'runtime cache checksum mismatch: {name}'
@@ -171,39 +71,40 @@ def proof_binaries(profile):
     return target / 'cumulus_audio_filter.dll', target / 'examples/player_probe.exe'
 
 
-def install(msys, profile='debug'):
+def prepare_with_seed(msys):
+    prepare(msys)
+    plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
+    if key := seed.legacy_key(plan):
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
+            stream.write(f'legacy-cache-key={key}\n')
+
+
+def select_package(msys, cache, plan, lock, primary_match='', legacy_match=''):
+    if primary_match == plan['key'] and not legacy_match:
+        return verify_cache(cache, plan, lock), None
+    if not primary_match and legacy_match:
+        try:
+            return seed.verify_seed(cache, plan, legacy_match, lock, verify_cache), legacy_match
+        except (AssertionError, KeyError, OSError, TypeError, ValueError):
+            print('Rejected unauthenticated legacy media cache; building the current recipe', flush=True)
+    if not primary_match and not legacy_match and not os.environ.get('GITHUB_ACTIONS'):
+        # Local CLI reuse is current-key only; migration requires an exact CI
+        # cache match supplied by the pinned restore action.
+        if (cache / 'build.json').is_file():
+            return verify_cache(cache, plan, lock), None
+    if os.path.lexists(cache):
+        # Move only this runner's restore entry. Do not traverse or execute
+        # an unverified archive, including a Windows reparse point.
+        cache.rename(cache.with_name(f'rejected-cache-{uuid.uuid4().hex}'))
+    build_package(msys, cache, plan, lock)
+    return verify_cache(cache, plan, lock), None
+
+
+def install(msys, profile='debug', primary_match='', legacy_match=''):
     plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
     lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
     cache = BUILD / 'cache'
-    if not (cache / 'build.json').exists():
-        cache.mkdir(exist_ok=False)
-        source_url = ('https://raw.githubusercontent.com/msys2/MINGW-packages/'
-                      f"{lock['recipeCommit']}/mingw-w64-ffmpeg/")
-        for name, expected in lock['recipeFiles'].items():
-            download(source_url + name, cache / name, expected)
-        shutil.copy2(cache / 'PKGBUILD', cache / 'PKGBUILD.upstream')
-        shutil.copy2(HERE / 'ffmpeg-ladspa-windows.patch', cache / 'ffmpeg-ladspa-windows.patch')
-        (cache / 'PKGBUILD').write_text(patch_recipe((cache / 'PKGBUILD').read_text(encoding='utf-8')), encoding='utf-8', newline='\n')
-        source = lock['source']
-        download(source['url'], cache / source['name'], source['sha256'], mirror=source.get('mirror'))
-        env = {**os.environ, 'MSYSTEM': 'UCRT64', 'CHERE_INVOKING': '1', 'MINGW_ARCH': 'ucrt64'}
-        script = output([msys / 'usr/bin/cygpath.exe', '-u', HERE / 'windows_media_build.sh']).strip()
-        print('Building complete UCRT64 FFmpeg with LADSPA; progress is retained in .build/windows-media/build.log', flush=True)
-        with (BUILD / 'build.log').open('x', encoding='utf-8') as log:
-            try:
-                subprocess.run([str(msys / 'usr/bin/bash.exe'), '--login', script, str(cache)],
-                               env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=5400)
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                print((BUILD / 'build.log').read_text(encoding='utf-8', errors='replace')[-24000:], flush=True)
-                raise
-        # Keep the exact archive, original/modified recipes and hashes with the
-        # package. The temporary source/object tree is not cached or shipped.
-        if (cache / 'src').exists():
-            shutil.rmtree(cache / 'src')
-        files = {p.name: sha256(p) for p in sorted(cache.iterdir()) if p.is_file()}
-        write_json(cache / 'build.json', {'key': plan['key'], 'recipeCommit': lock['recipeCommit'],
-                                        'source': source, 'files': files, 'packages': plan['packages']})
-    package = verify_cache(cache, plan)
+    package, seeded_from = select_package(msys, cache, plan, lock, primary_match, legacy_match)
     package_path = output([msys / 'usr/bin/cygpath.exe', '-u', package]).strip()
     subprocess.run([str(msys / 'usr/bin/pacman.exe'), '-U', '--noconfirm', package_path], check=True)
     version = output([msys / 'usr/bin/pacman.exe', '-Q', PACKAGE]).strip().split(' ', 1)[1]
@@ -213,6 +114,8 @@ def install(msys, profile='debug'):
     missing = set(plan['configuration']) - set(current)
     assert not missing, f'FFmpeg configuration regressed: {sorted(missing)}'
     assert '--enable-ladspa' in current
+    if seeded_from:
+        assert current == seed.patched_configuration(plan['configuration']), 'seeded media configuration is not exact'
     filters = output([binary / 'ffmpeg.exe', '-hide_banner', '-filters'])
     assert re.search(r'\bladspa\s+', filters), 'installed FFmpeg cannot load LADSPA'
     # The real current plugin must load, not merely appear in a capability list.
@@ -247,8 +150,38 @@ def install(msys, profile='debug'):
     receipt = {'key': plan['key'], 'package': version, 'configuration': current,
                'libraries': libraries, 'filterLoaded': True, 'nativePcmVerified': True,
                'pluginSha256': sha256(plugin)}
+    if seeded_from:
+        receipt['seededFrom'] = seeded_from
     write_json(BUILD / 'installed.json', receipt)
     print(json.dumps(receipt), flush=True)
+
+
+def promote_seed(profile, legacy_match):
+    # The workflow calls this only after the current native PCM and the
+    # independent implicit libmpv lookup rejection have both succeeded.
+    installed = json.loads((BUILD / 'installed.json').read_text(encoding='utf-8'))
+    if not (legacy := installed.get('seededFrom')):
+        return
+    plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
+    lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
+    assert legacy == legacy_match and installed['key'] == plan['key'], 'stale media seed proof'
+    assert installed['filterLoaded'] is True and installed['nativePcmVerified'] is True
+    assert installed['configuration'] == seed.patched_configuration(plan['configuration'])
+    plugin, _ = proof_binaries(profile)
+    assert installed['pluginSha256'] == sha256(plugin), 'media seed did not verify the current DSP'
+    cache = BUILD / 'cache'
+    seed.verify_seed(cache, plan, legacy, lock, verify_cache)
+    source = cache / 'build.json'
+    receipt = json.loads(source.read_text(encoding='utf-8'))
+    with tempfile.NamedTemporaryFile(dir=BUILD, prefix='promote-cache-', delete=False) as file:
+        pending = Path(file.name)
+    try:
+        write_json(pending, {**receipt, 'key': plan['key'], 'seededFrom': legacy})
+        pending.replace(source)
+    finally:
+        pending.unlink(missing_ok=True)
+    verify_cache(cache, plan, lock)
+    print(f'Promoted verified exact media seed {legacy} to {plan["key"]}', flush=True)
 
 
 def check_built_cache(_msys):
@@ -280,11 +213,14 @@ def copy_provenance(destination, msys):
 if __name__ == '__main__':
     assert sys.platform == 'win32', 'the runtime is built and checked on Windows'
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'install', 'verify-cache'])
+    parser.add_argument('action', choices=['prepare', 'install', 'promote-seed', 'verify-cache'])
     parser.add_argument('--msys', type=Path, required=True)
     parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
     args = parser.parse_args()
+    legacy_match = os.environ.get('CUMULUS_MEDIA_LEGACY_MATCHED_KEY', '')
     if args.action == 'install':
-        install(args.msys.resolve(), args.profile)
+        install(args.msys.resolve(), args.profile, os.environ.get('CUMULUS_MEDIA_PRIMARY_MATCHED_KEY', ''), legacy_match)
+    elif args.action == 'promote-seed':
+        promote_seed(args.profile, legacy_match)
     else:
-        {'prepare': prepare, 'verify-cache': check_built_cache}[args.action](args.msys.resolve())
+        {'prepare': prepare_with_seed, 'verify-cache': check_built_cache}[args.action](args.msys.resolve())

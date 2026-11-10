@@ -51,13 +51,24 @@ test('batch reads the whole snapshot in order including unavailable rows', async
   assert.equal(result.offset, 0);
 });
 test('batch rejects stale, incomplete, nonadvancing or mismatched snapshots before display', async () => {
-  for (const mode of ['account', 'cancel', 'revision', 'missing', 'offset', 'empty', 'large']) {
+  for (const mode of [
+    'account',
+    'cancel',
+    'revision',
+    'local-revision',
+    'missing',
+    'offset',
+    'empty',
+    'large',
+  ]) {
     let calls = 0,
       active = true;
     const core: Pick<CoreClient, 'playlistPage'> = {
       async playlistPage(_, query) {
         calls++;
         if (mode === 'cancel') active = false;
+        if (mode === 'local-revision')
+          assert.equal(query.localRevision, calls > 1 ? 'device-before' : undefined);
         return {
           epoch: mode === 'account' ? '2' : '1',
           value: {
@@ -65,7 +76,17 @@ test('batch rejects stale, incomplete, nonadvancing or mismatched snapshots befo
             offset: query.offset + (mode === 'offset' ? 1 : 0),
             tracks: mode === 'empty' ? [] : [track(calls)],
             total: mode === 'large' ? 50001 : 2,
-            revision: mode === 'missing' ? null : calls > 1 ? 'changed' : 'snapshot',
+            revision:
+              mode === 'missing' ? null : calls > 1 && mode === 'revision' ? 'changed' : 'snapshot',
+            ...(mode === 'local-revision'
+              ? {
+                  playlistLocal: {
+                    revision: calls > 1 ? 'device-after' : 'device-before',
+                    hasMembers: true,
+                    rows: {},
+                  },
+                }
+              : {}),
             more: true,
           },
         };
@@ -79,7 +100,7 @@ test('batch rejects stale, incomplete, nonadvancing or mismatched snapshots befo
         () => {},
       ),
     );
-    assert.equal(calls, mode === 'revision' ? 2 : 1, mode);
+    assert.equal(calls, mode === 'revision' || mode === 'local-revision' ? 2 : 1, mode);
   }
 });
 test('zone batch requires its detail revision from the first page and never adopts another', async () => {

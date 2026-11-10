@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    protocol::api::{Api, identifier},
+    protocol::api::{Api, PODCAST_RESUME_READ_PATH, PODCAST_RESUME_WRITE_PATH, identifier},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -141,12 +141,15 @@ impl PodcastApi {
         let result = self
             .api
             .call(
-                "/api/dj/user/setting/resumeplay/get",
+                PODCAST_RESUME_READ_PATH,
                 json!({"radioId":identifier(id)?}),
                 false,
                 &[200],
             )
             .await?;
+        Self::resume_from_reply(&result)
+    }
+    pub(super) fn resume_from_reply(result: &Value) -> Result<bool> {
         match result["data"]["resumePlayValue"].as_u64() {
             Some(0) => Ok(false),
             Some(1) => Ok(true),
@@ -236,7 +239,7 @@ impl PodcastApi {
     pub async fn set_resume_enabled(&self, id: &Value, desired: bool) -> Result<()> {
         self.api
             .call(
-                "/api/dj/user/setting/resumeplay/update",
+                PODCAST_RESUME_WRITE_PATH,
                 json!({"radioId":identifier(id)?,"resumePlayValue":u8::from(desired)}),
                 false,
                 &[200],

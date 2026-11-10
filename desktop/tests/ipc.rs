@@ -49,6 +49,10 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "open_login_document",
             "pick_local_directory",
             "download_collect_creation",
+            "reorder_playlist_mixed",
+            "move_playlist_mixed",
+            "playlist_mixed_reorder_receipt",
+            "reconcile_playlist_mixed_reorder",
             "player_action",
             "player_vinyl_voice_detail_target",
             "player_voice_songs_download_prepare",
@@ -148,6 +152,52 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
     };
     let card_receipt = "0123456789abcdef0123456789abcdef";
     let selection_receipt = "abcdef0123456789abcdef0123456789";
+    let local_id = "b".repeat(64);
+    let revision = "a".repeat(64);
+    let reorder = json!({
+        "epoch":"0","id":"10","revision":revision,
+        "rows":[{"kind":"online","id":"123"},{"kind":"local","id":local_id,"revision":revision}],
+    });
+    assert_ipc_response(
+        &window,
+        request("reorder_playlist_mixed", reorder.clone()),
+        Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
+    );
+    let movement = json!({
+        "epoch":"0","id":"10","revision":revision,"selected":reorder["rows"],"gap":2,
+    });
+    assert_ipc_response(
+        &window,
+        request("move_playlist_mixed", movement.clone()),
+        Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
+    );
+    let mut malformed = movement;
+    malformed["gap"] = json!(-1);
+    let error = tauri::test::get_ipc_response(&window, request("move_playlist_mixed", malformed))
+        .expect_err("a raw drop gap cannot be negative");
+    assert!(
+        error
+            .as_str()
+            .is_some_and(|message| message.contains("invalid args `gap`"))
+    );
+    let mut untrusted = reorder;
+    untrusted["rows"][1]["path"] = json!("forged.wav");
+    let error =
+        tauri::test::get_ipc_response(&window, request("reorder_playlist_mixed", untrusted))
+            .expect_err("local row cannot carry a path");
+    assert!(
+        error
+            .as_str()
+            .is_some_and(|message| message.contains("invalid args `rows`"))
+    );
+    assert_ipc_response(
+        &window,
+        request(
+            "playlist_mixed_reorder_receipt",
+            json!({"epoch":"1","id":"10"}),
+        ),
+        Ok(json!({"epoch":"1","value":null})),
+    );
     let collect_create = "download_collect_creation";
     let input = |command| json!({"epoch":"0","receipt":selection_receipt,"command":command});
     let stale_create = json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false});
@@ -648,6 +698,14 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         ),
         ("playlist_order_view", json!({"epoch":"0"})),
         ("playlist_operations", json!({"epoch":"0"})),
+        (
+            "playlist_mixed_reorder_receipt",
+            json!({"epoch":"0","id":"10"}),
+        ),
+        (
+            "reconcile_playlist_mixed_reorder",
+            json!({"epoch":"0","id":"10","operationId":selection_receipt}),
+        ),
         (
             "downloads",
             json!({"epoch":"0","query":{"tab":"active","keyword":"","sort":"completed","descending":true,"offset":0,"limit":100}}),

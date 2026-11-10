@@ -7,13 +7,19 @@ requires the existing desktop state root and a new private output directory:
 
   search_signed_read --existing-pc-state EXISTING_STATE NEW_PRIVATE_OUTPUT
 
-An explicit final --fresh-local-identity flag permits a second mode: real local
+An explicit --fresh-local-identity flag permits a second mode: real local
 hardware facts initialize a new, empty identity store under NEW_PRIVATE_OUTPUT.
 It uses the production IdentityService::resolve and Windows compatibility
 profile construction. It never imports a historical installation identity or
 changes either original credentials or the copied primary record. Reports label
 this fresh_local_initialization, not restored_installation. This flag does not
 relax native PC configuration, signature, Cookie scope or HTTP/SDK restrictions.
+
+An independent --include-account-resources flag enables the production account
+playlist and liked IDs reads before search. The saved registry must bind exactly
+one verified UID to the selected session; the signed account response must
+match it before any resource or search dispatch. This does not send the UID to
+the report. Both flags can be used together.
 
 The original state is opened read-only. SQLite's native backup API snapshots
 the registry/context database and selected credential database, including any
@@ -23,8 +29,11 @@ construction as desktop Linux Windows compatibility. An existing native PC
 configuration with nonzero version/data is mandatory. Neither a default UA nor
 a fabricated configuration/signature can satisfy that requirement.
 
-Only these exact PC EAPI reads may leave the process:
+Only these PC EAPI reads may leave the process:
   /api/w/nuser/account/get
+  /api/user/playlist (only with --include-account-resources; selected UID,
+    includeVideo=true, limit=200, exact next offset, at most 16 pages)
+  /api/song/like/get (only with --include-account-resources; selected UID once)
   /api/rtrs/abt/front/expinfo/list (the complete checked-in 190-key vector)
   /api/search/pc/result/tab
   /api/search/pc/complex/page or /api/search/pc/complex/page/v3
@@ -41,7 +50,8 @@ music request. The report records these demands as explicit boundaries. A stale
 or rejected session is not repaired by QR, renewal, expanded Cookie scope or a
 different protocol.
 
-Only aggregate result counts, four t1 booleans (searchHot, searchMore2,
+Only aggregate result counts (including playlist/owned/liked counts when
+requested), four t1 booleans (searchHot, searchMore2,
 searchPageEfficiency, search-result), fixed logical read paths and HTTP/service
 codes enter the report. It excludes account IDs/names, Cookie, tokens, clientSign,
 hardware facts, full authorization URLs and raw replies. The isolated state is
@@ -49,7 +59,9 @@ private evidence under .build and must not be committed. Errors are classified;
 raw error Display strings are never printed.
 
 Synthetic runner tests cover the full-vector/fixed-search allowlist, a live
-committed-WAL backup and fresh-identity isolation from an existing primary.
+committed-WAL backup, fresh-identity isolation from an existing primary,
+unique local account binding, and blocked cross-account/duplicate/early reads
+and incorrect pagination.
 They do not establish a live service result. The
 global M147 startup/30-minute reactive experiment lifecycle and cached Vue footer
 updates remain a separate required implementation; this explicit read runner
@@ -116,3 +128,24 @@ Private sanitized evidence:
 It records the exact code marker, binary SHA-256, fixed logical paths and result
 counts. The earlier reuse-only missing-identity attempt remains separate and is
 not relabeled as success. No anonymous registration was attempted.
+
+2026-11-10 selected PC account resources and search
+-------------------------------------------------
+Exact Linux candidate 9149f502 restored the previously authorized PC account
+and matched the server account ID with the selected saved profile in memory.
+The production client then read the complete own playlist list and liked IDs,
+the exact 190-key assignment, result tabs, and the V3 comprehensive results.
+All six HTTPS and service responses were 200. The playlist sequence used the
+official EAPI form representation (includeVideo, limit and offset are strings
+inside the encrypted object), not the pre-serialization Rust JSON values.
+
+The first expanded probe denied that request locally because its guard expected
+numbers and a Boolean. It made no playlist request; the same run verified
+identity, liked IDs, and search only. The corrected probe passed the five
+scoped tests and strict Clippy before the successful read. It retained the
+original PC scope and configuration, did not request SDK tokens, config
+downloads, session renewal, or send a business write. Original main database
+hashes matched before and after; temporary copied state was removed. Evidence
+contains aggregate counts only: .build/ui-proof/phase192-integrated-main-flow/
+signed-live-account-resources-final.json. Real-account media playback, real
+account mutations, and Windows GUI are outside this Rust proof.

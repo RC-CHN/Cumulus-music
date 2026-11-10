@@ -48,6 +48,8 @@ struct Trace {
     download: Vec<Value>,
     online: Vec<Value>,
     loads: Vec<Value>,
+    seeks: Vec<Value>,
+    ends: Vec<Value>,
     media_reads: u32,
     publication: Option<Publication>,
 }
@@ -56,6 +58,8 @@ static TRACE: Mutex<Trace> = Mutex::new(Trace {
     download: Vec::new(),
     online: Vec::new(),
     loads: Vec::new(),
+    seeks: Vec::new(),
+    ends: Vec::new(),
     media_reads: 0,
     publication: None,
 });
@@ -339,6 +343,7 @@ pub async fn control(
 pub fn report() -> Value {
     let trace = TRACE.lock().unwrap();
     json!({"search":trace.search,"download":trace.download,"online":trace.online,"loads":trace.loads,
+        "seeks":trace.seeks,"ends":trace.ends,
         "mediaReads":trace.media_reads,"publication":trace.publication.as_ref().map(|value| &value.audit),
         "corrupted":trace.publication.as_ref().is_some_and(|value| value.corrupted)})
 }
@@ -402,19 +407,22 @@ pub struct Audio {
     inner: super::relay_fixture::NativeAudio,
 }
 impl Audio {
-    pub fn new(inner: super::relay_fixture::NativeAudio) -> Self {
-        Self { inner }
-    }
-}
-impl AudioEngine for Audio {
-    fn supports_pinned_search_download(&self) -> bool {
-        true
+    pub fn new(mut inner: super::relay_fixture::NativeAudio) -> Result<Self> {
+        if let Some(path) = std::env::var_os("CUMULUS_SEARCH_DOWNLOAD_EQ_LIBRARY") {
+            let digest = std::env::var("CUMULUS_SEARCH_DOWNLOAD_EQ_SHA256")
+                .map_err(|_| Error::InvalidInput("missing sealed FLAC digest"))?;
+            inner = inner.with_search_graph(
+                cumulus_core::playback::engine::TrustedFlacRuntime::new(path.into(), &digest)?,
+            );
+        }
+        Ok(Self { inner })
     }
 
-    fn load_pinned_audio(
+    fn load_verified(
         &mut self,
         mut file: File,
         authority: Cancellation,
+        settings: Option<cumulus_core::effects::equalizer::EqualizerSettings>,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
         authority.check()?;
@@ -453,23 +461,97 @@ impl AudioEngine for Audio {
         file.seek(SeekFrom::Start(0))?;
         let result = self
             .inner
-            .load_verified_search_file(file, authority, cancel);
+            .load_verified_search_file(file, authority, settings, cancel);
         let still_replaced = !replace || fs::read(&path)? == vec![0; SEED.len()];
         if let Some(change) = &mut replacement {
             change.restore()?;
         }
         let loaded = result?;
+        let graph = self.inner.search_engine().local_equalizer_entry() == Some(loaded.entry_id);
         if !still_replaced || fs::read(&path)? != SEED {
             return Err(Error::State(
                 "search proof replacement was not isolated to native load",
             ));
         }
         TRACE.lock().unwrap().loads.push(json!({
-            "kind":"published_flac", "start":0, "end":null, "transport":"pinned_file",
+            "kind":"published_flac", "start":0, "end":null,
+            "transport":if graph {"held_equalizer_pcm"} else {"pinned_file"},
+            "graphRequested":settings.is_some(),
             "handleSha256":hash, "handleBytes":bytes.len(), "heldReplacementVerified":replace,
             "codec":loaded.codec, "nativeEntry":loaded.entry_id, "duration":loaded.duration,
         }));
         Ok(loaded)
+    }
+}
+
+impl AudioEngine for Audio {
+    fn supports_pinned_search_download(&self) -> bool {
+        true
+    }
+
+    fn load_pinned_audio(
+        &mut self,
+        file: File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.load_verified(file, authority, None, cancel)
+    }
+
+    fn load_pinned_audio_with_local_equalizer(
+        &mut self,
+        file: File,
+        authority: Cancellation,
+        settings: cumulus_core::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.load_verified(file, authority, Some(settings), cancel)
+    }
+
+    fn supports_local_equalizer(&self) -> bool {
+        self.inner.search_engine().supports_local_equalizer()
+    }
+
+    fn local_equalizer_entry(&self) -> Option<i64> {
+        self.inner.search_engine().local_equalizer_entry()
+    }
+
+    fn pump_local_equalizer(&mut self) -> Result<()> {
+        self.inner.search_engine_mut().pump_local_equalizer()
+    }
+
+    fn apply_local_equalizer(
+        &mut self,
+        settings: cumulus_core::effects::equalizer::EqualizerSettings,
+    ) -> Result<()> {
+        self.inner
+            .search_engine_mut()
+            .apply_local_equalizer(settings)
+    }
+
+    fn local_equalizer_processing(&mut self) -> Result<bool> {
+        self.inner.search_engine_mut().local_equalizer_processing()
+    }
+
+    fn seek_with_receipt(
+        &mut self,
+        seconds: f64,
+        entry: i64,
+        cancel: &Cancellation,
+    ) -> Result<Option<LoadedMedia>> {
+        let graph = self.inner.search_engine().local_equalizer_entry() == Some(entry);
+        let result = self
+            .inner
+            .search_engine_mut()
+            .seek_with_receipt(seconds, entry, cancel)?;
+        if std::env::var_os("CUMULUS_SEARCH_DOWNLOAD_EQ_LIBRARY").is_some() {
+            TRACE.lock().unwrap().seeks.push(json!({
+                "seconds":seconds,"before":entry,"graph":graph,
+                "replacement":result.as_ref().map(|media|media.entry_id),
+                "codec":result.as_ref().and_then(|media|media.codec.as_deref()),
+            }));
+        }
+        Ok(result)
     }
 
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
@@ -513,6 +595,22 @@ impl AudioEngine for Audio {
         self.inner.stop()
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
-        self.inner.poll()
+        let view = self.inner.poll()?;
+        if std::env::var_os("CUMULUS_SEARCH_DOWNLOAD_EQ_LIBRARY").is_some() {
+            let mut trace = TRACE.lock().unwrap();
+            for event in &view.events {
+                if let EngineEvent::Ended {
+                    entry_id,
+                    reason,
+                    error,
+                } = event
+                {
+                    trace.ends.push(
+                        json!({"entry":entry_id,"reason":format!("{reason:?}"),"error":error}),
+                    );
+                }
+            }
+        }
+        Ok(view)
     }
 }

@@ -27,6 +27,18 @@ pub struct DownloadFileReveal {
     facts: fs::Facts,
 }
 
+/// A menu-time pin using the existing publication receipt, before hashing bytes.
+pub(crate) struct DownloadFileCandidate(DownloadFileReveal);
+
+impl DownloadFileCandidate {
+    pub(crate) fn verify(self) -> Result<DownloadFileReveal> {
+        let reveal = self.0;
+        verify_reveal_bytes(reveal.path(), &reveal.record.integrity, &reveal.facts)?;
+        reveal.check_current()?;
+        Ok(reveal)
+    }
+}
+
 impl DownloadFileReveal {
     pub fn path(&self) -> &Path {
         &self.record.path
@@ -42,6 +54,15 @@ impl DownloadFileReveal {
             DownloadOrigin::Song => catalog_id == Some(self.record.song_id.as_str()),
             _ => false,
         }
+    }
+
+    pub(crate) fn matches_song_association(&self, media_id: &str) -> bool {
+        self.record.song_id == media_id && matches!(&self.origin, DownloadOrigin::Song)
+    }
+
+    pub(crate) fn matches_voice_association(&self, voice_id: &str, media_id: &str) -> bool {
+        self.record.song_id == media_id
+            && matches!(&self.origin, DownloadOrigin::Voice { voice_id: id } if id == voice_id)
     }
 
     /// Recheck immediately before the host dispatches the path to its shell.
@@ -94,20 +115,64 @@ impl CompletedDownloads {
         Ok((record, task.origin))
     }
 
-    pub(crate) fn verify_reveal(&self, id: &str) -> Result<DownloadFileReveal> {
+    /// Cheap indexed candidate check; dispatch still hashes the selected file.
+    pub(crate) fn voice_reveal_candidate(
+        &self,
+        id: &str,
+        voice_id: &str,
+        media_id: &str,
+    ) -> Result<std::path::PathBuf> {
         let token = self.token()?.ok_or(Error::StaleResponse)?;
         let (record, origin) = self.reveal_publication(&token, id)?;
+        if record.song_id != media_id
+            || !matches!(&origin, DownloadOrigin::Voice { voice_id: id } if id == voice_id)
+            || std_fs::symlink_metadata(&record.path)?.len() != record.integrity.bytes
+        {
+            return Err(Error::DownloadedFileMissing);
+        }
+        Ok(record.path)
+    }
+
+    pub(crate) fn verify_reveal(&self, id: &str) -> Result<DownloadFileReveal> {
+        self.verify_reveal_at(id, None)
+    }
+
+    pub(crate) fn verify_reveal_at(
+        &self,
+        id: &str,
+        path: Option<&Path>,
+    ) -> Result<DownloadFileReveal> {
+        self.prepare_reveal_at(id, path)?.verify()
+    }
+
+    pub(crate) fn catalog_song_reveal_candidate(
+        &self,
+        id: &str,
+        song: &str,
+        path: &Path,
+    ) -> Result<DownloadFileCandidate> {
+        let candidate = self.prepare_reveal_at(id, Some(path))?;
+        if !candidate.0.matches_song_association(song) {
+            return Err(Error::QueueChanged);
+        }
+        candidate.0.check_current()?;
+        Ok(candidate)
+    }
+
+    fn prepare_reveal_at(&self, id: &str, path: Option<&Path>) -> Result<DownloadFileCandidate> {
+        let token = self.token()?.ok_or(Error::StaleResponse)?;
+        let (record, origin) = self.reveal_publication(&token, id)?;
+        if path.is_some_and(|expected| record.path != expected) {
+            return Err(Error::QueueChanged);
+        }
         let facts = fs::recorded_facts(&record.path, record.integrity.clone())?;
-        verify_reveal_bytes(&record.path, &record.integrity, &facts)?;
-        let reveal = DownloadFileReveal {
+        Ok(DownloadFileCandidate(DownloadFileReveal {
             downloads: self.clone(),
             token,
             record,
             origin,
             facts,
-        };
-        reveal.check_current()?;
-        Ok(reveal)
+        }))
     }
 }
 

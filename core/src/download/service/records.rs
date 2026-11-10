@@ -15,13 +15,18 @@ pub enum OutputContainer {
     Ncm,
     Official,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DownloadOptions {
     pub quality: Quality,
     pub tags: bool,
     pub cover: bool,
     pub lyrics: bool,
     pub container: OutputContainer,
+}
+impl DownloadOptions {
+    pub(super) fn normalize(&mut self) {
+        self.cover &= self.tags || self.container != OutputContainer::Audio;
+    }
 }
 impl Default for DownloadOptions {
     fn default() -> Self {
@@ -129,6 +134,8 @@ pub struct DownloadTask {
     pub status: DownloadStatus,
     pub phase: DownloadPhase,
     pub created_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) dispatch: Option<super::dispatch::Dispatch>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_ms: Option<u64>,
     pub bytes: u64,

@@ -44,6 +44,7 @@ pub(super) struct Pending {
     pub item: QueueEntry,
     pub reply: Option<Response>,
     pub paused: bool,
+    pub prefer_search_download: bool,
     pub timeline: Option<Timeline>,
     pub authorized_position: Option<f64>,
     pub seek: Option<(f64, u64, Cancellation)>,
@@ -59,6 +60,7 @@ pub(super) struct SourceRetryPoint {
 }
 pub(super) struct Actor {
     pub startup_pending: bool,
+    pub chorus_triggers: Option<super::ChorusTriggers>,
     pub startup_autoplay: bool,
     pub relay: Option<crate::relay::publisher::player::Observer>,
     pub relay_hint: crate::relay::publisher::player::Hint,
@@ -156,6 +158,7 @@ impl Actor {
             crate::playback::quality_preferences::QualityPreferencesSnapshot::read(&store, owner)?;
         Ok(Self {
             startup_pending: true,
+            chorus_triggers: None,
             startup_autoplay: true,
             relay: None,
             relay_hint: Default::default(),
@@ -257,7 +260,7 @@ impl Actor {
     pub fn snapshot(&self) -> PlaybackSnapshot {
         let selected = self.queue.selected();
         let speed_scope = PlaybackSpeedScope::for_entry(selected.as_ref());
-        let bound_parametric = self.parametric.bound_status();
+        let (bound_parametric, applied_effect_id) = self.parametric.bound_presentation();
         let device_parametric = self.parametric.device_status(self.comparable_device_play());
         let parametric_processing = self.state == PlaybackStatus::Playing
             && self
@@ -292,6 +295,7 @@ impl Actor {
                 ..self.equalizer
             },
             bound_parametric,
+            applied_effect_id,
             device_parametric,
             parametric_processing,
             loudness: self.loudness.clone(),
@@ -323,6 +327,10 @@ impl Actor {
                     .as_ref()
                     .is_some_and(|i| super::quality::online_resource(&i.resource)),
             catalog_file_source,
+            search_download_pending: self
+                .pending
+                .as_ref()
+                .is_some_and(|load| load.prefer_search_download),
             quality_preferences_apply: selected
                 .as_ref()
                 .is_some_and(|i| super::quality::song_resource(&i.resource)),
@@ -530,6 +538,17 @@ impl Actor {
                             pending.authorized_position = Some(authorized_position);
                             self.state = PlaybackStatus::Loading;
                             self.power_pending();
+                        }
+                    },
+                    Some(Message::SearchEqualizerHandoff { generation, accepted }) => {
+                        if generation == self.generation()
+                            && self.pending.is_some()
+                            && !self.cancel.is_cancelled()
+                        {
+                            // Mark the stock filter dirty before a checked
+                            // publication may displace it on the engine thread.
+                            self.local_equalizer_needs_sync = true;
+                            let _ = accepted.send(());
                         }
                     },
                     Some(Message::Loaded { generation, result }) => self.loaded(generation,result).await,

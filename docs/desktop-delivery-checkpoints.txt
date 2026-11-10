@@ -53,6 +53,29 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     通知的周期与切号隔离由合成原生时钟验证。证据位于
     `.build/ui-proof/phase151-next-ready/integration-report.json`。这批
     核验未涉及正式安装、Windows 或真实账号。
+  - 本机集成树 `97708441` 用同一套生产前端资源实际验证歌手「添加所选至
+    播放列表」和普通队列声音菜单：前者 6 态，后者 10 态，均保留逐态 JSON
+    和 PNG。非空队列的批量添加保留暂停项和位置；空队列从所选首项起播。
+    声音菜单通过真实 X11 输入核对暂停、恢复、移除、退场和打开下载目录；
+    播放使用原生 libmpv 的合成媒体。该树 1035 项前端检查通过；Windows
+    持有文件与退出许可只有定向测试及 GNU 交叉 Clippy，不称实际 Windows 已通过。
+  - 独立源码 `cca461b9` 在封闭 Linux WebView 验证下载实时速率 7 态：
+    传输、停滞、暂停、精确 Range 续传和完成。最终 FLAC 和合成源逐字节一致，
+    速率不持久化。独立源码 `6fc4a22b` 在 3 次 GTK/WebView 启动中验证
+    主界面字体 11 态；本机保存、缺失时回退、恢复默认、暂停与队列不变，
+    桌面歌词设置独立。两批随后合入产品候选，分别可用
+    scripts/ci/download_speed_smoke.py 和 scripts/ci/interface_font_smoke.py
+    复验；这些独立报告不当作最终合并提交的 Windows 或实服证据。
+  - 合并源码 `d9b68db6dd79d239e4a48607f283cb75346936f4`：前端 1040 项、
+    类型/生产构建、Rust 格式和 Windows x64 GNU 全桌面目标严格 Clippy 通过。
+    相同前端和原生编译在 Linux GTK/WebKit 验证了下载速率 7 态、字体 11 态、
+    最近播放播客/有声书选章 4 态。该源码普通程序另在没有外网和现有会话的
+    X11 环境完成正式窗口、访客、设置、本地选择器和退出。AT-SPI/XTest 打开
+    目录窗口，选择合成 FLAC 的文件夹，确认默认未勾选；勾选仍不入库，点确认
+    后才看到索引。实际 libmpv 时钟从 1.153 秒推进到 2.390 秒，暂停保持
+    3.563 秒，退出码 0。正式程序这次首帧约 8.7 秒，音频送入私有 PipeWire
+    空输出。记录见 `.build/ui-proof/phase191-product/`，不是声卡、Windows
+    文件交接或当前 RC 的发布证据。
   - 主线 `c1c75375b2369cc6145a078d28545fd9577359be` 的普通 Linux
     `cumulus` 使用正式入口 `--play` 打开两条带中文文件名的合成 FLAC/MP3。
     在非 C 系统 locale（en_US.UTF-8）、独立 X11 窗口和仅 loopback 的环境，
@@ -64,16 +87,130 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
     可执行文件 SHA-256 为
     `b257fdeb371ff73f9c788e00d4e0805463eb34c4aadde9903370c1d6ea701337`。
     此流程没有使用真实账号、Windows 或物理音频设备，也不等于系统 MPRIS 验证。
-    同一程序另在独立会话总线验证正式 MPRIS 的 Pause、Play、Next、Stop：
-    暂停于约 5.33 秒，续播超过 6.42 秒；切换后实际 PCM 变为第二轨，
-    停止后输出为零且保存当前条目与书签。见
-    `.build/ui-proof/phase203-stock-mpris-c1c75375/`。这不是实体设备验证。
-  - 待合入的产品树 `f14374cc` 使用同一套原生探针和生产前端验证搜索
+    同一程序另在独立会话总线复验正式 MPRIS 路径：进程自己的
+    org.mpris.MediaPlayer2.Cumulus.instance 服务接受 Pause、Play、Next、Stop。
+    暂停于 5.33 秒，恢复超过 6.42 秒；下一首实际输出由 440 Hz 变为 10 kHz，
+    停止后私有 PipeWire 输出为零并保留同一条目和最后书签。前台 GTK 窗口、
+    进程到私有输出的连接、SQLite 状态和 D-Bus PlaybackStatus 分别读取。
+    证据见 `.build/ui-proof/phase203-stock-mpris-c1c75375/`，不涉及物理媒体键、
+    实体音频设备或真实账号。
+  - 合入主线前的产品树 `f14374cc` 使用同一套原生探针和生产前端验证搜索
     断网/恢复、原生 GTK 目录确认、均衡器页签、云盘普通歌曲。隔离 Linux
     共保存 58 张截图；无实服和真实账号写入。169 项定向 Rust、1028 项
     前端、类型与生产构建、Rust 格式及定向严格 Clippy 通过。
     证据索引见 `.build/ui-proof/phase203-main-ready/report.json`；
     目录测试夹具修正在独立 28 态复验，Windows 门禁仍须后续完整运行。
+
+2026-11-10：合并候选的本地运行复验
+  - 与 RC 准备提交 bce1ba21 对齐后的候选树
+    10a3a62a126b208e01253c692c4b1430a9b7d897 使用同一份生产前端，
+    实际 Linux WebKitGTK/libmpv 跑通缓存/CUE 7 态、已下载曲目 9 态及
+    两进程主流程 22 态。后者包含合成二维码登录、跨进程恢复、日推与搜索、
+    真实原生播放、歌单编辑与回读、下载暂停/Range 续传、损坏和丢失处理、
+    断网播放及原生清理。37 张截图、前端/探针摘要及逐项报告在
+    .build/ui-proof/phase240-reconciled-desktop/receipt.json。格式、生产前端
+    构建、1053 项前端、85 项定向 Rust、210 项 CI 脚本检查通过，另有
+    1 项脚本按平台跳过。无真实音乐请求或账号写入；Windows、常规 HTTPS
+    音源和发行包不在这批复验范围。此树是独立产品合并候选。
+  - 后续合并候选 d1eb0f9771c8a2499e6b1fbbd0cf72d18f9810d8 用同一
+    生产前端验证搜索多选下一首 10 态、新版和旧版音效目录各 10 态、
+    本地下载/CUE 与跨页离线播放 12 态。保存了 42 张 Linux WebKitGTK
+    实窗截图，回执在 .build/ui-proof/phase242-integrated-desktop/receipt.json，
+    含前端、原生探针和滤镜摘要。1,055 项前端测试、328 项 Rust 定向测试、
+    格式和定向严格 Clippy 通过；合成账号、私有网络和 libmpv null 输出，
+    这批不证明实服权限、实体声卡或 Windows 打包与运行。
+  - 音效卡片单项验证 4116d21e：新旧目录各 8 态核对原生启用标记、查看其他
+    卡片、当前音源旁路、恢复处理、停止及显式恢复，原目录页签回归各 10 态。
+    实窗、41 项 Rust 音效测试及生产前端验证见
+    .build/ui-proof/phase242-applied-effect/build-receipt.json。权限端点仅为
+    合成夹具；未连接实服账号或实体声卡。
+  - 离线「添加全部」在 186d438c 的生产前端中通过普通缓存 7 态和已下载
+    曲目 15 态。核对无可播内容、文本筛选仅影响显示、追加保留暂停实例、
+    空队列起播及本机下一首；Rust 另核对过期快照无法改动持久化队列。
+    独立回执见 .build/ui-proof/phase240-cached-playlist-add-all/receipt.json。
+    搜索空队列与随机队列的 11 个实窗状态另见
+    .build/ui-proof/phase242-search-group-extended/receipt.json。
+  - 同一合并源码 6e8e457c 重新构建前端与原生探针：搜索空队列／随机队列
+    11 态，原生应用音效标记两套各 8 态，离线整单入队 15 态，合计 42 张
+    Linux WebKitGTK 截图。全部 1,055 项前端测试、全工作区严格 Clippy，
+    及 core 库和四个相关集成目标的 704 项 Rust 测试通过，25 项原配置忽略。
+    实窗回执 .build/ui-proof/phase243-combined-desktop/receipt.json 记录合并
+    源码、前端、原生探针及已校验滤镜摘要。仍为合成数据和 libmpv null 输出。
+  - 搜索多选「播放」在 a16b4529 上另通过 13 态及 10 态「下一首」回归。
+    验证受限锚点不修改队列、按点中项起播、同一暂停项恢复时不重开音源。
+    .build/ui-proof/phase244-search-group-play/receipt.json 保存 23 张截图
+    和报告；不是 Windows 实窗证据。
+  - 耳机调音公共栏开关在 e8883b4d 的新旧音效目录各通过 8 态，覆盖
+    跨页签暂停／继续、保留当前播放、音源旁路和旧回执拒绝；既有页签／均衡器
+    回归各通过 10 态。另通过 41 项音效 Rust 测试和 1,057 项前端测试。
+    证据见 .build/ui-proof/phase244-headphone-header/build-receipt.json；
+    复用原生比较 IPC，无真实账号写入或 Windows 实窗结论。
+  - 候选树 318ace291fe91ab50ba55129dda0f3dadfa8f1ed 重走合成主流程：
+    扫码接入并重开恢复、读取账号资源、日推与搜索、原生播放、私密歌单
+    创建/编辑/增删/清理、下载暂停和续传、完成核对、离线播放及本地清理。
+    两个实际 Linux WebView 进程，共 22 态、21 张 PNG。复验使用隔离的合成
+    路由，常规 HTTPS 和真实账号不在本次证据内。
+    汇总及选取截图见 .build/ui-proof/phase205-reconcile/。
+  - 在树 7ecacf8df483332082e72dd214b0e2ec561f628c 同时构建普通 Cumulus
+    和两个原生探针。Linux 实窗验证搜索综合的缩放/详情返回/分类返回 7 态，
+    普通本地队列 CUE/NCM 原文件定位 3 态，以及收藏/撤销/焦点回归 12 态。
+    文件管理使用私有 FileManager1；CUE 选中原音频，NCM 选中原容器，
+    被替换的源文件、过期队列和账号回执均拒绝。实窗无真实请求或账号写入。
+  - 同一候选的普通 Linux 程序通过真实 GTK 目录选择和确认；确认前尚无索引，
+    之后读取合成 FLAC，原生时钟 1.153→2.355 秒，暂停保持约 5.589 秒。
+    隔离 PipeWire null sink 实测有 440 Hz 成分，暂停后 RMS 为零。
+    可执行文件 SHA-256 为
+    732ce487b793fdadb765c84930c6d1629cf4b9231a4a75f5d845c915eedd4324。
+    合计 27 张截图、三项实窗报告和普通程序 PCM 报告存于
+    .build/ui-proof/phase209-broad-product/。前端 1040 项通过；补齐目录
+    复验夹具后，本地库 31 项、播放器 143 项 Rust 测试通过。这些报告
+    不代表 Windows、发布包或物理声卡验收。
+  - 后续 208e54c8 独立通过已下载单曲与声音的原文件定位（4 张截图）
+    和真实 X11 输入的队列收藏回归（12 张），已进入产品候选。
+    同歌曲的另一下载不会替换所点任务，暂停和账号代次保持；
+    具体接口与 Windows Explorer 边界见 queue-downloaded-file-menu.txt。
+  - 候选提交 7e94144f 的同一真实 Linux WebView 构建集中复验 21 态：
+    音效目录与设备/均衡器 10 态（含部分失败和保留原内容），搜索纠错 4 态
+    （含合成 PC EAPI 原词渠道、空业务字段和过期结果），下载队列 4 态
+    （单曲与声音任务精确选择），索引队列 3 态（CUE/NCM 和文件更换拒绝）。
+    两套文件定位均使用私有 FileManager1，未改变暂停中的播放实例。
+    21 张 PNG、分项报告和摘要存于 .build/ui-proof/phase212-combined-product/。
+    同一批前端 1040 项、生产构建、Rust 下载/本地/搜索 125 项通过。
+  - 搜索框焦点与触发展开已另在实际 Linux WebView 验证 8 态；纯焦点、
+    回焦和输入法未确认时无联想请求。普通在线歌曲队列文件定位另验证
+    4 态，涵盖唯一完成下载、唯一索引匹配、文件变化和多个匹配。
+    两项已分别合入候选 af8b7e55、aa783259，并用同一实际生产前端及
+    Tauri 构建在候选 0c518d98 重跑 8+4 态；前端 1041 项通过。
+    12 张截图及两个实窗报告存于 .build/ui-proof/phase216-search-queue/。
+    均为隔离的合成账号，没有真实上游写入。
+  - 播放详情的歌词正文和工具栏已接通固定公开贡献页，保留原报错。
+    工具栏原始证据 78de469f 通过隔离 Linux WebView 11 态、7 次模拟浏览器
+    交接，无真实上游写入，见 .build/ui-proof/phase217-lyric-toolbar/。
+    79b73996 的正文基础回归另有 7 项歌词单元、144 项播放器测试和定向
+    严格 Clippy；合并正文/工具栏/云贝核心的 83def1d9 又独立通过 24 项
+    相关 Rust 用例和严格 Clippy。5315daaa 的普通与隔离合成宿主在实际
+    Linux WebView 通过 11 态，已合入候选 0083b614；截图及摘要存于
+    .build/ui-proof/phase221-lyric-bounty/receipt.json。三次合成回执经
+    Rust 持久化，零真实请求、零云贝消费。正式入口仍关闭：当前 Windows
+    配置无 clientSign，实服受理、重复、扣费和退款均未验证。
+    见 playback-detail-lyric-follow.txt。
+  - 普通播放栏副歌标记按官方默认栏使用 4px、主题透明色和取整时钟；
+    f0d9d8db 的生产前端及实际 Linux WebView 通过普通队列 3 态与 FM
+    5 态，截图/像素与真实原生队列证据见 .build/ui-proof/phase219-chorus-clock/。
+    神光特效的独立进度条和 SDK 尚未接通，不由普通标记验收外推。
+
+
+  - 候选 206dc4c2 的 Rust 歌单读取、曲库、歌词及下载回归共 142 项通过。
+    v=-1 的原生哈希形状保留在歌单原位置，不进入远端歌曲详情；元信息
+    批量编辑保留本地占位。完整混合写仍待实现。曲库已匹配时继续用原文件
+    解码，歌词改按当前账号及文件修订对应的线上歌曲读取；CUE 保持单曲
+    时钟，映射变化废弃旧回包与旧浮窗文档。无匹配时保留本地歌词，
+    独立下载附件只在同账号、同曲且已验证时作为线上无词的回退。
+    见 core-playlist-contracts.txt 和 core-lyrics-contracts.txt。
+  - 空歌词、纯音乐和失败页保留全局字号，候选 d8c8d227 的 13 态
+    实窗证据见 .build/ui-proof/phase224-empty-lyric-font/receipt.json。
+    Windows 原生诊断 42706664026 和 42707501987 分别取得四种本机
+    观测及两种进程代码页对照；没有形成或启用生产签名。
 
 当前不能据此关闭的要件
   - 主线的完整托管 gate、Windows 实际 WebView/系统媒体以及发行附件必须
@@ -86,3 +223,12 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
   - 合成桌面已经验证的单账号一起听不能替代双账号实时验证；后者暂排除。
     无歌单 ID 的版权回归可播放，唯一创建的可见性和丢回执语义仍未证实。
     完整专有音效与逐页面原版截图对照也未完成；边界见功能矩阵和专项契约。
+
+本地 CUE 歌词实窗补验
+  - 6a30964d（基线 c92ffaeb，整合 0c244374）在两个隔离 Linux WebView
+    实跑三态：未匹配使用旁挂歌词；匹配后仍从原 WAV 的 4 秒物理段开始，
+    主窗与浮窗共用一次 /api/song/lyric/v1，歌词以单曲的 0/2 秒呈现。
+    实际原生文件读取两次；零在线音源请求、零真实账号请求。
+    打开浮窗保持原 playId、队列和暂停位置。三张截图和逐文件摘要见
+    .build/ui-proof/phase225-matched-local-cue/receipt.json。虚拟窗口与
+    null 音频输出不证明实体声卡、刷新率或 Windows 窗口。

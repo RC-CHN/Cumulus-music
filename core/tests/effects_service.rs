@@ -1978,11 +1978,17 @@ async fn runtime_peq_failure_after_unpause_resamples_without_replaying_transport
     exercise_bound_parametric_clear(ClearScenario::ProcessorAfterUnpause).await;
 }
 
+#[tokio::test]
+async fn account_rebind_clears_the_public_applied_effect_identity() {
+    exercise_bound_parametric_clear(ClearScenario::AccountChange).await;
+}
+
 #[derive(PartialEq, Eq)]
 enum ClearScenario {
     Explicit,
     FailedExplicit,
     Deferred,
+    AccountChange,
     Processor,
     FailedProcessorDetach,
     ProcessorAfterUnpause,
@@ -2061,7 +2067,7 @@ async fn exercise_bound_parametric_clear(scenario: ClearScenario) {
     let player = PlaybackController::start(
         session.clone(),
         store,
-        Arc::new(SourceResolver::new(session, None)),
+        Arc::new(SourceResolver::new(session.clone(), None)),
         playback_support::audio_engine(device.clone()),
     )
     .unwrap();
@@ -2087,6 +2093,11 @@ async fn exercise_bound_parametric_clear(scenario: ClearScenario) {
                     .unwrap(),
                 ParametricBindingStatus::Deferred
             );
+            let deferred = playback_support::until(&player, |snapshot| {
+                snapshot.bound_parametric == Some(ParametricBindingStatus::Deferred)
+            })
+            .await;
+            assert_eq!(deferred.applied_effect_id, None);
             let calls = api.calls().len();
             assert_eq!(
                 player.clear_bound_parametric(&token, target).await.unwrap(),
@@ -2134,6 +2145,23 @@ async fn exercise_bound_parametric_clear(scenario: ClearScenario) {
         Err(Error::MutationBusy)
     ));
     let calls = api.calls().len();
+    if scenario == ClearScenario::AccountChange {
+        let applied =
+            playback_support::until(&player, |snapshot| snapshot.applied_effect_id == Some(id()))
+                .await;
+        assert_eq!(applied.account, token);
+        session
+            .adopt(api.clone(), json!({"userId":18}), &token)
+            .unwrap();
+        let new = session.token().unwrap();
+        assert_eq!(new.uid.as_deref(), Some("18"));
+        let rebound = playback_support::until(&player, |snapshot| snapshot.account == new).await;
+        assert_eq!(rebound.applied_effect_id, None);
+        assert_eq!(rebound.bound_parametric, None);
+        assert!(!device.parametric_attached.load(Ordering::SeqCst));
+        assert_eq!(api.calls().len(), calls);
+        return;
+    }
     if matches!(
         scenario,
         ClearScenario::Processor
@@ -2176,6 +2204,7 @@ async fn exercise_bound_parametric_clear(scenario: ClearScenario) {
             })
             .await
         };
+        assert_eq!(after.applied_effect_id, None);
         assert_eq!(api.calls().len(), calls);
         assert!(
             authorization
@@ -2309,14 +2338,16 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
         ParametricBindingStatus::Configured
     );
     assert!(device.parametric_attached.load(Ordering::SeqCst));
+    let configured = client.player_snapshot(&epoch).await.unwrap();
     assert_eq!(
-        client
-            .player_snapshot(&epoch)
-            .await
-            .unwrap()
-            .bound_parametric,
+        configured.bound_parametric,
         Some(ParametricBindingStatus::Configured)
     );
+    assert_eq!(configured.applied_effect_id, Some(id()));
+    assert!(!configured.parametric_processing);
+    let public = serde_json::to_value(configured).unwrap();
+    assert_eq!(public["appliedEffectId"], id().value());
+    assert!(!public.to_string().contains(URL));
     assert_eq!(
         client
             .native_effect_registration_phase(&epoch, id())
@@ -2344,12 +2375,13 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
             .unwrap(),
         ParametricBindingStatus::Absent
     );
+    let cleared = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(cleared.bound_parametric, None);
+    assert_eq!(cleared.applied_effect_id, None);
     assert!(
-        client
-            .player_snapshot(&epoch)
-            .await
+        serde_json::to_value(cleared)
             .unwrap()
-            .bound_parametric
+            .get("appliedEffectId")
             .is_none()
     );
     assert_eq!(api.calls().len(), 6);

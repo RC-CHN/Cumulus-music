@@ -1,6 +1,9 @@
 use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
-    playlist::{ExternalPlaylistInput, PlaylistCommand, preview_external_playlist_inputs},
+    playlist::{
+        ExternalPlaylistInput, PlaylistCommand, PlaylistLocalChange, PlaylistMixedOrderRow,
+        PlaylistMixedReorderReceipt, preview_external_playlist_inputs,
+    },
 };
 #[tauri::command]
 pub fn preview_external_playlist(
@@ -57,6 +60,84 @@ pub async fn mutate_playlist(
         .await
         .map_err(Into::into)
 }
+#[derive(serde::Serialize)]
+pub struct PlaylistLocalChanged {
+    changed: bool,
+}
+
+#[tauri::command]
+pub async fn mutate_playlist_local(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    revision: String,
+    change: PlaylistLocalChange,
+) -> Result<AccountData<PlaylistLocalChanged>, ClientError> {
+    let result = client
+        .mutate_playlist_local(&epoch, &id, &revision, change)
+        .await
+        .map_err(ClientError::from)?;
+    Ok(AccountData {
+        epoch: result.epoch,
+        value: PlaylistLocalChanged {
+            changed: result.value.changed,
+        },
+    })
+}
+
+#[tauri::command]
+pub async fn reorder_playlist_mixed(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    revision: String,
+    rows: Vec<PlaylistMixedOrderRow>,
+) -> Result<AccountData<PlaylistMixedReorderReceipt>, ClientError> {
+    client
+        .reorder_playlist_mixed(&epoch, &id, &revision, rows)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn move_playlist_mixed(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    revision: String,
+    selected: Vec<PlaylistMixedOrderRow>,
+    gap: usize,
+) -> Result<AccountData<PlaylistMixedReorderReceipt>, ClientError> {
+    client
+        .move_playlist_mixed(&epoch, &id, &revision, selected, gap)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn playlist_mixed_reorder_receipt(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+) -> Result<AccountData<Option<PlaylistMixedReorderReceipt>>, ClientError> {
+    client
+        .playlist_mixed_reorder_receipt(&epoch, &id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn reconcile_playlist_mixed_reorder(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    operation_id: String,
+) -> Result<AccountData<PlaylistMixedReorderReceipt>, ClientError> {
+    client
+        .reconcile_playlist_mixed_reorder(&epoch, &id, &operation_id)
+        .await
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn reconcile_playlist(
     client: tauri::State<'_, MusicClient>,

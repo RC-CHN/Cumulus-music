@@ -1,5 +1,13 @@
 //! Real WebView, FFprobe and libmpv proof using generated, caller-owned media.
-//! No credentials or remote requests. The API adapter only represents signed out.
+//! No credentials or remote requests. Mixed playlist mode uses a sealed account.
+#[path = "support/mixed_playlist_fixture.rs"]
+mod mixed_playlist_fixture;
+#[path = "support/mixed_reorder_fixture.rs"]
+mod mixed_reorder_fixture;
+#[path = "../../core/tests/support/native_lyric_wave.rs"]
+mod native_lyric_wave;
+#[path = "support/offline_playlist_fixture.rs"]
+mod offline_playlist_fixture;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -169,7 +177,19 @@ fn main() {
     assert!(
         !(batch_hide || batch_play) || !(group_hide || folder_reveal || (batch_hide && batch_play))
     );
-    let queue = folder_reveal
+    let queue_reveal = std::env::var("CUMULUS_LOCAL_QUEUE_REVEAL_PROOF").as_deref() == Ok("1");
+    assert!(
+        !queue_reveal
+            || (cfg!(target_os = "linux")
+                && !folder_reveal
+                && !group_hide
+                && !batch_hide
+                && !batch_play
+                && !batch_add
+                && std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_none())
+    );
+    let queue = queue_reveal
+        || folder_reveal
         || group_hide
         || batch_hide
         || batch_play
@@ -188,7 +208,77 @@ fn main() {
         !directory_selection || (!queue && !cold && !reopen),
         "directory selection needs a fresh dedicated profile"
     );
-    if !reopen {
+    let mixed_membership = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
+    let mixed_queue = std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF").is_some();
+    let reorder = std::env::var_os("CUMULUS_MIXED_REORDER_PROOF").is_some();
+    let cached_playlist_only = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_PROOF").is_some();
+    let cached_download = std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_DOWNLOAD_PROOF").is_some();
+    assert!(
+        [
+            mixed_membership,
+            mixed_queue,
+            reorder,
+            cached_playlist_only,
+            cached_download,
+        ]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count()
+            <= 1,
+        "select only one mixed playlist proof mode"
+    );
+    let cached_playlist = cached_playlist_only || cached_download;
+    let mixed = mixed_membership || mixed_queue;
+    let sealed_playlist = mixed || reorder || cached_playlist;
+    assert!(!sealed_playlist || !(reopen || queue || cold || directory_selection));
+    let mixed_queue_script = mixed_queue.then(|| {
+        let path = PathBuf::from(
+            std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_SCRIPT")
+                .expect("explicit mixed queue proof script"),
+        );
+        assert!(path.is_absolute());
+        let code = fs::read_to_string(path).expect("mixed queue proof script");
+        assert!(code.len() < 64 * 1024);
+        code
+    });
+    let reorder_source = reorder.then(|| {
+        fs::read_to_string(
+            std::env::var_os("CUMULUS_MIXED_REORDER_SCRIPT").expect("isolated reorder script"),
+        )
+        .expect("read isolated reorder script")
+    });
+    let cached_download_source = cached_download.then(|| {
+        let path = PathBuf::from(
+            std::env::var_os("CUMULUS_OFFLINE_PLAYLIST_DOWNLOAD_SCRIPT")
+                .expect("explicit cached download proof script"),
+        );
+        assert!(path.is_absolute());
+        let code = fs::read_to_string(path).expect("cached download proof script");
+        assert!(code.len() < 64 * 1024);
+        code
+    });
+    let reorder_fixture = reorder.then(|| {
+        fs::create_dir(&root).expect("new synthetic mixed reorder root");
+        Arc::new(mixed_reorder_fixture::Fixture::new(&root).expect("mixed reorder audio"))
+    });
+    let cached_fixture = cached_playlist.then(|| {
+        fs::create_dir(&root).expect("new synthetic offline playlist root");
+        Arc::new(
+            offline_playlist_fixture::Fixture::new(&root, cached_download)
+                .expect("offline playlist audio"),
+        )
+    });
+    let mixed_fixture = mixed.then(|| {
+        fs::create_dir(&root).expect("new synthetic mixed playlist root");
+        let fixture = mixed_playlist_fixture::Fixture::new(&root).expect("mixed playlist audio");
+        if mixed_queue {
+            fixture
+                .add_queue_anchor()
+                .expect("separate local playback anchor");
+        }
+        Arc::new(fixture)
+    });
+    if !reopen && !sealed_playlist {
         fs::create_dir(&root).expect("new proof root");
         fixtures(&root, cold || directory_selection, queue).expect("generated local fixtures");
         if queue {
@@ -246,14 +336,102 @@ fn main() {
         verify_locale(&setup,reopen);
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
         let offline=Arc::new(Offline { hold:cold, started:AtomicBool::new(false), release:tokio::sync::Notify::new() });
-        let session=Arc::new(AccountSession::new(offline.clone(),Some(registry.store())));
+        let store=registry.store();
+        if let Some(fixture)=&cached_fixture {
+            tauri::async_runtime::block_on(fixture.prepare(store.clone()))?;
+        }
+        let api: Arc<dyn Api>=match (&mixed_fixture,&reorder_fixture,&cached_fixture) {
+            (Some(fixture),None,None)=>fixture.clone(),
+            (None,Some(fixture),None)=>fixture.clone(),
+            (None,None,Some(fixture))=>fixture.clone(),
+            (None,None,None)=>offline.clone(),
+            _=>unreachable!(),
+        };
+        let session=Arc::new(AccountSession::new(api,Some(store.clone())));
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
         tauri::async_runtime::block_on(client.start_local_library())?;
+        if sealed_playlist {
+            let path=setup.join("media").to_string_lossy().into_owned();
+            tauri::async_runtime::block_on(client.local_command(cumulus_core::client::dto::LocalCommand::Watch{path}))?;
+        }
         app.manage(client);
-        if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
+        if reorder {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(1120.0,900.0))?;}
+        else if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
+        if let Some(fixture)=cached_fixture.clone() {
+            offline_playlist_fixture::listen(app,fixture,store,&setup);
+            return Ok(());
+        }
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
-            let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
+            let mut value:Value=serde_json::from_str(event.payload()).expect("proof JSON");
+            let stage=value["stage"].as_str().unwrap_or("").to_owned();
+            let stage=stage.as_str();
+            if mixed || reorder {
+                let terminal=matches!(stage,"complete"|"failed");
+                if let Some(fixture)=&reorder_fixture {
+                    if stage=="release_reorder_ack" {fixture.release();return;}
+                    if stage=="await_reorder_write" {
+                        let fixture=fixture.clone();let handle=handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if fixture.first_send().await {
+                                handle.get_webview_window("main").unwrap().eval("window.__mixedReorderWriteSeen=true;").unwrap();
+                            }
+                        });
+                        return;
+                    }
+                    if !terminal && !mixed_reorder_fixture::STAGES.contains(&stage) {return;}
+                    value["nativeReceipt"]=fixture.receipt(&store).expect("mixed reorder receipt");
+                } else if let Some(fixture)=&mixed_fixture {
+                    let stages = if mixed_queue {
+                        &["ux_01_paused_baseline","ux_02_local_next_menu","ux_03_local_next","ux_04_online_next",
+                            "ux_05_entire_playlist","ux_06_drag_target","ux_07_drag_boundary","ux_08_drag_inserted",
+                            "ux_09_local_queue_source","ux_10_followed_playlist_source"][..]
+                    } else {
+                        &["ux_01_add_dialog","ux_02_add_cancelled","ux_03_mixed_read","ux_04_local_playing",
+                            "ux_05_remove_dialog","ux_06_remove_cancelled","ux_07_removed"][..]
+                    };
+                    if !terminal && !stages.contains(&stage) {return;}
+                    value["nativeReceipt"]=fixture.receipt(&store).expect("mixed playlist receipt");
+                }
+                let pending=output.join(format!("{stage}.pending"));
+                fs::write(&pending,serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                fs::rename(pending,output.join(format!("{stage}.json"))).unwrap();
+                if stage=="complete"||stage=="failed" {
+                    handle.exit(if stage=="complete"{0}else{1});
+                } else if std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
+                    let marker=output.join(format!("{stage}.captured"));
+                    let stage=stage.to_owned();let handle=handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if tokio::time::timeout(std::time::Duration::from_secs(8),async {
+                            while !marker.is_file() {tokio::time::sleep(std::time::Duration::from_millis(40)).await;}
+                        }).await.is_ok() {
+                            handle.get_webview_window("main").unwrap().eval(format!("window.__mixedCapture={};",json!(stage))).unwrap();
+                        }
+                    });
+                }
+                return;
+            }
+            if queue_reveal && stage=="await_queue_file_call" {
+                let expected=value["count"].as_u64().filter(|count| (1..=2).contains(count)).unwrap() as usize;
+                let calls=output.parent().unwrap().join("show-items.jsonl");
+                let handle=handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if tokio::time::timeout(std::time::Duration::from_secs(3),async {
+                        while fs::read_to_string(&calls).map_or(0, |log| log.lines().count()) != expected {
+                            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                        }
+                    }).await.is_ok() {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__queueFileCalls={expected};")).unwrap();
+                    }
+                });
+                return;
+            }
+            if queue_reveal && stage=="replace_queue_ncm" {
+                fs::OpenOptions::new().append(true).open(output.join("media/归途.ncm")).unwrap()
+                    .write_all(b"changed synthetic file").unwrap();
+                handle.get_webview_window("main").unwrap().eval("window.__queueNcmChanged=true;").unwrap();
+                return;
+            }
             let folder_capture = folder_reveal && ["ux_01_folder_menu", "ux_02_folder_focus", "ux_03_folder_failure"].contains(&stage);
             let hide_capture = group_hide && ["ux_01_group_hide_menu", "ux_02_group_hidden", "ux_03_group_restored"].contains(&stage);
             let batch_capture = batch_hide && ["ux_01_batch_menu", "ux_02_batch_cross_page", "ux_03_batch_hidden", "ux_04_batch_restored"].contains(&stage);
@@ -263,7 +441,9 @@ fn main() {
                 "ux_01_picker_requested", "ux_02_unchecked_after_cancel", "ux_03_checked",
                 "ux_04_paused_root", "ux_05_deselected", "ux_06_rechecked",
             ].contains(&stage);
-            if folder_capture || hide_capture || batch_capture || batch_play_capture || batch_add_capture || directory_capture {
+            let queue_reveal_capture = queue_reveal && ["ux_01_queue_local_cue", "ux_02_queue_local_ncm",
+                "ux_03_queue_local_changed"].contains(&stage);
+            if folder_capture || hide_capture || batch_capture || batch_play_capture || batch_add_capture || directory_capture || queue_reveal_capture {
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -342,8 +522,14 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture,"batchPlay":batch_play,"batchAdd":batch_add}))).unwrap();
-            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
+            webview.eval(if let Some(source)=&reorder_source {source.as_str()}
+            else if let Some(script)=&mixed_queue_script {script.as_str()}
+            else if let Some(source)=&cached_download_source {source.as_str()}
+            else if cached_playlist {include_str!("offline_playlist_ui_probe.js")}
+            else if mixed {include_str!("mixed_playlist_ui_probe.js")} else if cold {include_str!("local_cold_start_probe.js")} else if directory_selection {
                 include_str!("local_directory_selection_ui_probe.js")
+            } else if queue_reveal {
+                include_str!("local_queue_file_reveal_ui_probe.js")
             } else if folder_reveal {
                 include_str!("local_folder_reveal_ui_probe.js")
             } else if group_hide {

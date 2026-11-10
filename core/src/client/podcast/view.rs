@@ -46,7 +46,7 @@ pub(crate) fn episode(v: &Episode, liked: &[String]) -> EpisodeView {
         browse_playback_receipt: None,
     }
 }
-pub(super) fn operation(v: PodcastMutation) -> PodcastMutationView {
+pub(in crate::client) fn operation(v: PodcastMutation) -> PodcastMutationView {
     PodcastMutationView {
         action: v.action,
         id: v.id,

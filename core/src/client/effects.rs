@@ -12,7 +12,10 @@ use crate::{
         },
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
-        directory::{EffectDirectoryDetail, EffectDirectoryRow},
+        directory::{
+            EffectCatalogueLayout, EffectDirectoryDetail, EffectDirectoryOverview,
+            EffectDirectoryRow,
+        },
         service::{
             DeviceMaterialCheck, EffectsLibrary, ParametricPreparation, PreparedParametric,
             StandaloneParametric, StandaloneParametricPreflight,
@@ -357,6 +360,35 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         EffectsLibrary::new(self.session.clone())?
             .directory_for(&token, kind)
+            .await
+    }
+
+    pub async fn effect_directory_overview(&self, epoch: &str) -> Result<EffectDirectoryOverview> {
+        let token = self.player_token(epoch)?;
+        self.session.with_token(&token, |_| Ok(()))?;
+        let api = self.session.native_api(&token)?;
+        let credential = api.effect_catalogue_credential_revision()?;
+        let (revision, modern) = self.effect_catalogue_presentation(&token, &api)?;
+        let current = || {
+            let (now, _) = self.effect_catalogue_presentation(&token, &api)?;
+            if now != revision || api.effect_catalogue_credential_revision()? != credential {
+                return Err(Error::StaleResponse);
+            }
+            Ok(())
+        };
+        let layout = if modern {
+            EffectCatalogueLayout::Modern
+        } else {
+            EffectCatalogueLayout::Legacy
+        };
+        EffectsLibrary::new(self.session.clone())?
+            .directory_overview_for(
+                &token,
+                revision.clone(),
+                layout,
+                credential.as_deref(),
+                current,
+            )
             .await
     }
 

@@ -1,4 +1,13 @@
 fn main() {
+    const NATIVE_OPEN_NULL_PROOF: &str = "CUMULUS_BUILD_WINDOWS_NATIVE_OPEN_NULL_PROOF";
+    println!("cargo:rerun-if-env-changed={NATIVE_OPEN_NULL_PROOF}");
+    println!("cargo:rustc-check-cfg=cfg(cumulus_windows_native_open_null_proof)");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64")
+        && std::env::var(NATIVE_OPEN_NULL_PROOF).as_deref() == Ok("1")
+    {
+        println!("cargo:rustc-cfg=cumulus_windows_native_open_null_proof");
+    }
     let windows_msvc = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
         && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
     if windows_msvc {

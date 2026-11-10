@@ -1,3 +1,4 @@
+pub use super::lyrics::{LyricContribution, LyricToolbarAction};
 use crate::{
     client::dto::TrackView,
     lyrics::{DisplayType, LyricLine, LyricPreferences, YrcInfo},
@@ -24,6 +25,9 @@ pub struct PlayerView {
     pub equalizer: EqualizerView,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bound_parametric: Option<crate::playback::controller::ParametricBindingStatus>,
+    /// Catalogue presentation only, never a registration or processing receipt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub applied_effect_id: Option<crate::effects::catalog::EffectId>,
     /// PCM observed for the configured component on the current playing entry.
     pub parametric_processing: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -118,6 +122,7 @@ pub enum SearchPodcastRowGesture {
     Index,
     DoubleClick,
     Menu,
+    Next,
 }
 
 /// Public resource identity only; queue source metadata never crosses IPC.
@@ -168,6 +173,12 @@ pub enum QueueOrigin {
     Downloads,
 }
 #[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueDownloadMenuKind {
+    Song,
+    Voice,
+}
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueTrack {
     pub entry_id: String,
@@ -175,10 +186,19 @@ pub struct QueueTrack {
     pub more_recommendation: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<QueueOrigin>,
+    /// Verified mixed-playlist name for a local row's source menu.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub like_song_id: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub catalog_menu: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub voice_menu: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub local_menu: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_menu: Option<QueueDownloadMenuKind>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub collectible: bool,
 }
@@ -193,7 +213,22 @@ pub struct QueueCatalogMenu {
     pub origin: Option<QueueOrigin>,
     pub comment_count: Option<u64>,
     pub downloaded: bool,
-    pub download_task_id: Option<String>,
+    pub directory_receipt: Option<String>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueVoiceMenu {
+    pub epoch: String,
+    pub revision: String,
+    pub entry_id: String,
+    pub track: TrackView,
+    pub voice_id: String,
+    pub source_label: String,
+    pub radio_id: Option<String>,
+    pub creator: Option<super::PlayerVoiceCreator>,
+    pub comment_count: Option<u64>,
+    pub downloaded: Option<bool>,
+    pub directory_available: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -265,6 +300,13 @@ pub enum SongRowSelection {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MixedPlaylistStart {
+    pub id: String,
+    pub local: bool,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
     AlbumDetail {
@@ -319,6 +361,11 @@ pub enum PlaySelection {
     ListenedBookChapter {
         revision: String,
         key: usize,
+    },
+    HistoryRadioChapter {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        id: String,
     },
     History {
         history_kind: crate::history::HistoryKind,
@@ -424,6 +471,9 @@ pub enum PlaySelection {
     SearchResultVoice {
         id: String,
     },
+    SearchVoiceMenu {
+        target: crate::client::dto::SearchVoiceMenuTarget,
+    },
     SearchHotTrack {
         id: String,
         quality: Quality,
@@ -467,6 +517,34 @@ pub enum PlaySelection {
         revision: String,
         quality: Quality,
     },
+    MixedPlaylist {
+        id: String,
+        revision: String,
+        start: Option<MixedPlaylistStart>,
+        double_click: bool,
+        quality: Quality,
+    },
+    SortedPlaylist {
+        scope: crate::client::dto::PlaylistDurationScope,
+        start: Option<MixedPlaylistStart>,
+        #[serde(default)]
+        double_click: bool,
+        quality: Quality,
+    },
+    OfflinePlaylist {
+        id: String,
+        revision: String,
+        cached_at_ms: u64,
+        start_id: Option<String>,
+        #[serde(default = "offline_playlist_default_local")]
+        start_local: bool,
+        #[serde(default)]
+        double_click: bool,
+    },
+}
+
+fn offline_playlist_default_local() -> bool {
+    true
 }
 
 #[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
@@ -500,6 +578,13 @@ pub enum QueueEdit {
 pub struct PlaylistDropRow {
     pub track_id: String,
     pub track_index: usize,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MixedPlaylistDropRow {
+    pub track_id: String,
+    pub track_index: usize,
+    pub local: bool,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -568,6 +653,15 @@ pub enum PlayerAction {
         expected_play_id: Option<String>,
         before_entry_id: Option<String>,
     },
+    DropMixedPlaylistSongsIntoQueue {
+        id: String,
+        revision: String,
+        rows: Vec<MixedPlaylistDropRow>,
+        quality: Quality,
+        expected_queue_revision: String,
+        expected_play_id: Option<String>,
+        before_entry_id: Option<String>,
+    },
     DropSearchSongsIntoQueue {
         rows: Vec<super::super::search::SearchDropRow>,
         quality: Quality,
@@ -631,6 +725,24 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    QueueSortedPlaylist {
+        scope: crate::client::dto::PlaylistDurationScope,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueOfflinePlaylist {
+        id: String,
+        revision: String,
+        cached_at_ms: u64,
+        expected_queue_revision: String,
+    },
+    QueueMixedPlaylist {
+        id: String,
+        revision: String,
+        track: Option<MixedPlaylistStart>,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     QueueVoice {
         id: String,
         #[serde(default)]
@@ -655,6 +767,12 @@ pub enum PlayerAction {
     },
     QueueArtistSongs {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueArtistSongsBatch {
+        pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        ids: Vec<String>,
         quality: Quality,
         expected_queue_revision: String,
     },
@@ -683,6 +801,22 @@ pub enum PlayerAction {
     SearchNextPlay {
         id: String,
         quality: Quality,
+        expected_queue_revision: String,
+    },
+    SearchGroupNextPlay {
+        anchor: super::super::search::SearchDropRow,
+        rows: Vec<super::super::search::SearchDropRow>,
+        quality: Quality,
+        #[serde(deserialize_with = "Deserialize::deserialize")]
+        expected_play_id: Option<String>,
+        expected_queue_revision: String,
+    },
+    SearchGroupPlay {
+        anchor: super::super::search::SearchDropRow,
+        rows: Vec<super::super::search::SearchDropRow>,
+        quality: Quality,
+        #[serde(deserialize_with = "Deserialize::deserialize")]
+        expected_play_id: Option<String>,
         expected_queue_revision: String,
     },
     Startup,
@@ -800,6 +934,10 @@ pub struct LyricsView {
     pub romanization: Vec<LyricLine>,
     pub lyric_contributor: Option<LyricContributorView>,
     pub translation_contributor: Option<LyricContributorView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contribution: Option<LyricContribution>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub toolbar_contributions: Vec<LyricToolbarAction>,
     pub words: YrcInfo,
     pub offset: f64,
     pub scrollable: bool,

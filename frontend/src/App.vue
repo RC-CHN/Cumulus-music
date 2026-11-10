@@ -112,11 +112,14 @@ import { usePlaylistTopTags } from './composables/usePlaylistTopTags';
 import { usePlaylistSquare } from './composables/usePlaylistSquare';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterTrackScope } from './services/trackScopeSearch';
+import { sortedPlaylistRows } from './services/playlistDuration';
+import { usePlaylistDuration } from './composables/usePlaylistDuration';
 import TrackScopeSearch from './components/TrackScopeSearch.vue';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import { usePlaylistCommentTab } from './composables/usePlaylistCommentTab';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
 import {
+  offlineQueueMenuPrefix,
   playlistMenuItems,
   type PlaylistActionTarget,
   type PlaylistMenuScene,
@@ -166,7 +169,7 @@ import QueuePanel from './components/QueuePanel.vue';
 import type {
   TrackCurrentToggle,
   QueueMenuAction,
-  QueueTrackMenuRequest,
+  QueueMenuRequest,
   TrackMenuRequest,
   TrackPendingToggle,
   TrackPlayGesture,
@@ -208,6 +211,7 @@ import {
   type VinylComposerTarget,
 } from './composables/useVinylCommentComposer';
 import PlaylistDialog from './components/PlaylistDialog.vue';
+import PlaylistLocalMemberDialog from './components/PlaylistLocalMemberDialog.vue';
 import PlaylistImportPreview from './components/playlist/PlaylistImportPreview.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
 import DownloadPage from './components/DownloadPage.vue';
@@ -246,6 +250,8 @@ import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
 import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
+import TogetherRoomLossDialog from './components/TogetherRoomLossDialog.vue';
+import TogetherExternalSelection from './components/TogetherExternalSelection.vue';
 import RankingsPage from './components/RankingsPage.vue';
 import FmPage from './components/FmPage.vue';
 import SceneFmPage from './components/SceneFmPage.vue';
@@ -297,6 +303,9 @@ import type {
   VoiceSongSelectionAction,
 } from './services/voiceSongs';
 import { usePlaylists } from './composables/usePlaylists';
+import { useMixedPlaylistReorder } from './composables/useMixedPlaylistReorder';
+import { mixedDraggedRows } from './services/playlistMixedOrder';
+import { offlinePlaylistPlayableIds, offlinePlaylistSelection } from './services/offlinePlaylist';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { createPlayerResume } from './services/playerResume';
@@ -685,6 +694,20 @@ function playHistory(kind: HistoryKind, revision: string, ids: string[], index: 
     ids,
     index,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  });
+}
+function playHistoryChapter(kind: 'podcast' | 'audiobook', revision: string, id: string) {
+  const route = music.page.value;
+  if (
+    route.kind !== 'history' ||
+    recent.page.value?.chapterRevision !== revision ||
+    !signedIn.value
+  )
+    return;
+  void player.prepareSelection(async () => {
+    if (music.page.value !== route || recent.page.value?.chapterRevision !== revision)
+      throw { code: 'stale', message: '播放记录已更新', retryable: false };
+    return { kind: 'history_radio_chapter', history_kind: kind, revision, id };
   });
 }
 function openHistory(resource: HistoryResource) {
@@ -1382,7 +1405,7 @@ function openPlaybackSource(
   }
 }
 const searchBox = ref<InstanceType<typeof SearchBox>>();
-function searchOriginal(keyword: string) {
+function searchOriginal(keyword: string, correctionReceipt?: string) {
   if (
     page.value.kind !== 'search' ||
     page.value.correct === false ||
@@ -1390,7 +1413,7 @@ function searchOriginal(keyword: string) {
   )
     return;
   if (searchBox.value?.commitOriginal(keyword) !== keyword) return;
-  music.navigate({ kind: 'search', keyword, correct: false });
+  music.navigate({ kind: 'search', keyword, correct: false, correctionReceipt });
 }
 function openSearchItem(item: SearchItem) {
   if (item.kind === 'artist') openCatalog({ kind: 'artist', id: item.artist.id });
@@ -1407,6 +1430,16 @@ function openSearchItem(item: SearchItem) {
     if (id) openMv(id);
     else music.notice.value = '此视频暂不可打开';
   }
+}
+function departingSearchForDetail() {
+  const kind = page.value.kind;
+  return (
+    kind === 'playlist' ||
+    kind === 'catalog' ||
+    kind === 'playlist_creator' ||
+    kind === 'mv' ||
+    (kind === 'podcasts' && podcasts.query.value.scope.kind === 'radio')
+  );
 }
 function openSearchHotTarget(target: SearchHotTarget, anchor: HTMLButtonElement) {
   if (page.value.kind !== 'search' || !signedIn.value) return;
@@ -1519,6 +1552,22 @@ function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
           ? searchPodcastRowSelection(item, gesture)
           : undefined;
     if (!selection || !signedIn.value || player.busy.value) return;
+    if (gesture === 'next') {
+      if (
+        !ordinaryVoiceQueueable.value ||
+        player.view.value?.state === 'preparing' ||
+        player.view.value?.state === 'loading'
+      )
+        return;
+      void queueSearchResult(() =>
+        player.prepareSelectionForPage(async () => {
+          if (page.value !== route)
+            throw { code: 'stale', message: '搜索结果已更新', retryable: false };
+          return selection;
+        }),
+      );
+      return;
+    }
     void player.prepareSelection(async () => {
       if (page.value !== route)
         throw { code: 'stale', message: '搜索结果已更新', retryable: false };
@@ -1533,6 +1582,16 @@ function playSearchCard(item: SearchItem, gesture?: SearchPodcastRowGesture) {
     const quality = view?.qualityPreferences.quality ?? 'standard';
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
   }
+}
+function playSearchVoiceMenu(target: import('./services/search').SearchVoiceMenuTarget) {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  if (route.kind !== 'search' || !ordinaryVoiceQueueable.value) return;
+  void player.prepareSelection(async (owner) => {
+    if (page.value !== route || owner !== epoch)
+      throw { code: 'stale', message: '搜索结果已更新', retryable: false };
+    return { kind: 'search_voice_menu', target };
+  });
 }
 const searchCollectionQueueable = computed(
   () =>
@@ -1552,28 +1611,31 @@ function queueSearchCard({ item, anchor }: SearchQueueRequest) {
   if (item.kind === 'album') albumAction({ album: item.album, action: 'next', anchor });
   else playlistActions.value?.show(item.playlist, 'next');
 }
-const searchVoiceQueueFeedback = ref('');
-let searchVoiceQueueAttempt = 0;
+const searchCardQueueFeedback = ref('');
+let searchCardQueueAttempt = 0;
 watch([music.page, () => music.account.value.epoch], () => {
-  searchVoiceQueueFeedback.value = '';
-  searchVoiceQueueAttempt++;
+  searchCardQueueFeedback.value = '';
+  searchCardQueueAttempt++;
 });
-async function queueSearchVoice(id: string) {
+async function queueSearchResult(run: () => Promise<PlayerView | undefined>) {
   const route = page.value;
   const epoch = account.value.epoch;
   if (route.kind !== 'search' || !ordinaryVoiceQueueable.value) return;
-  const attempt = ++searchVoiceQueueAttempt;
+  const attempt = ++searchCardQueueAttempt;
   const current = () =>
-    attempt === searchVoiceQueueAttempt && page.value === route && account.value.epoch === epoch;
+    attempt === searchCardQueueAttempt && page.value === route && account.value.epoch === epoch;
   const previous = player.view.value;
-  searchVoiceQueueFeedback.value = '';
+  searchCardQueueFeedback.value = '';
   try {
-    const next = await player.queueVoice(id);
+    const next = await run();
     if (current() && previous?.queueLen && next && next.queueRevision !== previous.queueRevision)
-      searchVoiceQueueFeedback.value = '已添加至播放列表';
+      searchCardQueueFeedback.value = '已添加至播放列表';
   } catch (error) {
-    if (current()) searchVoiceQueueFeedback.value = failure(error).message;
+    if (current()) searchCardQueueFeedback.value = failure(error).message;
   }
+}
+function queueSearchVoice(id: string) {
+  void queueSearchResult(() => player.queueVoice(id));
 }
 function searchCardComments(item: SearchItem) {
   if (item.kind === 'playlist')
@@ -1738,6 +1800,52 @@ watch(
     if (player.queueOpen.value) void player.loadQueue();
   },
 );
+const togetherRoomLoss = computed(() => together.view.value?.queueRoomLoss);
+const externalSelection = computed(() => together.view.value?.externalSelection);
+const togetherFiltered = ref(false);
+watch(
+  () => externalSelection.value?.id,
+  (id, _, onCleanup) => {
+    togetherFiltered.value = !!id && externalSelection.value?.blocked === false;
+    if (!togetherFiltered.value) return;
+    const timer = setTimeout(() => (togetherFiltered.value = false), 3_000);
+    onCleanup(() => clearTimeout(timer));
+  },
+);
+async function resolveTogetherExternalSelection(confirm: boolean) {
+  const notice = externalSelection.value;
+  if (!notice?.blocked || together.busy.value) return;
+  const owner = together.epoch.value;
+  await together.command({
+    kind: 'resolve_external_selection',
+    room_id: notice.roomId,
+    notice_id: notice.id,
+    confirm,
+  });
+  if (
+    confirm &&
+    owner === together.epoch.value &&
+    !externalSelection.value?.blocked &&
+    (together.error.value || together.view.value?.pending.some((op) => op.action === 'end'))
+  )
+    music.navigate({ kind: 'together' });
+}
+async function confirmTogetherRoomLoss() {
+  const notice = togetherRoomLoss.value;
+  if (!notice || together.busy.value) return;
+  const owner = together.epoch.value;
+  await together.command({
+    kind: 'confirm_queue_room_loss',
+    room_id: notice.roomId,
+    report_id: notice.reportId,
+  });
+  if (
+    owner === together.epoch.value &&
+    !togetherRoomLoss.value &&
+    (together.error.value || together.view.value?.pending.some((op) => op.action === 'end'))
+  )
+    music.navigate({ kind: 'together' });
+}
 const podcastRecent = usePodcastRecent(
   () => music.account.value,
   () => void music.bootstrap(false),
@@ -2403,6 +2511,57 @@ watch(
 const trackActions = ref<InstanceType<typeof TrackActions>>();
 watch(music.page, () => trackActions.value?.close());
 const playlistDialog = ref<PlaylistDialogTarget>();
+type LocalMemberTarget = InstanceType<typeof PlaylistLocalMemberDialog>['$props']['target'];
+const localPlaylistMember = shallowRef<{
+  epoch: string;
+  page: Page;
+  target: LocalMemberTarget;
+  anchor: HTMLElement | null;
+  live: () => boolean;
+}>();
+function localMemberLive() {
+  const current = localPlaylistMember.value;
+  return (
+    !!current &&
+    signedIn.value &&
+    current.epoch === account.value.epoch &&
+    current.page === page.value
+  );
+}
+watch(
+  () => [signedIn.value, account.value.epoch, page.value] as const,
+  () => {
+    if (!localMemberLive()) localPlaylistMember.value = undefined;
+  },
+);
+function openLocalPlaylistMember(target: LocalMemberTarget, anchor: HTMLElement | null) {
+  if (!signedIn.value) return;
+  const visit: NonNullable<typeof localPlaylistMember.value> = {
+    epoch: account.value.epoch,
+    page: page.value,
+    target,
+    anchor,
+    live: () => localPlaylistMember.value === visit && localMemberLive(),
+  };
+  localPlaylistMember.value = visit;
+}
+function closeLocalPlaylistMember() {
+  const origin = localPlaylistMember.value?.anchor;
+  localPlaylistMember.value = undefined;
+  void nextTick(() => {
+    if (origin?.isConnected) origin.focus({ preventScroll: true });
+  });
+}
+function localPlaylistMemberSaved(id: string, changed: boolean) {
+  const kind = localPlaylistMember.value?.target.kind;
+  closeLocalPlaylistMember();
+  if (!changed) {
+    if (kind === 'add') notice.value = '这首本地歌曲已在歌单中。';
+    return;
+  }
+  notice.value = kind === 'add' ? '已添加到歌单。' : '已从歌单中移除。';
+  if (page.value.kind === 'playlist' && page.value.id === id) void music.load();
+}
 let downloadCollectionIntent = 0;
 async function openDownloadCollection(task: DownloadTask) {
   if (!signedIn.value || !task.collectionAvailable || music.page.value.kind !== 'downloads') return;
@@ -2472,9 +2631,69 @@ function collectQueue(
         : undefined,
   };
 }
-function applyQueueMenu(key: QueueMenuAction, input: QueueTrackMenuRequest) {
+function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
   if (!input.live() || input.info.epoch !== account.value.epoch) return;
   const { track } = input.info;
+  if (input.kind === 'voice') {
+    const { voiceId, radioId, creator, epoch, revision, entryId } = input.info;
+    if (key === 'comments') openComments({ kind: 'voice', id: voiceId }, track.name);
+    else if (key === 'download' && signedIn.value && !downloadDialog.value) {
+      const route = page.value;
+      downloadDialog.value = {
+        kind: 'voice',
+        tracks: [{ id: voiceId, name: track.name }],
+        live: () => page.value === route && input.live() && account.value.epoch === epoch,
+      };
+    } else if (key === 'creator' && creator?.id) {
+      if (page.value.kind !== 'playlist_creator' || page.value.id !== creator.id)
+        music.navigate({ kind: 'playlist_creator', id: creator.id });
+    } else if (key === 'source' && radioId) {
+      const scope = podcasts.query.value.scope;
+      if (page.value.kind !== 'podcasts') {
+        podcasts.navigate({ kind: 'radio', id: radioId, ascending: true }, false);
+        music.navigate({ kind: 'podcasts' });
+      } else if (scope.kind !== 'radio' || scope.id !== radioId) openSceneRadio(radioId);
+    } else if (key === 'directory') {
+      void core.playerQueueOpenVoiceDirectory(epoch, revision, entryId).catch((error) => {
+        if (input.live()) input.report(failure(error).message);
+      });
+    }
+    return;
+  }
+  if (input.kind === 'local' || input.kind === 'downloaded') {
+    const { epoch, revision, entryId, origin } = input.info;
+    if (key === 'directory') {
+      const reveal =
+        input.kind === 'local'
+          ? core.playerQueueOpenLocalDirectory(epoch, revision, entryId)
+          : core.playerQueueOpenDownloadDirectory(epoch, revision, entryId);
+      void reveal.catch((error) => {
+        if (input.live()) input.report(failure(error).message);
+      });
+    } else if (
+      input.kind === 'local' &&
+      key === 'source' &&
+      (origin?.kind === 'local' || origin?.kind === 'playlist')
+    ) {
+      navigateFromQueue(origin);
+    } else if (input.kind === 'downloaded') {
+      if (key === 'source' && origin?.kind === 'downloads') {
+        const category = input.downloadKind;
+        if (
+          page.value.kind !== 'downloads' ||
+          downloads.query.value.tab !== 'completed' ||
+          downloads.query.value.category !== category
+        )
+          music.navigate({ kind: 'downloads', initialTab: 'completed', initialCategory: category });
+      } else if (input.downloadKind === 'song') {
+        const artistId = track.artistRefs?.[0]?.id;
+        if (key === 'artist' && artistId) navigateFromQueue({ kind: 'artist', id: artistId });
+        if (key === 'album' && track.albumId)
+          navigateFromQueue({ kind: 'album', id: track.albumId });
+      }
+    }
+    return;
+  }
   if (key === 'comments') trackComments(track);
   else if (key === 'download') {
     if (!signedIn.value) loginOpen.value = true;
@@ -2486,8 +2705,13 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueTrackMenuRequest) {
     if (track.albumId) navigateFromQueue({ kind: 'album', id: track.albumId });
   } else if (key === 'source') {
     if (input.info.origin) navigateFromQueue(input.info.origin);
-  } else if (key === 'directory') {
-    if (input.info.downloadTaskId) void downloads.open(input.info.downloadTaskId);
+  } else if (key === 'directory' && input.info.directoryReceipt) {
+    const { epoch, revision, entryId, directoryReceipt } = input.info;
+    void core
+      .playerQueueOpenCatalogDirectory(epoch, revision, entryId, directoryReceipt)
+      .catch((error) => {
+        if (input.live()) input.report(failure(error).message);
+      });
   }
 }
 function queueCollectionFallback() {
@@ -3025,6 +3249,7 @@ function openSettingsSection(
   epoch: string,
   section:
     | 'settings-desktop-notifications'
+    | 'settings-download'
     | 'settings-audio-output'
     | 'settings-playback'
     | 'settings-privacy'
@@ -3113,7 +3338,9 @@ watch(
       downloads.enterVisit(
         next,
         next.initialTab
-          ? downloadSectionQuery(next.initialTab === 'active' ? 'active' : 'song')
+          ? downloadSectionQuery(
+              next.initialTab === 'active' ? 'active' : (next.initialCategory ?? 'song'),
+            )
           : undefined,
       );
   },
@@ -3664,6 +3891,31 @@ watch(
   },
   { immediate: true, flush: 'sync' },
 );
+const cachedPlaylist = computed(() => {
+  const route = page.value;
+  const shown = result.value;
+  return route.kind === 'playlist' && !route.zonePlaylistReceipt && shown?.playlist?.id === route.id
+    ? shown.playlistOffline
+    : undefined;
+});
+const cachedPlayableIds = computed(() => {
+  const shown = result.value;
+  if (cachedPlaylist.value && shown) return offlinePlaylistPlayableIds(shown);
+});
+const cachedPlaylistHeaderSelection = computed(() => {
+  const route = page.value;
+  const shown = result.value;
+  if (cachedPlaylist.value && route.kind === 'playlist' && shown)
+    return offlinePlaylistSelection(route.id, shown);
+});
+const cachedPlaylistPlayError = ref('');
+watch(
+  [page, result, () => account.value.epoch],
+  () => {
+    cachedPlaylistPlayError.value = '';
+  },
+  { flush: 'sync' },
+);
 const playlistPanelId = () =>
   page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
     ? page.value.id
@@ -3743,7 +3995,9 @@ const playlistComments = usePlaylistCommentTab(
 );
 const playlistCommentContext = useCommentContext(playlistComments.model, core);
 const playlistSection = computed(() =>
-  page.value.kind === 'playlist' ? (page.value.section ?? 'songs') : 'songs',
+  page.value.kind === 'playlist' && !cachedPlaylist.value
+    ? (page.value.section ?? 'songs')
+    : 'songs',
 );
 const playlistSongsActive = computed(() => playlistSection.value === 'songs');
 const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
@@ -3834,10 +4088,17 @@ watch(
   { flush: 'post' },
 );
 function showPlaylistSection(section: PlaylistSection) {
-  if (playlistPanelId()) music.replacePlaylistSection(section);
+  if (playlistPanelId() && !cachedPlaylist.value) music.replacePlaylistSection(section);
 }
 const playlistKeyword = ref('');
-const playlistTrackSearch = computed(() =>
+const playlistDuration = usePlaylistDuration(
+  core,
+  () => account.value,
+  () => page.value,
+  result,
+  () => loading.value,
+);
+const playlistTrackFilter = computed(() =>
   filterTrackScope(
     result.value?.tracks ?? [],
     page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
@@ -3845,19 +4106,110 @@ const playlistTrackSearch = computed(() =>
       : '',
   ),
 );
+const playlistTrackSearch = computed(() =>
+  sortedPlaylistRows(playlistTrackFilter.value, playlistDuration.ordinals.value),
+);
 const playlistSelectionScope = computed(() =>
   signedIn.value &&
+  !cachedPlaylist.value &&
   page.value.kind === 'playlist' &&
   playlistSongsActive.value &&
   result.value?.playlist?.id === page.value.id &&
   result.value.revision
-    ? `${account.value.epoch}:${page.value.id}:${result.value.revision}`
+    ? `${account.value.epoch}:${page.value.id}:${result.value.revision}:${result.value.playlistLocal?.revision ?? ''}`
     : undefined,
 );
+const mixedReorderVisit = computed<
+  { id: string; epoch: string; route: Extract<Page, { kind: 'playlist' }> } | undefined
+>((previous) => {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  if (
+    !signedIn.value ||
+    route.kind !== 'playlist' ||
+    route.zonePlaylistReceipt ||
+    !!cachedPlaylist.value ||
+    !playlistSongsActive.value
+  )
+    return;
+  const shown = result.value;
+  if (!shown) return previous?.route === route && previous.epoch === epoch ? previous : undefined;
+  if (
+    shown.playlist?.id !== route.id ||
+    !shown.playlist.owned ||
+    shown.playlist.favorite ||
+    !shown.playlistLocal?.hasMembers
+  )
+    return;
+  return previous?.route === route && previous.epoch === epoch
+    ? previous
+    : { id: route.id, epoch, route };
+});
+const mixedReorder = useMixedPlaylistReorder(
+  core,
+  () => mixedReorderVisit.value,
+  async (visit, focusId) => {
+    const active = () => mixedReorderVisit.value === visit;
+    const before = document.activeElement;
+    const ownsFocus =
+      !!focusId && before?.closest('.track-row')?.getAttribute('data-track-id') === focusId;
+    const updated = await music.reloadReorderedPlaylist(active);
+    if (updated && ownsFocus && focusId) {
+      await nextTick();
+      if (
+        active() &&
+        (document.activeElement === document.body || document.activeElement === before)
+      )
+        playlistTrackTable.value?.focusAfterReorder(focusId);
+    }
+    return updated;
+  },
+  () => void music.bootstrap(false),
+);
+const mixedReorderScope = computed(() => {
+  const visit = mixedReorderVisit.value;
+  const shown = result.value;
+  const tracks = playlistTrackSearch.value.tracks;
+  if (
+    !visit ||
+    !shown?.playlistLocal ||
+    shown.playlistLocal.hasUnboundLegacy ||
+    !mixedReorder.ready.value ||
+    playlistDuration.requested.value ||
+    loading.value ||
+    !tracks.length ||
+    localPlaylistMember.value ||
+    playlistDialog.value
+  )
+    return;
+  return { visit, shown, tracks };
+});
+function reorderVisibleMixed(
+  scope: object,
+  picked: ReadonlySet<string>,
+  dragged: string,
+  gap: number,
+) {
+  const current = mixedReorderScope.value;
+  if (
+    !current ||
+    scope !== current ||
+    !Number.isInteger(gap) ||
+    gap < 0 ||
+    gap > current.tracks.length
+  )
+    return;
+  const displayed = new Map(current.tracks.map((track) => [track.id, track]));
+  if (displayed.size !== current.tracks.length) return;
+  const selected = mixedDraggedRows(current.shown, displayed, picked, dragged);
+  const revision = current.shown.playlistLocal?.revision;
+  if (selected && revision) void mixedReorder.send(revision, selected, gap, dragged);
+}
 type PlaylistDropRefresh = {
   page: Extract<Page, { kind: 'playlist' }>;
   epoch: string;
   revision: string;
+  mixedRevision?: string;
   visit: number;
 };
 const stalePlaylistDrop = shallowRef<PlaylistDropRefresh>();
@@ -3888,14 +4240,15 @@ watch(
   { flush: 'sync' },
 );
 watch(
-  () => result.value?.revision,
-  (revision) => {
+  [() => result.value?.revision, () => result.value?.playlistLocal?.revision],
+  ([revision, mixedRevision]) => {
     const ticket = stalePlaylistDrop.value;
     if (
       ticket &&
       refreshingPlaylistDrop.value !== ticket &&
       revision &&
-      revision !== ticket.revision
+      (revision !== ticket.revision ||
+        (ticket.mixedRevision !== undefined && mixedRevision !== ticket.mixedRevision))
     )
       stalePlaylistDrop.value = undefined;
   },
@@ -3908,7 +4261,9 @@ async function refreshPlaylistDropSource(event: MouseEvent) {
   try {
     // This is a new, read-only source load. The old gesture is never retained
     // or sent again. playlistKeyword is scoped to the route, not this read.
-    await music.load();
+    if (ticket.mixedRevision) {
+      if (!(await music.reloadReorderedPlaylist(() => ownsPlaylistDrop(ticket)))) return;
+    } else await music.load();
     if (
       stalePlaylistDrop.value !== ticket ||
       !ownsPlaylistDrop(ticket) ||
@@ -3927,6 +4282,20 @@ async function refreshPlaylistDropSource(event: MouseEvent) {
     if (refreshingPlaylistDrop.value === ticket) refreshingPlaylistDrop.value = undefined;
   }
 }
+const displayedMixedPlaylist = computed(() => {
+  const route = page.value;
+  const shown = result.value;
+  if (
+    route.kind === 'playlist' &&
+    !cachedPlaylist.value &&
+    !route.zonePlaylistReceipt &&
+    shown?.playlist?.id === route.id &&
+    shown.playlist.owned &&
+    !shown.playlist.favorite &&
+    shown.playlistLocal?.hasMembers
+  )
+    return shown.playlistLocal;
+});
 const canDropPlaylistSong = computed(
   () =>
     !!playlistSelectionScope.value &&
@@ -4005,6 +4374,7 @@ function startPlaylistQueueDrop(
   if (route.kind !== 'playlist' || !snapshot?.revision || !canDropPlaylistSong.value) return;
   const id = route.id;
   const revision = snapshot.revision;
+  const mixed = displayedMixedPlaylist.value;
   const epoch = account.value.epoch;
   const visit = playlistDropVisit;
   const keyword = playlistKeyword.value;
@@ -4012,6 +4382,7 @@ function startPlaylistQueueDrop(
   const ordinals = rows.map(({ track, index }) => ({
     trackId: track.id,
     trackIndex: position?.[index] ?? index,
+    local: track.local,
   }));
   const current = () =>
     canDropPlaylistSong.value &&
@@ -4022,25 +4393,41 @@ function startPlaylistQueueDrop(
     playlistKeyword.value === keyword &&
     result.value?.revision === revision &&
     result.value.tracks === snapshot.tracks &&
+    (!mixed || result.value.playlistLocal?.revision === mixed.revision) &&
     playlistTrackSearch.value.positions === position;
   if (
     !current() ||
-    !ordinals.every(({ trackId, trackIndex }) => snapshot.tracks[trackIndex]?.id === trackId)
+    !ordinals.every(({ trackId, trackIndex, local }) => {
+      const track = snapshot.tracks[trackIndex];
+      return (
+        track?.id === trackId &&
+        track.local === local &&
+        !track.missing &&
+        (!local || (mixed && Object.hasOwn(mixed.rows, trackId)))
+      );
+    })
   )
     return;
-  queuePanel.value?.beginDrop(event, {
-    kind: 'playlist',
+  const source = {
     id,
-    revision,
-    rows: ordinals,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
     sourceChanged: () => {
-      const ticket = { page: route, epoch, revision, visit };
-      if (ownsPlaylistDrop(ticket) && result.value?.revision === revision)
+      const ticket = { page: route, epoch, revision, mixedRevision: mixed?.revision, visit };
+      if (
+        ownsPlaylistDrop(ticket) &&
+        result.value?.revision === revision &&
+        (!mixed || result.value.playlistLocal?.revision === mixed.revision)
+      )
         stalePlaylistDrop.value = ticket;
     },
     current,
-  });
+  } as const;
+  queuePanel.value?.beginDrop(
+    event,
+    mixed
+      ? { ...source, kind: 'mixed_playlist', revision: mixed.revision, rows: ordinals }
+      : { ...source, kind: 'playlist', revision, rows: ordinals },
+  );
 }
 watch(
   [() => account.value.epoch, () => (page.value.kind === 'playlist' ? page.value.id : null)],
@@ -4161,21 +4548,129 @@ const searchKnownPlaylistIds = computed(() =>
     ? new Set(playlists.value.map((playlist) => playlist.id))
     : undefined,
 );
+const sortedPlaylistQueuePrefix = 'queue-sorted:';
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
-  return playlistMenuItems(list, scene, {
+  const sorting =
+    scene === 'detail' && playlistPanelId() === list.id && playlistDuration.requested.value;
+  const sortScope = sorting ? playlistDuration.scope.value : undefined;
+  const sortKey = sortScope ? `${sortScope.receipt}:${sortScope.order}` : '';
+  if (cachedPlaylist.value && playlistPanelId() === list.id) {
+    const revision = result.value?.playlistLocal?.revision;
+    if (scene !== 'detail' || !revision) return [];
+    const special =
+      player.view.value?.fm || !!player.view.value?.intelligence || !!together.view.value?.attached;
+    return [
+      {
+        key: `${offlineQueueMenuPrefix}${account.value.epoch}:${list.id}:${revision}:${cachedPlaylist.value.cachedAtMs}:${sortKey}`,
+        label: '添加全部至播放列表',
+        icon: 'list',
+        disabled:
+          !cachedPlaylistHeaderSelection.value ||
+          playlistDuration.blocked.value ||
+          loading.value ||
+          !player.ready.value ||
+          player.busy.value ||
+          player.queueBusy.value ||
+          !!playlistActions.value?.busy ||
+          special,
+        hint: special ? '请先切换到普通播放队列' : undefined,
+      },
+    ];
+  }
+  const items = playlistMenuItems(list, scene, {
     lists: playlists.value,
     busy: playlistManager.busy.value || downloads.busy.value || !!playlistActions.value?.busy,
     playable: player.ready.value,
     preparing: player.busy.value || player.queueBusy.value,
     fm: player.view.value?.fm,
   });
+  return sorting
+    ? items.map((item) =>
+        item.key === 'queue'
+          ? {
+              ...item,
+              key: `${sortedPlaylistQueuePrefix}${sortKey}`,
+              disabled:
+                item.disabled ||
+                !sortScope ||
+                !!player.view.value?.intelligence ||
+                !!together.view.value?.attached,
+            }
+          : item,
+      )
+    : items;
 }
-function scopedPlaylistQueue(id: string, songId?: string) {
+function scopedSortedPlaylistQueue(id: string) {
   const route = page.value;
-  if (route.kind !== 'playlist' || route.id !== id || !route.zonePlaylistReceipt) return;
   const epoch = account.value.epoch;
+  const scope = playlistDuration.scope.value;
+  if (route.kind !== 'playlist' || route.id !== id || !scope) return;
+  return async () => {
+    const current = playlistDuration.scope.value;
+    if (
+      page.value !== route ||
+      account.value.epoch !== epoch ||
+      current?.receipt !== scope.receipt ||
+      current.order !== scope.order
+    )
+      return;
+    return player.queueSortedPlaylist(scope);
+  };
+}
+function scopedOfflinePlaylistQueue(id: string) {
+  if (playlistDuration.requested.value) return scopedSortedPlaylistQueue(id);
+  const route = page.value;
+  const epoch = account.value.epoch;
+  const selection = cachedPlaylistHeaderSelection.value;
+  if (route.kind !== 'playlist' || route.id !== id || !selection) return;
+  return async () => {
+    const shown = cachedPlaylistHeaderSelection.value;
+    if (
+      account.value.epoch !== epoch ||
+      page.value !== route ||
+      shown?.revision !== selection.revision ||
+      shown.cached_at_ms !== selection.cached_at_ms
+    )
+      return;
+    return player.queueOfflinePlaylist(selection.id, selection.revision, selection.cached_at_ms);
+  };
+}
+function scopedPlaylistQueue(id: string, track?: TrackView) {
+  const route = page.value;
+  if (route.kind !== 'playlist' || route.id !== id) return;
+  const epoch = account.value.epoch;
+  const snapshot = result.value;
+  const mixed = displayedMixedPlaylist.value;
+  // The official whole-list resolver uses the mixed page only after all
+  // its entities are loaded. A bound row can still queue from any page.
+  if (
+    mixed &&
+    (track || (snapshot && !snapshot.more && snapshot.tracks.length === snapshot.total))
+  ) {
+    return async () => {
+      const shown = result.value;
+      if (
+        account.value.epoch !== epoch ||
+        page.value !== route ||
+        shown?.playlist?.id !== id ||
+        shown.playlistLocal?.revision !== mixed.revision ||
+        (!track && (shown.more || shown.tracks.length !== shown.total)) ||
+        (track &&
+          (track.missing ||
+            !shown.tracks.includes(track) ||
+            (track.local && !Object.hasOwn(mixed.rows, track.id))))
+      )
+        return;
+      return player.queueMixedPlaylist(
+        id,
+        mixed.revision,
+        track ? { id: track.id, local: track.local } : null,
+      );
+    };
+  }
   const receipt = route.zonePlaylistReceipt;
-  const revision = result.value?.revision;
+  if (!receipt) return;
+  const revision = snapshot?.revision;
   return async () => {
     if (
       account.value.epoch !== epoch ||
@@ -4185,13 +4680,18 @@ function scopedPlaylistQueue(id: string, songId?: string) {
       result.value.playlist?.id !== id
     )
       return;
-    return player.queueZonePlaylistDetail({ id, receipt, revision }, songId);
+    return player.queueZonePlaylistDetail({ id, receipt, revision }, track?.id);
   };
 }
 function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
   const item = playlistMenu(list, scene).find((item) => item.key === key);
   if (!item || item.disabled) return;
-  if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
+  if (key.startsWith(offlineQueueMenuPrefix) || key.startsWith(sortedPlaylistQueuePrefix)) {
+    const scoped = key.startsWith(sortedPlaylistQueuePrefix)
+      ? scopedSortedPlaylistQueue(list.id)
+      : scopedOfflinePlaylistQueue(list.id);
+    if (scoped) playlistActions.value?.show(list, 'queue', scoped);
+  } else if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
   else if (key === 'batch') openBatch(list, scene);
   else if (key === 'play') {
     if (
@@ -4201,7 +4701,8 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
       page.value.zonePlaylistReceipt
     )
       playZonePlaylistDetail(null);
-    else playMemberPlaylist(list.id, null);
+    else if (page.value.kind !== 'playlist' || page.value.id !== list.id || !playMixedPlaylist())
+      playMemberPlaylist(list.id, null);
   } else if (key === 'edit') editPlaylist(list.id);
   else if (key === 'up' || key === 'down')
     void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
@@ -4777,6 +5278,7 @@ watch(
     ),
 );
 function showVisibleTrackActions(request: TrackMenuRequest) {
+  if (cachedPlaylist.value) return;
   const playlist = result.value?.playlist;
   if (!playlist) {
     const snapshot = result.value;
@@ -4796,10 +5298,36 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
     return;
   }
   const epoch = account.value.epoch;
+  const membership = result.value?.playlistLocal;
+  const localRevision = request.track.local ? membership?.rows[request.track.id] : undefined;
   trackActions.value?.show(
     {
       ...request,
-      queueNext: scopedPlaylistQueue(playlist.id, request.track.id),
+      mixedLocal: membership?.hasMembers,
+      ...(membership && localRevision
+        ? {
+            removeLocalMember: (anchor) => {
+              if (
+                account.value.epoch !== epoch ||
+                page.value.kind !== 'playlist' ||
+                page.value.id !== playlist.id ||
+                result.value?.playlistLocal?.revision !== membership.revision
+              )
+                return;
+              openLocalPlaylistMember(
+                {
+                  kind: 'remove',
+                  title: request.track.name,
+                  playlist,
+                  row: { id: request.track.id, revision: localRevision },
+                  revision: membership.revision,
+                },
+                anchor ?? null,
+              );
+            },
+          }
+        : {}),
+      queueNext: scopedPlaylistQueue(playlist.id, request.track),
       play: () => {
         if (
           account.value.epoch !== epoch ||
@@ -4822,10 +5350,29 @@ function playVisibleTrack(index: number, gesture?: TrackPlayGesture) {
 }
 const visibleTrackToggle = computed<TrackCurrentToggle | undefined>((previous) => {
   const current = player.view.value;
+  const local = current?.resourceKind === 'local';
+  const shown = result.value;
+  const localMember =
+    local &&
+    page.value.kind === 'playlist' &&
+    shown?.playlist?.id === page.value.id &&
+    !!current.track?.id &&
+    !!shown.playlistLocal?.rows[current.track.id];
+  const cachedDownload =
+    cachedPlaylist.value &&
+    current?.resourceKind === 'downloaded' &&
+    !!current.downloadTaskId &&
+    current.origin?.kind === 'playlist' &&
+    current.origin.id === shown?.playlist?.id &&
+    !!current.track &&
+    shown?.playlistOffline?.downloadIds?.includes(current.track.id);
+  const eligible = cachedPlaylist.value
+    ? localMember || cachedDownload
+    : current?.resourceKind === 'catalog' || localMember;
   if (
     !current?.playId ||
     !current.track ||
-    current.resourceKind !== 'catalog' ||
+    !eligible ||
     current.fm ||
     current.epoch !== account.value.epoch ||
     !player.loaded.value
@@ -4837,11 +5384,13 @@ const visibleTrackToggle = computed<TrackCurrentToggle | undefined>((previous) =
     previous.epoch === current.epoch &&
     previous.queueRevision === current.queueRevision &&
     previous.trackId === current.track.id &&
+    !!previous.local === local &&
     previous.pause === pause
   )
     return previous;
   return {
     trackId: current.track.id,
+    ...(local ? { local: true } : {}),
     epoch: current.epoch,
     playId: current.playId,
     queueRevision: current.queueRevision,
@@ -4906,10 +5455,63 @@ function playZonePlaylistDetail(startId: string | null, doubleClick = false) {
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
+function playCachedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
+  const route = page.value;
+  const shown = result.value;
+  if (!cachedPlaylist.value || route.kind !== 'playlist' || !shown) return false;
+  const selection = offlinePlaylistSelection(route.id, shown, track, gesture === 'double_click');
+  if (!selection || (track && !cachedPlayableIds.value?.has(track.id))) return true;
+  if (track) void player.select(selection);
+  else if (!loading.value) {
+    const epoch = account.value.epoch;
+    cachedPlaylistPlayError.value = '';
+    void player.selectForPage(selection).catch((issue) => {
+      if (page.value === route && result.value === shown && account.value.epoch === epoch)
+        cachedPlaylistPlayError.value = failure(issue).message;
+    });
+  }
+  return true;
+}
+function playMixedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
+  const current = page.value;
+  const shown = result.value;
+  if (
+    current.kind !== 'playlist' ||
+    current.zonePlaylistReceipt ||
+    shown?.playlist?.id !== current.id ||
+    !shown.playlistLocal?.hasMembers
+  )
+    return false;
+  if (!track || (!track.missing && (!track.local || shown.playlistLocal.rows[track.id])))
+    void player.select({
+      kind: 'mixed_playlist',
+      id: current.id,
+      revision: shown.playlistLocal.revision,
+      start: track ? { id: track.id, local: track.local } : null,
+      double_click: gesture === 'double_click',
+      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  return true;
+}
+function playSortedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
+  if (!playlistDuration.requested.value) return false;
+  const scope = playlistDuration.scope.value;
+  if (scope)
+    void player.select({
+      kind: 'sorted_playlist',
+      scope,
+      start: track ? { id: track.id, local: track.local } : null,
+      double_click: gesture === 'double_click',
+      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  return true;
+}
 function playPlaylistHeader() {
+  if (playSortedPlaylist() || playCachedPlaylist()) return;
   const current = page.value;
   if (current.kind === 'playlist' && current.zonePlaylistReceipt) playZonePlaylistDetail(null);
-  else play(result.value?.tracks.findIndex((track) => !track.missing) ?? -1);
+  else if (!playMixedPlaylist())
+    play(result.value?.tracks.findIndex((track) => !track.missing) ?? -1);
 }
 function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
@@ -4940,6 +5542,12 @@ function play(index = 0, gesture?: TrackPlayGesture) {
       playZonePlaylistDetail(tracks[index].id, gesture === 'double_click');
       return;
     }
+    if (
+      playSortedPlaylist(tracks[index], gesture) ||
+      playCachedPlaylist(tracks[index], gesture) ||
+      playMixedPlaylist(tracks[index], gesture)
+    )
+      return;
     const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',
       id: page.value.id,
@@ -4967,6 +5575,7 @@ function keyboard(event: KeyboardEvent) {
         loginOpen.value ||
         accountsOpen.value ||
         playlistDialog.value ||
+        localPlaylistMember.value ||
         downloadDialog.value ||
         cloudDialogOpen.value
       ),
@@ -5267,6 +5876,18 @@ onUnmounted(() => {
                 v-if="page.kind === 'local'"
                 :model="local"
                 :matching="localMatching"
+                :can-add-to-playlist="signedIn"
+                @add-to-playlist="
+                  (row, anchor) =>
+                    openLocalPlaylistMember(
+                      {
+                        kind: 'add',
+                        title: row.track.name,
+                        row: { id: row.track.id, revision: row.revision },
+                      },
+                      anchor,
+                    )
+                "
                 :playable="player.ready.value"
                 :queueable="
                   player.ready.value &&
@@ -5310,12 +5931,16 @@ onUnmounted(() => {
               <HistoryPage
                 v-else-if="page.kind === 'history'"
                 :model="recent"
+                :account="account"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
                 @scope="music.replace({ kind: 'history', scope: $event })"
                 @play="playHistory"
+                @chapter="playHistoryChapter"
                 @open="openHistory"
+                @login="loginOpen = true"
+                @expired="music.bootstrap(false)"
               />
               <SettingsPage
                 :player="player"
@@ -5483,6 +6108,7 @@ onUnmounted(() => {
               />
               <SearchResultsPage
                 :memory="searchMemory"
+                :detail-departure="departingSearchForDetail"
                 :search-id="page.kind === 'search' ? page.searchId : undefined"
                 v-else-if="page.kind === 'search' && searchOnline"
                 :account="account"
@@ -5491,6 +6117,7 @@ onUnmounted(() => {
                 :category="page.category"
                 :channel="page.channel"
                 :default-receipt="page.defaultReceipt"
+                :correction-receipt="page.correctionReceipt"
                 :pagination="page.pagination"
                 :correct="page.correct"
                 :rewritten-keyword="page.rewrittenKeyword"
@@ -5500,7 +6127,7 @@ onUnmounted(() => {
                 :queueable="searchCollectionQueueable"
                 :queue-drop-enabled="canDropSearchSong"
                 :voice-queueable="ordinaryVoiceQueueable"
-                :voice-queue-feedback="searchVoiceQueueFeedback"
+                :card-queue-feedback="searchCardQueueFeedback"
                 :playlist-action-busy="
                   playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
                 "
@@ -5546,6 +6173,7 @@ onUnmounted(() => {
                 @toggle-pending-track="toggleSearchPendingTrack"
                 @toggle-pending-voice="toggleSearchPendingVoice"
                 @play-card="playSearchCard"
+                @voice-menu-play="playSearchVoiceMenu"
                 @queue-card="queueSearchCard"
                 @queue-voice="queueSearchVoice"
                 @queue-drag="startSearchQueueDrop"
@@ -5639,6 +6267,7 @@ onUnmounted(() => {
                 @toggle-current="toggleVisibleTrack"
                 @play-tracks="playOnlineSongs"
                 :queue-artist-songs="player.queueArtistSongs"
+                :prepare-artist-songs-batch="player.prepareArtistSongsBatch"
                 @collect-tracks="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"
@@ -6012,7 +6641,14 @@ onUnmounted(() => {
                   "
                   :playlist="result.playlist"
                   :total="result.total"
-                  :playable="player.ready.value && result.tracks.some((track) => !track.missing)"
+                  :offline="!!cachedPlaylist"
+                  :playable="
+                    player.ready.value &&
+                    !playlistDuration.blocked.value &&
+                    (cachedPlaylist
+                      ? !!cachedPlaylistHeaderSelection && !loading
+                      : result.tracks.some((track) => !track.missing))
+                  "
                   :preparing="player.busy.value"
                   :intelligence-disabled="!intelligence.canStart.value"
                   :intelligence-active="intelligence.active.value"
@@ -6135,13 +6771,38 @@ onUnmounted(() => {
                     {{ loading ? '正在重试…' : '重试' }}
                   </button>
                 </div>
+                <div
+                  v-if="cachedPlaylist"
+                  class="notice playlist-offline-status"
+                  role="status"
+                  :aria-busy="loading"
+                >
+                  <span>正在显示本机缓存的歌单。可播放本地曲目和符合离线条件的已下载歌曲。</span>
+                  <button
+                    type="button"
+                    class="text-button"
+                    :aria-disabled="loading"
+                    @click="music.retryOfflinePlaylist()"
+                  >
+                    {{ loading ? '正在读取…' : '重试联网读取' }}
+                  </button>
+                </div>
+                <div
+                  v-if="cachedPlaylist && cachedPlaylistPlayError"
+                  class="notice playlist-offline-play-error"
+                  role="alert"
+                >
+                  {{ cachedPlaylistPlayError }}
+                </div>
                 <div v-if="notice || music.likeNotice.value" class="notice" role="status">
                   {{ music.likeNotice.value || notice
                   }}<button class="text-button" @click="music.resources">刷新</button>
                 </div>
                 <div v-if="error" class="error-state" role="alert">
                   <span>{{ error }}</span
-                  ><button class="text-button" @click="music.load()">重试</button>
+                  ><button v-if="!cachedPlaylist" class="text-button" @click="music.load()">
+                    重试
+                  </button>
                 </div>
                 <div
                   class="playlist-toolbar"
@@ -6157,7 +6818,7 @@ onUnmounted(() => {
                   >
                     歌曲 <small>{{ result.total }}</small>
                   </button>
-                  <template v-if="result?.playlist">
+                  <template v-if="result?.playlist && !cachedPlaylist">
                     <button
                       type="button"
                       class="text-button playlist-section"
@@ -6201,8 +6862,9 @@ onUnmounted(() => {
                   </button>
                   <button
                     v-if="
+                      !cachedPlaylist &&
                       playlistManager.operations.value.length +
-                      playlistManager.coverOperations.value.length
+                        playlistManager.coverOperations.value.length
                     "
                     class="text-button"
                     @click="playlistDialog = { kind: 'history' }"
@@ -6321,7 +6983,24 @@ onUnmounted(() => {
                 />
                 <template v-else-if="result">
                   <p
-                    v-if="playlistTrackSearch.positions !== null"
+                    v-if="playlistDuration.delayedNotice.value"
+                    role="status"
+                    class="muted playlist-sort-status"
+                  >
+                    正在读取完整歌单以排序…
+                  </p>
+                  <p
+                    v-if="playlistDuration.issue.value"
+                    role="alert"
+                    class="form-warning playlist-sort-status"
+                  >
+                    {{ playlistDuration.issue.value }}
+                    <button class="text-button" type="button" @click="playlistDuration.retry()">
+                      重试排序
+                    </button>
+                  </p>
+                  <p
+                    v-if="playlistTrackFilter.positions !== null"
                     class="playlist-track-match"
                     role="status"
                   >
@@ -6363,6 +7042,49 @@ onUnmounted(() => {
                       <Icon name="list-add" />
                     </button>
                   </div>
+                  <div
+                    v-if="
+                      mixedReorderVisit &&
+                      (mixedReorder.pending.value ||
+                        mixedReorder.busy.value === 'send' ||
+                        mixedReorder.message.value)
+                    "
+                    class="playlist-mixed-order-status"
+                    role="status"
+                  >
+                    <span v-if="mixedReorder.busy.value === 'send'">正在保存歌单顺序…</span>
+                    <span v-else-if="mixedReorder.pending.value">
+                      排序结果待确认，本机曲目位置未更新。{{ mixedReorder.message.value }}
+                    </span>
+                    <span v-else>{{ mixedReorder.message.value }}</span>
+                    <button
+                      v-if="mixedReorder.pending.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedReorder.busy.value"
+                      @click="mixedReorder.verify"
+                    >
+                      {{ mixedReorder.busy.value === 'verify' ? '正在核对…' : '核对结果' }}
+                    </button>
+                    <button
+                      v-else-if="mixedReorder.needsRefresh.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedReorder.busy.value"
+                      @click="mixedReorder.retryRefresh"
+                    >
+                      重新读取歌单
+                    </button>
+                    <button
+                      v-else-if="!mixedReorder.known.value && mixedReorder.message.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedReorder.busy.value"
+                      @click="mixedReorder.read()"
+                    >
+                      读取排序状态
+                    </button>
+                  </div>
                   <TrackTable
                     v-if="playlistTrackSearch.tracks.length"
                     :key="recommendationScrollScope"
@@ -6374,16 +7096,28 @@ onUnmounted(() => {
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"
                     :playlist-selection-scope="playlistSelectionScope"
+                    :mixed-reorder-scope="mixedReorderScope"
+                    :preserve-scroll-on-refresh="!!mixedReorderVisit"
+                    @mixed-reorder="reorderVisibleMixed"
                     :queue-drop-enabled="canDropPlaylistSong"
+                    :mixed-queue-drop="!!displayedMixedPlaylist"
                     @queue-drag="startPlaylistQueueDrop"
                     :tracks="playlistTrackSearch.tracks"
+                    :read-only="!!cachedPlaylist"
+                    :playable-ids="cachedPlayableIds"
                     :match-keyword="
-                      playlistTrackSearch.positions !== null ? playlistKeyword : undefined
+                      playlistTrackFilter.positions !== null ? playlistKeyword : undefined
                     "
+                    :duration-order="
+                      playlistDuration.supported.value ? playlistDuration.order.value : undefined
+                    "
+                    @sort-duration="playlistDuration.cycle"
                     :liked="liked"
                     :busy="busyLikes"
-                    :playable="player.ready.value"
-                    :current-id="currentCatalogSongId"
+                    :playable="player.ready.value && !playlistDuration.blocked.value"
+                    :current-id="
+                      cachedPlaylist ? visibleTrackToggle?.trackId : currentCatalogSongId
+                    "
                     :current-toggle="visibleTrackToggle"
                     :toggle-busy="player.busy.value"
                     @play="playVisibleTrack"
@@ -6393,7 +7127,7 @@ onUnmounted(() => {
                   />
                   <div v-else class="empty-state">
                     {{
-                      playlistTrackSearch.positions === null
+                      playlistTrackFilter.positions === null
                         ? '这里还没有歌曲'
                         : '没有找到匹配的歌曲'
                     }}
@@ -6401,7 +7135,7 @@ onUnmounted(() => {
                   <button
                     v-if="result.more"
                     class="load-more"
-                    :disabled="loading"
+                    :disabled="loading || playlistDuration.pending.value"
                     @click="music.load(true)"
                   >
                     {{
@@ -6560,6 +7294,13 @@ onUnmounted(() => {
     />
     <PlayerBar
       :account="account"
+      :podcast-resume="pcPresentation.podcastResume.value"
+      :effect-catalogue="pcPresentation.effectCatalogue.value"
+      :recall-guide="discoveryHome.recallGuide.value"
+      @recall-guide-shown="
+        (epoch, receipt) => void core.acknowledgeHomeRecallGuide(epoch, receipt).catch(() => {})
+      "
+      @resume-confirmed="podcasts.observePlayerResume"
       :player="player"
       :intelligence="intelligence"
       :liked-playlist-id="signedIn ? favorite?.id : null"
@@ -6658,6 +7399,8 @@ onUnmounted(() => {
       @remove="(track, playlist) => (playlistDialog = { kind: 'remove', track, playlist })"
       @manage="(track, playlist) => (playlistDialog = { kind: 'track', track, playlist })"
       @queue-action="applyQueueMenu"
+      @download-settings="(epoch) => openSettingsSection(epoch, 'settings-download')"
+      @download-likes="music.mergeVerifiedPlaylistLikes"
     />
     <ModalTransition
       :restore-focus="
@@ -6699,6 +7442,15 @@ onUnmounted(() => {
         "
       />
     </ModalTransition>
+    <PlaylistLocalMemberDialog
+      v-if="localPlaylistMember"
+      :epoch="localPlaylistMember.epoch"
+      :target="localPlaylistMember.target"
+      :playlists="playlists"
+      :live="localPlaylistMember.live"
+      @close="closeLocalPlaylistMember"
+      @done="localPlaylistMemberSaved"
+    />
     <PlaylistImportPreview
       ref="importDialog"
       :account-epoch="account.epoch"
@@ -6711,6 +7463,7 @@ onUnmounted(() => {
         :target="downloadDialog"
         @close="downloadDialog = undefined"
         @started="music.navigate({ kind: 'downloads', initialTab: 'active' })"
+        @manage="(tab) => music.navigate({ kind: 'downloads', initialTab: tab })"
       />
     </ModalTransition>
     <ModalTransition
@@ -6757,5 +7510,38 @@ onUnmounted(() => {
       />
     </ModalTransition>
   </div>
+  <ModalTransition>
+    <TogetherRoomLossDialog
+      v-if="togetherRoomLoss"
+      :key="togetherRoomLoss.reportId"
+      :busy="together.busy.value"
+      :error="together.error.value"
+      @confirm="confirmTogetherRoomLoss"
+    />
+    <TogetherExternalSelection
+      v-else-if="externalSelection?.blocked"
+      :key="externalSelection.id"
+      :busy="together.busy.value"
+      :error="together.error.value"
+      @resolve="resolveTogetherExternalSelection"
+    />
+  </ModalTransition>
+  <p v-if="togetherFiltered" class="together-filtered-notice" role="status">部分歌曲不支持一起听</p>
   <ContentTooltip :reset-key="account.epoch + navigationKey" />
 </template>
+
+<style scoped>
+.together-filtered-notice {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-raised, var(--surface));
+  color: var(--text);
+  box-shadow: 0 4px 18px #0003;
+}
+</style>

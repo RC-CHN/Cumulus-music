@@ -500,6 +500,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     v-if="directoryOpen"
     :account="account"
     :binding-status="parametric"
+    :applied-effect-id="ready && view?.epoch === account.epoch ? view.appliedEffectId : undefined"
     :parametric-processing="view?.parametricProcessing"
     :device-parametric="view?.deviceParametric"
     :initial-management-only="managementOnly"

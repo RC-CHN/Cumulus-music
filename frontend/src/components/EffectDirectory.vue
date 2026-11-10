@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { useAppearance } from '../composables/useAppearance';
@@ -7,9 +7,11 @@ import { useEffectRegistrationChanges } from '../composables/useEffectRegistrati
 import type {
   EffectCatalogueItem,
   EffectCatalogueKind,
+  EffectDirectorySection,
   EffectAccess,
   PendingEffectRegistration,
 } from '../services/effectDirectory';
+import { presentationRevision } from '../services/searchViewport';
 import type { BoundParametricStatus, DeviceParametricView } from '../services/player';
 import Icon from './Icon.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
@@ -19,25 +21,31 @@ const props = defineProps<{
   account: AccountView;
   initialManagementOnly?: boolean;
   embedded?: boolean;
+  effectCatalogueRevision?: string;
   headphoneManagement?: boolean;
   bindingStatus?: BoundParametricStatus;
+  appliedEffectId?: number;
   deviceParametric?: DeviceParametricView;
   parametricProcessing?: boolean;
 }>();
 const emit = defineEmits<{ close: []; login: []; equalizer: [] }>();
 const core = useCore();
 const { effective: appearance } = useAppearance();
+const checkedEffectId = computed(() =>
+  props.bindingStatus === 'configured' || props.bindingStatus === 'bypassed_for_source'
+    ? props.appliedEffectId
+    : undefined,
+);
 const failedArtwork = ref(new Set<string>());
 const dialog = ref<HTMLElement>();
+const detailId = useId();
+let viewedCard: HTMLButtonElement | undefined;
 const categories = [
   ['highly_recommended', '强推荐'],
   ['recommended', '官方精选音效'],
   ['more', '更多音效'],
   ['devices', '耳机音效'],
 ] as const;
-const visibleCategories = computed(() =>
-  props.embedded ? categories.filter(([key]) => key !== 'devices') : categories,
-);
 const accessLabels: Record<EffectAccess, string> = {
   allowed: '当前账号拥有使用权益',
   trial: '当前账号拥有试用权益',
@@ -46,7 +54,24 @@ const accessLabels: Record<EffectAccess, string> = {
 };
 type Category = EffectCatalogueKind | 'devices';
 const kind = ref<Category>('highly_recommended');
+type OverviewGroup = {
+  key: EffectDirectorySection;
+  title: string;
+  items: EffectCatalogueItem[];
+};
 const items = ref<EffectCatalogueItem[]>([]);
+const overview = ref<OverviewGroup[]>([]);
+const embeddedLayout = ref<'legacy' | 'modern'>();
+const sectionTitles: Record<EffectDirectorySection, string> = {
+  selection: '官方精选音效',
+  more: '更多音效',
+  legacy_recommended: '推荐音效',
+  legacy_all: '全部音效',
+};
+const groups = computed(() =>
+  props.embedded ? overview.value : [{ key: 'category' as const, title: '', items: items.value }],
+);
+const partial = ref(false);
 const trialEffects = ref(new Set<number>());
 let trialTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -94,6 +119,17 @@ const detailError = ref('');
 let listRequest = 0;
 let detailRequest = 0;
 let previousFocus: HTMLElement | null = null;
+let cohortOrder = presentationRevision(props.effectCatalogueRevision);
+watch(
+  () => props.effectCatalogueRevision,
+  (revision) => {
+    const next = presentationRevision(revision);
+    if (!props.embedded || next === undefined || (cohortOrder !== undefined && next <= cohortOrder))
+      return;
+    cohortOrder = next;
+    if (browsing.value) void load(kind.value);
+  },
+);
 
 function artworkFor(item: EffectCatalogueItem) {
   const url = appearance.value === 'dark' ? item.dark_artwork : item.light_artwork;
@@ -111,8 +147,12 @@ async function load(category: Category) {
   detailRequest++;
   kind.value = category;
   items.value = [];
+  overview.value = [];
+  embeddedLayout.value = undefined;
+  partial.value = false;
   clearTrials();
   selected.value = undefined;
+  viewedCard = undefined;
   recoveryOnly.value = false;
   access.value = undefined;
   checking.value = false;
@@ -124,11 +164,25 @@ async function load(category: Category) {
   }
   loading.value = true;
   try {
-    const rows = await core.effectCatalogue(epoch, category);
-    if (current()) {
+    if (props.embedded) {
+      const result = await core.effectDirectoryOverview(epoch);
+      if (!current()) return;
+      const revision = presentationRevision(result.cohortRevision);
+      if (revision === undefined || (cohortOrder !== undefined && revision < cohortOrder)) return;
+      cohortOrder = revision;
+      embeddedLayout.value = result.layout;
+      overview.value = result.groups.map((group) => ({
+        ...group,
+        title: sectionTitles[group.key],
+      }));
+      items.value = overview.value.flatMap((group) => group.items);
+      partial.value = result.partial;
+    } else {
+      const rows = await core.effectCatalogue(epoch, category);
+      if (!current()) return;
       items.value = rows;
-      scheduleTrials(rows);
     }
+    scheduleTrials(items.value);
   } catch (issue) {
     if (current()) listError.value = failure(issue).message;
   } finally {
@@ -136,7 +190,8 @@ async function load(category: Category) {
   }
 }
 
-async function inspect(item: EffectCatalogueItem) {
+async function inspect(item: EffectCatalogueItem, event?: MouseEvent) {
+  if (event?.currentTarget instanceof HTMLButtonElement) viewedCard = event.currentTarget;
   const epoch = props.account.epoch;
   const request = ++detailRequest;
   const current = () =>
@@ -193,6 +248,7 @@ async function openRegistration(id: number) {
     name: `音效 ${id}`,
     subtitle: '',
   };
+  viewedCard = undefined;
   recoveryOnly.value = true;
   checking.value = false;
   access.value = undefined;
@@ -204,9 +260,7 @@ async function openRegistration(id: number) {
 
 function retryRights() {
   if (!selected.value) return;
-  dialog.value
-    ?.querySelector<HTMLButtonElement>('.effect-directory-card[aria-pressed="true"]')
-    ?.focus({ preventScroll: true });
+  if (viewedCard?.isConnected) viewedCard.focus({ preventScroll: true });
   void inspect(selected.value);
 }
 
@@ -251,6 +305,7 @@ onUnmounted(() => {
     ref="dialog"
     class="effect-directory"
     :class="{ 'effect-directory-embedded': embedded }"
+    :data-effect-layout="embeddedLayout"
     :aria-label="embedded ? undefined : headphoneManagement ? '耳机音效' : '音效目录'"
     @cancel.prevent="emit('close')"
   >
@@ -265,7 +320,7 @@ onUnmounted(() => {
       </button>
     </header>
     <div class="effect-directory-body">
-      <p v-if="!headphoneManagement" class="effect-directory-note">
+      <p v-if="!headphoneManagement && !embedded" class="effect-directory-note">
         查看音效介绍和账号权益。可验证的独立参数均衡组件可以单独配置。
       </p>
       <div v-if="account.status !== 'authenticated'" class="effect-directory-message">
@@ -329,9 +384,9 @@ onUnmounted(() => {
         </section>
         <button v-if="!browsing" type="button" @click="browseCatalogue">浏览音效目录</button>
         <template v-else>
-          <nav aria-label="音效分类">
+          <nav v-if="!embedded" aria-label="音效分类">
             <button
-              v-for="[key, label] in visibleCategories"
+              v-for="[key, label] in categories"
               :key="key"
               type="button"
               :aria-pressed="kind === key"
@@ -354,46 +409,91 @@ onUnmounted(() => {
             <p role="alert">{{ listError }}</p>
             <button type="button" @click="load(kind)">重试目录</button>
           </div>
-          <p v-else-if="!items.length" class="effect-directory-message">此分类暂无音效。</p>
-          <ul v-else class="effect-directory-grid">
-            <li v-for="item in items" :key="item.id">
-              <button
-                class="effect-directory-card"
-                :class="{ 'with-artwork': artworkFor(item) }"
-                :aria-pressed="selected?.id === item.id"
-                type="button"
-                @click="inspect(item)"
+          <template v-else>
+            <div v-if="partial" class="effect-directory-message">
+              <p role="status">部分音效暂时无法读取。</p>
+              <button type="button" @click="load(kind)">重试目录</button>
+            </div>
+            <p
+              v-if="!items.length && !partial && embeddedLayout !== 'legacy'"
+              class="effect-directory-message"
+            >
+              {{ embedded ? '暂无音效。' : '此分类暂无音效。' }}
+            </p>
+            <div v-for="group in groups" :key="group.key" :data-effect-group="group.key">
+              <h3 v-if="group.title" class="effect-directory-section-title">{{ group.title }}</h3>
+              <ul
+                v-if="group.items.length"
+                class="effect-directory-grid"
+                :class="`effect-directory-grid-${group.key}`"
               >
-                <img
-                  v-if="artworkFor(item)"
-                  :key="artworkFor(item)"
-                  :src="artworkFor(item)"
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                  alt=""
-                  @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
-                />
-                <Icon v-else name="music" />
-                <strong>
-                  {{ item.name || '未命名音效' }}
-                  <span
-                    v-if="item.membership"
-                    class="effect-card-membership"
-                    :data-effect-membership="item.membership"
-                    :data-effect-limited-free="trialEffects.has(item.id) || undefined"
-                    >{{ item.membership === 'svip' ? 'SVIP' : 'VIP'
-                    }}{{ trialEffects.has(item.id) ? ' 限免' : '' }}</span
+                <li v-for="(item, index) in group.items" :key="`${item.id}:${index}`">
+                  <button
+                    class="effect-directory-card"
+                    :class="{ 'with-artwork': group.key !== 'more' && artworkFor(item) }"
+                    :aria-expanded="!recoveryOnly && selected === item"
+                    :aria-controls="!recoveryOnly && selected === item ? detailId : undefined"
+                    :data-effect-id="item.id"
+                    :data-effect-applied="checkedEffectId === item.id ? bindingStatus : undefined"
+                    type="button"
+                    @click="inspect(item, $event)"
                   >
-                </strong>
-                <span v-if="item.subtitle">{{ item.subtitle }}</span>
-              </button>
-            </li>
-          </ul>
+                    <img
+                      v-if="group.key !== 'more' && artworkFor(item)"
+                      :key="artworkFor(item)"
+                      :src="artworkFor(item)"
+                      loading="lazy"
+                      referrerpolicy="no-referrer"
+                      alt=""
+                      @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
+                    />
+                    <Icon v-else-if="embeddedLayout !== 'legacy'" name="music" />
+                    <strong>
+                      {{ item.name || '未命名音效' }}
+                      <span
+                        v-if="item.membership"
+                        class="effect-card-membership"
+                        :data-effect-membership="item.membership"
+                        :data-effect-limited-free="trialEffects.has(item.id) || undefined"
+                        >{{ item.membership === 'svip' ? 'SVIP' : 'VIP'
+                        }}{{ trialEffects.has(item.id) ? ' 限免' : '' }}</span
+                      >
+                      <span
+                        v-if="item.newly_added"
+                        class="effect-card-new"
+                        data-effect-new
+                        role="img"
+                        aria-label="新音效"
+                        >NEW</span
+                      >
+                    </strong>
+                    <span
+                      v-if="item.subtitle && group.key !== 'legacy_all'"
+                      class="effect-card-subtitle"
+                    >
+                      {{ item.subtitle }}
+                    </span>
+                    <span v-if="checkedEffectId === item.id" class="effect-card-applied-badge">
+                      <Icon name="check" />
+                      <span class="sr-only">
+                        {{
+                          bindingStatus === 'bypassed_for_source'
+                            ? '已启用，当前音源暂不处理'
+                            : '已启用'
+                        }}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </template>
         </template>
       </template>
     </div>
     <section
       v-if="selected && account.status === 'authenticated'"
+      :id="detailId"
       class="effect-directory-detail"
       aria-label="音效权益"
     >
@@ -527,6 +627,86 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+.effect-directory-section-title {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 400;
+}
+.effect-directory-grid-selection,
+.effect-directory-grid-more {
+  max-width: 526px;
+  margin: 0 0 20px;
+}
+.effect-directory-grid-selection {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.effect-directory-grid-selection > li:first-child {
+  grid-column: span 2;
+}
+.effect-directory-grid-more {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.effect-directory-grid-more .effect-directory-card {
+  min-height: 78px;
+  justify-content: center;
+}
+.effect-directory-grid-legacy_recommended,
+.effect-directory-grid-legacy_all {
+  max-width: 688px;
+  margin: 0 0 19px;
+}
+.effect-directory[data-effect-layout='legacy'] .effect-directory-section-title {
+  line-height: 22px;
+  margin-bottom: 9px;
+}
+.effect-directory-grid-legacy_recommended {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.effect-directory-grid-legacy_all {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card,
+.effect-directory-grid-legacy_all .effect-directory-card {
+  height: 94px;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  border-color: transparent;
+  padding: 12px clamp(9px, 3vw, 20px);
+  gap: 3px;
+  justify-content: center;
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card > strong {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card > .effect-card-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+.effect-directory-grid-legacy_all .effect-directory-card > strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.effect-directory-grid-legacy_all .effect-directory-card {
+  height: 66px;
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card > strong,
+.effect-directory-grid-legacy_recommended .effect-directory-card > .effect-card-subtitle,
+.effect-directory-grid-legacy_all .effect-directory-card > strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .effect-directory-grid-selection {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .effect-directory-card img,
 .effect-directory-card.with-artwork::before {
   position: absolute;
@@ -559,8 +739,57 @@ onUnmounted(() => {
   line-height: 14px;
   white-space: nowrap;
 }
-.effect-directory-card[aria-pressed='true'] {
+.effect-card-new {
+  display: inline-grid;
+  width: 28px;
+  height: 16px;
+  margin-inline-start: 4px;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(to right, #ff1168, #fc3d49);
+  color: white;
+  font-size: 8px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+.effect-directory-card[aria-expanded='true'] {
+  border-color: var(--text-secondary);
+}
+.effect-directory-card[data-effect-applied] {
   border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.effect-card-applied-badge {
+  position: absolute;
+  inset: 10px 10px auto auto;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: #d92f50;
+  pointer-events: none;
+}
+.effect-card-applied-badge svg {
+  width: 15px;
+  height: 15px;
+}
+.effect-directory-grid-more .effect-card-applied-badge {
+  inset: 50% 16px auto auto;
+  transform: translateY(-50%);
+}
+.effect-directory-grid-legacy_recommended .effect-card-applied-badge,
+.effect-directory-grid-legacy_all .effect-card-applied-badge {
+  inset: auto 8px 8px auto;
+  width: 24px;
+  height: 24px;
+}
+.effect-directory-grid-more .effect-directory-card[data-effect-applied] > strong,
+.effect-directory-grid-legacy_all .effect-directory-card[data-effect-applied] > strong {
+  max-width: calc(100% - 28px);
 }
 .effect-directory-card:focus-visible {
   outline-offset: -3px;

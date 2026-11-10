@@ -26,6 +26,15 @@ use std::{
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_DOWNLOAD_PAGE_UI_PROOF").is_some()
 }
+pub fn queue_download_reveal_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_QUEUE_DOWNLOAD_REVEAL_PROOF").is_some()
+}
+pub fn queue_catalog_reveal_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_QUEUE_CATALOG_REVEAL_PROOF").is_some()
+}
+fn clear_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_DOWNLOAD_CLEAR_PROOF").is_some()
+}
 pub fn quality_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_QUALITY_UI_PROOF").is_some()
 }
@@ -153,6 +162,32 @@ static MV_DETAIL: AtomicUsize = AtomicUsize::new(0);
 static MV_STREAM: AtomicUsize = AtomicUsize::new(0);
 const MEDIA: &str = "https://m1.music.126.net/cumulus-download-fixture.wav";
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if queue_catalog_reveal_enabled() && path == "/api/resource/commentInfo/list" {
+        let song = match args["resourceIds"].as_str() {
+            Some("[\"7\"]") => "7",
+            Some("[\"8\"]") => "8",
+            Some("[\"9\"]") => "9",
+            _ => return None,
+        };
+        assert_eq!(args["resourceType"], 4);
+        return Some(Ok(json!({"code":200,"data":[{
+            "threadId":format!("R_SO_4_{song}"),"commentCount":9,
+        }]})));
+    }
+    if queue_download_reveal_enabled() {
+        match path {
+            "/api/dj/program/detail" => {
+                assert_eq!(*args, json!({"id":"701"}));
+                return Some(Ok(json!({"code":200,"program":voice_episode(701,8)})));
+            }
+            "/api/dj/voices/download/check" => {
+                assert_eq!(*args, json!({"voiceIdsStr":["701"]}));
+                return Some(Ok(json!({"code":200,"data":{"allowDownloadVoiceIds":[701],
+                    "forbidDownloadVoiceIds":[],"downloadCheckResultList":[{"voiceId":701,"canDownload":true}]}})));
+            }
+            _ => {}
+        }
+    }
     if voice_podcast_enabled() {
         let response = match path {
             "/api/djradio/v3/get" => {
@@ -330,6 +365,56 @@ impl Fixture {
         eprintln!("download UI fixture {mode}: started");
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
+            "clear_seed" | "clear_late" if clear_enabled() => {
+                use cumulus_core::{
+                    download::{directory::DownloadDirectory, service::DownloadAction},
+                    storage::OperationLock,
+                };
+                // New records pass through Queued before the fixture parks
+                // them. Do not let a background view drain that transient.
+                let mut scheduler = None;
+                for _ in 0..100 {
+                    match OperationLock::acquire(self.store.directory(), "download-scheduler", "2")
+                    {
+                        Ok(lock) => {
+                            scheduler = Some(lock);
+                            break;
+                        }
+                        Err(Error::MutationBusy) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+                let _scheduler = scheduler.ok_or(Error::MutationBusy)?;
+                if mode == "clear_seed" {
+                    DownloadDirectory::new(self.session.clone())?.configure(
+                        &self.root.join("media"),
+                        0,
+                        1,
+                    )?;
+                }
+                let service = DownloadService::with_backend(
+                    self.session.clone(),
+                    Arc::new(NoNetwork),
+                    64 * 1024 * 1024,
+                )?;
+                for id in if mode == "clear_seed" {
+                    &[701, 702][..]
+                } else {
+                    &[703][..]
+                } {
+                    let task = service.create_default(&json!(id), DownloadOptions::default())?;
+                    let mut task = service.request(&task.id, DownloadAction::Pause)?;
+                    task.song = Some(json!({"id":id,"name":format!("合成取消任务 {id}"),"ar":[]}));
+                    self.store.put(
+                        "2",
+                        "download_tasks_v1",
+                        &task.id,
+                        &serde_json::to_value(&task)?,
+                    )?;
+                }
+            }
             "menu_comment_hold" if menu_comments_enabled() => {
                 HOLD_MENU_COMMENT.store(true, Ordering::SeqCst);
             }
@@ -393,8 +478,107 @@ impl Fixture {
                 }
                 CLOUD_MENU_ACTIVE.store(false, Ordering::SeqCst);
             }
+            "seed_queue_download_reveal" if queue_download_reveal_enabled() => {
+                assert_eq!(self.session.token()?.uid.as_deref(), Some("2"));
+                assert!(self.store.values("2", "download_tasks_v1")?.is_empty());
+                let media = self.root.join("media");
+                client
+                    .download_command(
+                        &epoch,
+                        DownloadCommand::Configure {
+                            root: media.to_string_lossy().into_owned(),
+                            path_type: 0,
+                            file_type: 0,
+                        },
+                    )
+                    .await?;
+                let wave = self.root.join("relay-synthetic.wav");
+                DATA.set(Arc::new(std::fs::read(wave)?)).unwrap();
+                CHUNK.store(usize::MAX, Ordering::Relaxed);
+                let service = DownloadService::with_backend(
+                    self.session.clone(),
+                    Arc::new(NoNetwork),
+                    64 * 1024 * 1024,
+                )?;
+                let options = DownloadOptions {
+                    tags: false,
+                    cover: false,
+                    ..Default::default()
+                };
+                for leaf in ["queued original 合成.wav", "alternate same song.wav"] {
+                    let task = service.create(
+                        &json!("7"),
+                        DownloadDestination::Path {
+                            path: media.join(leaf),
+                        },
+                        options.clone(),
+                    )?;
+                    let published = service.run(&task.id, DownloadRunOptions::default()).await?;
+                    assert_eq!(published.status, DownloadStatus::Complete);
+                    assert_eq!(published.origin, DownloadOrigin::Song);
+                }
+                let episode = service
+                    .create_voice(
+                        &json!("701"),
+                        DownloadDestination::Path {
+                            path: media.join("queued original 声音.wav"),
+                        },
+                        options,
+                    )
+                    .await?;
+                let published = service
+                    .run(&episode.id, DownloadRunOptions::default())
+                    .await?;
+                assert_eq!(published.status, DownloadStatus::Complete);
+                assert_eq!(
+                    published.origin,
+                    DownloadOrigin::Voice {
+                        voice_id: "701".into()
+                    }
+                );
+            }
+            "observe_queue_download_shell"
+                if queue_download_reveal_enabled() || queue_catalog_reveal_enabled() =>
+            {
+                let expected = value["count"]
+                    .as_u64()
+                    .filter(|n| (1..=2).contains(n))
+                    .ok_or(Error::InvalidInput(
+                        "invalid synthetic FileManager1 call count",
+                    ))?;
+                let log = self.root.join("show-items.jsonl");
+                tokio::time::timeout(std::time::Duration::from_secs(4), async {
+                    loop {
+                        if std::fs::read_to_string(&log)
+                            .is_ok_and(|calls| calls.lines().count() as u64 == expected)
+                        {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                    }
+                })
+                .await
+                .map_err(|_| Error::State("synthetic FileManager1 call not observed"))?;
+            }
+            "change_queue_download_file" if queue_download_reveal_enabled() => {
+                use std::io::Write;
+                // Keep length constant to prove reveal checks the registered
+                // hash, not just the name or byte count.
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(self.root.join("media/queued original 合成.wav"))?
+                    .write_all(b"CHGD")?;
+            }
+            "change_queue_catalog_file" if queue_catalog_reveal_enabled() => {
+                use std::io::Write;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(self.root.join("media/published-queue-song.wav"))?
+                    .write_all(b"CHGD")?;
+            }
             "seed_queue_collection"
-                if std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() =>
+                if std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some()
+                    || queue_catalog_reveal_enabled() =>
             {
                 assert_eq!(self.session.token()?.uid.as_deref(), Some("2"));
                 assert!(self.store.values("2", "download_tasks_v1")?.is_empty());
@@ -439,15 +623,34 @@ impl Fixture {
                     std::fs::create_dir(&local)?;
                     let mapped = local.join("linked-queue-song.wav");
                     std::fs::copy(&wave, &mapped)?;
-                    std::fs::copy(wave, local.join("unlinked-queue-song.wav"))?;
+                    std::fs::copy(&wave, local.join("unlinked-queue-song.wav"))?;
+                    let extra = [
+                        ("also downloaded 合成.wav", "7"),
+                        ("ambiguous first.wav", "9"),
+                        ("ambiguous second.wav", "9"),
+                    ];
+                    if queue_catalog_reveal_enabled() {
+                        for (leaf, _) in extra {
+                            std::fs::copy(&wave, local.join(leaf))?;
+                        }
+                    }
                     let library = cumulus_core::library::LocalLibrary::new(store)?;
                     library.scan(&local)?;
-                    let item = library
-                        .list(Default::default())?
-                        .into_iter()
-                        .find(|item| item.path.file_name() == mapped.file_name())
-                        .ok_or(Error::State("synthetic indexed track missing"))?;
-                    library.map_online(&session, &item.id, &json!("8"))
+                    let files = library.list(Default::default())?;
+                    let associate = |path: PathBuf, song: &str| {
+                        let item = files
+                            .iter()
+                            .find(|item| item.path.file_name() == path.file_name())
+                            .ok_or(Error::State("synthetic indexed track missing"))?;
+                        library.map_online(&session, &item.id, &json!(song))
+                    };
+                    associate(mapped, "8")?;
+                    if queue_catalog_reveal_enabled() {
+                        for (leaf, song) in extra {
+                            associate(local.join(leaf), song)?;
+                        }
+                    }
+                    Ok::<_, Error>(())
                 })
                 .await
                 .map_err(|_| Error::State("synthetic local library worker stopped"))??;
@@ -492,15 +695,13 @@ impl Fixture {
                     })?,
                 )?;
             }
-            "seed" | "seed_collection" if mode == "seed" || collection_enabled() => {
+            "seed" | "seed_collection" | "seed_collection_batch"
+                if mode == "seed" || collection_enabled() =>
+            {
                 // Only the dedicated collector requests the small inventory.
                 // Other proofs can share its authority flag and still need
                 // all 146 real fixture records and the five transfer states.
-                let limit = if mode == "seed_collection" {
-                    7_u64
-                } else {
-                    146
-                };
+                let limit = if mode != "seed" { 7_u64 } else { 146 };
                 assert!(self.records.lock().unwrap().is_empty());
                 let delay = std::env::var("CUMULUS_DOWNLOAD_SEED_DELAY_MS")
                     .ok()
@@ -616,6 +817,16 @@ impl Fixture {
                         task.song.as_mut().unwrap()["dt"] = json!(6000);
                         task.song.as_mut().unwrap()["ar"] =
                             json!([{"id":17,"name":"Artist 17"},{"name":"无标识艺人"}]);
+                    }
+                    if mode == "seed_collection_batch"
+                        && let Some(privilege) = match i {
+                            1 => Some(json!({"id":1,"subp":0})),
+                            2 => Some(json!({"id":2,"subp":-1})),
+                            4 => Some(json!({"id":4,"subp":2})),
+                            _ => None,
+                        }
+                    {
+                        task.song.as_mut().unwrap()["privilege"] = privilege;
                     }
                     task.created_ms = 1700000000000 + i * 1000;
                     if lyric_repair && i == 1 {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
-import { time, type PlayerView } from '../services/player';
+import { time, type LyricToolbarAction, type PlayerView } from '../services/player';
+import type { MenuItem } from '../services/menu';
 import { lyricContributorRows, type LyricContributorTarget } from '../services/lyricContributors';
 import Icon from './Icon.vue';
 import { useCoverImage } from '../composables/useCoverImage';
@@ -22,6 +23,8 @@ import {
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import LyricFontSize from './LyricFontSize.vue';
 import ActionMenu from './ActionMenu.vue';
+import LyricBountyDialog from './LyricBountyDialog.vue';
+import { useLyricBounty } from '../composables/useLyricBounty';
 import ModalTransition from './ModalTransition.vue';
 import VinylModeSheet from './VinylModeSheet.vue';
 import VinylCommentsPane from './VinylCommentsPane.vue';
@@ -286,9 +289,9 @@ const podcastOwned = computed(
       !podcastTarget.value.receipt &&
       playbackVoice.value?.radio?.ownedByViewer === true),
 );
-const podcastCore = useCore();
+const core = useCore();
 const podcastFollow = usePodcastFollow(
-  podcastCore,
+  core,
   () => props.account,
   () =>
     props.player.lyricsOpen.value &&
@@ -302,7 +305,7 @@ const podcastFollow = usePodcastFollow(
     action: (owner, id, current) => {
       const target = podcastTarget.value;
       if (target?.radioId === id && target.epoch === owner && ownsPodcastCard(target))
-        return voicePageSubscriptionAction(podcastCore, target, current);
+        return voicePageSubscriptionAction(core, target, current);
     },
   },
 );
@@ -560,6 +563,94 @@ const currentLyric = computed(() => {
     ? document
     : undefined;
 });
+const lyricFontAvailable = computed(
+  () =>
+    view.value?.epoch === props.account.epoch &&
+    !!(view.value?.playId && view.value.track && !view.value.track.voiceId) &&
+    !lyricLoading.value &&
+    !!(currentLyric.value || lyricError.value),
+);
+const contributionCopy = {
+  upload: ['', '上传歌词'],
+  scrolling: ['该歌词暂无自动滚动，', '上传滚动歌词'],
+  translation: ['该歌词暂无翻译，', '上传翻译'],
+  scrolling_and_translation: ['该歌词暂无翻译和自动滚动，', '上传滚动歌词或翻译'],
+} as const;
+const contributionVisible = computed(
+  () =>
+    currentLyric.value?.epoch === props.account.epoch &&
+    props.player.lyricsOpen.value &&
+    props.activeDetailTab === 'lyrics' &&
+    !commentsVisible.value,
+);
+const contribution = computed(() => {
+  const option = currentLyric.value?.contribution;
+  return contributionVisible.value && option ? contributionCopy[option] : undefined;
+});
+const bountyTarget = computed(() =>
+  contribution.value &&
+  !lyricLoading.value &&
+  (displayMode.value === 'classic' || displayMode.value === 'lyric')
+    ? currentLyric.value
+    : undefined,
+);
+const bounty = useLyricBounty(core, () => bountyTarget.value);
+const bountyLabels = {
+  missing_lyrics: '求歌词',
+  scrolling: '求滚动',
+  translation: '求翻译',
+} as const;
+const bodyBounties = computed(() =>
+  bounty.actions.value.filter((action) => action !== 'missing_lyrics'),
+);
+const toolbarContributions = computed(() =>
+  contributionVisible.value && displayMode.value === 'classic'
+    ? (currentLyric.value?.toolbarContributions ?? [])
+    : [],
+);
+const contributionOpening = ref(false);
+const contributionError = ref<'body' | 'toolbar'>();
+let contributionAttempt = 0;
+watch(
+  [currentEpoch, currentPlayId, contribution, () => toolbarContributions.value.join(',')],
+  () => {
+    contributionAttempt += 1;
+    contributionOpening.value = false;
+    contributionError.value = undefined;
+  },
+);
+const toolbarLabels = {
+  translation: { label: '翻译歌词', icon: 'translate' },
+  upload: { label: '上传歌词', icon: 'upload' },
+} as const;
+const lyricMenu = computed<MenuItem[]>(() => [
+  ...toolbarContributions.value.map((action) => ({
+    key: action,
+    ...toolbarLabels[action],
+    disabled: contributionOpening.value,
+  })),
+  { key: 'report', label: '歌词报错', icon: 'edit' },
+]);
+function lyricMenuAction(key: string) {
+  if (key === 'report') emit('report');
+  else if (key === 'translation' || key === 'upload') void openContribution(key);
+}
+async function openContribution(action?: LyricToolbarAction) {
+  const document = currentLyric.value;
+  const allowed = action ? toolbarContributions.value.includes(action) : !!contribution.value;
+  if (!document || !allowed || contributionOpening.value) return;
+  const attempt = ++contributionAttempt;
+  contributionOpening.value = true;
+  contributionError.value = undefined;
+  try {
+    if (action) await core.openLyricToolbarContribution(document.epoch, document.playId, action);
+    else await core.openLyricContribution(document.epoch, document.playId);
+  } catch {
+    if (attempt === contributionAttempt) contributionError.value = action ? 'toolbar' : 'body';
+  } finally {
+    if (attempt === contributionAttempt) contributionOpening.value = false;
+  }
+}
 const currentCloudTrack = computed(
   () => view.value?.epoch === props.account.epoch && view.value?.resourceKind === 'cloud',
 );
@@ -600,7 +691,7 @@ const coverLine = computed(() =>
 );
 const lines = computed(() => {
   const document = currentLyric.value;
-  if (!document) return [];
+  if (!document || document.displayType === 'pure') return [];
   const revision = currentQueueRevision.value;
   const target: LyricSeekTarget | undefined = revision
     ? { epoch: document.epoch, playId: document.playId, queueRevision: revision }
@@ -1170,11 +1261,43 @@ const displayedAuxiliary = computed(() =>
                 }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
               </div>
               <template v-else-if="currentLyric">
+                <div v-if="contribution?.[0]" class="lyric-contribution" data-non-selectable>
+                  {{ contribution[0]
+                  }}<template v-for="action in bodyBounties" :key="action">
+                    <button
+                      type="button"
+                      class="text-button"
+                      :data-lyric-bounty="action"
+                      :disabled="bounty.preparing.value"
+                      @click="bounty.open(action, $event.currentTarget)"
+                    >
+                      {{ bountyLabels[action] }}</button
+                    ><span> / </span> </template
+                  ><button
+                    type="button"
+                    class="text-button"
+                    data-lyric-contribution
+                    :aria-disabled="contributionOpening"
+                    @click="openContribution()"
+                  >
+                    {{ contribution[1] }}
+                  </button>
+                </div>
+                <p v-if="bounty.problem.value" class="lyric-contribution-error" role="alert">
+                  暂时无法确认这项悬赏，请先刷新当前歌词。
+                </p>
+                <p
+                  v-if="contributionError === 'body'"
+                  class="lyric-contribution-error"
+                  role="alert"
+                >
+                  无法打开歌词贡献页面，请重试。
+                </p>
                 <div
                   v-if="
                     currentLyric.fromSidecar ||
                     currentLyric.fromEmbedded ||
-                    currentLyric.networkFailed
+                    (currentLyric.networkFailed && (currentCloudLyric || lines.length))
                   "
                   class="lyric-cache-note"
                 >
@@ -1205,7 +1328,42 @@ const displayedAuxiliary = computed(() =>
                     <span>暂无歌词</span>
                   </div>
                   <div v-else-if="!currentCloudLyric" class="empty-state">
-                    {{ currentLyric.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
+                    {{
+                      currentLyric.networkFailed
+                        ? '歌词加载失败'
+                        : currentLyric.displayType === 'pure'
+                          ? '纯音乐，请欣赏'
+                          : '暂无歌词'
+                    }}
+                    <button
+                      v-if="currentLyric.networkFailed"
+                      type="button"
+                      class="secondary lyric-upload"
+                      @click="player.loadLyrics"
+                    >
+                      刷新
+                    </button>
+                    <div v-else-if="contribution && !contribution[0]" class="lyric-missing-actions">
+                      <button
+                        v-if="bounty.actions.value.includes('missing_lyrics')"
+                        type="button"
+                        class="secondary lyric-upload"
+                        data-lyric-bounty="missing_lyrics"
+                        :disabled="bounty.preparing.value"
+                        @click="bounty.open('missing_lyrics', $event.currentTarget)"
+                      >
+                        求歌词
+                      </button>
+                      <button
+                        type="button"
+                        class="secondary lyric-upload"
+                        data-lyric-contribution
+                        :aria-disabled="contributionOpening"
+                        @click="openContribution()"
+                      >
+                        {{ contribution[1] }}
+                      </button>
+                    </div>
                   </div>
                 </template>
                 <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
@@ -1291,9 +1449,17 @@ const displayedAuxiliary = computed(() =>
                 </div>
               </template>
               <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
-              <div v-if="displayMode === 'classic'" class="lyric-tools">
+              <div
+                v-if="displayMode === 'classic'"
+                class="lyric-tools"
+                :aria-busy="contributionOpening"
+              >
+                <LyricFontSize
+                  v-if="lyricFontAvailable"
+                  :key="`${currentEpoch}:${currentPlayId}`"
+                  v-model="lyricFontGain"
+                />
                 <template v-if="lyrics">
-                  <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
                   <template v-if="lyrics.scrollable">
                     <button
                       class="icon-button"
@@ -1345,10 +1511,18 @@ const displayedAuxiliary = computed(() =>
                 </template>
                 <ActionMenu
                   v-if="!view?.track?.voiceId"
+                  :key="`${currentEpoch}:${currentPlayId}`"
                   label="歌词操作"
-                  :items="[{ key: 'report', label: '歌词报错', icon: 'edit' }]"
-                  @select="emit('report')"
+                  :items="lyricMenu"
+                  @select="lyricMenuAction"
                 />
+                <p
+                  v-if="contributionError === 'toolbar'"
+                  class="lyric-contribution-error"
+                  role="alert"
+                >
+                  无法打开浏览器，请重试
+                </p>
               </div>
             </div>
             <div
@@ -1432,6 +1606,16 @@ const displayedAuxiliary = computed(() =>
       />
     </ModalTransition>
     <Teleport to="body">
+      <ModalTransition :return-focus="bounty.opener" :fallback-focus="panelCloseFocus">
+        <LyricBountyDialog
+          v-if="bounty.dialog.value"
+          :opening="bounty.dialog.value"
+          :sending="bounty.sending.value"
+          :can-confirm="bounty.canConfirm.value"
+          @close="bounty.close"
+          @confirm="bounty.confirm"
+        />
+      </ModalTransition>
       <ModalTransition :return-focus="() => uncollectOpener" :fallback-focus="panelCloseFocus">
         <VoicePodcastUncollectDialog
           v-if="uncollect"

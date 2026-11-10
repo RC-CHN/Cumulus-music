@@ -42,14 +42,19 @@ MUSIC_U 缺失或 refreshToken 缺失：MissingCredentials，不取设备令牌�
 
 失败恢复、取消和隔离
 每次轮换先在当前凭据库 UID/login_refresh/jsk 写 pending；各实例通过数据库事务排他。
-只有明确 RequestNotSent 的上下文准备失败可结束自己那条意图，保留此前成功时间。
-HTTP 发出后的错误/丢包、缺轮换头、进程中止保留 pending；未知写入不会自动重新发送。
+同一原生操作捕获账号代次和 API 实例；M/402 原生上下文准备可能等待 SDK，旧账号退出或切换
+后其凭据库不一定改变。向 HTTP 交付前再次核对账号/API 与凭据 revision，并要求续期、只读身份
+两个路径看到同一且唯一的 MUSIC_U。已收到的新凭据对也须匹配这两个作用域才允许身份核对。
+明确没有进入续期 HTTP 的失败或本地超时只结束自己的意图，保留此前成功时间；已经进入续期 HTTP 的错误、
+丢包、缺轮换头或任务中止保留 pending；未知写入不会自动重新发送。切号后已发请求的合法回执
+可以按 revision 留在旧隔离库供核对，不能更新当前账号，也不能记录已确认的成功时间。
 reconcile_jsk 只检查已保存的轮换回执和只读身份；底层没有新回执时返回历史枚举
 ReauthenticationRequired，它不证明会话已失效。正式账号弹窗投影为 Unconfirmed 并保留登录。
-有回执但身份读取失败可以再次只读核对。不同 UID 使会话过期，不以旧 UID 发布新凭据的资源。
+有回执但身份读取失败可以再次只读核对；新 Cookie 只适用续期路径时不拿另一 Cookie 核对，
+保持待核对而不推进间隔。相同作用域真实回读得出不同 UID 时，会话过期，不以旧 UID 发布资源。
 core/src/client/auth/renewal.rs 是宿主无关用例：原生配置 DeviceInfo/provider；设备 ID 每次绑定
 当前账号；前端只接收 epoch/state/lastSuccess/busy/canCheck/canReconcile，不接收秘密或设备事实。
-一个客户端同时只有一个续期任务，45 秒截止。取消/任务丢弃释放忙状态；已写 pending 不删除。
+一个客户端同时只有一个续期任务，45 秒截止。取消/任务丢弃释放忙状态；已进入续期 HTTP 时保留 pending。
 刷新期间不持有账号切换/一起听互斥锁；账号代次/API 绑定检查拒绝旧结果，退出可以及时完成。
 正在新登录时返回 LoginInProgress，避免后台与待确认登录竞争。新版账号可在后续通知检查。
 
@@ -73,6 +78,8 @@ UI IPC 丢失响应后只重新读取状态，不自动重发命令；事件/读
   xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
     python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 10
   python3 desktop/examples/audit_renewal_probe.py /absolute/new-proof-root
+client_renewal 用合成 M/402 提供器停在实际发送前验证切号/作用域改变/超时，区分未发送清理与
+已发送保留；续期专用 Cookie 的回执不会拿另一 Cookie 发起身份读。上述检查不需要真人扫码或上游。
 桌面探针使用真实 Vue/WebView/IPC/续期 pump 与持久化，仅音乐 HTTP 为进程内合成服务。
 DOM 完成缺凭据→新登录未到期→原生测试时钟推进后检查并轮换→重复检查间隔→第二次新登录未到期→
 原生时钟再次推进后丢失刷新响应→只读核对及重新登录提示。生产IPC没有时钟控制入口。

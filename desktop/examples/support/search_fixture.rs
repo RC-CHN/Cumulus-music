@@ -7,7 +7,10 @@ use std::sync::{
 };
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
+static GROUP_NEXT_MEDIA: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
 static OFFLINE_RESULT_CALLS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+static CORRECTION_RESULT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
+pub const CORRECTION_CHANNEL: &str = "synthetic_qc_reminder";
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static PRESENTATION_QUERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static SUGGESTION_MATCH_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -18,6 +21,7 @@ static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static MV_PREVIEW_PRIVILEGE_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static PODCAST_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 static VOICE_NEXT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -37,6 +41,12 @@ pub fn offline_proof_enabled() -> bool {
 }
 pub fn offline_result_calls() -> Option<Vec<(String, String)>> {
     offline_proof_enabled().then(|| OFFLINE_RESULT_CALLS.lock().unwrap().clone())
+}
+pub fn correction_proof_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_CORRECTION_PROOF").is_some()
+}
+pub fn correction_result_calls() -> Option<Vec<(String, Value)>> {
+    correction_proof_enabled().then(|| CORRECTION_RESULT_CALLS.lock().unwrap().clone())
 }
 fn default_recovery_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_DEFAULT_RECOVERY_PROOF").is_some()
@@ -253,6 +263,8 @@ pub fn control(value: &Value) {
             "scroll_duplicates",
             "song_waterfall",
             "song_waterfall_error",
+            "song_waterfall_group_next",
+            "song_waterfall_group_next_extended",
             "voice_queue",
             "voice_next",
             "podcast_follow",
@@ -322,10 +334,31 @@ pub fn result_play_trial() -> Option<i64> {
         return None;
     }
     match MODE.lock().unwrap().as_str() {
-        "result_play_trial" | "song_waterfall" | "song_waterfall_error" => Some(42),
+        "result_play_trial"
+        | "song_waterfall"
+        | "song_waterfall_error"
+        | "song_waterfall_group_next_extended" => Some(42),
         "result_play_default" => Some(-1),
         _ => None,
     }
+}
+pub fn group_next_media_call(ids: &[Value], trial: &Value) -> Result<()> {
+    if MODE.lock().unwrap().as_str() != "song_waterfall_group_next_extended" {
+        return Ok(());
+    }
+    let [id] = ids else {
+        return Err(Error::InvalidInput(
+            "search group proof must authorize one song",
+        ));
+    };
+    let id = cumulus_core::protocol::api::identifier(id)?;
+    let mut calls = GROUP_NEXT_MEDIA.lock().unwrap();
+    calls.push((id, trial.as_i64().unwrap_or_default()));
+    Ok(())
+}
+pub fn group_next_media_calls() -> Option<Vec<(String, i64)>> {
+    (MODE.lock().unwrap().as_str() == "song_waterfall_group_next_extended")
+        .then(|| GROUP_NEXT_MEDIA.lock().unwrap().clone())
 }
 static AUDIO_RANK_DETAILS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
 pub fn audio_rank_details() -> Vec<u64> {
@@ -625,7 +658,9 @@ fn suggestion_match_rows(keyword: &str) -> Option<Value> {
     let (suggests, recs) = match keyword {
         "A+B" => (
             json!([
-                {"keyword":"合成精确词","name":"İ A+B 和 a+b <plain>"},
+                {"searchWord":"合成精确词","keyword":"不使用候选备用词",
+                 "name":"İ A+B 和 a+b <plain>","toUserWord":"合成输入栏文案",
+                 "realkeyword":"不使用默认真实词","showKeyword":"不使用默认展示词"},
                 {"keyword":"合成另一个词","name":"aab 不匹配"}
             ]),
             json!([{"keyword":"合成符号推荐","name":"推荐 a+b"}]),
@@ -1255,6 +1290,45 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     }
     CALLS.fetch_add(1, Ordering::SeqCst);
     let mode = MODE.lock().unwrap().clone();
+    if mode == "voice_queue"
+        && category == "podcasts"
+        && let Some(word @ ("合成长音频续页" | "合成播客空值" | "合成播客空列表")) =
+            args["keyword"].as_str()
+    {
+        let offset = args["offset"].as_u64().unwrap();
+        assert_eq!(
+            *args,
+            json!({"keyword":word,"scene":"normal","offset":offset,"limit":10})
+        );
+        let rows = |start, end| {
+            json!(
+                (start..end)
+                    .map(|id| json!({"type":"voicelist","baseInfo":{
+                        "id":id,"name":format!("合成播客 {id}"),"voiceCount":3,
+                        "dj":{"nickname":"合成主播"}
+                    }}))
+                    .collect::<Vec<_>>()
+            )
+        };
+        let (resources, more) = match (word, offset) {
+            ("合成长音频续页", 0) => (rows(301, 311), false),
+            ("合成长音频续页", 10) => {
+                if !PODCAST_BATCH_FAILED.swap(true, Ordering::SeqCst) {
+                    return Some(Err(Error::Transport("合成播客续页失败".into())));
+                }
+                (rows(311, 314), true)
+            }
+            ("合成播客空值", 0) => (Value::Null, true),
+            ("合成播客空列表", 0) => (json!([]), true),
+            _ => {
+                return Some(Err(Error::InvalidInput("unexpected podcast continuation")));
+            }
+        };
+        return Some(Ok(json!({"code":200,"data":{
+            "resources":resources,"totalCount":99,"hasMore":more,
+            "queryRewriteInfo":{"rewriteQuery":"不属于播客分类的纠正"}
+        }})));
+    }
     if category == "all" && default_recovery_enabled() {
         assert_eq!(args["keyword"], "合成恢复第二词");
         let context = match args["channel"].as_str() {
@@ -1504,6 +1578,12 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
     }
     if matches!(mode.as_str(), "correction" | "correction_parts") {
+        if correction_proof_enabled() {
+            CORRECTION_RESULT_CALLS
+                .lock()
+                .unwrap()
+                .push((path.into(), args.clone()));
+        }
         let valid = match category {
             "all" => args["keyword"] == "合成错词",
             "songs" => args["keyword"] == "合成正词" && args["needCorrect"] == true,
@@ -1516,7 +1596,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         // Even a stale upstream reminder after opting out must not re-enable correction.
         if category == "all" {
             let rewrite = if mode == "correction_parts" {
-                json!({"queryRewriteDTO":{"keyword":"合成错词","rewriteQuery":"合成正词","searchQcReminder":{"qcReminders":[
+                json!({"queryRewriteDTO":{"keyword":"合成错词","rewriteQuery":"合成正词","searchQcReminder":{"qcReminderChannel":CORRECTION_CHANNEL,"qcReminders":[
                     {"qcReminderPart":"正在显示合成正词。<b>仍查</b> "},
                     {"qcReminderPart":"合成错词","highLight":true},
                     {"qcReminderPart":"。","highLight":false}
@@ -1665,6 +1745,50 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     let song = &mut row["baseInfo"]["simpleSongData"];
                     song["id"] = json!(i + 101);
                     song["name"] = json!(format!("合成连续单曲 {}", i + 101));
+                    if mode.starts_with("song_waterfall_group_next") {
+                        song["privilege"] = json!({
+                            "id":i+101,
+                            "st":if i==1 {-200}else{0},
+                            "pl":if i==1 {0}else{320000}
+                        });
+                    }
+                    if super::search_group_download_fixture::enabled() {
+                        song["privilege"]["fee"] = json!(0);
+                        song["privilege"]["dl"] = json!(if i == 1 { 0 } else { 320000 });
+                        if super::search_group_download_fixture::purchased()
+                            && let Some(fields) =
+                                super::search_group_download_fixture::purchased_privilege(i + 101)
+                        {
+                            song["privilege"]
+                                .as_object_mut()
+                                .unwrap()
+                                .extend(fields.as_object().unwrap().clone());
+                        }
+                        if super::search_group_download_fixture::destination() {
+                            if i == 2 {
+                                song["privilege"]["subp"] = json!(0);
+                            } else if i == 3 {
+                                song["privilege"]["subp"] = json!(-1);
+                            }
+                        }
+                    }
+                    if i == 0 || i == 29 {
+                        song["alia"] = json!(["默认合成别名", "前缀合成连续单曲别名"]);
+                        song["tns"] = json!(["不显示的翻译合成连续单曲"]);
+                        row["extInfo"] = json!({
+                            "songAlias":true,
+                            "lyrics":{
+                                "txt":format!("🎵合成连续单曲歌词 {}", i + 101),
+                                "range":[{"first":2,"second":8}]
+                            }
+                        });
+                    } else if i == 1 {
+                        song["alia"] = json!(["合成连续单曲未命中"]);
+                        row["extInfo"] = json!({
+                            "songAlias":false,
+                            "lyrics":{"txt":"🎵不可切半","range":[{"first":1,"second":2}]}
+                        });
+                    }
                 } else if category != "songs" && category != "lyrics" {
                     let item = if legacy {
                         &mut row

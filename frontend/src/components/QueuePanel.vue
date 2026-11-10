@@ -31,7 +31,7 @@ import { displayedQueueMove } from '../services/queueSelection';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
 import { queueArtistCredits } from '../services/playbackMetadata';
-import type { QueueTrackMenuRequest } from '../services/trackMenu';
+import type { QueueMenuRequest } from '../services/trackMenu';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import QueueClearDialog from './queue/QueueClearDialog.vue';
@@ -53,7 +53,7 @@ const emit = defineEmits<{
   artist: [id: string];
   like: [target: QueueLikeTarget];
   reviewLikes: [];
-  more: [input: QueueTrackMenuRequest];
+  more: [input: QueueMenuRequest];
   together: [];
   cleared: [];
   refreshPlaylistSource: [event: MouseEvent];
@@ -549,8 +549,12 @@ function likeRecoveryFocus() {
   }
   return closeButton.value ?? null;
 }
-async function openQueueMenu(row: QueueTrack, event: MouseEvent) {
-  if (!row.catalogMenu || !liveNavigationRow(row)) return;
+async function openQueueMenu(row: QueueTrack, event: MouseEvent | KeyboardEvent) {
+  if (
+    (!row.catalogMenu && !row.voiceMenu && !row.localMenu && !row.downloadMenu) ||
+    !liveNavigationRow(row)
+  )
+    return;
   event.preventDefault();
   event.stopPropagation();
   const shown = queue.value!;
@@ -561,16 +565,21 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent) {
       ? node
       : node.querySelector<HTMLButtonElement>('.queue-row-more');
   if (!anchor || anchor.disabled) return;
-  const pointer = event.type === 'contextmenu' && (event.clientX !== 0 || event.clientY !== 0);
-  const point = pointer ? { x: event.clientX, y: event.clientY } : undefined;
-  if (pointer && !selected.value.has(row.entryId)) selection.select(row.entryId);
-  else if (event.type === 'click' && event.detail > 0)
+  const point =
+    event instanceof MouseEvent &&
+    event.type === 'contextmenu' &&
+    (event.clientX !== 0 || event.clientY !== 0)
+      ? { x: event.clientX, y: event.clientY }
+      : undefined;
+  if ((point || event instanceof KeyboardEvent) && !selected.value.has(row.entryId))
+    selection.select(row.entryId);
+  else if (event instanceof MouseEvent && event.type === 'click' && event.detail > 0)
     selection.select(row.entryId, event.ctrlKey || event.metaKey, event.shiftKey);
   const group = selected.value.size > 1 ? [...selected.value] : [];
   const ids = group.length ? group : [row.entryId];
   const rows = ids.map((id) => shown.tracks.find((entry) => entry.entryId === id));
   menuIssue.value = '';
-  if (rows.some((entry) => !entry?.catalogMenu)) {
+  if (rows.some((entry) => !entry || (row.catalogMenu && !entry.catalogMenu))) {
     menuIssue.value = '所选条目包含此菜单暂不支持的资源';
     return;
   }
@@ -582,10 +591,55 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent) {
   const live = () =>
     liveNavigationRow(row) && queue.value === shown && anchor.isConnected && sameSelection();
   const attempt = ++menuAttempt;
-  menuPending.value = row.entryId;
   anchor.focus({ preventScroll: true });
+  const actions = {
+    tracks,
+    anchor,
+    point,
+    live,
+    play: () => {
+      if (live()) void activateRow(anchor, row.entryId, row.track.missing);
+    },
+    remove: () => {
+      if (live())
+        void edit(
+          { kind: 'remove', entry_ids: ids },
+          shown.tracks.findIndex((entry) => entry.entryId === ids[0]),
+          shown,
+        );
+    },
+    report(message: string) {
+      if (attempt === menuAttempt && live()) menuIssue.value = message;
+    },
+  };
+  if (row.localMenu || row.downloadMenu) {
+    menuPending.value = undefined;
+    emit('more', {
+      ...(row.downloadMenu
+        ? ({ kind: 'downloaded', downloadKind: row.downloadMenu } as const)
+        : ({ kind: 'local' } as const)),
+      info: {
+        epoch: shown.epoch,
+        revision: shown.revision,
+        entryId: row.entryId,
+        track: row.track,
+        origin: row.origin,
+        sourceLabel: row.sourceLabel,
+      },
+      ...actions,
+      collect: () => {
+        if (live()) void prepareCollection(anchor, ids);
+      },
+      collectionLocked: () => collectionLocked.value || rows.some((entry) => !entry?.collectible),
+    });
+    return;
+  }
+  menuPending.value = row.entryId;
   try {
-    const info = await client.playerQueueCatalogMenu(shown.epoch, shown.revision, row.entryId);
+    const read = row.voiceMenu
+      ? client.playerQueueVoiceMenu(shown.epoch, shown.revision, row.entryId)
+      : client.playerQueueCatalogMenu(shown.epoch, shown.revision, row.entryId);
+    const info = await read;
     if (
       attempt !== menuAttempt ||
       !live() ||
@@ -596,28 +650,24 @@ async function openQueueMenu(row: QueueTrack, event: MouseEvent) {
       info.track.id !== row.track.id
     )
       return;
-    emit('more', {
-      info,
-      tracks,
-      anchor,
-      point,
-      live,
-      play: () => {
-        if (live()) void activateRow(anchor, row.entryId, row.track.missing);
-      },
-      collect: () => {
-        if (live()) void prepareCollection(anchor, ids);
-      },
-      collectionLocked: () => collectionLocked.value,
-      remove: () => {
-        if (live())
-          void edit(
-            { kind: 'remove', entry_ids: ids },
-            shown.tracks.findIndex((entry) => entry.entryId === ids[0]),
-            shown,
-          );
-      },
-    });
+    if ('voiceId' in info) {
+      if (row.voiceMenu && info.voiceId === row.track.voiceId)
+        emit('more', {
+          kind: 'voice',
+          info,
+          ...actions,
+        });
+    } else if (row.catalogMenu) {
+      emit('more', {
+        kind: 'catalog',
+        info,
+        ...actions,
+        collect: () => {
+          if (live()) void prepareCollection(anchor, ids);
+        },
+        collectionLocked: () => collectionLocked.value,
+      });
+    }
   } catch (error) {
     if (attempt === menuAttempt && live()) menuIssue.value = failure(error).message;
   } finally {
@@ -944,6 +994,10 @@ async function confirmClear(event: Event) {
           }"
           :aria-current="item.entryId === currentEntry ? 'true' : undefined"
           @contextmenu="openQueueMenu(item, $event)"
+          @keydown.shift.f10="
+            (item.catalogMenu || item.voiceMenu || item.localMenu || item.downloadMenu) &&
+            openQueueMenu(item, $event)
+          "
         >
           <span
             v-if="expansion?.index === start + index"
@@ -1046,7 +1100,7 @@ async function confirmClear(event: Event) {
             <Icon name="collect" />
           </button>
           <button
-            v-if="item.catalogMenu"
+            v-if="item.catalogMenu || item.voiceMenu || item.localMenu || item.downloadMenu"
             type="button"
             class="icon-button queue-row-more"
             :disabled="navigationLocked"

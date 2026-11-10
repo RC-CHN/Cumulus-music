@@ -13,12 +13,16 @@ import {
   playlistSelectionNeighbor,
 } from '../services/playlistDragSelection';
 import { useVirtualRows } from '../composables/useVirtualRows';
+import { useMixedPlaylistDrag } from '../composables/useMixedPlaylistDrag';
+import { expandedRows, rowBoundary, rowExtent, rowTop } from '../services/virtualWindow';
 import type { TrackView } from '../services/contracts';
 import type { AlbumDurationOrder } from '../services/albumDurationSort';
+import type { SearchSongTableHint } from '../services/search';
 import TrackRow from './TrackRow.vue';
 const props = defineProps<{
   tracks: TrackView[];
   matchKeyword?: string;
+  searchTitleHints?: readonly (SearchSongTableHint | undefined)[];
   durationOrder?: AlbumDurationOrder;
   originalRecordings?: ReadonlySet<string>;
   liked: Set<string>;
@@ -30,9 +34,13 @@ const props = defineProps<{
   pendingToggle?: TrackPendingToggle;
   toggleBusy?: boolean;
   navigable?: boolean;
+  readOnly?: boolean;
   preserveScrollOnRefresh?: boolean;
   queueDropEnabled?: boolean;
+  mixedQueueDrop?: boolean;
+  mixedReorderScope?: object;
   playlistSelectionScope?: string;
+  selectedMenuEnabled?: boolean;
   selectionLabel?: string;
   locateIndex?: number;
   scrollScope?: string;
@@ -44,9 +52,16 @@ const emit = defineEmits<{
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   togglePending: [target: TrackPendingToggle, anchor: HTMLButtonElement];
   more: [request: TrackMenuRequest];
+  selectedMore: [
+    request: TrackMenuRequest,
+    anchor: number,
+    rows: { track: TrackView; index: number }[],
+    current: () => boolean,
+  ];
   artist: [id: string];
   album: [id: string];
   scrollEdge: [scope: string, scrolled: boolean, overflow: number];
+  mixedReorder: [scope: object, selected: ReadonlySet<string>, dragged: string, gap: number];
   queueDrag: [
     event: PointerEvent,
     rows: { track: TrackView; index: number }[],
@@ -54,6 +69,17 @@ const emit = defineEmits<{
   ];
 }>();
 const rowHeight = 56;
+const searchRows = computed(
+  () =>
+    props.searchTitleHints &&
+    expandedRows(
+      props.searchTitleHints.map(
+        (hint) => (hint?.aliasParts ? 15 : 0) + (hint?.lyricParts ? 15 : 0),
+      ),
+    ),
+);
+const rowOffset = (index: number) => rowTop(index, rowHeight, searchRows.value);
+const rowSize = (index: number) => rowExtent(index, rowHeight, searchRows.value);
 const {
   container: scroller,
   start,
@@ -62,7 +88,12 @@ const {
   reset,
   restore: restoreScroll,
   center,
-} = useVirtualRows(() => props.tracks.length, rowHeight);
+} = useVirtualRows(
+  () => props.tracks.length,
+  rowHeight,
+  8,
+  () => searchRows.value,
+);
 const rows = computed(() => props.tracks.slice(start.value, end.value));
 const selection = shallowRef(emptyPlaylistDragSelection());
 const selected = computed(() => selection.value.ids);
@@ -75,6 +106,12 @@ const displayedIndexes = computed(() => {
   return indexes;
 });
 let collapse: string | undefined;
+const mixedDrag = useMixedPlaylistDrag({
+  container: () => scroller.value,
+  scope: () => props.mixedReorderScope,
+  boundary: (offset) => rowBoundary(offset, props.tracks.length, rowHeight, searchRows.value),
+  scroll,
+});
 watch(
   () => props.playlistSelectionScope,
   () => {
@@ -102,6 +139,45 @@ function targetRow(event: MouseEvent) {
   const track = props.tracks[index];
   if (track?.id === element.dataset.trackId) return { element, track, index };
 }
+function forwardMore(request: TrackMenuRequest) {
+  if (
+    !props.selectedMenuEnabled ||
+    !props.playlistSelectionScope ||
+    (request.event.type !== 'contextmenu' && request.event.type !== 'keydown')
+  ) {
+    emit('more', request);
+    return;
+  }
+  const id = request.track.id;
+  if (!selected.value.has(id)) {
+    selection.value = playlistRowRelease(id);
+    emit('more', request);
+    return;
+  }
+  if (selected.value.size <= 1) {
+    emit('more', request);
+    return;
+  }
+  const captured = selection.value;
+  const scope = props.playlistSelectionScope;
+  const index = displayedIndexes.value.get(id);
+  if (index === undefined || props.tracks[index] !== request.track) return;
+  const rows = [...captured.ids].flatMap((trackId) => {
+    const index = displayedIndexes.value.get(trackId);
+    return index === undefined ? [] : [{ track: props.tracks[index], index }];
+  });
+  if (rows.length !== captured.ids.size) return;
+  emit(
+    'selectedMore',
+    request,
+    index,
+    rows,
+    () =>
+      selection.value === captured &&
+      scope === props.playlistSelectionScope &&
+      rows.every(({ track, index }) => props.tracks[index] === track),
+  );
+}
 function queueDrag(event: PointerEvent) {
   if (!props.playlistSelectionScope || event.pointerType === 'touch') return;
   collapse = undefined;
@@ -126,14 +202,29 @@ function queueDrag(event: PointerEvent) {
     event.button === 2,
   );
   if (event.button === 0) element.focus({ preventScroll: true });
-  if (event.button !== 0 || !props.queueDropEnabled) return;
+  if (event.button !== 0) return;
   const captured = selection.value;
+  const scope = props.mixedReorderScope;
+  const shown = props.tracks;
+  if (scope) {
+    // Register first so Escape cancels this gesture as well as the queue
+    // destination, which can stop the other key listeners.
+    mixedDrag.start(
+      event,
+      () => captured === selection.value && shown === props.tracks,
+      (gap) => emit('mixedReorder', scope, captured.ids, track.id, gap),
+    );
+  }
+  if (!props.queueDropEnabled) return;
   const indexes =
     selected.value.size > 1
       ? [...selected.value].map((id) => displayedIndexes.value.get(id) ?? -1)
       : [index];
   const rows = indexes.map((index) => ({ track: props.tracks[index], index }));
-  if (rows.some(({ track }) => !track || track.missing || track.local) || rows.length > 10000)
+  if (
+    rows.some(({ track }) => !track || track.missing || (track.local && !props.mixedQueueDrop)) ||
+    rows.length > 10000
+  )
     return;
   emit('queueDrag', event, rows, () => captured === selection.value);
 }
@@ -149,10 +240,10 @@ function plainRelease(event: MouseEvent) {
 async function focusRow(index: number) {
   const node = scroller.value;
   if (!node) return;
-  const top = index * rowHeight;
+  const top = rowOffset(index);
+  const bottom = rowOffset(index + 1);
   if (top < node.scrollTop) node.scrollTop = top;
-  else if (top + rowHeight > node.scrollTop + node.clientHeight)
-    node.scrollTop = top + rowHeight - node.clientHeight;
+  else if (bottom > node.scrollTop + node.clientHeight) node.scrollTop = bottom - node.clientHeight;
   const scope = props.playlistSelectionScope;
   const row = props.tracks[index]?.id;
   onScroll();
@@ -207,7 +298,7 @@ function selectionKey(event: KeyboardEvent) {
 }
 function preventNativeDrag(event: DragEvent) {
   if (
-    props.queueDropEnabled &&
+    (props.queueDropEnabled || props.mixedReorderScope) &&
     event.target instanceof Element &&
     event.target.closest('.track-row')
   )
@@ -244,7 +335,16 @@ async function locate() {
     ?.querySelector<HTMLElement>(`[aria-rowindex="${index + 2}"]`)
     ?.focus({ preventScroll: true });
 }
-defineExpose({ locate, restoreScroll });
+function focusAfterReorder(id: string) {
+  const index = displayedIndexes.value.get(id);
+  if (index === undefined) {
+    scroller.value?.focus({ preventScroll: true });
+    return;
+  }
+  selection.value = playlistRowRelease(id);
+  void focusRow(index);
+}
+defineExpose({ locate, restoreScroll, focusAfterReorder });
 </script>
 <template>
   <div
@@ -276,6 +376,7 @@ defineExpose({ locate, restoreScroll });
     <div
       ref="scroller"
       class="track-scroll"
+      :class="{ 'playlist-reorder-scroll': mixedReorderScope }"
       @scroll.passive="scroll"
       :tabindex="playlistSelectionScope ? 0 : undefined"
       @focus.self="focusSelection"
@@ -284,7 +385,13 @@ defineExpose({ locate, restoreScroll });
       @click="plainRelease"
       @dragstart="preventNativeDrag"
     >
-      <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
+      <div
+        v-if="mixedDrag.gap.value !== undefined"
+        class="playlist-reorder-marker"
+        :style="{ top: `${Math.max(0, rowOffset(mixedDrag.gap.value) - 2)}px` }"
+        aria-hidden="true"
+      />
+      <div :style="{ height: `${rowOffset(start)}px` }" aria-hidden="true" />
       <TrackRow
         v-for="(track, index) in rows"
         :key="`${start + index}:${track.id}`"
@@ -292,7 +399,9 @@ defineExpose({ locate, restoreScroll });
           track,
           start + index,
           currentId === track.id,
-          currentToggle?.trackId === track.id ? currentToggle : undefined,
+          currentToggle?.trackId === track.id && !!currentToggle.local === track.local
+            ? currentToggle
+            : undefined,
           toggleBusy,
           pendingToggle?.trackId === track.id ? pendingToggle : undefined,
           liked.has(track.id),
@@ -300,7 +409,9 @@ defineExpose({ locate, restoreScroll });
           playable,
           playableIds?.has(track.id),
           navigable,
+          readOnly,
           matchKeyword,
+          searchTitleHints?.[start + index],
           originalRecordings?.has(track.id),
           locateIndex !== undefined,
           !!playlistSelectionScope,
@@ -310,14 +421,18 @@ defineExpose({ locate, restoreScroll });
         :tabindex="playlistSelectionScope || locateIndex !== undefined ? -1 : undefined"
         :selection="playlistSelectionScope ? selected.has(track.id) : undefined"
         :match-keyword="matchKeyword"
+        :search-title-hint="searchTitleHints?.[start + index]"
+        :style="
+          searchTitleHints?.[start + index] ? { height: `${rowSize(start + index)}px` } : undefined
+        "
         :original-recording="originalRecordings?.has(track.id)"
         :index="start + index"
         :current-id="currentId"
         :current-toggle="
           !track.missing &&
-          !track.local &&
           (playableIds?.has(track.id) ?? true) &&
-          currentToggle?.trackId === track.id
+          currentToggle?.trackId === track.id &&
+          !!currentToggle.local === track.local
             ? currentToggle
             : undefined
         "
@@ -330,24 +445,40 @@ defineExpose({ locate, restoreScroll });
             : undefined
         "
         :toggle-busy="toggleBusy"
-        :liked="liked.has(track.id)"
+        :liked="!track.local && liked.has(track.id)"
         :busy="busy.has(track.id)"
         :playable="playable && (playableIds?.has(track.id) ?? true)"
-        :navigable="navigable"
+        :navigable="navigable && !readOnly"
+        :read-only="readOnly"
         @play="(index, gesture) => emit('play', index, gesture)"
         @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @toggle-pending="(target, anchor) => emit('togglePending', target, anchor)"
         @like="emit('like', $event)"
-        @more="emit('more', $event)"
+        @more="forwardMore"
         @artist="emit('artist', $event)"
         @album="emit('album', $event)"
       />
-      <div :style="{ height: `${(tracks.length - end) * rowHeight}px` }" aria-hidden="true" />
+      <div
+        :style="{ height: `${rowOffset(tracks.length) - rowOffset(end)}px` }"
+        aria-hidden="true"
+      />
     </div>
   </div>
 </template>
 
 <style scoped>
+.playlist-reorder-scroll {
+  position: relative;
+}
+.playlist-reorder-marker {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
 .track-duration-sort {
   display: inline-flex;
   gap: 3px;

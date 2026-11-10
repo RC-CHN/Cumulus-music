@@ -371,6 +371,13 @@ impl Context {
         let Some(target) = shared.current else {
             return Err(Error::State("current resource cannot join together"));
         };
+        if queue.selected().is_some_and(|row| !row.visible_in_queue()) {
+            // A filtered explicit anchor updates the visible list only. Do
+            // not publish a new shared list targeting the still-audible song
+            // outside that list. The next eligible selection can publish it.
+            *last = Some(snapshot);
+            return Ok(false);
+        }
         // Empty local playback starts room exit; it is not an authoritative
         // empty remote list. Keep its last confirmed cards while end is pending.
         self.session.with_token(&self.token, |uid| {

@@ -25,8 +25,11 @@ pub struct Settings {
     pub range_limit: Option<usize>,
     pub status: Option<u16>,
     pub content_length: Option<String>,
+    pub omit_content_length: bool,
     pub encoding: Option<String>,
     pub gate: Option<Arc<ReadGate>>,
+    pub gate_after: usize,
+    pub chunk_limit: usize,
     pub fail_body: bool,
 }
 pub struct Origin {
@@ -46,8 +49,11 @@ impl Origin {
                 range_limit: None,
                 status: None,
                 content_length: None,
+                omit_content_length: false,
                 encoding: None,
                 gate: None,
+                gate_after: 0,
+                chunk_limit: usize::MAX,
                 fail_body: false,
             }),
             calls: Mutex::new(Vec::new()),
@@ -74,10 +80,13 @@ impl MediaBackend for Origin {
             } else {
                 200
             });
-            let mut headers = BTreeMap::from([(
-                "content-length".into(),
-                s.content_length.unwrap_or_else(|| data.len().to_string()),
-            )]);
+            let mut headers = BTreeMap::new();
+            if !s.omit_content_length {
+                headers.insert(
+                    "content-length".into(),
+                    s.content_length.unwrap_or_else(|| data.len().to_string()),
+                );
+            }
             if status == 206 {
                 headers.insert(
                     "content-range".into(),
@@ -102,6 +111,8 @@ impl MediaBackend for Origin {
                 data: data[..data.len().saturating_sub(s.truncate)].to_vec(),
                 offset: 0,
                 gate: s.gate,
+                gate_after: s.gate_after,
+                chunk_limit: s.chunk_limit,
                 fail: s.fail_body,
             };
             Ok(MediaReply {
@@ -116,19 +127,26 @@ struct Bytes {
     data: Vec<u8>,
     offset: usize,
     gate: Option<Arc<ReadGate>>,
+    gate_after: usize,
+    chunk_limit: usize,
     fail: bool,
 }
 impl MediaBody for Bytes {
     fn read<'a>(&'a mut self, buffer: &'a mut [u8]) -> ApiFuture<'a, usize> {
         Box::pin(async move {
-            if let Some(gate) = self.gate.take() {
+            if self.offset >= self.gate_after
+                && let Some(gate) = self.gate.take()
+            {
                 gate.reached.notify_one();
                 gate.release.notified().await;
             }
             if self.fail {
                 return Err(Error::Transport("synthetic interruption".into()));
             }
-            let n = buffer.len().min(self.data.len() - self.offset);
+            let n = buffer
+                .len()
+                .min(self.data.len() - self.offset)
+                .min(self.chunk_limit);
             buffer[..n].copy_from_slice(&self.data[self.offset..self.offset + n]);
             self.offset += n;
             Ok(n)

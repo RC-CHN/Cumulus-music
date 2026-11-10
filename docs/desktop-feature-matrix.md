@@ -30,17 +30,69 @@
 
 以下继续保留基线和各专项的证据，不由本批覆盖其他业务。
 
+后续本机候选分别核对了 [搜索声音菜单](search-card-ui-contracts.txt) 和
+[首页回忆引导](discovery-home-contracts.txt)。前者在真实 Linux WebView
+确认「播放」不会暂停正在播放的同一声音，暂停时沿用原生实例续播，行号
+仍能暂停；评论数和完成文件目录分别核对官方参数与原生交接。后者把
+「引导消失、播放器仍空闲」的截图放在真实点击播放之前。
+[Windows 本地文件打开候选](default-player-contracts.txt)接入持有句柄的
+MP3、FLAC 和 PCM WAV，提供同次便携包的原生复验入口；GNU 交叉检查和
+Linux FFprobe 对照仍不能替代 Windows 原生验证。这些候选不视为 RC 已包含。
+
+后续隔离集成源码 `8146a18d8f8e42c0a154e403fbe2bff2a6bf1d06`：独立 Linux
+应用用本地 FLAC 真实播放和暂停，进度由原生音频推进，输出接隔离的 PipeWire
+null sink。相同源码的 Tauri 探针重走 [HTTPS 主流程](desktop-main-flow-proof.txt)
+19 态；另有 [批量取消确认](desktop-download-contracts.txt) 4 态、
+[音量浮层滚轮](playback-volume-ui-contracts.txt) 40＋3 态及
+[当前播客断点续播](player-podcast-resume-contracts.txt) 7 态，合计保留 77 张截图
+（含正式程序窗口、本地导入、播放及暂停）。前端 1030 项、类型/构建及工作区严格
+Clippy 已通过。合成登录含持久化与重开恢复，未使用真实账号；本批未测实体声卡、
+Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为准。
+
+下一批的 [下载批量收藏](download-batch-ui-contracts.txt) 和
+[登录态播客搜索分页](search-results-ui-contracts.txt) 各有独立 Linux 实窗证据。
+前者核对下载原始顺序、普通本人歌单、提交前权限及回执缺失后只读核对；后者
+核对 0/10 与 10/10 的真实签名请求、失败保留与显式重试、空列表与 null 的差异，
+以及详情返回后的焦点。其独立证据不作为 Windows 或集成构建的运行结果。
+
+## 2026-11-10 实服与同窗口验收
+
+[签名播放证据](signed-window-read-proof.txt)确认：同一个 Linux Tauri 窗口恢复既有授权账号，读取本人歌单和喜欢列表，从官方 V3 综合搜索取得歌曲，核对非试听授权，再通过一次完整媒体读取驱动原生 libmpv 解码、暂停、继续和停止。原账号和数据库不变。使用 null 音频输出，未验证实体声卡、受易盾令牌保护的单曲分类、实服写操作、普通实服下载或 Windows 便携包。歌单编辑、下载和真正断网后的本地播放仍按[独立合成主流程](desktop-main-flow-proof.txt)记录。
+
+同日独立产品候选的[普通自建歌单断网回读](playlist-offline-contracts.txt)在 Linux
+WebKitGTK/libmpv 中验证了 7 个快照/CUE 状态和 9 个本机下载状态。
+明确拒绝撤销快照；可播放性按同账号的本机索引或已发布下载及权益校验，
+外账号记录和被改写的文件不能播放。此批用合成账号、合成 WAV/CUE 和
+null 输出，无真实音源授权或写入；加密下载另有 Rust 证据，Windows 实窗
+及实服离线权益变化未在本批验证。详见
+`.build/ui-proof/phase237-offline-download-playlist/receipt.json`。
+
+下一批[合并实窗](desktop-main-flow-proof.txt)验证了全歌单时长排序、
+在线混排 CUE 与离线下载、搜索组选后直接播放、两套耳机调音布局以及
+一起听 488 退出核对。同源码另启动普通程序，以私有 PipeWire 测得真实
+合成 PCM 和暂停静音。截图、哈希及后续旧房间回执防护的 Rust 检查分别
+归到实际测试的提交；不作为 Windows 或双账号验证。
+
+同一候选 `4861d330` 的[搜索批量下载](search-results-ui-contracts.txt)在 Linux
+WebKit 实际核对六条路径，共 60 个截图状态：直达、已有歌单、系统喜欢歌单、
+新旧任务混排、创建歌单、明确选择已购音质。测试检查合成 FLAC 帧、反向下载顺序、
+原来的暂停播放、旧任务原 ID 与 Range 偏移，以及未收到回执时只读核对。
+前端测试 1058 项通过；精确前端和原生探针哈希、逐态 PNG 和结果见
+`.build/ui-proof/phase252-search-download-paid-integration/receipt.json`。
+已购后新建的晚到/丢失回执、首轮只剩一首时原右击歌曲的判定、以及无已知长度
+重新授权的传输恢复另有封闭原生回归，不能当成 Windows、真实会员授权或写入证据。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
-| **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 默认兼容声明与 Linux 的本机派生不同，尚无 Windows 原生采集、完整官方引擎或全部风控分支的等价证据。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) |
+| **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 候选四条独立探针已有真实虚拟机只读观测；未接入产品默认签名，也未证明实体设备、完整官方引擎或全部风控分支等价。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) · [原生诊断](windows-hardware-collector-plan.txt) |
 | **登录、恢复与续期**：报告 01、08、22，M/363、1368 | [候选/凭据/持久化](../core/src/account/) → [登录、续期 IPC](../desktop/src/auth.rs)、[续期宿主](../desktop/src/renewal.rs) → [登录弹窗](../frontend/src/components/LoginDialog.vue)、[账号窗口](../frontend/src/components/AccountDialog.vue) | 有真实已有会话恢复及读资源。授权的独立 Rust 扫码会话已观察到 refresh token 下发、保存和新进程回读；正常续期因实验未启用而不发请求，独立诊断未取得成对轮换。二维码、手机号密码/SMS、邮箱、已恢复挑战、快捷登录/切换和失效/退出另按分支验证；部分真人挑战、原生 SDK 支路和服务端双账号切换缺线上验收。微信、QQ 登录是可选接入：已恢复官方入口和票据交换，尚未验证授权成功回调的来源和会话隔离，正式客户端未接入。[登录矩阵](account-login-desktop-mapping.json) · [续期](desktop-session-renewal-contracts.txt) · [下发证据](refresh-token-issuance-evidence.txt) · [SNS](sns-login-recovery.txt) |
 | **账户资料、安全设备和设置**：报告 17、30，M/15、100、3101、3122 | [账号用例](../core/src/client/) → [资料、设备、设置桥](../desktop/src/settings.rs)、[头像](../desktop/src/account_avatar.rs) → [账号设置](../frontend/src/components/SettingsPage.vue)、[账号表单](../frontend/src/components/account/) | 资料/头像编辑与回读、登录设备列表/移除/SMS、三档会员额度对照及绑定页有独立契约。绑定页按已核验的注册方式分组，写操作转交官方 App。没有因此执行真实移除、解绑、改密；尚有 SDK 和各平台 UI 状态差异。[账号审计](account-feature-audit.txt) · [绑定](account-binding-settings.txt) · [资料/设备](account-profile-devices.txt) · [头像](account-avatar.txt) |
 | **搜索、目录和导航**：报告 02、17，M/2245、597 及恢复 SearchBox/SearchResults | [搜索和资源](../core/src/catalog/) → [搜索 IPC](../desktop/src/search.rs)、[目录 IPC](../desktop/src/catalog.rs) → [搜索组件](../frontend/src/components/search/)、[目录页](../frontend/src/components/CatalogPage.vue) | 真实 v3 分流搜索、结果投影和原生播放有只读样本；合成桌面覆盖联想/输入法/历史、分类分页、返回及播放。未发现综合游标续页的官方调用；热搜有声书/播客入口已接，更多发现模块和官方布局分支逐项追踪。[搜索](search-results-ui-contracts.txt) · [发现](search-discovery-ui-contracts.txt) · [只读实服](search-playback-read-proof.txt) |
 | **日推、排行榜、私人 FM 和场景 FM**：报告 02、19，官方 FM/排行模型 | [目录](../core/src/catalog/)、[FM](../core/src/fm/) → [排行](../desktop/src/rankings.rs)、[FM IPC](../desktop/src/fm.rs) → 日推、[排行榜](../frontend/src/components/RankingsPage.vue)、[私人](../frontend/src/components/FmPage.vue)/[场景 FM](../frontend/src/components/SceneFmPage.vue) | 实服已有完整榜单队列、FM 播放/反馈和场景目录样本；合成验证独立队列、自然续曲、失败恢复。背景、生日态及部分官方发现布局仍有差异。[日推与排行](desktop-rankings-contracts.txt) · [FM 模式](desktop-fm-modes-contracts.txt) · [反馈](desktop-fm-feedback-contracts.txt) · [场景](desktop-scene-fm-contracts.txt) |
-| **歌单、喜欢、收藏和历史**：报告 16、17、27、30，官方歌单/收藏/历史模型 | [歌单](../core/src/playlist/)、[收藏/账号资源](../core/src/account/)、[历史](../core/src/history/) → [歌单](../desktop/src/playlists.rs)、[封面](../desktop/src/playlist_cover.rs)、[收藏](../desktop/src/collections.rs)、[历史](../desktop/src/history.rs) → 歌单页、[编辑](../frontend/src/components/playlist/)、[收藏](../frontend/src/components/CollectionsPage.vue)、[历史](../frontend/src/components/HistoryPage.vue) | 实服隔离私密歌单往返覆盖创建、元数据/封面、增删/排序/清空及回读；收藏和历史各有契约。未自动公开发布。作者资料、部分收藏/分享菜单和官方布局分支未逐态对齐。[私密歌单](core-pc-playlist-official-contracts.txt) · [封面](desktop-playlist-cover-contracts.txt) · [收藏](collection-library-contracts.txt) |
+| **歌单、喜欢、收藏和历史**：报告 16、17、27、30，官方歌单/收藏/历史模型 | [歌单](../core/src/playlist/)、[收藏/账号资源](../core/src/account/)、[历史](../core/src/history/) → [歌单](../desktop/src/playlists.rs)、[封面](../desktop/src/playlist_cover.rs)、[收藏](../desktop/src/collections.rs)、[历史](../desktop/src/history.rs) → 歌单页、[编辑](../frontend/src/components/playlist/)、[收藏](../frontend/src/components/CollectionsPage.vue)、[历史](../frontend/src/components/HistoryPage.vue) | 实服隔离私密歌单往返覆盖创建、元数据/封面、增删/排序/清空及回读；收藏和历史各有契约。未自动公开发布。原生本地 ID 读取已保留原位置，真实混排写仍未接通；作者资料、部分收藏/分享菜单和官方布局分支未逐态对齐。[私密歌单](core-pc-playlist-official-contracts.txt) · [封面](desktop-playlist-cover-contracts.txt) · [收藏](collection-library-contracts.txt) |
 | **队列、音源与播放控制**：报告 02、18、19，M/7、176、308 等 | [播放器、队列、授权和时间线](../core/src/playback/) → [播放器桥](../desktop/src/player.rs) → [底栏](../frontend/src/components/PlayerBar.vue)、[队列](../frontend/src/components/QueuePanel.vue)、[迷你播放器](../frontend/src/mini/) | 实服 CDN 样本及本地 NCM 有实际 libmpv；合成主流程验证普通 HTTPS、明确重试、EOF、暂停定位和离线播放，另有队列入口与焦点回归。音源拒绝不等于上游永久版权结论；官方跳歌实验/专有 SDK 错误码不能直接套到 libmpv。[播放](core-playback-contracts.txt) · [主流程](desktop-main-flow-proof.txt) · [优先项](playback-search-priority.txt) · [启动](playback-startup-contracts.txt) · [队列来源](queue-source-navigation.txt) · [空队列发现](queue-empty-discovery.txt) · [队列歌手](queue-artist-navigation.txt) · [队列喜欢](queue-song-like.txt) · [队列菜单](queue-catalog-menu.txt) |
 | **会员、音质、试用和离线权益**：报告 19、21，官方会员/音质模型 | [权益](../core/src/membership/)、[音质](../core/src/playback/quality/) → [会员 IPC](../desktop/src/member.rs)、播放器 → [会员中心](../frontend/src/components/MemberPage.vue)、[音质](../frontend/src/components/PlaybackQuality.vue)、[试用](../frontend/src/components/QualityTrialDialog.vue) | 实服读取权益和资源降级样本；合成验证按曲资格、显式试用、未知结果与到期、下载离线限制。黑胶乐签卡片、历史及主动签到/未决回读已用合成桌面验证；礼券和动态开通仍有缺口。不执行真实支付，不推断所有会员能拿到相同音质。[会员](desktop-member-contracts.txt) · [动态音质](playback-quality-dynamic-ui-contracts.txt) · [试用](playback-quality-trials-contracts.txt) |
-| **歌词与歌词上报**：M/370、21、3081 和官方桌面歌词桥 | [解析/投影/缓存](../core/src/lyrics/) → [播放详情](../desktop/src/player.rs)、[浮动歌词](../desktop/src/desktop_lyrics/) → [详情](../frontend/src/components/LyricsPanel.vue)、[独立歌词窗](../frontend/src/desktopLyrics/) | 有实服普通歌词及 CUE/侧车、MP3/FLAC/M4A 内嵌的本地证据；合成桌面覆盖 YRC、双向时差、账号切换、失效与恢复。云盘非空歌词、SYLT/NCM 内嵌、真实上报的通过证据与普通歌词分开。[核心歌词](core-lyrics-contracts.txt) · [双窗口](desktop-lyrics-contracts.txt) · [上报](lyric-report-contracts.txt) |
+| **歌词与歌词上报**：M/370、21、3081 和官方桌面歌词桥 | [解析/投影/缓存](../core/src/lyrics/) → [播放详情](../desktop/src/player.rs)、[浮动歌词](../desktop/src/desktop_lyrics/) → [详情](../frontend/src/components/LyricsPanel.vue)、[独立歌词窗](../frontend/src/desktopLyrics/) | 有实服普通歌词及 CUE/侧车、MP3/FLAC/M4A 内嵌的本地证据；合成桌面覆盖 YRC、双向时差、账号切换、失效与恢复；候选保留空态字号并按当前本地匹配选择歌词，不更换音频。云盘非空歌词、SYLT/NCM 内嵌、真实上报的通过证据与普通歌词分开。[核心歌词](core-lyrics-contracts.txt) · [双窗口](desktop-lyrics-contracts.txt) · [上报](lyric-report-contracts.txt) · [公开贡献页](playback-detail-lyric-follow.txt) |
 | **本地库、CUE、NCM、线上匹配**：报告 12、18、22，官方 localmusic/扫描模型 | [库与监视](../core/src/library/)、[音频容器](../core/src/media/) → [本地库 IPC](../desktop/src/local.rs) → [本地音乐](../frontend/src/components/LocalPage.vue)、[匹配](../frontend/src/components/LocalMatchDialog.vue) | 实际扫描、游客 CUE/NCM 解码、原生时钟/重开和匹配通过各自样本；分轨歌词加载前后的时间轴另有测试。标签编辑、更多格式与目录变更仍需逐分支验收。[本地库](desktop-local-library-contracts.txt) · [NCM](core-ncm-contracts.txt) · [匹配](desktop-local-matching-contracts.txt) |
 | **下载、离线和文件管理**：报告 20、21、25、26、29 | [任务、传输、标签和离线](../core/src/download/) → [下载](../desktop/src/downloads.rs)、[文件管理](../desktop/src/file_manager.rs) → [下载选择](../frontend/src/components/DownloadDialog.vue)、[管理](../frontend/src/components/DownloadPage.vue) | 实服普通 FLAC/NCM、云盘原文件及已测节目/MV 分支；实际文件跨盘、目录迁移、重开续传和离线播放。默认普通音频、NCM 显式选择；确认公开歌曲的下载文件丢失后可显式在线播放。付费节目/特殊媒体和跨平台文件系统故障不以歌曲样本代替。[桌面下载](desktop-download-contracts.txt) · [下载](core-download-service-contracts.txt) · [文件](core-completed-files-contracts.txt) · [目录](core-download-directory-contracts.txt) |
 | **云盘、NOS/OSS 与附件**：报告 15、23、24、29，M/3127 | [云盘与上传状态机](../core/src/cloud/) → [云盘 IPC](../desktop/src/cloud.rs) → [云盘](../frontend/src/components/CloudPage.vue)、[上传](../frontend/src/components/CloudUploadDialog.vue) | NOS 音频/封面、容量、播放/删除、下载和隔离往返有实服样本；OSS 签名、CRC64、分片、同对象凭据替换及故障恢复经对照和合成验证。实服未获得 OSS channel=3；LRC/CUE 仍受返回值限制，保留显式省略/恢复状态。[云盘](desktop-cloud-contracts.txt) · [上传](core-cloud-upload-contracts.txt) · [OSS](core-oss-upload-contracts.txt) |
@@ -55,6 +107,8 @@
 - 使用仓库固定的 Rust/Node 版本和锁文件。在工作区执行 `npm --prefix frontend ci`、`npm --prefix frontend run build` 和 `cargo build --locked -p cumulus-desktop --bin cumulus --features custom-protocol`；运行 `.build/target/debug/cumulus`。运行库、打包和精确提交 CI 规则见 [README](../README.txt)、[工作约定](../AGENTS.md) 与 [发行流程](releasing.txt)。
 - 本机普通 Linux 可执行文件证据：`0e136bd` 的 `.build/target-main-integration/debug/cumulus`；`.build/current-linux-product.DAbXMB/isolated-ordinary/report.json` 记录真实窗口、隔离无外网、合成音频播放进度、暂停、PipeWire 虚拟输出中的 PCM 与静音。它是已核对的开发构建记录，并非 `4c07fc7` 的发行附件；后续构建可能覆盖可执行文件。
 - `4c07fc7` 有 Linux 合成桌面增量证据：`.build/search-podcast-home-webview/audit.json`、`.build/queue-explicit-current-verified/audit.json`、`.build/lyric-two-way-proof.WwRw3Y/after/report.json`。主流程的最新报告版本及独立账号权限见 [桌面主流程](desktop-main-flow-proof.txt)。本机证据目录不随公开仓库分发，契约中保留复现入口。
+- `e856fbb8` 在同一份 Linux 桌面构建中验证了[副歌点队列复用](desktop-player-contracts.txt)、[搜索联想三种文案](search-discovery-ui-contracts.txt)和[搜索优先播放已下载 FLAC 的音效与回退](core-effects-local-equalizer.txt)。A→B→A 只读一批；联想的候选文案、顶栏和实际请求分别核对；可信解码库启用本地音效，摘要错误用原文件回退，暂停定位不改变曲目或队列。隔离 WebView 用合成数据和 libmpv null 输出，共 20 张截图；已核对实际运行库来自主线 CI `42582603562` 第 1 次。未验证 Windows 实窗或物理音频输出。
+- 本轮普通歌单播放补齐[红心与固定雷达的原生来源](core-playback-contracts.txt)，合成 Rust 授权回执核对 43／37、未知或其他账号的默认场景和队列条目保留；[FM 副歌](desktop-player-contracts.txt)使用各自补曲状态，不与普通队列或其他 FM 来源混用。[单曲搜索命中](search-results-ui-contracts.txt)和[听书进度显示](play-history-contracts.txt)各有隔离 Linux 实窗记录：前者检查同一行的别名和歌词、游标及播放队列，后者检查隐藏进度后真实章节仍可播放。当前批未验证真实账号、物理声卡或 Windows 实窗。
 - 后续开发主线的专项证据见 [播放、音效与搜索](playback-search-priority.txt)：暂停倒拖、耳机调音对比、音效故障时保留播放、声音和播客分类、播客行内收藏、跨分类的搜索纠正。音效恢复仅在原生确认拆除故障滤镜时继续，已验证耳机型号的独立 PEQ 不代表完整的官方效果图。各项证据仍按相应提交、平台和运行条件读取。
 - `e0099f1` 的合并版在 Linux 实际 WebView 验证 [歌手发现](artist-gallery-contracts.txt) 的官方筛选和跨批分页、[本地单曲菜单](local-resource-ui-contracts.txt) 的播放与下一首、[播放栏播客单集下载](desktop-player-contracts.txt) 的资源身份和显式确认。12 张截图及回执在 `.build/ui-proof/local-gallery-voice-e0099f1/`。歌手页跨过 200 条后仍按服务位置续读；本地菜单保持当前 CUE 条目的暂停位置；单集确认框打开和取消均未提交下载。它们分别使用只读合成服务或本地合成文件验证，不能替代实服权益或 Windows 实机验证。
 - 后续补齐[歌单广场](playlist-detail-ui-contracts.txt)的官方推荐首页、顶部动态标签和普通分类的 60px 自动续页，播客播放栏确认后实际下载，以及[评论作者主页和回程](comment-read-ui-contracts.txt)。Linux 隔离桌面验证有界渲染、原游标重试、个性化关闭、发布一份合成 MP3 并继续播放，以及作者跳转后保留原楼层及草稿。真实节目权益与嵌入评论的回程仍按各自证据验收。
@@ -68,6 +122,30 @@
 - [普通视频恢复审计](ordinary-video-pc-recovery.txt)复现了官方 PC 从卡片走入 MV 默认路由的行为，未找到可独立授权的普通视频播放链。[限幅器联合实验](limiter-native-pipeline-proof.txt)已在 Linux 跑通真实解码、有限缓冲、恢复限幅器和同一 libmpv 实例，验证跳转换代、尾帧及自然 EOF；正式播放器尚未启用该路径。
 - [搜索歌单](search-results-ui-contracts.txt)按官方标题下的第二行展示接口推荐理由；[播放最新](follow-new-song-contracts.txt)保留重复选中首曲时的原进度，并在首曲不可播时保留原队列。[动态会员扫码](desktop-member-contracts.txt)使用独立窗口和当前投放凭据，旧版本无法生成二维码；未验证真实开通、支付或礼券。
 - [听歌排行](profile-play-record-contracts.txt)恢复了用户主页入口、周榜和总榜、访客实时权限及本人播放次数。访客被拒绝时不请求榜单；同账号近期播放历史仍独立。[云盘元数据](cloud-metadata-recovery.txt)按官方规则补首位歌手，保留原云盘 ID；未找到 PC 端手动重新匹配链路。
+- 集成树 `4925610430d3e1808c432ce8164ba4a0b19c61d7` 用同一套生产前端和
+  原生探针实际核对了云盘三条流程：[歌词来源与空态/失败](playback-detail-lyric-follow.txt)
+  6 态、[当前云盘曲定位](cloud-song-table-ui-contracts.txt) 28 态、
+  [上传任务与原音频选中](cloud-task-table-ui-contracts.txt) 27 态。
+  Linux 实窗共 61 态和 61 张截图；证据索引为
+  `.build/ui-proof/phase202-cloud-combined/report.json`。定位实际居中，离开悬浮后
+  约 3.06 秒隐藏，不改原播放项；上传任务的原生文件校验实际执行，系统文件管理器
+  使用测试替身。48 项云盘核心和 20 项下载文件测试通过，前端 1040 项及类型/生产
+  构建、定向严格 Clippy 通过。不是 Windows、实体设备或实服账号证据。
+- [普通云盘歌曲文件定位](cloud-menu-ui-contracts.txt)核对上传源、完成下载和
+  扫描/CUE 三种原生凭据。Linux 实窗 32 态通过；生产 IPC 向隔离的
+  FileManager1 发送恰好一次选中原音频的请求。115 项云盘及下载核心测试、
+  Linux 严格 Clippy 和 Windows 交叉检查通过；未实际运行 Explorer。
+- [搜索结果离线与恢复](search-results-ui-contracts.txt)的 Linux 实窗通过
+  10 态：离线卸载结果，恢复当前分类、滚动和焦点，丢弃迟到回包，在线读取失败
+  仍可显式重试。依赖 WebView 连通事件；官方业务探测计时和 Windows 未在此验证。
+- [音效共用页头](effects-directory-desktop.txt)只在当前账号选中且确认配置
+  本机均衡器时提供该开关。Linux 实窗 10 态验证跨页签开关、同一条目/暂停位置、
+  一次解码和两次设置提交；独立 PEQ、权限和目录请求不走此开关。
+- 集成树 `3aa38cd320ed102915cfafe3e8b02e5ca53e6df1` 的搜索断网、音效页头与
+  [普通队列播客原文件定位](queue-voice-menu.txt)已在同一个
+  编译版本复验，各 10 个 Linux WebView 状态。选中文件使用合成 FileManager1，
+  不替换播放实例；无真实账号请求或写入。前端 1040 项、格式、类型及生产构建通过；
+  30 张截图及联合报告索引为 `.build/ui-proof/phase203-broad-ux/report.json`。
 - [播客和有声书分类](search-discovery-ui-contracts.txt)恢复官方评分；[播放最新](follow-new-song-contracts.txt)在首曲没有线上授权时仅使用当前账号同一歌曲已验证的下载。[进程内 FLAC](limiter-inprocess-decoder.txt)验证了专有前瞻限幅器前的解码和样本跳转，仍未切换正式播放器；网络授权与输入边界见[源契约](limiter-authorized-source-contract.txt)。
 - [本人排行删除](profile-play-record-contracts.txt)支持按时期删除并在不确定时只读核对；[外部歌单](external-playlist-import-contracts.txt)支持按官方规则预览分享链接，未提交外部导入任务。[冷离线 FLAC](cold-offline-flac-handoff.txt)通过合成凭据、真实解码、原路径替换与会话撤销的专项验证，正式播放器未切换。
 - [用户主页笔记](profile-notes-contracts.txt)独立读取作者列表，复用动态详情和评论，保留返回焦点；[社区编辑器](community-composer-contracts.txt)支持五类附件搜索及账号隔离的本机草稿。[排行卡](profile-play-record-contracts.txt)按作者播放周榜，同源暂停和恢复保留播放实例。三项已过 Linux 合并版 WebView，未执行真实发布。
@@ -118,7 +196,7 @@
 - [搜索热点卡](search-results-ui-contracts.txt)接通歌曲和播客单集；封面控制音频、详情入口返回原搜索位置，未经确认的链接仍不打开。
 - [普通歌单拖放](queue-drop-contracts.txt)保留筛选后的原序号和官方多选顺序。歌单版本过期时可显式重读，保留筛选和当前播放；由用户重新选中并拖动，不重放旧操作。
 - [精选歌单卡片菜单](ordinary-essential-contracts.txt)接通查看、播放、下一首、收藏、分享、复制和下载全部；精选有声书的单期菜单只操作该期。下载仍须确认，不能把该期的相同编号误当歌曲或整个节目。
-- [本地文件打开](default-player-contracts.txt)按原生命令行顺序打开经验证的 MP3/FLAC。Linux 冷启动和向同资料目录既有进程的暖交接分别通过真实窗口、私有 PipeWire 验证；无效暖打开不动现有队列。Debian 包登记 MP3/FLAC 的「打开方式」候选，已有显式默认不变；Windows 只有冷启动实现，尚缺原生实测。
+- [本地文件打开](default-player-contracts.txt)按原生命令行顺序打开经验证的 MP3/FLAC。Linux 冷启动和向同资料目录既有进程的暖交接分别通过真实窗口、私有 PipeWire 验证；无效暖打开不动现有队列。Debian 包登记 MP3/FLAC 的「打开方式」候选，已有显式默认不变；该基线 Windows 只有冷启动，尚缺原生实测；后续冷暖候选另按上文独立验收。
 - [综合搜索替代 MV](search-preview-ui-contracts.txt)由官方 PC 配置、当前资源的版权状态和明确推荐共同控制；独立视频授权，返回保留搜索位置、焦点和音频队列。官方自动跳歌的整队列预检仍分开处理。
 - [普通扫码](desktop-login-contracts.txt)的服务异常可原地重试，失败候选会释放；按原版区分 legacy/JSK 扫码后收到 801 的显示，不替换二维码或重复发并行轮询。
 - [快速登录许可](quick-login-offer-contracts.txt)独立于启动自动登录和本机恢复；官方 PC 分组开启后才能显式加入，普通新登录不会自动发送快捷历史。主动退出仍清除对应凭据。服务判失效只删除对应快捷资格，保留本机账号和手动恢复。

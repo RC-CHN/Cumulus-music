@@ -250,3 +250,64 @@ test('guest readiness is native, ordered within its own epoch, and never enables
   assert.equal(memory.presentation('2')?.revision, '5');
   host.dispose();
 });
+
+test('current podcast resume presentation follows ordered signed events and clears across accounts', async () => {
+  let push!: (view: PcPresentationView) => void;
+  const host = usePcPresentation(
+    {
+      onPcPresentationChanged: async (listener) => {
+        push = listener;
+        return () => {};
+      },
+      pcPresentation: async (epoch) => appearance('1', epoch),
+    },
+    createSearchViewportMemory(),
+  );
+  host.connect(account);
+  await host.start();
+  push({ ...appearance('3'), podcastResume: true });
+  push(appearance('2'));
+  assert.equal(host.podcastResume.value, true);
+  push(appearance('4'));
+  assert.equal(host.podcastResume.value, false);
+  push({ ...appearance('5'), podcastResume: true });
+  assert.equal(host.podcastResume.value, true);
+  host.connect({ ...account, epoch: '2', status: 'signed_out' });
+  push({ ...appearance('8'), podcastResume: true });
+  push({ ...appearance('9', '2'), podcastResume: true });
+  assert.equal(host.podcastResume.value, false);
+  host.dispose();
+});
+
+test('effect catalogue ignores unchanged or retired revisions and clears on account switch', async () => {
+  const pending = deferred<PcPresentationView>();
+  let push!: (view: PcPresentationView) => void;
+  const host = usePcPresentation(
+    {
+      onPcPresentationChanged: async (listener) => {
+        push = listener;
+        return () => {};
+      },
+      pcPresentation: (epoch) =>
+        epoch === '1'
+          ? pending.promise
+          : Promise.resolve({ ...appearance('9', '2'), effectCatalogueRevision: '9' }),
+    },
+    createSearchViewportMemory(),
+  );
+  host.connect(account);
+  const started = host.start();
+  await tick();
+  push({ ...appearance('5'), effectCatalogueRevision: '5', effectCatalogueNew: true });
+  const first = host.effectCatalogue.value;
+  assert.deepEqual(first, { revision: '5', layout: 'modern' });
+  push({ ...appearance('6'), effectCatalogueRevision: '5' });
+  assert.equal(host.effectCatalogue.value, first);
+  host.connect({ ...account, epoch: '2' });
+  assert.equal(host.effectCatalogue.value, undefined);
+  push({ ...appearance('8'), effectCatalogueRevision: '8', effectCatalogueNew: true });
+  pending.resolve({ ...appearance('7'), effectCatalogueRevision: '7', effectCatalogueNew: true });
+  await started;
+  assert.deepEqual(host.effectCatalogue.value, { revision: '9', layout: 'legacy' });
+  host.dispose();
+});

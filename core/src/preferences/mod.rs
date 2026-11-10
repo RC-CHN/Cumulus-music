@@ -6,3 +6,4 @@ pub mod window;
 pub mod mini;
 
 pub mod desktop_lyrics;
+pub mod interface_font;

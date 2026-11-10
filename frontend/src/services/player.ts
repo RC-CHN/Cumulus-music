@@ -92,6 +92,7 @@ export interface PlayerView {
   intelligenceOperation?: string | null;
   equalizer: EqualizerView;
   boundParametric?: BoundParametricStatus;
+  appliedEffectId?: number;
   parametricProcessing?: boolean;
   deviceParametric?: DeviceParametricView;
   loudness: LoudnessView;
@@ -254,8 +255,12 @@ export interface QueueTrack {
   track: TrackView;
   moreRecommendation?: boolean;
   origin?: QueueOrigin;
+  sourceLabel?: string;
   likeSongId?: string;
   catalogMenu?: boolean;
+  voiceMenu?: boolean;
+  localMenu?: boolean;
+  downloadMenu?: 'song' | 'voice';
   collectible?: boolean;
 }
 export interface QueueCatalogMenu {
@@ -267,7 +272,20 @@ export interface QueueCatalogMenu {
   origin: QueueOrigin | null;
   commentCount: number | null;
   downloaded: boolean;
-  downloadTaskId: string | null;
+  directoryReceipt: string | null;
+}
+export interface QueueVoiceMenu {
+  epoch: string;
+  revision: string;
+  entryId: string;
+  track: TrackView;
+  voiceId: string;
+  sourceLabel: string;
+  radioId: string | null;
+  creator: { id: string | null; name: string } | null;
+  commentCount: number | null;
+  downloaded: boolean | null;
+  directoryAvailable: boolean;
 }
 export interface QueueLikeTarget {
   epoch: string;
@@ -326,9 +344,23 @@ export type PlaylistQueueDropSource = {
   sourceChanged: () => void;
   current: () => boolean;
 };
+export type MixedPlaylistQueueDropSource = {
+  kind: 'mixed_playlist';
+  id: string;
+  revision: string;
+  rows: { trackId: string; trackIndex: number; local: boolean }[];
+  quality: Quality;
+  sourceChanged: () => void;
+  current: () => boolean;
+};
+export interface SearchQueueRow {
+  receipt: string;
+  trackId: string;
+}
+type SearchQueueRowWire = { receipt: string; track_id: string };
 export type SearchQueueDropSource = {
   kind: 'search';
-  rows: { receipt: string; trackId: string }[];
+  rows: SearchQueueRow[];
   quality: Quality;
   current: () => boolean;
 };
@@ -345,6 +377,7 @@ export type AlbumQueueDropSource = AlbumQueueDropGesture & {
 export type QueueDropSource =
   | LocalQueueDropSource
   | PlaylistQueueDropSource
+  | MixedPlaylistQueueDropSource
   | SearchQueueDropSource
   | AlbumQueueDropSource;
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
@@ -381,7 +414,7 @@ export type ZonePlaylistBatchSelection = {
   quality: Quality;
 };
 
-export type SearchPodcastRowGesture = 'index' | 'double_click' | 'menu';
+export type SearchPodcastRowGesture = 'index' | 'double_click' | 'menu' | 'next';
 
 export type PlaySelection =
   | (AlbumDetailSelection & { row: import('./albumDurationSort').AlbumPlaybackRow | null })
@@ -405,9 +438,16 @@ export type PlaySelection =
   | { kind: 'message_track'; id: string; quality: Quality }
   | { kind: 'search_podcast_card'; id: string; receipt: string }
   | { kind: 'search_podcast_row'; id: string; receipt: string; gesture: SearchPodcastRowGesture }
+  | { kind: 'search_voice_menu'; target: import('./search').SearchVoiceMenuTarget }
   | { kind: 'podcast_browse_voice'; receipt: string }
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'listened_book_chapter'; revision: string; key: number }
+  | {
+      kind: 'history_radio_chapter';
+      history_kind: 'podcast' | 'audiobook';
+      revision: string;
+      id: string;
+    }
   | {
       kind: 'podcast_subscription_recommendation';
       id: string;
@@ -485,6 +525,30 @@ export type PlaySelection =
       quality: Quality;
     }
   | { kind: 'daily_recommendations_batch'; revision: string; indices: number[]; quality: Quality }
+  | {
+      kind: 'sorted_playlist';
+      scope: import('./playlistDuration').PlaylistDurationScope;
+      start: { id: string; local: boolean } | null;
+      double_click?: boolean;
+      quality: Quality;
+    }
+  | {
+      kind: 'offline_playlist';
+      id: string;
+      revision: string;
+      cached_at_ms: number;
+      start_id: string | null;
+      start_local?: boolean;
+      double_click?: boolean;
+    }
+  | {
+      kind: 'mixed_playlist';
+      id: string;
+      revision: string;
+      start: { id: string; local: boolean } | null;
+      double_click: boolean;
+      quality: Quality;
+    }
   | {
       kind: 'playlist';
       id: string;
@@ -615,6 +679,37 @@ export type PlayerAction =
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
   | {
+      kind: 'queue_sorted_playlist';
+      scope: import('./playlistDuration').PlaylistDurationScope;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'queue_offline_playlist';
+      id: string;
+      revision: string;
+      cached_at_ms: number;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'queue_mixed_playlist';
+      id: string;
+      revision: string;
+      track: { id: string; local: boolean } | null;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'drop_mixed_playlist_songs_into_queue';
+      id: string;
+      revision: string;
+      rows: { track_id: string; track_index: number; local: boolean }[];
+      quality: Quality;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
+    }
+  | {
       kind: 'queue_voice';
       id: string;
       program?: import('./podcast').PodcastProgramTarget;
@@ -645,6 +740,13 @@ export type PlayerAction =
       expected_queue_revision: string;
     }
   | {
+      kind: 'queue_artist_songs_batch';
+      pages: import('./catalog').CatalogSelectionPage[];
+      ids: string[];
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
       kind: 'queue_album_batch';
       id: string;
       ids: string[];
@@ -663,6 +765,14 @@ export type PlayerAction =
       kind: 'next_play' | 'search_next_play';
       id: string;
       quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'search_group_next_play' | 'search_group_play';
+      anchor: SearchQueueRowWire;
+      rows: SearchQueueRowWire[];
+      quality: Quality;
+      expected_play_id: string | null;
       expected_queue_revision: string;
     }
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }
@@ -705,6 +815,13 @@ export interface LyricPreferences {
   translationEnable: boolean;
   romaEnable: boolean;
 }
+export type LyricToolbarAction = 'translation' | 'upload';
+export type LyricBountyAction = 'missing_lyrics' | 'scrolling' | 'translation';
+export type LyricBountyStatus = 'accepted' | 'not_sent' | 'unknown';
+export interface LyricBountyOpening {
+  id: string | null;
+  status: LyricBountyStatus | null;
+}
 export interface LyricsView {
   wordTranslation: LyricLine[];
   wordRomanization: LyricLine[];
@@ -721,6 +838,8 @@ export interface LyricsView {
   romanization: LyricLine[];
   lyricContributor?: import('./lyricContributors').LyricContributor | null;
   translationContributor?: import('./lyricContributors').LyricContributor | null;
+  contribution?: 'upload' | 'scrolling' | 'translation' | 'scrolling_and_translation';
+  toolbarContributions?: LyricToolbarAction[];
   words: { yrc?: string; yrcRoma?: string; yrcTrans?: string };
   offset: number;
   scrollable: boolean;
@@ -857,6 +976,16 @@ export interface PlayerClient
     revision: string,
     entryId: string,
   ): Promise<QueueCatalogMenu>;
+  playerQueueOpenCatalogDirectory(
+    epoch: string,
+    revision: string,
+    entryId: string,
+    receipt: string,
+  ): Promise<void>;
+  playerQueueVoiceMenu(epoch: string, revision: string, entryId: string): Promise<QueueVoiceMenu>;
+  playerQueueOpenVoiceDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
+  playerQueueOpenLocalDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
+  playerQueueOpenDownloadDirectory(epoch: string, revision: string, entryId: string): Promise<void>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
   playerVinylCommentsAvailable(epoch: string): Promise<boolean>;
@@ -882,6 +1011,20 @@ export interface PlayerClient
     command: ReportCommand,
   ): Promise<AccountData<ProfileReportView>>;
   playerLyrics(epoch: string, playId: string, cachedOnly?: boolean): Promise<LyricsView>;
+  openLyricContribution(epoch: string, playId: string): Promise<void>;
+  lyricBountyActions(epoch: string, playId: string): Promise<LyricBountyAction[]>;
+  lyricBountyPrepare(
+    epoch: string,
+    playId: string,
+    action: LyricBountyAction,
+  ): Promise<LyricBountyOpening>;
+  lyricBountyConfirm(id: string): Promise<LyricBountyStatus>;
+  lyricBountyCancel(id: string): Promise<void>;
+  openLyricToolbarContribution(
+    epoch: string,
+    playId: string,
+    action: LyricToolbarAction,
+  ): Promise<void>;
   lyricPreferences(
     epoch: string,
     playId: string,

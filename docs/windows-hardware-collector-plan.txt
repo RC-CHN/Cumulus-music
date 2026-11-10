@@ -1,5 +1,6 @@
 Windows 真实本机硬件 collector：下一批实施方案与证据边界
-2026-11-04；状态：静态恢复与验证方案，尚未实现或进行 Windows 设备实采。
+2026-11-04；更新 2026-11-10：已加隔离的主板/BIOS、MAC 和磁盘描述符探针；
+生产尚未接入，Windows 实采回执另验。
 
 本文件不改变当前默认配置。当前 Windows 默认/windows-local 只声明官方兼容 UA/osver，
 不调用 Linux collector、不补造 clientSign。后续工作要增加的是 Windows 本机事实来源，
@@ -78,11 +79,13 @@ Windows 真实本机硬件 collector：下一批实施方案与证据边界
   `invalid`、`diy`（CEEB8A–CEEC68；只读常量 VA 0x181B9EBB0–0x181B9EBEF）。
   命中清空原值，未命中保留原大小写。不得添加其它 OEM 词并称为官方判断。
 - CF9C10(type=0) -> D01400：主机说明来源是 Win32_ComputerSystemProduct 的 Vendor/Name，
-  并非机器 hostname。机型判断另取 Win32_SystemEnclosure.ChassisTypes。
-  WMI 失败时 CFD2D0 读取 HKLM\HARDWARE\DESCRIPTION\System\BIOS 下的
-  SystemManufacturer/SystemProductName，D01F40 另有 SetupAPI 机型路径。
-  “主机:”和两种机型描述在 DLL 内是 GBK 窄字节常量；失败可能得到整个空说明。
-  WMI 文本到窄字节的完整转换、SAFEARRAY/机型异常分支仍须恢复并以 Windows 对照确认。
+  并非机器 hostname。D01400 对两个字段分别重做同一 WQL 查询、只取各自首对象，
+  用 D02970 的 CP_ACP 转换，不经过主板的 CF7680。机型另取 Win32_SystemEnclosure
+  的 ChassisTypes；实际条件是 VARIANT union 指针 +8 的 qword 与 9 比较，
+  不能当作读数组首元素。WMI 上下文未启用或 D01400 返回 0 才走 CFD2D0：
+  HKLM\HARDWARE\DESCRIPTION\System\BIOS 的 SystemManufacturer/SystemProductName
+  及 D01F40 的 SetupAPI 机型路径。个别 WMI 字段无值不会自动触发注册表回退。
+  “主机:”和两种机型描述是 GBK 窄字节常量；总失败分支会清空整个输出。详见第 9 节。
 - 副设备文件的硬件绑定字节另走 CF1510(codePage=3，即 CP_THREAD_ACP)，
   不能把它与上述 CP_ACP 摘要路径合并。本方案不实现副文件绑定或自动修复。
 
@@ -236,7 +239,8 @@ Windows 离线对照顺序：
    首次空种子拒绝、事务失败不轮换、账号凭据 deviceId 不变。分支没实测就保留缺口，
    不通过真实账号请求来弥补采集证据，也不把 CI 编译成功记为官方等价。
 
-当前没有 Windows 硬件采集或生产接线。已有仅处理合成字符串的独立探针，见下节。
+当前没有生产 Windows 硬件采集接线。合成编码、主板/BIOS 和显式 MAC 探针见下文；
+磁盘描述符见 windows-storage-identity-probe.txt。
 
 7. Windows 代码页与主板过滤离线探针
 
@@ -274,11 +278,88 @@ WMI，不读硬件/注册表/账号，不接收参数，不更改系统或线程
 等于进程 ACP 为 UTF-8。两次都只保留合成输入观察；`encoding_probe=complete` 只说明
 探针断言通过，不等同于硬件采集、官方二进制对照或生产接线已验证。
 
-本地 Linux 用 Rust 1.96.0 / x86_64-pc-windows-gnu 交叉链接并核对 PE 导入，纯合成
-UTF-16 规则通过 2 项测试。未在本机执行 Windows API；短缓冲区、别名与 UTF-8
-manifest 的运行观察仍等 Windows。Windows Native CI 运行上面的首个程序，输出只含
-合成样本及代码页结果；
-它不需要解包材料、账号、网络、音频设备或桌面会话。
+本地 Linux 用固定工具链交叉链接并核对 PE 导入，纯合成 UTF-16 规则通过。
+保留的 Windows Native CI 试跑 42675190782 attempt 1（60940b37484e，
+Windows Server 2022 10.0.20348，镜像 20261101.353.1）执行上述非 manifest 程序；
+源文件与此次拆分共用过滤器之前的版本一致。该次 GetACP=1252，CP_ACP 与
+CP_THREAD_ACP 都解析为 1252。对固定 ASCII、带重音 CP1252、以及显式
+CP936 和 CP65001 的合成输入，短一单元的 -1 调用返回 0 / 错误 122，但实际
+写全了非 NUL 单元，并与完整缓冲区、显式输入长度两个对照一致；UTF-8
+代理对及坏 UTF-8 的替代字符也符合该次结果。CP1252 的编码将固定 CJK
+和补充字符替换为问号；UCRT digit 类匹配合成的 ASCII、阿拉伯-印度和
+全角 1。15 项合成过滤向量通过。此为 Windows API 实测，未读 WMI。
+显式 CP65001 仍不证明进程或线程的实际别名为 UTF-8；manifest 运行缺证。
+
+8. 独立本机主板/BIOS WMI 探针
+
+`desktop/probes/windows-board-identity` 是显式调用的独立程序，不属于应用
+workspace、桌面启动或 CI。它用工作线程上的 MTA、探针进程内的 COM 安全
+初始化、固定本机 ROOT\CIMV2 和代理 10/0/3/3，按 D00510、CFDC10 的
+两条带末尾空格的 WQL 先各取首个对象的 SerialNumber。两次查询都在
+选择之前发生。先校验主板，只在主板无可用值时校验 BIOS；不去找第二行。
+Next 同时检查 HRESULT 与对象数，接受带首对象的成功状态；只安全借用
+明确的非 BYREF VT_BSTR，缺字段、其他类型或超界就不采用。
+相对恢复路径的安全差异：ConnectServer 设有限等待标志，Next 单次 1.5 秒，
+整个独立进程从主线程等待 12 秒后退出；拒绝超过 4096 UTF-16 单元的
+BSTR。退出不是声明 COM 调用本身支持取消；探针不持有持久状态。
+
+D02970 用 CP_ACP/flags=0 把 NUL 终止的 BSTR 编成窄字节；再按 CF7680
+用 CP_THREAD_ACP/flags=0、输入 -1、探测长度减一的目的缓冲区转回。
+只在观察到 0/122，且写全的非 NUL 单元逐个等于同次完整缓冲区对照时，
+才加终止符、删 U+0020 并应用 CEE8E0（79 单元上限、长度、CRT digit
+分类和原有五个占位词）。完整对照不替代失败短输出。两种探针共用相同
+UTF-16 过滤器；不将未校验结果用于 ID、签名或 Cookie。
+
+在 Windows x86_64 从仓库根目录显式运行：
+
+    cargo run --locked --manifest-path desktop/probes/windows-board-identity/Cargo.toml
+
+输出仅包括代码页编号、两个查询和验证的类别、必要的 HRESULT 及最后选择
+Board/Bios/None；无设备序列、长度、主机名、MAC、摘要或签名，不读账号、
+远端 WMI、注册表或磁盘。得到 None 仍可是一条完整诊断；初始化错误或总
+超时另报。Linux 本地能运行两项选择/短缓冲规则测试并交叉链接 Windows
+程序；尚未在真实 Windows 上执行新探针，也无原官方 DLL 对同一台机器的
+主板/BIOS 输出对照。该探针不改变当前默认配置。
+
+9. 独立主机说明源探针
+
+官方 CF9C10 type=0 的跳转表分支 CF9D4D 先写前缀 d6 f7 bb fa 3a
+（“主机:”），D01400 成功才附加 WMI 说明；CFD2D0 也失败时
+CFA255/29C 连前缀一起清空。D01400:0xD01447–0xD01601 分别执行
+`SELECT * FROM Win32_ComputerSystemProduct`（无末尾空格），顺序为
+Vendor、Name；每次走 CFE940 的 WQL/0x30/首对象，仅向该对象读取一个
+属性。D02970 用 CP_ACP、flags=0、输入 -1、两个 null 默认字符参数，
+先探测长度再写入，不经过 CF7680 或主板清理。结果分别追加 U+0020
+对应的窄字节 0x20；即使字段获取失败成空段，两个空格也存在。
+WMI 上下文已启用时，D01400:0xD016DD 返回 1，与字段非空无关。
+附加的机型是 DLL 固定窄字节（末尾 NUL 不计入），并不随系统 ACP
+改写：
+
+  笔记本电脑  b1 ca bc c7 b1 be b5 e7 c4 d4
+  台式电脑    cc a8 ca bd b5 e7 c4 d4
+
+D020B0:0xD020F1–0xD022A8 查询 `SELECT * FROM Win32_SystemEnclosure`
+（无末尾空格），首对象 ChassisTypes。其 0xD022AB–0xD022BC 只排除
+VT_NULL，随后取 VARIANT union 指针，对指针 +8 的整个 64 位值
+比较 9；D01400:0xD01642–0xD01651 仅在返回 1 时选择笔记本。
+常规 x64 SAFEARRAY 的 cLocks 在 +8、pvData 在 +16，因此这一读取
+既不是 SafeArrayGetElement，也不是元素数据指针。还不能确定原版
+此处遇到的运行时表示及是否有其它边界；不把“第一个机箱编号为 9”
+或 Linux 的编号集合移植进来，也不复刻对未初始化填充字节的读取。
+
+同一离线 crate 的第二个程序只读取并验证 WMI 属性形状：
+
+    cargo run --locked --manifest-path desktop/probes/windows-board-identity/Cargo.toml --bin windows-host-description-probe
+
+主板探针的默认命令不变。新程序共用 MTA、首对象、VARIANT 生命周期和
+D02970 ACP 转换，Vendor/Name 只在进程内转换并丢弃。ChassisTypes
+只检查确切非 BYREF 的 I4/UI2 数组标签、一维、元素类型/宽度和有限
+的有符号上下界，不读取元素、锁数或布局填充。只输出三项查询/编码
+类别、错误码和 ACP 编号，不输出值、哈希、序列、真实型号或描述。
+`host_description_complete=false` 是固定边界：不选择机型、不组装
+真实主机说明、不读注册表/SetupAPI、不派生签名或持久 ID。Linux
+可以运行数组元数据的合成测试；Windows 实际 VARIANT 形状和原 DLL
+同机结果仍需离线实跑。未改桌面默认或 CI。
 
 Microsoft 主文档核对（只支持 API 语义，不能替代网易字段选择的本地恢复证据）：
 GetAdaptersInfo / IP_ADAPTER_INFO：
@@ -297,3 +378,142 @@ https://learn.microsoft.com/en-us/windows/win32/api/wbemcli/nf-wbemcli-ienumwbem
 CoInitializeSecurity / CancelIoEx：
 https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity
 https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex
+
+9. Windows x64 注册表永久 MAC 离线探针
+
+`desktop/examples/windows_mac_probe.rs` 显式调用 `desktop/src/identity/windows/mac/`
+的原生适配器与旁边的 `mac.rs` 选择逻辑。探针未被主程序引用，没有 Tauri 命令、默认开关、
+账号读取、网络解析或持久化。只接受不带路径、设备名和账号参数的 `--collect`。
+
+- CF0130 原生调用的是 RegOpenKeyW（不是 RegOpenKeyExW）。固定打开 HKLM 的 NetworkCards，
+  以 RegEnumKeyExW 返回的原始索引顺序逐项打开完整子键，不重排、不扫其他注册表路径。
+  先读 Description；不存在时保留原先清零缓冲区的空描述分支。调用 UCRT _wcslwr_s，
+  使用探针当前 CRT locale；不修改进程或系统 locale。同一官方进程是否使用相同 CRT locale
+  仍需对照。含 virtual 或 1394 直接跳过，且不会读该项的 ServiceName。
+- CEFA40 使用固定的 `\\.\` 前缀和原始 UTF-16 ServiceName，访问权 GENERIC_READ、
+  FILE_SHARE_READ、OPEN_EXISTING、flags=0；唯一允许的控制码 0x170002，传四字节
+  OID_802_3_PERMANENT_ADDRESS=0x01010101，使用 260 字节清零缓冲区。注册表键和设备
+  句柄分别交给 RegCloseKey 与 CloseHandle。普通打开或查询失败继续下一项。
+- CF0130 的第一个非空响应就退出枚举。CEF5E0 随后按六个大写两位十六进制字节和冒号
+  格式检查全 FF 或字面子串 00:00:00:00:00:。命中只报告需要备用分支，绝不改选
+  后续注册表项。保留真实数据在探针内存，输出没有 MAC、ServiceName、设备路径或主机名。
+- 与原反汇编的安全差异：只接收 REG_SZ 及缓冲区内的偶数字节；ServiceName 须在返回
+  长度内终止，拒绝路径语法、控制符、尾部空格/点等可能产生不同设备名的值；枚举上限
+  4096。成功 IOCTL 必须报告至少 6 且不超过 260 个字节；原程序会格式化短回复
+  的缓冲区，探针只报告不确定，不把填零数据当真实值，也不换下一块设备。
+
+在独立 Windows x64 普通用户环境执行（不要为拒绝的驱动提权）：
+
+    cargo test --manifest-path desktop/probes/windows-mac/Cargo.toml --target-dir .build/windows-mac --locked
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    cargo build --release --manifest-path desktop/probes/windows-mac/Cargo.toml --target-dir .build/windows-mac --locked
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $probe = Join-Path $PWD '.build\windows-mac\release\windows-mac-probe.exe'
+    $process = Start-Process -FilePath $probe -ArgumentList '--collect' -NoNewWindow -PassThru
+    if (-not $process.WaitForExit(15000)) {
+        $process.Kill()
+        $process.WaitForExit()
+        throw 'Windows registry/NDIS probe timed out'
+    }
+    $process.ExitCode
+
+返回 0/registry_ndis_available 表示拿到通过过滤的六字节（17 字节格式，不显示内容）；
+3/fallback_required 表示找不到可用主路径或被外层过滤；4/inconclusive 表示检查发现
+异常或触及限制；2 是平台/参数不适用。探针本身是同步的，命令的独立进程用于给可能
+卡住的驱动设置调用端期限，不能把编译、合成输入或 Wine 当真实 Windows NDIS 证明。
+独立 Cargo 清单只依赖锁定的 windows-sys，复用同一桌面示例源码，不编译 Tauri 或 WebView。
+主路径的 Windows 普通用户实测见第 10 节；`--collect` 仍只运行主路径。
+
+要单独观测 CEFD10，把上面的进程参数改为 `--collect-fallback`，保留 15 秒上限。
+此显式入口可在注册表主路径成功的机器上独立验证备用分支。查询本机名使用 Windows
+配置的名称解析器，可能发出 DNS 查询；没有外部主机名参数、业务请求、登录或配置写入。
+输出仅含状态、来源枚举（ndis 或 adapter_record）和固定格式长度，不含名称、IP 或地址。
+0/fallback_available 为通过过滤；3/fallback_unavailable 为无匹配或被外层过滤；
+4/inconclusive 为系统输入、名称转换、缓冲区或驱动证据不足。
+
+CEFD10 原顺序为 WSAStartup(2) → gethostname → gethostbyname 的首 IPv4 →
+GetAdaptersInfo（初始 0x2c0，ERROR_BUFFER_OVERFLOW 时重分配，随后总再调用一次）→
+按原链表顺序匹配 Type=6 和首 IpAddressList → AdapterName 经 CEE4D0 后尝试 CEFA40 →
+仅当驱动打开或查询明确失败时采用该记录前六个 Address 字节 → CEF5E0 再过滤。
+探针要求 HOSTENT 为 IPv4、长度为四、首项非空，并在下一次 Winsock 调用前复制四字节。
+IP Helper 缓冲区清零、有 1 MiB 上限；拒绝对齐不符、越界、重叠或循环的记录。
+不会用第二个主机地址、后续 IP、任意第一块网卡、短地址或未核验的名称代替。
+NDIS 若返回不完整的成功结果，或第一个完整地址被外层过滤，不能改用当前地址或后续网卡。
+
+CEE4D0 两次使用 CP_THREAD_ACP。其第二次调用仍传 -1 输入长度，目标容量少一个终止单元。
+依据第 11 节两种进程代码页的实测，探针先读取完整控制组，再以有守卫的已初始化缓冲区
+执行官方的短调用。只有返回 0/ERROR_INSUFFICIENT_BUFFER 且每个正文单元确实写入并与
+控制组相等才使用短调用的结果。未知系统的短写语义仍按每次实际调用核验。
+
+本地 13 项合成测试通过；Windows x64 GNU 全目标 Clippy、测试程序和发行 PE 交叉链接
+通过。当前 Windows 测试程序含一条用系统线程 ACP 实际转换固定合成网卡名的测试，
+尚未在 Windows 执行。真实 CEFD10（无 DNS、多个 IPv4、驱动拒绝/永久与当前地址）
+及实体设备仍待独立 Windows 实测；不能把旧的注册表或 ACP 证明当成此分支通过。
+本补充未开启默认签名路径，也不填补其他硬件分支。
+
+Microsoft API 语义（网易选择顺序来自上述反汇编）：
+https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopenkeyw
+https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regenumkeyexw
+https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regqueryvalueexw
+https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-deviceiocontrol
+https://learn.microsoft.com/en-us/windows-hardware/drivers/network/oid-802-3-permanent-address
+https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/strlwr-s-strlwr-s-l-mbslwr-s-mbslwr-s-l-wcslwr-s-wcslwr-s-l?view=msvc-170
+https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
+https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostname
+https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostbyname
+https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersinfo
+https://learn.microsoft.com/en-us/windows/win32/api/iptypes/ns-iptypes-ip_adapter_info
+
+10. Windows x64 托管虚拟机实测（只读）
+--------------------------------------
+
+GitHub Actions 42706664026 attempt 1（479bb0d4，windows-2022，MSVC）：
+https://github.com/RC-CHN/Cumulus-music/actions/runs/42706664026
+
+同一次运行中，主板策略 2 项、主机数组策略 2 项、网卡 8 项（含系统 CRT
+描述大小写）和磁盘解析 4 项通过，随后分别执行四个独立程序。输出先按固定的
+字段与枚举校验，未输出序列号、主机描述、MAC 或签名材料。
+
+- 主板：系统与线程 ACP 均为 1252；本机 WMI 主板和 BIOS 字段有值，
+  选中通过转换和过滤的主板路径；未触发 BIOS 替补，不能据此证明其真实分支。
+- 主机：Vendor 和 Name 可独立读取并转为非空 ACP；ChassisTypes 返回
+  已核对的数组元数据，VARIANT tag 8195（VT_ARRAY | VT_I4）。未读元素或
+  +8 锁字段与填充，仍未构造官方完整主机描述。
+- 网卡：注册表／NDIS 主路径取得可格式化为 17 字节的永久地址；未输出
+  内容，也未进入 CEFD10 备用路径。
+- 磁盘：16 个候选槽位打开 2 个、其余 14 个不存在；两个设备描述符
+  的序列字段均为空，两个媒体序列请求均返回归为不支持的状态。没有观察
+  到有效序列，也未运行尚未恢复的其他磁盘分支。
+
+仅为一台虚拟机的系统观测，未覆盖实体设备、UTF-8 进程 ACP、驱动拒绝、
+多网卡与旧查询回退。没有发登录请求、组合指纹或变更桌面默认配置。
+
+11. 两种 Windows 进程代码页的合成对照
+------------------------------------
+
+GitHub Actions 42707501987 attempt 1（975d4306，同一台 windows-2022 x64）：
+https://github.com/RC-CHN/Cumulus-music/actions/runs/42707501987
+
+同一 Rust 程序、同一批固定输入分别构建为默认进程与带 UTF-8 manifest 的
+进程。两者 GetACP / CP_ACP / CP_THREAD_ACP 分别为 1252 与 65001；
+切换仅作用于探针进程，不修改系统或 Cumulus 设置。默认代码页往返替换
+合成 CJK 与补充平面字符，UTF-8 进程完整保留，包括 UTF-16 代理对。
+
+对于两种进程中本批固定的 ASCII、混合语言、CJK 和补充平面字符串，
+复现 CEE4D0 的第二次调用（-1 输入长度、目标少终止单元）均返回 0 /
+ERROR_INSUFFICIENT_BUFFER=122，但写入了与完整控制组相同的所有正文
+单元。完整组及短组的缓冲区两侧守卫保持不变。空输入按现有短路分支，
+不做容量为零的写入对照。这个观测允许安全实现继续核对已写前缀；
+它不是 Windows 对任意输入、版本或其他线程代码页的保证。对缺完整
+控制前缀的机器仍应拒绝，不读取未初始化区域。
+
+在 Windows x64 MSVC 同一目录以固定工具链重现：
+  rustc --edition 2024 -D warnings scripts/research/windows_identity_encoding_probe.rs -o default.exe
+  rustc --edition 2024 -D warnings scripts/research/windows_identity_encoding_probe.rs -o utf8.exe -C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT:scripts/research/windows_identity_utf8.manifest
+  运行两个程序且不传参数。Git Bash 若转换链接器的 /MANIFEST 参数，
+  在这条构建命令单独设置 MSYS2_ARG_CONV_EXCL=*。manifest 字段见
+  https://learn.microsoft.com/en-us/windows/desktop/sbscs/application-manifests#activecodepage
+
+两次执行均只读固定合成字符串，没有采集设备；未执行 CEFD10 网络
+地址筛选或实体网卡回退，也未开放默认签名路径。

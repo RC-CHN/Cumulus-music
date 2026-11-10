@@ -8,9 +8,9 @@
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
   const key=(n,k)=>n.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
   let count=0,step='startup',holdCategory,holdKeyword,held=false,release,gate;
-  const songReads=[], filteredMvReads=[];
+  const songReads=[], filteredMvReads=[], carouselReads=[];
   const fetch=window.fetch;
-  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);if(window.__cumulusSearchFilteredPaginationProof&&query?.category==='mvs')filteredMvReads.push([query.offset,query.limit]);const delayed=query?.category===holdCategory&&(!holdKeyword||query?.keyword===holdKeyword)?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
+  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);if(window.__cumulusSearchFilteredPaginationProof&&query?.category==='mvs')filteredMvReads.push([query.offset,query.limit]);if(window.__cumulusSearchCarouselProof&&query)carouselReads.push(query.category);const delayed=query?.category===holdCategory&&(!holdKeyword||query?.keyword===holdKeyword)?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
   const hold=(category,keyword)=>{held=false;holdCategory=category;holdKeyword=keyword;gate=new Promise(r=>{const timer=setTimeout(r,10000);release=()=>{clearTimeout(timer);holdCategory=undefined;gate=undefined;r();};});};
   const fixture=async mode=>{window.__searchFixtureAck=false;await emit('search-fixture',{mode});await wait(()=>window.__searchFixtureAck,'fixture acknowledgement');};
   const ready=()=>one('#search-result-panel')?.getAttribute('aria-busy')==='false' && !one('.search-results-leave-active');
@@ -284,6 +284,7 @@
       const visible=()=>[...carousel().querySelectorAll('[data-grid-index]:not([inert])')].map(node=>Number(node.dataset.gridIndex));
       const next=()=>button('歌单预览下一页',carousel());
       const previous=()=>button('歌单预览上一页',carousel());
+      const openIndex=index=>carousel()?.querySelector(`[data-grid-index="${index}"] .search-card-open`);
       const reveal=()=>carousel().scrollIntoView({block:'center'});
       const settled=()=>carousel().querySelector('.search-carousel-rail').getAnimations().every(a=>a.playState!=='running'&&!a.pending);
       assert(carousel()?.querySelectorAll('[data-grid-index]').length===10&&artist()&&columns()===6,'dense carousel keeps at most ten rows and uses official columns');
@@ -306,10 +307,40 @@
       click(findSource());
       await wait(()=>one('.playlist-hero h1')?.textContent.includes('合成歌单 28'),'later carousel card opens its playlist');
       click(button('返回上一页'));
-      await wait(()=>current()===4&&findSource()===document.activeElement&&Math.abs(one('.search-result-panel').scrollTop-top)<=1,'Back restores exact section, page, scroll, and later-card focus');
-      await capture('carousel_back_focus');
+      await wait(()=>current()===0&&openIndex(0)===document.activeElement&&Math.abs(one('.search-result-panel').scrollTop-top)<=1,
+        'detail Back starts the first page, preserves vertical scroll and focuses a visible card in the same rail');
+      assert(findSource().closest('[inert]')&&previous().getAttribute('aria-disabled')==='true',
+        'original detail card remains offscreen when the rail restarts');
+      await capture('carousel_detail_back_reset',{start:current(),rendererReads:[...carouselReads]});
+      const invoke=(...args)=>window.__TAURI_INTERNALS__.invoke(...args);
+      const {epoch}=await invoke('account_snapshot');
+      const playback=async()=>{
+        const {state,playId,entryId,position,queueRevision}=await invoke('player_snapshot',{epoch});
+        const queue=await invoke('player_queue',{epoch});
+        return {state,playId,entryId,position,queueRevision,tracks:queue.tracks.map(entry=>entry.entryId)};
+      };
+      click(next());
+      await wait(()=>current()===4&&settled(),'later wide page before same-column resize');
+      openIndex(9).focus({preventScroll:true});
+      assert(document.activeElement===openIndex(9),'late card owns focus before resize');
+      const beforeResize={start:current(),columns:columns(),reads:[...carouselReads],player:await playback()};
+      const oldWidth=carousel().querySelector('.search-carousel-viewport').getBoundingClientRect().width;
+      await emit('resize',{width:1104,height:760});
+      await wait(()=>innerWidth===1104&&current()===0&&columns()===6&&document.activeElement===openIndex(0),
+        'same-column resize resets the first page and moves hidden focus');
+      const resizedViewport=carousel().querySelector('.search-carousel-viewport').getBoundingClientRect();
+      assert(resizedViewport.width<oldWidth&&previous().getAttribute('aria-disabled')==='true'&&
+        next().getAttribute('aria-disabled')==='false'&&visible().join(',')==='0,1,2,3,4,5'&&
+        Math.abs(openIndex(0).closest('[data-grid-index]').getBoundingClientRect().left-resizedViewport.left)<1,
+        'same-column resize actually renders the first group');
+      const afterResize={start:current(),columns:columns(),reads:[...carouselReads],player:await playback()};
+      assert(JSON.stringify(beforeResize.reads)===JSON.stringify(afterResize.reads)&&
+        JSON.stringify(beforeResize.player)===JSON.stringify(afterResize.player),'resize preserves search reads and player');
+      await capture('carousel_same_columns_reset',{beforeResize,afterResize});
+      click(next());
+      await wait(()=>current()===4&&settled(),'later wide page before narrow resize');
       await theme(760,540,'dark');
-      await wait(()=>columns()<6,'narrow carousel measures resized viewport');
+      await wait(()=>columns()<6&&current()===0,'narrow carousel measures resized viewport and resets');
       assert(best().querySelectorAll('[data-result-key]').length===3&&
         getComputedStyle(best().querySelector('.search-result-grid')).gridTemplateColumns.split(' ').length===1,'narrow best match stacks without dropping the third card');
       reveal();
@@ -320,12 +351,13 @@
       const last=current();
       click(previous());
       await wait(()=>current()<last&&settled(),'previous arrow returns to prior group');
-      const preserved=current();
+      assert(current()>0,'leave comprehensive while a later preview page is visible');
       click(button('查看全部歌单',carousel().closest('section')));
       await wait(()=>ready()&&one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true'&&!one('.search-carousel'),'section heading opens regular complete category');
       click(button('返回上一页'));
-      await wait(()=>current()===preserved&&settled(),'category Back restores the carousel independently of network');
-      await capture('carousel_category_back');
+      await wait(()=>current()===0&&settled()&&previous().getAttribute('aria-disabled')==='true',
+        'category Back mounts the first carousel page without another comprehensive read');
+      await capture('carousel_category_back',{start:current(),rendererReads:[...carouselReads]});
       await emit('complete',{ok:true,searchCarouselVerified:true,searchBestThirdVerified:true,stageCount:count,realAccountWrites:0});
       return;
     }
@@ -1545,12 +1577,14 @@
       const radio=await readQueue();
       assert(radio.tracks.map(row=>row.track.voiceId).join(',')==='401,402,403','explicit podcast card still plays its episode list');
       await capture('search_podcast_keeps_explicit_radio_play');
-      const audioReads=[], fetchIPC=window.fetch;
+      const audioReads=[], emptyAudioReads=[], fetchIPC=window.fetch;
       window.fetch=function(url,options){
         if(String(url).endsWith('/search_results')){
           const {query}=JSON.parse(options.body);
           if(['voices','podcasts'].includes(query.category)&&query.keyword==='合成长音频续页')
             audioReads.push([query.category,query.offset,query.limit]);
+          if(query.category==='podcasts'&&query.keyword.startsWith('合成播客空'))
+            emptyAudioReads.push([query.keyword,query.offset,query.limit]);
         }
         return fetchIPC.call(window,url,options);
       };
@@ -1576,9 +1610,19 @@
             grid()?.dataset.loadedCount==='10','waiting for the next voice page keeps current rows');
           await capture('search_voice_table_loading');
           release();
+        }else{
+          await wait(()=>button('重试加载更多'),'full podcast batch continues despite hasMore false');
+          const top=panel().scrollTop, reads=audioReads.length;
+          panel().dispatchEvent(new Event('scroll'));
+          await sleep(350);
+          assert(top>0&&panel().scrollTop===top&&grid()?.dataset.loadedCount==='10'&&
+            button('重试加载更多')&&audioReads.length===reads,'failed podcast page retains rows and waits for explicit retry');
+          await capture('search_podcasts_retry');
+          click(button('重试加载更多'));
         }
+        const loaded=category==='voices'?'20':'13';
         const opener=()=>grid()?.querySelector(`[data-grid-index="10"] ${category==='voices'?'.search-voice-radio':'.search-card-open'}`);
-        await wait(()=>grid()?.dataset.loadedCount==='20'&&opener(),'scroll appends ten long-audio results');
+        await wait(()=>grid()?.dataset.loadedCount===loaded&&opener(),'scroll appends the next audio results');
         if(category==='voices'){
           const row=opener().closest('.search-voice-row');
           assert(aligned(row)&&row.getAttribute('aria-rowindex')==='12'&&all('.search-voice-row').length<20,
@@ -1586,31 +1630,78 @@
         }else{
           const row=opener().closest('.search-podcast-row');
           assert(podcastAligned(row)&&row.getAttribute('aria-rowindex')==='12'&&
-            all('.search-podcast-row').length<20&&!one('.search-podcast-column-resizer'),
+            all('.search-podcast-row').length<20&&!one('.search-podcast-column-resizer')&&
+            one('.search-load-more')?.textContent.includes('没有更多可显示的结果')&&!button('加载更多'),
             'compact podcast table keeps the late row aligned without ineffective resize handles');
+          const reads=audioReads.length;
+          panel().scrollTop=panel().scrollHeight;
+          panel().dispatchEvent(new Event('scroll'));
+          await sleep(350);
+          assert(audioReads.length===reads,'short podcast batch remains terminal despite hasMore true');
         }
-        opener().scrollIntoView({block:'nearest'});
-        const rect=opener().getBoundingClientRect(), position=panel().scrollTop;
-        assert(opener().contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
-          'appended audio result offers a visible navigation control');
+        opener().scrollIntoView({block:category==='podcasts'?'center':'nearest'});
+        await wait(()=>{
+          const node=opener(), rect=node?.getBoundingClientRect();
+          return rect&&node.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
+        },'appended audio result offers a visible navigation control');
+        const position=panel().scrollTop;
         click(opener());
         await wait(()=>one('.podcast-cover h2')?.textContent.includes('合成播客'),'appended result opens native podcast details');
         click(button('返回上一页'));
-        await wait(()=>ready()&&grid()?.dataset.loadedCount==='20'&&document.activeElement===opener()&&
+        await wait(()=>ready()&&grid()?.dataset.loadedCount===loaded&&document.activeElement===opener()&&
           Math.abs(panel().scrollTop-position)<=1,'Back restores results, scroll and exact audio result control');
         const restored=await invoke('player_snapshot',{epoch});
         assert(restored.playId===radioPlaying.playId&&restored.queueRevision===radioPlaying.queueRevision,
           'appending or opening details cannot alter the existing native queue');
         await capture('search_'+category+'_waterfall_back');
       }
-      await emit('complete',{ok:true,voiceQueueVerified:true,voiceTableVerified:true,podcastTableVerified:true,audioWaterfallVerified:true,audioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      for(const [word,total,label] of [['合成播客空值',99,'null'],['合成播客空列表',0,'empty']]){
+        await fresh(word);
+        await choose('podcasts');
+        const headline=one('.search-results-page [aria-live="polite"]')?.textContent.trim();
+        const message=one('.search-empty-category')?.textContent.trim();
+        assert(headline===`找到 ${total} 个播客`&&message?.includes(word)&&!grid()&&
+          !button('加载更多')&&!button('重试加载更多'),'null and array empties have distinct totals and no continuation');
+        await capture('search_podcasts_'+label,{headline,message});
+      }
+      const afterEmpty=await invoke('player_snapshot',{epoch});
+      assert(afterEmpty.playId===radioPlaying.playId&&afterEmpty.queueRevision===radioPlaying.queueRevision,
+        'empty podcast search cannot alter the existing native queue');
+      await emit('complete',{ok:true,voiceQueueVerified:true,voiceTableVerified:true,podcastTableVerified:true,audioWaterfallVerified:true,
+        audioReads,emptyAudioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchSongWaterfallProof){
       await wait(()=>one('.track-row'),'daily ready');
       await emit('resize',{width:760,height:540});
       await wait(()=>innerWidth===760&&innerHeight===540,'compact window');
-      await fixture('song_waterfall_error');await fresh('合成连续单曲');await choose('songs');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const before=await invoke('player_snapshot',{epoch});
+      await fixture('song_waterfall_error');await fresh('合成连续单曲');
+      assert(!one('[data-search-title-hint]'),'dedicated hints stay out of comprehensive results');
+      await choose('songs');
+      const titleHint=id=>one(`.track-row[data-track-id="${id}"] [data-search-title-hint]`);
+      function exactHints(id){
+        const hint=titleHint(id), alias=hint?.querySelector('[data-search-title-alias]'),
+          lyric=hint?.querySelector('[data-search-title-lyric]');
+        const receipt={alias:alias?.textContent.trim(),lyric:lyric?.textContent.trim(),
+          aliasMark:alias?.querySelector('mark')?.textContent,lyricMark:lyric?.querySelector('mark')?.textContent};
+        assert(receipt.alias==='前缀合成连续单曲别名'&&receipt.lyric===`🎵合成连续单曲歌词 ${id}`&&
+          receipt.aliasMark==='合成连续单曲'&&receipt.lyricMark==='合成连续单曲',
+          'both native title matches render in the same exact row: '+JSON.stringify(receipt));
+        const row=hint.closest('.track-row').getBoundingClientRect(),
+          aliasRect=alias.getBoundingClientRect(),lyricRect=lyric.getBoundingClientRect();
+        assert(aliasRect.height>0&&lyricRect.height>0&&aliasRect.bottom<=lyricRect.top&&
+          aliasRect.top>=row.top&&lyricRect.bottom<=row.bottom,
+          'title extensions fit in distinct lines inside the virtual row');
+        return receipt;
+      }
+      const firstHints=exactHints(101);
+      assert(!titleHint(102),'false alias marker and invalid UTF-16 excerpt do not become hints');
+      const after=await invoke('player_snapshot',{epoch});
+      assert(before.playId===after.playId&&before.queueRevision===after.queueRevision,
+        'search title hints do not affect playback or queue');
       const table=()=>one('.search-song-panel .track-table');
       const scroll=()=>table().querySelector('.track-scroll');
       const loaded=()=>Number(table()?.getAttribute('aria-rowcount'))-1;
@@ -1623,7 +1714,7 @@
       const anchor=scroll().scrollTop;
       click(button('使用分页查看'));
       await wait(()=>loaded()===30&&one('#search-song-batch-scope')?.textContent.trim()==='仅限当前页的单曲','explicit numbered fallback');
-      await capture('song_numbered_fallback');
+      await capture('song_numbered_fallback',{songTitleHints:exactHints(101)});
       click(button('返回上一页'));
       await wait(()=>loaded()===10&&button('重试加载更多')&&Math.abs(scroll().scrollTop-anchor)<=1,'Back restores the continuous view');
       await fixture('song_waterfall');
@@ -1639,8 +1730,6 @@
       assert(table()===loadedPanel&&loaded()===30&&songReads.length===completedReads&&
         Math.abs(scroll().scrollTop-loadedTop)<=1,'current songs tab retains loaded rows and scroll without another read');
       await capture('song_append_retains_thirty');
-      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
-      const {epoch}=await invoke('account_snapshot');
       async function playing(id){
         for(let index=0;index<160;index++){
           const state=await invoke('player_snapshot',{epoch});
@@ -1657,16 +1746,18 @@
       await capture('song_all_loaded_prefix_playing');
       scrollEnd();
       await wait(()=>one('.track-row[data-track-id="130"] .track-play'),'deep virtual row available');
+      const deepHints=exactHints(130);
       click(one('.track-row[data-track-id="130"] .track-play'));
       const selected=await playing('130');
       const deep=await invoke('player_queue',{epoch});
       assert(selected.entryId===queue.tracks[29].entryId&&
         deep.tracks.map(row=>row.entryId).sort().join(',')===queue.tracks.map(row=>row.entryId).sort().join(','),'deep row keeps all active queue entries');
-      await capture('song_deep_result_keeps_queue');
+      await capture('song_deep_result_keeps_queue',{songTitleHints:deepHints});
       click(button('返回上一页'));
       await wait(()=>one('[data-category="all"]')?.getAttribute('aria-selected')==='true'&&ready(),'reselecting current songs did not add a Back step');
 
-      await emit('complete',{ok:true,songWaterfallVerified:true,stageCount:count,songReads,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,songWaterfallVerified:true,stageCount:count,songReads,
+        songTitleHints:[firstHints,deepHints],realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchNextProof){
@@ -1833,6 +1924,17 @@
       const provides=one('#app').__vue_app__._context.provides;
       const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
       const discovery=core.searchDiscovery;
+      const read=core.searchResults;
+      let reminderReceipt;
+      core.searchResults=async(...args)=>{
+        const result=await read(...args);
+        if(args[1].category==='all'&&args[1].correct){
+          reminderReceipt=result.value.correctionReceipt;
+          assert(/^[a-f0-9]{32}$/.test(reminderReceipt)&&
+            !JSON.stringify(result.value).includes('synthetic_qc_reminder'),'only opaque correction receipt reaches Vue');
+        }
+        return result;
+      };
       const input=one('[aria-label="搜索音乐"]');
       const label='显示标签 · 合成错词';
       const reminder=()=>one('.search-heading-copy .search-correction-fragments');
@@ -1851,12 +1953,12 @@
         await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词'),'corrected results');
         assert(input.value===label,'suggestion display text differs from canonical query');
         const fragments=reminder();
-        assert(exactReminder(),'native correction fragments retain their order and literal text');
+        assert(exactReminder()&&reminderReceipt,'native correction fragments and opaque receipt');
         assert(!fragments.querySelector('b')&&fragments.querySelectorAll('button').length===1&&
           fragments.children[1].tagName==='BUTTON'&&one('.search-heading-copy h1').classList.contains('sr-only'),
           'only the original word is interactive; plain text replaces the visible heading');
         await capture('correction_suggestion_label');
-      }finally{core.searchDiscovery=discovery;}
+      }finally{core.searchDiscovery=discovery;core.searchResults=read;}
       await choose('playlists');
       assert(exactReminder()&&reminder().contains(originalButton()),
         'playlist category shares the comprehensive reminder and original action');
@@ -1886,7 +1988,6 @@
         one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true'&&
         one('.search-result-grid')?.dataset.loadedCount==='20',
         'Back restores the playlist category, loaded results, reminder and display label');
-      const read=core.searchResults;
       core.searchResults=async(...args)=>{
         const result=await read(...args);
         return args[1].category==='songs'
@@ -1898,6 +1999,10 @@
         assert(!reminder()&&one('.search-correction')?.textContent.includes('不同的纠正词')&&
           button('仍然搜索“合成错词”'),'a changed effective rewrite cannot display old reminder fragments');
       }finally{core.searchResults=read;}
+      click(button('仍然搜索“合成错词”'));
+      await wait(()=>ready()&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),
+        'generic original-term action remains usable without the stale reminder channel');
+      await capture('correction_stale_fallback');
       await emit('complete',{ok:true,originalCorrectionVerified:true,correctionPartsVerified:true,
         categoryCorrectionPartsVerified:true,staleCorrectionPartsSuppressed:true,
         stageCount:count,realMusicRequests:0,realAccountWrites:0});

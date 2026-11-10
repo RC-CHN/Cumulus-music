@@ -115,23 +115,27 @@ async fn invalid_refs_index_replacement_and_new_control_preserve_guest_playback(
     let root = tempfile::tempdir().unwrap();
     let media = root.path().join("media");
     std::fs::create_dir(&media).unwrap();
-    for name in ["Keep", "Target", "Outside"] {
+    let [keep_title, target_title, outside_title] =
+        ["keep", "target", "outside"].map(|role| fixture_query_term(&media, role));
+    for name in [&keep_title, &target_title, &outside_title] {
         std::fs::write(media.join(format!("{name}.wav")), b"first indexed revision").unwrap();
     }
     let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
     library.scan(&media).unwrap();
-    let keep = client
-        .local_page(LocalQuery {
-            keyword: "keep".into(),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+    let keep_query = LocalQuery {
+        keyword: keep_title.clone(),
+        ..Default::default()
+    };
+    let keep = client.local_page(keep_query.clone()).await.unwrap();
     let query = LocalQuery {
-        keyword: "target".into(),
+        keyword: target_title.clone(),
         ..Default::default()
     };
     let target = client.local_page(query.clone()).await.unwrap();
+    assert_eq!(keep.total, 1);
+    assert_eq!(target.total, 1);
+    assert_eq!(keep.tracks[0].track.name, keep_title);
+    assert_eq!(target.tracks[0].track.name, target_title);
     let selection = |tracks| PlaySelection::LocalBatch {
         query: query.clone(),
         revision: target.revision.clone(),
@@ -141,10 +145,7 @@ async fn invalid_refs_index_replacement_and_new_control_preserve_guest_playback(
         .play_selection(
             "0",
             PlaySelection::Local {
-                query: LocalQuery {
-                    keyword: "keep".into(),
-                    ..Default::default()
-                },
+                query: keep_query,
                 revision: keep.revision.clone(),
                 start_id: None,
             },
@@ -155,23 +156,38 @@ async fn invalid_refs_index_replacement_and_new_control_preserve_guest_playback(
         .player_action("0", PlayerAction::Pause { paused: true })
         .await
         .unwrap();
-    for invalid in [
-        vec![reference(&target.tracks[0]), reference(&keep.tracks[0])],
-        vec![reference(&target.tracks[0]), reference(&target.tracks[0])],
-        vec![LocalTrackReference {
-            id: target.tracks[0].track.id.clone(),
-            revision: "0".repeat(64),
-        }],
+    for (case, invalid) in [
+        (
+            "out-of-query row",
+            vec![reference(&target.tracks[0]), reference(&keep.tracks[0])],
+        ),
+        (
+            "duplicate row",
+            vec![reference(&target.tracks[0]), reference(&target.tracks[0])],
+        ),
+        (
+            "stale row revision",
+            vec![LocalTrackReference {
+                id: target.tracks[0].track.id.clone(),
+                revision: "0".repeat(64),
+            }],
+        ),
     ] {
-        assert!(matches!(
-            client
-                .commit_prepared_selection("0", &prepare(&client).await, selection(invalid))
-                .await,
-            Err(Error::QueueChanged)
-        ));
+        let result = client
+            .commit_prepared_selection("0", &prepare(&client).await, selection(invalid))
+            .await;
+        assert!(
+            matches!(result, Err(Error::QueueChanged)),
+            "{case}: expected queue change rejection; error was {:?}",
+            result.err()
+        );
     }
     // A filesystem replacement is stale even before a scan changes the index.
-    std::fs::write(media.join("Target.wav"), b"new on-disk bytes").unwrap();
+    std::fs::write(
+        media.join(format!("{target_title}.wav")),
+        b"new on-disk bytes",
+    )
+    .unwrap();
     assert!(matches!(
         client
             .commit_prepared_selection(
@@ -429,7 +445,10 @@ async fn random_add_schedules_first_new_row_next_without_touching_current_decode
     let root = tempfile::tempdir().unwrap();
     let media = root.path().join("media");
     std::fs::create_dir(&media).unwrap();
-    for name in ["Keep", "Target Z", "Target A", "Other"] {
+    let target = fixture_query_term(&media, "target");
+    let target_z = format!("{target} Z");
+    let target_a = format!("{target} A");
+    for name in ["Keep", target_z.as_str(), target_a.as_str(), "Other"] {
         std::fs::write(media.join(format!("{name}.wav")), b"plain local").unwrap();
     }
     let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
@@ -465,10 +484,11 @@ async fn random_add_schedules_first_new_row_next_without_touching_current_decode
         .await
         .unwrap();
     let query = LocalQuery {
-        keyword: "Target".into(),
+        keyword: target,
         ..Default::default()
     };
     let targets = client.local_page(query.clone()).await.unwrap();
+    assert_eq!(targets.total, 2);
     let after = add(
         &client,
         query,
@@ -487,7 +507,7 @@ async fn random_add_schedules_first_new_row_next_without_touching_current_decode
         )
     );
     let next = client.player_action("0", PlayerAction::Next).await.unwrap();
-    assert_eq!(next.track.unwrap().name, "Target Z");
+    assert_eq!(next.track.unwrap().name, target_z);
 }
 
 #[tokio::test]

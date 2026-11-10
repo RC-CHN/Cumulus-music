@@ -102,6 +102,7 @@ impl MusicClient {
         use DownloadCollectCreationCommand as Command;
         let source = self.download_collection(epoch, receipt)?;
         source.require_creation()?;
+        let song = source.single_song()?;
         let ctx = &source.context;
         let slot = &self.downloads.inner.collect;
         let requested = match &command {
@@ -199,7 +200,7 @@ impl MusicClient {
             attempt.check_add(
                 record,
                 confirmed.as_deref().ok_or(Error::StaleResponse)?,
-                &source.song,
+                song,
             )?;
         }
         let submit_add = first || matches!(command, Command::AddCreated {});
@@ -210,7 +211,7 @@ impl MusicClient {
                     .guarded_collect_created_download(
                         &ctx.token,
                         &attempt.create_id,
-                        &source.song,
+                        std::slice::from_ref(song),
                         &attempt.add_id,
                         &check,
                     )
@@ -231,7 +232,7 @@ impl MusicClient {
                         &ctx.token,
                         &attempt.add_id,
                         confirmed.as_deref().ok_or(Error::StaleResponse)?,
-                        std::slice::from_ref(&source.song),
+                        std::slice::from_ref(song),
                         false,
                         &check,
                     )
@@ -242,7 +243,7 @@ impl MusicClient {
             attempt.check_add(
                 record,
                 confirmed.as_deref().ok_or(Error::StaleResponse)?,
-                &source.song,
+                song,
             )?;
         }
         check()?;

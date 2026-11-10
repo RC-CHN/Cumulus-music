@@ -140,6 +140,14 @@ impl PcExperimentGroups {
     pub fn skip_songs_assigned(&self) -> bool {
         self.group(SKIP) == Some("t1")
     }
+
+    /// M/34.i: on PC the new effect page also requires the new playback bar.
+    pub fn effect_catalogue_new_assigned(&self) -> bool {
+        self.group("PH-PC-yinxiaogaiban2") == Some("t1")
+            && (self.group("PH-PC-minibarNew") == Some("t1")
+                || (self.group("PH-PC-minibarNew") == Some("c")
+                    && self.group("PH-PC-minibarNewLike") == Some("t1")))
+    }
 }
 
 fn read_group(value: &Value) -> Option<String> {

@@ -14,7 +14,7 @@ references/netease-3.1.42.205594-analysis/recovered-js/modules/
 references/recovered-client/docs/product/30-collections-settings-validation.txt：历史账号回读与隐私联动证据。
 references/recovered-client/scripts/netease_settings_functional_audit.py：历史单字段修改与完整对象恢复。
 references/ui-recovery/sources/packages/pc/src/pages/setting/components/index.jsx：标题/内容分栏结构。
-本实现重建语义色和响应式间距，不宣称像素级一致；官方皮肤/字体和完整设置页面尚未逐项复刻。
+本实现重建语义色和响应式间距，不宣称像素级一致；主界面字体选择见 interface-font-contracts.txt，官方皮肤和完整设置页面尚未逐项复刻。
 
 接口与字段
 读取：/api/user/setting，{}，要求 code=200 且 setting 为对象。

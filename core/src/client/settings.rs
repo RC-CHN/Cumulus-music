@@ -161,6 +161,11 @@ impl MusicClient {
                 expected_revision,
                 change,
             } => {
+                if change.key == SettingKey::PersonalServiceSetting {
+                    // An older Home response must not queue personalized songs
+                    // after the user has begun changing this privacy setting.
+                    self.home_recall.begin()?;
+                }
                 service
                     .change_for(&token, &id, &expected_revision, change)
                     .await?

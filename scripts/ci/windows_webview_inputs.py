@@ -95,11 +95,8 @@ def verify(artifact, identity):
     assert stored == receipt(artifact, identity), 'WebView input provenance or checksum mismatch'
 
 
-def restore(repo, identity, *, shared_runtime=None):
-    artifact = repo / ARTIFACT
-    verify(artifact, identity)
-    dist, ux, native = (repo / path for path in (FRONTEND, UX, NATIVE))
-    assert not dist.exists() and not dist.is_symlink(), 'expected a clean frontend dist destination'
+def restore_runtime(repo, identity, *, shared_runtime=None):
+    native = repo / NATIVE
     assert not native.exists() and not native.is_symlink(), 'expected a clean native runtime destination'
     native.parent.mkdir(parents=True, exist_ok=True)
     if shared_runtime is None:
@@ -110,9 +107,18 @@ def restore(repo, identity, *, shared_runtime=None):
             )
             portable.rename(native)
     else:
-        from windows_release_runtime import restore as restore_runtime
+        from windows_release_runtime import restore as restore_shared_runtime
 
-        restore_runtime(shared_runtime, identity, native, include_notices=False)
+        restore_shared_runtime(shared_runtime, identity, native, include_notices=False)
+    return native
+
+
+def restore(repo, identity, *, shared_runtime=None):
+    artifact = repo / ARTIFACT
+    verify(artifact, identity)
+    dist, ux = (repo / path for path in (FRONTEND, UX))
+    assert not dist.exists() and not dist.is_symlink(), 'expected a clean frontend dist destination'
+    native = restore_runtime(repo, identity, shared_runtime=shared_runtime)
     shutil.copytree(artifact / DIST, dist)
     ux.parent.mkdir(parents=True, exist_ok=True)
     # Use the verified shared executable, replacing any stale entry without following it.
@@ -122,16 +128,17 @@ def restore(repo, identity, *, shared_runtime=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=('stage', 'restore'))
+    parser.add_argument('operation', choices=('stage', 'restore', 'restore-runtime'))
     parser.add_argument('--shared-runtime', type=Path, help='use the verified same-attempt prepackage runtime')
     args = parser.parse_args()
-    if args.operation == 'stage' and args.shared_runtime is not None:
+    if args.operation != 'restore' and args.shared_runtime is not None:
         parser.error('--shared-runtime applies only to restore')
     repo, identity = Path.cwd(), ci_identity(os.environ)
     if args.operation == 'stage':
         stage(repo, identity)
     else:
-        native = restore(repo, identity, shared_runtime=args.shared_runtime)
+        native = (restore_runtime(repo, identity) if args.operation == 'restore-runtime'
+                  else restore(repo, identity, shared_runtime=args.shared_runtime))
         with Path(os.environ['GITHUB_ENV']).open('a', encoding='utf-8') as stream:
             stream.write(f'MPV_DLL_DIR_CUMULUS={native}\n')
     print(json.dumps(dict(operation=args.operation, **identity)))

@@ -13,9 +13,12 @@ use std::{
 };
 use tokio::sync::{Notify, oneshot};
 
+type ReplyForCall = Box<dyn FnOnce(&WireCall) -> Result<HttpReply> + Send>;
+
 pub enum HttpResponse {
     Ready(Result<HttpReply>),
     Pending(oneshot::Receiver<Result<HttpReply>>),
+    ForCall(ReplyForCall),
 }
 impl From<Value> for HttpResponse {
     fn from(value: Value) -> Self {
@@ -77,13 +80,14 @@ impl HttpBackend for ScriptHttp {
                 .into_owned()
                 .collect();
             let (path, payload) = eapi::unwrap(&fields["params"]).unwrap();
-            self.calls.lock().unwrap().push(WireCall {
+            let call = WireCall {
                 path,
                 payload,
                 cookie: plan.headers.get("Cookie").cloned(),
                 login_chain: plan.headers.get("x-login-chain-id").cloned(),
                 music_tu: plan.headers.get("x-music-tu").cloned(),
-            });
+            };
+            self.calls.lock().unwrap().push(call.clone());
             self.started.notify_one();
             let response = self
                 .replies
@@ -96,6 +100,7 @@ impl HttpBackend for ScriptHttp {
                 HttpResponse::Pending(receiver) => {
                     receiver.await.expect("test response gate closed")
                 }
+                HttpResponse::ForCall(reply) => reply(&call),
             }
         })
     }

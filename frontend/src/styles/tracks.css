@@ -127,3 +127,13 @@
 .load-more:hover {
   color: var(--accent);
 }
+
+.playlist-mixed-order-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 24px;
+}

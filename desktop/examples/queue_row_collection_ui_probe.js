@@ -199,7 +199,10 @@
     await pauseNewSource(client, epoch, { kind: 'downloads', query: downloads, start_id: published[0].id }, 'downloaded');
     await openQueue(1);
     const offlineButton = collect(0);
-    assert(offlineButton && !one('.queue-row-more', rows()[0]), 'download only uses the proven inline action');
+    const downloadedQueue = await client.playerQueue(epoch);
+    assert(offlineButton && one('.queue-row-more', rows()[0]) &&
+      downloadedQueue.tracks[0].downloadMenu === 'song' && !downloadedQueue.tracks[0].catalogMenu,
+      'completed song exposes the separate downloaded menu and retains inline collection');
     click(offlineButton);
     await showPicker(['7']);
     await capture('download_picker');
@@ -220,8 +223,9 @@
     await openQueue(2);
     const displayed = await client.playerQueue(epoch);
     const localIndex = indexed.map(id => displayed.tracks.findIndex(row => row.track.id === id));
-    assert(localIndex.every(i => i >= 0) && localIndex.every(i => !one('.queue-row-more', rows()[i])),
-      'local rows use only the inline action without gaining a catalog menu');
+    assert(localIndex.every(i => i >= 0 && displayed.tracks[i].localMenu &&
+      !displayed.tracks[i].catalogMenu && !displayed.tracks[i].voiceMenu && one('.queue-row-more', rows()[i])),
+      'local rows have their own menu without gaining a catalog or voice menu');
     const mapped = collect(localIndex[0]), unmatched = collect(localIndex[1]);
     click(mapped);
     await showPicker(['8']);

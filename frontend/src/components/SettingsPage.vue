@@ -27,6 +27,7 @@ import PlaybackStartup from './settings/PlaybackStartup.vue';
 import PlaybackCache from './settings/PlaybackCache.vue';
 import AudioOutput from './settings/AudioOutput.vue';
 import LoudnessBalance from './settings/LoudnessBalance.vue';
+import InterfaceFont from './settings/InterfaceFont.vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import WindowBehavior from './settings/WindowBehavior.vue';
 import DesktopLyrics from './settings/DesktopLyrics.vue';
@@ -282,6 +283,10 @@ function accept(op: SettingsOperation) {
           </p>
         </div>
       </section>
+      <section class="settings-section" aria-labelledby="settings-general">
+        <h2 id="settings-general">常规</h2>
+        <div class="settings-section-content"><InterfaceFont :epoch="account.epoch" /></div>
+      </section>
       <PlaybackStartup :account="account" />
       <QueueClickPreferences :account="account" />
       <RecentHistoryPreference :account="account" @expired="emit('expired')" />
@@ -503,7 +508,7 @@ function accept(op: SettingsOperation) {
         :signed-in="account.status === 'authenticated'"
       />
       <section class="settings-section" aria-labelledby="settings-download">
-        <h2 id="settings-download">下载</h2>
+        <h2 id="settings-download" tabindex="-1">下载</h2>
         <div class="settings-section-content">
           <p class="settings-note">下载目录、音质、格式和歌词选项可在下载管理中调整。</p>
           <button class="secondary" @click="emit('downloads')">打开下载管理</button>

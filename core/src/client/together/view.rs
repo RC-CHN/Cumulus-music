@@ -122,6 +122,11 @@ pub(super) async fn project(
         progress_ms: command.map(|c| c.progress),
         playing: command.is_some_and(|c| c.play_status == crate::listen_together::PlayState::Play),
         attached,
+        external_selection: if attached && state.end_notice.is_none() {
+            client.external_notice(token, state.room.as_ref().map(|room| room.room_id.as_str()))?
+        } else {
+            None
+        },
         realtime_ready: false,
         connection: client.together_connection(token)?,
         pending,
@@ -159,6 +164,16 @@ pub(super) async fn project(
                 .is_none_or(|r| r.room_id != binding.room_id)
         }),
         ending: state.end_notice.is_some(),
+        queue_room_loss: state.end_notice.as_ref().and_then(|notice| {
+            notice
+                .queue_loss
+                .as_ref()
+                .filter(|loss| !loss.end_sent)
+                .map(|loss| QueueRoomLossView {
+                    room_id: notice.room_id.clone(),
+                    report_id: loss.report_id.clone(),
+                })
+        }),
         lifecycle_notice: client.session.with_token(token, |uid| {
             Ok(client
                 .registry

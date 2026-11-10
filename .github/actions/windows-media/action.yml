@@ -26,6 +26,21 @@ runs:
       with:
         path: .build/windows-media/cache
         key: ${{ steps.plan.outputs.cache-key }}
+    - name: Look up the exact reviewed warm legacy FFmpeg package
+      if: steps.media-cache.outputs.cache-matched-key == '' && steps.plan.outputs.legacy-cache-key != ''
+      id: legacy-lookup
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: .build/windows-media/cache
+        key: ${{ steps.plan.outputs.legacy-cache-key }}
+        lookup-only: true
+    - name: Restore the exact reviewed warm legacy FFmpeg package
+      if: steps.legacy-lookup.outputs.cache-hit == 'true' && steps.legacy-lookup.outputs.cache-matched-key == steps.plan.outputs.legacy-cache-key
+      id: legacy-cache
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: .build/windows-media/cache
+        key: ${{ steps.plan.outputs.legacy-cache-key }}
     - name: Build the current native DSP for runtime verification
       shell: bash
       env:
@@ -49,6 +64,8 @@ runs:
       env:
         CUMULUS_MSYS2_ROOT: ${{ inputs.msys-root }}
         CUMULUS_MEDIA_CARGO_PROFILE: ${{ inputs.cargo-profile }}
+        CUMULUS_MEDIA_PRIMARY_MATCHED_KEY: ${{ steps.media-cache.outputs.cache-matched-key }}
+        CUMULUS_MEDIA_LEGACY_MATCHED_KEY: ${{ steps.legacy-cache.outputs.cache-matched-key }}
       run: python scripts/ci/windows_media.py install --msys "$CUMULUS_MSYS2_ROOT" --profile "$CUMULUS_MEDIA_CARGO_PROFILE"
     - name: Export the verified FFmpeg for synthetic local fixtures
       shell: pwsh
@@ -62,6 +79,14 @@ runs:
       env:
         CUMULUS_MEDIA_CARGO_PROFILE: ${{ inputs.cargo-profile }}
       run: python scripts/ci/windows_mpv_lookup.py --profile "$CUMULUS_MEDIA_CARGO_PROFILE"
+    - name: Promote the verified exact warm legacy FFmpeg package
+      if: steps.legacy-cache.outputs.cache-matched-key != ''
+      shell: bash
+      env:
+        CUMULUS_MSYS2_ROOT: ${{ inputs.msys-root }}
+        CUMULUS_MEDIA_CARGO_PROFILE: ${{ inputs.cargo-profile }}
+        CUMULUS_MEDIA_LEGACY_MATCHED_KEY: ${{ steps.legacy-cache.outputs.cache-matched-key }}
+      run: python scripts/ci/windows_media.py promote-seed --msys "$CUMULUS_MSYS2_ROOT" --profile "$CUMULUS_MEDIA_CARGO_PROFILE"
     - name: Authenticate completed dependency build for caching
       id: package-cache
       if: always() && steps.media-cache.outputs.cache-hit != 'true' && hashFiles('.build/windows-media/cache/build.json') != ''

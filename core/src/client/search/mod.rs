@@ -1,7 +1,13 @@
 mod audio_toplist;
+mod correction_channel;
 mod default_context;
 pub(crate) mod experiment;
+mod group_download;
 mod guest;
+pub use group_download::{
+    SearchGroupDownloadCommand, SearchGroupDownloadDecision, SearchGroupDownloadReply,
+    SearchGroupDownloadRow, SearchGroupDownloadTarget,
+};
 mod lyrics;
 pub(super) mod podcast_playback;
 mod presentation;
@@ -10,12 +16,13 @@ pub use presentation::{
     SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
 };
 pub use privilege::SearchPrivilegePatch;
-mod queue_drop;
-pub use queue_drop::SearchDropRow;
+pub(super) mod queue_drop;
+pub use queue_drop::{SearchDropRow, SearchNextRight};
 mod reason;
 mod results;
 pub use reason::{ReasonTarget, SearchReasonPage};
 mod track_hint;
+mod voice_menu;
 use super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,
@@ -24,6 +31,7 @@ use crate::{
 pub use results::*;
 use serde::Deserialize;
 use serde_json::json;
+pub use voice_menu::{SearchVoiceMenu, SearchVoiceMenuTarget};
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

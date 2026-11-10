@@ -251,8 +251,20 @@ impl AccountLifecycle {
         provider: &dyn DeviceTokenProvider,
         force: bool,
     ) -> Result<RefreshOutcome> {
-        let _guard = self.gate.lock().await;
         let token = self.current()?;
+        self.refresh_jsk_for(&token, device, provider, force).await
+    }
+
+    pub(crate) async fn refresh_jsk_for(
+        &self,
+        token: &SessionToken,
+        device: &DeviceInfo,
+        provider: &dyn DeviceTokenProvider,
+        force: bool,
+    ) -> Result<RefreshOutcome> {
+        let _guard = self.gate.lock().await;
+        let api = self.api();
+        self.session.require_api(token, &api)?;
         let uid = token
             .uid
             .as_deref()
@@ -285,8 +297,11 @@ impl AccountLifecycle {
                 "refresh device identity does not match this session",
             ));
         }
+        let music_u = before.token.as_deref().ok_or(Error::CredentialChanged)?;
+        self.client
+            .require_jsk_renewal_scope(&before.revision, music_u)?;
         let payload = refresh_payload(&before, &json!(uid), device, &provider.token().await?)?;
-        self.session.require_api(&token, &self.api())?;
+        self.session.require_api(token, &api)?;
         if credentials.login_credentials()?.revision != before.revision {
             return Err(Error::CredentialChanged);
         }
@@ -298,21 +313,23 @@ impl AccountLifecycle {
         const PATH: &str = "/api/login/token/refresh/v1";
         // M/1368 calls the native bridge and handles a rejected periodic
         // refresh itself; it does not enter the ordinary 301 business path.
-        let api = self.api();
-        self.session.require_api(&token, &api)?;
+        let allowed = || self.session.require_api(token, &api);
+        let mut dispatch = journal::Dispatch::new(&store, uid, &intent);
         let result = self
             .client
-            .request_jsk_if_revision(PATH, payload, &before.revision)
+            .request_jsk_renewal(
+                payload,
+                &before.revision,
+                music_u,
+                &allowed,
+                &dispatch.dispatched,
+            )
             .await
             .and_then(|response| validate_response(PATH, response, &[200]));
-        self.session.require_api(&token, &api)?;
-        if let Err(error) = result {
-            if matches!(error.root(), Error::RequestNotSent(_)) {
-                journal::not_sent(&store, uid, &intent)?;
-            }
-            return Err(error);
-        }
-        self.finish_jsk(&token, &intent).await
+        dispatch.release_unsent()?;
+        self.session.require_api(token, &api)?;
+        result?;
+        self.finish_jsk(token, &intent).await
     }
 
     async fn finish_jsk(&self, token: &SessionToken, intent: &Intent) -> Result<RefreshOutcome> {
@@ -324,14 +341,22 @@ impl AccountLifecycle {
         // Identity reconciliation is a read only; an ordinary 301
         // interceptor could otherwise issue a second refresh request.
         let api = self.api();
-        self.session.require_api(token, &api)?;
-        let identity = VerifiedAccount::read(&*api).await;
-        self.session.require_api(token, &api)?;
+        let music_u = after.token.as_deref().ok_or(Error::CredentialChanged)?;
+        let allowed = || self.session.require_api(token, &api);
+        allowed()?;
+        let identity = self
+            .client
+            .request_jsk_renewal_identity(&after.revision, music_u, &allowed)
+            .await
+            .and_then(|reply| VerifiedAccount::from_reply(&reply));
+        allowed()?;
         let identity = identity?;
         let current = credentials.login_credentials()?;
         if !fresh_receipt(&current, intent) || current.rotation != after.rotation {
             return Err(Error::CredentialChanged);
         }
+        self.client
+            .require_jsk_renewal_scope(&current.revision, music_u)?;
         self.session
             .commit_refreshed_profile(token, &api, identity)?;
         journal::complete(
@@ -346,8 +371,13 @@ impl AccountLifecycle {
     /// Reopen recovery only reads identity and the committed rotation receipt.
     /// No new refresh is sent when the previous request has an unknown outcome.
     pub async fn reconcile_jsk(&self) -> Result<RefreshOutcome> {
-        let _guard = self.gate.lock().await;
         let token = self.current()?;
+        self.reconcile_jsk_for(&token).await
+    }
+
+    pub(crate) async fn reconcile_jsk_for(&self, token: &SessionToken) -> Result<RefreshOutcome> {
+        let _guard = self.gate.lock().await;
+        self.session.require_api(token, &self.api())?;
         let uid = token
             .uid
             .as_deref()
@@ -357,6 +387,6 @@ impl AccountLifecycle {
         else {
             return Ok(RefreshOutcome::NoPendingRefresh);
         };
-        self.finish_jsk(&token, &intent).await
+        self.finish_jsk(token, &intent).await
     }
 }

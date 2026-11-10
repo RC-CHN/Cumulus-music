@@ -13,6 +13,7 @@ import type { LikeRecoveryClient } from './likeRecovery';
 import type { PlayerClient } from './player';
 import type { VoiceDetailActionsClient } from './voicePage';
 import type { AudiobookSkipClient } from './audiobookSkip';
+import type { PlayerPodcastResumeClient } from './playerPodcastResume';
 import type { PlaylistClient } from './playlists';
 import type { PlaylistCoverClient } from './playlistCover';
 import type { ColdOfflineClient } from './coldOffline';
@@ -59,7 +60,7 @@ import type { DiscoveryHomeClient } from './discoveryHome';
 import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
 import type { LatestReleaseClient } from './latestReleases';
 import type { CollectionClient } from './collections';
-import type { HistoryClient, HistorySyncClient } from './history';
+import type { HistoryClient, HistoryRadioCollectionClient, HistorySyncClient } from './history';
 import type { SettingsClient } from './settings';
 import type { LoginDeviceRemovalClient } from './loginDeviceRemoval';
 import type { AccountDetailClient, AccountRegionTable } from './accountDetail';
@@ -159,6 +160,7 @@ export interface CoreClient
     LocalMatchClient,
     PodcastClient,
     AudiobookSkipClient,
+    PlayerPodcastResumeClient,
     PodcastCatalogueClient,
     PodcastHomeClient,
     PodcastProgramMenuClient,
@@ -184,6 +186,7 @@ export interface CoreClient
     ReleaseNotificationClient,
     CollectionClient,
     HistoryClient,
+    HistoryRadioCollectionClient,
     HistorySyncClient,
     SettingsClient,
     AccountDetailClient,
@@ -257,6 +260,17 @@ export interface CoreClient
     offset: number,
   ): Promise<AccountData<PlaylistSubscribersPage>>;
   playlistPage(id: string, page: PageRequest): Promise<AccountData<TrackPage>>;
+  playlistDurationPrepare(
+    epoch: string,
+    id: string,
+    source: import('./playlistDuration').PlaylistDurationSource,
+  ): Promise<AccountData<import('./playlistDuration').PlaylistDurationPage>>;
+  mutatePlaylistLocal(
+    epoch: string,
+    id: string,
+    revision: string,
+    change: PlaylistLocalChange,
+  ): Promise<AccountData<{ changed: boolean }>>;
   searchSongs(keyword: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   dailySongs(): Promise<AccountData<TrackPage>>;
   styleRecommendations(epoch: string): Promise<AccountData<TrackPage>>;
@@ -314,6 +328,15 @@ export interface PageRequest {
   offset: number;
   limit: number;
   revision?: string | null;
+  localRevision?: string;
+}
+export interface PlaylistLocalReference {
+  id: string;
+  revision: string;
+}
+export interface PlaylistLocalChange {
+  op: 'add' | 'remove';
+  rows: PlaylistLocalReference[];
 }
 export interface PlaylistCreatorProfile {
   id: string;
@@ -420,6 +443,13 @@ export interface TrackPage {
   offset: number;
   more: boolean;
   playlist: PlaylistView | null;
+  playlistLocal?: {
+    revision: string;
+    hasMembers: boolean;
+    hasUnboundLegacy?: boolean;
+    rows: Record<string, string>;
+  };
+  playlistOffline?: { cachedAtMs: number; downloadIds?: string[] };
   daily?: { cached: boolean; showFreeTag: boolean; birthdayToday?: boolean };
   styleTags?: StyleCategory;
 }

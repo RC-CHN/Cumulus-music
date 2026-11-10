@@ -6,11 +6,13 @@ pub(in crate::download) const FINAL_INTEGRITY_MISMATCH: &str = "final transfer i
 mod files;
 mod headers;
 mod manager;
+mod rates;
 mod records;
 mod run;
 mod url;
 pub use backend::{MediaBackend, MediaBody, MediaReply, MediaRequest, ReqwestMediaBackend};
 pub use control::{RunOptions, TransferControl, TransferDirective};
+pub(super) use manager::KIND as TRANSFERS;
 pub use manager::TransferManager;
 pub use records::{
     CreateTransfer, TransferIntegrity, TransferJob, TransferResource, TransferStatus,

@@ -16,6 +16,8 @@ const props = defineProps<{
   catalogueParametric?: BoundParametricStatus;
   parametricProcessing?: boolean;
   managementOnly?: boolean;
+  comparisonInHeader?: boolean;
+  headerComparisonBusy?: boolean;
 }>();
 const emit = defineEmits<{ browse: [] }>();
 const core = useCore();
@@ -190,7 +192,13 @@ async function changeTuning(action: 'apply' | 'clear', event?: MouseEvent) {
   )
     return;
   const target = action === 'clear' ? applied : { brand: brand.value, model: model.value };
-  if (operation.value || target?.brand === undefined || target.model === undefined) return;
+  if (
+    operation.value ||
+    props.headerComparisonBusy ||
+    target?.brand === undefined ||
+    target.model === undefined
+  )
+    return;
   if (action === 'apply' && (material.value !== 'standalone_peq' || busyWithAnotherEffect.value))
     return;
   const epoch = props.account.epoch;
@@ -346,7 +354,7 @@ onUnmounted(resetReads);
         }}
       </p>
       <button
-        v-if="applied.comparison"
+        v-if="applied.comparison && !comparisonInHeader"
         type="button"
         :data-comparison-receipt="applied.comparison.receipt"
         :aria-disabled="!!operation"
@@ -359,7 +367,7 @@ onUnmounted(resetReads);
         type="button"
         :key="applied.activationId"
         :data-activation-id="applied.activationId"
-        :disabled="!!operation"
+        :disabled="!!operation || headerComparisonBusy"
         @click="changeTuning('clear', $event)"
       >
         {{ applied.status === 'processor_failed' ? '关闭调音提示' : '关闭耳机调音' }}
