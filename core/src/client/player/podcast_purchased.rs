@@ -39,6 +39,7 @@ pub(super) struct PagedLikedProgram {
     pub prefix: Option<Vec<Episode>>,
     pub api: Arc<dyn Api>,
     pub guard: Cancellation,
+    pub queue_fence: crate::podcast::LikedPageQueueFence,
 }
 
 impl ScopedProgram<'_> {
@@ -117,6 +118,7 @@ impl MusicClient {
             prefix: selected.prefix,
             api,
             guard,
+            queue_fence: selected.queue_fence,
         })
     }
 
@@ -236,19 +238,25 @@ impl MusicClient {
         let replace = matches!(target, ScopedProgram::PagedLiked(_))
             && !menu
             && self.replace_queue_on_double_click(token)?;
-        let (cached, api, guard, prefix) = match target {
+        let (cached, api, guard, prefix, liked_visit) = match target {
             ScopedProgram::Purchased(target) => {
                 let (row, api, guard) = self.purchased_episode_scope(token, target)?;
-                (row, api, guard, None)
+                (row, api, guard, None, None)
             }
             ScopedProgram::Liked(target) => {
                 let (row, api, guard) = self.liked_episode_scope(token, target)?;
-                (row, api, guard, None)
+                (row, api, guard, None, None)
             }
             ScopedProgram::PagedLiked(target) => {
                 let selected =
                     self.paged_liked_episode_scope(token, target, replace.then_some(QUEUE_LIMIT))?;
-                (selected.row, selected.api, selected.guard, selected.prefix)
+                (
+                    selected.row,
+                    selected.api,
+                    selected.guard,
+                    selected.prefix,
+                    Some(selected.queue_fence),
+                )
             }
         };
         let controller = self.player.controller().await?;
@@ -304,6 +312,7 @@ impl MusicClient {
                     expected: before.fence(),
                     paused: !before.paused,
                     mode,
+                    liked_visit: liked_visit.clone(),
                 }
             } else if !menu {
                 PlaybackCommand::Pause(!before.paused)
@@ -408,6 +417,7 @@ impl MusicClient {
                     }),
                 },
                 first_source,
+                liked_visit,
             },
             guard,
         ))

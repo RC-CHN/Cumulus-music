@@ -114,6 +114,7 @@ impl MusicClient {
                     }),
                 },
                 first_source,
+                liked_visit: None,
             }
         };
         let state = self

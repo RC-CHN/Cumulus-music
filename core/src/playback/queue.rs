@@ -391,6 +391,25 @@ impl PlaybackQueue {
     }
 
     pub fn set_mode(&mut self, mode: PlaybackMode) -> Result<()> {
+        let state = self.mode_candidate(mode)?;
+        self.commit(state)
+    }
+
+    pub(crate) fn set_liked_page_mode(
+        &mut self,
+        mode: Option<PlaybackMode>,
+        owner: &str,
+        visit: &crate::podcast::LikedPageQueueFence,
+    ) -> Result<()> {
+        if let Some(mode) = mode {
+            let state = self.mode_candidate(mode)?;
+            self.install_liked_page(state, owner, visit)
+        } else {
+            self.validate_liked_page(owner, visit)
+        }
+    }
+
+    fn mode_candidate(&mut self, mode: PlaybackMode) -> Result<QueueSnapshot> {
         let mut state = self.snapshot();
         if state
             .intelligence
@@ -407,7 +426,7 @@ impl PlaybackQueue {
                 state.order.shuffle(&mut self.rng)
             }
         }
-        self.commit(state)
+        Ok(state)
     }
 
     pub fn update_resource(&mut self, entry_id: &str, resource: Value) -> Result<()> {

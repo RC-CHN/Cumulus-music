@@ -3,6 +3,7 @@
 mod api;
 mod discovery;
 mod library;
+mod liked_visit;
 mod model;
 mod mutations;
 pub(crate) mod progress;
@@ -18,6 +19,8 @@ pub use api::{PodcastApi, ProgramPage};
 pub use discovery::{DiscoveryPage, HistoryKind};
 pub(crate) use library::LikedVoicePage;
 pub use library::{LibraryKind, MyLibrary};
+pub use liked_visit::LikedPageQueueFence;
+pub(crate) use liked_visit::LikedVisit;
 pub use model::{Episode, Radio};
 pub(crate) use mutations::FreshVinylSubscription;
 pub use mutations::{PodcastAction, PodcastMutation, PodcastService};

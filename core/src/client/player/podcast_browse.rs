@@ -172,6 +172,7 @@ impl MusicClient {
                         expected: before.fence(),
                         paused: !before.paused,
                         mode,
+                        liked_visit: None,
                     },
                     guard,
                 ));
@@ -353,6 +354,7 @@ impl MusicClient {
                     }),
                 },
                 first_source,
+                liked_visit: None,
             },
             guard,
         ))

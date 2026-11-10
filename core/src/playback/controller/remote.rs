@@ -4,8 +4,12 @@ use super::{
     state::Actor,
 };
 use crate::playback::source::ResolvedSource;
+use crate::podcast::LikedPageQueueFence;
 use crate::{Error, Result};
 use std::sync::Arc;
+
+#[cfg(test)]
+mod liked_queue_tests;
 
 impl Actor {
     pub(super) fn apply_together_external_queue(
@@ -343,7 +347,7 @@ impl Actor {
         value: super::QueueUpdate,
         reply: Option<&Response>,
     ) -> Result<Option<LoadOptions>> {
-        self.update_queue_inner(value, reply, None, true, None)
+        self.update_queue_inner(value, reply, None, true, None, None)
             .await
     }
 
@@ -353,7 +357,7 @@ impl Actor {
         reply: Option<&Response>,
         first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
     ) -> Result<Option<LoadOptions>> {
-        self.update_queue_inner(value, reply, first_source, false, None)
+        self.update_queue_inner(value, reply, first_source, false, None, None)
             .await
     }
 
@@ -363,6 +367,7 @@ impl Actor {
         first_source: Arc<ResolvedSource>,
         reply: &Response,
         authority: &crate::playback::engine::Cancellation,
+        liked_visit: Option<&LikedPageQueueFence>,
     ) -> Result<Option<LoadOptions>> {
         self.update_queue_inner(
             value,
@@ -370,6 +375,7 @@ impl Actor {
             Some(first_source),
             false,
             Some(authority),
+            liked_visit,
         )
         .await
     }
@@ -379,6 +385,7 @@ impl Actor {
         value: super::QueueUpdate,
         reply: &Response,
         authority: &crate::playback::engine::Cancellation,
+        liked_visit: &LikedPageQueueFence,
     ) -> Result<()> {
         value.queue.validate()?;
         if self.queue.is_empty()
@@ -394,10 +401,42 @@ impl Actor {
             return Err(Error::StaleResponse);
         }
         // Queue-only Next must not reload even when the incumbent is still
-        // opening. Check the visit again immediately before queue CAS.
+        // opening. The general authority may lock the account; only the
+        // native visit fence can span the account-guarded queue CAS.
         authority.check()?;
-        self.session
-            .with_token(&self.token, |_| self.queue.install(value.queue))
+        self.install_liked_page_queue(value.queue, liked_visit, Some(reply))
+    }
+
+    fn install_liked_page_queue(
+        &mut self,
+        candidate: crate::playback::QueueSnapshot,
+        visit: &LikedPageQueueFence,
+        reply: Option<&Response>,
+    ) -> Result<()> {
+        self.session.with_token(&self.token, |owner| {
+            visit.with_active(&self.token, || {
+                if reply.is_some_and(Response::is_closed) {
+                    return Err(Error::StaleResponse);
+                }
+                self.queue.install_liked_page(candidate, owner, visit)
+            })
+        })
+    }
+
+    pub(super) fn prepare_liked_page_toggle(
+        &mut self,
+        mode: Option<crate::playback::PlaybackMode>,
+        visit: &LikedPageQueueFence,
+        reply: &Response,
+    ) -> Result<()> {
+        self.session.with_token(&self.token, |owner| {
+            visit.with_active(&self.token, || {
+                if reply.is_closed() {
+                    return Err(Error::StaleResponse);
+                }
+                self.queue.set_liked_page_mode(mode, owner, visit)
+            })
+        })
     }
 
     pub(super) async fn apply_search_group_next(
@@ -439,8 +478,15 @@ impl Actor {
         {
             return Err(Error::StaleResponse);
         }
-        self.update_queue_inner(value, Some(reply), first_source, !start, Some(authority))
-            .await
+        self.update_queue_inner(
+            value,
+            Some(reply),
+            first_source,
+            !start,
+            Some(authority),
+            None,
+        )
+        .await
     }
 
     pub(super) async fn apply_search_group_play(
@@ -492,7 +538,14 @@ impl Actor {
             value.transport = None;
         }
         let options = self
-            .update_queue_inner(value, Some(reply), first_source, false, Some(authority))
+            .update_queue_inner(
+                value,
+                Some(reply),
+                first_source,
+                false,
+                Some(authority),
+                None,
+            )
             .await?;
         if retain && self.state == PlaybackStatus::Paused {
             authority.check()?;
@@ -508,6 +561,7 @@ impl Actor {
         first_source: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
         insert_next: bool,
         authority: Option<&crate::playback::engine::Cancellation>,
+        liked_visit: Option<&LikedPageQueueFence>,
     ) -> Result<Option<LoadOptions>> {
         value.queue.validate()?;
         if value
@@ -534,7 +588,9 @@ impl Actor {
             }
             authority.check()?;
         }
-        if insert_next || first_source.is_some() || authority.is_some() {
+        if let Some(visit) = liked_visit {
+            self.install_liked_page_queue(value.queue, visit, reply)?;
+        } else if insert_next || first_source.is_some() || authority.is_some() {
             self.session
                 .with_token(&self.token, |_| self.queue.install(value.queue))?;
         } else {

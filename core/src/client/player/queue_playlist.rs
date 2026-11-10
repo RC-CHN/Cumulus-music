@@ -348,6 +348,7 @@ impl MusicClient {
         }
         let mut artist_batch_prepared = None;
         let mut scoped_program = None;
+        let mut liked_visit = None;
         let (recommendation_ids, mut source_guard) = match &collection {
             QueueCollection::DailyRecommendations {
                 revision, indices, ..
@@ -450,6 +451,7 @@ impl MusicClient {
                     super::podcast_purchased::ScopedProgram::PagedLiked(target).origin(),
                     false,
                 ));
+                liked_visit = Some(scope.queue_fence);
                 (None, Some(scope.guard))
             }
             _ => (None, None),
@@ -877,13 +879,17 @@ impl MusicClient {
                 paused: false,
             }),
         };
-        let command = match scoped_start {
-            Some((first_source, _)) => PlaybackCommand::PlayPodcastBrowse {
+        let command = match (scoped_start, liked_visit) {
+            (Some((first_source, _)), liked_visit) => PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,
+                liked_visit,
             },
-            None if paged_liked => PlaybackCommand::QueuePodcastBrowse(update),
-            None => PlaybackCommand::UpdateQueue(update),
+            (None, Some(liked_visit)) => PlaybackCommand::QueuePodcastBrowse {
+                update,
+                liked_visit,
+            },
+            (None, None) => PlaybackCommand::UpdateQueue(update),
         };
         let value = if ordinary {
             let selection = self.player.selection.clone();

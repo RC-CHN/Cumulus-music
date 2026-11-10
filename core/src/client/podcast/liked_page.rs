@@ -6,7 +6,7 @@ use crate::{
     account::SessionToken,
     client::dto::AccountData,
     playback::engine::Cancellation,
-    podcast::{Episode, LikedVoicePage, cache_generation_in},
+    podcast::{Episode, LikedPageQueueFence, LikedVisit, LikedVoicePage, cache_generation_in},
     protocol::api::identifier,
     storage::StateTransaction,
 };
@@ -113,7 +113,7 @@ struct Visit {
     pages: usize,
     capped: bool,
     load: Arc<tokio::sync::Mutex<()>>,
-    playback: Cancellation,
+    playback: LikedVisit,
 }
 
 impl Default for Visit {
@@ -133,14 +133,14 @@ impl Default for Visit {
             pages: 0,
             capped: false,
             load: Arc::default(),
-            playback: Cancellation::default(),
+            playback: LikedVisit::default(),
         }
     }
 }
 
 impl Drop for Visit {
     fn drop(&mut self) {
-        self.playback.cancel();
+        self.playback.retire();
     }
 }
 
@@ -235,6 +235,7 @@ pub(in crate::client) struct LikedPagePlayback {
     pub row: Episode,
     pub prefix: Option<Vec<Episode>>,
     pub authority: Cancellation,
+    pub queue_fence: LikedPageQueueFence,
 }
 
 /// Held only across a synchronous download insert, never a network await.
@@ -265,7 +266,7 @@ impl MusicClient {
         target: &PodcastLikedPageTarget,
     ) -> Result<String> {
         let id = identifier(&json!(target.voice_id))?;
-        self.with_liked_visit(token, |slot| {
+        self.with_liked_visit(token, |slot, _| {
             let row = slot
                 .as_ref()
                 .ok_or(Error::QueueChanged)?
@@ -311,7 +312,7 @@ impl MusicClient {
     fn with_liked_visit<T>(
         &self,
         token: &SessionToken,
-        operation: impl FnOnce(&mut Option<Visit>) -> Result<T>,
+        operation: impl FnOnce(&mut Option<Visit>, u64) -> Result<T>,
     ) -> Result<T> {
         PodcastLibrary::new(self.session.clone())?.with_generation_for(token, |generation| {
             let mut slot = self
@@ -327,7 +328,7 @@ impl MusicClient {
                 slot.owner = Some((token.clone(), generation));
                 slot.visit = None;
             }
-            operation(&mut slot.visit)
+            operation(&mut slot.visit, generation)
         })
     }
 
@@ -338,23 +339,23 @@ impl MusicClient {
     ) -> Result<AccountData<PodcastLikedPage>> {
         let token = self.podcast_token(epoch)?;
         let value = match query {
-            PodcastLikedQuery::Open {} => self.with_liked_visit(&token, |slot| {
+            PodcastLikedQuery::Open {} => self.with_liked_visit(&token, |slot, _| {
                 let visit = Visit::default();
                 let view = visit.view(Vec::new());
                 *slot = Some(visit);
                 Ok(view)
             })?,
             PodcastLikedQuery::Suspend { visit, revision } => {
-                self.with_liked_visit(&token, |slot| {
+                self.with_liked_visit(&token, |slot, _| {
                     let row = slot.as_mut().ok_or(Error::QueueChanged)?;
                     row.current(&visit, &revision)?;
                     row.suspended_at = Some(Instant::now());
-                    row.playback.cancel();
+                    row.playback.retire();
                     Ok(row.view(Vec::new()))
                 })?
             }
             PodcastLikedQuery::Restore { visit, revision } => {
-                self.with_liked_visit(&token, |slot| {
+                self.with_liked_visit(&token, |slot, _| {
                     let row = slot.as_mut().ok_or(Error::QueueChanged)?;
                     if row.id != visit
                         || row.revision != revision
@@ -365,7 +366,7 @@ impl MusicClient {
                     row.suspended_at = None;
                     row.revision = receipt();
                     row.load = Arc::default();
-                    row.playback = Cancellation::default();
+                    row.playback = LikedVisit::default();
                     Ok(row.view(row.rows.iter().map(project_list_row).collect()))
                 })?
             }
@@ -374,7 +375,7 @@ impl MusicClient {
                 revision,
                 continuation,
             } => {
-                let (cursor, _load) = self.with_liked_visit(&token, |slot| {
+                let (cursor, _load) = self.with_liked_visit(&token, |slot, _| {
                     let row = slot.as_ref().ok_or(Error::QueueChanged)?;
                     row.current(&visit, &revision)?;
                     let cursor = row.cursor(&continuation)?.wire.clone();
@@ -391,7 +392,7 @@ impl MusicClient {
                         PodcastApi::new(api).liked_voice_page(&cursor).await
                     })
                     .await?;
-                self.with_liked_visit(&token, |slot| {
+                self.with_liked_visit(&token, |slot, _| {
                     let row = slot.as_mut().ok_or(Error::QueueChanged)?;
                     row.current(&visit, &revision)?;
                     row.cursor(&continuation)?;
@@ -449,7 +450,7 @@ impl MusicClient {
         target: &PodcastLikedPageTarget,
     ) -> Result<Episode> {
         let id = identifier(&json!(target.voice_id))?;
-        self.with_liked_visit(token, |slot| {
+        self.with_liked_visit(token, |slot, _| {
             let row = slot.as_ref().ok_or(Error::QueueChanged)?;
             Ok(row.program(target, &id)?.clone())
         })
@@ -477,36 +478,37 @@ impl MusicClient {
     ) -> Result<LikedPagePlayback> {
         let id = identifier(&json!(target.voice_id))?;
         let library = PodcastLibrary::new(self.session.clone())?;
-        let generation = library.with_generation_for(token, Ok)?;
-        let (row, prefix, active) = self.with_liked_visit(token, |slot| {
-            let visit = slot.as_ref().ok_or(Error::QueueChanged)?;
-            visit.current(&target.visit, &target.revision)?;
-            let row = &visit.rows[*visit.indices.get(&id).ok_or(Error::QueueChanged)?];
-            if row.display_status_withdrawn() {
-                return Err(Error::State("liked voice withdrawn"));
-            }
-            if row.raw["grayDisplay"] == true {
-                return Err(Error::State("liked voice media unavailable"));
-            }
-            let prefix = limit.map(|limit| {
-                visit
-                    .rows
-                    .iter()
-                    .filter(|voice| {
-                        voice.id == id
-                            || (voice.song_id.is_some()
-                                && !voice.display_status_withdrawn()
-                                && voice.raw["grayDisplay"] != true)
-                    })
-                    .take(limit)
-                    .cloned()
-                    .collect::<Vec<_>>()
-            });
-            Ok((row.clone(), prefix, visit.playback.clone()))
-        })?;
+        let (row, prefix, active, generation) =
+            self.with_liked_visit(token, |slot, generation| {
+                let visit = slot.as_ref().ok_or(Error::QueueChanged)?;
+                visit.current(&target.visit, &target.revision)?;
+                let row = &visit.rows[*visit.indices.get(&id).ok_or(Error::QueueChanged)?];
+                if row.display_status_withdrawn() {
+                    return Err(Error::State("liked voice withdrawn"));
+                }
+                if row.raw["grayDisplay"] == true {
+                    return Err(Error::State("liked voice media unavailable"));
+                }
+                let prefix = limit.map(|limit| {
+                    visit
+                        .rows
+                        .iter()
+                        .filter(|voice| {
+                            voice.id == id
+                                || (voice.song_id.is_some()
+                                    && !voice.display_status_withdrawn()
+                                    && voice.raw["grayDisplay"] != true)
+                        })
+                        .take(limit)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                });
+                Ok((row.clone(), prefix, visit.playback.clone(), generation))
+            })?;
+        let queue_fence = active.fence(token, generation);
         let token = token.clone();
         let authority = Cancellation::new(move || {
-            !active.is_cancelled()
+            active.active()
                 && library
                     .with_generation_for(&token, |current| Ok(current == generation))
                     .unwrap_or(false)
@@ -516,6 +518,7 @@ impl MusicClient {
             row,
             prefix,
             authority,
+            queue_fence,
         })
     }
 }
