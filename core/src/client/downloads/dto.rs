@@ -163,10 +163,7 @@ pub enum DownloadCommand {
     DeleteFiles {
         task_ids: Vec<String>,
     },
-    StartVoice {
-        voice_ids: Vec<String>,
-        options: DownloadOptions,
-    },
+    ConfirmVoice(super::VoiceDownloadConfirmation),
     StartMv {
         id: String,
         resolution: u32,

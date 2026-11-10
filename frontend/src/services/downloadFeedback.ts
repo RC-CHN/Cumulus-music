@@ -46,8 +46,8 @@ export function downloadCommandLabel(command: DownloadCommand): string {
       return '从头下载';
     case 'start':
       return `下载歌曲（${command.song_ids.length}首）`;
-    case 'start_voice':
-      return `下载声音（${command.voice_ids.length}条）`;
+    case 'confirm_voice':
+      return '下载声音';
     case 'start_mv':
       return '下载MV';
     case 'start_cloud':

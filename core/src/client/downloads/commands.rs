@@ -113,38 +113,8 @@ impl MusicClient {
                 self.start_catalog_downloads(context, song_ids, options)
                     .await
             }
-            DownloadCommand::StartVoice { voice_ids, options } => {
-                validate_ids(&voice_ids)?;
-                let ids = voice_ids
-                    .iter()
-                    .map(|id| identifier(&json!(id)))
-                    .collect::<Result<Vec<_>>>()?;
-                let mut result = DownloadResult {
-                    epoch: epoch.into(),
-                    ..Default::default()
-                };
-                let mut seen = std::collections::BTreeSet::new();
-                for id in ids {
-                    if !seen.insert(id.clone()) {
-                        continue;
-                    }
-                    context.guard()?;
-                    match context
-                        .service
-                        .create_voice_default(&json!(id), options.clone())
-                        .await
-                    {
-                        Ok(task) => result.accepted.push(task.id),
-                        Err(Error::StaleResponse) => return Err(Error::StaleResponse),
-                        Err(_) => result.failed.push(DownloadFailure {
-                            id,
-                            message: "节目下载未能创建，请检查权限、格式选项和下载目录",
-                        }),
-                    }
-                    host.kick(&context)?;
-                }
-                context.guard()?;
-                Ok(result)
+            DownloadCommand::ConfirmVoice(confirmation) => {
+                host.confirm_voice_download(context, confirmation).await
             }
             DownloadCommand::StartMv { id, resolution } => {
                 context.guard()?;

@@ -3297,7 +3297,20 @@ function openCurrentDownload(target: CurrentPlaybackDownload) {
   )
     return;
   if (current.kind === 'voice') {
-    downloadDialog.value = { kind: 'voice', tracks: [{ id: current.id, name: current.name }] };
+    downloadDialog.value = {
+      kind: 'voice',
+      tracks: [{ id: current.id, name: current.name }],
+      live: () => {
+        const active = currentPlaybackDownload(player.view.value);
+        return (
+          account.value.epoch === current.epoch &&
+          active?.kind === 'voice' &&
+          active.epoch === current.epoch &&
+          active.playId === current.playId &&
+          active.id === current.id
+        );
+      },
+    };
     return;
   }
   const song = currentCatalogTrack(player.view.value);

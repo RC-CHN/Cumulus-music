@@ -131,7 +131,13 @@ export type DownloadControl = 'pause' | 'resume' | 'cancel' | 'repair';
 export type DownloadCommand =
   | { kind: 'restart_failed_transfer'; task_id: string }
   | { kind: 'delete_files'; task_ids: string[] }
-  | { kind: 'start_voice'; voice_ids: string[]; options: DownloadOptions }
+  | {
+      kind: 'confirm_voice';
+      receipt: string;
+      quality: VoiceDownloadQuality;
+      tags: boolean;
+      cover: boolean;
+    }
   | { kind: 'start_mv'; id: string; resolution: number }
   | { kind: 'start_cloud'; song_ids: string[]; revision: string; lyrics: boolean }
   | { kind: 'start'; song_ids: string[]; options: DownloadOptions }
@@ -146,6 +152,17 @@ export type DownloadCommand =
   | { kind: 'rename'; task_id: string; name: string }
   | { kind: 'move_to_directory'; task_id: string; root: string }
   | { kind: 'stop_operation'; operation_id: string };
+export type VoiceDownloadQuality = 'standard' | 'higher' | 'exhigh';
+export interface VoiceDownloadChoice {
+  quality: VoiceDownloadQuality;
+  label: string;
+}
+export interface VoiceDownloadPreparation {
+  epoch: string;
+  state: 'ready' | 'restricted' | 'unavailable';
+  receipt: string | null;
+  choices: VoiceDownloadChoice[];
+}
 export type DownloadSkipReason =
   | 'downloaded'
   | 'local'
@@ -238,6 +255,8 @@ export interface DownloadClient {
   ): Promise<AccountData<PlaylistMutationView>>;
   downloadCollectCancel(epoch: string, receipt: string): Promise<void>;
   downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
+  downloadVoicePrepare(epoch: string, voiceIds: string[]): Promise<VoiceDownloadPreparation>;
+  downloadVoiceDiscard(epoch: string, receipt: string): Promise<void>;
   downloadClearPrepare(epoch: string): Promise<DownloadClearPlan>;
   downloadClearDiscard(epoch: string, receipt: string): Promise<void>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;

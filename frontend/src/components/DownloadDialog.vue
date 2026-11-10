@@ -6,6 +6,7 @@ import type {
   DownloadDialogTarget,
   DownloadCommand,
   DownloadQualityPreferences,
+  VoiceDownloadPreparation,
 } from '../services/downloads';
 import { failure } from '../services/contracts';
 import { downloadAdmissionSummary } from '../services/downloadFeedback';
@@ -24,6 +25,33 @@ const quality = shallowRef<DownloadQualityPreferences>();
 const loadingQuality = ref(false);
 const qualityError = ref('');
 let dialogOpen = true;
+const voiceIsCurrent = props.model.captureVisit();
+const voicePlan = shallowRef<VoiceDownloadPreparation>();
+const loadingVoice = ref(false);
+const voicePreparationError = ref('');
+const voiceSubmitted = ref(false);
+async function prepareVoice() {
+  const target = props.target;
+  if (target.kind !== 'voice' || loadingVoice.value || !voiceIsCurrent() || staleVoice.value)
+    return;
+  loadingVoice.value = true;
+  voicePreparationError.value = '';
+  try {
+    const plan = await props.model.prepareVoice(target.tracks.map((track) => track.id));
+    if (!dialogOpen || !voiceIsCurrent() || props.target !== target || staleVoice.value) {
+      if (plan) void props.model.discardVoice(plan);
+      return;
+    }
+    voicePlan.value = plan;
+    const first = plan?.choices[0];
+    if (plan?.state === 'ready' && plan.receipt && first) options.value.quality = first.quality;
+    else if (plan?.state !== 'restricted') voicePreparationError.value = '暂未获得可选下载音质';
+  } catch (value) {
+    if (dialogOpen && voiceIsCurrent()) voicePreparationError.value = failure(value).message;
+  } finally {
+    if (dialogOpen) loadingVoice.value = false;
+  }
+}
 const clearPlan = shallowRef<DownloadClearPlan>();
 const clearIsCurrent = props.model.captureVisit();
 const preparingClear = ref(false),
@@ -97,12 +125,16 @@ const stale = computed(
           ? !live.value.needsTransferRestart
           : live.value.status !== 'complete' || live.value.path !== original.path)),
 );
-const staleVoice = computed(() => props.target.kind === 'voice' && props.target.live?.() === false);
+const staleVoice = computed(
+  () => props.target.kind === 'voice' && (!voiceIsCurrent() || props.target.live?.() === false),
+);
 const blocked = computed(
   () =>
     busy.value ||
     choosing.value ||
     staleVoice.value ||
+    (props.target.kind === 'voice' &&
+      (voiceSubmitted.value || loadingVoice.value || !voicePlan.value?.receipt)) ||
     (props.target.kind === 'voice_song' && (!props.target.live() || props.target.busy())) ||
     (props.target.kind === 'settings' &&
       (loadingQuality.value || !quality.value || !!qualityError.value)) ||
@@ -143,6 +175,7 @@ onMounted(() => {
   dialog.value?.showModal();
   if (props.target.kind === 'settings') void loadQuality();
   if (props.target.kind === 'clear') void prepareClear();
+  if (props.target.kind === 'voice') void prepareVoice();
   rename.value =
     task.value?.path
       ?.split(/[\\/]/)
@@ -156,6 +189,7 @@ onMounted(() => {
 onUnmounted(() => {
   dialogOpen = false;
   if (clearPlan.value) void props.model.discardClear(clearPlan.value);
+  if (voicePlan.value) void props.model.discardVoice(voicePlan.value);
   focus?.focus();
 });
 async function focusForm() {
@@ -193,8 +227,11 @@ async function choose(kind: 'root' | 'file') {
 }
 async function perform(command: DownloadCommand) {
   if (blocked.value) return;
+  if (command.kind === 'confirm_voice') voiceSubmitted.value = true;
   const result = await props.model.command(command);
   if (!dialogOpen || staleVoice.value) return;
+  if (command.kind === 'confirm_voice' && !result && !error.value)
+    localError.value = '无法确认是否已受理，请先到下载管理核对。';
   if (command.kind === 'start' && result?.skipped?.length) {
     admissionNotice.value = downloadAdmissionSummary(result) ?? '';
     const reasons = result.skipped.map(({ reason }) => reason);
@@ -212,7 +249,9 @@ async function perform(command: DownloadCommand) {
     emit('close');
     if (
       result.accepted.length &&
-      (command.kind === 'start' || command.kind === 'start_cloud' || command.kind === 'start_voice')
+      (command.kind === 'start' ||
+        command.kind === 'start_cloud' ||
+        command.kind === 'confirm_voice')
     )
       emit('started');
   }
@@ -278,10 +317,15 @@ async function save() {
     return;
   }
   if (props.target.kind === 'voice') {
+    const plan = voicePlan.value;
+    const choice = plan?.choices.find((choice) => choice.quality === options.value.quality);
+    if (!plan?.receipt || !choice || !voiceIsCurrent() || staleVoice.value) return;
     await perform({
-      kind: 'start_voice',
-      voice_ids: props.target.tracks.map((t) => t.id),
-      options: { ...options.value, container: 'audio', lyrics: false },
+      kind: 'confirm_voice',
+      receipt: plan.receipt,
+      quality: choice.quality,
+      tags: options.value.tags,
+      cover: options.value.cover,
     });
     return;
   }
@@ -375,6 +419,17 @@ async function fileAction() {
             重试
           </button>
         </div>
+        <template v-if="target.kind === 'voice'">
+          <p v-if="loadingVoice" class="muted" role="status">正在读取可选下载音质…</p>
+          <p v-else-if="staleVoice" class="muted" role="status">节目已变化，请重新打开。</p>
+          <p v-else-if="voicePlan?.state === 'restricted'" class="muted" role="status">
+            当前节目不支持普通下载。
+          </p>
+          <div v-else-if="voicePreparationError" class="error-state" role="alert">
+            {{ voicePreparationError }}
+            <button type="button" class="text-button" @click="prepareVoice">重试</button>
+          </div>
+        </template>
         <fieldset :disabled="blocked">
           <p
             v-if="target.kind === 'voice_song'"
@@ -408,6 +463,7 @@ async function fileAction() {
             v-else
             v-model="options"
             :voice="target.kind === 'voice'"
+            :voice-choices="voicePlan?.choices"
             :settings="target.kind === 'settings'"
             :quality-settings="quality"
           />

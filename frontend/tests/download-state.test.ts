@@ -5,6 +5,7 @@ import { downloadViewportKey } from '../src/services/downloadViewport.ts';
 import type { AccountView } from '../src/services/contracts.ts';
 import type {
   DownloadClient,
+  DownloadCommand,
   DownloadQualityPreferences,
   DownloadResult,
   DownloadsView,
@@ -492,5 +493,42 @@ test('a held clear preparation cannot restore a previous download visit', async 
   pending.resolve({ epoch: '1', receipt: 'prior-visit', count: 2 });
   assert.equal(await old, undefined);
   assert.deepEqual(discarded, [['1', 'prior-visit']]);
+  model.dispose();
+});
+
+test('program quality reads send episode IDs and discard a late old-account receipt', async () => {
+  const pending = deferred<import('../src/services/downloads.ts').VoiceDownloadPreparation>();
+  const reads: [string, string[]][] = [];
+  const discards: [string, string][] = [];
+  const commands: DownloadCommand[] = [];
+  const model = useDownloads({
+    downloads: async (epoch) => state(epoch),
+    downloadVoicePrepare: (epoch, ids) => {
+      reads.push([epoch, ids]);
+      return pending.promise;
+    },
+    downloadVoiceDiscard: async (epoch, receipt) => {
+      discards.push([epoch, receipt]);
+    },
+    downloadCommand: async (_epoch, command) => {
+      commands.push(command);
+      throw Error('quality read must not submit');
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  const ids = ['401', '402'];
+  const old = model.prepareVoice(ids);
+  ids.reverse();
+  await model.connect(account('2'));
+  pending.resolve({
+    epoch: '1',
+    state: 'ready',
+    receipt: 'retired',
+    choices: [{ quality: 'higher', label: '较高（2.0M）' }],
+  });
+  assert.equal(await old, undefined);
+  assert.deepEqual(reads, [['1', ['401', '402']]]);
+  assert.deepEqual(discards, [['1', 'retired']]);
+  assert.deepEqual(commands, []);
   model.dispose();
 });

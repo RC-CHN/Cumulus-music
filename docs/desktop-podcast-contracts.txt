@@ -242,3 +242,27 @@ a sealed synthetic account, non-C Linux system locale and real null-output
 libmpv. It checks preview, same-episode toggle, weekly, full chart and
 empty-result preservation, including exact around arguments and order.
 No service, account writes, or sound-device assertions are involved.
+
+普通单集下载音质准备（3.1.42.205594）
+-------------------------------------
+M/3085:3725–3735,3806–3838,3885–3904 在下载目标过滤后，只对单个
+ResourceType.voice 调用 M/71.i；M/71:110–134 经 M/15.Ib 向
+/api/dj/voices/download/check 发送 {voiceIdsStr:[节目 ID]}，不是音频 track
+ID；调用参数是数组，经 M/48.f 表单转换后签名负载的值是 "[节目 ID]"。200 取 data，400 显示错误并中断，其余失败返回空许可；
+仅无允许 ID 且首条 feeConfigs 非空才交给节目付费弹窗。该付费分支没有迁移到本流程。
+
+M/754:98–132,566–585 对普通节目先要求确认音质。单条经 M/334.g:181–201
+和 M/15.zb:3248 只读 /api/dj/program/song/musics {ids:[节目 ID]}；
+读取首个 programs 项的 musics，按 bitrate 升序分至 ≤128000、
+≤192000 和更高三档，同档保留首条大小，单位按 M/32.d:123–127 显示。
+签名负载同样使用括号列表字符串。多条直接给 128/192/320 kbit/s，默认选第一项，不逐条查档。取消不建任务。
+M/754:347–360 的媒体授权 ID 是 origin.track.id（节目详情里的主音频 ID）。
+
+Cumulus 从同一原生账户/传输为当前有序节目选择准备一次性收据，单条必须
+得到明确普通下载许可和至少一个有效档，失败可显式只读重试。没有档位时禁止确认；原客户端在空确认后会回退到保存的音乐默认档。无效 bitrate/size 不建立选项；
+非正 bitrate 不会因 JS 的末尾兜底误入最高档。批量确认只发送该收据、所选档、
+标签和封面偏好，不接受另一个节目 ID、格式或歌词。收据被替换、取消、超时或
+切换账户后不能提交，也不会因提交丢回执自动重放。原有目录设置和每条任务的
+顺序建档/部分失败保留；队列中的每条节目仍走独立权限及主音频授权。音质选项
+本身不是权益或文件授权，不能用于绕过受限音频、付费节目或 NCM 容器边界。
+本流程与声音页内的歌曲、已购歌曲、云盘和 MV 下载分开。

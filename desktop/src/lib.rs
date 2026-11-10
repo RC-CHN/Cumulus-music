@@ -628,6 +628,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 downloads::download_collect_liked_destination,
                 downloads::download_collect_liked,
                 downloads::download_collect_cancel,
+                downloads::download_voice_prepare,
+                downloads::download_voice_discard,
                 downloads::download_clear_prepare,
                 downloads::download_clear_discard,
                 downloads::download_command,

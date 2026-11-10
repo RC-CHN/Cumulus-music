@@ -533,6 +533,9 @@ export function createTauriClient(): CoreClient {
       invoke('download_collect_cancel', { epoch, receipt }),
     downloadQualityPreferences: (epoch, refresh) =>
       invoke('download_quality_preferences', { epoch, refresh }),
+    downloadVoicePrepare: (epoch, voiceIds) =>
+      invoke('download_voice_prepare', { epoch, voiceIds }),
+    downloadVoiceDiscard: (epoch, receipt) => invoke('download_voice_discard', { epoch, receipt }),
     downloadClearPrepare: (epoch) => invoke('download_clear_prepare', { epoch }),
     downloadClearDiscard: (epoch, receipt) => invoke('download_clear_discard', { epoch, receipt }),
     downloadCommand: (epoch, command) => invoke('download_command', { epoch, command }),

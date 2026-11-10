@@ -11,6 +11,7 @@ import type {
   DownloadQuery,
   DownloadResult,
   DownloadsView,
+  VoiceDownloadPreparation,
 } from '../services/downloads.ts';
 
 /** Polling projects native state. Transfers and recovery workers live in core. */
@@ -175,6 +176,30 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       if (version === generation) throw value;
     }
   }
+  async function discardVoice(plan: VoiceDownloadPreparation) {
+    if (!plan.receipt) return;
+    try {
+      await core.downloadVoiceDiscard(plan.epoch, plan.receipt);
+    } catch {
+      // Another visit may have retired this exact receipt.
+    }
+  }
+  async function prepareVoice(voiceIds: string[]) {
+    if (!epoch) return;
+    const captured = epoch,
+      current = captureVisit();
+    try {
+      const plan = await core.downloadVoicePrepare(captured, [...voiceIds]);
+      if (plan.epoch !== captured) return;
+      if (current()) return plan;
+      void discardVoice(plan);
+    } catch (value) {
+      if (current()) {
+        if (['session_expired', 'profile_changed'].includes(failure(value).code)) sessionChanged();
+        throw value;
+      }
+    }
+  }
   async function discardClear(plan: DownloadClearPlan) {
     if (!plan.receipt) return;
     try {
@@ -330,6 +355,8 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     notice,
     connect,
     qualityPreferences,
+    prepareVoice,
+    discardVoice,
     prepareClear,
     discardClear,
     refresh,

@@ -1,3 +1,5 @@
+#[path = "podcast_download/quality.rs"]
+mod quality;
 mod support;
 use cumulus_core::{
     account::AccountSession,

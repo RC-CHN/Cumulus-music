@@ -9,6 +9,7 @@ mod quality;
 mod resource;
 mod song_status;
 mod view;
+mod voice_quality;
 use super::MusicClient;
 use crate::{
     Error, Result,
@@ -37,6 +38,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Notify;
+pub use voice_quality::{VoiceDownloadConfirmation, VoiceDownloadPreparation};
 
 pub(in crate::client) use crate::download::service::GuardedSongBatch;
 
@@ -105,6 +107,7 @@ struct Host {
     jobs: Mutex<HashMap<String, Arc<LocalJob>>>,
     collect: Mutex<Option<collect::Visit>>,
     clear: Mutex<Option<clear::ClearVisit>>,
+    voice_quality: Mutex<voice_quality::Preparation>,
     collect_prepare: std::sync::atomic::AtomicU64,
 }
 struct Worker {
@@ -163,6 +166,7 @@ impl DownloadHost {
                 jobs: Mutex::new(HashMap::new()),
                 collect: Mutex::new(None),
                 clear: Mutex::new(None),
+                voice_quality: Mutex::new(voice_quality::Preparation::default()),
                 collect_prepare: std::sync::atomic::AtomicU64::new(0),
             }),
         }

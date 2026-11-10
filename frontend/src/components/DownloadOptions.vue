@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { qualities } from '../services/player';
-import type { DownloadOptions, DownloadQualityPreferences } from '../services/downloads';
+import type {
+  DownloadOptions,
+  DownloadQualityPreferences,
+  VoiceDownloadChoice,
+} from '../services/downloads';
 const model = defineModel<DownloadOptions>({ required: true });
 const props = defineProps<{
   voice?: boolean;
+  voiceChoices?: VoiceDownloadChoice[];
   settings?: boolean;
   qualitySettings?: DownloadQualityPreferences;
 }>();
@@ -60,7 +65,19 @@ const captions = {
       </div>
       <p v-if="retained" class="muted">保留已保存的音质：{{ retained }}</p>
     </template>
-    <label v-else
+    <fieldset v-else-if="voice && voiceChoices?.length" class="voice-download-quality-choices">
+      <legend>选择下载音质</legend>
+      <label v-for="choice in voiceChoices" :key="choice.quality" class="private-checkbox">
+        <input
+          type="radio"
+          name="voice-download-quality"
+          v-model="model.quality"
+          :value="choice.quality"
+        />
+        {{ choice.label }}
+      </label>
+    </fieldset>
+    <label v-else-if="!voice"
       >下载音质<select v-model="model.quality" aria-label="下载音质">
         <option v-for="quality in qualities" :key="quality.value" :value="quality.value">
           {{ quality.label }}
@@ -92,6 +109,14 @@ const captions = {
 </template>
 
 <style scoped>
+.voice-download-quality-choices {
+  display: grid;
+  gap: 4px;
+}
+.voice-download-quality-choices label {
+  justify-self: start;
+}
+
 .download-quality-choices {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr));

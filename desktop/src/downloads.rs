@@ -273,6 +273,50 @@ pub fn download_clear_discard<R: tauri::Runtime>(
         .download_clear_discard(&epoch, &receipt)
         .map_err(Into::into)
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct VoiceDownloadInput {
+    epoch: String,
+    voice_ids: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn download_voice_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    request: Request<'_>,
+) -> Result<VoiceDownloadPreparation, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("program download requires main window").into());
+    }
+    let invalid = || Error::InvalidInput("invalid program download selection");
+    let input = match request.body() {
+        InvokeBody::Json(body) if body.is_object() => {
+            VoiceDownloadInput::deserialize(body).map_err(|_| invalid())?
+        }
+        _ => return Err(invalid().into()),
+    };
+    client
+        .download_voice_prepare(&input.epoch, input.voice_ids)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn download_voice_discard<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("program download requires main window").into());
+    }
+    client
+        .download_voice_discard(&epoch, &receipt)
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn download_command<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
@@ -285,6 +329,9 @@ pub async fn download_command<R: tauri::Runtime>(
     }
     if matches!(command, DownloadCommand::ConfirmClear { .. }) && window.label() != "main" {
         return Err(Error::InvalidInput("download clearing requires main window").into());
+    }
+    if matches!(command, DownloadCommand::ConfirmVoice(_)) && window.label() != "main" {
+        return Err(Error::InvalidInput("program download requires main window").into());
     }
     client
         .download_command(&epoch, command)
