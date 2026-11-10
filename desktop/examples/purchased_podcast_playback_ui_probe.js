@@ -191,6 +191,10 @@
       inserted.queueRevision !== baseline.queueRevision &&
       same(inserted.rows, [...baseline.rows, { entryId: inserted.entryId, song: '182', voice: '82' }]),
     'only the clicked program is inserted after the old current, with all old entries retained');
+    await wait(() => title('82')?.getAttribute('aria-current') === 'true' &&
+      !title('81')?.hasAttribute('aria-current') &&
+      document.querySelectorAll('.purchase-row.current').length === 1,
+      'only the current purchased episode receives the playing accent');
 
     await doubleClick(() => title('82'), 'double-click same program to pause');
     assert((await expectSelection(3, '82')).reply?.playId === inserted.playId, 'pause acknowledges the same play ID');

@@ -389,6 +389,7 @@ const pending = props.model.pending;
         :model="model"
         :playable="playable && queueable"
         :compact="purchasesCompact"
+        :current-id="currentId"
         @comments="(id, title) => emit('comments', id, title)"
         @download="(episode, live, source) => emit('download', [episode], live, source)"
         @play="(epoch, target, live) => emit('purchasedPlay', epoch, target, live)"

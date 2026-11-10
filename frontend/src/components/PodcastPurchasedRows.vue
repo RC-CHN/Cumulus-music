@@ -6,7 +6,12 @@ import type { EpisodeView, PodcastPurchasedRow, PodcastPurchasedTarget } from '.
 import { playlistTableCount } from '../services/playlistHeader';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ model: PodcastModel; playable: boolean; compact: boolean }>();
+const props = defineProps<{
+  model: PodcastModel;
+  playable: boolean;
+  compact: boolean;
+  currentId?: string;
+}>();
 const emit = defineEmits<{
   comments: [id: string, title: string];
   download: [episode: EpisodeView, live: () => boolean, source: PodcastPurchasedTarget];
@@ -89,7 +94,10 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
         :key="key(row)"
         role="row"
         class="purchase-grid purchase-row"
-        :class="{ selected: selected === key(row) }"
+        :class="{
+          selected: selected === key(row),
+          current: row.kind === 'episode' && row.item.id === currentId,
+        }"
         :data-purchased-kind="row.kind"
         :data-purchased-id="row.item.id"
         :data-purchase-index="start + index"
@@ -122,6 +130,7 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
               type="button"
               class="text-button ellipsis"
               :aria-pressed="selected === key(row)"
+              :aria-current="row.item.id === currentId ? 'true' : undefined"
               :aria-keyshortcuts="playable && !row.item.unavailable ? 'Enter' : undefined"
               :disabled="loading"
               @click="selected = key(row)"
@@ -250,6 +259,14 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
   max-width: 100%;
   padding: 0;
   text-align: start;
+  color: var(--text);
+}
+.purchase-title .text-button[data-purchased-parent] {
+  color: var(--muted);
+}
+.purchase-row.current .purchase-title .text-button,
+.purchase-title .text-button:hover:not(:disabled) {
+  color: var(--accent);
 }
 .purchase-title > :first-child {
   font-size: 16px;
