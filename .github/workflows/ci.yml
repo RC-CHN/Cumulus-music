@@ -1702,6 +1702,8 @@ jobs:
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/queue_room_smoke.py --room-loss --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-loss-linux --screenshots
+          cargo build -p cumulus-desktop --example shared_queue_ui_probe --features custom-protocol --locked
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/together_external_selection_smoke.py --binary .build/target/debug/examples/shared_queue_ui_probe --root .build/ci-together-external-selection-linux --screenshots
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked

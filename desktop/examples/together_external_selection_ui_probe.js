@@ -22,6 +22,11 @@
   function check(value, label) {
     if (!value) throw Error(label);
   }
+  async function capture(stage, data) {
+    await report(stage, {screenX, screenY, ratio: devicePixelRatio, ...data});
+    if (window.__togetherExternalCaptureEnabled)
+      await wait(() => window.__togetherExternalCaptured === stage, `paint capture of ${stage}`);
+  }
   const same = (one, two) => JSON.stringify(one) === JSON.stringify(two);
   const dialog = () => one('dialog[open][data-together-external-selection]');
   let step = 'account';
@@ -56,7 +61,7 @@
       partial.state === 'paused' && same(await queue(), ['714', '715']), 'ordered visible result');
     await wait(() => one('.together-filtered-notice')?.textContent.includes('部分歌曲不支持一起听'),
       'official partial feedback rendered');
-    await report('external_partial', { kept: await queue(), playId: partial.playId, position: partial.position });
+    await capture('external_partial', { kept: await queue(), playId: partial.playId, position: partial.position });
 
     step = 'all unsupported, dismiss and confirm';
     for (const confirm of [false, true]) {
@@ -68,6 +73,17 @@
         (await player()).queueRevision === partial.queueRevision, 'nothing changed before consent');
       const action = button(confirm ? '结束一起听' : '取消', opened);
       check(action && (confirm || document.activeElement === action), 'dismiss is initially focused');
+      if (!confirm) {
+        const paint = await wait(() => {
+          const style = getComputedStyle(opened);
+          const rect = opened.getBoundingClientRect();
+          return style.opacity === '1' && rect.width > 0 &&
+            opened.getAnimations().every(a => !a.pending && a.playState !== 'running') &&
+            /^rgb\(\d+, \d+, \d+\)$/.test(style.backgroundColor) &&
+            [{x:rect.left+12, y:rect.top+28, color:style.backgroundColor}];
+        }, 'settled room confirmation surface');
+        await capture('external_prompt', {focused:action.textContent.trim(),paintSamples:paint});
+      }
       action.click();
       await wait(() => !dialog(), 'dialog closed');
       const currentRoom = await room();
@@ -75,7 +91,7 @@
       const incumbent = await player();
       check(incumbent.playId === paused.playId && incumbent.position === paused.position &&
         same(await queue(), ['714', '715']), 'blocked input never replays');
-      await report(confirm ? 'external_ended' : 'external_dismissed', { roomOpen: !!currentRoom.room, state: incumbent.state });
+      await capture(confirm ? 'external_ended' : 'external_dismissed', { roomOpen: !!currentRoom.room, state: incumbent.state });
     }
     await report('complete', { ok: true, fixture: 'external selection' });
   } catch (error) {
