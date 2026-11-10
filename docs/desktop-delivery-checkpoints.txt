@@ -1,4 +1,4 @@
-Cumulus 桌面交付证据（2026-11-09 开发快照）
+Cumulus 桌面交付证据（更新于 2026-11-10）
 
 产品范围与复现入口
   目标是 Linux x86_64、Windows x86_64，见 AGENTS.md；本轮没有 macOS
@@ -19,6 +19,28 @@ Cumulus 桌面交付证据（2026-11-09 开发快照）
   - 安装发行：只接受目标提交的 GitHub CI gate、该次运行及 attempt 的
     Linux/Windows 产物和清单，以及后续唯一空发布标记的独立 CI 和 CD。开发可执行
     文件、可运行探针、另一提交的成功包均不能当作候选发行。
+
+已发布的 0.2.0-rc.2
+  - https://github.com/RC-CHN/Cumulus-music/releases/tag/v0.2.0-rc.2 是预发布。
+    唯一空发布标记为 5aaf68461287d3a1da8d5fffbfe059dfede1ce12，
+    对应完整 CI 42740549536 第 1 次运行，门禁耗时 40 分 39 秒；CD
+    42745279425 从该次运行获取 Linux/Windows 产物并生成发布校验和。
+    发布附件包含 Debian、Linux 便携、Windows 安装程序和 Windows 便携包。
+  - 在本机从发布页下载后核对 SHA256SUMS 及 CI manifest，实际运行发布的
+    Linux .deb（不安装到系统）和它自带的 FLAC 1.5.0。包 SHA-256 为
+    eb22566e122b4f4fea4c359ea06c39e21c1ebcdf036807b8ae0d18ab3fe8dea1。
+    无外部网络的 X11 真窗口中，导入合成源后，原生时间从 1.153 推进到
+    2.305 秒；私有 PipeWire 输出播放时有 PCM，暂停时 RMS 为零。报告、
+    校验和、发布来源与五张截图位于 .build/ui-proof/phase255-published-rc2/。
+    Windows 证据来自该次 CI 的真实 runner，Linux 本机实验不代表实体声卡。
+  - 后续候选 d0559518d805f9a943656dfd1cb61696275d7464 不属于 RC.2 附件。
+    该树用同一份真实 Linux WebView 构建通过六条搜索下载路径的 60 个截图
+    状态；普通下载去重另外通过 13 次可信点击、14 张 PNG。错误音质不重开
+    已有任务，已完成歌曲不再授权；另一首新歌实际发布合成 FLAC。生产前端
+    1061 项测试、类型与构建，相关 Rust 651 项测试均已通过。回执见
+    .build/ui-proof/phase254-download-combined/receipt.json 与
+    .build/ui-proof/phase254-ordinary-download-admission/report.json。
+    这批验证使用合成账号和媒体，不代表真实账号资源已修改或 Windows 桌面已复验。
 
 可检查的源码快照
   - 主线 `45b208e42dba6364e73cc90317fad19fe8d4d853`：普通 Linux
