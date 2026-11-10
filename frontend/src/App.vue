@@ -3323,6 +3323,7 @@ function backFromPodcastDetail() {
 }
 const downloadDialog = ref<DownloadDialogTarget>();
 let settingsFocus: { epoch: string; route: Page; section: string } | undefined;
+const quickLoginGuide = shallowRef<{ epoch: string; route: Page }>();
 function focusSettingsSection() {
   if (
     settingsFocus?.route !== music.page.value ||
@@ -3348,6 +3349,7 @@ function openSettingsSection(
     | 'settings-audio-output'
     | 'settings-playback'
     | 'settings-privacy'
+    | 'settings-quick-login-guide'
     | 'settings-system-media',
 ) {
   if (epoch !== music.account.value.epoch) return;
@@ -3355,11 +3357,12 @@ function openSettingsSection(
   if (current.kind === 'settings' && !current.accountDetail) {
     settingsFocus = { epoch, route: current, section };
     revealSettingsSection();
-    return;
+    return current;
   }
   const route: Page = { kind: 'settings' };
   settingsFocus = { epoch, route, section };
   music.navigate(route);
+  return route;
 }
 function dailyNotificationDetails(epoch: string, playlistId: string | null) {
   if (epoch !== music.account.value.epoch) return;
@@ -3378,6 +3381,7 @@ watch(music.page, (next) => {
   if (settingsFocus?.route === next && settingsFocus.epoch === music.account.value.epoch)
     revealSettingsSection();
   else settingsFocus = undefined;
+  if (quickLoginGuide.value?.route !== next) quickLoginGuide.value = undefined;
 });
 function openCurrentDownload(target: CurrentPlaybackDownload) {
   const current = currentPlaybackDownload(player.view.value);
@@ -4738,6 +4742,21 @@ const accountFocus = useModalOrigin(
   () => loginOpen.value || accountsOpen.value,
   () => document.querySelector<HTMLElement>('.account-button'),
 );
+let pendingQuickLoginSettings: { epoch: string; origin: Page } | undefined;
+function requestQuickLoginSettings(epoch: string) {
+  if (account.value.status !== 'authenticated' || account.value.epoch !== epoch) return;
+  pendingQuickLoginSettings = { epoch, origin: page.value };
+  accountsOpen.value = false;
+}
+function accountDialogLeft() {
+  accountFocus.restoreIfUnowned();
+  flushQuickOfferReload();
+  const request = pendingQuickLoginSettings;
+  pendingQuickLoginSettings = undefined;
+  if (!request || page.value !== request.origin || account.value.status !== 'authenticated') return;
+  const route = openSettingsSection(request.epoch, 'settings-quick-login-guide');
+  if (route) quickLoginGuide.value = { epoch: request.epoch, route };
+}
 // A successful login can close its dialog while account bootstrap still
 // disables the original page button. Recover only unowned focus after the
 // current bootstrap finishes; never steal it from another modal or control.
@@ -6165,8 +6184,12 @@ onUnmounted(() => {
                 :publication="publication"
                 :account="account"
                 :account-detail="page.accountDetail"
+                :quick-login-guide="
+                  quickLoginGuide?.route === page && quickLoginGuide.epoch === account.epoch
+                "
                 @login="loginOpen = true"
                 @accounts="accountsOpen = true"
+                @quick-login-enabled="quickLoginGuide = undefined"
                 @blacklist-profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @blacklist-updated="profileBlacklistUpdated"
                 @downloads="music.navigate({ kind: 'downloads' })"
@@ -7616,10 +7639,7 @@ onUnmounted(() => {
     <ModalTransition
       :return-focus="accountFocus.returnFocus"
       :fallback-focus="accountFocus.fallbackFocus"
-      @left="
-        accountFocus.restoreIfUnowned();
-        flushQuickOfferReload();
-      "
+      @left="accountDialogLeft"
     >
       <AccountDialog
         v-if="accountsOpen"
@@ -7627,6 +7647,7 @@ onUnmounted(() => {
         @close="accountsOpen = false"
         @changed="authorized"
         @profile-shortcut="openMyProfile"
+        @quick-login-settings="requestQuickLoginSettings"
         @listening-rank="
           accountsOpen = false;
           music.navigate({ kind: 'profile_play_record', uid: null, name: '', period: 'week' });

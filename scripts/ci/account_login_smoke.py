@@ -296,6 +296,9 @@ def main():
             'quick_offer_off_dark', 'quick_offer_on_dark', 'quick_offer_invalidated_dark', 'quick_offer_disabled_dark'))
         assert offer_off['savedAccounts'] == offer_on['savedAccounts'] == revoked['savedAccounts'] == offer_disabled['savedAccounts']
         assert offer_off['nativeAccount']['epoch'] == revoked['nativeAccount']['epoch']
+        assert offer_off['switchGuidance'] == '使用“切换账号”功能需先开启“快速登录”'
+        assert all(offer_off['fixture']['paths'].get(path, 0) == 0 for path in (
+            '/api/login/getquickloginlist', '/api/login/quicklogin', '/api/login/switchuser'))
         assert revoked['fixture']['paths']['/api/login/getquickloginlist'] == 1
         for endpoint in ('/api/w/v1/user/bindings/2', '/api/w/v1/user/detail/2',
                          '/api/music-vip-membership/client/vip/info', '/api/authentication/identity/user/all'):

@@ -6,7 +6,7 @@ import { useCore } from '../../services/core';
 import { onQuickOfferReload } from '../../composables/quickOfferReload';
 
 const props = defineProps<{ epoch: string }>();
-const emit = defineEmits<{ accounts: [] }>();
+const emit = defineEmits<{ accounts: []; enabled: [] }>();
 const core = useCore();
 const offer = shallowRef<QuickLoginOffer>();
 const busy = ref(false);
@@ -52,7 +52,10 @@ async function change() {
   notice.value = '';
   try {
     const result = await core.setQuickLoginOffer(epoch, !before.enabled, before.revision);
-    if (current() && result.epoch === epoch) offer.value = result.value;
+    if (current() && result.epoch === epoch) {
+      offer.value = result.value;
+      if (result.value.enabled) emit('enabled');
+    }
   } catch (error) {
     if (!current()) return;
     notice.value = failure(error).message;

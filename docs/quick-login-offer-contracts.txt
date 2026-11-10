@@ -20,6 +20,12 @@
   {expNames:"PH-PC-quickLoginSwitchAccountNew"}；缺失、冲突和失败不开放入口。
   设置和选择器只收到 assigned、enabled 和不透明版本。执行服务端资格、快捷
   登录或切换之前原生再查；未分组不构造快捷历史、不发资格或交换请求。
+- UserInfoBar/index.jsx 的 showFastLogin 和 view/popover-content.jsx 的
+  handleSwitchAccount：同一分组内，开关关闭时仍保留「切换账号」，提示
+  「使用“切换账号”功能需先开启“快速登录”」并进入设置。Cumulus 等账号窗口
+  完全退出，再导航到当前账号设置并聚焦同文案；提示放在快速登录控件旁，不开启
+  开关、不查服务端资格或发起切换。只有已知为关闭的当前账号才显示这个入口；
+  分组未知或账号已切换时不采用旧结果。本机账号恢复和访客入口不变。
 - 启用前核对当前原生会话与选中的保存账号；POST /api/w/v1/user/bindings/{uid}
   {userId} 后并行 POST /api/w/v1/user/detail/{uid} {all:true,userId}、
   /api/music-vip-membership/client/vip/info {userId}、

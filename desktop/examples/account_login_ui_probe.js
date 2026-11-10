@@ -1303,13 +1303,23 @@
     await mode("quick_offer");
     click(button("返回上一页"));
     await wait(() => !one("#settings-account"), "control settings closed");
-    click(button("打开设置"));
+    await chooser();
+    const switchSettings = () => one('[data-testid="quick-login-switch-settings"]');
+    await wait(switchSettings, "assigned account with disabled offer still has the switch entry");
+    assert(!one('[data-testid="quick-login-eligibility-check"]'), "disabled offer cannot query server eligibility");
+    click(switchSettings());
+    const switchGuide = () => one('#settings-quick-login-guide');
+    await wait(() => !one("dialog") && switchGuide() && document.activeElement === switchGuide(),
+      "switch without permission opens and focuses the account setting guidance");
+    const switchGuidance = switchGuide().textContent.trim();
+    assert(switchGuidance === '使用“切换账号”功能需先开启“快速登录”', "official switch guidance");
     await showOffer();
     assert(!offerBox().checked && !button("切换账号列表 ›"), "ordinary QR did not enroll");
-    await stage("quick_offer_off_dark", { expectNickname: "邮箱验证账号" });
+    await stage("quick_offer_off_dark", { expectNickname: "邮箱验证账号", switchGuidance });
     click(offerBox());
     await wait(() => offerBox()?.checked && offerBox().getAttribute("aria-disabled") === "false",
       "offer explicitly enabled");
+    assert(!switchGuide(), "explicit enable removes the disabled switch guidance");
     await stage("quick_offer_on_dark", { expectNickname: "邮箱验证账号" });
     click(button("切换账号列表 ›"));
     await wait(() => one(".account-dialog") && one('[data-testid="quick-login-eligibility-check"]'),

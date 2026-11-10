@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import { failure } from '../services/contracts';
-import type { SavedAccount } from '../services/auth';
+import type { QuickLoginAccess, SavedAccount } from '../services/auth';
 import { useCore } from '../services/core';
 import { useLogin } from '../composables/useLogin';
 import { useQuickLoginEligibility } from '../composables/useQuickLoginEligibility';
@@ -20,6 +20,7 @@ const emit = defineEmits<{
   login: [];
   changed: [];
   listeningRank: [];
+  quickLoginSettings: [epoch: string];
   profileShortcut: [kind: 'notes' | 'following' | 'followers'];
 }>();
 const profileCount = new Intl.NumberFormat('zh-CN', { notation: 'compact' });
@@ -66,13 +67,20 @@ function checkEligibility(event: MouseEvent) {
   mayHaveChangedOffer = true;
   void actionFocus.run(event, quick.check);
 }
-const quickAssigned = ref(false);
+const quickAccess = shallowRef<QuickLoginAccess>();
+const quickAssigned = computed(
+  () =>
+    quickAccess.value?.assigned && (!activeEpoch() || quickAccess.value.offer?.enabled === true),
+);
+const quickSettingsNeeded = computed(
+  () =>
+    !!activeEpoch() && quickAccess.value?.assigned && quickAccess.value.offer?.enabled === false,
+);
 async function loadQuickAssignment() {
   try {
     const reply = await core.quickLoginAccess(epoch);
     if (alive && props.account.epoch === epoch && reply.epoch === epoch)
-      quickAssigned.value =
-        reply.value.assigned && (!activeEpoch() || reply.value.offer?.enabled === true);
+      quickAccess.value = reply.value;
   } catch {
     // Closed gate leaves the local account list usable.
   }
@@ -114,6 +122,11 @@ function deactivate() {
 function login() {
   deactivate();
   emit('login');
+}
+function openQuickLoginSettings() {
+  if (!alive || !quickSettingsNeeded.value || busy.value || leaving.value || removing.value) return;
+  deactivate();
+  emit('quickLoginSettings', epoch);
 }
 useConfirmationFocus(
   dialog,
@@ -450,6 +463,16 @@ onBeforeUnmount(() => {
           <p v-if="uncheckedCount">其余本机记录未核对。</p>
         </template>
       </section>
+      <button
+        v-else-if="quickSettingsNeeded"
+        class="text-button"
+        type="button"
+        data-testid="quick-login-switch-settings"
+        :disabled="busy || leaving || removing"
+        @click="openQuickLoginSettings"
+      >
+        切换账号
+      </button>
       <button
         v-if="account.status === 'authenticated'"
         class="text-button"

@@ -51,10 +51,12 @@ const props = defineProps<{
   relay: RelayModel;
   publication: RelayPublicationModel;
   accountDetail?: AccountDetailKind;
+  quickLoginGuide?: boolean;
 }>();
 const emit = defineEmits<{
   login: [];
   accounts: [];
+  quickLoginEnabled: [];
   downloads: [];
   accountDetail: [kind: AccountDetailKind];
   blacklistProfile: [id: string];
@@ -331,11 +333,21 @@ function accept(op: SettingsOperation) {
               </button>
             </template>
           </div>
+          <p
+            v-if="quickLoginGuide && account.status === 'authenticated'"
+            id="settings-quick-login-guide"
+            class="settings-note"
+            role="status"
+            tabindex="-1"
+          >
+            使用“切换账号”功能需先开启“快速登录”
+          </p>
           <QuickLoginOffer
             v-if="account.status === 'authenticated'"
             :key="account.epoch"
             :epoch="account.epoch"
             @accounts="emit('accounts')"
+            @enabled="emit('quickLoginEnabled')"
           />
         </div>
       </section>
