@@ -794,9 +794,17 @@ fn main() {
     let program_menu = std::env::var("CUMULUS_PODCAST_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
     let recent_program_menu =
         std::env::var("CUMULUS_PODCAST_RECENT_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
-    let purchased_proof = std::env::var("CUMULUS_PODCAST_PURCHASED_PROOF").as_deref() == Ok("1");
+    let purchased_download_proof =
+        std::env::var("CUMULUS_PODCAST_PURCHASED_PROOF").as_deref() == Ok("1");
+    let purchased_playback_proof =
+        std::env::var("CUMULUS_PODCAST_PURCHASED_PLAYBACK_PROOF").as_deref() == Ok("1");
+    let purchased_proof = purchased_download_proof || purchased_playback_proof;
     assert!(
-        u8::from(program_menu) + u8::from(recent_program_menu) + u8::from(purchased_proof) <= 1
+        u8::from(program_menu)
+            + u8::from(recent_program_menu)
+            + u8::from(purchased_download_proof)
+            + u8::from(purchased_playback_proof)
+            <= 1
     );
     let recommendations_enabled =
         std::env::var("CUMULUS_PODCAST_RECOMMENDATIONS_PROOF").as_deref() == Ok("1");
@@ -946,8 +954,11 @@ fn main() {
             )
             .unwrap()
         });
-    let purchased =
-        purchased_proof.then(|| Arc::new(purchased_podcast_fixture::Fixture::default()));
+    let purchased = purchased_proof.then(|| {
+        Arc::new(purchased_podcast_fixture::Fixture::new(
+            purchased_playback_proof,
+        ))
+    });
     let api = Arc::new(Library {
         progress_enabled,
         program_menu,
@@ -995,7 +1006,7 @@ fn main() {
     if let Some(backend) = purchased {
         client = client.with_download_backend(backend);
     }
-    if voice_song_download_case.is_some() || purchased_proof {
+    if voice_song_download_case.is_some() || purchased_download_proof {
         fs::create_dir(&synthetic_download_root).unwrap();
     }
     let mut context = assets::context();
@@ -1007,7 +1018,9 @@ fn main() {
         || {
             if player_resume_proof {
                 include_str!("player_podcast_resume_ui_probe.js").to_owned()
-            } else if purchased_proof {
+            } else if purchased_playback_proof {
+                include_str!("purchased_podcast_playback_ui_probe.js").to_owned()
+            } else if purchased_download_proof {
                 include_str!("purchased_podcast_ui_probe.js").to_owned()
             } else if recent_program_menu {
                 include_str!("podcast_recent_program_menu_ui_probe.js").to_owned()
@@ -1277,7 +1290,7 @@ fn main() {
                         json!(case), json!(synthetic_download_root)
                     )).unwrap();
                 }
-                if purchased_proof {
+                if purchased_download_proof {
                     view.eval(format!("window.__purchasedPodcastRoot = {};", json!(synthetic_download_root))).unwrap();
                 }
                 view.eval(&source).unwrap();

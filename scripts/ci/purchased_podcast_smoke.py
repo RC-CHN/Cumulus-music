@@ -15,6 +15,7 @@ from window_manager import launch
 
 STAGES = ('mixed', 'selected', 'radio', 'parent', 'denied', 'more', 'ready',
           'cancelled', 'confirm', 'published')
+PLAYBACK_STAGES = ('baseline', 'radio_rejected', 'denied', 'inserted', 'paused', 'resumed')
 BOUGHT = '/api/voicelist/bought/list'
 RADIO = '/api/djradio/v3/get'
 PROGRAMS = '/api/v6/dj/program/byradio'
@@ -23,6 +24,8 @@ RIGHTS = '/api/dj/voices/download/check'
 OPTIONS = '/api/dj/program/song/musics'
 DETAIL = '/api/dj/program/detail'
 URL = '/api/song/enhance/download/url/v1'
+PLAY_RIGHTS = '/api/dj/play/url/check'
+PLAY_URL = '/api/song/enhance/player/url/v1'
 ORDER = ['radio:81', 'episode:81', 'episode:82']
 CHOICES = [['standard', '普通（1.0M）', True], ['higher', '较高（2.0M）', False]]
 SOURCE = Path(__file__).resolve().parents[2] / 'core/tests/fixtures/tag_audio/seed.mp3'
@@ -104,6 +107,96 @@ def verify(root, capture):
                 realMusicRequests=0, realAccountWrites=0, mediaGets=trace['mediaGets'])
 
 
+def verify_playback(root, capture):
+    output = root / 'run/first'
+    complete = read(output / 'complete.json')
+    assert complete['ok'] and complete['stageCount'] == len(PLAYBACK_STAGES), complete
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    paths = sorted(output.glob('ux_*.json'))
+    assert [p.stem for p in paths] == [
+        f'ux_{i:02}_{name}' for i, name in enumerate(PLAYBACK_STAGES, 1)
+    ]
+    stages = dict(zip(PLAYBACK_STAGES, map(read, paths), strict=True))
+    assert all(s['actual'] and s['visibleRows'] == ORDER and s['directCount'] == 0
+               and s['purchasedTrace']['mediaGets'] == 0 for s in stages.values()), stages
+    assert complete['purchasedTrace']['mediaGets'] == 0
+    revision = stages['baseline']['pageRevision']
+    assert len(revision) == 64 and all(s['pageRevision'] == revision for s in stages.values())
+    assert stages['baseline']['replaceQueue'] and stages['baseline']['singleClickSelected']
+    assert stages['radio_rejected']['radioError'] == 'invalid_input'
+
+    native = {name: stage['native'] for name, stage in stages.items()}
+    old, current = native['baseline'], native['inserted']
+    assert old['kind'] == 'catalog' and old['song'] == '2' and old['voice'] is None
+    assert old['playId'] and old['entryId'] == old['current'] == old['rows'][1]['entryId']
+    assert old['position'] > .2 and old['mode'] == 'single_loop'
+    assert [r['song'] for r in old['rows']] == ['1', '2', '3']
+    assert all(r['voice'] is None for r in old['rows'])
+    stable = ('song', 'voice', 'kind', 'entryId', 'playId', 'queueRevision', 'current', 'rows', 'mode')
+    for name in ('baseline', 'radio_rejected', 'denied'):
+        assert native[name]['state'] == 'paused'
+        assert all(native[name][key] == old[key] for key in stable), native
+    assert current['kind'] == 'voice' and current['song'] == '182' and current['voice'] == '82'
+    assert current['playId'] and current['playId'] != old['playId']
+    assert current['queueRevision'] != old['queueRevision']
+    assert current['entryId'] == current['current'] and current['mode'] == old['mode']
+    assert current['position'] > .2
+    assert current['rows'] == [*old['rows'][:2], {
+        'entryId': current['entryId'], 'song': '182', 'voice': '82',
+    }, *old['rows'][2:]]
+    assert len({r['entryId'] for r in current['rows']}) == 4
+    for name, state in [('inserted', 'playing'), ('paused', 'paused'), ('resumed', 'playing')]:
+        assert native[name]['state'] == state
+        assert all(native[name][key] == current[key] for key in stable), native
+    assert native['paused']['position'] >= current['position']
+    assert native['resumed']['position'] > native['paused']['position'] + .1
+
+    final = stages['resumed']
+    for name, count in zip(PLAYBACK_STAGES, (0, 0, 1, 2, 3, 4), strict=True):
+        assert stages[name]['preparations'] == final['preparations'][:count]
+        assert stages[name]['selections'] == final['selections'][:count]
+    assert len(final['preparations']) == len(final['selections']) == 4
+    for prepared, selection, source, voice in zip(
+        final['preparations'], final['selections'], (old, old, current, current),
+        ('81', '82', '82', '82'), strict=True,
+    ):
+        assert prepared == {
+            'owner': selection['owner'], 'playId': source['playId'],
+            'queueRevision': source['queueRevision'],
+        }
+        assert selection['kind'] == 'podcast_purchased_episode'
+        assert selection['target'] == {'kind': 'episode', 'id': voice, 'revision': revision}
+        if voice == '81':
+            assert selection['error'] == 'unavailable' and 'reply' not in selection
+        else:
+            assert selection['reply']['playId'] == current['playId']
+            assert selection['reply']['entryId'] == current['entryId']
+            assert selection['reply']['queueRevision'] == current['queueRevision']
+
+    def playback_url(id_):
+        return [PLAY_URL, {'ids': json.dumps([id_]), 'level': 'standard', 'encodeType': 'aac',
+                           'immerseType': 'c51', 'trialMode': -1}]
+
+    wire_old = [[BOUGHT, {'limit': 20, 'offset': 0}], playback_url('2')]
+    wire_denied = [*wire_old, [DETAIL, {'id': '81'}], [PLAY_RIGHTS, {'voiceId': '81'}]]
+    wire_allowed = [
+        *wire_denied, [DETAIL, {'id': '82'}], [PLAY_RIGHTS, {'voiceId': '82'}], playback_url('182'),
+    ]
+    for name, wire in zip(PLAYBACK_STAGES, (wire_old, wire_old, wire_denied,
+                                           wire_allowed, wire_allowed, wire_allowed), strict=True):
+        assert stages[name]['purchasedTrace']['calls'] == wire, stages[name]['purchasedTrace']
+    assert complete['purchasedTrace']['calls'] == wire_allowed
+    if sys.platform == 'linux':
+        locale = read(output / 'locale.json')
+        assert locale['numeric'] == 'C' and all(locale[key] != 'C' for key in ('messages', 'characters'))
+    pngs = sorted(output.glob('ux_*.png'))
+    assert [p.stem for p in pngs] == ([p.stem for p in paths] if capture else [])
+    return dict(ok=True, actualWebView=True, stages=list(PLAYBACK_STAGES), screenshots=len(pngs),
+                syntheticVoice='82', syntheticMedia='182', preservedQueue=['1', '2', '182', '3'],
+                playUrlRequests=2, programEntitlementRequests=2,
+                realMusicRequests=0, realAccountWrites=0)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
@@ -112,6 +205,7 @@ def main():
     parser.add_argument('--runtime', type=Path, help='packaged Windows native runtime directory')
     parser.add_argument('--script', type=Path, help='replace only the embedded synthetic driver')
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--playback', action='store_true', help='prove purchased episode playback, not downloads')
     args = parser.parse_args()
     if sys.platform not in ('linux', 'win32') or (args.screenshots and sys.platform != 'linux'):
         parser.error('use Linux X11 or Windows; screenshots require X11')
@@ -129,8 +223,9 @@ def main():
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_PODCAST_PURCHASED_PROOF='1',
-               CUMULUS_PROOF_FRONTEND_DIST=str(dist))
+    env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_PROOF_FRONTEND_DIST=str(dist))
+    env['CUMULUS_PODCAST_PURCHASED_PLAYBACK_PROOF' if args.playback else
+        'CUMULUS_PODCAST_PURCHASED_PROOF'] = '1'
     if sys.platform == 'linux':
         env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
     if runtime:
@@ -146,7 +241,7 @@ def main():
     failed = output / 'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, (root / 'host.log').read_text(encoding='utf-8')
-    report = verify(root, args.screenshots)
+    report = (verify_playback if args.playback else verify)(root, args.screenshots)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

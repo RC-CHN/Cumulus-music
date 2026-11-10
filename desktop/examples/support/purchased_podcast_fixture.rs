@@ -17,21 +17,30 @@ const MEDIA: &str = "https://m1.music.126.net/cumulus-purchased-episode-fixture.
 pub struct Fixture {
     calls: Mutex<Vec<Value>>,
     gets: AtomicUsize,
+    playback: bool,
 }
 
 fn radio(id: u64, name: &str) -> Value {
     json!({"id":id,"name":name,"programCount":0,"subed":false})
 }
 
-fn episode(id: u64) -> Value {
+fn episode(id: u64, playback: bool) -> Value {
+    let duration = if playback { 30_000 } else { 1_000 };
     json!({
         "productType":1,"id":id,"name":format!("合成已购单集 {id}"),"programFeeType":10,"buyed":true,
-        "mainSong":{"id":100+id,"duration":1000},"duration":1000,"displayStatus":"NORMAL",
+        "mainSong":{"id":100+id,"duration":duration},"duration":duration,"displayStatus":"NORMAL",
         "radio":radio(71,"合成所属播单 71")
     })
 }
 
 impl Fixture {
+    pub fn new(playback: bool) -> Self {
+        Self {
+            playback,
+            ..Self::default()
+        }
+    }
+
     pub fn response(&self, path: &str, args: &Value, cache: bool) -> Option<Result<Value>> {
         let value = match path {
             "/api/voicelist/bought/list" => {
@@ -39,7 +48,8 @@ impl Fixture {
                     let mut own = radio(81, "合成已购播单 81");
                     own["productType"] = json!(0);
                     json!({"code":200,"data":{"count":5,"hasMore":true,"list":[
-                        own,episode(81),{"productType":7,"id":95,"name":"未知产品 95"},episode(82)
+                        own,episode(81,self.playback),{"productType":7,"id":95,"name":"未知产品 95"},
+                        episode(82,self.playback)
                     ]}})
                 } else {
                     assert_eq!(args, &json!({"limit":20,"offset":20}));
@@ -64,6 +74,47 @@ impl Fixture {
             "/api/dj/user/setting/resumeplay/get" => {
                 assert!(matches!(args["radioId"].as_str(), Some("81" | "71")));
                 json!({"code":200,"data":{"resumePlayValue":0}})
+            }
+            "/api/dj/program/detail" if self.playback => {
+                let id = match args["id"].as_str() {
+                    Some("81") => 81,
+                    Some("82") => 82,
+                    _ => panic!("synthetic purchase resolved an unrelated program"),
+                };
+                assert_eq!(args, &json!({"id":id.to_string()}));
+                json!({"code":200,"program":episode(id,true)})
+            }
+            "/api/dj/play/url/check" if self.playback => match args["voiceId"].as_str() {
+                Some("81") => {
+                    assert_eq!(args, &json!({"voiceId":"81"}));
+                    json!({"code":200,"data":{"voiceId":81,"canPlay":false}})
+                }
+                Some("82") => {
+                    assert_eq!(args, &json!({"voiceId":"82"}));
+                    json!({"code":200,"data":{"voiceId":82,"canPlay":true,"songId":182}})
+                }
+                _ => panic!("synthetic purchase authorized an unrelated program"),
+            },
+            "/api/song/enhance/player/url/v1" if self.playback => {
+                let id = match args["ids"].as_str() {
+                    Some(r#"["2"]"#) => "2",
+                    Some(r#"["182"]"#) => "182",
+                    _ => panic!("synthetic purchase requested media for an unrelated track"),
+                };
+                assert_eq!(
+                    args,
+                    &json!({"ids":format!(r#"["{id}"]"#),"level":"standard","encodeType":"aac",
+                        "immerseType":"c51","trialMode":-1})
+                );
+                json!({"code":200,"data":[{"id":id,"url":super::MEDIA,"code":200,
+                    "md5":"fixture","level":"standard","expi":120}]})
+            }
+            "/api/dj/voices/download/check"
+            | "/api/dj/program/song/musics"
+            | "/api/song/enhance/download/url/v1"
+                if self.playback =>
+            {
+                panic!("purchased playback must not trigger download: {path}");
             }
             "/api/dj/voices/download/check" => match args["voiceIdsStr"][0].as_str() {
                 Some("81") => {
@@ -91,7 +142,7 @@ impl Fixture {
             }
             "/api/dj/program/detail" => {
                 assert_eq!(args, &json!({"id":"82"}));
-                json!({"code":200,"program":episode(82)})
+                json!({"code":200,"program":episode(82,false)})
             }
             "/api/song/enhance/download/url/v1" => {
                 assert_eq!(
@@ -119,7 +170,11 @@ impl Fixture {
 impl MediaBackend for Fixture {
     fn get(&self, request: MediaRequest) -> ApiFuture<'_, MediaReply> {
         Box::pin(async move {
-            if request.url.as_str() != MEDIA || request.offset != 0 || request.if_range.is_some() {
+            if self.playback
+                || request.url.as_str() != MEDIA
+                || request.offset != 0
+                || request.if_range.is_some()
+            {
                 return Err(Error::State("purchased episode proof forbids other media"));
             }
             self.gets.fetch_add(1, Ordering::AcqRel);
