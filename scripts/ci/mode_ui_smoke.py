@@ -33,7 +33,11 @@ def main():
     for reopened,name,stages in [(False,'first',labels),(True,'reopen',reopened_labels)]:
         script=root/f'{name}.js';script.write_text('window.__modeReopen='+json.dumps(reopened)+';\n'+source.read_text(encoding='utf-8'),encoding='utf-8');env['CUMULUS_UX_SCRIPT']=str(script)
         if reopened:env['CUMULUS_PROOF_REOPEN']='1'
-        with (root/f'{name}.log').open('x',encoding='utf-8') as log:code=launch(args.binary.resolve(),env,log,root/name,args.screenshots)
+        # The pending stage must stay held until the host has sampled it.
+        # Await receipt acknowledgement on both platforms, even without PNGs.
+        with (root/f'{name}.log').open('x',encoding='utf-8') as log:
+            code=launch(args.binary.resolve(),env,log,root/name,args.screenshots,
+                        acknowledge_receipts=True)
         failed=root/name/'failed.json';assert not failed.exists(),failed.read_text(encoding='utf-8') if failed.exists() else ''
         assert code==0,f'mode UI exited {code}'
         complete=json.loads((root/name/'complete.json').read_text(encoding='utf-8'))
@@ -48,7 +52,11 @@ def main():
             assert after['syntheticMode']['fmReads']>before['syntheticMode']['fmReads']
         for i,label in enumerate(stages,1):
             path=root/name/f'ux_{i:02}_{label}.json';row=json.loads(path.read_text(encoding='utf-8'));native=row['nativePlayer']
-            assert row['contained'] and row['triggerHit'] and native['mode']==row['mode'] and native['fm']==row['fm']
+            assert row.get('captureHandshake') is True and path.with_suffix('.captured').is_file(), label
+            assert row['contained'], f'{label}: view outside bounds'
+            assert row['triggerHit'], f'{label}: mode trigger is not hittable'
+            assert native['mode']==row['mode'], f"{label}: DOM mode {row['mode']}; native {native['mode']}"
+            assert native['fm']==row['fm'], f"{label}: DOM FM {row['fm']}; native {native['fm']}"
             assert not native['error']
             if label in ('manual_previous_wrap','manual_next_wrap'):
                 assert native['mode']=='sequential' and native['track']['id']==row['edgeSongId']

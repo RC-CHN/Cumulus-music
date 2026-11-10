@@ -94,16 +94,20 @@ def paint_checks(picture, payload):
 
 
 def launch(binary, env, log, output, capture, *, before_ack=None, capture_glob='ux_*.json',
-           argv=()):
+           argv=(), acknowledge_receipts=False):
     command = [str(binary), *(os.fspath(value) for value in argv)]
-    if not capture:
-        if before_ack is not None:
-            raise ValueError('capture acknowledgement hook requires capture mode')
+    if not capture and before_ack is not None:
+        raise ValueError('capture acknowledgement hook requires capture mode')
+    if not capture and not acknowledge_receipts:
         return subprocess.run(command, env=env, stdout=log, stderr=log, timeout=180).returncode
+    # The native host already waits for this marker after writing its sample.
+    # When only receipt ordering matters, acknowledge without accessing GDK
+    # or taking screenshots (including on Windows).
     env = {**env, 'CUMULUS_PROOF_CAPTURE_ACK': '1'}
-    import gi
-    gi.require_version('Gdk', '3.0')
-    from gi.repository import Gdk
+    if capture:
+        import gi
+        gi.require_version('Gdk', '3.0')
+        from gi.repository import Gdk
     process = subprocess.Popen(command, env=env, stdout=log, stderr=log)
     seen = set()
     try:
@@ -118,26 +122,28 @@ def launch(binary, env, log, output, capture, *, before_ack=None, capture_glob='
                     payload = json.loads(path.read_text(encoding='utf-8'))
                 except json.JSONDecodeError:
                     continue  # The native writer may still be writing this stage.
-                window = Gdk.get_default_root_window()
-                started = time.monotonic()
-                while True:
-                    picture = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
-                    assert picture is not None
-                    checks = paint_checks(picture, payload)
-                    if all(check['ok'] for check in checks) or time.monotonic() - started >= 3:
-                        break
-                    time.sleep(.08)
-                picture.savev(str(path.with_suffix('.png')), 'png', [], [])
-                if checks:
-                    path.with_name('paint-' + path.name).write_text(json.dumps({
-                        'waitSeconds': time.monotonic() - started, 'samples': checks,
-                    }, indent=2) + '\n', encoding='utf-8')
-                    assert all(check['ok'] for check in checks), 'dialog compositor frame remained stale'
-                if before_ack is not None:
-                    before_ack(path, payload, process.pid)
-                path.with_suffix('.captured').write_text('captured\n', encoding='utf-8')
+                if capture:
+                    window = Gdk.get_default_root_window()
+                    started = time.monotonic()
+                    while True:
+                        picture = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
+                        assert picture is not None
+                        checks = paint_checks(picture, payload)
+                        if all(check['ok'] for check in checks) or time.monotonic() - started >= 3:
+                            break
+                        time.sleep(.08)
+                    picture.savev(str(path.with_suffix('.png')), 'png', [], [])
+                    if checks:
+                        path.with_name('paint-' + path.name).write_text(json.dumps({
+                            'waitSeconds': time.monotonic() - started, 'samples': checks,
+                        }, indent=2) + '\n', encoding='utf-8')
+                        assert all(check['ok'] for check in checks), 'dialog compositor frame remained stale'
+                    if before_ack is not None:
+                        before_ack(path, payload, process.pid)
+                path.with_suffix('.captured').write_text(
+                    'captured\n' if capture else 'native receipt recorded\n', encoding='utf-8')
                 seen.add(path)
-            time.sleep(.1)
+            time.sleep(.1 if capture else .025)
         return process.returncode
     finally:
         if process.poll() is None:
