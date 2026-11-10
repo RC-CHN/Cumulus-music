@@ -55,7 +55,7 @@ fn compatible(target: &Target, episode: &Episode) -> bool {
         })
 }
 
-fn resource(voice: &Episode) -> Result<Value> {
+pub(super) fn resource(voice: &Episode) -> Result<Value> {
     let mut resource = voice.playback_resource()?;
     resource["song"] = voice.download_metadata()?;
     resource["level"] = json!("standard");
@@ -358,7 +358,7 @@ impl MusicClient {
         ))
     }
 
-    async fn podcast_browse_position(
+    pub(super) async fn podcast_browse_position(
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,

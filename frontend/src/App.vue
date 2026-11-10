@@ -272,6 +272,7 @@ import {
   AUDIOBOOK_CATEGORY,
   type EpisodeView,
   type PodcastProgramTarget,
+  type PodcastPurchasedTarget,
   type PodcastRecentProgramTarget,
   type PodcastScope,
 } from './services/podcast';
@@ -1908,6 +1909,19 @@ watch(
 );
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
+}
+function playPurchasedProgram(epoch: string, target: PodcastPurchasedTarget, live: () => boolean) {
+  const valid = () =>
+    page.value.kind === 'podcasts' &&
+    account.value.epoch === epoch &&
+    target.kind === 'episode' &&
+    live();
+  if (!ordinaryVoiceQueueable.value || !valid()) return;
+  void player.prepareSelection(async (owner) => {
+    if (owner !== epoch || !valid())
+      throw { code: 'stale', message: '已购节目列表已更新', retryable: false };
+    return { kind: 'podcast_purchased_episode', target };
+  });
 }
 async function queuePodcastProgram(epoch: string, program: PodcastProgramTarget): Promise<boolean> {
   const snapshot = podcasts.page.value,
@@ -6419,6 +6433,7 @@ onUnmounted(() => {
                 :queue-recent-program="queueRecentProgram"
                 @back="backFromPodcastDetail"
                 @recent-program-play="playRecentProgram"
+                @purchased-play="playPurchasedProgram"
                 @play="playPodcast"
                 :current-radio-id="currentPodcastRadioId"
                 @recent-play="playRecentPodcast"

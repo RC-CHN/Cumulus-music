@@ -476,6 +476,9 @@ pub enum PlaySelection {
         #[serde(default)]
         double_click: bool,
     },
+    PodcastPurchasedEpisode {
+        target: crate::client::dto::PodcastPurchasedTarget,
+    },
     SearchResultVoice {
         id: String,
     },

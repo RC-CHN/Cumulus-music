@@ -38,6 +38,7 @@ const emit = defineEmits<{
   recommendedPlay: [id: string, action: PodcastRecommendationAction];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[], live?: () => boolean, purchased?: PodcastPurchasedTarget];
+  purchasedPlay: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
 }>();
 const { page, query, loading, busy, error, notice, operations, recentSelected } = props.model;
 const root = ref<HTMLElement>();
@@ -385,8 +386,10 @@ const pending = props.model.pending;
       <PodcastPurchasedRows
         v-if="scope.kind === 'purchased' && page?.purchases"
         :model="model"
+        :playable="playable && queueable"
         @comments="(id, title) => emit('comments', id, title)"
         @download="(episode, live, source) => emit('download', [episode], live, source)"
+        @play="(epoch, target, live) => emit('purchasedPlay', epoch, target, live)"
       />
       <div v-if="page?.cards.length" class="podcast-grid">
         <button

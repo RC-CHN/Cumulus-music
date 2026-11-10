@@ -7,6 +7,7 @@ use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::{MusicClient, dto::*},
     playback::{PlaybackMode, controller::PlaybackStatus},
+    podcast::{PodcastScope, PurchasedKind},
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -29,6 +30,8 @@ struct Fixture {
     credential: AtomicU64,
     hold_around: AtomicBool,
     hold_permission: AtomicBool,
+    deny_permission: AtomicU64,
+    purchase_revision_salt: AtomicU64,
     entered: Notify,
     released: Notify,
 }
@@ -62,6 +65,21 @@ impl Api for Fixture {
                 "/api/charts/voice" => json!({"code":200,"data":[
                     {"voiceMetaVO":episode(82)}, {"voiceMetaVO":episode(86)}, {"voiceMetaVO":episode(84)}
                 ]}),
+                "/api/voicelist/bought/list" => {
+                    assert_eq!(args, json!({"limit":20,"offset":0}));
+                    let mut first = episode(82);
+                    first["productType"] = json!(1);
+                    first["purchaseProof"] =
+                        json!(self.purchase_revision_salt.load(Ordering::SeqCst));
+                    let mut second = episode(83);
+                    second["productType"] = json!(1);
+                    json!({"code":200,"data":{"list":[
+                        {"id":82,"name":"Same id radio","productType":0}, first, second
+                    ],"count":3,"hasMore":false}})
+                }
+                "/api/content/my/liked/voice" => {
+                    json!({"code":200,"data":{"data":[],"hasMore":false}})
+                }
                 "/api/dj/around/program/v1" => {
                     assert_eq!(args, json!({"programId":"82","roundNum":250}));
                     assert!(!cached);
@@ -96,7 +114,8 @@ impl Api for Fixture {
                         self.entered.notify_one();
                         self.released.notified().await;
                     }
-                    json!({"code":200,"data":{"voiceId":id,"songId":id+100,"canPlay":true}})
+                    json!({"code":200,"data":{"voiceId":id,"songId":id+100,
+                        "canPlay":self.deny_permission.load(Ordering::SeqCst) != id}})
                 }
                 "/api/dj/user/setting/resumeplay/get" => {
                     json!({"code":200,"data":{"resumePlayValue":1}})
@@ -202,6 +221,157 @@ async fn old_selection(client: &MusicClient) -> PlayerView {
         .player_action("1", PlayerAction::Pause { paused: true })
         .await
         .unwrap()
+}
+
+async fn purchases(client: &MusicClient, refresh: bool) -> String {
+    client
+        .podcast_page(
+            "1",
+            PodcastQuery {
+                scope: PodcastScope::Purchased,
+                keyword: String::new(),
+                offset: 0,
+                limit: 50,
+                revision: None,
+            },
+            refresh,
+        )
+        .await
+        .unwrap()
+        .revision
+}
+
+async fn purchase_play(
+    client: &MusicClient,
+    revision: String,
+    id: &str,
+    kind: PurchasedKind,
+) -> Result<PlayerView> {
+    let state = client.player_snapshot("1").await?;
+    let ticket =
+        client.prepare_play_selection("1", &state.queue_revision, state.play_id.as_deref())?;
+    client
+        .commit_prepared_selection(
+            "1",
+            &ticket,
+            PlaySelection::PodcastPurchasedEpisode {
+                target: PodcastPurchasedTarget {
+                    kind,
+                    id: id.into(),
+                    revision,
+                },
+            },
+        )
+        .await
+}
+
+#[tokio::test]
+async fn bought_episode_selects_only_the_clicked_voice_and_retains_current_queue_policy() {
+    let (_root, api, _session, client) = fixture();
+    let old = old_selection(&client).await;
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let revision = purchases(&client, false).await;
+    api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        purchase_play(&client, revision.clone(), "82", PurchasedKind::Radio).await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(api.calls.lock().unwrap().is_empty());
+    api.deny_permission.store(83, Ordering::SeqCst);
+    assert!(
+        purchase_play(&client, revision.clone(), "83", PurchasedKind::Episode)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        client.player_snapshot("1").await.unwrap().play_id,
+        old.play_id
+    );
+    assert_eq!(queue(&client).await, ["80"]);
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(path, _)| path.contains("enhance/player"))
+    );
+
+    api.calls.lock().unwrap().clear();
+    let started = purchase_play(&client, revision.clone(), "82", PurchasedKind::Episode)
+        .await
+        .unwrap();
+    assert_eq!(started.state, PlaybackStatus::Playing);
+    assert_eq!(started.mode, PlaybackMode::Random);
+    let row = started.track.as_ref().unwrap();
+    assert_eq!(
+        (row.voice_id.as_deref(), row.id.as_str()),
+        (Some("82"), "182")
+    );
+    assert_eq!(queue(&client).await, ["80", "82"]);
+    let calls = std::mem::take(&mut *api.calls.lock().unwrap());
+    assert_eq!(
+        calls
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/dj/program/detail",
+            "/api/dj/play/url/check",
+            "/api/song/enhance/player/url/v1",
+        ]
+    );
+    assert_eq!(calls[1].1["voiceId"], "82");
+    assert_eq!(calls[2].1["ids"], "[182]");
+
+    let paused = purchase_play(&client, revision, "82", PurchasedKind::Episode)
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.play_id, started.play_id);
+    assert_eq!(paused.entry_id, started.entry_id);
+    assert_eq!(paused.position, started.position);
+    assert!(api.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_retired_purchase_list_cannot_submit_late_source_authorization() {
+    let (_root, api, _session, client) = fixture();
+    let old = old_selection(&client).await;
+    let revision = purchases(&client, false).await;
+    api.calls.lock().unwrap().clear();
+    api.hold_permission.store(true, Ordering::SeqCst);
+    let pending = tokio::spawn({
+        let client = client.clone();
+        let revision = revision.clone();
+        async move { purchase_play(&client, revision, "82", PurchasedKind::Episode).await }
+    });
+    tokio::time::timeout(Duration::from_secs(2), api.entered.notified())
+        .await
+        .unwrap();
+    api.purchase_revision_salt.store(1, Ordering::SeqCst);
+    assert_ne!(purchases(&client, true).await, revision);
+    api.released.notify_one();
+    assert!(pending.await.unwrap().is_err());
+    assert_eq!(
+        client.player_snapshot("1").await.unwrap().play_id,
+        old.play_id
+    );
+    assert_eq!(queue(&client).await, ["80"]);
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(path, _)| path.contains("enhance/player"))
+    );
 }
 
 #[tokio::test]

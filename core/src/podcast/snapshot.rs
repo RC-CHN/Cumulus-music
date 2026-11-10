@@ -14,6 +14,7 @@ use std::{collections::BTreeSet, sync::Arc};
 const CACHE: &str = "podcast-lists-v1";
 const VERSION: &str = "podcast-cache-generation-v1";
 const BADGE_OBSERVATION: &str = "podcast-badge-observation-v1";
+const PURCHASE_OBSERVATION: &str = "podcast-purchase-observation-v1";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PodcastScope {
@@ -172,6 +173,22 @@ impl PodcastLibrary {
             })
         })
     }
+    pub(crate) fn purchase_observation_is_current(
+        &self,
+        token: &SessionToken,
+        observed: &str,
+    ) -> Result<bool> {
+        self.session.with_token(token, |owner| {
+            self.store.read_snapshot(|tx| {
+                let generation = tx
+                    .get(owner, VERSION, "current")?
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                Ok(tx.get(owner, PURCHASE_OBSERVATION, "current")?
+                    == Some(json!([generation, observed])))
+            })
+        })
+    }
     pub async fn read_for(
         &self,
         token: &SessionToken,
@@ -194,7 +211,11 @@ impl PodcastLibrary {
             if snapshot.scope != *scope {
                 return Err(Error::State("podcast snapshot identity mismatch"));
             }
-            if snapshot.generation == version && snapshot.has_current_shape() {
+            if snapshot.generation == version
+                && snapshot.has_current_shape()
+                && (!matches!(scope, PodcastScope::Purchased)
+                    || self.purchase_observation_is_current(token, &snapshot.revision)?)
+            {
                 self.session.with_token(token, |_| Ok(()))?;
                 return Ok(snapshot);
             }
@@ -227,7 +248,7 @@ impl PodcastLibrary {
                         &json!([version, observed]),
                     )?;
                 }
-                tx.put(owner, CACHE, &key, &serde_json::to_value(&snapshot)?)
+                snapshot.persist(tx, owner, &key)
             })
         })?;
         Ok(snapshot)
@@ -279,7 +300,7 @@ impl PodcastLibrary {
                 if version != snapshot.generation {
                     return Err(Error::StaleResponse);
                 }
-                tx.put(owner, CACHE, &key, &serde_json::to_value(&snapshot)?)
+                snapshot.persist(tx, owner, &key)
             })
         })?;
         Ok(snapshot)
@@ -287,6 +308,18 @@ impl PodcastLibrary {
 }
 
 impl PodcastSnapshot {
+    fn persist(&self, tx: &mut StateTransaction<'_>, owner: &str, key: &str) -> Result<()> {
+        if matches!(self.scope, PodcastScope::Purchased) {
+            tx.put(
+                owner,
+                PURCHASE_OBSERVATION,
+                "current",
+                &json!([self.generation, self.revision]),
+            )?;
+        }
+        tx.put(owner, CACHE, key, &serde_json::to_value(self)?)
+    }
+
     fn has_current_shape(&self) -> bool {
         !matches!(self.scope, PodcastScope::Purchased) || self.purchases.is_some()
     }

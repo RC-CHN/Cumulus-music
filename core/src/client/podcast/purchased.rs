@@ -2,7 +2,7 @@ use super::{MusicClient, dto::*, view};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    podcast::{PodcastLibrary, PodcastScope, PurchasedItem, PurchasedKind},
+    podcast::{Episode, PodcastLibrary, PodcastScope, PurchasedItem, PurchasedKind},
     protocol::api::identifier,
     storage::OperationLock,
 };
@@ -69,6 +69,34 @@ fn cached_purchased_target(
     token: &SessionToken,
     target: &PodcastPurchasedTarget,
 ) -> Result<PodcastPurchasedRow> {
+    Ok(row(&cached_purchased_item(session, token, target)?, &[]))
+}
+
+pub(in crate::client) fn purchased_playback_episode(
+    session: &Arc<AccountSession>,
+    token: &SessionToken,
+    target: &PodcastPurchasedTarget,
+) -> Result<Episode> {
+    if target.kind != PurchasedKind::Episode {
+        return Err(Error::InvalidInput(
+            "purchased playback requires a program row",
+        ));
+    }
+    let item = cached_purchased_item(session, token, target)?;
+    match row(&item, &[]) {
+        PodcastPurchasedRow::Episode(view) if !view.unavailable => match item {
+            PurchasedItem::Episode(episode) => Ok(episode),
+            PurchasedItem::Radio(_) => Err(Error::QueueChanged),
+        },
+        _ => Err(Error::QueueChanged),
+    }
+}
+
+fn cached_purchased_item(
+    session: &Arc<AccountSession>,
+    token: &SessionToken,
+    target: &PodcastPurchasedTarget,
+) -> Result<PurchasedItem> {
     if target.id.len() > 32
         || identifier(&json!(target.id)).is_err()
         || target.revision.len() != 64
@@ -80,15 +108,13 @@ fn cached_purchased_target(
         .cached_for(token, &PodcastScope::Purchased)?
         .filter(|snapshot| snapshot.revision == target.revision)
         .ok_or(Error::QueueChanged)?;
-    let item = snapshot
+    snapshot
         .purchases
-        .as_ref()
         .and_then(|value| {
             value
                 .items
-                .iter()
+                .into_iter()
                 .find(|row| row.identity() == (target.kind, target.id.as_str()))
         })
-        .ok_or(Error::QueueChanged)?;
-    Ok(row(item, &[]))
+        .ok_or(Error::QueueChanged)
 }

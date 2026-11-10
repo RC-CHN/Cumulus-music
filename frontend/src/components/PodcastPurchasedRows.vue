@@ -6,10 +6,11 @@ import type { EpisodeView, PodcastPurchasedRow, PodcastPurchasedTarget } from '.
 import { time } from '../services/player';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ model: PodcastModel }>();
+const props = defineProps<{ model: PodcastModel; playable: boolean }>();
 const emit = defineEmits<{
   comments: [id: string, title: string];
   download: [episode: EpisodeView, live: () => boolean, source: PodcastPurchasedTarget];
+  play: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
 }>();
 const rows = computed(() => props.model.page.value?.purchases?.rows ?? []);
 const selected = ref('');
@@ -43,6 +44,18 @@ function download(row: PodcastPurchasedRow) {
   const source = props.model.capturePurchasedRow(row);
   if (source) emit('download', row.item, source.live, source.target);
 }
+function play(row: PodcastPurchasedRow, event: MouseEvent | KeyboardEvent) {
+  if (!props.playable || row.kind !== 'episode' || row.item.unavailable) return;
+  const source = props.model.capturePurchasedRow(row);
+  if (!source) return;
+  event.preventDefault();
+  selected.value = key(row);
+  emit('play', source.epoch, source.target, source.live);
+}
+function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
+  if (event.target instanceof Element && event.target.closest('button, a, input')) return;
+  play(row, event);
+}
 </script>
 
 <template>
@@ -66,6 +79,7 @@ function download(row: PodcastPurchasedRow) {
       :data-purchase-index="start + index"
       :aria-posinset="start + index + 1"
       :aria-setsize="rows.length"
+      @dblclick="playRow(row, $event)"
     >
       <img v-if="row.item.coverUrl" :src="row.item.coverUrl" alt="" referrerpolicy="no-referrer" />
       <span v-else class="purchase-placeholder"><Icon name="music" /></span>
@@ -84,8 +98,11 @@ function download(row: PodcastPurchasedRow) {
           type="button"
           class="text-button ellipsis"
           :aria-pressed="selected === key(row)"
+          :aria-keyshortcuts="playable && !row.item.unavailable ? 'Enter' : undefined"
           :disabled="loading"
           @click="selected = key(row)"
+          @dblclick.stop="play(row, $event)"
+          @keydown.enter="play(row, $event)"
         >
           {{ row.item.name }}
         </button>
