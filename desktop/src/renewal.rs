@@ -8,6 +8,9 @@ use cumulus_core::{
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 
+#[cfg(any(windows, test))]
+mod windows_focus;
+
 #[derive(Default)]
 pub(crate) struct RenewalPump {
     focus: Mutex<Foreground>,
@@ -79,6 +82,10 @@ pub fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     };
     if slot.is_some() {
         return;
+    }
+    #[cfg(windows)]
+    if windows_focus::install(app).is_err() {
+        eprintln!("Cumulus could not observe native window activation for session renewal.");
     }
     let foreground = host.foreground.clone();
     let policy = host.policy.clone();

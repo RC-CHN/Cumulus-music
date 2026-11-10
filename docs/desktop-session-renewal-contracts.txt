@@ -61,11 +61,15 @@ core/src/client/auth/renewal.rs 是宿主无关用例：原生配置 DeviceInfo/
 
 桌面与 UI
 生产 setup 配置 renewal::configure 并启动 RenewalPump。启动、账号变更和 30 分钟间隔只读
-更新登录实验；账号状态通知直接发布当前状态。主窗口真实 Focused(true) 事件（包括符合条件
+更新登录实验；账号状态通知直接发布当前状态。主窗口的原生前台事件（包括符合条件
 的首次原生 true）仅为当时已验证的登录 epoch 和已观察到的双 t1 排队自动检查；重复 true、
 已经失焦的积压事件、未决实验或不再当前的 epoch 不会派发。初次焦点早于身份或实验准备时
 不在后来补发该事件。显式检查和只读核对沿用原路径，旧版 20 小时续期不变。
 主窗口销毁中止任务；若请求已发则按持久日志恢复。
+Linux 使用主窗口原生 Focused；Windows 使用主 HWND 所在线程的 WM_ACTIVATE 回调，忽略
+WebView2 子控件间的键盘焦点变更，最小化不视为激活。WM_NCDESTROY 移除观察回调；若无法
+挂接，只保留手动检查和既有旧版计时器。依据 Microsoft WM_ACTIVATE / SetWindowSubclass
+文档。消息判定可合成验证，Windows 实窗仍需独立运行。
 自动检查完成发布 cumulus:session-renewal 和 account-changed；不调用会重新通知自身的发布函数。
 IPC session_renewal(epoch) 只读；renew_session(epoch,check|reconcile) 由 core 决定是否发请求。
 所有命令沿用仅主窗口限制。主前端、验证码窗口、Tauri 插件均不能注入 refreshToken/签名/deviceId。
