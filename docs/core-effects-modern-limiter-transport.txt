@@ -103,8 +103,10 @@ Production wiring and its remaining gates
   `[1810,1810,1810,245]` = 5675 at 48 kHz. No-switch controls both
   produced 6151. The sanitized private report has SHA-256
   `804ee5f7d06bcc65b335dc1159440cafb60ef79df3ebe27e54cb557047ce34c4`.
-  This is actual SDK output, not evidence of how the desktop clock maps
-  the missing frames or handles old audio already inside its device queue.
+  This is actual SDK output. The later host proof in
+  `core-effects-modern-limiter-host-clock.txt` maps these counts into the
+  ordinary WASAPI progress event and seek counter. It does not establish
+  how old or unwritten PCM actually sounds at the device.
 - The exact B0 release change explains the restart independently of a
   master setting or a graph reset. Setter `654B0` at `655A0–655A5` writes
   a changed positive release and marks `+C5`; attack has its own analogous

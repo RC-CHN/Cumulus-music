@@ -1,0 +1,153 @@
+Ordinary MAudio/WASAPI: live limiter and the submitted clock
+===========================================================
+
+Scope: 3.1.42.205594 x64 cloudmusic.dll SHA-256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493.
+The original SDK graph, archived material and control transitions are in
+core-effects-modern-limiter-oracle.txt and
+core-effects-modern-limiter-transport.txt. All code addresses below are
+RVAs. This is a recovered native host contract and sealed arithmetic proof,
+without physical playback, a Windows driver, account or network use.
+
+Actual output length reaches the device writer
+----------------------------------------------
+
+- AudioDeviceThread 10542F0 calls 1055EF0 at 1054A7C when the effect SDK
+  initialized. 1055F63 calls SDK vtable +18 with the decoded byte count
+  and timestamp -1 (`0xffffffff`); it does not pass the source seek
+  coordinate to the effect SDK on this ordinary path. 1055FCC calls +20
+  with the output length by pointer and EOF at AudioDeviceThread +E8.
+  The resulting byte count replaces +C0. 1054A81–1054AE2 converts that
+  count using negotiated frame geometry and sends those frames to the
+  post-effect tempo adapter. 1054BB5 uses its returned count and speed;
+  1054BFF skips zero bytes, 1054D03 calls device +48 with the final byte
+  count and the speed double. This branch does not restore the input
+  count or explicitly compensate a limiter discontinuity.
+- RTTI identifies audio::Wasapi vtable 1C32E28: +48=10917F0,
+  +90=108F400, +98=1092520. In its normal non-null render buffer branch
+  it requests the native period at device +1B4, copies only
+  floor(actualBytes / frameBytes) * frameBytes (1091E82–1091EAB), and
+  releases the full period with flags 0 (1091EB7–1091F27). There is no
+  tail initialization in this branch. Its null-buffer branch releases
+  zero frames with flag 2. The selected clock branch counts bytes, not
+  the full period. It is not entered on every possible return; for
+  example, insufficient device space can return without a counted write.
+- In the sealed original-code probe, the mocked SDK returns 3658 bytes
+  after a 4096-byte input. The original 1055EF0 preserves 3658. A separate
+  original WASAPI fragment copies 3658 bytes, releases a 2048-frame mock
+  period and leaves its remaining bytes at the sentinel value. Only the
+  mock allocation/copy/COM callback is supplied. The bytes supplied by
+  a physical device for that unwritten remainder, and what a listener
+  would hear, are not inferred from this probe.
+
+Clock and event path
+--------------------
+
+10920E0–1092192 counts only the accepted normal write when the audio-clock
+interface exists. It queries IAudioClock +20 into the other device fields
+but calculates the reported +1B8 from the software accumulator +1C0:
+
+    weightedBytes += trunc(actualOutputBytes * speed)
+    deviceUs = floor(floor(weightedBytes / frameBytes) * 1_000_000 / rateHz)
+
+Truncation is per write, not after adding all bytes and not at a frame
+boundary. In an original-code control at 44.1 kHz, frameBytes=4 and speed
+1.125, eight separate one-frame writes produce weightedBytes=32 and
+181 us; one eight-frame write gives 36 bytes and 204 us. The diagnostic
+reference rejects nonfinite/negative/overflowing inputs rather than
+imitating arithmetic outside the supported successful-write range.
+
+The Wasapi +90 getter reads +1B8 (returns zero for device state 3).
+AudioDeviceGlue +90 (104CEA0) forwards it. 1014BA0 composes
+`sourceBaseMs + floor(deviceUs / 1000)`; normal source 104B710 obtains
+sourceBaseMs from `10AE760`, the stream's stored +48. `1017330` uses
+that value as seconds, subtracts clip origin +98 and lower-clamps to zero
+before passing the current position through callback +28. The separate
+limit at 1017521 is kept in a local; 10176FF reads the current position
+through its original pointer. AudioPlayInfo secondary vtable 1DA7B00 +28
+is BE650, dispatching BE510, the native `audioplayer.onPlayProgress`
+emitter. M/4:15481–15484 maps argument 1 to `current`; M/1193:110 also
+subscribes directly to this native event. The callback timer, GUI consumer
+conditions and optional media branches are not part of the arithmetic.
+
+Thus the normal counted branch does not pay back the hot limiter loss in
+its reported position. At 1×, assuming all corresponding output is
+accepted with no post-tempo count change, replaying the original graph
+counts through the original clock code gives:
+
+    rate    input   ordinary PCM/time       off/reapply PCM/time
+    44100   6151    6151 / 139478 us        5713 / 129546 us
+    48000   6151    6151 / 128145 us        5675 / 118229 us
+
+The relative event projection differs by 10 ms in each case. These are
+clock results over original sample-count vectors, not recorded GUI ticks,
+not proof of identical period division in a full device session, and not
+measurements of physical playback length. WaveOut +90 (1087E10) instead
+queries `waveOutGetPosition` and maps its own speed history at 10C0240;
+this reference does not extrapolate WASAPI's counter to WaveOut, DirectSound,
+exclusive/auxiliary devices or the alternate NeAudioPlayer route.
+
+Discontinuities and next integration boundary
+----------------------------------------------
+
+- Regular seek: `1017F0C–1017F45` adds the saved clip origin before
+  104BB50; 10B0050 closes and clears source production and saves the
+  absolute request at +50 and `trunc(seconds * 1000)` at +48.
+  `1017F8D` then calls device-glue +98, which forwards Wasapi 1092520.
+  In backend states 1/2 the latter resets +1C0, including the real
+  IAudioClient reset path, but does not directly clear +1B8. The original
+  isolated counter reset preserves the prior getter until the first new
+  counted write; state 3 still returns zero. That stale read is not a
+  valid new decoder/entry observation. `10AE2C0` filters superseded seeks,
+  resumes the decoder queue and calls the separate SDK Reset (+28) for
+  the remaining ordinary branch before it takes its next decoded frame.
+  This is distinct from the limiter's live `+C5` update.
+- Device reopen: the 1055840 loop's recovery branch at 1055D03–1055D93
+  stores `(sourceBaseMs + floor(deviceUs/1000))/1000` as an *absolute*
+  seek anchor, before reinitialization; 1055AD1–1055AE9 re-enters 104BB50
+  with that value. It does not add another clip origin or restore frames
+  withheld during an earlier limiter switch. This proves the branch
+  calculation/order, not all device-loss or hardware timing cases.
+- Cumulus must distinguish decoded/source coordinates, admitted PCM,
+  displayed position and a fresh generation's actual sink observation.
+  The current held PCM control maps source time from a native entry and
+  its output count, and its real test covers fresh/seek/drain only. A
+  modern hot graph needs proven control application boundaries and an
+  explicit live segment/terminal contract before reusing these fields.
+  Do not insert silent frames to make an offline output match decoded
+  length, resubmit a revoked source, or use the old device cache as a
+  successful seek acknowledgement.
+- A separate actionable admission gate is still missing. The current
+  `EffectsLibrary` verifies a descriptor and its Ready material digest,
+  but `PreparedParametric::is_standalone` and the native registration
+  binding accept only one enabled routed PEQ. The qualified modern
+  catalogue material fails that gate. A separate typed preflight can
+  share the existing source cache and bind its digest/account generation
+  without granting rights or starting a lease. Actual activation would
+  additionally require acknowledged non-trial registration, current
+  effect/source and play-generation fences, no second stock filter, and
+  validated live stop/reapply and controller takeover. No historical
+  material observation authorizes new requests or current activation.
+
+Reproduce
+---------
+
+On Linux x86_64, with locally available `pefile` and `unicorn`, the optional
+research script runs original excerpts in a loopback-only namespace. It
+hash-pins the private DLL and maps its executable bytes read-only; no
+vendor binary or DLL dump is tracked here. `NEW.json` must not exist.
+
+    unshare -Urn python3 scripts/research/probe_wasapi_host_clock.py \
+      --dll LOCAL_ORIGINAL_CLOUDMUSIC_DLL --out NEW.json
+
+The sealed run emitted SHA-256
+946b9aed14bcbc9e5e305ecf1eb2b7306e0e821857f2f7171fefac877411ad93.
+The same synthetic vectors are frozen in an independent dependency-free
+Rust reference; it does not open a source, touch a device or wire a feature:
+
+    rustc --edition 2024 --test -D warnings \
+      scripts/research/wasapi_submitted_clock.rs -o /tmp/wasapi-clock-test
+    /tmp/wasapi-clock-test
+
+All three reference tests passed. No Cargo build, desktop, playback,
+account, registration, network or device configuration is involved.
