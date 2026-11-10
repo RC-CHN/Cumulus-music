@@ -329,7 +329,7 @@ async fn bought_episode_selects_only_the_clicked_voice_and_retains_current_queue
         ]
     );
     assert_eq!(calls[1].1["voiceId"], "82");
-    assert_eq!(calls[2].1["ids"], "[182]");
+    assert_eq!(calls[2].1["ids"], r#"["182"]"#);
 
     let paused = purchase_play(&client, revision, "82", PurchasedKind::Episode)
         .await
