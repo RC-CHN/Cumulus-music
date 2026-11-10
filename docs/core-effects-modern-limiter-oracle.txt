@@ -116,3 +116,60 @@ settings EQ attachment and a material-plan decoder do not supply those
 properties on their own. Missing material, unsupported siblings or
 formats, or a failed authorization must never fall through to this lane.
 No product routes or defaults are changed by this evidence.
+
+Rust material admission (native only)
+
+`EffectsLibrary::preflight_modern_limiter_for` follows the ordinary effect
+material read path from recovered M/342 and M/28/85: uncached
+`/api/usertool/home/sound/info` with `reqListStr` containing the string ID
+and `soundType:10`, then `/api/vipauth/app/interests/auth/query` with
+`queryInfo.interestsMap["127"]` containing the numeric ID. The response
+must explicitly allow use with a recovered non-trial type 10–12. The
+catalogue row's membership/trial projection cannot grant this access;
+special IDs 200–202 have a separate material source. A valid first
+`soundMaterialList` descriptor is required. A later candidate cannot
+rescue a missing, bad or unsupported first one.
+Sources: recovered `docs/product/models/audioEffect.txt:1700` (rights and
+first material), and `docs/product/33-audio-effects-validation.txt:30`
+(observed PC EAPI detail and rights request bodies). This restricted path
+does not reproduce official trial/membership fallbacks.
+
+The same resumable transfer, owned file, size/MD5 and transfer SHA-256
+checks, bounded NCAE decoder and decoded SHA-256 are reused. Native HTTP
+uses the existing scoped effect dispatch guard for both reads. The
+verified account, session generation, API instance and local credential
+revision must remain current before dispatch, through the transfer
+checkpoints and at receipt issue. The CDN backend receives no account
+cookie or authorization headers. Same-digest cache hits still reread
+detail and rights; a paused transfer gives `Pending`, not `Ready`.
+If a response rotates the credential revision, start a new preflight;
+the old observation never authorizes the next step under new credentials.
+A credential change during the body leaves the existing retryable transfer
+state; a new detail/rights pair may resume the same immutable attempt.
+
+Only a verified NCAE parameter container (type 1) and the exact supported
+modern topology produce a receipt. This uses the same `ModernLimiterPlan`
+parser as the offline renderer; it does not route through standalone PEQ
+or fall back to top-level legacy parameters when `aev2` is malformed.
+An otherwise valid material with unknown type, missing or mistyped
+controls, or any unsupported sibling (even disabled) is `Unsupported`.
+Authorization, identity, transport, checksum, container and invalid JSON
+errors are errors; none becomes either `Ready` or `Unsupported`.
+
+The nonserializable receipt exposes the effect ID and an offline geometry
+check only (stereo, 44.1/48 kHz, 2048 frames). It carries no raw bytes,
+path, URL, digest or credentials across an interface. Core revalidation
+holds the existing material lock, checks `Ready`, exact attempt and
+decoded digest, then reopens and verifies the recorded complete transfer
+without server calls. Removal and reacquisition of the same bytes do not
+revive an old receipt. Local revalidation confirms the cached input and
+credential revision only; it is not a fresh server entitlement or evidence
+that the original catalogue descriptor has not changed upstream.
+
+Synthetic fixtures cover pause/resume, cache rereads, credential rotation
+within one generation at the read/body/receipt boundaries, account and
+instance isolation, corrupt cache, rights denial and false-positive
+topologies. They do not grant playback, authorize a stream, register or
+release an interest, or qualify arbitrary valid-shaped materials against
+the original audio output. Product activation and live switching remain
+closed; there is no `MusicClient`, desktop, frontend or settings entry.

@@ -1,5 +1,6 @@
 use super::{
     EffectsLibrary, MATERIALS, files,
+    modern_limiter::MaterialScope,
     records::{MaterialHandle, MaterialOutcome, MaterialPhase, Record},
 };
 use crate::{
@@ -36,6 +37,18 @@ impl EffectsLibrary {
         options: RunOptions,
         require_non_trial: bool,
     ) -> Result<MaterialOutcome> {
+        self.acquire_ordinary_material_for(token, effect, options, require_non_trial, None)
+            .await
+    }
+
+    pub(super) async fn acquire_ordinary_material_for(
+        &self,
+        token: &SessionToken,
+        effect: EffectId,
+        mut options: RunOptions,
+        require_non_trial: bool,
+        scope: Option<&MaterialScope>,
+    ) -> Result<MaterialOutcome> {
         if options.byte_budget == Some(0) {
             return Err(Error::InvalidInput("material byte budget must be positive"));
         }
@@ -46,19 +59,33 @@ impl EffectsLibrary {
         let sound = self
             .session
             .run_for(token, |api, _| async move {
-                EffectsApi::new(api).pc_detail(effect).await
+                let api = EffectsApi::new(api);
+                if let Some(scope) = scope {
+                    api.guarded_material_detail(effect, scope.revision(), &|| scope.current())
+                        .await
+                } else {
+                    api.pc_detail(effect).await
+                }
             })
             .await?
             .ok_or(Error::Response("sound detail is unavailable"))?;
         let authorization = self
             .session
             .run_for(token, |api, _| async move {
-                EffectsApi::new(api).authorization(effect).await
+                let api = EffectsApi::new(api);
+                if let Some(scope) = scope {
+                    api.guarded_material_authorization(effect, scope.revision(), &|| {
+                        scope.current()
+                    })
+                    .await
+                } else {
+                    api.authorization(effect).await
+                }
             })
             .await?
             .filter(|auth| auth.can_use)
             .ok_or(Error::State("effect material is not authorized"))?;
-        if require_non_trial && !known_non_trial(authorization.can_use_type) {
+        if (require_non_trial || scope.is_some()) && !known_non_trial(authorization.can_use_type) {
             return Err(Error::State(
                 "effect material requires confirmed non-trial rights",
             ));
@@ -67,6 +94,15 @@ impl EffectsLibrary {
             .parameter_material()?
             .ok_or(Error::Response("sound has no parameter material"))?;
         let handle = MaterialHandle::new(effect, sound_type, &descriptor);
+        if let Some(scope) = scope {
+            scope.current()?;
+            let scope = scope.clone();
+            let previous = options.control.clone();
+            options.control = Arc::new(move || {
+                scope.current()?;
+                previous.checkpoint()
+            });
+        }
         let (transfer_id, bytes, material) = self
             .acquire_descriptor_locked(token, &owner, &handle, descriptor, options)
             .await?;
@@ -188,6 +224,26 @@ impl EffectsLibrary {
         };
         self.session.check_generation(token)?;
         Ok((child.id, child.bytes, material))
+    }
+
+    // Caller holds the account/effect material lock. Never trust the cached
+    // pathname alone or repair a missing/changed attempt during validation.
+    pub(super) fn ready_material_transfer(
+        &self,
+        owner: &str,
+        record: &Record,
+    ) -> Result<TransferJob> {
+        let child = self
+            .transfers(owner)?
+            .list()?
+            .into_iter()
+            .find(|job| job.id == record.attempt && job.status == TransferStatus::Complete)
+            .ok_or(Error::State(
+                "verified effect material transfer is unavailable",
+            ))?;
+        let root = files::existing_root(self.store.directory(), owner, record)?;
+        validate_child(record, &child, &files::target(&root, &record.attempt))?;
+        Ok(child)
     }
 
     /// Remove only the recorded attempt's owned files. The durable Removing

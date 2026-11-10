@@ -140,11 +140,14 @@ impl ModernLimiterPlan {
         Ok((self.stages(format)?, self.limiter.pcm_stage(format)?))
     }
 
+    pub(in crate::effects) fn supports_format(&self, format: Format) -> bool {
+        matches!(format.rate(), 44_100.0 | 48_000.0)
+            && format.channels() == 2
+            && format.capacity() == 2048
+    }
+
     fn stages(&self, format: Format) -> Result<ModernLimiterStages> {
-        if !matches!(format.rate(), 44_100.0 | 48_000.0)
-            || format.channels() != 2
-            || format.capacity() != 2048
-        {
+        if !self.supports_format(format) {
             return Err(Error::InvalidInput(
                 "unsupported modern limiter graph format",
             ));

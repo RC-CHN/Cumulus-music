@@ -5,6 +5,7 @@
 mod device;
 mod files;
 mod materials;
+mod modern_limiter;
 mod parametric;
 mod records;
 
@@ -19,6 +20,7 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 pub use device::DeviceMaterialCheck;
+pub use modern_limiter::{ModernLimiterPreflight, VerifiedModernLimiterMaterial};
 pub use parametric::{
     ParametricPreparation, PreparedParametric, StandaloneParametric, StandaloneParametricPreflight,
 };

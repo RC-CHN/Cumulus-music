@@ -606,6 +606,8 @@ pub enum EffectCatalogueRead {
     HighlyRecommended,
     Recommended,
     More,
+    PcMaterialDetail(crate::effects::catalog::EffectId),
+    MaterialAuthorization(crate::effects::catalog::EffectId),
 }
 
 impl EffectCatalogueRead {
@@ -614,6 +616,14 @@ impl EffectCatalogueRead {
         match self {
             LegacyRecommended => ("/api/usertool/sound/mobile/promote", json!({})),
             LegacyAll => ("/api/usertool/sound/mobile/all", json!({})),
+            PcMaterialDetail(id) => (
+                "/api/usertool/home/sound/info",
+                effect_detail_payload(id, 10),
+            ),
+            MaterialAuthorization(id) => (
+                "/api/vipauth/app/interests/auth/query",
+                effect_authorization_payload(id),
+            ),
             HighlyRecommended | Recommended | More => {
                 let expose_type = match self {
                     HighlyRecommended => 5,
@@ -630,6 +640,18 @@ impl EffectCatalogueRead {
     }
 }
 
+pub(crate) fn effect_detail_payload(
+    id: crate::effects::catalog::EffectId,
+    sound_type: u32,
+) -> Value {
+    let requests = json!([{"soundId":id.value().to_string(),"soundType":sound_type}]);
+    json!({"reqListStr":requests.to_string()})
+}
+
+pub(crate) fn effect_authorization_payload(id: crate::effects::catalog::EffectId) -> Value {
+    json!({"queryInfo":{"interestsMap":{id.interests_type().to_string():[id.value()]}}})
+}
+
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
@@ -639,8 +661,8 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
-    /// Fixed catalogue read. Native HTTP rechecks the account and current
-    /// presentation at the actual dispatch boundary after obtaining its gate.
+    /// Fixed ordinary effect read. Native HTTP rechecks the account and
+    /// the caller's scope at the actual dispatch boundary.
     fn request_effect_catalogue<'a>(
         &'a self,
         read: EffectCatalogueRead,

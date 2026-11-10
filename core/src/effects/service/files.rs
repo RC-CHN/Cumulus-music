@@ -12,6 +12,12 @@ use std::{
 };
 
 pub(super) fn root(store: &Path, owner: &str, record: &Record) -> Result<PathBuf> {
+    material_root(store, owner, record, true)
+}
+pub(super) fn existing_root(store: &Path, owner: &str, record: &Record) -> Result<PathBuf> {
+    material_root(store, owner, record, false)
+}
+fn material_root(store: &Path, owner: &str, record: &Record, create: bool) -> Result<PathBuf> {
     let mut path = store.canonicalize()?;
     for segment in [
         "effect-materials",
@@ -19,6 +25,12 @@ pub(super) fn root(store: &Path, owner: &str, record: &Record) -> Result<PathBuf
         &record.handle.key,
     ] {
         path.push(segment);
+        if !create {
+            if !fs::symlink_metadata(&path)?.is_dir() {
+                return Err(Error::State("material path is not a directory"));
+            }
+            continue;
+        }
         let builder = crate::storage::private_directory_builder();
         match builder.create(&path) {
             Ok(()) => (),

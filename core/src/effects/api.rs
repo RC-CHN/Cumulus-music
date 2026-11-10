@@ -6,7 +6,10 @@ use super::{
 };
 use crate::{
     Error, Result,
-    protocol::api::{Api, EffectCataloguePermission, EffectCatalogueRead, identifier},
+    protocol::api::{
+        Api, EffectCataloguePermission, EffectCatalogueRead, effect_authorization_payload,
+        effect_detail_payload, identifier,
+    },
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, sync::Arc};
@@ -20,11 +23,7 @@ impl EffectsApi {
         Self { api }
     }
     async fn data(&self, path: &str, params: Value) -> Result<Value> {
-        let value = self.api.call(path, params, false, &[200]).await?;
-        value
-            .get("data")
-            .cloned()
-            .ok_or(Error::Response("missing effect response data"))
+        effect_data(self.api.call(path, params, false, &[200]).await?)
     }
     pub async fn catalogue(&self, kind: CatalogueKind) -> Result<Vec<Sound>> {
         sounds(
@@ -51,14 +50,7 @@ impl EffectsApi {
         revision: Option<&str>,
         current: &EffectCataloguePermission<'_>,
     ) -> Result<Vec<Sound>> {
-        let response = self
-            .api
-            .request_effect_catalogue(read, revision, current)
-            .await?;
-        let data = response
-            .get("data")
-            .cloned()
-            .ok_or(Error::Response("missing effect response data"))?;
+        let data = self.guarded_data(read, revision, current).await?;
         if matches!(
             read,
             EffectCatalogueRead::LegacyRecommended | EffectCatalogueRead::LegacyAll
@@ -67,6 +59,18 @@ impl EffectsApi {
         } else {
             sounds(data)
         }
+    }
+    async fn guarded_data(
+        &self,
+        read: EffectCatalogueRead,
+        revision: Option<&str>,
+        current: &EffectCataloguePermission<'_>,
+    ) -> Result<Value> {
+        effect_data(
+            self.api
+                .request_effect_catalogue(read, revision, current)
+                .await?,
+        )
     }
     pub async fn device_brands(&self) -> Result<Vec<Value>> {
         array(
@@ -84,13 +88,30 @@ impl EffectsApi {
         )
     }
     pub async fn detail(&self, id: EffectId, sound_type: u32) -> Result<Option<Sound>> {
-        let requests = json!([{"soundId":id.value().to_string(),"soundType":sound_type}]);
         let data = self
             .data(
                 "/api/usertool/home/sound/info",
-                json!({"reqListStr":serde_json::to_string(&requests)?}),
+                effect_detail_payload(id, sound_type),
             )
             .await?;
+        Self::detail_response(id, sound_type, data)
+    }
+    pub(super) async fn guarded_material_detail(
+        &self,
+        id: EffectId,
+        revision: &str,
+        current: &EffectCataloguePermission<'_>,
+    ) -> Result<Option<Sound>> {
+        let data = self
+            .guarded_data(
+                EffectCatalogueRead::PcMaterialDetail(id),
+                Some(revision),
+                current,
+            )
+            .await?;
+        Self::detail_response(id, 10, data)
+    }
+    fn detail_response(id: EffectId, sound_type: u32, data: Value) -> Result<Option<Sound>> {
         let rows = data["soundList"]
             .as_array()
             .ok_or(Error::Response("missing sound detail list"))?;
@@ -133,8 +154,33 @@ impl EffectsApi {
         require_observed_boolean: bool,
     ) -> Result<Option<Authorization>> {
         let data = self
-            .data("/api/vipauth/app/interests/auth/query", query(id))
+            .data(
+                "/api/vipauth/app/interests/auth/query",
+                effect_authorization_payload(id),
+            )
             .await?;
+        Self::authorization_response(id, require_observed_boolean, data)
+    }
+    pub(super) async fn guarded_material_authorization(
+        &self,
+        id: EffectId,
+        revision: &str,
+        current: &EffectCataloguePermission<'_>,
+    ) -> Result<Option<Authorization>> {
+        let data = self
+            .guarded_data(
+                EffectCatalogueRead::MaterialAuthorization(id),
+                Some(revision),
+                current,
+            )
+            .await?;
+        Self::authorization_response(id, true, data)
+    }
+    fn authorization_response(
+        id: EffectId,
+        require_observed_boolean: bool,
+        data: Value,
+    ) -> Result<Option<Authorization>> {
         let rows = data
             .as_array()
             .ok_or(Error::Response("invalid effect authorization list"))?;
@@ -249,8 +295,11 @@ fn acknowledged(value: Value) -> Result<()> {
     }
     Ok(())
 }
-fn query(id: EffectId) -> Value {
-    json!({"queryInfo":{"interestsMap":{id.interests_type().to_string():[id.value()]}}})
+fn effect_data(value: Value) -> Result<Value> {
+    value
+        .get("data")
+        .cloned()
+        .ok_or(Error::Response("missing effect response data"))
 }
 fn array(value: Value) -> Result<Vec<Value>> {
     let rows = value
