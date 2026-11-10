@@ -212,6 +212,7 @@ import {
 } from './composables/useVinylCommentComposer';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistLocalMemberDialog from './components/PlaylistLocalMemberDialog.vue';
+import PlaylistMixedRemoveConfirm from './components/playlist/PlaylistMixedRemoveConfirm.vue';
 import PlaylistImportPreview from './components/playlist/PlaylistImportPreview.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
 import DownloadPage from './components/DownloadPage.vue';
@@ -304,8 +305,11 @@ import type {
   VoiceSongSelectionAction,
 } from './services/voiceSongs';
 import { usePlaylists } from './composables/usePlaylists';
-import { useMixedPlaylistReorder } from './composables/useMixedPlaylistReorder';
-import { mixedDraggedRows } from './services/playlistMixedOrder';
+import {
+  useMixedPlaylistRemove,
+  useMixedPlaylistReorder,
+} from './composables/useMixedPlaylistReorder';
+import { mixedDraggedRows, mixedRemovedRows } from './services/playlistMixedOrder';
 import { offlinePlaylistPlayableIds, offlinePlaylistSelection } from './services/offlinePlaylist';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
@@ -4236,6 +4240,102 @@ const mixedReorder = useMixedPlaylistReorder(
   },
   () => void music.bootstrap(false),
 );
+const mixedRemoveVisit = computed<typeof mixedReorderVisit.value>((previous) => {
+  if (mixedReorderVisit.value) return mixedReorderVisit.value;
+  // The confirmed refresh can remove the last local row. Keep this visit's
+  // receipt feedback visible until the route or account actually changes.
+  if (
+    previous?.route === page.value &&
+    previous.epoch === account.value.epoch &&
+    signedIn.value &&
+    !cachedPlaylist.value &&
+    playlistSongsActive.value &&
+    result.value?.playlist?.id === previous.id &&
+    result.value.playlist.owned &&
+    !result.value.playlist.favorite
+  )
+    return previous;
+});
+const mixedRemove = useMixedPlaylistRemove(
+  core,
+  () => mixedRemoveVisit.value,
+  (visit) => music.reloadReorderedPlaylist(() => mixedRemoveVisit.value === visit),
+  () => void music.bootstrap(false),
+);
+const mixedRemovePrompt = shallowRef<{
+  name: string;
+  title?: string;
+  revision: string;
+  selected: NonNullable<ReturnType<typeof mixedRemovedRows>>;
+  anchor: HTMLElement | null;
+  live: () => boolean;
+}>();
+const mixedRemoveFocusVisit = shallowRef<typeof mixedRemoveVisit.value>();
+watch(
+  () => mixedRemovePrompt.value?.live(),
+  (live) => {
+    if (live === false) mixedRemovePrompt.value = undefined;
+  },
+);
+function mixedRemovalStatusFocus() {
+  return document.querySelector<HTMLElement>('[data-mixed-remove-status]');
+}
+function mixedRemovalMenu(
+  tracks: readonly TrackView[],
+  current = () => true,
+): TrackMenuRequest['mixedRemoval'] {
+  const visit = mixedRemoveVisit.value;
+  const shown = result.value;
+  const displayed = playlistTrackSearch.value.tracks;
+  const playlist = shown?.playlist;
+  const revision = shown?.playlistLocal?.revision;
+  if (!visit || !shown || playlist?.id !== visit.id || !revision) return;
+  const selected = mixedRemovedRows(shown, tracks);
+  if (!selected) return;
+  const live = () =>
+    mixedRemoveVisit.value === visit &&
+    result.value === shown &&
+    displayed === playlistTrackSearch.value.tracks &&
+    !loading.value &&
+    mixedRemove.ready.value &&
+    mixedReorder.ready.value &&
+    current();
+  return {
+    group: tracks.length > 1,
+    live,
+    confirm(anchor) {
+      if (!live() || playlistDialog.value || localPlaylistMember.value || mixedRemovePrompt.value)
+        return;
+      mixedRemoveFocusVisit.value = visit;
+      mixedRemovePrompt.value = {
+        name: playlist.name,
+        title: tracks.length === 1 ? tracks[0].name : undefined,
+        revision,
+        selected,
+        anchor: anchor ?? null,
+        live,
+      };
+    },
+  };
+}
+function submitMixedRemoval() {
+  const target = mixedRemovePrompt.value;
+  if (!target?.live()) return;
+  mixedRemovePrompt.value = undefined;
+  void mixedRemove.send(target.revision, target.selected);
+}
+function showSelectedMixedRemoval(
+  request: TrackMenuRequest,
+  _index: number,
+  rows: { track: TrackView; index: number }[],
+  current: () => boolean,
+) {
+  if (!current()) return;
+  const tracks = rows.map(({ track }) => track);
+  const mixedRemoval = mixedRemovalMenu(tracks, current);
+  if (mixedRemoval) trackActions.value?.show({ ...request, mixedRemoval });
+  else if (tracks.every((track) => track.local)) showVisibleTrackActions(request);
+}
 const mixedReorderScope = computed(() => {
   const visit = mixedReorderVisit.value;
   const shown = result.value;
@@ -4245,11 +4345,13 @@ const mixedReorderScope = computed(() => {
     !shown?.playlistLocal ||
     shown.playlistLocal.hasUnboundLegacy ||
     !mixedReorder.ready.value ||
+    !mixedRemove.ready.value ||
     playlistDuration.requested.value ||
     loading.value ||
     !tracks.length ||
     localPlaylistMember.value ||
-    playlistDialog.value
+    playlistDialog.value ||
+    mixedRemovePrompt.value
   )
     return;
   return { visit, shown, tracks };
@@ -5374,6 +5476,7 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
     {
       ...request,
       mixedLocal: membership?.hasMembers,
+      mixedRemoval: mixedRemovalMenu([request.track]),
       ...(membership && localRevision
         ? {
             removeLocalMember: (anchor) => {
@@ -7163,6 +7266,52 @@ onUnmounted(() => {
                       读取排序状态
                     </button>
                   </div>
+                  <div
+                    v-if="
+                      mixedRemoveVisit &&
+                      (mixedRemove.pending.value ||
+                        mixedRemove.busy.value === 'send' ||
+                        mixedRemove.message.value)
+                    "
+                    class="playlist-mixed-order-status"
+                    data-mixed-remove-status
+                    role="status"
+                    tabindex="-1"
+                  >
+                    <span v-if="mixedRemove.busy.value === 'send'">正在从歌单中删除…</span>
+                    <span v-else-if="mixedRemove.pending.value">
+                      删除结果待确认，本机曲目未移除。{{ mixedRemove.message.value }}
+                    </span>
+                    <span v-else>{{ mixedRemove.message.value }}</span>
+                    <button
+                      v-if="mixedRemove.pending.value"
+                      type="button"
+                      class="text-button"
+                      aria-label="核对混合删除结果"
+                      :disabled="!!mixedRemove.busy.value"
+                      @click="mixedRemove.verify"
+                    >
+                      {{ mixedRemove.busy.value === 'verify' ? '正在核对…' : '核对结果' }}
+                    </button>
+                    <button
+                      v-else-if="mixedRemove.needsRefresh.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedRemove.busy.value"
+                      @click="mixedRemove.retryRefresh"
+                    >
+                      重新读取歌单
+                    </button>
+                    <button
+                      v-else-if="!mixedRemove.known.value && mixedRemove.message.value"
+                      type="button"
+                      class="text-button"
+                      :disabled="!!mixedRemove.busy.value"
+                      @click="mixedRemove.read()"
+                    >
+                      读取删除状态
+                    </button>
+                  </div>
                   <TrackTable
                     v-if="playlistTrackSearch.tracks.length"
                     :key="recommendationScrollScope"
@@ -7174,8 +7323,13 @@ onUnmounted(() => {
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"
                     :playlist-selection-scope="playlistSelectionScope"
+                    :selected-menu-enabled="
+                      !!mixedRemoveVisit &&
+                      !!result.playlistLocal?.hasMembers &&
+                      !result.playlistLocal.hasUnboundLegacy
+                    "
                     :mixed-reorder-scope="mixedReorderScope"
-                    :preserve-scroll-on-refresh="!!mixedReorderVisit"
+                    :preserve-scroll-on-refresh="!!mixedReorderVisit || !!mixedRemoveVisit"
                     @mixed-reorder="reorderVisibleMixed"
                     :queue-drop-enabled="canDropPlaylistSong"
                     :mixed-queue-drop="!!displayedMixedPlaylist"
@@ -7202,6 +7356,7 @@ onUnmounted(() => {
                     @toggle-current="toggleVisibleTrack"
                     @like="music.like"
                     @more="showVisibleTrackActions"
+                    @selected-more="showSelectedMixedRemoval"
                   />
                   <div v-else class="empty-state">
                     {{
@@ -7518,6 +7673,21 @@ onUnmounted(() => {
             downloadDialog = { kind: 'start', tracks: [track] };
           }
         "
+      />
+    </ModalTransition>
+    <ModalTransition
+      :return-focus="() => mixedRemovePrompt?.anchor ?? null"
+      :fallback-focus="mixedRemovalStatusFocus"
+      :restore-focus="!!mixedRemoveFocusVisit && mixedRemoveFocusVisit === mixedRemoveVisit"
+      @left="mixedRemoveFocusVisit = undefined"
+    >
+      <PlaylistMixedRemoveConfirm
+        v-if="mixedRemovePrompt"
+        :name="mixedRemovePrompt.name"
+        :title="mixedRemovePrompt.title"
+        :count="mixedRemovePrompt.selected.length"
+        @cancel="mixedRemovePrompt = undefined"
+        @confirm="submitMixedRemoval"
       />
     </ModalTransition>
     <PlaylistLocalMemberDialog

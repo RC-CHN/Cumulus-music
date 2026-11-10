@@ -44,6 +44,11 @@ export interface TrackMenuRequest {
   playUnavailable?: boolean;
   mixedLocal?: boolean;
   removeLocalMember?: (anchor: HTMLElement | undefined) => void;
+  mixedRemoval?: {
+    group: boolean;
+    live: () => boolean;
+    confirm: (anchor: HTMLElement | undefined) => void;
+  };
   episode?: {
     live: () => boolean;
     copyrightBlocked: boolean;

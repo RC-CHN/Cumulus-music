@@ -109,6 +109,14 @@ const items = computed<MenuItem[]>(() => {
   const input = request.value;
   const track = input?.track;
   if (!track || (input?.episode && !input.episode.live())) return [];
+  const mixedRemoval = input.mixedRemoval;
+  const removeMixed = {
+    key: 'remove_mixed_member',
+    label: '从歌单中删除',
+    icon: 'trash',
+    disabled: !mixedRemoval?.live(),
+  };
+  if (mixedRemoval?.group) return [removeMixed];
   const nextDisabled =
     !props.player.ready.value ||
     props.player.busy.value ||
@@ -219,6 +227,7 @@ const items = computed<MenuItem[]>(() => {
           { key: 'copy', label: '复制链接', icon: 'copy' },
         ]
       : []),
+    ...(mixedRemoval ? [{ key: 'edit-divider', label: '', separator: true }, removeMixed] : []),
     ...(playlist.value?.owned && !playlist.value.favorite && !track.local && !input.mixedLocal
       ? [
           { key: 'edit-divider', label: '', separator: true },
@@ -654,6 +663,8 @@ async function select(key: string) {
   const { track } = input;
   if (key === 'play') input.play();
   else if (key === 'remove_local_member') input.removeLocalMember?.(returnFocus);
+  else if (key === 'remove_mixed_member' && input.mixedRemoval?.live())
+    input.mixedRemoval.confirm(returnFocus);
   else if (key === 'collect') {
     if (input.episode?.selection) input.episode.collectGroup?.();
     else emit('collect', track);
