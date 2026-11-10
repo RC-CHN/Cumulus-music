@@ -23,6 +23,8 @@ pub(crate) enum StereoGraphControl {
     Cold(LocalStereoMaterialPlan),
     ApplyLocal(LocalEqualizerMaterialPlan),
     DisableLocalMaster,
+    #[cfg(test)]
+    SetModernMaterialActive(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

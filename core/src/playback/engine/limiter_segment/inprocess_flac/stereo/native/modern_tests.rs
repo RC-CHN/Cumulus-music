@@ -8,8 +8,9 @@ use crate::{
     effects::material::ModernLimiterPlan,
     library::{identity::fingerprint, native_open::checked_audio_file},
     playback::engine::{
-        AudioEngine, EndReason, EngineEvent, MpvConfig, MpvEngine,
-        limiter_segment::native_decoder::until, pcm_wave::tests::wave_at,
+        AudioEngine, EndReason, EngineEvent, MpvConfig, MpvEngine, StereoPcmControl,
+        StereoPcmSnapshot, limiter_segment::native_decoder::until, pcm_wave::tests::wave_at,
+        stereo_pcm::StereoGraphControl,
     },
 };
 use serde_json::Value;
@@ -18,6 +19,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 fn vector() -> Value {
@@ -206,6 +208,232 @@ fn modern_held_wave_worker_matches_original_pcm_seek_and_exact_eof() {
 fn actual<T>(stage: &str, poll: impl FnMut() -> Option<T>) -> T {
     eprintln!("held modern limiter: {stage}");
     until(poll)
+}
+
+fn pause_modern_entry(
+    native: &mut MpvEngine,
+    control: &StereoPcmControl,
+    entry: i64,
+    stage: &str,
+) -> StereoPcmSnapshot {
+    native.pause(true).unwrap();
+    let mut stable: Option<(StereoPcmSnapshot, Instant)> = None;
+    actual(stage, || {
+        let view = native.poll().unwrap();
+        let state = control.snapshot().unwrap();
+        assert_eq!(view.entry_id, Some(entry));
+        assert_eq!(state.native_entry, Some(entry));
+        assert!(!state.failed && !state.cancelled && !state.graph_end);
+        if !view.paused || !state.paused || state.seeking {
+            stable = None;
+            return None;
+        }
+        if let Some((previous, since)) = stable
+            && previous == state
+        {
+            // Let any already-credited decoder/native callback finish
+            // before establishing the graph-control boundary.
+            return (since.elapsed() >= Duration::from_millis(80)).then_some(state);
+        }
+        stable = Some((state, Instant::now()));
+        None
+    })
+}
+
+fn switch_paused_modern_entry(
+    control: &StereoPcmControl,
+    before: StereoPcmSnapshot,
+    active: bool,
+) -> u64 {
+    assert!(before.delivered_frames > before.native_output_frame);
+    let revision = control
+        .queue_graph_control(StereoGraphControl::SetModernMaterialActive(active))
+        .unwrap();
+    assert_eq!(revision, before.requested_revision + 1);
+    control
+        .wait_applied(revision, Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(
+        control.snapshot().unwrap(),
+        StereoPcmSnapshot {
+            requested_revision: revision,
+            applied_revision: revision,
+            ..before
+        },
+        "the worker changes only the graph while the old native entry and PCM stay put"
+    );
+    revision
+}
+
+#[test]
+#[ignore = "requires compatible libmpv; exercises the real paused native sink and shortened EOF"]
+fn modern_held_wave_native_sink_applies_live_controls_and_shortens_eof() {
+    let vectors = vector();
+    let mut profile = vectors["profiles"]["nonzeroTone"].clone();
+    // Match the release-only timing variation of the frozen hot corpus.
+    // The two real switches keep attack/geometry constant, but each
+    // discards 238 frames of old B0 lookahead at 48 kHz.
+    profile["aev2"]["limiter"]["attack"] = serde_json::json!(0.005);
+    let plan = ModernLimiterPlan::from_material(&profile).unwrap();
+    let rate = 48_000;
+    let quantum = 2048u64;
+    let total = 72 * quantum + 7;
+    let seek_frame = 54 * quantum;
+    let old_debt = 238u64;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("hot.wav");
+    let wave = wave_at(rate, (0..total as usize).map(s16));
+    let lifetime = Cancellation::default();
+    let source = hold(&path, &wave, lifetime.clone(), &plan);
+    fs::rename(&path, dir.path().join("still-owned.wav")).unwrap();
+    fs::write(&path, b"do not reopen the changed pathname").unwrap();
+
+    let mut native = MpvEngine::open(MpvConfig {
+        library: std::env::var_os("CUMULUS_LIMITER_PROBE_MPV").map(PathBuf::from),
+        null_output: true,
+    })
+    .unwrap();
+    let request = Cancellation::default();
+    let mut pass = start(source, 0, &request);
+    let control = pass.control();
+    let loaded = native
+        .load_stereo_pcm(pass.take_reader().unwrap(), &request)
+        .unwrap();
+    assert_eq!(loaded.codec.as_deref(), Some("pcm_f32le"));
+    assert!(loaded.duration.is_none());
+    let entry = loaded.entry_id;
+    native.pause(false).unwrap();
+    actual(
+        "active entry clocks its first real PCM before the off control",
+        || {
+            let view = native.poll().unwrap();
+            (view.audio_output.as_deref() == Some("null")
+                && view.position_for(entry).is_some_and(|p| p > 0.2))
+            .then_some(())
+        },
+    );
+    let active = pause_modern_entry(&mut native, &control, entry, "settled pause before off");
+    assert_eq!(
+        active.decoded_source_frame - active.produced_frames,
+        old_debt
+    );
+    assert_eq!(switch_paused_modern_entry(&control, active, false), 1);
+    assert!(
+        native.seek(0.5).is_err(),
+        "the raw entry cannot reopen on seek"
+    );
+    native.pause(false).unwrap();
+    actual(
+        "same entry runs at least one off quantum before reapply",
+        || {
+            let view = native.poll().unwrap();
+            let state = control.snapshot().unwrap();
+            assert!(!state.failed && !state.cancelled);
+            (view.entry_id == Some(entry)
+                && state.decoded_source_frame >= active.decoded_source_frame + quantum
+                && state.native_output_frame >= active.native_output_frame + u64::from(rate) / 5)
+                .then_some(())
+        },
+    );
+    let off = pause_modern_entry(&mut native, &control, entry, "settled pause before reapply");
+    assert_eq!(off.decoded_source_frame - off.produced_frames, old_debt * 2);
+    assert_eq!(switch_paused_modern_entry(&control, off, true), 2);
+    native.pause(false).unwrap();
+    actual(
+        "reapplied graph naturally drains a short final quantum",
+        || {
+            let view = native.poll().unwrap();
+            view.events
+                .iter()
+                .any(|event| {
+                    matches!(event, EngineEvent::Ended {
+                entry_id, reason: EndReason::Eof, error: 0,
+            } if *entry_id == entry)
+                })
+                .then_some(())
+        },
+    );
+    let drained = actual("first reader and native sink retired", || {
+        let state = control.snapshot().unwrap();
+        (state.reader_closed && state.native_sink_retired).then_some(state)
+    });
+    // Poll retires the per-entry transport even after clean natural EOF;
+    // that cancellation must not revoke the still-owned source descriptor.
+    assert!(
+        drained.graph_end && !drained.failed && drained.cancelled,
+        "{drained:?}"
+    );
+    assert!(!lifetime.is_cancelled());
+    assert_eq!(drained.decoded_source_frame, total);
+    assert_eq!(drained.produced_frames, total - 2 * old_debt);
+    assert_eq!(drained.delivered_frames, drained.produced_frames);
+    assert_eq!(drained.applied_revision, 2);
+    assert!(drained.native_source_frame > off.native_source_frame);
+    assert!(drained.native_source_frame <= drained.delivered_frames);
+    assert!(
+        control
+            .queue_graph_control(StereoGraphControl::SetModernMaterialActive(false))
+            .is_err()
+    );
+    eprintln!("held hot receipt: active={active:?}, off={off:?}, drained={drained:?}");
+
+    native.stop().unwrap();
+    let source = pass.reclaim().unwrap();
+    let mut seek = start(source, seek_frame, &request);
+    let sought = seek.control();
+    let reopened = native
+        .load_stereo_pcm(seek.take_reader().unwrap(), &request)
+        .unwrap();
+    let next_entry = reopened.entry_id;
+    assert_ne!(entry, next_entry);
+    let fresh = sought.snapshot().unwrap();
+    assert!(native.poll().unwrap().paused);
+    assert_eq!(fresh.native_source_frame, seek_frame);
+    assert_eq!(fresh.native_output_frame, 0);
+    assert_eq!(fresh.applied_revision, 0);
+    native.pause(false).unwrap();
+    let mut saw_fresh_clock = false;
+    actual(
+        "seek entry drains from the original descriptor with no hot frame debt",
+        || {
+            let view = native.poll().unwrap();
+            let state = sought.snapshot().unwrap();
+            assert_eq!(state.first_source_frame, seek_frame);
+            saw_fresh_clock |= state.native_source_frame > seek_frame;
+            view.events
+                .iter()
+                .any(|event| {
+                    matches!(event, EngineEvent::Ended {
+                entry_id, reason: EndReason::Eof, error: 0,
+            } if *entry_id == next_entry)
+                })
+                .then_some(())
+        },
+    );
+    assert!(saw_fresh_clock);
+    let end = actual("seek reader and native sink retired", || {
+        let state = sought.snapshot().unwrap();
+        (state.reader_closed && state.native_sink_retired).then_some(state)
+    });
+    assert!(end.graph_end && !end.failed && end.cancelled, "{end:?}");
+    assert!(!lifetime.is_cancelled());
+    assert_eq!(end.decoded_source_frame, total);
+    assert_eq!(end.produced_frames, total - seek_frame);
+    assert_eq!(end.delivered_frames, end.produced_frames);
+    native.stop().unwrap();
+    let (mut original, original_lifetime) = seek
+        .reclaim()
+        .unwrap()
+        .into_reader()
+        .unwrap()
+        .into_stock()
+        .unwrap();
+    let mut bytes = Vec::new();
+    original.read_to_end(&mut bytes).unwrap();
+    assert_eq!(bytes, wave);
+    lifetime.cancel();
+    assert!(matches!(original_lifetime.check(), Err(Error::Cancelled)));
+    eprintln!("held hot seek receipt: fresh={fresh:?}, drained={end:?}");
 }
 
 #[test]

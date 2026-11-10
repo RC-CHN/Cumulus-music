@@ -148,6 +148,28 @@ impl ModernLimiterPlan {
             && format.capacity() == 2048
     }
 
+    pub(crate) fn prepare_control(
+        &self,
+        format: Format,
+        active: bool,
+    ) -> Result<Option<LimiterStage>> {
+        let material = self.limiter.parameters;
+        let defaults = MATERIAL_BEGIN_LIMITER;
+        if material == defaults {
+            return Ok(None);
+        }
+        if material.attack == defaults.attack && material.release == defaults.release {
+            return Err(Error::InvalidInput(
+                "unsupported live limiter parameter change without timing change",
+            ));
+        }
+        // Native B0 setter +C5 and the next active 64F40 setup reset node
+        // PCM and restart skip/drain even when geometry is unchanged.
+        // Prepare the replacement without modifying any current state.
+        let params = if active { material } else { defaults };
+        MaterialLimiterPlan::stage_with_parameters(format, true, params).map(Some)
+    }
+
     fn stages(&self, format: Format) -> Result<ModernLimiterStages> {
         if !self.supports_format(format) {
             return Err(Error::InvalidInput(
@@ -270,6 +292,14 @@ pub(crate) struct ModernLimiterStages {
 }
 
 impl ModernLimiterStages {
+    pub(crate) fn apply_control(&mut self, plan: &ModernLimiterPlan, active: bool) -> Result<()> {
+        if active {
+            self.reapply_material(plan)
+        } else {
+            self.disable_master()
+        }
+    }
+
     fn disable_master(&mut self) -> Result<()> {
         self.geq.set_bypass(true)?;
         self.bt.master_bypass()?;
@@ -347,31 +377,8 @@ impl ModernLimiterRenderer {
         if self.material_active == active {
             return Ok(());
         }
-        let material = self.plan.limiter.parameters;
-        let defaults = MATERIAL_BEGIN_LIMITER;
-        let replacement = if material == defaults {
-            None
-        } else if material.attack != defaults.attack || material.release != defaults.release {
-            // Native B0 setter +C5 and the next active 64F40 setup reset
-            // node PCM and restart skip/drain even when geometry is unchanged.
-            // With no processing or reads of B0 state in between, preparing
-            // the new private node here has the same output/EOF semantics.
-            let params = if active { material } else { defaults };
-            Some(MaterialLimiterPlan::stage_with_parameters(
-                format, true, params,
-            )?)
-        } else {
-            return Err(Error::InvalidInput(
-                "unsupported live limiter parameter change without timing change",
-            ));
-        };
-
-        let configured = if active {
-            self.stages.reapply_material(&self.plan)
-        } else {
-            self.stages.disable_master()
-        };
-        if let Err(error) = configured {
+        let replacement = self.plan.prepare_control(format, active)?;
+        if let Err(error) = self.stages.apply_control(&self.plan, active) {
             self.quarantined = true;
             return Err(error);
         }

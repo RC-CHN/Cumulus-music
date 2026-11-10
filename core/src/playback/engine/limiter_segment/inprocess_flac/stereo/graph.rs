@@ -47,6 +47,8 @@ impl SourceGraph {
                 format,
                 stages,
                 limiter,
+                plan: plan.clone(),
+                active: true,
                 failed: false,
             })),
             driven: false,
@@ -88,6 +90,10 @@ impl SourceGraph {
             (Material::Local(graph), StereoGraphControl::DisableLocalMaster) => {
                 graph.disable_master()
             }
+            #[cfg(test)]
+            (Material::Modern(graph), StereoGraphControl::SetModernMaterialActive(active)) => {
+                graph.apply(active)
+            }
             _ => Err(Error::InvalidInput(
                 "control belongs to another stereo graph",
             )),
@@ -116,11 +122,32 @@ struct ModernBlocks {
     format: Format,
     stages: ModernLimiterStages,
     limiter: LimiterStage,
+    plan: ModernLimiterPlan,
+    active: bool,
     failed: bool,
 }
 
 #[cfg(test)]
 impl ModernBlocks {
+    fn apply(&mut self, active: bool) -> Result<()> {
+        if self.failed {
+            return Err(Error::State("held modern limiter graph is quarantined"));
+        }
+        if self.active == active {
+            return Ok(());
+        }
+        let replacement = self.plan.prepare_control(self.format, active)?;
+        if let Err(error) = self.stages.apply_control(&self.plan, active) {
+            self.failed = true;
+            return Err(error);
+        }
+        if let Some(stage) = replacement {
+            self.limiter = stage;
+        }
+        self.active = active;
+        Ok(())
+    }
+
     fn reset(&mut self) -> Result<()> {
         if self.failed {
             return Err(Error::State("held modern limiter graph is quarantined"));

@@ -47,6 +47,53 @@ with libmpv `0.41.0-2ubuntu4` (SHA-256
 `2051bdd3bce70349ffa9513c5db4ac0d7fa4aad869004b243f39da93768e8bc5`).
 No physical audio output, desktop window or native Windows run was used.
 
+Paused controls and shortened native EOF
+---------------------------------------
+
+A separate opt-in proof sends the same-material off/reapply commands
+through the held worker's ordered graph queue. Only the test build can
+select this graph and these commands. The worker shares the proved DSP
+setters and still owns its single decoder and existing PCM FIFOs. The
+libmpv callback, player actor, and authorization lifecycle are unchanged.
+
+The proof loads the real 48 kHz stereo s16 WAV through the fingerprinted
+held descriptor and replaces its original pathname. It plays to real
+null-output clock progress, pauses until native/worker counters settle,
+then requests off and awaits the worker's actual revision. Only the
+revision changes while paused. In particular, already delivered PCM
+stays ahead of the paused native clock, the entry ID is unchanged and
+there is no additional decode, publication, delivery or seek. It
+resumes for a distinct off quantum and repeats the same pause, revision
+and preservation checks for reapply.
+
+The fixture changes the B0 release timing while retaining the attack
+and 238-frame lookahead at 48 kHz. It ends with a seven-frame source
+quantum. Each switch discards one previous B0 lookahead, so the held
+decoder still consumes all 147463 source frames while native libmpv
+receives 146987 PCM frames and emits clean natural EOF for that entry.
+The source clock stays within delivered output rather than skipping to
+the decoded end. This tests the count and real native progress; exact
+synthetic PCM byte comparison belongs to the independent original SDK
+fixture in `core-effects-modern-limiter-renderer.txt`.
+
+Clean EOF retires and cancels the per-entry transport; it does not
+revoke the held source. The proof reuses the same held descriptor at
+source frame 110592. A new native entry starts paused
+with a fresh clock and revision; the same graph retains the last
+controls but resets its histories and old debt. It reaches natural
+EOF after exactly 36871 output frames. The reclaimed descriptor still
+contains the original WAV and keeps its original revocable lifetime.
+
+    cargo test --locked -p cumulus-core --lib \
+      modern_held_wave_native_sink_applies_live_controls_and_shortens_eof \
+      -- --ignored --nocapture
+
+Run with an explicit trusted `CUMULUS_LIMITER_PROBE_MPV` if libmpv is
+not on the loader path. It passed on Linux x86_64, libmpv
+`0.41.0-2ubuntu4`, in a loopback-only namespace. This is a hardware-free
+null-output proof, not shipping effect activation, physical playback, or
+a Windows driver test.
+
 Production wiring and its remaining gates
 
 - The archived whole-material sample is ordinary catalogue `3592427`
@@ -116,11 +163,13 @@ Production wiring and its remaining gates
   release-only change to the native default set `[C4,C5]=[0,1]` and emitted
   1829/1810 frames at 44.1/48 kHz respectively. Receipt SHA-256
   `c591c0c3cd174320eb2eb2e33bae7b2a2839a3ce9fef8ebad5f830803ad7a024`.
-- The owned PCM renderer now verifies same-material hot bypass/reapply
-  and in-node limiter setup against original sample bytes (see
-  core-effects-modern-limiter-renderer.txt). The held worker/controller
-  does not apply those controls. Verify its source-clock accounting,
-  takeover and failed handoff before enabling this selection. Do not
+- The owned PCM renderer verifies same-material hot bypass/reapply and
+  in-node limiter setup against original sample bytes (see
+  core-effects-modern-limiter-renderer.txt). The held worker tests now
+  also verify null-output control acknowledgment, real clock, short EOF
+  and same-descriptor seek. The production actor does not apply those
+  controls. Verify authorized takeover and failed handoff before
+  enabling this selection. Do not
   silently fall back to stock after an audible failure or reopen a revoked
   descriptor or request a new stream. Authorized online/cache decoder
   formats, trial, additional topologies and physical devices remain out
