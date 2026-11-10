@@ -65,6 +65,9 @@ pub use super::player::{
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlist_creator::PlaylistCreatorProfile;
+pub use super::playlist_duration::{
+    PlaylistDurationOrder, PlaylistDurationPage, PlaylistDurationScope, PlaylistDurationSource,
+};
 pub use super::playlist_essential::{PlaylistEssentialCategory, PlaylistEssentialPage};
 pub use super::playlist_square::PlaylistSquarePage;
 pub use super::playlist_tags_browse::{

@@ -1,15 +1,54 @@
-//! Detail menu Add All for a displayed owned cache. No online source resolution.
-use super::{super::focus::Owner, *};
+//! Atomic detail-menu insertion for a cached or duration-sorted playlist projection.
+use super::{super::focus::Owner, playlist_duration::BoundPlaylist, *};
 use crate::playback::controller::OfflinePlaylistQueueUpdate;
+use crate::{client::dto::PlaylistDurationScope, membership::Quality};
 use std::sync::atomic::Ordering;
 
+enum Source<'a> {
+    Offline {
+        id: &'a str,
+        revision: &'a str,
+        cached_at_ms: u64,
+    },
+    Sorted(PlaylistDurationScope, Quality),
+}
+
 impl MusicClient {
+    pub(super) async fn queue_sorted_playlist(
+        &self,
+        epoch: &str,
+        scope: PlaylistDurationScope,
+        quality: Quality,
+        expected_revision: &str,
+    ) -> Result<PlayerView> {
+        self.queue_bound_playlist(epoch, Source::Sorted(scope, quality), expected_revision)
+            .await
+    }
+
     pub(super) async fn queue_offline_playlist(
         &self,
         epoch: &str,
         id: &str,
         revision: &str,
         cached_at_ms: u64,
+        expected_revision: &str,
+    ) -> Result<PlayerView> {
+        self.queue_bound_playlist(
+            epoch,
+            Source::Offline {
+                id,
+                revision,
+                cached_at_ms,
+            },
+            expected_revision,
+        )
+        .await
+    }
+
+    async fn queue_bound_playlist(
+        &self,
+        epoch: &str,
+        source: Source<'_>,
         expected_revision: &str,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
@@ -20,14 +59,25 @@ impl MusicClient {
         }
         if before.fm || queue.intelligence.is_some() || self.together_attached(&token, None)? {
             return Err(Error::State(
-                "cached playlist queue requires ordinary playback",
+                "bound playlist queue requires ordinary playback",
             ));
         }
         let focus = self.focus.snapshot()?;
         let observed = self.player.selection.load(Ordering::Acquire);
-        let prepared = self
-            .offline_playlist_queue(&token, id, revision, cached_at_ms, None, false)
-            .await?;
+        let prepared: BoundPlaylist = match source {
+            Source::Offline {
+                id,
+                revision,
+                cached_at_ms,
+            } => self
+                .offline_playlist_queue(&token, id, revision, cached_at_ms, None, false)
+                .await?
+                .into(),
+            Source::Sorted(scope, quality) => {
+                self.sorted_playlist_resources(&token, &scope, None, false, quality)
+                    .await?
+            }
+        };
         let start = queue.items.is_empty();
         let current = queue.current.clone();
         queue = super::queue_playlist::insert_collection_by_key(
@@ -55,7 +105,7 @@ impl MusicClient {
             .map_err(|_| Error::MutationBusy)?;
         if self.together_attached(&token, None)? {
             return Err(Error::State(
-                "cached playlist queue requires ordinary playback",
+                "bound playlist queue requires ordinary playback",
             ));
         }
 
@@ -95,11 +145,12 @@ impl MusicClient {
                     queue,
                     start,
                     binding: prepared.binding,
-                    index: prepared._local_lease,
+                    index: prepared.index_lease,
                 }),
                 expected,
                 Cancellation::new(move || {
                     selection.load(Ordering::Acquire) == attempt
+                        && !prepared.receipt_guard.is_cancelled()
                         && lease.is_none_or(|lease| focus.check(lease, Owner::Audio).is_ok())
                 }),
             )

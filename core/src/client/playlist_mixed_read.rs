@@ -30,7 +30,7 @@ impl MusicClient {
         let id = identifier(&json!(id))?;
         let token = self.session.token()?;
         let page = match self
-            .online_playlist_page(&token, &id, &page, local_revision.as_deref())
+            .online_playlist_page(&token, &id, &page, local_revision.as_deref(), None)
             .await
         {
             Ok(page) => page,
@@ -47,6 +47,7 @@ impl MusicClient {
             Err(error) => return Err(error),
         };
         self.session.with_token(&token, |_| {
+            self.playlist_duration.observe(&token, &page);
             Ok(AccountData {
                 epoch: token.generation.to_string(),
                 value: page,
@@ -54,12 +55,13 @@ impl MusicClient {
         })
     }
 
-    async fn online_playlist_page(
+    pub(in crate::client) async fn online_playlist_page(
         &self,
         token: &SessionToken,
         id: &str,
         page: &PageRequest,
         local_revision: Option<&str>,
+        duration_limit: Option<usize>,
     ) -> Result<TrackPage> {
         let (api, uid, detail) = match self
             .session
@@ -72,6 +74,10 @@ impl MusicClient {
             Ok(data) => data,
             Err(error) => {
                 if invalidates_cache(&error) {
+                    self.session.with_token(token, |_| {
+                        self.playlist_duration.forget(token, id);
+                        Ok(())
+                    })?;
                     let _ = self.invalidate_offline_playlist(token, id);
                 }
                 return Err(error);
@@ -81,6 +87,16 @@ impl MusicClient {
         if playlist.id != id {
             return Err(Error::Response("playlist identity mismatch"));
         }
+        if duration_limit.is_some_and(|max| {
+            detail["trackIds"]
+                .as_array()
+                .is_some_and(|rows| rows.len() > max)
+        }) {
+            return Err(Error::InvalidInput("playlist too large to sort"));
+        }
+        // TrackList -> M/2997 -> M/120 includes trialMode=-1 even when the
+        // ordinary route has no specific trial. The normal page remains unchanged.
+        let trial_mode = duration_limit.map(|_| -1);
         if !playlist.owned || playlist.favorite {
             let _ = self.invalidate_offline_playlist(token, id);
             if local_revision.is_some() {
@@ -90,7 +106,7 @@ impl MusicClient {
                 .session
                 .run_for(token, |current, _| async {
                     self.session.require_api(token, &api)?;
-                    playlist_track_page(current, &uid, id, &detail, page, None, None).await
+                    playlist_track_page(current, &uid, id, &detail, page, trial_mode, None).await
                 })
                 .await;
         }
@@ -103,6 +119,9 @@ impl MusicClient {
             }
             let store = PlaylistLocalStore::new(self.session.clone())?;
             let membership = store.project(token, id, &detail)?;
+            if duration_limit.is_some_and(|max| membership.rows.len() > max) {
+                return Err(Error::InvalidInput("playlist too large to sort"));
+            }
             let generation = membership.generation();
             if local_revision.is_some_and(|r| r != membership.revision) {
                 return Err(Error::QueueChanged);
@@ -153,7 +172,7 @@ impl MusicClient {
                 .session
                 .run_for(token, |current, _| async {
                     self.session.require_api(token, &api)?;
-                    playlist_rows(current, slots, page.offset, None, None).await
+                    playlist_rows(current, slots, page.offset, trial_mode, None).await
                 })
                 .await?;
             // A concurrent local edit during song-detail lookup invalidates this page.

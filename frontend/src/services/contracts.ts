@@ -260,6 +260,11 @@ export interface CoreClient
     offset: number,
   ): Promise<AccountData<PlaylistSubscribersPage>>;
   playlistPage(id: string, page: PageRequest): Promise<AccountData<TrackPage>>;
+  playlistDurationPrepare(
+    epoch: string,
+    id: string,
+    source: import('./playlistDuration').PlaylistDurationSource,
+  ): Promise<AccountData<import('./playlistDuration').PlaylistDurationPage>>;
   mutatePlaylistLocal(
     epoch: string,
     id: string,

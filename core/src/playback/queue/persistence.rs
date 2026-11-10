@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     playback::{controller::FmRestore, engine::Cancellation},
-    playlist::offline_snapshot::OfflinePlaylistFence,
+    playlist::offline_snapshot::PlaylistQueueBinding,
     storage::StateTransaction,
 };
 use serde_json::json;
@@ -13,7 +13,7 @@ enum SideEffect<'a> {
     More(Option<bool>),
     Recall(i64),
     NativeGuard(&'a dyn Fn() -> Result<()>),
-    CachedPlaylist(&'a OfflinePlaylistFence, &'a Cancellation),
+    CachedPlaylist(&'a PlaylistQueueBinding, &'a Cancellation),
 }
 
 struct FmCommit<'a> {
@@ -27,7 +27,7 @@ impl PlaybackQueue {
         &mut self,
         candidate: QueueSnapshot,
         owner: &str,
-        binding: &OfflinePlaylistFence,
+        binding: &PlaylistQueueBinding,
         authority: &Cancellation,
     ) -> Result<()> {
         if self.owner != owner {
@@ -460,7 +460,7 @@ impl PlaybackQueue {
 fn check_cached_playlist(
     tx: &StateTransaction<'_>,
     owner: &str,
-    binding: &OfflinePlaylistFence,
+    binding: &PlaylistQueueBinding,
     authority: &Cancellation,
 ) -> Result<()> {
     if tx
@@ -502,12 +502,14 @@ mod guarded_native_tests {
             .unwrap();
         let saved = store.get(owner, "playback", "queue").unwrap();
         let revision = queue.revision();
-        let binding = OfflinePlaylistFence {
-            id: "73".into(),
-            revision: "source".into(),
-            local_generation: None,
-            cached_at_ms: 100,
-        };
+        let binding = PlaylistQueueBinding::Offline(
+            crate::playlist::offline_snapshot::OfflinePlaylistFence {
+                id: "73".into(),
+                revision: "source".into(),
+                local_generation: None,
+                cached_at_ms: 100,
+            },
+        );
         let stamp = |timestamp| json!({"local_revision":"source","cached_at_ms":timestamp});
         store
             .put(

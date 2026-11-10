@@ -172,7 +172,7 @@ pub struct OfflinePlaylistQueueUpdate {
     pub(crate) expected: PlaybackFence,
     pub(crate) queue: QueueSnapshot,
     pub(crate) start: bool,
-    pub(crate) binding: crate::playlist::offline_snapshot::OfflinePlaylistFence,
+    pub(crate) binding: crate::playlist::offline_snapshot::PlaylistQueueBinding,
     pub(crate) index: Option<crate::storage::OperationLock>,
 }
 /// Native-only homepage metadata publication. It never supplies a media URL,

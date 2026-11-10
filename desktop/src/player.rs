@@ -358,7 +358,11 @@ pub async fn player_action<R: tauri::Runtime>(
     {
         return Err(Error::InvalidInput("podcast program queue requires the main window").into());
     }
-    if matches!(&action, PlayerAction::QueueOfflinePlaylist { .. }) && window.label() != "main" {
+    if matches!(
+        &action,
+        PlayerAction::QueueOfflinePlaylist { .. } | PlayerAction::QueueSortedPlaylist { .. }
+    ) && window.label() != "main"
+    {
         return Err(Error::InvalidInput("cached playlist queue requires the main window").into());
     }
     if matches!(&action, PlayerAction::SearchGroupNextPlay { .. }) && window.label() != "main" {

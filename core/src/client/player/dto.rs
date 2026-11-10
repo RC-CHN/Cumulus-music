@@ -524,6 +524,13 @@ pub enum PlaySelection {
         double_click: bool,
         quality: Quality,
     },
+    SortedPlaylist {
+        scope: crate::client::dto::PlaylistDurationScope,
+        start: Option<MixedPlaylistStart>,
+        #[serde(default)]
+        double_click: bool,
+        quality: Quality,
+    },
     OfflinePlaylist {
         id: String,
         revision: String,
@@ -715,6 +722,11 @@ pub enum PlayerAction {
     },
     QueuePlaylist {
         id: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueSortedPlaylist {
+        scope: crate::client::dto::PlaylistDurationScope,
         quality: Quality,
         expected_queue_revision: String,
     },

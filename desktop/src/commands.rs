@@ -319,6 +319,18 @@ pub async fn playlist_subscribers(
 }
 
 #[tauri::command]
+pub async fn playlist_duration_prepare(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    source: PlaylistDurationSource,
+) -> Result<AccountData<PlaylistDurationPage>, ClientError> {
+    client
+        .playlist_duration_prepare(&epoch, &id, source)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn playlist_page(
     client: tauri::State<'_, MusicClient>,
     id: String,

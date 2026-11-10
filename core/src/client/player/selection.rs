@@ -74,6 +74,15 @@ impl MusicClient {
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
+            PlaySelection::SortedPlaylist {
+                scope,
+                start,
+                double_click,
+                quality,
+            } => {
+                self.play_sorted_playlist(epoch, scope, start, double_click, quality)
+                    .await
+            }
             PlaySelection::OfflinePlaylist {
                 id,
                 revision,
@@ -1236,6 +1245,7 @@ impl MusicClient {
                     | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::MixedPlaylist { .. }
+                    | PlaySelection::SortedPlaylist { .. }
                     | PlaySelection::OfflinePlaylist { .. }
                     | PlaySelection::LocalBatch { .. }
                     | PlaySelection::LocalBatchAdd { .. }

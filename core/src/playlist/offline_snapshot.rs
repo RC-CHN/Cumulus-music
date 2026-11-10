@@ -22,3 +22,25 @@ impl OfflinePlaylistFence {
             && PlaylistLocalStore::generation_in(tx, owner, &self.id)? == self.local_generation)
     }
 }
+
+pub(crate) enum PlaylistQueueBinding {
+    Offline(OfflinePlaylistFence),
+    Online {
+        id: String,
+        membership: Option<Option<u64>>,
+    },
+}
+
+impl PlaylistQueueBinding {
+    pub(crate) fn matches(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<bool> {
+        match self {
+            Self::Offline(stamp) => stamp.matches(tx, owner),
+            Self::Online { id, membership } => match membership {
+                Some(expected) => {
+                    Ok(PlaylistLocalStore::generation_in(tx, owner, id)? == *expected)
+                }
+                None => Ok(true),
+            },
+        }
+    }
+}

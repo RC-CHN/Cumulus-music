@@ -112,6 +112,8 @@ import { usePlaylistTopTags } from './composables/usePlaylistTopTags';
 import { usePlaylistSquare } from './composables/usePlaylistSquare';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterTrackScope } from './services/trackScopeSearch';
+import { sortedPlaylistRows } from './services/playlistDuration';
+import { usePlaylistDuration } from './composables/usePlaylistDuration';
 import TrackScopeSearch from './components/TrackScopeSearch.vue';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import { usePlaylistCommentTab } from './composables/usePlaylistCommentTab';
@@ -4040,13 +4042,23 @@ function showPlaylistSection(section: PlaylistSection) {
   if (playlistPanelId() && !cachedPlaylist.value) music.replacePlaylistSection(section);
 }
 const playlistKeyword = ref('');
-const playlistTrackSearch = computed(() =>
+const playlistDuration = usePlaylistDuration(
+  core,
+  () => account.value,
+  () => page.value,
+  result,
+  () => loading.value,
+);
+const playlistTrackFilter = computed(() =>
   filterTrackScope(
     result.value?.tracks ?? [],
     page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
       ? playlistKeyword.value
       : '',
   ),
+);
+const playlistTrackSearch = computed(() =>
+  sortedPlaylistRows(playlistTrackFilter.value, playlistDuration.ordinals.value),
 );
 const playlistSelectionScope = computed(() =>
   signedIn.value &&
@@ -4114,6 +4126,7 @@ const mixedReorderScope = computed(() => {
     !shown?.playlistLocal ||
     shown.playlistLocal.hasUnboundLegacy ||
     !mixedReorder.ready.value ||
+    playlistDuration.requested.value ||
     loading.value ||
     !tracks.length ||
     localPlaylistMember.value ||
@@ -4486,7 +4499,12 @@ const searchKnownPlaylistIds = computed(() =>
     ? new Set(playlists.value.map((playlist) => playlist.id))
     : undefined,
 );
+const sortedPlaylistQueuePrefix = 'queue-sorted:';
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
+  const sorting =
+    scene === 'detail' && playlistPanelId() === list.id && playlistDuration.requested.value;
+  const sortScope = sorting ? playlistDuration.scope.value : undefined;
+  const sortKey = sortScope ? `${sortScope.receipt}:${sortScope.order}` : '';
   if (cachedPlaylist.value && playlistPanelId() === list.id) {
     const revision = result.value?.playlistLocal?.revision;
     if (scene !== 'detail' || !revision) return [];
@@ -4494,11 +4512,12 @@ function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection
       player.view.value?.fm || !!player.view.value?.intelligence || !!together.view.value?.attached;
     return [
       {
-        key: `${offlineQueueMenuPrefix}${account.value.epoch}:${list.id}:${revision}:${cachedPlaylist.value.cachedAtMs}`,
+        key: `${offlineQueueMenuPrefix}${account.value.epoch}:${list.id}:${revision}:${cachedPlaylist.value.cachedAtMs}:${sortKey}`,
         label: '添加全部至播放列表',
         icon: 'list',
         disabled:
           !cachedPlaylistHeaderSelection.value ||
+          playlistDuration.blocked.value ||
           loading.value ||
           !player.ready.value ||
           player.busy.value ||
@@ -4509,15 +4528,48 @@ function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection
       },
     ];
   }
-  return playlistMenuItems(list, scene, {
+  const items = playlistMenuItems(list, scene, {
     lists: playlists.value,
     busy: playlistManager.busy.value || downloads.busy.value || !!playlistActions.value?.busy,
     playable: player.ready.value,
     preparing: player.busy.value || player.queueBusy.value,
     fm: player.view.value?.fm,
   });
+  return sorting
+    ? items.map((item) =>
+        item.key === 'queue'
+          ? {
+              ...item,
+              key: `${sortedPlaylistQueuePrefix}${sortKey}`,
+              disabled:
+                item.disabled ||
+                !sortScope ||
+                !!player.view.value?.intelligence ||
+                !!together.view.value?.attached,
+            }
+          : item,
+      )
+    : items;
+}
+function scopedSortedPlaylistQueue(id: string) {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  const scope = playlistDuration.scope.value;
+  if (route.kind !== 'playlist' || route.id !== id || !scope) return;
+  return async () => {
+    const current = playlistDuration.scope.value;
+    if (
+      page.value !== route ||
+      account.value.epoch !== epoch ||
+      current?.receipt !== scope.receipt ||
+      current.order !== scope.order
+    )
+      return;
+    return player.queueSortedPlaylist(scope);
+  };
 }
 function scopedOfflinePlaylistQueue(id: string) {
+  if (playlistDuration.requested.value) return scopedSortedPlaylistQueue(id);
   const route = page.value;
   const epoch = account.value.epoch;
   const selection = cachedPlaylistHeaderSelection.value;
@@ -4585,8 +4637,10 @@ function scopedPlaylistQueue(id: string, track?: TrackView) {
 function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
   const item = playlistMenu(list, scene).find((item) => item.key === key);
   if (!item || item.disabled) return;
-  if (key.startsWith(offlineQueueMenuPrefix)) {
-    const scoped = scopedOfflinePlaylistQueue(list.id);
+  if (key.startsWith(offlineQueueMenuPrefix) || key.startsWith(sortedPlaylistQueuePrefix)) {
+    const scoped = key.startsWith(sortedPlaylistQueuePrefix)
+      ? scopedSortedPlaylistQueue(list.id)
+      : scopedOfflinePlaylistQueue(list.id);
     if (scoped) playlistActions.value?.show(list, 'queue', scoped);
   } else if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
   else if (key === 'batch') openBatch(list, scene);
@@ -5390,8 +5444,21 @@ function playMixedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
     });
   return true;
 }
+function playSortedPlaylist(track?: TrackView, gesture?: TrackPlayGesture) {
+  if (!playlistDuration.requested.value) return false;
+  const scope = playlistDuration.scope.value;
+  if (scope)
+    void player.select({
+      kind: 'sorted_playlist',
+      scope,
+      start: track ? { id: track.id, local: track.local } : null,
+      double_click: gesture === 'double_click',
+      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  return true;
+}
 function playPlaylistHeader() {
-  if (playCachedPlaylist()) return;
+  if (playSortedPlaylist() || playCachedPlaylist()) return;
   const current = page.value;
   if (current.kind === 'playlist' && current.zonePlaylistReceipt) playZonePlaylistDetail(null);
   else if (!playMixedPlaylist())
@@ -5426,7 +5493,11 @@ function play(index = 0, gesture?: TrackPlayGesture) {
       playZonePlaylistDetail(tracks[index].id, gesture === 'double_click');
       return;
     }
-    if (playCachedPlaylist(tracks[index], gesture) || playMixedPlaylist(tracks[index], gesture))
+    if (
+      playSortedPlaylist(tracks[index], gesture) ||
+      playCachedPlaylist(tracks[index], gesture) ||
+      playMixedPlaylist(tracks[index], gesture)
+    )
       return;
     const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',
@@ -6524,6 +6595,7 @@ onUnmounted(() => {
                   :offline="!!cachedPlaylist"
                   :playable="
                     player.ready.value &&
+                    !playlistDuration.blocked.value &&
                     (cachedPlaylist
                       ? !!cachedPlaylistHeaderSelection && !loading
                       : result.tracks.some((track) => !track.missing))
@@ -6862,7 +6934,24 @@ onUnmounted(() => {
                 />
                 <template v-else-if="result">
                   <p
-                    v-if="playlistTrackSearch.positions !== null"
+                    v-if="playlistDuration.delayedNotice.value"
+                    role="status"
+                    class="muted playlist-sort-status"
+                  >
+                    正在读取完整歌单以排序…
+                  </p>
+                  <p
+                    v-if="playlistDuration.issue.value"
+                    role="alert"
+                    class="form-warning playlist-sort-status"
+                  >
+                    {{ playlistDuration.issue.value }}
+                    <button class="text-button" type="button" @click="playlistDuration.retry()">
+                      重试排序
+                    </button>
+                  </p>
+                  <p
+                    v-if="playlistTrackFilter.positions !== null"
                     class="playlist-track-match"
                     role="status"
                   >
@@ -6968,11 +7057,15 @@ onUnmounted(() => {
                     :read-only="!!cachedPlaylist"
                     :playable-ids="cachedPlayableIds"
                     :match-keyword="
-                      playlistTrackSearch.positions !== null ? playlistKeyword : undefined
+                      playlistTrackFilter.positions !== null ? playlistKeyword : undefined
                     "
+                    :duration-order="
+                      playlistDuration.supported.value ? playlistDuration.order.value : undefined
+                    "
+                    @sort-duration="playlistDuration.cycle"
                     :liked="liked"
                     :busy="busyLikes"
-                    :playable="player.ready.value"
+                    :playable="player.ready.value && !playlistDuration.blocked.value"
                     :current-id="
                       cachedPlaylist ? visibleTrackToggle?.trackId : currentCatalogSongId
                     "
@@ -6985,7 +7078,7 @@ onUnmounted(() => {
                   />
                   <div v-else class="empty-state">
                     {{
-                      playlistTrackSearch.positions === null
+                      playlistTrackFilter.positions === null
                         ? '这里还没有歌曲'
                         : '没有找到匹配的歌曲'
                     }}
@@ -6993,7 +7086,7 @@ onUnmounted(() => {
                   <button
                     v-if="result.more"
                     class="load-more"
-                    :disabled="loading"
+                    :disabled="loading || playlistDuration.pending.value"
                     @click="music.load(true)"
                   >
                     {{

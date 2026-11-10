@@ -452,6 +452,15 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
+  function queueSortedPlaylist(
+    scope: import('../services/playlistDuration').PlaylistDurationScope,
+  ) {
+    return queueAction({
+      kind: 'queue_sorted_playlist',
+      scope,
+      quality: view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  }
   function queueOfflinePlaylist(id: string, revision: string, cached_at_ms: number) {
     return queueAction({ kind: 'queue_offline_playlist', id, revision, cached_at_ms });
   }
@@ -597,6 +606,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_downloads'
             | 'queue_local'
             | 'queue_playlist'
+            | 'queue_sorted_playlist'
             | 'queue_offline_playlist'
             | 'queue_mixed_playlist'
             | 'queue_voice'
@@ -1411,6 +1421,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   return {
     queuePlaylist,
+    queueSortedPlaylist,
     queueOfflinePlaylist,
     queueMixedPlaylist,
     queueZonePlaylistBatch,

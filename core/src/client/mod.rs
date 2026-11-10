@@ -56,6 +56,7 @@ pub mod pc_experiments;
 mod player;
 mod playlist_cover;
 mod playlist_creator;
+mod playlist_duration;
 mod playlist_essential;
 mod playlist_local_membership;
 mod playlist_offline;
@@ -134,6 +135,7 @@ pub struct MusicClient {
     scene_fm: scene_fm::SceneFmHost,
     playlist_cover: playlist_cover::CoverHost,
     playlist_offline: playlist_offline::Host,
+    playlist_duration: playlist_duration::Host,
     account_avatar: account_avatar::AvatarHost,
     effect_material_backend: Option<Arc<dyn crate::download::transfer::MediaBackend>>,
     login_device_rows: login_devices::DeviceRows,
@@ -311,6 +313,7 @@ impl MusicClient {
             remote_skins: Default::default(),
             playlist_cover: playlist_cover::CoverHost::default(),
             playlist_offline: Default::default(),
+            playlist_duration: Default::default(),
             artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),
             effect_material_backend: None,

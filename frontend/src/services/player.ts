@@ -526,6 +526,13 @@ export type PlaySelection =
     }
   | { kind: 'daily_recommendations_batch'; revision: string; indices: number[]; quality: Quality }
   | {
+      kind: 'sorted_playlist';
+      scope: import('./playlistDuration').PlaylistDurationScope;
+      start: { id: string; local: boolean } | null;
+      double_click?: boolean;
+      quality: Quality;
+    }
+  | {
       kind: 'offline_playlist';
       id: string;
       revision: string;
@@ -671,6 +678,12 @@ export type PlayerAction =
     }
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
+  | {
+      kind: 'queue_sorted_playlist';
+      scope: import('./playlistDuration').PlaylistDurationScope;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
   | {
       kind: 'queue_offline_playlist';
       id: string;

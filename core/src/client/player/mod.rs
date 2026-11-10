@@ -28,6 +28,7 @@ mod prepared_selection;
 mod quality;
 mod queue_catalog_reveal;
 pub use queue_catalog_reveal::QueueCatalogFileReveal;
+mod playlist_duration;
 mod queue_click;
 mod queue_collection;
 mod queue_download_menu;
@@ -1062,6 +1063,16 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueSortedPlaylist {
+            scope,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_sorted_playlist(epoch, scope, quality, &expected_queue_revision)
+                .await;
+        }
         if let PlayerAction::QueueOfflinePlaylist {
             id,
             revision,
@@ -1901,6 +1912,7 @@ impl MusicClient {
             | PlayerAction::SearchGroupNextPlay { .. }
             | PlayerAction::SearchGroupPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueueSortedPlaylist { .. }
             | PlayerAction::QueueOfflinePlaylist { .. }
             | PlayerAction::QueueMixedPlaylist { .. }
             | PlayerAction::QueueVoice { .. }

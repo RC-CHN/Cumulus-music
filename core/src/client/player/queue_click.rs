@@ -206,6 +206,12 @@ pub(super) struct QueueClickSnapshot {
     before: PlaybackSnapshot,
     queue: QueueSnapshot,
 }
+
+impl QueueClickSnapshot {
+    pub(super) fn matches(&self, expected: &PlaybackFence, observed: u64) -> bool {
+        self.before.fence() == *expected && observed.checked_add(1) == Some(self.attempt)
+    }
+}
 pub(super) struct AlbumTableRows {
     pub resources: Vec<Value>,
     pub index: usize,
@@ -598,7 +604,7 @@ impl MusicClient {
             .await
     }
 
-    async fn submit_retained_row(
+    pub(super) async fn submit_retained_row(
         &self,
         token: &SessionToken,
         command: PlaybackCommand,

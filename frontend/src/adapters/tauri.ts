@@ -782,6 +782,8 @@ export function createTauriClient(): CoreClient {
       invoke('playlist_square_recommendations', { epoch, continuation }),
     playlistSubscribers: (epoch, id, offset) =>
       invoke('playlist_subscribers', { epoch, id, offset }),
+    playlistDurationPrepare: (epoch, id, source) =>
+      invoke('playlist_duration_prepare', { epoch, id, source }),
     playlistPage: (id, { localRevision, ...page }) =>
       invoke('playlist_page', { id, page, localRevision: localRevision ?? null }),
     mutatePlaylistLocal: (epoch, id, revision, change) =>
