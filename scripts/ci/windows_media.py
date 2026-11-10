@@ -165,7 +165,13 @@ def verify_cache(cache, plan, lock=None):
     return packages[0]
 
 
-def install(msys):
+def proof_binaries(profile):
+    assert profile in ('debug', 'release'), 'invalid Windows media Cargo profile'
+    target = Path(os.environ.get('CARGO_TARGET_DIR', ROOT / '.build/target')) / profile
+    return target / 'cumulus_audio_filter.dll', target / 'examples/player_probe.exe'
+
+
+def install(msys, profile='debug'):
     plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
     lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
     cache = BUILD / 'cache'
@@ -210,9 +216,8 @@ def install(msys):
     filters = output([binary / 'ffmpeg.exe', '-hide_banner', '-filters'])
     assert re.search(r'\bladspa\s+', filters), 'installed FFmpeg cannot load LADSPA'
     # The real current plugin must load, not merely appear in a capability list.
-    target = Path(os.environ.get('CARGO_TARGET_DIR', ROOT / '.build/target'))
-    plugin = target / 'debug/cumulus_audio_filter.dll'
-    assert plugin.is_file(), 'build the current Cumulus DSP before runtime verification'
+    plugin, probe = proof_binaries(profile)
+    assert plugin.is_file() and probe.is_file(), 'build the current Cumulus DSP and player probe before runtime verification'
     shutil.copy2(plugin, BUILD / 'cumulus_audio_filter.dll')
     subprocess.run([str(binary / 'ffmpeg.exe'), '-nostdin', '-hide_banner', '-v', 'error',
                     '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=0.1',
@@ -220,7 +225,6 @@ def install(msys):
                     '-f', 'null', '-'], cwd=BUILD, check=True, timeout=30)
     # Check the production host's absolute, escaped Unicode path in-process:
     # loading the relative ASCII plugin above cannot establish this capability.
-    probe = target / 'debug/examples/player_probe.exe'
     env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ.get('PATH', '')}
     with (BUILD / 'player-probe.log').open('x', encoding='utf-8') as log:
         try:
@@ -278,5 +282,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['prepare', 'install', 'verify-cache'])
     parser.add_argument('--msys', type=Path, required=True)
+    parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
     args = parser.parse_args()
-    {'prepare': prepare, 'install': install, 'verify-cache': check_built_cache}[args.action](args.msys.resolve())
+    if args.action == 'install':
+        install(args.msys.resolve(), args.profile)
+    else:
+        {'prepare': prepare, 'verify-cache': check_built_cache}[args.action](args.msys.resolve())

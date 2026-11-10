@@ -11,6 +11,7 @@ import subprocess
 import zipfile
 
 from windows_flac import FLAC, decoder_members
+from windows_media import proof_binaries, sha256
 from windows_webview_inputs import ci_identity, plain_stat
 from windows_zip_smoke import DEVICE_NAMES
 
@@ -19,6 +20,7 @@ RUNTIME = 'native'
 MANIFEST = 'manifest.json'
 FILTER = 'cumulus_audio_filter.dll'
 TOOLS = {FILTER, 'ffprobe.exe'}
+MEDIA_PROOF = 'third-party/cumulus-ffmpeg-source/installed.json'
 
 
 def files_in(directory):
@@ -52,7 +54,14 @@ def receipt(directory, identity, dlls, flac):
         'shared Windows runtime does not match its DLL inventory')
     for name, (size, sha) in decoder_members(flac).items():
         assert files.get(name) == dict(bytes=size, sha256=sha), 'wrong shared Windows FLAC member'
+    check_verified_filter(directory / MEDIA_PROOF, files[FILTER]['sha256'])
     return dict(schema=1, **identity, dlls=dlls, flac=flac, files=files)
+
+
+def check_verified_filter(receipt_path, filter_hash):
+    proof = json.loads(receipt_path.read_text(encoding='utf-8'))
+    assert proof['filterLoaded'] is True and proof['nativePcmVerified'] is True, 'Windows DSP media proof failed'
+    assert proof['pluginSha256'] == filter_hash, 'shared Windows DSP differs from the runtime-verified filter'
 
 
 def verify(artifact, identity):
@@ -71,15 +80,16 @@ def stage(repo, identity, msys):
     from package import windows_media
 
     assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == identity['commit']
-    # Build the release filter once for both the package and the early GUI shards.
-    subprocess.run(['cargo', 'build', '--release', '--locked', '-p', 'cumulus-audio-filter', '--lib'],
-                   cwd=repo, check=True)
+    # The media action already built and verified the exact release filter.
+    # The shared archive and its consumers must retain that tested DLL.
+    filter_path, _ = proof_binaries('release')
     artifact = repo / ARTIFACT
     runtime = artifact / RUNTIME
     runtime.mkdir(parents=True)
-    target = Path(os.environ.get('CARGO_TARGET_DIR', '.build/target'))
-    shutil.copyfile(repo / target / 'release' / FILTER, runtime / FILTER)
     dlls, flac = windows_media(runtime, msys)
+    filter_path = repo / filter_path
+    check_verified_filter(runtime / MEDIA_PROOF, sha256(filter_path))
+    shutil.copyfile(filter_path, runtime / FILTER)
     manifest = receipt(runtime, identity, dlls, flac)
     (artifact / MANIFEST).write_text(json.dumps(manifest, sort_keys=True) + '\n', encoding='utf-8')
 

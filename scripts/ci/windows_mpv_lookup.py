@@ -1,18 +1,22 @@
 """Ensure native Windows playback never implicitly trusts PATH or CWD."""
+import argparse
 import os
 from pathlib import Path
 import subprocess
 import sys
 
+from windows_media import proof_binaries
+
 
 def main():
     assert sys.platform == 'win32'
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
+    args = parser.parse_args()
     name = 'MPV_DLL_DIR_CUMULUS'
     runtime = Path(os.environ[name]).resolve(strict=True)
     assert (runtime / 'libmpv-2.dll').is_file(), 'positive runtime fixture missing'
-    target = Path(os.environ.get('CARGO_TARGET_DIR', '.build/target')).resolve(strict=True)
-    probe = target / 'debug/examples/player_probe.exe'
-    plugin = target / 'debug/cumulus_audio_filter.dll'
+    plugin, probe = (path.resolve(strict=True) for path in proof_binaries(args.profile))
     assert probe.is_file() and plugin.is_file()
     assert not any((probe.parent / dll).exists() for dll in ('libmpv-2.dll', 'mpv-2.dll'))
     proof = Path('.build/windows-media/untrusted-sdk-proof').resolve()
