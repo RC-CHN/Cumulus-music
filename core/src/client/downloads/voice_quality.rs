@@ -111,8 +111,8 @@ fn size_label(bytes: u64) -> String {
     };
     match bytes {
         ..=1023 => format!("{bytes}.0B"),
-        ..=1_048_575 => format!("{}KB", (bytes + 512) / 1024),
-        ..=1_073_741_823 => decimal(1 << 20, "M"),
+        1024..=1_048_575 => format!("{}KB", (bytes + 512) / 1024),
+        1_048_576..=1_073_741_823 => decimal(1 << 20, "M"),
         _ => decimal(1 << 30, "G"),
     }
 }
@@ -145,7 +145,7 @@ fn single_choices(value: &Value) -> Vec<VoiceDownloadChoice> {
     for (bitrate, size) in music {
         let (quality, name) = QUALITIES[match bitrate {
             ..=128_000 => 0,
-            ..=192_000 => 1,
+            128_001..=192_000 => 1,
             _ => 2,
         }];
         if choices.last().is_none_or(|old| old.quality != quality) {
