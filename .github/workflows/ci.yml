@@ -2067,7 +2067,7 @@ jobs:
             xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- \
             /usr/bin/python3 scripts/ci/catalog_smoke.py --listened-books-resume --binary .build/target/debug/examples/catalog_ui_probe \
             --frontend-dist frontend/dist --root .build/ci-listened-books-resume-linux --screenshots
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/history_radio_chapter_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --frontend-dist frontend/dist --root .build/ci-history-radio-chapter-linux --screenshots
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/history_radio_chapter_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --frontend-dist frontend/dist --root .build/ci-history-radio-chapter-linux --screenshots
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 \
             CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
             xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- \
@@ -2083,7 +2083,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-mv-linux --artist-mv
           cargo build -p cumulus-desktop --example discovery_home_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-home-linux
-          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/discovery_home_smoke.py --recall --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-recall-linux --screenshots
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/discovery_home_smoke.py --recall --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-recall-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-batch-linux --artist-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-navigation-linux --navigation
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-playback-credit-linux --playback-credit
