@@ -31,6 +31,7 @@ unsafe extern "C" {
         stereoizer: i32,
     ) -> i32;
     pub fn netease_local_equalizer_master_off(state: *mut c_void) -> i32;
+    pub fn netease_local_equalizer_initial_modern_ready(state: *const c_void) -> i32;
     pub fn netease_local_equalizer_apply_modern(
         state: *mut c_void,
         initial: u32,

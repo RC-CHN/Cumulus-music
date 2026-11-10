@@ -11,9 +11,9 @@ use crate::{
     },
     library::{identity::fingerprint, native_open::checked_audio_file},
     playback::engine::{
-        AudioEngine, EndReason, EngineEvent, MpvConfig, MpvEngine, StereoPcmControl,
-        StereoPcmSnapshot, limiter_segment::native_decoder::until, pcm_wave::tests::wave_at,
-        stereo_pcm::StereoGraphControl,
+        AudioEngine, EndReason, EngineEvent, MpvConfig, MpvEngine, NativeModernEffectSource,
+        StereoPcmControl, StereoPcmSnapshot, limiter_segment::native_decoder::until,
+        pcm_wave::tests::wave_at, stereo_pcm::StereoGraphControl,
     },
 };
 use serde_json::Value;
@@ -267,6 +267,104 @@ fn switch_paused_modern_entry(
         "the worker changes only the graph while the old native entry and PCM stay put"
     );
     revision
+}
+
+#[test]
+fn held_geq_modern_admission_is_read_only_and_stamped_to_the_worker_revision() {
+    let rate = 48_000;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("admission.wav");
+    fs::write(&path, wave_at(rate, (0..32 * 2048 + 7).map(s16))).unwrap();
+    let path = path.canonicalize().unwrap();
+    let fingerprint = fingerprint(&path).unwrap();
+    let mut gains = [0.0; 10];
+    gains[1] = 3.0;
+    let geq = EqualizerSettings::new(true, gains).unwrap();
+    let local = |settings| {
+        let plan = LocalEqualizerMaterialPlan::from_saved(settings);
+        let (file, _) = checked_audio_file(&path, &fingerprint).unwrap();
+        let authority = Cancellation::default();
+        let NativeStereoSelection::Qualified(source) =
+            NativeStereoSource::select_wave(file, authority.clone(), plan).unwrap()
+        else {
+            panic!("must hold the eligible WAV descriptor");
+        };
+        let pass = start(*source, 0, &Cancellation::default());
+        let control = pass.control();
+        until(|| (control.snapshot().unwrap().produced_frames > 0).then_some(()));
+        control.publish_sink().unwrap();
+        control.bind_entry(71).unwrap();
+        control.observe(71, Some(0.0), true, false).unwrap();
+        (pass, control, authority)
+    };
+
+    let (pass, control, lifetime) = local(geq);
+    let first = NativeModernEffectSource::capture(control.clone(), 71)
+        .unwrap()
+        .unwrap();
+    assert_eq!(control.modern_admission_revision(71).unwrap(), Some(0));
+    let plan = LocalEqualizerMaterialPlan::from_saved(geq);
+    let rev = pass.apply_material(plan).unwrap();
+    assert!(
+        matches!(first.check(), Err(Error::StaleResponse)),
+        "any queued revision stales the old receipt even when the plan is unchanged"
+    );
+    control.wait_applied(rev, Duration::from_secs(2)).unwrap();
+    let steady = control.snapshot().unwrap();
+    let latest = NativeModernEffectSource::capture(control.clone(), 71)
+        .unwrap()
+        .unwrap();
+    assert_eq!(control.modern_admission_revision(71).unwrap(), Some(rev));
+    assert!(
+        NativeModernEffectSource::capture(control.clone(), 72)
+            .unwrap()
+            .is_none()
+    );
+    latest.check().unwrap();
+    assert_eq!(
+        control.snapshot().unwrap(),
+        steady,
+        "reading the graph stamp must not touch PCM, clock, or revision"
+    );
+
+    let off = pass.disable_master().unwrap();
+    assert!(matches!(latest.check(), Err(Error::StaleResponse)));
+    control.wait_applied(off, Duration::from_secs(2)).unwrap();
+    let reapply = pass.apply_material(plan).unwrap();
+    control
+        .wait_applied(reapply, Duration::from_secs(2))
+        .unwrap();
+    assert!(
+        NativeModernEffectSource::capture(control.clone(), 71)
+            .unwrap()
+            .is_none()
+    );
+    control.retire_sink();
+    let _source = pass.reclaim().unwrap();
+    assert!(!lifetime.is_cancelled());
+
+    for settings in [
+        geq.with_tone(3, 0).unwrap(),
+        geq.with_stereo_controls(3, 0).unwrap(),
+    ] {
+        let (pass, control, _) = local(settings);
+        assert!(
+            NativeModernEffectSource::capture(control.clone(), 71)
+                .unwrap()
+                .is_none()
+        );
+        control.retire_sink();
+        let _source = pass.reclaim().unwrap();
+    }
+
+    let (fresh_pass, fresh, _) = local(geq);
+    assert_eq!(fresh.modern_admission_revision(71).unwrap(), Some(0));
+    assert!(
+        first.check().is_err(),
+        "a new pass can reuse numeric entry and revision without reviving the old receipt"
+    );
+    fresh.retire_sink();
+    let _source = fresh_pass.reclaim().unwrap();
 }
 
 #[test]

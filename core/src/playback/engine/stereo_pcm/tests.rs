@@ -31,7 +31,7 @@ fn paused_credit_applies_controls_but_decoder_and_reader_counts_cannot_advance_n
         let mut graph =
             LocalFixedStereoMaterial::new(Format::new(44100.0, 2, 2048).unwrap(), plan(3)).unwrap();
         let result = worker_shared.wait_for_credit(|control| match control {
-            StereoGraphControl::Cold(plan) => graph.configure(plan),
+            StereoGraphControl::Cold(plan) => graph.configure(plan).map(|()| false),
             _ => panic!("unexpected ordinary graph control"),
         });
         stop.send(result).unwrap();
@@ -209,9 +209,11 @@ fn assert_first_native_sync(paused: bool, first: u64) {
         let mut decoded = first;
         loop {
             match worker_shared.wait_for_credit(|control| match (&mut graph, control) {
-                (Graph::Cold(graph), StereoGraphControl::Cold(plan)) => graph.configure(plan),
+                (Graph::Cold(graph), StereoGraphControl::Cold(plan)) => {
+                    graph.configure(plan).map(|()| false)
+                }
                 (Graph::Ordinary(graph), StereoGraphControl::ApplyLocal(plan)) => {
-                    graph.apply_material(plan)
+                    graph.apply_material(plan).map(|()| false)
                 }
                 _ => panic!("control belongs to another stereo graph"),
             }) {
@@ -387,7 +389,7 @@ fn native_control_ack_cannot_escape_revocation_during_worker_apply() {
             assert!(matches!(command, StereoGraphControl::DisableLocalMaster));
             entered.send(()).unwrap();
             proceed.recv_timeout(Duration::from_secs(2)).unwrap();
-            Ok(())
+            Ok(false)
         })
     });
     start.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -402,4 +404,28 @@ fn native_control_ack_cannot_escape_revocation_during_worker_apply() {
     assert_eq!(snapshot.requested_revision, revision);
     assert_eq!(snapshot.applied_revision, 0);
     assert_eq!(snapshot.produced_frames, 0);
+}
+
+#[test]
+fn modern_admission_closes_before_b0_drain_and_cannot_reopen_on_publication() {
+    let (_reader, control, shared) =
+        native_channel(48_000, 0, 8192, Cancellation::default()).unwrap();
+    control.publish_sink().unwrap();
+    control.bind_entry(17).unwrap();
+    assert_eq!(control.modern_admission_revision(17).unwrap(), None);
+    shared
+        .publish_observing_graph(&[0.25, -0.25], 1, false, true)
+        .unwrap();
+    assert_eq!(control.modern_admission_revision(17).unwrap(), Some(0));
+    shared.close_modern_admission().unwrap();
+    assert!(!control.snapshot().unwrap().graph_end);
+    assert_eq!(control.modern_admission_revision(17).unwrap(), None);
+    shared
+        .publish_observing_graph(&[-0.25, 0.25], 8192, false, true)
+        .unwrap();
+    assert!(
+        control.validate_host().is_ok(),
+        "source still owns its drain"
+    );
+    assert_eq!(control.modern_admission_revision(17).unwrap(), None);
 }

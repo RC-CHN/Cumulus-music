@@ -93,7 +93,7 @@ impl MpvEngine {
             self.stereo_pcm
                 .as_ref()
                 .ok_or(Error::State("local equalizer sink is missing"))?
-                .local_handoff_authority(entry)
+                .begin_local_handoff(entry)
         })();
         let source = match source {
             Ok(source) => source,
@@ -416,7 +416,7 @@ mod tests {
         engine.stereo_pcm = Some(control.clone());
         engine.pinned_authority = Some(control.authority());
         assert!(matches!(
-            control.local_handoff_authority(8),
+            control.begin_local_handoff(8),
             Err(Error::StaleResponse)
         ));
         engine

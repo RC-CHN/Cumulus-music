@@ -83,6 +83,8 @@ fn modern_handoff_cannot_roll_back_a_missing_or_rejected_exact_stop() {
         }
         let result = engine.retire_local_pinned_with(entry, &action, |engine, entry, guard| {
             assert!(guard.check().is_ok());
+            assert!(matches!(receipt.check(), Err(Error::StaleResponse)));
+            assert!(engine.modern_effect_owned_source(entry).unwrap().is_none());
             if stale_event {
                 engine.await_pinned_stop(entry, Instant::now() + Duration::from_millis(35), guard)
             } else {

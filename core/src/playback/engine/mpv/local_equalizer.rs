@@ -57,8 +57,7 @@ impl MpvEngine {
         {
             return Ok(None);
         }
-        crate::playback::engine::NativeModernEffectSource::new(local.pass.control(), entry)
-            .map(Some)
+        crate::playback::engine::NativeModernEffectSource::capture(local.pass.control(), entry)
     }
 
     pub fn with_local_equalizer_decoder(mut self, runtime: TrustedFlacRuntime) -> Self {

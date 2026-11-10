@@ -258,16 +258,21 @@ impl LocalEqualizerStereoMaterial {
         }
     }
 
+    pub(crate) fn initial_modern_ready(&self) -> bool {
+        self.graph.available().is_ok()
+            && self.has_pcm
+            && !self.ending
+            && matches!(self.mode, LocalEqualizerMode::Legacy { geq_only: true })
+            && self.graph.stage.initial_modern_ready()
+    }
+
     /// Apply a validated modern material to the currently driven GEQ-only
     /// object. Keeps the upstream wrappers and the caller's PCM/decoder
     /// state. It cannot select a source, grant playback rights, or install
     /// an effect in the application.
     pub fn apply_initial_modern(&mut self, plan: &ModernLimiterPlan) -> Result<()> {
         self.graph.available()?;
-        if !self.has_pcm
-            || self.ending
-            || !matches!(self.mode, LocalEqualizerMode::Legacy { geq_only: true })
-        {
+        if !self.initial_modern_ready() {
             return Err(Error::State(
                 "initial modern effect requires a live local GEQ-only graph",
             ));

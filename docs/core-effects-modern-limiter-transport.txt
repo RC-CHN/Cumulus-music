@@ -181,6 +181,11 @@ Production wiring and its remaining gates
   The same graph also matches original off/reapply with or without an
   intervening quantum. These controls do not register or activate an
   effect in the application.
+- The held worker exposes a read-only graph admission stamp to the
+  existing native source capture. It requires a settled GEQ-only baseline
+  and the current applied graph revision, and is invalidated by queued
+  controls, source EOF, or intentional native retirement. This does not
+  extend ownership forwarding or registration reachability.
 - The ordinary official type-4 cache/online source feeds the device PCM
   route (`10555B0` negotiated geometry; `1055EF0` SDK write/read); it does
   not infer the graph format from song bitrate. The ordinary seek discards

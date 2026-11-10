@@ -62,32 +62,28 @@ impl Cancellation {
 pub struct NativeModernEffectSource {
     control: super::StereoPcmControl,
     entry: i64,
+    graph_revision: u64,
     format: crate::effects::dsp::Format,
 }
 
 impl NativeModernEffectSource {
-    pub(crate) fn new(control: super::StereoPcmControl, entry: i64) -> Result<Self> {
+    pub(crate) fn capture(control: super::StereoPcmControl, entry: i64) -> Result<Option<Self>> {
+        let Some(graph_revision) = control.modern_admission_revision(entry)? else {
+            return Ok(None);
+        };
         let format = crate::effects::dsp::Format::new(control.rate() as f32, 2, 2048)?;
         let receipt = Self {
             control,
             entry,
+            graph_revision,
             format,
         };
         receipt.check()?;
-        Ok(receipt)
+        Ok(Some(receipt))
     }
 
     pub(crate) fn check(&self) -> Result<()> {
-        self.control.validate_host()?;
-        let state = self.control.snapshot()?;
-        if state.native_entry != Some(self.entry)
-            || state.graph_end
-            || state.cancelled
-            || state.failed
-            || state.reader_closed
-            || state.native_sink_retired
-            || state.seeking
-        {
+        if self.control.modern_admission_revision(self.entry)? != Some(self.graph_revision) {
             return Err(Error::StaleResponse);
         }
         self.control.validate_host()
@@ -102,10 +98,16 @@ impl NativeModernEffectSource {
         rate: u32,
         lifetime: Cancellation,
     ) -> Result<(Self, super::StereoPcmReader)> {
-        let (reader, control, _) = super::stereo_pcm::native_channel(rate, 0, 48_000, lifetime)?;
+        let (reader, control, shared) =
+            super::stereo_pcm::native_channel(rate, 0, 48_000, lifetime)?;
         control.publish_sink()?;
         control.bind_entry(7)?;
-        Ok((Self::new(control, 7)?, reader))
+        // The protocol fixture models a known positive worker state; native
+        // DSP and receipt invalidation are tested with an actual held WAV.
+        shared.publish_observing_graph(&[0.25, -0.25], 1, false, true)?;
+        let receipt =
+            Self::capture(control, 7)?.ok_or(Error::State("missing synthetic admission"))?;
+        Ok((receipt, reader))
     }
 }
 

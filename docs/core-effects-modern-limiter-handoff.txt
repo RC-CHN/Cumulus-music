@@ -155,6 +155,36 @@ B0 and the 238-frame off B0 discarded at their respective transitions.
 The held descriptor is still owned at EOF. No physical sound device was
 used.
 
+Read-only admission before any handoff
+--------------------------------------
+
+Only the held local worker can report settled GEQ readiness. It checks
+the same Rust baseline and C flags as the first apply after a processed
+quantum and after a completed graph control. The existing native source
+capture can read the result only for a bound, live ordinary WAV, with no
+pending graph control or competing stock effect. It returns the unique
+transport, exact native entry and applied graph revision. The existing
+actor receipt separately checks account generation and its current
+playback guard. A readback does not queue a control or move audio.
+
+Every accepted control changes the requested revision immediately,
+including an otherwise identical GEQ application. An older stamp can
+never represent the newer controls. A new source/pass has a distinct
+transport even if native entry numbers and revision zero repeat. A prior
+BT, SE, or master-off graph stays outside the settled GEQ baseline.
+
+Source EOF closes this admission before B0 starts draining. Intentional
+seek/Stop closes it for the exact bound entry before waiting for the
+native acknowledgement, while preserving the source authority needed to
+finish old audio. A wrong entry does not close it. Closure is sticky for
+that transport; subsequent PCM publication cannot reopen it.
+
+The current production engine wrappers (`ManagedOutput` and `Focused`)
+still do not forward the effect ownership capture; this patch does not
+enable public registration, activation, or a desktop command. The
+receipt says the exact graph is eligible to attempt first apply; it is
+not a material or authorization receipt. No live auth request was sent.
+
 Observed failed handoff
 -----------------------
 

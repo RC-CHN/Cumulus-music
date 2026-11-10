@@ -114,6 +114,13 @@ impl SourceGraph {
             )),
         }
     }
+    pub fn initial_modern_ready(&self) -> bool {
+        match &self.material {
+            Material::Local(graph) => graph.initial_modern_ready(),
+            _ => false,
+        }
+    }
+
     pub fn process(
         &mut self,
         pcm: &mut PlanarBlock,

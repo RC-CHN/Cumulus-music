@@ -141,6 +141,11 @@ impl LocalFixedStage {
         let code = unsafe { ffi::netease_local_equalizer_master_off(self.state.pointer()) };
         self.checked_control(code)
     }
+    pub(crate) fn initial_modern_ready(&self) -> bool {
+        self.available().is_ok()
+            // SAFETY: this call only reads flags from the initialized object.
+            && unsafe { ffi::netease_local_equalizer_initial_modern_ready(self.state.const_pointer()) == 1 }
+    }
     pub(crate) fn apply_modern(
         &mut self,
         initial: bool,

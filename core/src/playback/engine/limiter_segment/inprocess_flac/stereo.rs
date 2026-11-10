@@ -502,7 +502,10 @@ fn pump(
     let mut first_end = true;
     let mut zero_steps = 0;
     loop {
-        shared.wait_for_credit(|control| graph.apply(control))?;
+        shared.wait_for_credit(|control| {
+            graph.apply(control)?;
+            Ok(graph.initial_modern_ready())
+        })?;
         while input.len() < QUANTUM * 2 && !source_end {
             shared.check()?;
             let packet = next()?.ok_or(Error::Media("stereo decoder omitted verified EOF"))?;
@@ -539,12 +542,22 @@ fn pump(
             }
         }
         let end = source_end && input.is_empty();
+        if end && first_end {
+            // The graph can still have B0 PCM to drain after source EOF.
+            // That is already too late for a new effect admission.
+            shared.close_modern_admission()?;
+        }
         let flow = graph.process(&mut block, frames + usize::from(sentinel), end)?;
         if end {
             first_end = false;
         }
         block.copy_interleaved(flow.valid_frames, &mut output[..flow.valid_frames * 2])?;
-        shared.publish(&output[..flow.valid_frames * 2], cursor, flow.end)?;
+        shared.publish_observing_graph(
+            &output[..flow.valid_frames * 2],
+            cursor,
+            flow.end,
+            graph.initial_modern_ready(),
+        )?;
         if flow.end {
             return Ok(());
         }

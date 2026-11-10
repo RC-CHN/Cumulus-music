@@ -70,6 +70,8 @@ pub(super) struct State {
     controls: VecDeque<(u64, StereoGraphControl)>,
     requested: u64,
     applied: u64,
+    modern_ready: bool,
+    modern_admission_closed: bool,
 }
 
 pub(crate) struct Shared {
@@ -165,6 +167,8 @@ fn channel_with_controls(
             controls,
             requested: 0,
             applied: 0,
+            modern_ready: false,
+            modern_admission_closed: false,
         }),
         wake: Condvar::new(),
         cancelled: AtomicBool::new(false),
@@ -252,7 +256,7 @@ impl Shared {
     /// available. No graph mutation happens on libmpv's callback/actor thread.
     pub(crate) fn wait_for_credit(
         &self,
-        mut configure: impl FnMut(StereoGraphControl) -> Result<()>,
+        mut configure: impl FnMut(StereoGraphControl) -> Result<bool>,
     ) -> Result<()> {
         loop {
             self.check()?;
@@ -263,10 +267,12 @@ impl Shared {
             if let Some((revision, plan)) = state.controls.pop_front() {
                 drop(state);
                 self.check()?;
-                configure(plan)?;
+                let modern_ready = configure(plan)?;
                 let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
                 self.check()?;
                 state.applied = revision;
+                state.modern_ready =
+                    self.local_controls && modern_ready && !state.modern_admission_closed;
                 self.wake.notify_all();
                 continue;
             }
@@ -281,7 +287,18 @@ impl Shared {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn publish(&self, samples: &[f32], decoded: u64, end: bool) -> Result<()> {
+        self.publish_observing_graph(samples, decoded, end, false)
+    }
+
+    pub(crate) fn publish_observing_graph(
+        &self,
+        samples: &[f32],
+        decoded: u64,
+        end: bool,
+        modern_ready: bool,
+    ) -> Result<()> {
         self.check()?;
         if !samples.len().is_multiple_of(2)
             || samples.len() / 2 > QUANTUM
@@ -306,7 +323,18 @@ impl Shared {
             .ok_or(Error::State("stereo output clock exhausted"))?;
         state.decoded = decoded;
         state.end = end;
+        state.modern_ready =
+            self.local_controls && modern_ready && !end && !state.modern_admission_closed;
         self.wake.notify_all();
+        Ok(())
+    }
+
+    pub(crate) fn close_modern_admission(&self) -> Result<()> {
+        if self.local_controls {
+            let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+            state.modern_ready = false;
+            state.modern_admission_closed = true;
+        }
         Ok(())
     }
 
@@ -352,6 +380,7 @@ impl StereoPcmControl {
             .ok_or(Error::State("stereo control revision exhausted"))?;
         state.controls.push_back((revision, control));
         state.requested = revision;
+        state.modern_ready = false;
         self.0.wake.notify_all();
         Ok(revision)
     }
@@ -425,14 +454,44 @@ impl StereoPcmControl {
         self.0.check()
     }
 
+    /// Read the current worker stamp without queuing a control or moving PCM.
+    /// A queued command invalidates an older stamp even before the next DSP
+    /// quantum; no stamp is issued while graph commands are outstanding.
+    pub(crate) fn modern_admission_revision(&self, entry: i64) -> Result<Option<u64>> {
+        if !self.0.local_controls {
+            return Ok(None);
+        }
+        self.validate_host()?;
+        let state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
+        self.0.check()?;
+        Ok((state.entry == Some(entry)
+            && !state.end
+            && !state.seeking
+            && !state.modern_admission_closed
+            && state.modern_ready
+            && state.requested == state.applied
+            && !self.0.reader_closed.load(Ordering::Acquire)
+            && !self.0.sink_retired.load(Ordering::Acquire))
+        .then_some(state.applied))
+    }
+
     /// Only an already-bound ordinary pass can begin a deliberate native
     /// handoff. Stop's own callback cancels the pass reader; that expected
     /// cancellation must not invalidate the held file's separate lifetime.
-    pub(crate) fn local_handoff_authority(&self, entry: i64) -> Result<Cancellation> {
-        if !self.0.local_controls || self.snapshot()?.native_entry != Some(entry) {
+    pub(crate) fn begin_local_handoff(&self, entry: i64) -> Result<Cancellation> {
+        if !self.0.local_controls {
             return Err(Error::StaleResponse);
         }
         self.validate_host()?;
+        let mut state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
+        self.0.check()?;
+        if state.entry != Some(entry) {
+            return Err(Error::StaleResponse);
+        }
+        // Stop still needs the old decoder until the native acknowledgement.
+        // Close effect admission without cancelling its media authority.
+        state.modern_ready = false;
+        state.modern_admission_closed = true;
         Ok(self.0.authority.clone())
     }
 

@@ -202,9 +202,12 @@ MusicClient::native_effect_release_receipt 只读本地日志，为已记录的�
 `MusicClient::register_native_owned_modern_limiter` 只供显式原生宿主调用，
 没有桌面 IPC 或前端入口。它先向播放 actor 取得当前已加载、仍存活的
 原生 PCM WAV 所有权，核对账号代次、播放代次、精确 native entry、
-实际速率以及相应 worker 和 sink 生命周期。排队中的歌曲、普通 URL、
+实际速率以及相应 worker 和 sink 生命周期。源凭据还要求工作线程实际
+处理过 PCM、确认旧图只有已稳定的 GEQ，并绑定已应用的图修订。提交任意
+新控制、进入 EOF 排空或开始精确 Stop 时，旧凭据立即失效。排队中的歌曲、普通 URL、
 stock 解码、非 WAV、未加载/切换中的源和正在拆除的其它滤镜均不能作
-为凭据。合成普通 adapter 没有默认写路径。
+为凭据。`MusicClient` 现有 `ManagedOutput` / `Focused` 包装仍不转发该
+所有权检查，未打开真实登记路径。协议测试使用合成 adapter。
 
 接着按 M/342 读取 PC detail、查权限并验证第一份材料。现代图只接受
 已恢复的 GEQ、BT、PEQ、B0 范围，且必须能对当前 44.1/48 kHz 双声道
@@ -228,5 +231,5 @@ StartUncertain 并禁止自动重发。已确认的登记不会因切歌、凭�
 
 只有登记已确认、两项回读均符合、第一份材料再次验证且同源仍有效时才
 返回不可序列化的 `NativeModernLimiterBinding`。读取式复验检查同一
-账号、登记操作及修订、材料摘要和 native entry；不会重新登记或换源。
+账号、登记操作及修订、材料摘要、native entry 和图修订；不会重新登记或换源。
 这个绑定尚未交给播放器。真实替换仍需独立的授权挂载/失败收尾验证。
