@@ -96,18 +96,20 @@ def main():
 def verify_podcast_browse_around(root, capture):
     directory = root / 'first'
     complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['podcastBrowseAroundVerified'] and complete['stageCount'] == 4
+    assert complete['ok'] and complete['podcastBrowseAroundVerified'] and complete['rankDoubleClickVerified']
+    assert complete['stageCount'] == 7
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert complete['podcastAroundCalls'] == [
-        {'programId': episode, 'roundNum': 250} for episode in ('407', '404', '407', '408')
+        {'programId': episode, 'roundNum': 250} for episode in ('407', '404', '407', '408', '407')
     ]
-    assert len(list(directory.glob('ux_*.png'))) == (4 if capture else 0)
+    assert len(list(directory.glob('ux_*.png'))) == (7 if capture else 0)
     locale = None
     if os.name != 'nt':
         locale = json.loads((directory / 'locale.json').read_text(encoding='utf-8'))
         assert locale['numeric'] == 'C'
         assert all(locale[key] not in ('C', 'POSIX') for key in ('messages', 'characters'))
-    report = dict(ok=True, actualWebView=True, nativeAudio=True, captures=4 if capture else 0,
+    report = dict(ok=True, actualWebView=True, nativeAudio=True, captures=7 if capture else 0,
+                  rankDoubleClickVerified=True,
                   around=complete['podcastAroundCalls'], locale=locale,
                   realMusicRequests=0, realAccountWrites=0)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
