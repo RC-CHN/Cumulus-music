@@ -150,7 +150,8 @@
     await wait(() => pane('catalogue')?.querySelector('[data-effect-group]'), 'reopened catalogue');
     assert(layout === 'modern' ? !header() : headerIs(false), 'only legacy exposes an already disabled initial device choice');
     await tabTo('devices');
-    await wait(() => deviceControls()?.dataset.deviceTuning === 'paused_locally', 'paused device remains available');
+    await wait(() => deviceControls()?.dataset.deviceTuning === 'paused_locally' &&
+      pane('devices')?.querySelector('select option[value="4100"]'), 'paused device and expected brand read are settled');
     if (layout === 'modern') {
       assert(!header(), 'modern mount does not use the unsupported recommendation toggle');
       await capture('07_reopened_paused');
