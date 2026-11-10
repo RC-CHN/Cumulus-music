@@ -30,9 +30,9 @@ native entry as an in-place material apply does. `yield_local_equalizer`
 selects a stock decoder and is outside this scope.
 
 The old graph is `LocalEqualizerStereoMaterial` with its own C graph,
-spatial state, and Rust B0. The modern graph has separate GEQ/BT/PEQ
-wrappers and B0. Swapping these objects at a worker quantum avoids reopening
-the file but does not implement the in-place state transition. In the
+spatial state, and Rust B0. The standalone modern renderer has separate
+GEQ/BT/PEQ wrappers and B0. Replacing the entire graph at a worker quantum
+would lose the old wrapper history, even with the same held file. In the
 pinned original SDK, start with an old-schema GEQ-only M/3091 profile (one
 +3 dB band), process one full quantum, read only 31 frames, queue 511
 input frames, and apply the synthetic modern `neutralTone` profile. The
@@ -61,6 +61,53 @@ dependencies and a local copy of the pinned original DLL:
 
     unshare -Urn python3 scripts/research/probe_modern_limiter_initial_transition.py \
       --dll LOCAL_ORIGINAL_NEAUDIOEFFECTS_DLL --out NEW.json
+
+Same-graph initial apply
+------------------------
+
+`LocalEqualizerStereoMaterial::apply_initial_modern` executes the bounded
+transition on the existing C graph. It admits stereo f32 at 44.1/48 kHz
+with 2048-frame quanta, after nonempty PCM on a settled old-schema
+GEQ-only baseline. A graph that has used old BT, SE or master bypass, is
+newly reset without further PCM, or has begun draining is out of scope.
+Rust checks the supported modern topology and prepares B0 before any
+mutation. The C boundary checks current and previous wrapper flags and
+dry SE bank 0. It runs Begin/defaults, GEQ gains/on, modern BT gains/on
+(including neutral shelves), then material PEQ gain/bands/on on a copy of
+the inline node state. The transaction commits only on success, at the
+same object address, without touching the spatial arena or outer FIFOs.
+
+The original GEQ setter still clears the biquad delay when re-enabling;
+the wrapper's previous active flag stays active, so no extra GEQ blend is
+created. The old B0 is retained for unchanged defaults. A proven attack
+or release change installs a freshly set up B0 on the next quantum and
+discards only that node's previous lookahead; equal timing with other B0
+changes stays unsupported. Neither queued old PCM nor pending input is
+replaced, and no graph reset or clock edit accompanies the change.
+
+The Rust FIFO and direct block tests compare the +3 dB old GEQ to
+`neutralTone` transition with the original fixture at both rates. They
+preserve 511 queued input frames and all unread old PCM. Both the old
+PCM hash (1829/1810 frames) and the first hot modern hash (1873/1857
+frames) match. The fresh negative control retains the original mismatch
+shown above. The admitted parameter program uses the same validated
+setters; these exact sample claims apply to the frozen material only.
+
+The held-WAV test queues the transition on the ordinary existing worker
+while libmpv is paused. It never stops, loads, reopens or changes the
+native entry. The only paused snapshot changes are command revisions;
+the independent control outcome distinguishes a successful transition
+from a rejected duplicate. Both leave existing buffered PCM and decoder
+positions in place. The same entry resumes, decodes all 147463 source
+frames, delivers 147225 PCM frames (the old 238-frame B0 debt), and emits
+natural EOF after a seven-frame final source quantum. The original
+descriptor's lifetime remains valid. This passed with Linux x86_64
+libmpv 0.41.0-2ubuntu4 null output; it is not physical-device proof.
+The hook is test-only; a handled revision alone cannot stand for effect
+authorization or successful mutation.
+
+    cargo test --locked -p cumulus-core --lib initial_modern \
+      -- --include-ignored --test-threads=1 --nocapture
 
 Observed failed handoff
 -----------------------
@@ -93,12 +140,12 @@ run observations, not timing thresholds or physical playback proof.
       modern_handoff_cannot_roll_back_a_missing_or_rejected_exact_stop \
       -- --ignored --nocapture
 
-For an eventual production attach, keep the one decoder/descriptor and
-the active native output while applying a qualified graph transition at a
-worker quantum. First verify the original old-to-modern setter/history
-semantics and prevalidate replacement resources before issuing any control.
-Keep rejected/stale work distinguishable from a running acknowledged
-graph and preserve lease cleanup on a failure. An intentionally retired
-entry cannot be reused as an authorization proof. There is no fallback
-to a stock decoder, a new network request, a path reopen or synthetic
-silence in this audit.
+The same-graph initial apply supplies the bounded DSP/worker step. A
+production attach still needs to bind the acknowledged account/material
+receipt to this exact held entry, check revocation before graph use, and
+keep rejected/stale work distinct from successful controls. Modern
+off/reapply and return to legacy controls on this same C graph still need
+their own proof. Lease cleanup belongs to the production owner. An
+intentionally retired entry cannot be reused as an authorization proof.
+There is no stock decoder, network request, path reopen or synthetic
+silence in the same-graph test.

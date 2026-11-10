@@ -18,13 +18,17 @@ pub(super) const QUANTUM: usize = 2048;
 const WAIT: Duration = Duration::from_millis(20);
 const MAX_CONTROLS: usize = 32;
 
-#[derive(Clone, Copy)]
 pub(crate) enum StereoGraphControl {
     Cold(LocalStereoMaterialPlan),
     ApplyLocal(LocalEqualizerMaterialPlan),
     DisableLocalMaster,
     #[cfg(test)]
     SetModernMaterialActive(bool),
+    #[cfg(test)]
+    InitialModernFromLocal {
+        plan: Box<crate::effects::material::ModernLimiterPlan>,
+        outcome: std::sync::mpsc::SyncSender<Result<()>>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

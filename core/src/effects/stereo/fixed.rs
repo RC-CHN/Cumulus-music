@@ -7,7 +7,7 @@ use crate::{
         dsp::{
             AmbienceOneResult, Format, LimiterSettings, LimiterStage, LocalFixedStage, PlanarBlock,
         },
-        material::MATERIAL_BEGIN_LIMITER,
+        material::{MATERIAL_BEGIN_LIMITER, ModernLimiterPlan},
     },
 };
 
@@ -155,18 +155,31 @@ impl LocalFixedStereoMaster {
     }
 }
 
-/// Original old-schema local equalizer in the verified stereo 44.1/48 kHz,
-/// capacity-2048 domain. No source selection, device, remote preset, outer
-/// FIFO, desktop effect activation, or arbitrary SDK configuration is owned here.
+/// Original local equalizer in the verified stereo 44.1/48 kHz, capacity-2048
+/// domain, with a bounded in-place transition to modern DSP. Source selection,
+/// device, authorization, outer FIFO and effect activation belong to the caller.
 pub struct LocalEqualizerStereoMaterial {
     graph: LocalFixedStereoMaterial,
+    mode: LocalEqualizerMode,
+    has_pcm: bool,
+    ending: bool,
+}
+
+enum LocalEqualizerMode {
+    Legacy { geq_only: bool },
+    Modern,
 }
 impl LocalEqualizerStereoMaterial {
     /// Reset the initialized nodes and apply the verified local material.
     pub fn new(format: Format, plan: LocalEqualizerMaterialPlan) -> Result<Self> {
         let graph =
             LocalFixedStereoMaterial::with_stage(format, LocalFixedStage::new_equalizer(format)?)?;
-        let mut this = Self { graph };
+        let mut this = Self {
+            graph,
+            mode: LocalEqualizerMode::Legacy { geq_only: true },
+            has_pcm: false,
+            ending: false,
+        };
         this.reset()?;
         this.apply_material(plan)?;
         Ok(this)
@@ -180,16 +193,58 @@ impl LocalEqualizerStereoMaterial {
     /// Original full material begin/defaults and setters on the same object.
     /// B0 retains the current lookahead and envelope.
     pub fn apply_material(&mut self, plan: LocalEqualizerMaterialPlan) -> Result<()> {
+        let geq_only = self.require_legacy()?;
         self.graph.available()?;
         self.graph
             .stage
-            .apply_equalizer_material(plan.geq.as_ref(), plan.tone, plan.stereo)
+            .apply_equalizer_material(plan.geq.as_ref(), plan.tone, plan.stereo)?;
+        self.mode = LocalEqualizerMode::Legacy {
+            geq_only: geq_only
+                && plan.geq.is_some()
+                && plan.tone == [0; 2]
+                && plan.stereo == [0; 2],
+        };
+        Ok(())
     }
     /// Original master-off effect on this graph: fade GEQ/BT/SE to bypass
     /// without clearing their cached settings or re-priming default B0.
     pub fn disable_master(&mut self) -> Result<()> {
+        self.require_legacy()?;
         self.graph.available()?;
-        self.graph.stage.equalizer_master_off()
+        self.graph.stage.equalizer_master_off()?;
+        self.mode = LocalEqualizerMode::Legacy { geq_only: false };
+        Ok(())
+    }
+
+    fn require_legacy(&self) -> Result<bool> {
+        match self.mode {
+            LocalEqualizerMode::Legacy { geq_only } => Ok(geq_only),
+            LocalEqualizerMode::Modern => Err(Error::State(
+                "old local controls cannot change a modern graph",
+            )),
+        }
+    }
+
+    /// Apply a validated modern material to the currently driven GEQ-only
+    /// object. Keeps the upstream wrappers and the caller's PCM/decoder
+    /// state. This is a one-way DSP transition; it cannot select a source,
+    /// grant playback rights, or install an effect in the application.
+    pub fn apply_initial_modern(&mut self, plan: &ModernLimiterPlan) -> Result<()> {
+        self.graph.available()?;
+        if !self.has_pcm
+            || self.ending
+            || !matches!(self.mode, LocalEqualizerMode::Legacy { geq_only: true })
+        {
+            return Err(Error::State(
+                "initial modern effect requires a live local GEQ-only graph",
+            ));
+        }
+        let format = self.graph.format();
+        if let Some(limiter) = plan.install_on_settled_local(&mut self.graph.stage, format)? {
+            self.graph.limiter = limiter;
+        }
+        self.mode = LocalEqualizerMode::Modern;
+        Ok(())
     }
     /// Original 1B960 node reset, separate from a full apply or master off.
     /// Discards limiter lookahead and settles the wrapper previous flags.
@@ -197,6 +252,9 @@ impl LocalEqualizerStereoMaterial {
         let result = self.graph.reset();
         if result.is_err() {
             self.graph.failed = true;
+        } else {
+            self.has_pcm = false;
+            self.ending = false;
         }
         result
     }
@@ -206,6 +264,19 @@ impl LocalEqualizerStereoMaterial {
         frames: usize,
         end: bool,
     ) -> Result<AmbienceOneResult> {
-        self.graph.process(block, frames, end)
+        let result = self.graph.process(block, frames, end);
+        if result.is_ok() {
+            self.has_pcm |= frames > 0;
+            self.ending |= end;
+        }
+        result
     }
 }
+
+#[cfg(all(
+    test,
+    any(target_os = "linux", target_os = "windows"),
+    target_arch = "x86_64"
+))]
+#[path = "initial_modern_tests.rs"]
+mod initial_modern_tests;

@@ -8,8 +8,8 @@ use crate::{
     Error, Result,
     effects::dsp::{
         Coefficients, Format, GraphicEq, LimiterBlockFlow, LimiterStage, LimiterStream,
-        LimiterStreamQuantum, LimiterStreamRead, LimiterStreamWrite, ParametricBand, ParametricEq,
-        ParametricKind, PlanarBlock, Slot50Tone,
+        LimiterStreamQuantum, LimiterStreamRead, LimiterStreamWrite, LocalFixedStage,
+        ParametricBand, ParametricEq, ParametricKind, PlanarBlock, Slot50Tone,
     },
 };
 use serde_json::{Map, Value};
@@ -168,6 +168,23 @@ impl ModernLimiterPlan {
         // Prepare the replacement without modifying any current state.
         let params = if active { material } else { defaults };
         MaterialLimiterPlan::stage_with_parameters(format, true, params).map(Some)
+    }
+
+    /// Initial whole-material apply on the same settled old-schema GEQ-only
+    /// graph. Prepare B0 before changing C state; no mutation on rejection.
+    pub(crate) fn install_on_settled_local(
+        &self,
+        stage: &mut LocalFixedStage,
+        format: Format,
+    ) -> Result<Option<LimiterStage>> {
+        if !self.supports_format(format) {
+            return Err(Error::InvalidInput(
+                "unsupported local-to-modern graph format",
+            ));
+        }
+        let b0 = self.prepare_control(format, true)?;
+        stage.apply_initial_modern(&self.geq, [self.bass, self.treble], &self.peq)?;
+        Ok(b0)
     }
 
     fn stages(&self, format: Format) -> Result<ModernLimiterStages> {

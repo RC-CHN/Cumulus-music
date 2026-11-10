@@ -94,6 +94,17 @@ impl SourceGraph {
             (Material::Modern(graph), StereoGraphControl::SetModernMaterialActive(active)) => {
                 graph.apply(active)
             }
+            #[cfg(test)]
+            (material, StereoGraphControl::InitialModernFromLocal { plan, outcome }) => {
+                let result = match material {
+                    Material::Local(graph) => graph.apply_initial_modern(&plan),
+                    _ => Err(Error::State("initial modern effect needs a local graph")),
+                };
+                // A rejected transition leaves the old graph running. The
+                // fixture needs a separate success/failure control receipt.
+                let _ = outcome.try_send(result);
+                Ok(())
+            }
             _ => Err(Error::InvalidInput(
                 "control belongs to another stereo graph",
             )),

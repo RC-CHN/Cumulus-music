@@ -175,7 +175,10 @@ Production wiring and its remaining gates
   of this proof.
 - `core-effects-modern-limiter-handoff.txt` records why exact native Stop
   and a freshly constructed graph are not valid substitutes for first
-  apply, including a real failed held-WAV Stop and original PCM controls.
+  apply. The bounded initial modern material can now update the settled
+  GEQ-only graph itself; original hot PCM matches at both rates and an
+  opt-in test uses the same paused held-WAV worker and native entry.
+  This initial DSP control does not perform registration or activation.
 - The ordinary official type-4 cache/online source feeds the device PCM
   route (`10555B0` negotiated geometry; `1055EF0` SDK write/read); it does
   not infer the graph format from song bitrate. The ordinary seek discards

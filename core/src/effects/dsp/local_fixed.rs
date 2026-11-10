@@ -5,7 +5,21 @@ use super::{
     ffi,
     state::{State, status},
 };
-use crate::{Error, Result, effects::stereo::StereoSettings};
+use crate::{
+    Error, Result,
+    effects::{material::PeqCall, stereo::StereoSettings},
+};
+
+#[derive(Clone, Copy, Default)]
+#[repr(C)]
+pub(super) struct LocalModernBand {
+    slot: u32,
+    kind: u32,
+    enabled: u32,
+    gain: f32,
+    frequency: f32,
+    q: f32,
+}
 
 pub(crate) struct LocalFixedStage {
     state: State,
@@ -126,6 +140,68 @@ impl LocalFixedStage {
         // SAFETY: exclusive initialized state/arena; no PCM/output pointers.
         let code = unsafe { ffi::netease_local_equalizer_master_off(self.state.pointer()) };
         self.checked_control(code)
+    }
+    pub(crate) fn apply_initial_modern(
+        &mut self,
+        geq: &[f32; 10],
+        [bass, treble]: [f32; 2],
+        calls: &[PeqCall],
+    ) -> Result<()> {
+        self.available()?;
+        let [
+            PeqCall::Gain { value: gain },
+            bands @ ..,
+            PeqCall::On { value: true },
+        ] = calls
+        else {
+            return Err(Error::InvalidInput("invalid initial modern PEQ program"));
+        };
+        if !(1..=9).contains(&bands.len()) {
+            return Err(Error::InvalidInput("invalid initial modern PEQ program"));
+        }
+        let mut ffi_bands = [LocalModernBand::default(); 9];
+        for (slot, call) in ffi_bands.iter_mut().zip(bands) {
+            let PeqCall::Band {
+                band,
+                kind,
+                gain,
+                freq,
+                q,
+                on,
+            } = *call
+            else {
+                return Err(Error::InvalidInput("invalid initial modern PEQ program"));
+            };
+            *slot = LocalModernBand {
+                slot: band,
+                kind,
+                enabled: u32::from(on),
+                gain,
+                frequency: freq,
+                q,
+            };
+        }
+        // SAFETY: exclusive initialized fixed graph, fixed ten finite gains,
+        // at most nine initialized repr(C) records. The C transaction mutates
+        // only after the bounded local graph state and all parameters verify.
+        let status = unsafe {
+            ffi::netease_local_equalizer_initial_modern(
+                self.state.pointer(),
+                geq.as_ptr(),
+                bass,
+                treble,
+                *gain,
+                ffi_bands.as_ptr(),
+                bands.len() as u32,
+            )
+        };
+        match status {
+            0 => Ok(()),
+            1 => Err(Error::State(
+                "initial modern effect needs a settled local GEQ-only graph",
+            )),
+            _ => Err(Error::InvalidInput("invalid initial modern graph controls")),
+        }
     }
     fn checked_control(&mut self, code: i32) -> Result<()> {
         // A native failure may have left a partially applied material. Never

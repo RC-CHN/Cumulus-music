@@ -5,7 +5,10 @@ use super::{
 };
 use crate::{
     Error,
-    effects::material::ModernLimiterPlan,
+    effects::{
+        equalizer::EqualizerSettings, material::ModernLimiterPlan,
+        stereo::LocalEqualizerMaterialPlan,
+    },
     library::{identity::fingerprint, native_open::checked_audio_file},
     playback::engine::{
         AudioEngine, EndReason, EngineEvent, MpvConfig, MpvEngine, StereoPcmControl,
@@ -19,6 +22,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    sync::mpsc::sync_channel,
     time::{Duration, Instant},
 };
 
@@ -263,6 +267,120 @@ fn switch_paused_modern_entry(
         "the worker changes only the graph while the old native entry and PCM stay put"
     );
     revision
+}
+
+#[test]
+#[ignore = "requires compatible libmpv; runs a same-entry local-to-modern handoff with null output"]
+fn initial_modern_uses_same_held_local_worker_and_native_entry_until_short_eof() {
+    let plan = ModernLimiterPlan::from_material(&vector()["profiles"]["neutralTone"]).unwrap();
+    let mut gains = [0.0; 10];
+    gains[1] = 3.0;
+    let old = LocalEqualizerMaterialPlan::from_saved(EqualizerSettings::new(true, gains).unwrap());
+    let rate = 48_000;
+    let total = 72 * 2048u64 + 7;
+    let old_debt = 238;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("local-geq.wav");
+    fs::write(&path, wave_at(rate, (0..total as usize).map(s16))).unwrap();
+    let path = path.canonicalize().unwrap();
+    let (file, format) = checked_audio_file(&path, &fingerprint(&path).unwrap()).unwrap();
+    assert_eq!(format, "wav");
+    let lifetime = Cancellation::default();
+    let NativeStereoSelection::Qualified(source) =
+        NativeStereoSource::select_wave(file, lifetime.clone(), old).unwrap()
+    else {
+        panic!("the normal local graph must qualify the held WAV");
+    };
+    fs::rename(&path, dir.path().join("same-descriptor.wav")).unwrap();
+    fs::write(&path, b"the replacement name must not be opened").unwrap();
+
+    let mut native = MpvEngine::open(MpvConfig {
+        library: std::env::var_os("CUMULUS_LIMITER_PROBE_MPV").map(PathBuf::from),
+        null_output: true,
+    })
+    .unwrap();
+    let request = Cancellation::default();
+    let mut pass = start(*source, 0, &request);
+    let control = pass.control();
+    let loaded = native
+        .load_stereo_pcm(pass.take_reader().unwrap(), &request)
+        .unwrap();
+    assert_eq!(loaded.codec.as_deref(), Some("pcm_f32le"));
+    assert!(loaded.duration.is_none());
+    let entry = loaded.entry_id;
+    native.pause(false).unwrap();
+    actual("existing local GEQ entry is playing", || {
+        let view = native.poll().unwrap();
+        (view.audio_output.as_deref() == Some("null")
+            && view.position_for(entry).is_some_and(|p| p > 0.2))
+        .then_some(())
+    });
+    let before = pause_modern_entry(
+        &mut native,
+        &control,
+        entry,
+        "pause old local entry in place",
+    );
+    assert!(before.delivered_frames > before.native_output_frame);
+    assert_eq!(
+        before.decoded_source_frame - before.produced_frames,
+        old_debt
+    );
+    for expect_success in [true, false] {
+        let (outcome, receipt) = sync_channel(1);
+        let revision = control
+            .queue_graph_control(StereoGraphControl::InitialModernFromLocal {
+                plan: Box::new(plan.clone()),
+                outcome,
+            })
+            .unwrap();
+        assert_eq!(
+            receipt
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .is_ok(),
+            expect_success
+        );
+        control
+            .wait_applied(revision, Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(
+            control.snapshot().unwrap(),
+            StereoPcmSnapshot {
+                requested_revision: revision,
+                applied_revision: revision,
+                ..before
+            },
+            "a graph switch or rejected duplicate must leave the decoder, FIFO, and native clock untouched"
+        );
+    }
+    assert_eq!(native.poll().unwrap().entry_id, Some(entry));
+    native.pause(false).unwrap();
+    actual(
+        "the same entry drains the modern graph's short final quantum",
+        || {
+            let view = native.poll().unwrap();
+            assert!(view.events.iter().all(|event| !matches!(event,
+            EngineEvent::Ended {entry_id, ..} if *entry_id != entry)));
+            view.events.iter().any(|event| matches!(event,
+            EngineEvent::Ended {entry_id, reason: EndReason::Eof, error: 0} if *entry_id == entry
+        )).then_some(())
+        },
+    );
+    let end = actual("that entry and reader retire only at natural EOF", || {
+        let state = control.snapshot().unwrap();
+        (state.reader_closed && state.native_sink_retired).then_some(state)
+    });
+    assert!(end.graph_end && end.cancelled && !end.failed, "{end:?}");
+    assert!(!lifetime.is_cancelled());
+    assert_eq!(end.decoded_source_frame, total);
+    assert_eq!(end.produced_frames, total - old_debt);
+    assert_eq!(end.delivered_frames, end.produced_frames);
+    assert_eq!(end.applied_revision, 2);
+    assert!(end.native_source_frame > before.native_source_frame);
+    assert!(end.native_source_frame <= end.delivered_frames);
+    assert_eq!(pass.reclaim().unwrap().total_frames(), total);
+    eprintln!("held local-to-modern receipt: before={before:?}, end={end:?}");
 }
 
 #[test]
