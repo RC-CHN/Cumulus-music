@@ -1,0 +1,93 @@
+name: Linux signed APT reuse trial
+
+on:
+  push:
+    branches: [validation/apt-reuse-fallback-20261110]
+    paths: [.github/workflows/linux-apt-reuse-trial.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  produce:
+    name: Produce signed Ubuntu archives and install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - &checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Use real APT to publish and install
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/apt-trial-handoff"
+          mkdir -p "$out"
+          PYTHONPATH=scripts/ci python3 -c 'import os; from linux_webview_apt_mirrors import supports_fallback; print("Known signed runner preset:", supports_fallback(os.environ))'
+          python3 scripts/ci/linux_webview_apt.py --publish "$out/apt-cache" 2>&1 | tee "$out/producer-apt.log"
+          LC_ALL=C dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\t${db:Status-Abbrev}\n' | LC_ALL=C sort > "$out/producer-dpkg.tsv"
+          archives=$(find "$out/apt-cache" -maxdepth 1 -type f -name '*.deb' -printf '.' | wc -c)
+          test "$archives" -gt 0
+          printf '%s\n' "$archives" | tee "$out/archive-count.txt"
+          printf 'Producer archived %s packages; installed inventory SHA256:\n\n' "$archives" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$out/producer-dpkg.tsv" >> "$GITHUB_STEP_SUMMARY"
+          date +%s%3N > "$RUNNER_TEMP/apt-upload-start"
+      - name: Upload exact same-attempt APT archive handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-apt-trial-handoff-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apt-trial-handoff/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 3
+      - name: Report producer transfer wall time
+        shell: bash
+        run: |
+          start=$(cat "$RUNNER_TEMP/apt-upload-start")
+          end=$(date +%s%3N)
+          printf 'Artifact upload and step overhead: %s ms\n' "$((end - start))" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  consume:
+    name: Revalidate archives and install (${{ matrix.replica }})
+    needs: produce
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [1, 2]
+    steps:
+      - *checkout
+      - name: Start transfer measurement
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/apt-trial-evidence"
+          date +%s%3N > "$RUNNER_TEMP/apt-download-start"
+      - name: Download same-attempt producer handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-apt-trial-handoff-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apt-trial-handoff/
+      - name: Verify against fresh APT plans and compare dpkg inventory
+        shell: bash
+        run: |
+          start=$(cat "$RUNNER_TEMP/apt-download-start")
+          end=$(date +%s%3N)
+          handoff="$RUNNER_TEMP/apt-trial-handoff"
+          out="$RUNNER_TEMP/apt-trial-evidence"
+          printf 'Artifact download and step overhead: %s ms\n' "$((end - start))" | tee -a "$GITHUB_STEP_SUMMARY" "$out/transfer.txt"
+          PYTHONPATH=scripts/ci python3 -c 'import os; from linux_webview_apt_mirrors import supports_fallback; print("Known signed runner preset:", supports_fallback(os.environ))'
+          python3 scripts/ci/linux_webview_apt.py --reuse "$handoff/apt-cache" 2>&1 | tee "$out/consumer-apt.log"
+          LC_ALL=C dpkg-query -W -f='${binary:Package}\t${Version}\t${Architecture}\t${db:Status-Abbrev}\n' | LC_ALL=C sort > "$out/consumer-dpkg.tsv"
+          grep -E '^APT archive reuse: [1-9][0-9]* signed matches' "$out/consumer-apt.log" | tee -a "$GITHUB_STEP_SUMMARY"
+          diff -u "$handoff/producer-dpkg.tsv" "$out/consumer-dpkg.tsv"
+          printf '\nConsumer installed package inventory matches producer exactly.\n' >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$out/consumer-dpkg.tsv" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve consumer timings and inventory
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-apt-trial-consumer-${{ matrix.replica }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apt-trial-evidence/
+          if-no-files-found: error
+          retention-days: 3
