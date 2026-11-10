@@ -114,8 +114,35 @@
       const current = await invoke('player_snapshot', { epoch });
       return current.track?.id === '3' && current.state === 'playing' && current.position > 0.2;
     }, 'album add-all paused baseline advances');
-    const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    const pauseReply = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    if (pauseReply.state !== 'paused' || pauseReply.track?.id !== '3' || !pauseReply.playId)
+      throw Error('baseline pause did not retain the loaded song');
+    // The native 200 ms clock poll can publish one last forward observation
+    // after the pause reply. Require an unchanged clock across two full polls.
+    let observed = pauseReply;
+    let stableSince = performance.now();
+    const paused = await wait(async () => {
+      const snapshot = await invoke('player_snapshot', { epoch });
+      if (snapshot.state !== 'paused' || snapshot.playId !== pauseReply.playId || snapshot.track?.id !== '3')
+        throw Error('paused baseline changed transport while its clock settled');
+      const now = performance.now();
+      if (snapshot.position !== observed.position) stableSince = now;
+      observed = snapshot;
+      return snapshot.position > 0.2 && now - stableSince >= 420 && snapshot;
+    }, 'paused clock stable across native polls');
     const original = await invoke('player_queue', { epoch });
+    function assertRetained(label, snapshot, queue) {
+      const checks = {
+        state: [snapshot.state, 'paused'],
+        playId: [snapshot.playId, paused.playId],
+        track: [snapshot.track?.id, '3'],
+        position: [snapshot.position, paused.position],
+        currentEntry: [queue.current, original.current],
+        duplicateEntry: [queue.tracks[2].entryId, original.tracks[2].entryId],
+      };
+      const changed = Object.entries(checks).filter(([, [actual, expected]]) => actual !== expected);
+      if (changed.length) throw Error(`${label} changed ${JSON.stringify(Object.fromEntries(changed))}`);
+    }
     const { value: albumPage } = await invoke('catalog_page', {
       epoch, query: { kind: 'album', id: '7' }, refresh: false,
     });
@@ -142,11 +169,9 @@
     click(selectedQueue);
     const onlySelected = await wait(() => matchesQueue(['91', '3', '1', '5', '92']),
       'only selected album songs inserted in album order');
-    const stillPaused = await invoke('player_snapshot', { epoch });
-    if (stillPaused.playId !== paused.playId || stillPaused.state !== 'paused' ||
-        stillPaused.position !== paused.position || onlySelected.current !== original.current ||
-        onlySelected.tracks[2].entryId !== original.tracks[2].entryId)
-      throw Error('selected album queue changed paused transport or duplicate identity');
+    await wait(() => !modal() && one('.album-action-feedback')?.textContent.includes('已添加到播放列表'),
+      'selected append feedback');
+    assertRetained('selected album queue', await invoke('player_snapshot', { epoch }), onlySelected);
     const add = await showAddAll();
     await sleep(450);
     window.__CUMULUS_ALBUM_CAPTURE_ACK__ = '';
@@ -158,11 +183,8 @@
     ]), 'album added once after the current song');
     await wait(() => one('.album-action-feedback')?.textContent.includes('已添加到播放列表'),
       'append feedback');
-    const retained = await invoke('player_snapshot', { epoch });
-    if (!onDetail() || retained.state !== 'paused' || retained.playId !== paused.playId ||
-        retained.position !== paused.position || original.current !== inserted.current ||
-        inserted.tracks[2].entryId !== original.tracks[2].entryId)
-      throw Error('album add-all changed the paused song or replaced a duplicate entry');
+    if (!onDetail()) throw Error('album add-all left the detail tab');
+    assertRetained('album add-all', await invoke('player_snapshot', { epoch }), inserted);
     await invoke('player_action', { epoch, action: { kind: 'clear' } });
     await wait(() => one('.playerbar')?.dataset.state === 'idle', 'empty player view');
     click(await showAddAll());
