@@ -7,17 +7,19 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::{
     Mutex,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 const AUDIO: &[u8] = include_bytes!("../../../core/tests/fixtures/tag_audio/seed.mp3");
 const MEDIA: &str = "https://m1.music.126.net/cumulus-purchased-episode-fixture.mp3";
+pub const COHORT_REVISION: &str = "synthetic-purchases-presentation";
 
 #[derive(Default)]
 pub struct Fixture {
     calls: Mutex<Vec<Value>>,
     gets: AtomicUsize,
     playback: bool,
+    compact: AtomicBool,
 }
 
 fn radio(id: u64, name: &str) -> Value {
@@ -40,6 +42,25 @@ impl Fixture {
             playback,
             ..Self::default()
         }
+    }
+
+    pub fn set_compact(&self, value: bool) {
+        self.compact.store(value, Ordering::SeqCst);
+    }
+
+    pub fn groups(
+        &self,
+        revision: &str,
+    ) -> Result<cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
+        assert_eq!(revision, COHORT_REVISION);
+        let group = if self.compact.load(Ordering::SeqCst) {
+            "t1"
+        } else {
+            "c"
+        };
+        cumulus_core::protocol::pc_experiments::PcExperimentGroups::refreshed(&json!({
+            "data":[{"expName":"PH-PC-listPage-showMore","expGroupName":group}]
+        }))
     }
 
     pub fn response(&self, path: &str, args: &Value, cache: bool) -> Option<Result<Value>> {

@@ -62,6 +62,20 @@
     return { columns, radioPlayCount: playCount(radio), radioProgramCount: programCount(radio),
       episodeCountersBlank: true, headerAligned: true };
   }
+  function tableGeometry() {
+    const rows = all('.purchase-row', list());
+    const heights = rows.map((item) => item.getBoundingClientRect().height);
+    const covers = rows.map((item) =>
+      one('.purchase-name img,.purchase-placeholder', item).getBoundingClientRect().width);
+    const header = one('.purchase-header', list()).getBoundingClientRect();
+    return { heights, covers, header: header.height, gap: rows[0].getBoundingClientRect().top - header.bottom };
+  }
+  function geometryIs(compact) {
+    const value = tableGeometry();
+    return value.heights.length === 3 && value.heights.every((size) => size === (compact ? 56 : 64)) &&
+      value.covers.every((size) => size === (compact ? 36 : 48)) && value.header === 40 &&
+      value.gap === (compact ? 0 : 8);
+  }
   const dialog = () => one('dialog.download-dialog[open]:not([inert])');
   const submit = () => one('form button.primary', dialog());
   const choices = () => all('input[name="voice-download-quality"]', dialog());
@@ -107,7 +121,8 @@
     assert(button('加载更多', one('.podcast-page')) && !row('radio', '95') && !row('episode', '95'),
       'explicit continuation and no action for unknown product type');
     await noTasks();
-    await stage('mixed', { table: tableColumns() });
+    assert(geometryIs(false), 'native control uses 64px rows, 48px covers and 8px header gap');
+    await stage('mixed', { table: tableColumns(), geometry: tableGeometry() });
 
     const episodeTitle = () => button('合成已购单集 81', row('episode', '81'));
     await click(episodeTitle, 'single program title selects the episode row');
@@ -115,6 +130,17 @@
     assert(!dialog() && !one('.podcast-summary') && samePlayer(originalPlayer, await player()),
       'title selection neither navigates, plays, nor downloads');
     await stage('selected');
+
+    for (const compact of [true, false]) {
+      const originalTitle = episodeTitle();
+      await emit('purchases_cohort', { compact });
+      await wait(() => geometryIs(compact), 'live verified purchase density: ' + compact);
+      assert(episodeTitle() === originalTitle && document.activeElement === originalTitle &&
+        originalTitle.getAttribute('aria-pressed') === 'true' && rowOrder().join(',') === originalOrder,
+        'reflow preserves focused selected typed row and server order');
+      assert(samePlayer(originalPlayer, await player()), 'layout is not playback authority');
+      await stage(compact ? 'compact' : 'normal', { table: tableColumns(), geometry: tableGeometry() });
+    }
 
     await click(() => button('合成已购播单 81', row('radio', '81')), 'open purchased radio 81');
     await wait(() => one('.podcast-summary h2')?.textContent.trim() === '合成已购播单 81',

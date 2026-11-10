@@ -82,6 +82,7 @@ fn groups(treatment: bool) -> Value {
         {"expName":"PH-PC-search-result","expGroupName":group},
         {"expName":"PH-PC-searchMore2","expGroupName":group},
         {"expName":"PH-PC-searchPageEfficiency","expGroupName":group},
+        {"expName":"PH-PC-listPage-showMore","expGroupName":group},
         {"expName":"PH-PC-skipSongs2","expGroupName":group}
     ]})
 }
@@ -202,6 +203,7 @@ async fn startup_single_lease_fixed_thirty_minutes_and_shutdown_share_actual_ful
     status(&mut states, PcPresentationRuntimeStatus::Ready).await;
     let first = flags(&mut views, true).await;
     assert!(first.search_expanded && first.search_dense);
+    assert!(first.podcast_purchases_compact);
     assert_eq!(
         f.client
             .official_pc_ordinary_skip_assignment(&f.epoch())
@@ -215,6 +217,7 @@ async fn startup_single_lease_fixed_thirty_minutes_and_shutdown_share_actual_ful
     assert_eq!(f.http.calls().len(), 1);
     tokio::time::advance(Duration::from_secs(1)).await;
     let second = flags(&mut views, false).await;
+    assert!(!second.podcast_purchases_compact);
     assert!(second.revision.parse::<u64>().unwrap() > first.revision.parse::<u64>().unwrap());
     assert_eq!(f.http.calls().len(), 2);
     lease.shutdown().await.unwrap();
@@ -309,6 +312,12 @@ async fn persisted_bootstrap_survives_failure_but_is_never_fresh_authority() {
     f.client.refresh_pc_presentation().await.unwrap();
     let restarted = MusicClient::with_session(f.session.clone(), f.registry.clone());
     assert!(restarted.pc_presentation().unwrap().search_footer);
+    assert!(
+        restarted
+            .pc_presentation()
+            .unwrap()
+            .podcast_purchases_compact
+    );
     assert_eq!(f.http.calls().len(), 1);
     assert!(
         restarted
@@ -319,6 +328,12 @@ async fn persisted_bootstrap_survives_failure_but_is_never_fresh_authority() {
     assert!(restarted.pc_presentation().unwrap().search_footer);
     assert!(restarted.refresh_pc_presentation().await.is_err());
     assert!(restarted.pc_presentation().unwrap().search_footer);
+    assert!(
+        restarted
+            .pc_presentation()
+            .unwrap()
+            .podcast_purchases_compact
+    );
     assert_eq!(
         f.paths(),
         [ASSIGNMENT_PATH, ASSIGNMENT_PATH, ASSIGNMENT_PATH]
@@ -328,6 +343,12 @@ async fn persisted_bootstrap_survives_failure_but_is_never_fresh_authority() {
         .adopt(other, json!({"userId":72}), &f.session.token().unwrap())
         .unwrap();
     assert!(!restarted.pc_presentation().unwrap().search_footer);
+    assert!(
+        !restarted
+            .pc_presentation()
+            .unwrap()
+            .podcast_purchases_compact
+    );
 }
 
 #[tokio::test]

@@ -6425,6 +6425,7 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'podcasts'"
                 :model="podcasts"
                 :recent="podcastRecent"
+                :purchases-compact="pcPresentation.podcastPurchasesCompact.value"
                 :playing="player.playing.value"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentVoiceId"

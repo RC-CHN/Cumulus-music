@@ -251,7 +251,7 @@ test('guest readiness is native, ordered within its own epoch, and never enables
   host.dispose();
 });
 
-test('current podcast resume presentation follows ordered signed events and clears across accounts', async () => {
+test('podcast resume and purchases density follow ordered signed events and clear across accounts', async () => {
   let push!: (view: PcPresentationView) => void;
   const host = usePcPresentation(
     {
@@ -265,17 +265,21 @@ test('current podcast resume presentation follows ordered signed events and clea
   );
   host.connect(account);
   await host.start();
-  push({ ...appearance('3'), podcastResume: true });
+  push({ ...appearance('3'), podcastResume: true, podcastPurchasesCompact: true });
   push(appearance('2'));
   assert.equal(host.podcastResume.value, true);
+  assert.equal(host.podcastPurchasesCompact.value, true);
   push(appearance('4'));
   assert.equal(host.podcastResume.value, false);
-  push({ ...appearance('5'), podcastResume: true });
+  assert.equal(host.podcastPurchasesCompact.value, false);
+  push({ ...appearance('5'), podcastResume: true, podcastPurchasesCompact: true });
   assert.equal(host.podcastResume.value, true);
+  assert.equal(host.podcastPurchasesCompact.value, true);
   host.connect({ ...account, epoch: '2', status: 'signed_out' });
-  push({ ...appearance('8'), podcastResume: true });
-  push({ ...appearance('9', '2'), podcastResume: true });
+  push({ ...appearance('8'), podcastResume: true, podcastPurchasesCompact: true });
+  push({ ...appearance('9', '2'), podcastResume: true, podcastPurchasesCompact: true });
   assert.equal(host.podcastResume.value, false);
+  assert.equal(host.podcastPurchasesCompact.value, false);
   host.dispose();
 });
 

@@ -7,6 +7,7 @@ export interface PcPresentationView {
   searchDense: boolean;
   guestSearchReady?: boolean;
   podcastResume?: boolean;
+  podcastPurchasesCompact?: boolean;
   effectCatalogueRevision?: string;
   effectCatalogueNew?: boolean;
 }

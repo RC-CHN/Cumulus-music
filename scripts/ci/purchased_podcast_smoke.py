@@ -13,7 +13,7 @@ from queue_collection_smoke import isolated_profile
 from vinyl_lyric_copy_smoke import require_xvfb
 from window_manager import launch
 
-STAGES = ('mixed', 'selected', 'radio', 'parent', 'denied', 'more', 'ready',
+STAGES = ('mixed', 'selected', 'compact', 'normal', 'radio', 'parent', 'denied', 'more', 'ready',
           'cancelled', 'confirm', 'published')
 PLAYBACK_STAGES = ('baseline', 'radio_rejected', 'denied', 'inserted', 'paused', 'resumed')
 BOUGHT = '/api/voicelist/bought/list'
@@ -45,6 +45,9 @@ def verify(root, capture):
     stages = dict(zip(STAGES, map(read, paths), strict=True))
     assert all(stage['actual'] for stage in stages.values()), stages
     assert stages['mixed']['visibleRows'] == stages['selected']['visibleRows'] == ORDER
+    for name, height, cover, gap in [('mixed', 64, 48, 8), ('compact', 56, 36, 0), ('normal', 64, 48, 8)]:
+        assert stages[name]['visibleRows'] == ORDER
+        assert stages[name]['geometry'] == dict(heights=[height] * 3, covers=[cover] * 3, header=40, gap=gap)
     assert stages['radio']['heading'] == '合成已购播单 81'
     assert stages['parent']['heading'] == '合成所属播单 71'
     assert stages['denied']['submitDisabled']
@@ -58,7 +61,8 @@ def verify(root, capture):
         assert stages[name]['purchasedTrace']['mediaGets'] == 0
         assert all(path not in (DETAIL, URL) for path, _ in stages[name]['purchasedTrace']['calls'])
     calls = lambda name: stages[name]['purchasedTrace']['calls']
-    assert calls('mixed') == calls('selected') == [[BOUGHT, {'limit': 20, 'offset': 0}]]
+    assert all(calls(name) == [[BOUGHT, {'limit': 20, 'offset': 0}]]
+               for name in ('mixed', 'selected', 'compact', 'normal'))
     assert [path for path, _ in calls('denied')] == [
         BOUGHT, RADIO, PROGRAMS, RESUME, RADIO, PROGRAMS, RESUME, RIGHTS,
     ]

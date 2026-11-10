@@ -31,6 +31,7 @@ pub(super) fn load(store: &StateStore, owner: &str) -> Result<Flags> {
         search_footer: false,
         song_speed: None,
         effect_catalogue_new: false,
+        podcast_purchases_compact: false,
         podcast_resume: false,
     })
 }

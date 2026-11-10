@@ -18,6 +18,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
   let guestOrder: bigint | undefined;
   const guestSearchReady = ref(false);
   const podcastResume = ref(false);
+  const podcastPurchasesCompact = ref(false);
   const effectCatalogue = ref<EffectCataloguePresentation>();
   let signedOrder: bigint | undefined;
   const eligibleGuest = () => account?.status === 'unknown' || account?.status === 'signed_out';
@@ -29,6 +30,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
       if (order !== undefined && (signedOrder === undefined || order > signedOrder)) {
         signedOrder = order;
         podcastResume.value = view.podcastResume === true;
+        podcastPurchasesCompact.value = view.podcastPurchasesCompact === true;
         const cohort = presentationRevision(view.effectCatalogueRevision);
         const previous = presentationRevision(effectCatalogue.value?.revision);
         if (
@@ -68,6 +70,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     guestOrder = undefined;
     signedOrder = undefined;
     podcastResume.value = false;
+    podcastPurchasesCompact.value = false;
     effectCatalogue.value = undefined;
     guestSearchReady.value = false;
     void snapshot();
@@ -96,6 +99,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     guestSearchReady.value = false;
     listening = false;
     podcastResume.value = false;
+    podcastPurchasesCompact.value = false;
     effectCatalogue.value = undefined;
     unlisten?.();
     unlisten = undefined;
@@ -106,6 +110,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     dispose,
     guestSearchReady: readonly(guestSearchReady),
     podcastResume: readonly(podcastResume),
+    podcastPurchasesCompact: readonly(podcastPurchasesCompact),
     effectCatalogue: readonly(effectCatalogue),
   };
 }

@@ -24,6 +24,8 @@ pub(super) struct Flags {
     pub(super) song_speed: Option<bool>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(super) effect_catalogue_new: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(super) podcast_purchases_compact: bool,
     // A previous profile cache is not evidence for this newly bound action.
     #[serde(skip)]
     pub(super) podcast_resume: bool,
@@ -38,6 +40,7 @@ impl Flags {
             search_dense: groups.group("PH-PC-searchPageEfficiency") == Some("t1"),
             song_speed: song_speed_cohort(groups),
             effect_catalogue_new: groups.effect_catalogue_new_assigned(),
+            podcast_purchases_compact: groups.group("PH-PC-listPage-showMore") == Some("t1"),
             podcast_resume: groups.group(crate::podcast::resume::EXPERIMENT) == Some("t1"),
         }
     }
@@ -74,6 +77,8 @@ pub struct PcPresentationView {
     pub effect_catalogue_revision: String,
     pub effect_catalogue_new: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub podcast_purchases_compact: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub podcast_resume: bool,
 }
 
@@ -93,6 +98,7 @@ impl PcPresentationView {
             search_dense: flags.search_dense,
             guest_search_ready,
             effect_catalogue_new: flags.effect_catalogue_new,
+            podcast_purchases_compact: token.uid.is_some() && flags.podcast_purchases_compact,
             podcast_resume: token.uid.is_some() && flags.podcast_resume,
         }
     }
@@ -158,6 +164,7 @@ impl Default for PresentationHost {
             guest_search_ready: false,
             effect_catalogue_revision: "0".into(),
             effect_catalogue_new: false,
+            podcast_purchases_compact: false,
             podcast_resume: false,
         };
         Self {

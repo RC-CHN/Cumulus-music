@@ -22,6 +22,7 @@ import type {
 const props = defineProps<{
   model: PodcastModel;
   recent: PodcastRecentModel;
+  purchasesCompact: boolean;
   playable: boolean;
   queueable: boolean;
   queueProgram: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
@@ -387,6 +388,7 @@ const pending = props.model.pending;
         v-if="scope.kind === 'purchased' && page?.purchases"
         :model="model"
         :playable="playable && queueable"
+        :compact="purchasesCompact"
         @comments="(id, title) => emit('comments', id, title)"
         @download="(episode, live, source) => emit('download', [episode], live, source)"
         @play="(epoch, target, live) => emit('purchasedPlay', epoch, target, live)"

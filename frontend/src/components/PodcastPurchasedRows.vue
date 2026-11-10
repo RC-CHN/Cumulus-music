@@ -6,7 +6,7 @@ import type { EpisodeView, PodcastPurchasedRow, PodcastPurchasedTarget } from '.
 import { playlistTableCount } from '../services/playlistHeader';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ model: PodcastModel; playable: boolean }>();
+const props = defineProps<{ model: PodcastModel; playable: boolean; compact: boolean }>();
 const emit = defineEmits<{
   comments: [id: string, title: string];
   download: [episode: EpisodeView, live: () => boolean, source: PodcastPurchasedTarget];
@@ -17,10 +17,10 @@ const selected = ref('');
 watch(rows, () => {
   if (!rows.value.some((row) => key(row) === selected.value)) selected.value = '';
 });
-const rowHeight = 64;
+const rowHeight = computed(() => (props.compact ? 56 : 64));
 const { container, start, end } = useOuterVirtualRows(
   () => rows.value.length,
-  rowHeight,
+  () => rowHeight.value,
   (list) => list?.closest<HTMLElement>('.podcast-page') ?? undefined,
   (element) => Number(element.closest<HTMLElement>('[data-purchase-index]')?.dataset.purchaseIndex),
 );
@@ -68,6 +68,7 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
   <div
     v-if="rows.length"
     class="purchase-table"
+    :class="{ compact }"
     role="table"
     aria-label="已购播单和单集"
     :aria-rowcount="rows.length + 1"
@@ -157,7 +158,7 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
               :disabled="loading || row.item.unavailable"
               @click="download(row)"
             >
-              <Icon name="down" />
+              <Icon name="download" />
             </button>
             <button
               type="button"
@@ -174,15 +175,11 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
       <div aria-hidden="true" :style="{ height: `${(rows.length - end) * rowHeight}px` }" />
     </div>
   </div>
-  <button
-    v-if="typeof model.page.value?.purchases?.nextOffset === 'number'"
-    type="button"
-    class="text-button purchase-load-more"
-    :disabled="loading"
-    @click="model.loadMorePurchases"
-  >
-    加载更多
-  </button>
+  <div v-if="typeof model.page.value?.purchases?.nextOffset === 'number'" class="purchase-footer">
+    <button type="button" class="text-button" :disabled="loading" @click="model.loadMorePurchases">
+      加载更多 <Icon name="down" />
+    </button>
+  </div>
 </template>
 
 <style scoped>
@@ -196,10 +193,22 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
   align-items: center;
   padding-inline: 8px;
 }
+.purchase-table {
+  --purchase-cover-size: 48px;
+  --purchase-cover-radius: 8px;
+}
+.purchase-table.compact {
+  --purchase-cover-size: 36px;
+  --purchase-cover-radius: 4px;
+}
 .purchase-header {
-  min-height: 32px;
+  min-height: 40px;
+  margin-bottom: 8px;
   font-size: 13px;
   border-bottom: 1px solid var(--line);
+}
+.compact .purchase-header {
+  margin-bottom: 0;
 }
 .purchase-index {
   text-align: center;
@@ -209,7 +218,7 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
 }
 .purchase-name {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: var(--purchase-cover-size) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -224,9 +233,9 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
 }
 .purchase-row img,
 .purchase-placeholder {
-  width: 48px;
-  height: 48px;
-  border-radius: 4px;
+  width: var(--purchase-cover-size);
+  height: var(--purchase-cover-size);
+  border-radius: var(--purchase-cover-radius);
 }
 .purchase-placeholder {
   display: grid;
@@ -242,8 +251,27 @@ function playRow(row: PodcastPurchasedRow, event: MouseEvent) {
   padding: 0;
   text-align: start;
 }
-.purchase-load-more {
-  display: block;
-  margin: 12px auto;
+.purchase-title > :first-child {
+  font-size: 16px;
+}
+.compact .purchase-title > :first-child {
+  font-size: 14px;
+}
+.purchase-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.purchase-footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.purchase-footer svg {
+  width: 14px;
+  height: 14px;
 }
 </style>

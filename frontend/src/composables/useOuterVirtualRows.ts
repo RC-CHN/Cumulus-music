@@ -4,7 +4,7 @@ import { rowWindow } from '../services/virtualWindow';
 /** A bounded list inside a shared native scroller, without nested scroll areas. */
 export function useOuterVirtualRows(
   count: () => number,
-  rowHeight: number,
+  rowHeight: number | (() => number),
   root: (list?: HTMLElement) => HTMLElement | undefined,
   focusIndex: (element: HTMLElement) => number = (element) =>
     Number(element.closest<HTMLElement>('[data-sidebar-index]')?.dataset.sidebarIndex),
@@ -13,6 +13,7 @@ export function useOuterVirtualRows(
   const range = shallowRef({ start: 0, end: 0 });
   let frame: number | undefined;
   let stop: (() => void) | undefined;
+  const height = () => (typeof rowHeight === 'number' ? rowHeight : rowHeight());
   function update() {
     frame = undefined;
     const list = container.value,
@@ -22,10 +23,11 @@ export function useOuterVirtualRows(
       b = outer.getBoundingClientRect();
     const rowTop = a.top + (parseFloat(getComputedStyle(list).paddingTop) || 0);
     const offset = Math.max(0, b.top - rowTop);
-    const visible = Math.max(0, Math.min(count() * rowHeight, b.bottom - rowTop) - offset);
+    const step = height();
+    const visible = Math.max(0, Math.min(count() * step, b.bottom - rowTop) - offset);
     const next =
       visible > 0
-        ? rowWindow(count(), rowHeight, visible, offset, range.value, 4)
+        ? rowWindow(count(), step, visible, offset, range.value, 4)
         : a.top >= b.bottom
           ? { start: 0, end: 0 }
           : { start: count(), end: count() };
@@ -57,7 +59,7 @@ export function useOuterVirtualRows(
     },
     { flush: 'post' },
   );
-  watch(count, schedule, { flush: 'post' });
+  watch([count, height], schedule, { flush: 'post' });
   onUnmounted(() => {
     stop?.();
     if (frame !== undefined) cancelAnimationFrame(frame);

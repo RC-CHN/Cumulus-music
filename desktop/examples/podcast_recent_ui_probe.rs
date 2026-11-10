@@ -144,6 +144,9 @@ impl Library {
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        if self.purchased.is_some() {
+            return Ok(Some(purchased_podcast_fixture::COHORT_REVISION.to_owned()));
+        }
         if let Some(liked) = &self.voice_song_group_liked {
             return liked.client.verified_pc_experiment_revision();
         }
@@ -165,6 +168,9 @@ impl Api for Library {
         &'a self,
         revision: &'a str,
     ) -> ApiFuture<'a, PcExperimentGroups> {
+        if let Some(fixture) = &self.purchased {
+            return Box::pin(async move { fixture.groups(revision) });
+        }
         if !self.player_resume_proof {
             return Box::pin(async { Err(Error::State("sealed podcast assignment unavailable")) });
         }
@@ -1104,6 +1110,17 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let mut value: Value = serde_json::from_str(event.payload()).unwrap();
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
+                if purchased_download_proof && stage == "purchases_cohort" {
+                    let compact = value["compact"].as_bool().expect("synthetic cohort selection");
+                    api.purchased.as_ref().expect("purchase fixture").set_compact(compact);
+                    let handle = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let client = handle.state::<MusicClient>();
+                        let view = client.refresh_pc_presentation().await.expect("sealed purchase cohort refresh");
+                        assert_eq!(view.podcast_purchases_compact, compact);
+                    });
+                    return;
+                }
                 if player_resume_proof && stage == "player_resume_refresh" {
                     let nonce = value["nonce"].as_u64().expect("resume refresh sequence");
                     let handle = handle.clone();
