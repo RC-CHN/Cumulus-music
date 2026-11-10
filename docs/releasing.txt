@@ -6,7 +6,7 @@
 
 CI (.github/workflows/ci.yml)
 1. 独立前端 runner：公开源文件边界、版本与 release 历史、发布门禁的拒绝分支测试、格式、前端测试、类型检查和正式构建。
-2. Linux/Windows 原生检查 runner 并行执行 fmt、严格 Clippy 和锁定的全工作区测试（包括 examples 编译）。Linux/Windows 发行构建各用另一个独立 runner，与原生检查并行；从同一提交和锁定工具链构建，运行已安装包或解包产物验证。
+2. Linux/Windows 的 fmt 和严格 Clippy 与锁定的全工作区测试（包括 examples 编译）在独立 runner 并行执行；Linux 两条原生检查共用本次 CI 的前端 dist，保留全套原生和可选特性测试。Linux/Windows 发行构建各用另一个独立 runner，与原生检查并行；从同一提交和锁定工具链构建，运行已安装包或解包产物验证。
 3. Linux 的本机媒体 WebView job 从同一次 CI 的打包 job 核对实际滤镜和 FLAC。
    下载、搜索、播放器回归另用 Linux runner，只等前端和共用探针构建。
    两组核对同提交、run/attempt 的探针及前端资源摘要；本机媒体组的包来源检查保留。

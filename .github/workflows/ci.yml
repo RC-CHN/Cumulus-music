@@ -80,21 +80,18 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
     # Keep the established required job context used by the release verifier.
     name: Native (linux-x64)
+    needs: frontend
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - &linux_native_checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - name: Linux native dependencies
         run: |
           python3 scripts/ci/linux_webview_apt.py --cold --profile native
@@ -102,9 +99,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - name: Install pinned toolchain
+      - &linux_native_toolchain
+        name: Install pinned toolchain
         run: rustup show
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - &linux_native_rust_downloads
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         id: rust-cache
         with:
           # Linux reuses downloads only, never a target directory.
@@ -115,12 +114,15 @@ jobs:
           restore-keys: |
             rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
             rust-Linux-downloads-v2-
-      - run: npm --prefix frontend ci
-      - run: npm --prefix frontend run build
-      - run: cargo fmt --all --check
-      - id: rust-clippy
-        run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
-      - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+      - &linux_native_dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - &linux_native_dist_check
+        run: test -f frontend/dist/index.html
+      - id: rust-tests
+        run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
       - name: Verify native streaming cache with generated audio
         run: |
           fixture="$RUNNER_TEMP/cumulus-stream-cache-fixture.mp3"
@@ -148,13 +150,34 @@ jobs:
         if: >-
           always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
           steps.rust-cache.outputs.cache-hit != 'true' &&
-          (steps.rust-clippy.outcome == 'success' || steps.rust-clippy.outcome == 'failure')
+          (steps.rust-tests.outcome == 'success' || steps.rust-tests.outcome == 'failure')
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+  linux-rust-lint:
+    name: Rust format and Clippy (linux-x64)
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
+    needs: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_native_checkout
+      - run: cargo fmt --all --check
+      - name: Linux native dependencies
+        run: python3 scripts/ci/linux_webview_apt.py --cold --profile native
+      - *linux_native_toolchain
+      - *linux_native_rust_downloads
+      - *linux_native_dist
+      - *linux_native_dist_check
+      # Tests own the cache write; both runners start with independent target directories.
+      - run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
 
   package-linux:
     if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
@@ -2590,7 +2613,7 @@ jobs:
   gate:
     name: CI gate
     if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
-    needs: [frontend, native-linux, native, windows-rust-lint, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-package-probes, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, linux-rust-lint, native, windows-rust-lint, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-package-probes, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -2598,6 +2621,7 @@ jobs:
         env:
           FRONTEND: ${{ needs.frontend.result }}
           NATIVE: ${{ needs.native.result }}
+          LINUX_RUST_LINT: ${{ needs.linux-rust-lint.result }}
           WINDOWS_RUST_LINT: ${{ needs.windows-rust-lint.result }}
           LINUX_NATIVE: ${{ needs.native-linux.result }}
           LINUX_PACKAGE: ${{ needs.package-linux.result }}
@@ -2617,6 +2641,7 @@ jobs:
         run: |
           test "$FRONTEND" = success
           test "$NATIVE" = success
+          test "$LINUX_RUST_LINT" = success
           test "$WINDOWS_RUST_LINT" = success
           test "$LINUX_NATIVE" = success
           test "$LINUX_PACKAGE" = success
