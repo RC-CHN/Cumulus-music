@@ -88,6 +88,8 @@ mod search_artist_top50_fixture;
 mod search_download_ui_fixture;
 #[path = "support/search_fixture.rs"]
 mod search_fixture;
+#[path = "support/search_group_download_fixture.rs"]
+mod search_group_download_fixture;
 #[path = "support/search_mv_fixture.rs"]
 mod search_mv_fixture;
 #[path = "support/search_podcast_playback_fixture.rs"]
@@ -238,6 +240,11 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn song_card_download_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(search_group_download_fixture::enabled()
+            .then(|| "synthetic-search-group-download".into()))
+    }
+
     fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok((search_fixture::enabled()
             && std::env::var_os("CUMULUS_SEARCH_GROUP_NEXT_PROOF").is_some())
@@ -722,6 +729,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = search_mv_fixture::response(path, &args) {
+                return response;
+            }
+            if let Some(response) = search_group_download_fixture::response(path, &args, cached) {
                 return response;
             }
             if let Some(response) = search_download_ui_fixture::response(path, &args, cached) {
@@ -1424,6 +1434,9 @@ fn main() {
         if voice_download_fixture::enabled() {
             client=client.with_download_backend(Arc::new(voice_download_fixture::Media));
         }
+        if search_group_download_fixture::enabled() {
+            client=client.with_download_backend(Arc::new(search_group_download_fixture::Media));
+        }
         if search_download_row_proof {
             client=client.with_download_backend(Arc::new(search_download_ui_fixture::Media));
         }
@@ -1787,6 +1800,18 @@ fn main() {
                     let matches = handle.clipboard().read_text().is_ok_and(|text|text==expected);
                     handle.get_webview_window("main").unwrap().eval(format!("window.__searchClipboardAck={matches};")).unwrap();
                 });return;
+            }
+            if search_group_download_fixture::enabled() {
+                if stage=="search-group-download-configure" {
+                    let handle=handle.clone(); let root=cover_root.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root).await;
+                        let ack=json!({"ok":result.is_ok()});
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();
+                    });
+                    return;
+                }
+                value["searchGroupDownload"]=json!(search_group_download_fixture::report());
             }
             if search_download_row_proof && stage=="search-download-fixture" {
                 let handle=handle.clone();let session=fixture_session.clone();let store=proof_store.clone();
