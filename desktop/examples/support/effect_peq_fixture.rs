@@ -63,6 +63,10 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_PEQ_NATIVE_PROOF").is_some()
 }
 
+pub fn applied_catalogue() -> bool {
+    std::env::var_os("CUMULUS_EFFECT_APPLIED_CATALOGUE_PROOF").is_some()
+}
+
 pub fn source_bypass() -> bool {
     std::env::var_os("CUMULUS_EFFECT_PEQ_SOURCE_BYPASS_PROOF").is_some()
 }
@@ -153,14 +157,42 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         trace.calls.push(json!({"path":path,"result":"ack"}));
         return Some(Ok(json!({"code":200,"data":data})));
     }
+    let neutral = |id| json!({"id":id,"name":format!("合成目录音效{id}")});
+    let legacy = super::effect_directory_fixture::legacy_overview();
     let data = match path {
-        "/api/usertool/sound/queryAllSound" if args == &json!({"exposeType":5}) => {
+        "/api/usertool/sound/mobile/promote"
+            if applied_catalogue() && legacy && args == &json!({}) =>
+        {
+            json!([sound()])
+        }
+        "/api/usertool/sound/mobile/all" if applied_catalogue() && legacy && args == &json!({}) => {
+            json!([sound(), neutral(301)])
+        }
+        "/api/usertool/sound/queryAllSound"
+            if applied_catalogue() && !legacy && args == &json!({"exposeType":6}) =>
+        {
+            json!([neutral(301), neutral(302)])
+        }
+        "/api/usertool/sound/queryAllSound"
+            if applied_catalogue() && !legacy && args == &json!({"exposeType":7}) =>
+        {
+            json!([sound(), neutral(303)])
+        }
+        "/api/usertool/sound/queryAllSound"
+            if args == &json!({"exposeType":5}) && (!applied_catalogue() || !legacy) =>
+        {
             json!([sound()])
         }
         "/api/usertool/home/sound/info"
             if args == &json!({"reqListStr":r#"[{"soundId":"300","soundType":10}]"#}) =>
         {
             json!({"soundList":[{"soundId":"300","soundType":10,"pcSoundDetail":sound()}]})
+        }
+        "/api/usertool/home/sound/info"
+            if applied_catalogue()
+                && args == &json!({"reqListStr":r#"[{"soundId":"301","soundType":10}]"#}) =>
+        {
+            json!({"soundList":[]})
         }
         "/api/vipauth/app/interests/auth/query"
             if args == &json!({"queryInfo":{"interestsMap":{"127":[ID]}}}) =>

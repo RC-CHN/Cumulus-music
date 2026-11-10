@@ -1345,7 +1345,7 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
-        if audio_effect_tabs_proof {
+        if audio_effect_tabs_proof || effect_peq_fixture::applied_catalogue() {
             tauri::async_runtime::block_on(async {
                 assert_eq!(client.restore_account().await?.status,
                     cumulus_core::account::SessionStatus::Authenticated);

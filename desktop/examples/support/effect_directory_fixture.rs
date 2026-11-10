@@ -61,6 +61,7 @@ pub fn source_calls() -> Vec<Value> {
 
 pub fn overview_enabled() -> bool {
     std::env::var_os("CUMULUS_AUDIO_EFFECT_TABS_PROOF").is_some()
+        || effect_peq_fixture::applied_catalogue()
 }
 
 pub fn overview_revision() -> Option<String> {
@@ -84,7 +85,7 @@ pub fn overview_assignment(
     }))
 }
 
-fn legacy_overview() -> bool {
+pub(super) fn legacy_overview() -> bool {
     overview_enabled() && std::env::var_os("CUMULUS_EFFECT_CATALOGUE_LEGACY").is_some()
 }
 
