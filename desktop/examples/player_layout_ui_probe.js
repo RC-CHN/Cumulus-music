@@ -356,9 +356,13 @@
     await wait(()=>!one('.track-share-dialog')&&document.activeElement===trackActionTrigger(),'share closes back to the playback trigger');
     await openTrackActions();
     click(trackAction('effects'));
+    const activeCatalogue = '.audio-effects-panel[open] [data-audio-effect-pane="catalogue"]:not([hidden])';
+    const legacyDirectory = activeCatalogue + ' .effect-directory[data-effect-layout="legacy"]';
+    const groupIds = group => all(legacyDirectory + ` [data-effect-group="${group}"] [data-effect-id]`)
+      .map(row => row.dataset.effectId).join();
     await wait(()=>one('.audio-effects-panel[open] [data-audio-effect-tab="catalogue"][aria-selected="true"]')
-      && one('.audio-effects-panel .effect-directory')?.textContent.includes('此分类暂无音效。'),
-      'current-song effects opens the default tab and loads its category');
+      && groupIds('legacy_recommended')==='201' && groupIds('legacy_all')==='202',
+      'current-song effects opens the default tab and renders both legacy groups from native reads');
     click(one('.audio-effects-panel [aria-label="关闭音效"]'));
     await wait(()=>!one('.audio-effects-panel')&&document.activeElement===trackActionTrigger(),
       'effects closes back to the playback trigger');

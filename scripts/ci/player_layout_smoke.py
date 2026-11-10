@@ -189,6 +189,10 @@ def main():
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if not args.baseline:
+        assert complete['playerLayoutCatalogueCalls'] == [
+            ['/api/usertool/sound/mobile/promote', {}],
+            ['/api/usertool/sound/mobile/all', {}],
+        ]
         seek_path, = [stage for stage in stages if stage.stem.endswith('_slow_native_seek_wait')]
         seek = json.loads(seek_path.read_text(encoding='utf-8'))
         assert seek['nativePlayer']['nativeSeeking'] and seek['nativePlayer']['state'] == 'playing'

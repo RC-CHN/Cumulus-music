@@ -216,6 +216,8 @@ fn playlist_tag_browse_proof() -> bool {
 }
 static PLAYLIST_TAG_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 static PLAYLIST_CATALOGUE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+static PLAYER_LAYOUT_CATALOGUE_CALLS: std::sync::Mutex<Vec<Value>> =
+    std::sync::Mutex::new(Vec::new());
 
 #[path = "support/profile_play_record_fixture.rs"]
 mod profile_play_record_fixture;
@@ -926,11 +928,22 @@ impl Api for Library {
                 return fixture::Library::default().request(path, args, false).await;
             }
             Ok(match path {
-                "/api/usertool/sound/queryAllSound"
+                "/api/usertool/sound/mobile/promote" | "/api/usertool/sound/mobile/all"
                     if std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()
-                        && args == json!({"exposeType":5}) =>
+                        && !cached
+                        && args == json!({}) =>
                 {
-                    json!({"code":200,"data":[]})
+                    PLAYER_LAYOUT_CATALOGUE_CALLS
+                        .lock()
+                        .unwrap()
+                        .push(json!([path, args]));
+                    let recommended = json!({"id":201,"name":"合成推荐音效","type":1});
+                    let data = if path.ends_with("/promote") {
+                        json!([recommended])
+                    } else {
+                        json!([recommended,{"id":202,"name":"合成其他音效","type":1}])
+                    };
+                    json!({"code":200,"data":data})
                 }
                 "/api/rtrs/abt/front/expinfo/list"
                     if external_import_fixture::sidebar_mode().is_some() =>
@@ -1633,6 +1646,11 @@ fn main() {
             if effect_directory_fixture::enabled() {
                 value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());
                 value["effectDirectoryMaterialGets"]=effect_peq_fixture::report()["materialGets"].clone();
+            }
+            if matches!(value["stage"].as_str(), Some("complete" | "failed"))
+                && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()
+            {
+                value["playerLayoutCatalogueCalls"] = json!(*PLAYER_LAYOUT_CATALOGUE_CALLS.lock().unwrap());
             }
             if peq_proof || device_peq_proof || audio_effect_tabs_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if device_source_bypass_proof {
