@@ -10,10 +10,28 @@ use tauri::{Emitter, Manager};
 
 #[derive(Default)]
 pub(crate) struct RenewalPump {
-    notify: Arc<tokio::sync::Notify>,
+    focus: Mutex<Foreground>,
+    foreground: Arc<tokio::sync::Notify>,
+    policy: Arc<tokio::sync::Notify>,
     task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     observer: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     legacy: Mutex<Option<LegacyRenewal>>,
+}
+
+#[derive(Default)]
+struct Foreground {
+    focused: Option<bool>,
+    pending_epoch: Option<String>,
+}
+
+impl Foreground {
+    fn observe(&mut self, focused: bool, eligible: impl FnOnce() -> Option<String>) -> bool {
+        if self.focused.replace(focused) == Some(focused) {
+            return false;
+        }
+        self.pending_epoch = if focused { eligible() } else { None };
+        self.pending_epoch.is_some()
+    }
 }
 
 pub fn configure(client: MusicClient, profile: &ClientProfile) -> MusicClient {
@@ -62,19 +80,20 @@ pub fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if slot.is_some() {
         return;
     }
-    let notify = host.notify.clone();
+    let foreground = host.foreground.clone();
+    let policy = host.policy.clone();
     let app = app.clone();
     if let Ok(mut observer) = host.observer.lock()
         && let Ok(mut changes) = app.state::<MusicClient>().subscribe_account()
     {
         let app = app.clone();
-        let notify = host.notify.clone();
+        let policy = host.policy.clone();
         *observer = Some(tauri::async_runtime::spawn(async move {
             while changes.changed().await.is_ok() {
                 // Publish account invalidation immediately even while an old
                 // account's renewal/config request is still awaiting network.
                 publish(&app, &app.state::<MusicClient>());
-                notify.notify_one();
+                policy.notify_one();
             }
         }));
     }
@@ -83,26 +102,31 @@ pub fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         policy_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         policy_tick.tick().await;
         loop {
-            let foreground = tokio::select! {
-                _ = notify.notified() => true,
+            let from_focus = tokio::select! {
+                _ = foreground.notified() => true,
+                _ = policy.notified() => false,
                 _ = policy_tick.tick() => false,
             };
             let client = app.state::<MusicClient>();
-            let Ok(account) = client.account() else {
-                continue;
-            };
-            if foreground {
-                let _ = client
-                    .renew_session(&account.epoch, RenewalAction::Check)
-                    .await;
-            } else {
+            if from_focus {
+                let epoch = app
+                    .state::<RenewalPump>()
+                    .focus
+                    .lock()
+                    .ok()
+                    .and_then(|mut focus| focus.pending_epoch.take());
+                if let Some(epoch) = epoch
+                    && client.foreground_renewal_epoch().ok().flatten().as_ref() == Some(&epoch)
+                {
+                    let _ = client.renew_session(&epoch, RenewalAction::Check).await;
+                }
+            } else if let Ok(account) = client.account() {
                 let _ = client.refresh_login_experiments(&account.epoch).await;
             }
-            // Do not call auth::publish: it requests another check.
             publish(&app, &client);
         }
     }));
-    host.notify.notify_one();
+    host.policy.notify_one();
 }
 
 /// Native setup only, after managing the same policy-configured MusicClient
@@ -122,9 +146,19 @@ pub fn start_legacy<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> cumulus_cor
     Ok(())
 }
 
-pub(crate) fn wake<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(host) = app.try_state::<RenewalPump>() {
-        host.notify.notify_one();
+pub(crate) fn focus_changed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, focused: bool) {
+    // M/1190 merges native focus and losefocus with distinctUntilChanged.
+    // Never attach a later account or a later policy result to an old event.
+    if let Some(host) = app.try_state::<RenewalPump>()
+        && let Ok(mut focus) = host.focus.lock()
+        && focus.observe(focused, || {
+            app.try_state::<MusicClient>()?
+                .foreground_renewal_epoch()
+                .ok()
+                .flatten()
+        })
+    {
+        host.foreground.notify_one();
     }
 }
 pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
@@ -145,12 +179,25 @@ pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     {
         task.abort();
     }
+    if let Some(host) = app.try_state::<RenewalPump>()
+        && let Ok(mut focus) = host.focus.lock()
+    {
+        *focus = Foreground::default();
+    }
+}
+
+pub(crate) fn publish_status<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    client: &MusicClient,
+    epoch: &str,
+) {
+    if let Ok(view) = client.session_renewal(epoch) {
+        let _ = app.emit_to("main", "cumulus:session-renewal", view);
+    }
 }
 fn publish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, client: &MusicClient) {
     if let Ok(account) = client.account() {
-        if let Ok(view) = client.session_renewal(&account.epoch) {
-            let _ = app.emit_to("main", "cumulus:session-renewal", view);
-        }
+        publish_status(app, client, &account.epoch);
         let _ = app.emit_to("main", "cumulus:account-changed", account);
     }
 }
@@ -175,4 +222,30 @@ pub async fn renew_session<R: tauri::Runtime>(
         .map_err(Into::into);
     publish(window.app_handle(), &client);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Foreground;
+
+    #[test]
+    fn a_focus_edge_cannot_acquire_an_account_or_policy_after_it_arrives() {
+        let mut foreground = Foreground::default();
+        assert!(!foreground.observe(true, || None));
+        assert!(!foreground.observe(true, || panic!("a duplicate focus is not an edge")));
+        assert!(foreground.pending_epoch.is_none());
+
+        assert!(!foreground.observe(false, || panic!("blur cannot check renewal policy")));
+        assert!(foreground.observe(true, || Some("old".into())));
+        assert!(!foreground.observe(true, || Some("new".into())));
+        assert_eq!(foreground.pending_epoch.as_deref(), Some("old"));
+
+        assert!(!foreground.observe(false, || None));
+        assert!(
+            foreground.pending_epoch.is_none(),
+            "blur retires a queued check"
+        );
+        assert!(foreground.observe(true, || Some("new".into())));
+        assert_eq!(foreground.pending_epoch.take().as_deref(), Some("new"));
+    }
 }

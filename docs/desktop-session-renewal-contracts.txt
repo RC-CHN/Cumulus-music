@@ -15,8 +15,9 @@ M/1384只在该条件成立时转发前台事件。正式宿主现已读取实�
 实验缓存每30分钟更新，按账号代次隔离。来源和错误码校验见login-interception-contracts.txt。
 M/1368 subscribeForegroundChange 收到 APP_BECOME_ACTIVE 后执行 refreshToken。
 生产间隔 864e5 ms，测试环境 12e4 ms。此次桌面实现只采用生产 86400 秒周期，不暴露测试开关。
-它不是固定轮询：窗口恢复焦点、身份恢复和登录结束通知触发检查。启动初次检查若身份尚未恢复
-会跳过，restore_account 完成再次通知。Notify 合并积压信号；不启动定时无条件轮换。
+M/1190:74–76 经 M/118:150–157 订阅原生 winhelper focus/losefocus，并去掉相同值；
+M/1384:4526–4535 仅在真正获得焦点且 M/34:67–74 已具备双 t1 时发送前台事件。
+这不是固定轮询，也不把启动、身份回读、切换账号、登录/取消或其他 IPC 当作获得焦点。
 M/290 login.ydDeviceToken 仅回调 {code:200}，没有 token 或 SEND_YD_TOKEN 事件。
 M/1368 非 iOS 取值等待该事件，5000ms 超时解析为 ""；refreshToken 直接转交这个值。
 此次修正旧 Rust 对空值的错误拒绝。DesktopDeviceToken 直接返回这一已知空结果，省略无事件
@@ -59,8 +60,12 @@ core/src/client/auth/renewal.rs 是宿主无关用例：原生配置 DeviceInfo/
 正在新登录时返回 LoginInProgress，避免后台与待确认登录竞争。新版账号可在后续通知检查。
 
 桌面与 UI
-生产 setup 明确配置 renewal::configure 并启动 RenewalPump；仅主窗口获得焦点时通知。
-auth::publish、restore_account 完成通知同一 pump。主窗口销毁中止任务；若请求已发则按持久日志恢复。
+生产 setup 配置 renewal::configure 并启动 RenewalPump。启动、账号变更和 30 分钟间隔只读
+更新登录实验；账号状态通知直接发布当前状态。主窗口真实 Focused(true) 事件（包括符合条件
+的首次原生 true）仅为当时已验证的登录 epoch 和已观察到的双 t1 排队自动检查；重复 true、
+已经失焦的积压事件、未决实验或不再当前的 epoch 不会派发。初次焦点早于身份或实验准备时
+不在后来补发该事件。显式检查和只读核对沿用原路径，旧版 20 小时续期不变。
+主窗口销毁中止任务；若请求已发则按持久日志恢复。
 自动检查完成发布 cumulus:session-renewal 和 account-changed；不调用会重新通知自身的发布函数。
 IPC session_renewal(epoch) 只读；renew_session(epoch,check|reconcile) 由 core 决定是否发请求。
 所有命令沿用仅主窗口限制。主前端、验证码窗口、Tauri 插件均不能注入 refreshToken/签名/deviceId。
@@ -133,6 +138,8 @@ UI“暂时无需续期”不承诺已经轮换；lastSuccess只公开已确认�
 原生注入with_session_renewal_clock仅配置宿主时钟，测试不修改系统时间；IPC没有clock或force参数。
 公开CI的session_renewal_smoke.py使用合成HTTP、真实WebView/IPC/pump，独立检查两次新登录零轮换、
 到期轮换、重复检查抑制、未决写不重放及SQLite持久化；不依赖官方私有文件或真实账号。
+该脚本可加 --foreground（Linux Xvfb 与原生 WM），以同一个真实 WebView 检查已经有焦点的
+到期会话在 restore_account 后零轮换，真实切出仍为零，切回后才发一次合成请求并核对同 UID。
 
 账号弹窗中的到期状态回读（2026-11-05）
 M/1368:2292–2308 每次检查从存储读最近时间，并以当前时钟对照24小时；旧UI投影只保留

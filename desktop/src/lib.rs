@@ -126,8 +126,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             {
                 together::closing(window, event);
             }
-            if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(true)) {
-                renewal::wake(window.app_handle());
+            if window.label() == "main"
+                && let tauri::WindowEvent::Focused(focused) = event
+            {
+                renewal::focus_changed(window.app_handle(), *focused);
             }
             if window.label() == "main"
                 && matches!(

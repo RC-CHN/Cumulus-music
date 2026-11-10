@@ -32,9 +32,9 @@ pub async fn open_login_document<R: tauri::Runtime>(
 
 pub(super) fn publish<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, client: &MusicClient) {
     if let Ok(account) = client.account() {
-        let _ = window.emit("cumulus:account-changed", account);
+        let _ = window.emit("cumulus:account-changed", &account);
+        crate::renewal::publish_status(window.app_handle(), client, &account.epoch);
     }
-    crate::renewal::wake(window.app_handle());
 }
 
 #[tauri::command]

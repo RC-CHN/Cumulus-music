@@ -101,6 +101,19 @@ impl MusicClient {
         self.session.subscribe()
     }
 
+    /// Native focus observation only. An unresolved or disabled login policy
+    /// cannot turn a focus notification into an automatic renewal request.
+    pub fn foreground_renewal_epoch(&self) -> Result<Option<String>> {
+        let snapshot = self.session.snapshot()?;
+        if self.auth.renewal.native.is_none()
+            || snapshot.status != SessionStatus::Authenticated
+            || self.session.login_policy_enabled(&snapshot.token)? != Some(true)
+        {
+            return Ok(None);
+        }
+        Ok(Some(snapshot.token.generation.to_string()))
+    }
+
     pub async fn refresh_login_experiments(&self, epoch: &str) -> Result<()> {
         let token = self.auth_token(epoch)?;
         if self.session.snapshot()?.status == SessionStatus::Authenticated

@@ -155,6 +155,44 @@ async fn missing_refresh_never_calls_provider_or_network_and_exports_no_secrets(
 }
 
 #[tokio::test]
+async fn native_foreground_observation_needs_current_dual_treatment_without_sending() {
+    for (jsk, benefit) in [("t1", "t1"), ("c", "t1"), ("t1", "c")] {
+        let w = World::configured(
+            [json!({"code":200,"data":[
+                {"expName":"PH-PC-loginJsk","expGroupName":jsk},
+                {"expName":"PH-PC-newLoginBenefit","expGroupName":benefit},
+            ]})
+            .into()],
+            true,
+            None,
+            Arc::new(DesktopDeviceToken),
+            true,
+        )
+        .await;
+        assert!(w.client.foreground_renewal_epoch().unwrap().is_none());
+        let epoch = w.epoch();
+        w.client.refresh_login_experiments(&epoch).await.unwrap();
+        assert_eq!(
+            w.client.foreground_renewal_epoch().unwrap(),
+            (jsk == "t1" && benefit == "t1").then(|| epoch.clone())
+        );
+        w.client.logout_account(&epoch, false).await.unwrap();
+        assert!(w.client.foreground_renewal_epoch().unwrap().is_none());
+        assert_eq!(
+            w.http
+                .calls()
+                .iter()
+                .map(|call| call.path.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "/api/w/nuser/account/get",
+                "/api/rtrs/abt/front/expinfo/list"
+            ]
+        );
+    }
+}
+
+#[tokio::test]
 async fn desktop_empty_token_rotates_once_and_daily_gate_survives_reopen() {
     let w = World::new(
         [rotated(), identity(1)],
