@@ -49,9 +49,10 @@
       return view.attached && view.targetId === '91' && view.pending.length === 0;
     }, 'published incumbent');
     await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    await invoke('player_action', { epoch, action: { kind: 'seek', seconds: 12 } });
     const paused = await wait(async () => {
       const view = await player();
-      return view.state === 'paused' && view;
+      return view.state === 'paused' && view.position === 12 && view;
     }, 'native incumbent paused');
     await wait(async () => !(await room()).playing, 'room pause published');
 

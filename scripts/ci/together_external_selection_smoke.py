@@ -48,7 +48,7 @@ def main():
         'ui_ok', 'local_restored', 'fixture_api', 'fixture_im', 'fixture_audio'))
     assert host['end_requests'] == 1 and host['im_closed'] > 0 and not host['real_peer_verified']
     partial, prompt, dismissed, ended = [read(output / f'{stage}.json') for stage in STAGES]
-    assert partial['kept'] == ['714', '715'] and partial['playId'] and partial['position'] > 0
+    assert partial['kept'] == ['714', '715'] and partial['playId'] and partial['position'] == 12
     assert prompt['focused'] == '取消'
     assert dismissed['roomOpen'] and not ended['roomOpen']
     assert dismissed['state'] == ended['state'] == 'paused'
