@@ -1848,7 +1848,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, playback-podcasts, playback-startup, library-search, account-auth, account-shell, catalog-browse, catalog-community]
+        shard: [playback, playback-podcasts, playback-startup, library-search, library-actions, account-auth, account-shell, catalog-browse, catalog-community]
     defaults:
       run:
         shell: bash
@@ -2027,7 +2027,7 @@ jobs:
           isolated_proof scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-quality-linux --screenshots
           isolated_proof scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-read-all-linux --screenshots
           isolated_proof scripts/ci/queue_click_smoke.py --daily-row --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-daily-linux --screenshots
-      - name: Verify library, downloads and search
+      - name: Verify search, downloads and audiobook playback
         if: matrix.shard == 'library-search'
         env:
           GDK_BACKEND: x11
@@ -2071,6 +2071,14 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --card-matches --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-card-matches-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --correction-original --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-correction-original-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --people-categories --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-people-linux
+      - name: Verify library actions and search navigation
+        if: matrix.shard == 'library-actions'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/daily_history_smoke.py --birthday --style-write --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-daily-history-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_sign_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-sign-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_sign_smoke.py --write confirmed --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-sign-confirmed-linux
