@@ -233,6 +233,8 @@ export interface PodcastLikedPage extends PodcastLikedVisit {
   episodes: PodcastLikedEpisode[];
   loadedCount: number;
   count: number | null;
+  /** Next observed a count in this response, rather than carrying it forward. */
+  countUpdated: boolean;
   continuation: string | null;
   capped: boolean;
 }

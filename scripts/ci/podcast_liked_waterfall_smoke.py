@@ -4,6 +4,8 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sqlite3
+import time
 
 from queue_collection_smoke import isolated_profile
 from vinyl_lyric_copy_smoke import require_xvfb
@@ -19,6 +21,25 @@ NAMES = ('library', 'first_page', 'tail_held', 'tail_failed', 'tail_retried',
 
 def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
+
+
+def capture_checkpoint(database, path, receipts):
+    if path.stem not in ('ux_07_comments', 'ux_08_back', 'ux_10_menu_back'):
+        return
+    deadline = time.monotonic() + 2
+    while True:
+        with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as store:
+            cached = store.execute(
+                "SELECT value FROM state WHERE kind='podcast-liked-prefix-v1' AND key='prefix'"
+            ).fetchone()
+        if cached or path.stem != 'ux_07_comments' or time.monotonic() >= deadline:
+            break
+        # The comments IPC can complete while the independent Suspend commits.
+        time.sleep(.04)
+    saved = json.loads(cached[0]) if cached else None
+    receipts[path.stem] = None if saved is None else {
+        'rows': len(saved['rows']), 'count': saved['count'], 'cursor': saved['cursor'],
+    }
 
 
 def verify(output):
@@ -106,12 +127,23 @@ def main():
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     output = root / 'run/first'
+    checkpoint_receipts = {}
     with (root / 'host.log').open('x', encoding='utf-8') as log:
-        code = launch(args.binary.resolve(strict=True), env, log, output, True)
+        code = launch(
+            args.binary.resolve(strict=True), env, log, output, True,
+            before_ack=lambda path, _, _pid: capture_checkpoint(
+                root / 'run/state/core.sqlite3', path, checkpoint_receipts),
+        )
     failed = output / 'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'WebView exited {code}; see {root / "host.log"}'
     report = verify(output)
+    assert checkpoint_receipts == {
+        'ux_07_comments': {'rows': 137, 'count': 145, 'cursor': 1700000000863},
+        'ux_08_back': None,
+        'ux_10_menu_back': None,
+    }, checkpoint_receipts
+    report['nativeCheckpoints'] = checkpoint_receipts
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 

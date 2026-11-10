@@ -96,10 +96,15 @@ export function usePodcastLiked(
     return detail;
   }
 
-  function publish(value: PodcastLikedPage, epoch: string, episodes = value.episodes) {
+  function publish(
+    value: PodcastLikedPage,
+    epoch: string,
+    episodes = value.episodes,
+    updateCount = true,
+  ) {
     if (value.loadedCount !== episodes.length) throw changed;
     page.value = { ...value, epoch, episodes };
-    if (value.count !== null) {
+    if (updateCount && value.count !== null) {
       countRequest++;
       count.value = value.count;
     }
@@ -236,7 +241,12 @@ export function usePodcastLiked(
         reply.value.continuation === shown.continuation
       )
         throw changed;
-      publish(reply.value, epoch, [...shown.episodes, ...reply.value.episodes]);
+      publish(
+        reply.value,
+        epoch,
+        [...shown.episodes, ...reply.value.episodes],
+        reply.value.countUpdated,
+      );
     } catch (error) {
       if (current()) {
         const detail = authenticationIssue(error);
@@ -263,6 +273,10 @@ export function usePodcastLiked(
     const request = ++countRequest;
     const current = () => owns(epoch) && intent === activation && request === countRequest;
     try {
+      // On liked entry, bind the independent read to the installed native
+      // visit. Do not wait for (or couple it to) the first network page.
+      if (visible && controlPending.value) await controls;
+      if (!current()) return;
       const reply = await core.podcastLikedCount(epoch);
       if (
         current() &&

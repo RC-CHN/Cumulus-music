@@ -63,6 +63,9 @@ pub struct PodcastLikedPage {
     pub episodes: Vec<PodcastLikedEpisode>,
     pub loaded_count: usize,
     pub count: Option<u64>,
+    /// A Next reply may carry forward a known count; only an explicit
+    /// observation in this page supersedes a pending independent count.
+    pub count_updated: bool,
     pub continuation: Option<String>,
     pub capped: bool,
 }
@@ -110,6 +113,7 @@ struct Visit {
     rows: Vec<Episode>,
     indices: HashMap<String, usize>,
     count: Option<u64>,
+    count_observation: u64,
     cursor: Option<Cursor>,
     cursors: HashSet<u64>,
     pages: usize,
@@ -127,6 +131,7 @@ impl Default for Visit {
             rows: Vec::new(),
             indices: HashMap::new(),
             count: None,
+            count_observation: 0,
             cursor: Some(Cursor {
                 wire: json!(0),
                 continuation: receipt(),
@@ -154,6 +159,7 @@ impl Visit {
             loaded_count: self.rows.len(),
             episodes,
             count: self.count,
+            count_updated: false,
             continuation: self
                 .cursor
                 .as_ref()
@@ -210,7 +216,10 @@ impl Visit {
                 self.rows.push(row);
             }
         }
-        self.count = page.count.or(self.count);
+        if let Some(count) = page.count {
+            self.count = Some(count);
+            self.count_observation = self.count_observation.wrapping_add(1);
+        }
         self.pages += 1;
         self.capped = page.next.is_some() && self.pages == MAX_PAGES;
         self.cursor = page.next.filter(|_| !self.capped).map(|(wire, number)| {
@@ -220,7 +229,9 @@ impl Visit {
                 continuation: receipt(),
             }
         });
-        Ok(self.view(added))
+        let mut view = self.view(added);
+        view.count_updated = page.count.is_some();
+        Ok(view)
     }
 }
 
@@ -465,9 +476,16 @@ impl MusicClient {
         let token = self.podcast_token(epoch)?;
         let (observed, view) = self.with_liked_visit(&token, |slot, generation| {
             let view = slot
-                .as_ref()
+                .as_mut()
                 .filter(|visit| visit.suspended_at.is_none())
-                .map(|visit| (visit.id.clone(), visit.revision.clone(), visit.pages));
+                .map(|visit| {
+                    visit.count_observation = visit.count_observation.wrapping_add(1);
+                    (
+                        visit.id.clone(),
+                        visit.revision.clone(),
+                        visit.count_observation,
+                    )
+                });
             Ok((generation, view))
         })?;
         let value = self
@@ -480,9 +498,9 @@ impl MusicClient {
             if observed != current {
                 return Err(Error::StaleResponse);
             }
-            if let (Some((id, revision, pages)), Some(visit)) = (view, slot.as_mut())
+            if let (Some((id, revision, observation)), Some(visit)) = (view, slot.as_mut())
                 && visit.current(&id, &revision).is_ok()
-                && visit.pages == pages
+                && visit.count_observation == observation
             {
                 visit.count = Some(value);
             }

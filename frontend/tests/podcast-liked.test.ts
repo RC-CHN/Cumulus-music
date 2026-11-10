@@ -44,6 +44,7 @@ const view = (
     continuation: 'cursor-0',
     capped: false,
     count: null,
+    countUpdated: false,
     ...patch,
   },
 });
@@ -96,7 +97,14 @@ test('reads one page at a time, preserves stable row actions and restores the pr
   const restoredA = row('81');
   const fixture = setup([
     async () => view(),
-    async () => view({ episodes: [a], loadedCount: 1, count: 2, continuation: 'cursor-1' }),
+    async () =>
+      view({
+        episodes: [a],
+        loadedCount: 1,
+        count: 2,
+        countUpdated: true,
+        continuation: 'cursor-1',
+      }),
     async () => view({ episodes: [b], loadedCount: 2, continuation: null }),
     async () => view({ loadedCount: 2, continuation: null }),
     async () =>
@@ -283,6 +291,7 @@ test('discards wrong-epoch and old account callbacks without touching complete m
             loadedCount: 1,
             continuation: null,
             count: 1,
+            countUpdated: true,
           },
           '2',
         ),
@@ -337,6 +346,36 @@ test('the independent count can update a hidden tab without opening or reading t
   assert.equal(model.count.value, 0);
   assert.equal(model.page.value, undefined);
   assert.deepEqual(calls, []);
+});
+
+test('binds the count to the open visit without waiting for a page or treating carried counts as new', async () => {
+  const opening = deferred<AccountData<PodcastLikedPage>>();
+  const first = deferred<AccountData<PodcastLikedPage>>();
+  const response = deferred<AccountData<number>>();
+  let countRequests = 0;
+  const { model, calls } = setup([() => opening.promise, () => first.promise], {
+    podcastLikedCount: () => {
+      countRequests++;
+      return response.promise;
+    },
+  });
+  const open = model.open();
+  const reading = model.readCount();
+  await tick();
+  assert.equal(countRequests, 0, 'the request must belong to the installed native visit');
+  opening.resolve(view());
+  await tick();
+  assert.equal(countRequests, 1);
+  assert.deepEqual(
+    calls.map(({ query }) => query.kind),
+    ['open', 'next'],
+  );
+  first.resolve(view({ episodes: [row('81')], loadedCount: 1, count: 2, continuation: null }));
+  await open;
+  assert.equal(model.count.value, null, 'a carried count is not a fresh observation');
+  response.resolve({ epoch, value: 3 });
+  await reading;
+  assert.equal(model.count.value, 3);
 });
 
 test('the adapter transports only the typed liked visit and row request shape', async () => {

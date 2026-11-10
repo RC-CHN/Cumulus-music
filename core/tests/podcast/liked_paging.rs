@@ -619,6 +619,34 @@ async fn durable_liked_pop_consumes_scoped_display_cache_and_rotates_active_rece
 }
 
 #[tokio::test]
+async fn independent_count_survives_a_page_without_a_count_but_not_a_fresh_page_count() {
+    for (list_count, restored_count) in [(None, 145), (Some(140), 140)] {
+        let (held, deliver) = gate();
+        let (dir, api, _, client) = setup([
+            held,
+            response(vec![row(81, json!(900))], true, list_count).into(),
+        ]);
+        let open = page(&client, PodcastLikedQuery::Open {}).await;
+        let observer = client.clone();
+        let pending = tokio::spawn(async move { observer.podcast_liked_count("1").await });
+        api.wait_for_calls(1).await;
+        let first = page(&client, next(&open)).await;
+        assert_eq!(first.count_updated, list_count.is_some());
+        deliver.send(Ok(json!({"code":200,"data":145}))).unwrap();
+        assert_eq!(pending.await.unwrap().unwrap().value, 145);
+
+        let suspended = page(&client, suspend(&first)).await;
+        let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+        let record = registry.store().get("1", PREFIX, SAVED).unwrap().unwrap();
+        assert_eq!(record["count"], restored_count);
+        let restored = page(&client, restore(&suspended)).await;
+        assert_eq!(restored.count, Some(restored_count));
+        assert!(!restored.count_updated);
+        assert_eq!(trace(&api), [(COUNT.into(), json!({})), read(json!(0))]);
+    }
+}
+
+#[tokio::test]
 async fn optional_liked_cache_failure_does_not_break_an_authorized_in_process_pop() {
     for failure in [
         "wrong-generation",
