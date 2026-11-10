@@ -115,7 +115,7 @@ async fn catalog_admission_resumes_only_exact_options_and_uses_retained_range() 
 
     let resumed = start(&f, &["123"], options()).await;
     assert!(resumed.skipped.is_empty() && resumed.failed.is_empty());
-    assert_eq!(resumed.accepted, [old.id.clone()]);
+    assert_eq!(resumed.accepted.as_slice(), std::slice::from_ref(&old.id));
     wait(&f.client, "1", DownloadTab::Completed, |view| {
         view.completed_count == 1
     })
