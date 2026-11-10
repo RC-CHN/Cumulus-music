@@ -254,8 +254,16 @@ impl PodcastLibrary {
         Ok(snapshot)
     }
     pub(crate) fn lock_purchases_for(&self, token: &SessionToken) -> Result<OperationLock> {
+        self.lock_list_for(token, PodcastScope::Purchased)
+    }
+
+    pub(crate) fn lock_liked_for(&self, token: &SessionToken) -> Result<OperationLock> {
+        self.lock_list_for(token, PodcastScope::Liked)
+    }
+
+    fn lock_list_for(&self, token: &SessionToken, scope: PodcastScope) -> Result<OperationLock> {
         let owner = self.session.with_token(token, |uid| Ok(uid.to_owned()))?;
-        let key = serde_json::to_string(&PodcastScope::Purchased)?;
+        let key = serde_json::to_string(&scope)?;
         OperationLock::acquire(
             self.store.directory(),
             &owner,

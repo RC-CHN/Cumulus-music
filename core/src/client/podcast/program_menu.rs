@@ -24,8 +24,8 @@ pub struct PodcastProgramTarget {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodcastRecentProgramMenu {
-    comment_count: Option<u64>,
-    download_complete: Option<bool>,
+    pub(super) comment_count: Option<u64>,
+    pub(super) download_complete: Option<bool>,
 }
 
 impl MusicClient {

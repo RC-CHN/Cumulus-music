@@ -13,6 +13,7 @@ import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import { audiobookSkipSaved, type AudiobookSkipContext } from '../services/audiobookSkip';
 import type {
   PodcastScope,
+  PodcastLikedProgramTarget,
   EpisodeView,
   PodcastRecommendationAction,
   PodcastProgramTarget,
@@ -27,6 +28,11 @@ const props = defineProps<{
   queueable: boolean;
   queueProgram: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
   queueRecentProgram: (epoch: string, program: PodcastRecentProgramTarget) => Promise<boolean>;
+  queueLikedProgram: (
+    epoch: string,
+    target: PodcastLikedProgramTarget,
+    live: () => boolean,
+  ) => Promise<boolean>;
   queuePurchasedProgram: (
     epoch: string,
     target: PodcastPurchasedTarget,
@@ -43,7 +49,13 @@ const emit = defineEmits<{
   recentProgramPlay: [epoch: string, program: PodcastRecentProgramTarget];
   recommendedPlay: [id: string, action: PodcastRecommendationAction];
   comments: [id: string, title: string];
-  download: [voices: EpisodeView[], live?: () => boolean, purchased?: PodcastPurchasedTarget];
+  download: [
+    voices: EpisodeView[],
+    live?: () => boolean,
+    purchased?: PodcastPurchasedTarget,
+    liked?: PodcastLikedProgramTarget,
+  ];
+  likedPlay: [epoch: string, target: PodcastLikedProgramTarget, live: () => boolean];
   purchasedPlay: [
     epoch: string,
     target: PodcastPurchasedTarget,
@@ -91,16 +103,22 @@ function episodeGesture(event: Event, voice: EpisodeView, double = false) {
   } else if (double && props.playable && !loading.value && !voice.unavailable) play(voice.id);
 }
 const detail = computed(() => !recentSelected.value && scope.value.kind === 'radio');
+const rowMenu = computed(
+  () => !recentSelected.value && (scope.value.kind === 'liked' || detail.value),
+);
 const menuPage = computed(() => {
   const displayed = page.value,
     requested = scope.value;
-  return detail.value &&
+  const sameScope =
+    (displayed?.scope.kind === 'liked' && requested.kind === 'liked') ||
+    (displayed?.scope.kind === 'radio' &&
+      requested.kind === 'radio' &&
+      displayed.scope.id === requested.id &&
+      displayed.scope.ascending === requested.ascending);
+  return rowMenu.value &&
     !loading.value &&
     displayed?.epoch === props.model.epoch.value &&
-    displayed.scope.kind === 'radio' &&
-    requested.kind === 'radio' &&
-    displayed.scope.id === requested.id &&
-    displayed.scope.ascending === requested.ascending &&
+    sameScope &&
     displayed.revision === query.value.revision &&
     displayed.offset === query.value.offset
     ? displayed
@@ -108,7 +126,7 @@ const menuPage = computed(() => {
 });
 const programMenu = ref<InstanceType<typeof PodcastProgramMenu>>();
 function openProgramMenu(event: MouseEvent | KeyboardEvent, voice: EpisodeView) {
-  if (!menuPage.value || !(event.currentTarget instanceof HTMLElement)) return;
+  if (voice.withdrawn || !menuPage.value || !(event.currentTarget instanceof HTMLElement)) return;
   const current = event.currentTarget;
   const anchor =
     current instanceof HTMLButtonElement
@@ -120,6 +138,19 @@ function openProgramMenu(event: MouseEvent | KeyboardEvent, voice: EpisodeView) 
       ? { x: event.clientX, y: event.clientY }
       : undefined;
   void programMenu.value?.open(voice, anchor, point);
+}
+function downloadEpisode(voice: EpisodeView) {
+  if (scope.value.kind !== 'liked') {
+    emit('download', [voice]);
+    return;
+  }
+  const captured = menuPage.value;
+  if (captured?.scope.kind !== 'liked' || voice.unavailable || !captured.episodes.includes(voice))
+    return;
+  emit('download', [voice], () => menuPage.value === captured, undefined, {
+    revision: captured.revision,
+    voiceId: voice.id,
+  });
 }
 function programContext(event: MouseEvent, voice: EpisodeView) {
   if (!menuPage.value && !voice.withdrawn) return;
@@ -467,7 +498,7 @@ const pending = props.model.pending;
           class="episode-row"
           :class="{
             current: currentId === voice.id,
-            'with-more': detail,
+            'with-more': rowMenu,
             'episode-withdrawn': voice.withdrawn,
           }"
           :data-voice-id="voice.id"
@@ -509,7 +540,7 @@ const pending = props.model.pending;
             class="icon-button"
             aria-label="下载单集"
             :disabled="loading || voice.unavailable"
-            @click="emit('download', [voice])"
+            @click="downloadEpisode(voice)"
           >
             <Icon name="down" /></button
           ><button
@@ -521,7 +552,7 @@ const pending = props.model.pending;
             评论
           </button>
           <button
-            v-if="detail"
+            v-if="rowMenu && !voice.withdrawn"
             type="button"
             class="icon-button"
             data-podcast-program-more
@@ -546,7 +577,12 @@ const pending = props.model.pending;
         :playable="playable"
         :queueable="queueable"
         :queue="queueProgram"
+        :queue-liked="queueLikedProgram"
         @play="play"
+        @liked-play="(epoch, target, live) => emit('likedPlay', epoch, target, live)"
+        @liked-download="
+          (voice, live, target) => emit('download', [voice], live, undefined, target)
+        "
         @comments="(id, title) => emit('comments', id, title)"
         @download="(voices) => emit('download', voices)"
       />

@@ -1,16 +1,20 @@
 //! Ordinary episode quality selection (M/3085, M/71, M/754 and M/334).
 use super::{Context, DownloadFailure, DownloadResult, Host, MusicClient};
 use crate::client::{
-    dto::PodcastPurchasedTarget,
-    podcast::purchased::{lock_purchased_download_voice, purchased_download_voice},
+    dto::{PodcastLikedProgramTarget, PodcastPurchasedTarget},
+    podcast::{
+        liked_menu::{liked_playable_program, lock_liked_download_voice},
+        purchased::{lock_purchased_download_voice, purchased_download_voice},
+    },
 };
 use crate::{
     Error, Result,
-    account::SessionToken,
+    account::{AccountSession, SessionToken},
     download::service::{DownloadOptions, OutputContainer},
     membership::Quality,
     podcast::PodcastApi,
     protocol::api::{Api, identifier},
+    storage::OperationLock,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -71,8 +75,27 @@ struct Plan {
     receipt: String,
     expires: Instant,
     voices: Vec<String>,
-    purchased: Option<PodcastPurchasedTarget>,
+    scope: Option<VoiceScope>,
     qualities: Vec<Quality>,
+}
+
+enum VoiceScope {
+    Purchased(PodcastPurchasedTarget),
+    Liked(PodcastLikedProgramTarget),
+}
+impl VoiceScope {
+    fn id(&self, session: &Arc<AccountSession>, token: &SessionToken) -> Result<String> {
+        match self {
+            Self::Purchased(source) => purchased_download_voice(session, token, source),
+            Self::Liked(source) => Ok(liked_playable_program(session, token, source)?.id),
+        }
+    }
+    fn lock(&self, session: &Arc<AccountSession>, token: &SessionToken) -> Result<OperationLock> {
+        match self {
+            Self::Purchased(source) => lock_purchased_download_voice(session, token, source),
+            Self::Liked(source) => lock_liked_download_voice(session, token, source),
+        }
+    }
 }
 
 fn voice_ids(values: Vec<String>) -> Result<Vec<String>> {
@@ -185,7 +208,16 @@ impl MusicClient {
         epoch: &str,
         target: PodcastPurchasedTarget,
     ) -> Result<VoiceDownloadPreparation> {
-        self.prepare_voice_quality(epoch, Vec::new(), Some(target))
+        self.prepare_voice_quality(epoch, Vec::new(), Some(VoiceScope::Purchased(target)))
+            .await
+    }
+
+    pub async fn download_liked_voice_prepare(
+        &self,
+        epoch: &str,
+        target: PodcastLikedProgramTarget,
+    ) -> Result<VoiceDownloadPreparation> {
+        self.prepare_voice_quality(epoch, Vec::new(), Some(VoiceScope::Liked(target)))
             .await
     }
 
@@ -193,15 +225,15 @@ impl MusicClient {
         &self,
         epoch: &str,
         voices: Vec<String>,
-        purchased: Option<PodcastPurchasedTarget>,
+        scope: Option<VoiceScope>,
     ) -> Result<VoiceDownloadPreparation> {
         let token = self.session.token()?;
         if token.generation.to_string() != epoch {
             return Err(Error::StaleResponse);
         }
         self.session.with_token(&token, |_| Ok(()))?;
-        let voices = match &purchased {
-            Some(source) => vec![purchased_download_voice(&self.session, &token, source)?],
+        let voices = match &scope {
+            Some(source) => vec![source.id(&self.session, &token)?],
             None => voice_ids(voices)?,
         };
         let api = self.session.native_api(&token)?;
@@ -224,7 +256,7 @@ impl MusicClient {
         };
         if let [id] = voices.as_slice() {
             let expected = &token;
-            let source = purchased.as_ref();
+            let source = scope.as_ref();
             let result = tokio::time::timeout(
                 READ_TIMEOUT,
                 self.session.run_for(expected, |api, _| async move {
@@ -235,7 +267,7 @@ impl MusicClient {
                     self.session.require_api(expected, &api)?;
                     check_attempt(host, attempt)?;
                     if let Some(source) = source {
-                        purchased_download_voice(&self.session, expected, source)?;
+                        source.id(&self.session, expected)?;
                     }
                     if rights.allowed.as_slice() != [id.as_str()] {
                         return Ok(None);
@@ -261,8 +293,8 @@ impl MusicClient {
         if state.attempt != attempt {
             return Err(Error::StaleResponse);
         }
-        if let Some(source) = &purchased {
-            purchased_download_voice(&self.session, &token, source)?;
+        if let Some(source) = &scope {
+            source.id(&self.session, &token)?;
         }
         if !presentation.choices.is_empty() {
             let receipt = uuid::Uuid::new_v4().simple().to_string();
@@ -272,7 +304,7 @@ impl MusicClient {
                 receipt: receipt.clone(),
                 expires: Instant::now() + CHOICE_LIFETIME,
                 voices,
-                purchased,
+                scope,
                 qualities: presentation.choices.iter().map(|row| row.quality).collect(),
             });
             presentation.receipt = Some(receipt);
@@ -311,8 +343,8 @@ impl Host {
                 })
                 .ok_or(Error::StaleResponse)?;
             context.session.require_api(&plan.token, &plan.api)?;
-            if let Some(source) = &plan.purchased {
-                purchased_download_voice(&context.session, &plan.token, source)?;
+            if let Some(source) = &plan.scope {
+                source.id(&context.session, &plan.token)?;
             }
             if !plan.qualities.contains(&confirmation.quality) {
                 return Err(Error::InvalidInput(
@@ -335,11 +367,11 @@ impl Host {
         for id in plan.voices {
             context.session.require_api(&plan.token, &plan.api)?;
             let voice = json!(id);
-            let task = if let Some(source) = &plan.purchased {
+            let task = if let Some(source) = &plan.scope {
                 context
                     .service
                     .create_scoped_voice_default(&voice, options.clone(), || {
-                        lock_purchased_download_voice(&context.session, &plan.token, source)
+                        source.lock(&context.session, &plan.token)
                     })
                     .await
             } else {
@@ -351,7 +383,7 @@ impl Host {
             match task {
                 Ok(task) => result.accepted.push(task.id),
                 Err(Error::StaleResponse) => return Err(Error::StaleResponse),
-                Err(Error::QueueChanged) if plan.purchased.is_some() => {
+                Err(Error::QueueChanged) if plan.scope.is_some() => {
                     return Err(Error::QueueChanged);
                 }
                 Err(_) => result.failed.push(DownloadFailure {

@@ -71,6 +71,7 @@ pub(super) enum QueueCollection {
     },
     RecentVoice(crate::client::dto::PodcastRecentProgramTarget),
     PurchasedVoice(crate::client::dto::PodcastPurchasedTarget),
+    LikedVoice(crate::client::dto::PodcastLikedProgramTarget),
     Downloads(Vec<String>),
     Local {
         query: crate::library::catalog::LocalQuery,
@@ -301,12 +302,16 @@ impl MusicClient {
             }
         );
         let artist_favor = matches!(collection, QueueCollection::ArtistFavor { .. });
-        let purchased_voice = matches!(collection, QueueCollection::PurchasedVoice(_));
+        let scoped_voice = matches!(
+            collection,
+            QueueCollection::PurchasedVoice(_) | QueueCollection::LikedVoice(_)
+        );
         let voice = matches!(
             collection,
             QueueCollection::Voice { .. }
                 | QueueCollection::RecentVoice(_)
                 | QueueCollection::PurchasedVoice(_)
+                | QueueCollection::LikedVoice(_)
         );
         let mixed_playlist = matches!(collection, QueueCollection::MixedPlaylist { .. });
         let ordinary = daily
@@ -337,7 +342,7 @@ impl MusicClient {
             return Err(Error::State(special_queue));
         }
         let mut artist_batch_prepared = None;
-        let mut purchase = None;
+        let mut scoped_program = None;
         let (recommendation_ids, mut source_guard) = match &collection {
             QueueCollection::DailyRecommendations {
                 revision, indices, ..
@@ -402,7 +407,28 @@ impl MusicClient {
                 }) {
                     return project(&before, &token);
                 }
-                purchase = Some((episode, api));
+                scoped_program = Some((
+                    episode,
+                    api,
+                    super::podcast_purchased::purchased_origin(),
+                    true,
+                ));
+                (None, Some(guard))
+            }
+            QueueCollection::LikedVoice(target) => {
+                let (episode, api, guard) = self.liked_episode_scope(&token, target)?;
+                if queue.selected().is_some_and(|entry| {
+                    resource_key(&entry.resource, false)
+                        == Some((PlayerResourceKind::Voice, episode.id.as_str()))
+                }) {
+                    return project(&before, &token);
+                }
+                scoped_program = Some((
+                    episode,
+                    api,
+                    super::podcast_purchased::ScopedProgram::Liked(target).origin(),
+                    false,
+                ));
                 (None, Some(guard))
             }
             _ => (None, None),
@@ -428,7 +454,7 @@ impl MusicClient {
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let mut _mixed_local_lease = None;
-        let mut purchased_start = None;
+        let mut scoped_start = None;
         let (resources, source, downloaded) = match collection {
             QueueCollection::ArtistFavor { ids, quality } => {
                 let ids = ids.into_iter().map(Value::from).collect::<Vec<_>>();
@@ -689,19 +715,20 @@ impl MusicClient {
                     .await?;
                 (selection.resources, super::origin::recent_podcast(), false)
             }
-            QueueCollection::PurchasedVoice(_) => {
-                let (cached, api) = purchase.ok_or(Error::QueueChanged)?;
+            QueueCollection::PurchasedVoice(_) | QueueCollection::LikedVoice(_) => {
+                let (cached, api, origin, purchased) = scoped_program.ok_or(Error::QueueChanged)?;
                 let guard = source_guard.as_ref().ok_or(Error::QueueChanged)?;
                 let start = queue.items.is_empty();
                 // M3085 reads details for an incomplete row. At an empty
                 // queue Cumulus also validates the actual first source before
                 // reserving playback focus or publishing the inserted row.
-                let episode = if start || identifier(&cached.raw["mainSong"]["id"]).is_err() {
-                    self.read_purchased_episode_detail(&token, &cached, guard)
-                        .await?
-                } else {
-                    cached
-                };
+                let episode =
+                    if (start && purchased) || identifier(&cached.raw["mainSong"]["id"]).is_err() {
+                        self.read_scoped_program_detail(&token, &cached, guard)
+                            .await?
+                    } else {
+                        cached
+                    };
                 let resource = super::podcast_browse::resource(&episode)?;
                 if start {
                     let position = self
@@ -715,13 +742,9 @@ impl MusicClient {
                     let position = position
                         .filter(|position| timeline.to_media(*position).is_ok())
                         .unwrap_or_else(|| timeline.snapshot().start);
-                    purchased_start = Some((source, position));
+                    scoped_start = Some((source, position));
                 }
-                (
-                    vec![resource],
-                    super::podcast_purchased::purchased_origin(),
-                    false,
-                )
+                (vec![resource], origin, false)
             }
             QueueCollection::Downloads(ids) => (
                 self.download_resources(epoch, ids).await?,
@@ -746,7 +769,7 @@ impl MusicClient {
                 insert_selected_artist(queue, resources, source, &mut rand::rng())?,
                 start,
             )
-        } else if purchased_voice {
+        } else if scoped_voice {
             let start = queue.items.is_empty();
             let current = queue.current.clone();
             let mut updated = insert_collection(queue, resources, source, downloaded);
@@ -786,7 +809,7 @@ impl MusicClient {
         };
         let expected = before.fence();
         let mut prepared_focus = None;
-        if start && (artist_batch || purchased_start.is_some()) {
+        if start && (artist_batch || scoped_start.is_some()) {
             // A mode-only or external queue change does not supersede the
             // detail request. Sync the actor before taking focus from an MV.
             let current = controller
@@ -824,11 +847,11 @@ impl MusicClient {
             expected: expected.clone(),
             queue,
             transport: (start && !artist_favor).then_some(QueueTransport {
-                position: purchased_start.as_ref().map(|(_, position)| *position),
+                position: scoped_start.as_ref().map(|(_, position)| *position),
                 paused: false,
             }),
         };
-        let command = match purchased_start {
+        let command = match scoped_start {
             Some((first_source, _)) => PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,

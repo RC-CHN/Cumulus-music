@@ -187,6 +187,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
   async function prepareVoice(
     voiceIds: string[],
     purchased?: import('../services/podcast.ts').PodcastPurchasedTarget,
+    liked?: import('../services/podcast.ts').PodcastLikedProgramTarget,
   ) {
     if (!epoch) return;
     const captured = epoch,
@@ -194,7 +195,9 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     try {
       const plan = purchased
         ? await core.downloadPurchasedVoicePrepare(captured, purchased)
-        : await core.downloadVoicePrepare(captured, [...voiceIds]);
+        : liked
+          ? await core.downloadLikedVoicePrepare(captured, liked)
+          : await core.downloadVoicePrepare(captured, [...voiceIds]);
       if (plan.epoch !== captured) return;
       if (current()) return plan;
       void discardVoice(plan);

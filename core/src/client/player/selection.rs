@@ -127,7 +127,8 @@ impl MusicClient {
                 "search artist playback requires a preparation ticket",
             )),
             PlaySelection::PodcastBrowseVoice { .. }
-            | PlaySelection::PodcastPurchasedEpisode { .. } => Err(Error::InvalidInput(
+            | PlaySelection::PodcastPurchasedEpisode { .. }
+            | PlaySelection::PodcastLikedEpisode { .. } => Err(Error::InvalidInput(
                 "podcast browse playback requires a preparation ticket",
             )),
             PlaySelection::SearchPodcastCard { .. } | PlaySelection::SearchPodcastRow { .. } => {
@@ -634,10 +635,21 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
-            PlaySelection::PodcastPurchasedEpisode { target, menu } => {
+            selected @ (PlaySelection::PodcastPurchasedEpisode { .. }
+            | PlaySelection::PodcastLikedEpisode { .. }) => {
+                use super::podcast_purchased::ScopedProgram;
+                let (target, menu) = match &selected {
+                    PlaySelection::PodcastPurchasedEpisode { target, menu } => {
+                        (ScopedProgram::Purchased(target), *menu)
+                    }
+                    PlaySelection::PodcastLikedEpisode { target } => {
+                        (ScopedProgram::Liked(target), true)
+                    }
+                    _ => unreachable!("scoped program selected"),
+                };
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
                 let (command, source_guard) = self
-                    .podcast_purchased_selection(&token, &target, menu, prepared)
+                    .scoped_program_selection(&token, target, menu, prepared)
                     .await?;
                 let state = self
                     .submit_selection_with_source(
@@ -1419,6 +1431,7 @@ impl MusicClient {
                     | PlaySelection::SearchVoiceMenu { .. }
                     | PlaySelection::PodcastBrowseVoice { .. }
                     | PlaySelection::PodcastPurchasedEpisode { .. }
+                    | PlaySelection::PodcastLikedEpisode { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {
                         unreachable!("cloud handled before song detail requests")

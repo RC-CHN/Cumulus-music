@@ -24,11 +24,27 @@ export interface PodcastRecentProgramTarget {
   revision: string;
   voiceId: string;
 }
+export interface PodcastLikedProgramTarget {
+  revision: string;
+  voiceId: string;
+}
 export interface PodcastRecentProgramMenu {
   commentCount: number | null;
   downloadComplete: boolean | null;
 }
 export interface PodcastProgramMenuClient {
+  podcastLikedProgramMenu(
+    epoch: string,
+    target: PodcastLikedProgramTarget,
+  ): Promise<AccountData<PodcastRecentProgramMenu>>;
+  podcastLikedProgram(
+    epoch: string,
+    target: PodcastLikedProgramTarget,
+  ): Promise<AccountData<EpisodeView>>;
+  podcastOpenLikedProgramDownloadDirectory(
+    epoch: string,
+    target: PodcastLikedProgramTarget,
+  ): Promise<void>;
   podcastPurchasedProgramMenu(
     epoch: string,
     target: PodcastPurchasedTarget,

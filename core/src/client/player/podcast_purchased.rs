@@ -1,4 +1,4 @@
-//! Official mixed purchase table: gestures target only the clicked program.
+//! Single-program actions in the mixed purchase and liked tables.
 use super::{
     MusicClient, PlaybackCommand, PlaybackStatus, PlayerResourceKind, identity,
     podcast_browse::resource, prepared_selection::PreparedSelection,
@@ -7,7 +7,10 @@ use super::{
 use crate::{
     Error, Result,
     account::SessionToken,
-    client::podcast::{PodcastPurchasedTarget, purchased::purchased_playback_episode},
+    client::podcast::{
+        PodcastLikedProgramTarget, PodcastPurchasedTarget, liked_menu::liked_playable_program,
+        purchased::purchased_playback_episode,
+    },
     playback::{
         PlaybackMode,
         controller::{QueueTransport, QueueUpdate},
@@ -23,6 +26,21 @@ pub(super) fn purchased_origin() -> Value {
     json!({"kind":"podcast_purchased","scene":"myPayedAudio"})
 }
 
+pub(super) enum ScopedProgram<'a> {
+    Purchased(&'a PodcastPurchasedTarget),
+    Liked(&'a PodcastLikedProgramTarget),
+}
+impl ScopedProgram<'_> {
+    pub(super) fn origin(&self) -> Value {
+        match self {
+            Self::Purchased(_) => purchased_origin(),
+            Self::Liked(target) => {
+                json!({"kind":"podcast","scope":{"kind":"liked"},"scene":"myLikedVoice","revision":target.revision})
+            }
+        }
+    }
+}
+
 fn compatible(before: &Episode, detail: &Episode) -> bool {
     detail.id == before.id
         && before
@@ -36,9 +54,7 @@ fn compatible(before: &Episode, detail: &Episode) -> bool {
                 .is_some_and(|radio| radio.id == expected.id)
         })
         && detail.raw["grayDisplay"] != true
-        && !detail.raw["displayStatus"]
-            .as_str()
-            .is_some_and(|status| !status.is_empty() && status != "NORMAL")
+        && !detail.display_status_withdrawn()
 }
 
 fn same_online_voice(value: &Value, episode: &Episode) -> bool {
@@ -54,6 +70,32 @@ fn same_online_voice(value: &Value, episode: &Episode) -> bool {
 }
 
 impl MusicClient {
+    pub(super) fn liked_episode_scope(
+        &self,
+        token: &SessionToken,
+        target: &PodcastLikedProgramTarget,
+    ) -> Result<(Episode, Arc<dyn Api>, Cancellation)> {
+        let api = self.session.native_api(token)?;
+        let credential = api.playback_source_credential_revision()?;
+        let row = liked_playable_program(&self.session, token, target)?;
+        let session = self.session.clone();
+        let owner = token.clone();
+        let expected = api.clone();
+        let target = target.clone();
+        let login = self.auth.pending_guard();
+        let room = self.together_detached_guard(token);
+        let guard = Cancellation::new(move || {
+            login().is_ok()
+                && !room.is_cancelled()
+                && session.require_api(&owner, &expected).is_ok()
+                && expected
+                    .playback_source_credential_revision()
+                    .is_ok_and(|value| value == credential)
+                && liked_playable_program(&session, &owner, &target).is_ok()
+        });
+        guard.check()?;
+        Ok((row, api, guard))
+    }
     pub(super) fn purchased_episode_scope(
         &self,
         token: &SessionToken,
@@ -84,7 +126,7 @@ impl MusicClient {
         Ok((cached, api, guard))
     }
 
-    pub(super) async fn read_purchased_episode_detail(
+    pub(super) async fn read_scoped_program_detail(
         &self,
         token: &SessionToken,
         cached: &Episode,
@@ -104,14 +146,17 @@ impl MusicClient {
         Ok(detail)
     }
 
-    pub(super) async fn podcast_purchased_selection(
+    pub(super) async fn scoped_program_selection(
         &self,
         token: &SessionToken,
-        target: &PodcastPurchasedTarget,
+        target: ScopedProgram<'_>,
         menu: bool,
         prepared: &PreparedSelection,
     ) -> Result<(PlaybackCommand, Cancellation)> {
-        let (cached, api, guard) = self.purchased_episode_scope(token, target)?;
+        let (cached, api, guard) = match target {
+            ScopedProgram::Purchased(target) => self.purchased_episode_scope(token, target)?,
+            ScopedProgram::Liked(target) => self.liked_episode_scope(token, target)?,
+        };
         let controller = self.player.controller().await?;
         let (before, mut queue) = controller.queue_with_state(token).await?;
         prepared.check(self, &before)?;
@@ -122,7 +167,7 @@ impl MusicClient {
         };
         preparing.check()?;
         if before.fm || queue.intelligence.is_some() {
-            return Err(Error::State("purchased episode requires ordinary playback"));
+            return Err(Error::State("scoped episode requires ordinary playback"));
         }
         let loaded = |episode: &Episode| {
             before.play_id.is_some()
@@ -148,9 +193,14 @@ impl MusicClient {
             return Ok((current_command(), guard));
         }
 
-        let detail = self
-            .read_purchased_episode_detail(token, &cached, &preparing)
-            .await?;
+        let detail = if matches!(target, ScopedProgram::Purchased(_))
+            || identifier(&cached.raw["mainSong"]["id"]).is_err()
+        {
+            self.read_scoped_program_detail(token, &cached, &preparing)
+                .await?
+        } else {
+            cached
+        };
         if loaded(&detail) {
             return Ok((current_command(), guard));
         }
@@ -170,7 +220,7 @@ impl MusicClient {
             .filter(|position| timeline.to_media(*position).is_ok())
             .unwrap_or_else(|| timeline.snapshot().start);
 
-        let source = purchased_origin();
+        let source = target.origin();
         queue = insert_collection_bound(
             queue,
             vec![selected.clone()],

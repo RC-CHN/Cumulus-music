@@ -6,6 +6,7 @@ import type { MenuItem } from '../services/menu';
 import {
   podcastProgramPublicLink,
   type EpisodeView,
+  type PodcastLikedProgramTarget,
   type PodcastPage,
   type PodcastProgramTarget,
   type PodcastPurchasedRow,
@@ -19,7 +20,11 @@ import TrackShareDialog from './TrackShareDialog.vue';
 
 type RecentMenuPage = PodcastRecentPage & { epoch: string };
 type MenuPage = PodcastPage | RecentMenuPage;
-type MenuTarget = PodcastProgramTarget | PodcastRecentProgramTarget | PodcastPurchasedTarget;
+type MenuTarget =
+  | PodcastProgramTarget
+  | PodcastRecentProgramTarget
+  | PodcastPurchasedTarget
+  | { likedTarget: PodcastLikedProgramTarget };
 
 const props = defineProps<{
   page?: MenuPage;
@@ -27,6 +32,11 @@ const props = defineProps<{
   queueable: boolean;
   queue?: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
   queueRecent?: (epoch: string, program: PodcastRecentProgramTarget) => Promise<boolean>;
+  queueLiked?: (
+    epoch: string,
+    target: PodcastLikedProgramTarget,
+    live: () => boolean,
+  ) => Promise<boolean>;
   queuePurchased?: (
     epoch: string,
     target: PodcastPurchasedTarget,
@@ -43,10 +53,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   play: [id: string];
   recentPlay: [epoch: string, program: PodcastRecentProgramTarget];
+  likedPlay: [epoch: string, target: PodcastLikedProgramTarget, live: () => boolean];
   purchasedPlay: [epoch: string, target: PodcastPurchasedTarget, live: () => boolean];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[]];
   purchasedDownload: [voice: EpisodeView, live: () => boolean, target: PodcastPurchasedTarget];
+  likedDownload: [voice: EpisodeView, live: () => boolean, target: PodcastLikedProgramTarget];
 }>();
 const client = useCore();
 const menu = ref<InstanceType<typeof ActionMenu>>();
@@ -171,14 +183,17 @@ async function open(
     purchaseLive = source.live;
   } else {
     if (
-      ('scope' in page && page.scope.kind !== 'radio') ||
+      ('scope' in page && page.scope.kind !== 'radio' && page.scope.kind !== 'liked') ||
+      voice.withdrawn ||
       !page.episodes.some((candidate) => candidate === voice)
     )
       return;
     target =
       'scope' in page && page.scope.kind === 'radio'
         ? { ...row, radioId: page.scope.id, ascending: page.scope.ascending }
-        : row;
+        : 'scope' in page && page.scope.kind === 'liked'
+          ? { likedTarget: row }
+          : row;
   }
   if (!point && opened.value && selection.value?.anchor === anchor) {
     menu.value?.close(true);
@@ -206,7 +221,9 @@ async function open(
     } else {
       const result = await ('kind' in target
         ? client.podcastPurchasedProgramMenu(page.epoch, target)
-        : client.podcastRecentProgramMenu(page.epoch, target));
+        : 'likedTarget' in target
+          ? client.podcastLikedProgramMenu(page.epoch, target.likedTarget)
+          : client.podcastRecentProgramMenu(page.epoch, target));
       if (!live() || result.epoch !== page.epoch) return;
       count.value = result.value.commentCount ?? undefined;
       completed.value = result.value.downloadComplete ?? undefined;
@@ -245,12 +262,14 @@ async function action(key: string) {
       !('kind' in target) &&
       ['comments', 'download', 'share', 'copy'].includes(key)
     ) {
-      const result = await client.podcastRecentProgram(page.epoch, target);
+      const result = await ('likedTarget' in target
+        ? client.podcastLikedProgram(page.epoch, target.likedTarget)
+        : client.podcastRecentProgram(page.epoch, target));
       if (
         selection.value !== value ||
         !current(value) ||
         result.epoch !== page.epoch ||
-        result.value.id !== target.voiceId
+        result.value.id !== ('likedTarget' in target ? target.likedTarget.voiceId : target.voiceId)
       )
         return;
       voice = result.value;
@@ -258,11 +277,15 @@ async function action(key: string) {
     if (key === 'play' && props.playable && !voice.unavailable) {
       if ('radioId' in target) emit('play', voice.id);
       else if ('kind' in target) emit('purchasedPlay', page.epoch, target, () => current(value));
+      else if ('likedTarget' in target)
+        emit('likedPlay', page.epoch, target.likedTarget, () => current(value));
       else emit('recentPlay', page.epoch, target);
     }
     if (key === 'comments') emit('comments', voice.id, voice.name);
     if (key === 'download' && completed.value === false && !voice.unavailable) {
       if ('kind' in target) emit('purchasedDownload', voice, () => current(value), target);
+      else if ('likedTarget' in target)
+        emit('likedDownload', voice, () => current(value), target.likedTarget);
       else emit('download', [voice]);
     }
     if (key === 'share' && podcastProgramPublicLink(voice.id)) {
@@ -275,7 +298,9 @@ async function action(key: string) {
           ? await props.queue?.(page.epoch, target)
           : 'kind' in target
             ? await props.queuePurchased?.(page.epoch, target, () => current(value))
-            : await props.queueRecent?.(page.epoch, target);
+            : 'likedTarget' in target
+              ? await props.queueLiked?.(page.epoch, target.likedTarget, () => current(value))
+              : await props.queueRecent?.(page.epoch, target);
       if (queued) message = '已添加至播放列表';
     }
     if (key === 'copy') {
@@ -288,6 +313,8 @@ async function action(key: string) {
       if ('radioId' in target) await client.podcastOpenProgramDownloadDirectory(page.epoch, target);
       else if ('kind' in target)
         await client.podcastOpenPurchasedProgramDownloadDirectory(page.epoch, target);
+      else if ('likedTarget' in target)
+        await client.podcastOpenLikedProgramDownloadDirectory(page.epoch, target.likedTarget);
       else await client.podcastOpenRecentProgramDownloadDirectory(page.epoch, target);
     }
   } catch (error) {

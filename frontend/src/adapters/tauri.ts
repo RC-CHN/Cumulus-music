@@ -398,6 +398,11 @@ export function createTauriClient(): CoreClient {
       invoke('podcast_open_program_download_directory', { epoch, target }),
     podcastRecentProgramMenu: (epoch, target) =>
       invoke('podcast_recent_program_menu', { epoch, target }),
+    podcastLikedProgramMenu: (epoch, target) =>
+      invoke('podcast_liked_program_menu', { epoch, target }),
+    podcastLikedProgram: (epoch, target) => invoke('podcast_liked_program', { epoch, target }),
+    podcastOpenLikedProgramDownloadDirectory: (epoch, target) =>
+      invoke('podcast_open_liked_program_download_directory', { epoch, target }),
     podcastPurchasedProgramMenu: (epoch, target) =>
       invoke('podcast_purchased_program_menu', { epoch, target }),
     podcastOpenPurchasedProgramDownloadDirectory: (epoch, target) =>
@@ -543,6 +548,8 @@ export function createTauriClient(): CoreClient {
       invoke('download_voice_prepare', { epoch, voiceIds }),
     downloadPurchasedVoicePrepare: (epoch, target) =>
       invoke('download_purchased_voice_prepare', { epoch, target }),
+    downloadLikedVoicePrepare: (epoch, target) =>
+      invoke('download_liked_voice_prepare', { epoch, target }),
     downloadVoiceDiscard: (epoch, receipt) => invoke('download_voice_discard', { epoch, receipt }),
     downloadClearPrepare: (epoch) => invoke('download_clear_prepare', { epoch }),
     downloadClearDiscard: (epoch, receipt) => invoke('download_clear_discard', { epoch, receipt }),

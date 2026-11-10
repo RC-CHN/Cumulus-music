@@ -291,6 +291,7 @@ impl MusicClient {
                 | PlaySelection::SearchVoiceMenu { .. }
                 | PlaySelection::PodcastBrowseVoice { .. }
                 | PlaySelection::PodcastPurchasedEpisode { .. }
+                | PlaySelection::PodcastLikedEpisode { .. }
                 | PlaySelection::HistoryRadioChapter { .. }
                 | PlaySelection::HistoryAdd { .. }
                 | PlaySelection::Songs { .. }

@@ -273,6 +273,7 @@ import {
   AUDIOBOOK_CATEGORY,
   type EpisodeView,
   type PodcastProgramTarget,
+  type PodcastLikedProgramTarget,
   type PodcastPurchasedTarget,
   type PodcastRecentProgramTarget,
   type PodcastScope,
@@ -1913,6 +1914,39 @@ watch(
 );
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
+}
+function likedProgramIsLive(epoch: string, target: PodcastLikedProgramTarget, live: () => boolean) {
+  const snapshot = podcasts.page.value;
+  return (
+    page.value.kind === 'podcasts' &&
+    epoch === account.value.epoch &&
+    !podcasts.recentSelected.value &&
+    podcasts.query.value.scope.kind === 'liked' &&
+    snapshot?.epoch === epoch &&
+    snapshot.scope.kind === 'liked' &&
+    snapshot.revision === target.revision &&
+    snapshot.episodes.some((row) => row.id === target.voiceId && !row.unavailable) &&
+    live()
+  );
+}
+function playLikedProgram(epoch: string, target: PodcastLikedProgramTarget, live: () => boolean) {
+  const valid = () => likedProgramIsLive(epoch, target, live);
+  if (!ordinaryVoiceQueueable.value || !valid()) return;
+  void player.prepareSelection(async (owner) => {
+    if (owner !== epoch || !valid())
+      throw { code: 'stale', message: '点赞的单集已更新', retryable: false };
+    return { kind: 'podcast_liked_episode', target };
+  });
+}
+async function queueLikedProgram(
+  epoch: string,
+  target: PodcastLikedProgramTarget,
+  live: () => boolean,
+) {
+  if (!ordinaryVoiceQueueable.value || !likedProgramIsLive(epoch, target, live)) return false;
+  const before = player.view.value;
+  const next = await player.queueLikedProgram(target);
+  return !!before?.queueLen && !!next && next.queueRevision !== before.queueRevision;
 }
 function playPurchasedProgram(
   epoch: string,
@@ -6563,9 +6597,11 @@ onUnmounted(() => {
                 :queueable="ordinaryVoiceQueueable"
                 :queue-program="queuePodcastProgram"
                 :queue-recent-program="queueRecentProgram"
+                :queue-liked-program="queueLikedProgram"
                 :queue-purchased-program="queuePurchasedProgram"
                 @back="backFromPodcastDetail"
                 @recent-program-play="playRecentProgram"
+                @liked-play="playLikedProgram"
                 @purchased-play="playPurchasedProgram"
                 @play="playPodcast"
                 :current-radio-id="currentPodcastRadioId"
@@ -6573,8 +6609,8 @@ onUnmounted(() => {
                 @recommended-play="playRecommendedPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="
-                  (tracks, live, purchased) =>
-                    (downloadDialog = { kind: 'voice', tracks, live, purchased })
+                  (tracks, live, purchased, liked) =>
+                    (downloadDialog = { kind: 'voice', tracks, live, purchased, liked })
                 "
               />
               <PodcastCataloguePage
