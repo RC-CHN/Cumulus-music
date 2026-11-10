@@ -1827,10 +1827,13 @@ fn main() {
                 });return;
             }
             if search_group_download_fixture::enabled() && stage=="search-group-download-configure" {
-                let handle=handle.clone(); let root=cover_root.clone();
+                let handle=handle.clone(); let root=cover_root.clone(); let session=fixture_session.clone();
                 tauri::async_runtime::spawn(async move {
-                    let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root).await;
-                    let ack=json!({"ok":result.is_ok(),"playlist":search_group_download_fixture::destination(),"liked":search_group_download_fixture::liked()});
+                    let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root, session).await;
+                    let ack=match result {
+                        Ok(old)=>json!({"ok":true,"playlist":search_group_download_fixture::destination(),"liked":search_group_download_fixture::liked(),"old":old}),
+                        Err(error)=>json!({"ok":false,"error":error.to_string()}),
+                    };
                     handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();
                 });
                 return;

@@ -1,12 +1,25 @@
 //! Sealed native search group download: actual tasks and FLAC publication.
 use cumulus_core::{
     Error, Result,
+    account::AccountSession,
     client::{MusicClient, dto::DownloadCommand},
-    download::transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
+    download::{
+        directory::DownloadDirectory,
+        service::{
+            DownloadDestination, DownloadOptions, DownloadRunOptions, DownloadService,
+            DownloadStatus,
+        },
+        transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
+    },
+    membership::Quality,
     protocol::api::ApiFuture,
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, path::Path, sync::Mutex};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 const AUDIO: &[u8] = include_bytes!("../../../core/tests/fixtures/stereo-pcm-source.flac");
 const ROOT: &str = "https://m1.music.126.net/cumulus-group-download-";
@@ -18,6 +31,11 @@ const MEMBERSHIP: &str = "/api/song/like/get";
 pub const REVISION: &str = "synthetic-search-group-download";
 const MD5: &str = "4e25192f88135eb81a995c6aa5fa7848";
 static TRACE: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+const PARTIAL: u64 = 2048;
+
+pub fn mixed() -> bool {
+    destination() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_MIXED_PROOF").is_some()
+}
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_PROOF").is_some()
@@ -135,9 +153,14 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
                 .lock()
                 .unwrap()
                 .push(json!({"kind":"authorize","args":args,"cached":cached}));
+            let level = if mixed() && id == "104" {
+                "lossless"
+            } else {
+                "exhigh"
+            };
             if cached
                 || !song_allowed(id)
-                || *args != json!({"id":id,"level":"exhigh","immerseType":"c51"})
+                || *args != json!({"id":id,"level":level,"immerseType":"c51"})
             {
                 Err(Error::InvalidInput("unexpected group proof authorization"))
             } else {
@@ -176,42 +199,61 @@ impl MediaBackend for Media {
                 .and_then(|url| url.strip_suffix(".flac"))
                 .filter(|id| song_allowed(id))
                 .ok_or(Error::InvalidInput("unexpected group proof media"))?;
-            if request.offset != 0 || request.if_range.is_some() {
+            if (request.offset != 0 && (!mixed() || id != "104" || request.offset != PARTIAL))
+                || request.if_range.is_some()
+            {
                 return Err(Error::InvalidInput("unexpected group proof offset"));
+            }
+            let start = request.offset as usize;
+            let body = &AUDIO[start..];
+            let mut headers = BTreeMap::from([("content-length".into(), body.len().to_string())]);
+            if start != 0 {
+                headers.insert(
+                    "content-range".into(),
+                    format!("bytes {start}-{}/{}", AUDIO.len() - 1, AUDIO.len()),
+                );
             }
             TRACE
                 .lock()
                 .unwrap()
                 .push(json!({"kind":"media","id":id,"offset":request.offset}));
             Ok(MediaReply {
-                status: 200,
-                headers: BTreeMap::from([("content-length".into(), AUDIO.len().to_string())]),
-                body: Box::new(Body(AUDIO)),
+                status: if start == 0 { 200 } else { 206 },
+                headers,
+                body: Box::new(Body(body)),
             })
         })
     }
 }
 
-pub async fn configure(client: &MusicClient, root: &Path) -> Result<()> {
+pub async fn configure(
+    client: &MusicClient,
+    root: &Path,
+    session: Arc<AccountSession>,
+) -> Result<Value> {
     if !enabled() {
         return Err(Error::InvalidInput("no group proof"));
     }
     let epoch = client.account()?.epoch;
     let output = root.join("group-output");
     std::fs::create_dir(&output)?;
-    client
-        .download_command(
-            &epoch,
-            DownloadCommand::Configure {
-                root: output
-                    .to_str()
-                    .ok_or(Error::InvalidInput("invalid group proof directory"))?
-                    .into(),
-                path_type: 0,
-                file_type: 0,
-            },
-        )
-        .await?;
+    if mixed() {
+        DownloadDirectory::new(session.clone())?.configure(&output, 0, 0)?;
+    } else {
+        client
+            .download_command(
+                &epoch,
+                DownloadCommand::Configure {
+                    root: output
+                        .to_str()
+                        .ok_or(Error::InvalidInput("invalid group proof directory"))?
+                        .into(),
+                    path_type: 0,
+                    file_type: 0,
+                },
+            )
+            .await?;
+    }
     let prefs = client.download_quality_preferences(&epoch)?;
     let mut options = prefs.options;
     options.quality = cumulus_core::membership::Quality::ExHigh;
@@ -225,5 +267,33 @@ pub async fn configure(client: &MusicClient, root: &Path) -> Result<()> {
             },
         )
         .await?;
-    Ok(())
+    if !mixed() {
+        return Ok(Value::Null);
+    }
+    let service = DownloadService::with_backend(session, Arc::new(Media), 512 * 1024 * 1024)?;
+    let task = service.create(
+        &json!("104"),
+        DownloadDestination::Path {
+            path: root.join("group-previous/original-104.flac"),
+        },
+        DownloadOptions {
+            quality: Quality::Lossless,
+            cover: false,
+            tags: false,
+            ..Default::default()
+        },
+    )?;
+    let old = service
+        .run(
+            &task.id,
+            DownloadRunOptions {
+                byte_budget: Some(PARTIAL),
+                ..Default::default()
+            },
+        )
+        .await?;
+    if old.id != task.id || old.status != DownloadStatus::Paused || old.bytes != PARTIAL {
+        return Err(Error::State("fixture did not pause real partial transfer"));
+    }
+    Ok(json!({"id":old.id,"createdMs":old.created_ms,"bytes":old.bytes}))
 }

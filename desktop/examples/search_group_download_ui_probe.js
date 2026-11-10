@@ -25,7 +25,7 @@
     (node) => node.getClientRects().length && !node.closest('[inert]'));
   const selection = () => all('.search-song-panel .track-row[aria-selected="true"]')
     .map((node) => node.dataset.trackId).join(',');
-  let epoch, before, stage = 'setup', step = 0;
+  let epoch, before, old, stage = 'setup', step = 0;
   const actions = [];
   const state = () => invoke('player_snapshot', { epoch });
   const downloads = (tab) => invoke('downloads', { epoch, query: {
@@ -64,7 +64,7 @@
       }
     }
     await emit(`ux_${String(++step).padStart(2,'0')}_${label}`,
-      { player, queue, actions, screenX, screenY, ratio: devicePixelRatio, paintSamples, ...extra });
+      { player, queue, actions, screenX, screenY, ratio: devicePixelRatio, paintSamples, old, ...extra });
   }
   async function input(label, node, mouseButton = 1, ctrl = false) {
     assert(node?.isConnected && !node.disabled, 'actual enabled target');
@@ -100,6 +100,15 @@
     await wait(() => window.__groupDownloadConfigured?.ok, 'native isolated download settings');
     const playlist = window.__groupDownloadConfigured.playlist;
     const liked = window.__groupDownloadConfigured.liked;
+    old = window.__groupDownloadConfigured.old;
+    async function noNewTasks() {
+      const view = await downloads('active');
+      if (!old) return view.activeCount === 0;
+      return view.activeCount === 1 && view.tasks.length === 1 &&
+        view.tasks[0].id === old.id && view.tasks[0].track.id === '104' &&
+        view.tasks[0].status === 'paused' && view.tasks[0].bytes === old.bytes &&
+        view.tasks[0].requestedQuality === 'lossless';
+    }
     await invoke('player_action', {epoch, action:{kind:'mode',mode:'single_loop'}});
     await invoke('play_selection', {epoch,selection:{kind:'songs',ids:['701'],index:0,quality:'standard'}});
     await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
@@ -109,7 +118,7 @@
       const view = await state();
       return view.state === 'paused' && view.position > .2 && view;
     }, 'paused native position captured');
-    assert((await downloads('active')).activeCount === 0, 'no earlier task');
+    assert(await noNewTasks(), 'no earlier task');
     window.__searchFixtureAck = false;
     await emit('search-fixture',{mode:'song_waterfall_group_next'});
     await wait(() => window.__searchFixtureAck, 'search fixture selected');
@@ -163,13 +172,13 @@
         all('[data-search-group-download-picker] [data-playlist-id]').map(row => row.dataset.playlistId).join() === '81' &&
         (liked ? star()?.getAttribute('aria-label') === '我喜欢的音乐' : !star()),
         'real picker excludes foreign IDs and displays the star only after native verification');
-      assert((await downloads('active')).activeCount === 0, 'opening does not enqueue');
+      assert(await noNewTasks(), 'opening does not enqueue');
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       await input('choose',destination());
       const reconcile = () => picker()?.querySelector('[data-search-group-reconcile]');
       await wait(() => reconcile() && !reconcile().disabled && actions.length === 3 &&
         picker().textContent.includes('加入歌单的结果尚未确认'), 'lost actual native add result needs readback');
-      assert((await downloads('active')).activeCount === 0, 'no task before verified readback');
+      assert(await noNewTasks(), 'no task before verified readback');
       if (liked) assert(!isLiked('101'), 'uncertain star write never changes hearts');
       await input('reconcile',reconcile());
     } else {
@@ -190,6 +199,9 @@
       assert(isLiked('101') && isLiked('103') && !isLiked('104'),
         'verified system star updates only the confirmed collectable hearts');
     }
+    if (old) assert(result.tasks.some(task => task.id === old.id && task.track.id === '104' &&
+      task.createdMs === old.createdMs && task.requestedQuality === 'lossless'),
+      'the same old task completed without replacing its options');
     await capture('accepted', { completed: result.tasks.map(({id, track}) => ({id, trackId:track.id})) });
     core.searchGroupDownload = original;
     await emit('complete',{ok:true,stageCount:step,realAccountWrites:0,realMusicRequests:0});

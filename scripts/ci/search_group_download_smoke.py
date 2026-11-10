@@ -49,6 +49,8 @@ def run(args):
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_DESTINATION_PROOF'] = '1'
     if args.liked:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_LIKED_PROOF'] = '1'
+    if args.mixed:
+        env['CUMULUS_SEARCH_GROUP_DOWNLOAD_MIXED_PROOF'] = '1'
     output = root / 'first'
     labels = PLAYLIST if args.playlist else DIRECT
     with ExitStack() as stack:
@@ -73,7 +75,16 @@ def run(args):
             paint = load(path.with_name('paint-' + path.name))
             assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples'])
     first, last = rows[0], rows[-1]
-    assert first['searchGroupDownload'] == []
+    prefix = 2 if args.mixed else 0
+    old = first.get('old')
+    if args.mixed:
+        assert old and old['bytes'] == 2048
+        assert first['searchGroupDownload'] == [
+            {'kind':'authorize','args':{'id':'104','level':'lossless','immerseType':'c51'},'cached':False},
+            {'kind':'media','id':'104','offset':0},
+        ]
+    else:
+        assert old is None and first['searchGroupDownload'] == []
     assert all(row['queue'] == first['queue'] for row in rows)
     assert all(row['player']['position'] == first['player']['position'] for row in rows)
     ordered = ['104', '101', '103'] if args.playlist else ['103', '101']
@@ -82,7 +93,7 @@ def run(args):
     assert prepare['reply']['eligibleCount'] == len(ordered) and prepare['reply']['omittedCount'] == 1
     receipt = prepare['reply']['receipt']
     assert all(step['command']['receipt'] == receipt for step in last['actions'][1:])
-    trace = last['searchGroupDownload']
+    trace = last['searchGroupDownload'][prefix:]
     if args.playlist:
         prepare, listing, choose, check, start = last['actions']
         assert [step['command']['kind'] for step in last['actions']] == [
@@ -106,8 +117,8 @@ def run(args):
             opened = ['playlist_list', 'liked_list', 'liked_detail']
             observation = ['liked_list', 'liked_detail', 'liked_membership']
             after_choose = opened + observation + ['playlist_add'] + observation
-            assert [step['kind'] for step in rows[-3]['searchGroupDownload']] == opened
-            assert [step['kind'] for step in rows[-2]['searchGroupDownload']] == after_choose
+            assert [step['kind'] for step in rows[-3]['searchGroupDownload'][prefix:]] == opened
+            assert [step['kind'] for step in rows[-2]['searchGroupDownload'][prefix:]] == after_choose
             before_media = after_choose + observation
             assert [step['kind'] for step in trace[:len(before_media)]] == before_media
             assert trace[6]['args'] == {'op': 'add', 'pid': '83', 'trackIds': '["103","101"]'}
@@ -115,8 +126,8 @@ def run(args):
             assert trace[9]['ids'] == [103] and trace[12]['ids'] == [103, 101]
             trace = trace[len(before_media):]
         else:
-            assert [step['kind'] for step in rows[-3]['searchGroupDownload']] == ['playlist_list']
-            assert [step['kind'] for step in rows[-2]['searchGroupDownload']] == [
+            assert [step['kind'] for step in rows[-3]['searchGroupDownload'][prefix:]] == ['playlist_list']
+            assert [step['kind'] for step in rows[-2]['searchGroupDownload'][prefix:]] == [
                 'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail']
             assert [step['kind'] for step in trace[:5]] == [
                 'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail', 'playlist_detail']
@@ -135,6 +146,10 @@ def run(args):
     assert sorted(row['args']['id'] for row in trace if row['kind'] == 'authorize') == sorted(ordered)
     assert sorted(row['id'] for row in trace if row['kind'] == 'media') == sorted(ordered)
     assert len(trace) == 2 * len(ordered)
+    if args.mixed:
+        assert [row['offset'] for row in trace if row['kind'] == 'media' and row['id'] == '104'] == [2048]
+        assert [row['args']['level'] for row in trace if row['kind'] == 'authorize'
+                and row['args']['id'] == '104'] == ['lossless']
     assert load(output / 'locale.json') == {
         'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8',
     }
@@ -143,10 +158,21 @@ def run(args):
         tasks = [json.loads(value) for value, in store.execute(
             "SELECT value FROM state WHERE kind='download_tasks_v1' AND owner='2'"
         )]
-        tasks.sort(key=lambda row: (row['created_ms'], row['id']))
+        if args.mixed:
+            assert len(tasks) == len(ids)
+            tasks.sort(key=lambda row: (row['dispatch']['sequence'], row['dispatch']['index']))
+            assert len({row['dispatch']['sequence'] for row in tasks}) == 1
+            assert [row['dispatch']['index'] for row in tasks] == [0, 1, 2]
+            retained = tasks[0]
+            assert retained['id'] == old['id'] and retained['created_ms'] == old['createdMs']
+            assert retained['options']['quality'] == 'lossless' and not retained['options']['tags']
+            assert Path(retained['target']) == root / 'group-previous/original-104.flac'
+        else:
+            tasks.sort(key=lambda row: (row['created_ms'], row['id']))
         assert [row['id'] for row in tasks] == ids
         assert [row['song_id'] for row in tasks] == ordered
-        assert all(row['status'] == 'complete' and row['options']['quality'] == 'exhigh' for row in tasks)
+        assert all(row['status'] == 'complete' for row in tasks)
+        assert all(row['options']['quality'] == 'exhigh' for row in tasks[int(args.mixed):])
         journal = [json.loads(value) for value, in store.execute(
             "SELECT value FROM state WHERE kind='playlist-mutations' AND owner='2'"
         )]
@@ -156,6 +182,8 @@ def run(args):
         else:
             assert journal == []
     published = list((root / 'group-output').rglob('*.flac'))
+    if args.mixed:
+        published.append(root / 'group-previous/original-104.flac')
     assert len(published) == len(ordered)
     reference = flac_frames(repo / 'core/tests/fixtures/stereo-pcm-source.flac')
     assert all(flac_frames(path) == reference for path in published)
@@ -163,7 +191,7 @@ def run(args):
                'orderedTasks': ordered, 'anchor': '102', 'readOnlyLostReplyRecovery': True,
                'playlistAddCount': len(journal), 'playlistAddedInOrder': ['103', '101'] if args.playlist else [],
                'systemLikedDestination': args.liked,
-               'exactFlacFrames': True, 'realAccountWrites': 0, 'realMusicRequests': 0}
+               'exactFlacFrames': True, 'preservedPartialTask': args.mixed, 'realAccountWrites': 0, 'realMusicRequests': 0}
     (root / 'report.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(summary))
 
@@ -175,8 +203,11 @@ if __name__ == '__main__':
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--playlist', action='store_true')
     mode.add_argument('--liked', action='store_true')
+    parser.add_argument('--mixed', action='store_true')
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
+    if args.mixed and not args.playlist:
+        parser.error('--mixed requires --playlist')
     args.playlist = args.playlist or args.liked
     require_xvfb()
     run(args)
