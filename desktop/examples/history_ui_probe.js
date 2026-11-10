@@ -77,13 +77,29 @@
       assert(batchTracks.join(',')==='2,3','selected history queue follows displayed order');
       const held=await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
       assert(held.state==='paused'&&held.playId===player.playId,'selected history incumbent paused');
-      const check=id=>one(`input[aria-label="选择 合成记录 ${id}"]`);
-      for(const id of [2,3])if(check(id).checked)click(check(id));
+      // Playback refreshes native local history and can replace a remote title
+      // on the same ID. Resolve the new visible labels from the post-pause
+      // receipt, then wait for that projection instead of reusing old rows.
+      const historyKind=kind==='catalog'?'song':'voice';
+      const {value:latest}=await invoke('history_page',{epoch,kind:historyKind,refresh:false});
+      const rowLabel=id=>{
+        const row=latest.entries.find(entry=>entry.id===String(id));
+        assert(row?.resource.kind===historyKind,`current ${historyKind} history row ${id}`);
+        return `选择 ${historyKind==='song'?row.resource.track.name:row.resource.voice.name}`;
+      };
+      const selectedLabels=new Map([2,4].map(id=>[id,rowLabel(id)]));
+      const check=id=>all(`[aria-label="${label}播放记录"] .history-window input[type=checkbox]`)
+        .find(row=>row.getAttribute('aria-label')===selectedLabels.get(id));
+      input(one('[aria-label="筛选播放记录"]'),'合成');
+      await wait(()=>ready()&&add.disabled&&check(2)&&check(4)&&!check(2).checked&&!check(4).checked,
+        'post-pause history projection and selection reset');
       for(const id of [4,2])click(check(id));
       await wait(()=>!add.disabled,'selected history add enabled');
       click(add);
-      await wait(()=>one('.history-add-notice')?.textContent.trim()==='已添加到播放列表',
-        'selected history add completed');
+      const feedback=()=>one('.history-add-notice,.history-add-error');
+      await wait(feedback,'selected history add completed');
+      assert(feedback().textContent.trim()==='已添加到播放列表',
+        `selected history add: ${feedback().textContent.trim()}`);
       const after=await invoke('player_snapshot',{epoch});
       const addedQueue=await invoke('player_queue',{epoch});
       const addedTracks=addedQueue.tracks.map(row=>row.track.voiceId??row.track.id);
