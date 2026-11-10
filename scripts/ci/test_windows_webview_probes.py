@@ -120,16 +120,26 @@ class WindowsWebViewProbes(unittest.TestCase):
 
     def test_workflow_uses_the_closed_shard_inventory(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/ci.yml').read_text()
-        job = workflow.split('  windows-webview:\n', 1)[1]
-        job = re.split(r'^  \w[\w-]*:\s*$', job, maxsplit=1, flags=re.MULTILINE)[0]
-        sections = dict(re.findall(
-            r'^      - name: Windows WebView regression \(([^)]+)\)\n'
-            r'(.*?)(?=^      - name:|\Z)', job, flags=re.MULTILINE | re.DOTALL,
-        ))
+        sections, shards = {}, []
+        for job_id, dependency, excludes_package in (
+            ('windows-webview', 'windows-release-runtime', True),
+            ('windows-webview-packaged', 'package-windows', False),
+        ):
+            job = workflow.split(f'  {job_id}:\n', 1)[1]
+            job = re.split(r'^  \w[\w-]*:\s*$', job, maxsplit=1, flags=re.MULTILINE)[0]
+            self.assertIn(f'needs: [{dependency}, windows-webview-probes]', job)
+            self.assertEqual('name: packages-windows-x64' not in job, excludes_package)
+            for shard, section in re.findall(
+                r'^      - name: Windows WebView regression \(([^)]+)\)\n'
+                r'(.*?)(?=^      - name:|\Z)', job, flags=re.MULTILINE | re.DOTALL,
+            ):
+                self.assertNotIn(shard, sections)
+                sections[shard] = section
+            matrix = re.search(r'^        shard: \[([^\]]+)\]$', job, re.MULTILINE)
+            self.assertIsNotNone(matrix)
+            shards.extend(matrix[1].split(', '))
         self.assertEqual(set(sections), set(PROBES))
-        matrix = re.search(r'^        shard: \[([^\]]+)\]$', job, re.MULTILINE)
-        self.assertIsNotNone(matrix)
-        self.assertEqual(Counter(matrix[1].split(', ')), Counter(PROBES.keys()))
+        self.assertEqual(Counter(shards), Counter(PROBES.keys()))
         producers = re.findall(r'^          name: windows-webview-probes-([\w-]+)-attempt-', workflow,
                                flags=re.MULTILINE)
         self.assertEqual(Counter(producers), Counter(PROBES.keys()))

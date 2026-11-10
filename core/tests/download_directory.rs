@@ -308,39 +308,62 @@ async fn completed_partial_and_unstarted_named_tasks_move_preserving_relative_pa
     }
 }
 
-#[tokio::test]
-async fn every_child_checkpoint_can_reopen_and_complete_without_restarting_download() {
-    for event in [
-        FileEvent::Prepared,
-        FileEvent::CopyChunk,
-        FileEvent::Staged,
-        FileEvent::DestinationReady,
-        FileEvent::MetadataCommitted,
-        FileEvent::SourceRemoved,
-        FileEvent::Finished,
-    ] {
-        for working in [false, true] {
-            let f = Fixture::new();
-            let task = if working {
-                f.partial("audio.flac").await
-            } else {
-                f.completed("audio.flac").await
-            };
-            let d = f.directory().with_options(file_options(event, true));
-            let b = d.start(&f.target, None).unwrap();
-            assert!(d.resume(&b.id).is_err(), "{event:?},working={working}");
-            assert!(d.active().unwrap().is_some());
-            assert_eq!(d.settings().unwrap().unwrap().root, f.source);
-            assert_eq!(
-                f.reopen().resume(&b.id).unwrap().phase,
-                MigrationPhase::Complete
-            );
-            if working {
-                f.service.run(&task.id, Run::default()).await.unwrap();
-                assert_eq!(f.backend.audio.calls().last().unwrap().offset, 11);
-            }
-            assert_eq!(fs::read(f.target.join("audio.flac")).unwrap(), FLAC);
-        }
+async fn recover_child_checkpoint_without_restarting_download(event: FileEvent, working: bool) {
+    let f = Fixture::new();
+    let task = if working {
+        f.partial("audio.flac").await
+    } else {
+        f.completed("audio.flac").await
+    };
+    let d = f.directory().with_options(file_options(event, true));
+    let b = d.start(&f.target, None).unwrap();
+    assert!(d.resume(&b.id).is_err(), "{event:?},working={working}");
+    assert!(d.active().unwrap().is_some());
+    assert_eq!(d.settings().unwrap().unwrap().root, f.source);
+    assert_eq!(
+        f.reopen().resume(&b.id).unwrap().phase,
+        MigrationPhase::Complete
+    );
+    if working {
+        f.service.run(&task.id, Run::default()).await.unwrap();
+        assert_eq!(f.backend.audio.calls().last().unwrap().offset, 11);
+    }
+    assert_eq!(fs::read(f.target.join("audio.flac")).unwrap(), FLAC);
+}
+
+// Every case creates and reopens its own files and database. Let the test
+// runner schedule them independently instead of serializing 14 restarts.
+mod child_checkpoint_recovery {
+    use super::*;
+
+    macro_rules! checkpoints {
+        ($($name:ident: $event:ident),+ $(,)?) => {
+            $(
+                mod $name {
+                    use super::*;
+
+                    #[tokio::test]
+                    async fn completed() {
+                        recover_child_checkpoint_without_restarting_download(FileEvent::$event, false).await;
+                    }
+
+                    #[tokio::test]
+                    async fn partial() {
+                        recover_child_checkpoint_without_restarting_download(FileEvent::$event, true).await;
+                    }
+                }
+            )+
+        };
+    }
+
+    checkpoints! {
+        prepared: Prepared,
+        copy_chunk: CopyChunk,
+        staged: Staged,
+        destination_ready: DestinationReady,
+        metadata_committed: MetadataCommitted,
+        source_removed: SourceRemoved,
+        finished: Finished,
     }
 }
 

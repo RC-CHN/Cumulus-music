@@ -2,7 +2,7 @@
  const sleep=ms=>new Promise(r=>setTimeout(r,ms)),all=s=>[...document.querySelectorAll(s)],one=s=>document.querySelector(s);
  const assert=(ok,message)=>{if(!ok)throw Error(message);};
  const emit=(stage,rest={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...rest}});
- const wait=async(test,label)=>{for(let i=0;i<200;i++){if(test())return;await sleep(100);}throw Error(label);};
+ const wait=async(test,label)=>{for(let i=0;i<200;i++){const result=test();if(result)return result;await sleep(100);}throw Error(label);};
  const button=text=>all('button').find(n=>n.textContent.trim()===text);
  const click=n=>{assert(n&&!n.disabled,`unavailable ${n?.outerHTML}`);n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});n.click();};
  const count=()=>Number(one('.collections-tools>.muted')?.textContent.match(/已加载 (\d+)/)?.[1]);
@@ -12,7 +12,27 @@
  const refresh=()=>click(one('[aria-label="刷新收藏列表"]'));
  const back=()=>click(one('[aria-label="返回上一页"]'));
  let stageCount=0;
- async function capture(name){await sleep(500);const cards=all('.catalog-card,.collection-follow-card').length;assert(cards<=30,'unbounded collection cards');assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');const p=one('.collections-page');assert(!p||p.getBoundingClientRect().bottom<=one('.main-content').getBoundingClientRect().bottom+1,'clipped collection page');if(p){assert(p.scrollHeight<=p.clientHeight+1,'unexpected outer collection scroll');const more=button('加载更多')||button('正在加载…');if(more){const box=more.getBoundingClientRect();assert(box.top>=p.getBoundingClientRect().top&&box.bottom<=p.getBoundingClientRect().bottom+1,'load more inaccessible');}}await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,cards,loaded:count()||0});await sleep(1100);}
+ async function capture(name,selector='.collections-page'){
+  await sleep(500);
+  // Loaded data can appear while its route is still translated. WebKit can
+  // also briefly expose the old transform after the deadline removes the classes.
+  const page=await wait(()=>{
+   const destination=one(selector),view=destination?.closest('.page-view');
+   return view&&!view.matches('.page-enter-active,.page-leave-active')&&getComputedStyle(view).transform==='none'?destination:null;
+  },`collection route did not settle: ${name}`);
+  const cards=all('.catalog-card,.collection-follow-card').length;
+  assert(cards<=30,'unbounded collection cards');
+  assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');
+  if(page.matches('.collections-page')){
+   const bounds=page.getBoundingClientRect(),main=one('.main-content').getBoundingClientRect();
+   assert(bounds.bottom<=main.bottom+1,`clipped collection page: ${name} (${bounds.bottom} > ${main.bottom})`);
+   assert(page.scrollHeight<=page.clientHeight+1,'unexpected outer collection scroll');
+   const more=button('加载更多')||button('正在加载…');
+   if(more){const box=more.getBoundingClientRect();assert(box.top>=bounds.top&&box.bottom<=bounds.bottom+1,'load more inaccessible');}
+  }
+  await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,cards,loaded:count()||0});
+  await sleep(1100);
+ }
  try{
   await wait(()=>one('.track-row'),'account ready');click(one('[aria-label="外观主题"]'));await wait(()=>button('浅色'),'theme');click(button('浅色'));
   click(button('专辑与关注'));await wait(()=>ready()&&count()===50,'saved first page');await capture('saved_first');
@@ -22,7 +42,7 @@
   await filter('');click(button('加载更多'));await wait(()=>ready()&&count()===123&&!button('加载更多'),'saved last page');one('.catalog-card-scroll').scrollTop=999999;await capture('saved_scrolled');
   await mode('fail_saved');refresh();await wait(()=>ready()&&one('.catalog-error'),'refresh failure');assert(count()===123,'refresh erased previous pages');await capture('saved_refresh_error');
   await mode('none');click(button('重试'));await wait(()=>ready()&&count()===50&&!one('.catalog-error'),'refresh retry must replace first page');await capture('saved_refreshed');
-  click(one('.catalog-card'));await wait(()=>one('.album-header'),'saved album navigation');await capture('saved_album');back();await wait(()=>ready()&&count()===50,'back from album');
+  click(one('.catalog-card'));await wait(()=>one('.album-header'),'saved album navigation');await capture('saved_album','.album-header');back();await wait(()=>ready()&&count()===50,'back from album');
   click(button('已购专辑'));await wait(()=>ready()&&count()===2,'purchased albums');await capture('purchased');
   await mode('empty_purchase');refresh();await wait(()=>ready()&&one('.empty-state')?.textContent.includes('还没有已购专辑'),'empty purchases');await capture('purchased_empty');
   await mode('fail_purchase');refresh();await wait(()=>ready()&&one('.catalog-error'),'purchase error');assert(!one('.collections-page .empty-state'),'error shown as empty purchases');await capture('purchased_error');
@@ -30,7 +50,7 @@
   click(button('关注歌手'));await wait(()=>ready()&&count()===20,'followed first page');await capture('followed_first');
   for(let i=0;button('加载更多')&&i<20;i++){const before=count();click(button('加载更多'));await wait(()=>ready()&&count()>before,'followed continuation');}
   assert(count()===205&&!button('加载更多'),'followed list end');one('.collection-follow-scroll').scrollTop=999999;await sleep(350);assert(one('.collection-follow-card:not(:has(.collection-follow-open))'),'user-only record not mistaken for artist');await capture('followed_scrolled');
-  one('.collection-follow-scroll').scrollTop=0;await wait(()=>one('.collection-follow-open[data-collection-key="artist:12"]'),'first followed artist rendered');click(one('.collection-follow-open[data-collection-key="artist:12"]'));await wait(()=>one('.artist-header'),'followed artist navigation');await capture('followed_artist');
+  one('.collection-follow-scroll').scrollTop=0;await wait(()=>one('.collection-follow-open[data-collection-key="artist:12"]'),'first followed artist rendered');click(one('.collection-follow-open[data-collection-key="artist:12"]'));await wait(()=>one('.artist-header'),'followed artist navigation');await capture('followed_artist','.artist-header');
   back();await wait(()=>ready()&&button('关注歌手')?.getAttribute('aria-current')==='page','back retains followed tab');await capture('followed_back');
   click(one('[aria-label="外观主题"]'));await wait(()=>button('深色'),'theme menu');click(button('深色'));await wait(()=>document.documentElement.dataset.theme==='dark','dark');await capture('followed_dark');
   await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small window');await capture('followed_small');

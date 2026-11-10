@@ -51,7 +51,8 @@ def verify(root, code, screenshots):
     assert code == 0, f'mini FM exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['fmMini'] and complete['stageCount'] == len(LABELS)
-    assert complete['staleEmptyRejected'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    assert complete['staleEmptyRejected'] and complete['heldSecondPageReticketVerified']
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     modes = ['sequential', 'single_loop', 'sequential', 'sequential', 'sequential',
              'sequential', 'single_loop', 'single_loop', 'single_loop', 'sequential',
              'sequential', 'single_loop', 'sequential', 'single_loop', 'single_loop',
@@ -110,7 +111,8 @@ def verify(root, code, screenshots):
     result = dict(ok=True, actualWebViews=2, states=len(LABELS),
                   screenshots=len(LABELS) if screenshots else 0,
                   sharedAudioFactoryCount=1, fmModesAndRecoveryVerified=True,
-                  emptyFmVerified=True, realMusicRequests=0, realAccountWrites=0,
+                  emptyFmVerified=True, heldSecondPageReticketVerified=True,
+                  realMusicRequests=0, realAccountWrites=0,
                   physicalDisplayVerified=False, physicalAudioOutputVerified=False,
                   officialMiniPixelMatchVerified=False)
     (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')

@@ -1,10 +1,9 @@
 use super::{ASSIGNMENT_PATH, playback, vinyl_http};
 use cumulus_core::{
     Error,
-    account::{AccountSession, profiles::ProfileRegistry},
+    account::AccountSession,
     client::{MusicClient, dto::PlayerAction, pc_experiments::OrdinarySkipAssignment},
     playback::{PlaybackMode, PlaybackQueue, Step},
-    protocol::http::ApiOrigin,
 };
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
@@ -33,7 +32,7 @@ async fn run(browser: Option<bool>, group: &str, expected: u64) {
         .into_iter()
         .chain((expected != 1).then(|| url(expected).into())),
     );
-    let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+    let registry = super::fixture_registry(&root.path().join("host"));
     let mut queue = PlaybackQueue::new(Some(registry.store()), "71").unwrap();
     // Manual stepping still advances in single-repeat mode. Its automatic
     // prefetch stays on the current (already resolved) song, so it does not

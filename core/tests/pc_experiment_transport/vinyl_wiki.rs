@@ -1,16 +1,13 @@
 use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http};
 use cumulus_core::{
     Error,
-    account::{AccountSession, profiles::ProfileRegistry},
+    account::AccountSession,
     client::{
         MusicClient,
         dto::{PlaySelection, PlayerAction},
     },
     membership::Quality,
-    protocol::{
-        api::Api,
-        http::{ApiOrigin, MusicHttpClient},
-    },
+    protocol::{api::Api, http::MusicHttpClient},
 };
 use serde_json::{Value, json};
 use std::{future::poll_fn, sync::Arc, task::Poll};
@@ -35,7 +32,7 @@ impl Fixture {
             json!({"code":200,"songs":[{"id":SONG,"name":"合成曲目","dt":120000}]}).into(),
             json!({"code":200,"data":[{"id":SONG,"code":200,"url":"https://m1.music.126.net/test.mp3?auth=SYNTHETIC","md5":"abc","level":"standard","expi":120}]}).into(),
         ].into_iter().chain(wiki_replies));
-        let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+        let registry = super::fixture_registry(&root.path().join("host"));
         let session = Arc::new(AccountSession::new(native.clone(), Some(registry.store())));
         session
             .adopt(

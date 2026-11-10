@@ -59,6 +59,14 @@ Windows 运行和 Windows 视觉，发行状态以主线标签对应的 CI 为�
 
 [签名播放证据](signed-window-read-proof.txt)确认：同一个 Linux Tauri 窗口恢复既有授权账号，读取本人歌单和喜欢列表，从官方 V3 综合搜索取得歌曲，核对非试听授权，再通过一次完整媒体读取驱动原生 libmpv 解码、暂停、继续和停止。原账号和数据库不变。使用 null 音频输出，未验证实体声卡、受易盾令牌保护的单曲分类、实服写操作、普通实服下载或 Windows 便携包。歌单编辑、下载和真正断网后的本地播放仍按[独立合成主流程](desktop-main-flow-proof.txt)记录。
 
+同日独立产品候选的[普通自建歌单断网回读](playlist-offline-contracts.txt)在 Linux
+WebKitGTK/libmpv 中验证了 7 个快照/CUE 状态和 9 个本机下载状态。
+明确拒绝撤销快照；可播放性按同账号的本机索引或已发布下载及权益校验，
+外账号记录和被改写的文件不能播放。此批用合成账号、合成 WAV/CUE 和
+null 输出，无真实音源授权或写入；加密下载另有 Rust 证据，Windows 实窗
+及实服离线权益变化未在本批验证。详见
+`.build/ui-proof/phase237-offline-download-playlist/receipt.json`。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
 | **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 候选四条独立探针已有真实虚拟机只读观测；未接入产品默认签名，也未证明实体设备、完整官方引擎或全部风控分支等价。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) · [原生诊断](windows-hardware-collector-plan.txt) |

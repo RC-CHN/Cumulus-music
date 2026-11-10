@@ -46,6 +46,7 @@ const error = ref('');
 const shortcuts = useLocalShortcuts((e) => {
   error.value = e.message;
 }, createMiniShortcutClient());
+const QUEUE_PAGE_SIZE = 30;
 const expanded = ref(false);
 const queue = ref<MiniQueuePage | null>(null);
 const queueTicket = ref('');
@@ -55,6 +56,9 @@ let disposed = false;
 let reading: Promise<MiniView | undefined> | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let queueRequest = 0;
+// The shown page is cleared while a fresh ticket is checked. Keep the
+// requested page independent so an overlapping read cannot reset navigation.
+let desiredQueueOffset = 0;
 const modes = useMiniModes(view, client, () => refresh(true));
 const feedback = useMiniFeedback(
   view,
@@ -213,23 +217,46 @@ function time(seconds: number | null | undefined) {
   const value = Math.max(0, Math.floor(seconds || 0));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
-async function refreshQueue(offset = queue.value?.offset || 0, retry = 0) {
-  if (!view.value || !expanded.value) return;
+function queueScope({ media }: MiniView) {
+  if (media.modeFamily === 'fm') return 'fm';
+  return media.item?.kind === 'music' ? (media.modeFamily ?? 'music') : null;
+}
+function clearQueuePage() {
+  confirmingClear.value = false;
+  queue.value = null;
+  queueTicket.value = '';
+  queueError.value = '';
+}
+function resetQueue() {
+  desiredQueueOffset = 0;
+  ++queueRequest;
+  clearQueuePage();
+}
+async function refreshQueue(offset = desiredQueueOffset, retry = 0) {
+  if (disposed || !view.value || !expanded.value) return;
   const ticket = view.value.ticket;
   const owner = view.value.media.epoch;
   const request = ++queueRequest;
-  confirmingClear.value = false;
-  queue.value = null;
-  queueError.value = '';
+  desiredQueueOffset = offset;
+  clearQueuePage();
   try {
     const page = await client.queue(ticket, offset);
-    if (disposed || request !== queueRequest || view.value.ticket !== ticket) return;
+    if (
+      disposed ||
+      !expanded.value ||
+      request !== queueRequest ||
+      view.value?.ticket !== ticket ||
+      page.epoch !== owner
+    )
+      return;
     if (offset >= page.total && offset > 0) {
-      await refreshQueue(Math.max(0, Math.floor((page.total - 1) / 30) * 30));
+      await refreshQueue(
+        Math.max(0, Math.floor((page.total - 1) / QUEUE_PAGE_SIZE) * QUEUE_PAGE_SIZE),
+      );
       return;
     }
-    queue.value = page;
     queueTicket.value = ticket;
+    queue.value = page;
   } catch (e) {
     if (
       !disposed &&
@@ -267,18 +294,21 @@ async function readOnce(): Promise<MiniView | undefined> {
   try {
     const value = await client.read();
     if (disposed) return;
-    const changed = view.value?.ticket !== value.ticket;
+    const previous = view.value;
+    const changed = previous?.ticket !== value.ticket;
+    const scope = queueScope(value);
+    const scopeChanged =
+      previous?.media.epoch !== value.media.epoch ||
+      (previous !== null && queueScope(previous) !== scope);
     view.value = value;
     shortcuts.account(value.media.epoch);
-    if (changed && expanded.value) {
-      if (value.media.item?.kind === 'music' || value.media.modeFamily === 'fm')
-        void refreshQueue();
-      else {
-        expanded.value = false;
-        queue.value = null;
-        ++queueRequest;
-        void client.panel(false).catch(() => {});
-      }
+    if (expanded.value && scope === null) {
+      expanded.value = false;
+      resetQueue();
+      void client.panel(false).catch(() => {});
+    } else {
+      if (scopeChanged) resetQueue();
+      if (expanded.value && (changed || scopeChanged)) void refreshQueue();
     }
     return value;
   } finally {
@@ -323,11 +353,8 @@ async function panel() {
   try {
     await client.panel(next);
     expanded.value = next;
-    if (next) await refreshQueue(0);
-    else {
-      ++queueRequest;
-      queue.value = null;
-    }
+    if (next) await refreshQueue();
+    else resetQueue();
   } catch (e) {
     error.value = message(e);
   }
@@ -709,13 +736,18 @@ onUnmounted(() => {
           </button>
         </li>
       </ol>
-      <footer v-if="queue && queue.total > 30" class="mini-pages">
-        <button :disabled="queue.offset === 0" @click="refreshQueue(queue!.offset - 30)">
+      <footer v-if="queue && queue.total > QUEUE_PAGE_SIZE" class="mini-pages">
+        <button
+          :disabled="queue.offset === 0"
+          @click="refreshQueue(queue!.offset - QUEUE_PAGE_SIZE)"
+        >
           上一页</button
-        ><span>{{ Math.floor(queue.offset / 30) + 1 }} / {{ Math.ceil(queue.total / 30) }}</span
+        ><span
+          >{{ Math.floor(queue.offset / QUEUE_PAGE_SIZE) + 1 }} /
+          {{ Math.ceil(queue.total / QUEUE_PAGE_SIZE) }}</span
         ><button
-          :disabled="queue.offset + 30 >= queue.total"
-          @click="refreshQueue(queue!.offset + 30)"
+          :disabled="queue.offset + QUEUE_PAGE_SIZE >= queue.total"
+          @click="refreshQueue(queue!.offset + QUEUE_PAGE_SIZE)"
         >
           下一页
         </button>

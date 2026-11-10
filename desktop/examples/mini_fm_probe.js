@@ -104,7 +104,35 @@
     await fixture('storage', {reject:false}); await click('无限漫游'); await settled('single_loop'); await capture('retried_light');
     await click('播放队列'); await wait(() => mini("return document.querySelectorAll('.mini-queue-rows li').length===30;"), 'FM first page'); await capture('expanded_light');
     await theme('dark'); await click('下一页'); await wait(() => mini("return document.querySelectorAll('.mini-queue-rows li').length===10;"), 'FM second page'); await capture('second_page_dark');
-    await click('单曲循环'); await settled('sequential'); await wait(() => mini("return document.querySelectorAll('.mini-queue-rows li').length===10;"), 'same second page after mode'); await capture('mode_on_second_page_dark');
+    await click('上一页'); await wait(() => mini("return document.querySelectorAll('.mini-queue-rows li').length===30;"), 'FM first page again');
+    // Deliver the actual native page only after mode changes the control ticket.
+    // Other IPC continues normally, including the new ticket's queue read.
+    await mini(`
+      const callbacks=window.__TAURI_INTERNALS__.callbacks;
+      const get=callbacks.get;
+      const gate=window.__miniQueuePageHold={};
+      callbacks.get=function(id){
+        const callback=get.call(this,id);
+        if(!callback)return callback;
+        return value=>{
+          if(Array.isArray(value?.tracks)&&value.offset===30&&value.total===40&&!value.editable){
+            delete callbacks.get;
+            gate.release=()=>callback(value);
+          }else return callback(value);
+        };
+      };
+      return true;
+    `);
+    await click('下一页');
+    await wait(() => mini("return !!window.__miniQueuePageHold.release&&!document.querySelector('.mini-queue-rows');"), 'old ticket second page held');
+    await click('单曲循环'); await settled('sequential');
+    await wait(() => mini("return !!window.__miniQueuePageHold.release&&document.querySelectorAll('.mini-queue-rows li').length===10;"), 'same second page after mode while old read held');
+    await mini("window.__miniQueuePageHold.release();delete window.__miniQueuePageHold;return true;");
+    await capture('mode_on_second_page_dark');
+    await click('播放队列');
+    await wait(() => mini("return !document.querySelector('.mini-queue');"), 'FM queue collapsed');
+    await click('播放队列');
+    await wait(() => mini("return document.querySelectorAll('.mini-queue-rows li').length===30;"), 'reopening a collapsed queue starts on page one');
     await returnMain('returned_main'); await open(); await theme('dark'); await click('无限漫游'); await settled('single_loop'); await capture('reopened_single_dark');
     await invoke('fm_command', {epoch, source, command:{kind:'leave'}});
     source = {kind:'zone', rule_id:'27001', trial_mode:null}; await start();
@@ -126,7 +154,7 @@
     const rejected = await mini(`try{await window.__TAURI_INTERNALS__.invoke('mini_mode',{generation:location.hash.slice(6),ticket:${JSON.stringify(old.ticket)},mode:'single_loop'});return false;}catch(e){return ['stale','snapshot_changed'].includes(e.code);}`);
     assert(rejected, 'old empty FM ticket cannot change ordinary media'); await capture('ordinary_replaced_light', {ordinary:true});
     assert(await mini("try{await window.__TAURI_INTERNALS__.invoke('account_snapshot');return false;}catch{return true;}"), 'mini account boundary');
-    await emit({kind:'complete',stage:'complete',ok:true,fmMini:true,stageCount:count,fmSource:source,staleEmptyRejected:rejected,realMusicRequests:0,realAccountWrites:0});
+    await emit({kind:'complete',stage:'complete',ok:true,fmMini:true,stageCount:count,fmSource:source,staleEmptyRejected:rejected,heldSecondPageReticketVerified:true,realMusicRequests:0,realAccountWrites:0});
   } catch (error) {
     await emit({kind:'failed',stage:'failed',ok:false,last,count,fmSource:source,error:String(error),body:document.body.textContent.slice(-2000)});
   }

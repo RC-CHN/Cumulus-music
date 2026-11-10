@@ -314,17 +314,43 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  windows-rust-lint:
+    name: Rust format and Clippy (windows-x64)
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
+    needs: frontend
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        run: rustup show
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - run: cargo fmt --all --check
+      # Native runs the complete workspace tests with the actual media runtime.
+      - run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
+      - name: Verify optional song fingerprint features
+        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
+      - name: Verify standalone WASAPI capture policy
+        run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
+
   native:
     if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
     name: Native (${{ matrix.platform }})
+    needs: frontend
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-2022
             platform: windows-x64
-            rust-cache-scheme: v1
-            rust-target-cache: .build/target
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     defaults:
@@ -335,11 +361,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -370,39 +391,41 @@ jobs:
           mkdir -p .build/windows-identity-encoding
           rustc --edition 2024 -D warnings scripts/research/windows_identity_encoding_probe.rs -o .build/windows-identity-encoding/probe.exe
           .build/windows-identity-encoding/probe.exe
-      - name: Identify the checked out source tree for the Rust cache
-        id: rust-cache-source
-        run: |
-          tree="$(git rev-parse 'HEAD^{tree}')"
-          printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      - name: Restore Windows test dependencies
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         id: rust-cache
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ${{ matrix.rust-target-cache }}
-          # An empty release marker can reuse the prepared commit's cache.
-          # Cargo still checks the checkout and runs the complete tests below.
-          key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-tree-${{ steps.rust-cache-source.outputs.tree }}
+            .build/target
+          key: rust-windows-2022-test-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          # Cargo checks fingerprints after restoring a partial match. The legacy
+          # prefix also lets the first RC.2 build reuse compatible RC.1 dependencies.
           restore-keys: |
-            rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
-            rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-
+            rust-windows-2022-test-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-
+            rust-Windows-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-Windows-v1-
+      - name: Remove legacy workspace outputs before the native build
+        if: steps.rust-cache.outputs.cache-hit == 'false'
+        run: cargo clean --workspace --locked --offline
       - name: Build and verify Windows media runtime
         if: runner.os == 'Windows'
         uses: ./.github/actions/windows-media
+        env:
+          # A cold FFmpeg build can use all four hosted Windows cores.
+          CUMULUS_MEDIA_BUILD_JOBS: '4'
         with:
           msys-root: ${{ steps.msys2.outputs.msys2-location }}
-      - run: npm --prefix frontend ci
-      - run: npm --prefix frontend run build
-      - run: cargo fmt --all --check
-      - id: rust-clippy
-        run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
-      - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
-      - name: Verify optional song fingerprint features
-        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
-      - name: Verify standalone WASAPI capture policy
-        run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - name: Run the full Windows Rust test suite
+        env:
+          # Increase compilation concurrency only, leaving libtest unchanged.
+          CARGO_BUILD_JOBS: '3'
+        run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
@@ -417,25 +440,23 @@ jobs:
           path: .build/diagnostics/synthetic-proofs.tar.gz
           if-no-files-found: error
           retention-days: 7
-      - name: Preserve Rust caches for the next attempt
-        if: >-
-          always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
-          steps.rust-cache.outputs.cache-hit != 'true' &&
-          (steps.rust-clippy.outcome == 'success' || steps.rust-clippy.outcome == 'failure') &&
-          hashFiles('.build/target/.rustc_info.json') != ''
+      - name: Remove workspace outputs before caching Windows test dependencies
+        if: steps.rust-cache.outputs.cache-hit != 'true'
+        run: cargo clean --workspace --locked --offline
+      - name: Cache Windows test dependencies
+        if: steps.rust-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ${{ matrix.rust-target-cache }}
-          key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-tree-${{ steps.rust-cache-source.outputs.tree }}
+            .build/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}
 
-  package-windows:
-    name: Package and verify (windows-x64)
-    needs: frontend
+  windows-release-runtime:
+    name: Windows release media runtime
     runs-on: windows-2022
-    timeout-minutes: 150
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -444,11 +465,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -473,6 +489,62 @@ jobs:
             mingw-w64-ucrt-x86_64-ladspa-sdk
       - name: Install pinned toolchain
         run: rustup show
+      - name: Build and verify Windows media runtime
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/windows-media
+        env:
+          # A cold FFmpeg build can use all four hosted Windows cores.
+          CUMULUS_MEDIA_BUILD_JOBS: '4'
+        with:
+          msys-root: ${{ steps.msys2.outputs.msys2-location }}
+          save-cache: 'false'
+      - name: Reuse Windows release dependency builds
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          # Package writes only third-party dependencies to this key.
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target/release/.fingerprint
+            .build/target/release/build
+            .build/target/release/deps
+          key: rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
+      - name: Stage the exact native files shared with packaging
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: python scripts/ci/windows_release_runtime.py --msys "$CUMULUS_MSYS2_ROOT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-release-runtime-attempt-${{ github.run_attempt }}
+          path: .build/windows-release-runtime/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+
+  package-windows:
+    name: Package and verify (windows-x64)
+    needs: [frontend, windows-release-runtime]
+    runs-on: windows-2022
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned toolchain
+        run: rustup show
       - name: Restore Windows release dependencies
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         id: release-deps
@@ -485,12 +557,10 @@ jobs:
             .build/target/release/build
             .build/target/release/deps
           key: rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
-      - name: Build and verify Windows media runtime
-        if: runner.os == 'Windows'
-        uses: ./.github/actions/windows-media
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          msys-root: ${{ steps.msys2.outputs.msys2-location }}
-          save-cache: 'false'
+          name: windows-release-runtime-attempt-${{ github.run_attempt }}
+          path: .build/windows-release-runtime
       - run: npm --prefix frontend ci
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -500,10 +570,9 @@ jobs:
         env:
           # Scope the concurrency trial to Release; debug and GUI keep the default.
           CARGO_BUILD_JOBS: '3'
-          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
           # Workflow-dispatch artifacts cannot enter the main push release gate.
           CUMULUS_BUILD_WINDOWS_NATIVE_OPEN_NULL_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_native_file_output == 'null' && '1' || '' }}
-        run: python scripts/ci/package.py --platform 'windows-x64'
+        run: python scripts/ci/package.py --platform windows-x64 --windows-runtime .build/windows-release-runtime
       # The portable runtime, FLAC and local-queue proofs consume this exact
       # package in parallel with the other Windows regression shards.
       - name: Archive synthetic failure diagnostics
@@ -654,14 +723,15 @@ jobs:
   windows-webview:
     if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
     name: Windows WebView (${{ matrix.shard }})
-    needs: [package-windows, windows-webview-probes]
+    # The packaged-media jobs below still open the exact final ZIP.
+    needs: [windows-release-runtime, windows-webview-probes]
     runs-on: windows-2022
     timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
         # Keep long suites on separate desktops; the gate requires every shard.
-        shard: [playback, library, library-local, search, search-account, catalog-discovery, catalog, package-media, package-runtime]
+        shard: [playback, library, library-local, search, search-account, catalog-discovery, catalog]
     defaults:
       run:
         shell: bash
@@ -673,44 +743,16 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - name: Verify and seed the pinned MSYS2 installer cache
-        if: matrix.shard == 'package-runtime'
-        timeout-minutes: 5
-        run: python scripts/ci/windows_msys2_bootstrap.py
-      - name: Windows media dependencies
-        id: msys2
-        if: matrix.shard == 'package-runtime'
-        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            base-devel
-            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
-            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
-            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
-            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
-            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
-            mingw-w64-ucrt-x86_64-ladspa-sdk
-      - name: Install pinned toolchain
-        if: matrix.shard == 'package-runtime'
-        run: rustup show
-      - name: Build and verify Windows media runtime
-        if: matrix.shard == 'package-runtime'
-        uses: ./.github/actions/windows-media
-        with:
-          msys-root: ${{ steps.msys2.outputs.msys2-location }}
-          save-cache: 'false'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: packages-windows-x64
-          path: .build/packages/windows-x64
+          name: windows-release-runtime-attempt-${{ github.run_attempt }}
+          path: .build/windows-release-runtime
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-webview-inputs-attempt-${{ github.run_attempt }}
           path: .build/windows-webview-inputs
       - name: Verify and restore exact Windows WebView inputs
-        run: python scripts/ci/windows_webview_inputs.py restore
+        run: python scripts/ci/windows_webview_inputs.py restore --shared-runtime .build/windows-release-runtime
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-webview-probes-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
@@ -1024,17 +1066,6 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-settings-windows --runtime .build/package-stage/windows-x64/native --relay-settings
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-recovery-windows --runtime .build/package-stage/windows-x64/native --relay-recovery
-      - name: Windows WebView regression (package-media)
-        if: runner.os == 'Windows' && matrix.shard == 'package-media'
-        run: |
-          python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-windows
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
-          flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
-          python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
       - name: Preserve Windows queue tip failure receipts
         if: failure() && matrix.shard == 'playback'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -1059,6 +1090,96 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Preserve synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-windows-webview-${{ matrix.shard }}
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-webview-packaged:
+    name: Windows WebView (${{ matrix.shard }})
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
+    needs: [package-windows, windows-webview-probes]
+    runs-on: windows-2022
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep long suites on separate desktops; the gate requires every shard.
+        shard: [package-media, package-runtime]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify and seed the pinned MSYS2 installer cache
+        if: matrix.shard == 'package-runtime'
+        timeout-minutes: 5
+        run: python scripts/ci/windows_msys2_bootstrap.py
+      - name: Install the Windows proof tools
+        id: msys2
+        if: matrix.shard == 'package-runtime'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-binutils mingw-w64-ucrt-x86_64-ffmpeg
+      - name: Verify the synthetic FLAC encoder and PE inspection tool
+        if: matrix.shard == 'package-runtime'
+        shell: pwsh
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $bin = (Resolve-Path -LiteralPath (Join-Path $env:CUMULUS_MSYS2_ROOT 'ucrt64/bin')).Path
+          $ffmpeg = (Resolve-Path -LiteralPath (Join-Path $bin 'ffmpeg.exe')).Path
+          $objdump = (Resolve-Path -LiteralPath (Join-Path $bin 'objdump.exe')).Path
+          $encoders = & $ffmpeg -hide_banner -encoders
+          if ($LASTEXITCODE -ne 0 -or -not ($encoders -match '^\s*A\S*\s+flac(?:\s|$)')) {
+            throw 'Windows proof encoder does not provide FLAC'
+          }
+          & $objdump --version
+          if ($LASTEXITCODE -ne 0) { throw 'Windows proof PE tool did not start' }
+          "CUMULUS_LOCAL_FIXTURE_FFMPEG=$ffmpeg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: packages-windows-x64
+          path: .build/packages/windows-x64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-webview-inputs-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-inputs
+      - name: Verify and restore exact Windows WebView inputs
+        run: python scripts/ci/windows_webview_inputs.py restore
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-webview-probes-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: .build/windows-webview-probes/${{ matrix.shard }}
+      - name: Verify and restore the shard's prebuilt test probes
+        run: python scripts/ci/windows_webview_probes.py restore '${{ matrix.shard }}'
+      - name: Windows WebView regression (package-media)
+        if: runner.os == 'Windows' && matrix.shard == 'package-media'
+        run: |
+          python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-windows
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
+          flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
       - name: Windows WebView regression (package-runtime)
         if: matrix.shard == 'package-runtime'
         env:
@@ -1195,64 +1316,6 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Linux native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
-          sudo locale-gen en_US.UTF-8
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.12'
-      - name: Install pinned toolchain
-        run: rustup show
-      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
-        id: rust-cache
-        with:
-          # Linux reuses downloads only, never a target directory.
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
-            rust-Linux-downloads-v2-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: frontend-dist
-          path: frontend/dist
-      - name: Build the shared WebView probe once
-        run: |
-          test -f frontend/dist/index.html
-          cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
-          python3 scripts/ci/linux_webview_probe_artifact.py stage \
-            --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
-            --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/cumulus-webview-ux-probe/
-          if-no-files-found: error
-          retention-days: 3
-          compression-level: 1
-
-  linux-webview-media:
-    name: Linux WebView (${{ matrix.shard }})
-    # Only these checks consume the exact release package runtime.
-    needs: [frontend, package-linux, linux-webview-probe]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [media-decoder, media-startup]
-    defaults:
-      run:
-        shell: bash
-    steps:
       - &linux_webview_checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -1288,6 +1351,80 @@ jobs:
         with:
           name: frontend-dist
           path: frontend/dist
+      - name: Build the shared WebView probe once
+        run: |
+          test -f frontend/dist/index.html
+          cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+          python3 scripts/ci/linux_webview_probe_artifact.py stage \
+            --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-webview-ux-probe-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-webview-ux-probe/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+
+  linux-package-probes:
+    name: Linux packaged media probe build
+    # Ordinary WebView shards only wait for their existing UX probe producer.
+    if: github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off'
+    needs: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_webview_checkout
+      - *linux_webview_dependencies
+      - *linux_webview_python
+      - *linux_webview_toolchain
+      - *linux_webview_rust_downloads
+      - *linux_webview_dist
+      - name: Build and bind the exact Linux package test probes
+        run: |
+          test -f frontend/dist/index.html
+          cargo build -p cumulus-desktop --features custom-protocol --locked \
+            --example native_local_equalizer_probe --example native_audio_probe \
+            --example equalizer_ui_probe --example loudness_ui_probe
+          python3 scripts/ci/linux_package_probe_artifact.py stage \
+            --examples .build/target/debug/examples --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-linux-package-probes"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-package-probes-media-decoder-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-package-probes/media-decoder/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-package-probes-media-startup-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-package-probes/media-startup/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+
+  linux-webview-media:
+    name: Linux WebView (${{ matrix.shard }})
+    # Only these checks consume the exact release package runtime.
+    needs: [frontend, package-linux, linux-webview-probe, linux-package-probes]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [media-decoder, media-startup]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_webview_checkout
+      - *linux_webview_dependencies
+      - *linux_webview_python
+      - *linux_webview_dist
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           # Same workflow run; no external run ID or cache lookup.
@@ -1334,10 +1471,20 @@ jobs:
           python3 scripts/ci/linux_webview_probe_artifact.py restore \
             --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist \
             --artifact "$RUNNER_TEMP/cumulus-webview-ux-probe"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-package-probes-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-package-probes
+      - name: Verify and install same-attempt Linux package test probes
+        env:
+          MEDIA_SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/ci/linux_package_probe_artifact.py restore --shard "$MEDIA_SHARD" \
+            --examples .build/target/debug/examples --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-linux-package-probes"
       - name: Verify the packaged Linux FLAC decoder through ordinary local equalizer playback
         if: matrix.shard == 'media-decoder'
         run: |
-          cargo build -p cumulus-desktop --example native_local_equalizer_probe --features custom-protocol --locked
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
             env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
@@ -1379,8 +1526,9 @@ jobs:
         if: matrix.shard == 'media-decoder'
         run: |
           export CUMULUS_FLAC_PROBE_LIBRARY="$PWD/.build/package-stage/linux-x64/native/libcumulus_flac150.so.14"
-          cargo test -p cumulus-core --locked --lib indexed_large_flac_reframes_and_seek_discards_the_staged_suffix -- --ignored
-          cargo test -p cumulus-core --locked --lib indexed_4608_flac_matches_1024_flac_and_wav_through_seek_and_tail -- --ignored
+          # Cargo runs unit tests from their package root.
+          (cd core && ../.build/target/debug/examples/cumulus_core_media_tests indexed_large_flac_reframes_and_seek_discards_the_staged_suffix --ignored)
+          (cd core && ../.build/target/debug/examples/cumulus_core_media_tests indexed_4608_flac_matches_1024_flac_and_wav_through_seek_and_tail --ignored)
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
             env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
@@ -1392,35 +1540,7 @@ jobs:
         run: |
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_download_row_smoke.py --local-marker --held-replacement --equalizer-flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --equalizer-flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-held-eq-trusted-linux --screenshots
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/search_download_row_smoke.py --local-marker --held-replacement --equalizer-flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --equalizer-flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --wrong-equalizer-digest --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-search-held-eq-wrong-digest-linux --screenshots
-      - name: Verify isolated playback preferences and message actions on Linux
-        if: matrix.shard == 'media-decoder'
-        run: |
-          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --features custom-protocol --locked
-          outer_network=$(readlink /proc/self/ns/net)
-          isolated_proof() {
-            sudo unshare --net --fork --kill-child sh -ec '
-              test "$(readlink /proc/self/ns/net)" != "$1"
-              target_user=$2
-              shift 2
-              ip link set lo up
-              # A private dummy route lets WebKit produce a real online sample.
-              # No link in this namespace has a peer on the host or a gateway.
-              ip link add proof0 type dummy
-              ip addr add 192.0.2.1/24 dev proof0
-              ip link set proof0 up
-              ip route add default via 192.0.2.254 dev proof0
-              exec runuser -u "$target_user" -- "$@"
-            ' sh "$outer_network" "$(id -un)" xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
-              env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-              env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
-              /usr/bin/python3 "$@"
-          }
-          isolated_proof scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe --root .build/ci-natural-eof-linux --screenshots
-          isolated_proof scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-history-settings-cohort-linux --screenshots
-          isolated_proof scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-quality-linux --screenshots
-          isolated_proof scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-read-all-linux --screenshots
-          isolated_proof scripts/ci/queue_click_smoke.py --daily-row --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-daily-linux --screenshots
-      - name: Verify native media and playback startup
+      - name: Verify native media and effects with the Linux package runtime
         if: matrix.shard == 'media-startup'
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:
@@ -1429,20 +1549,9 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-stereo-pcm-linux.json --stereo-pcm-flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-stereo-linux.json --stereo-native-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
-          cargo build -p cumulus-desktop --example playback_power_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_smoke.py --binary .build/target/debug/examples/playback_power_ui_probe --root .build/ci-playback-power-linux --screenshots
-          cargo build -p cumulus-desktop --example search_playback_read --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment control --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-control-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment v3 --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-v3-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --download --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-download-linux
-          cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
-          python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
-          python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
-          python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
           # A bare namespace leaves loopback down and /proc/net/route empty.
           # Bring up only loopback so proofs see an initialized, route-free table.
           loopback_only() {
@@ -1453,18 +1562,10 @@ jobs:
               exec runuser -u "$target_user" -- "$@"
             ' sh "$(id -un)" "$@"
           }
-          # The transport cut alone leaves the host default route visible to the download menu.
-          offline_download_proof() {
-            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/main_flow_smoke.py --missing-download "$@"
-          }
-          offline_download_proof --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode recall --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-recall-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode new-uncertain --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-new-uncertain-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
-          CUMULUS_PROOF_EFFECT_FILTER="$PWD/.build/package-stage/linux-x64/native/libcumulus_audio_filter.so" cargo test -p cumulus-core --lib --locked effect_order_tests -- --ignored --test-threads=1
-          cargo build -p cumulus-desktop --example equalizer_ui_probe --features custom-protocol --locked
+          filter="$PWD/.build/package-stage/linux-x64/native/libcumulus_audio_filter.so"
+          (cd core && CUMULUS_PROOF_EFFECT_FILTER="$filter" ../.build/target/debug/examples/cumulus_core_media_tests effect_order_tests --ignored --test-threads=1)
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/equalizer_live_smoke.py --binary .build/target/debug/examples/equalizer_ui_probe --root .build/ci-equalizer-live-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
-          cargo build -p cumulus-desktop --example loudness_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe --root .build/ci-loudness-ui-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/loudness_ui_smoke.py --runtime-fault --binary .build/target/debug/examples/loudness_ui_probe --root .build/ci-effect-runtime-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_directory_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-directory-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
@@ -1520,7 +1621,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, library-search, local-desktop, account-catalog]
+        shard: [playback, playback-podcasts, playback-startup, library-search, local-desktop, account-shell, catalog-community]
     defaults:
       run:
         shell: bash
@@ -1541,7 +1642,7 @@ jobs:
           df -h .
       - *linux_webview_probe_download
       - *linux_webview_probe_restore
-      - name: Verify player, queue and podcast playback
+      - name: Verify player and queue workflows
         if: matrix.shard == 'playback'
         env:
           GDK_BACKEND: x11
@@ -1576,6 +1677,14 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-collection-linux
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/queue_row_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-row-collection-linux --screenshots --trusted-input
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/queue_download_file_reveal_smoke.py --binary .build/target/debug/examples/ux_ui_probe --frontend-dist frontend/dist --root .build/ci-queue-download-file-reveal-linux --screenshots
+      - name: Verify podcast playback and related controls
+        if: matrix.shard == 'playback-podcasts'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
@@ -1624,6 +1733,70 @@ jobs:
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/voice_song_download_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-voice-song-download-linux --screenshots --play-completed
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/voice_song_purchased_download_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-voice-song-purchased-download-linux --screenshots
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/voice_song_purchased_download_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --frontend-dist frontend/dist --root .build/ci-voice-song-purchased-guide-linux --case purchased_quality_guide --screenshots
+      - name: Verify playback startup without the Linux package runtime
+        if: matrix.shard == 'playback-startup'
+        # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
+          cargo build -p cumulus-desktop --example playback_power_ui_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_smoke.py --binary .build/target/debug/examples/playback_power_ui_probe --root .build/ci-playback-power-linux --screenshots
+          cargo build -p cumulus-desktop --example search_playback_read --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment control --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-control-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment v3 --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-v3-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --download --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-download-linux
+          cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
+          python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
+          python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
+          python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
+          # A bare namespace leaves loopback down and /proc/net/route empty.
+          # Bring up only loopback so proofs see an initialized, route-free table.
+          loopback_only() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              target_user=$1
+              shift
+              ip link set lo up
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$(id -un)" "$@"
+          }
+          # The transport cut alone leaves the host default route visible to the download menu.
+          offline_download_proof() {
+            loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/main_flow_smoke.py --missing-download "$@"
+          }
+          offline_download_proof --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode recall --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-recall-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_onboarding_smoke.py --mode new-uncertain --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-artist-onboarding-new-uncertain-linux
+      - name: Verify isolated playback preferences and message actions on Linux
+        if: matrix.shard == 'playback-startup'
+        run: |
+          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --features custom-protocol --locked
+          outer_network=$(readlink /proc/self/ns/net)
+          isolated_proof() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              test "$(readlink /proc/self/ns/net)" != "$1"
+              target_user=$2
+              shift 2
+              ip link set lo up
+              # A private dummy route lets WebKit produce a real online sample.
+              # No link in this namespace has a peer on the host or a gateway.
+              ip link add proof0 type dummy
+              ip addr add 192.0.2.1/24 dev proof0
+              ip link set proof0 up
+              ip route add default via 192.0.2.254 dev proof0
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$outer_network" "$(id -un)" xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
+              env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+              env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+              /usr/bin/python3 "$@"
+          }
+          isolated_proof scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe --root .build/ci-natural-eof-linux --screenshots
+          isolated_proof scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-history-settings-cohort-linux --screenshots
+          isolated_proof scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-quality-linux --screenshots
+          isolated_proof scripts/ci/message_drawer_smoke.py --read-all --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-read-all-linux --screenshots
+          isolated_proof scripts/ci/queue_click_smoke.py --daily-row --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-daily-linux --screenshots
       - name: Verify library, downloads and search
         if: matrix.shard == 'library-search'
         env:
@@ -1726,6 +1899,8 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-cold-start-linux
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 CUMULUS_TEST_WINDOW_MANAGER=openbox xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- /usr/bin/python3 scripts/ci/local_directory_selection_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-directory-selection-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-linux
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-offline-playlist-linux --screenshots
+          loopback_only env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/offline_playlist_download_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-offline-playlist-download-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_folder_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-folder-reveal-linux --screenshots
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_queue_file_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-file-reveal-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_group_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-group-hide-linux --screenshots
@@ -1745,8 +1920,8 @@ jobs:
             xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- \
             /usr/bin/python3 scripts/ci/interface_font_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe \
             --frontend-dist frontend/dist --root .build/ci-interface-font-linux --screenshots
-      - name: Verify account, platform shell, catalog and community
-        if: matrix.shard == 'account-catalog'
+      - name: Verify account and platform shell
+        if: matrix.shard == 'account-shell'
         env:
           GDK_BACKEND: x11
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -1813,6 +1988,14 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
+      - name: Verify catalog and community
+        if: matrix.shard == 'catalog-community'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-rankings-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
@@ -2087,7 +2270,7 @@ jobs:
   gate:
     name: CI gate
     if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
-    needs: [frontend, native-linux, native, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-webview, linux-webview-ux, windows-webview, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, native, windows-rust-lint, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-package-probes, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -2095,14 +2278,18 @@ jobs:
         env:
           FRONTEND: ${{ needs.frontend.result }}
           NATIVE: ${{ needs.native.result }}
+          WINDOWS_RUST_LINT: ${{ needs.windows-rust-lint.result }}
           LINUX_NATIVE: ${{ needs.native-linux.result }}
           LINUX_PACKAGE: ${{ needs.package-linux.result }}
           WINDOWS_PACKAGE: ${{ needs.package-windows.result }}
           LINUX_WEBVIEW_PROBE: ${{ needs.linux-webview-probe.result }}
+          LINUX_PACKAGE_PROBES: ${{ needs.linux-package-probes.result }}
           LINUX_WEBVIEW: ${{ needs.linux-webview.result }}
           LINUX_WEBVIEW_UX: ${{ needs.linux-webview-ux.result }}
           WINDOWS_WEBVIEW_PROBES: ${{ needs.windows-webview-probes.result }}
           WINDOWS_WEBVIEW: ${{ needs.windows-webview.result }}
+          WINDOWS_WEBVIEW_PACKAGED: ${{ needs.windows-webview-packaged.result }}
+          WINDOWS_RELEASE_RUNTIME: ${{ needs.windows-release-runtime.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
           SMTC: ${{ needs.smtc-diagnostic.result }}
@@ -2110,14 +2297,18 @@ jobs:
         run: |
           test "$FRONTEND" = success
           test "$NATIVE" = success
+          test "$WINDOWS_RUST_LINT" = success
           test "$LINUX_NATIVE" = success
           test "$LINUX_PACKAGE" = success
           test "$WINDOWS_PACKAGE" = success
           test "$LINUX_WEBVIEW_PROBE" = success
+          test "$LINUX_PACKAGE_PROBES" = success
           test "$LINUX_WEBVIEW" = success
           test "$LINUX_WEBVIEW_UX" = success
           test "$WINDOWS_WEBVIEW_PROBES" = success
           test "$WINDOWS_WEBVIEW" = success
+          test "$WINDOWS_WEBVIEW_PACKAGED" = success
+          test "$WINDOWS_RELEASE_RUNTIME" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success
           else

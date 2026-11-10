@@ -30,7 +30,7 @@ mod voice_recommendations;
 mod voice_songs;
 use cumulus_core::{
     Error,
-    account::credentials::Credentials,
+    account::{credentials::Credentials, profiles::ProfileRegistry},
     catalog::{
         search::results::SearchHotZoneSource,
         vertical_zone::{ZoneEntry, ZoneLayout, ZoneTab},
@@ -50,7 +50,11 @@ use cumulus_core::{
     storage::StateStore,
 };
 use serde_json::{Value, json};
-use std::{sync::Arc, time::Duration};
+use std::{
+    path::Path,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 use support::http::{HttpResponse, ScriptHttp, gate, reply};
 
 struct ClosedConfig;
@@ -65,6 +69,30 @@ impl TokenProvider for ClosedConfig {
     }
 }
 
+// Only the empty schema is shared. The real transports open separate files,
+// with new credentials, account/config rows and the normal durable journal.
+fn seed_empty_state(directory: &Path) {
+    static SCHEMA: OnceLock<Vec<u8>> = OnceLock::new();
+    let schema = SCHEMA.get_or_init(|| {
+        let root = tempfile::tempdir().unwrap();
+        drop(StateStore::open(root.path()).unwrap());
+        std::fs::read(root.path().join("core.sqlite3")).unwrap()
+    });
+    // Callers pass a fresh child of a private TempDir, never a reopened store.
+    std::fs::create_dir(directory).unwrap();
+    std::fs::write(directory.join("core.sqlite3"), schema).unwrap();
+}
+
+fn fixture_store(directory: &Path) -> Arc<StateStore> {
+    seed_empty_state(directory);
+    Arc::new(StateStore::open(directory).unwrap())
+}
+
+fn fixture_registry(directory: &Path) -> Arc<ProfileRegistry> {
+    seed_empty_state(directory);
+    ProfileRegistry::open(directory, ApiOrigin::Pc).unwrap()
+}
+
 struct Fixture {
     _root: tempfile::TempDir,
     client: Arc<MusicClient>,
@@ -75,7 +103,7 @@ impl Fixture {
     async fn new(responses: impl IntoIterator<Item = HttpResponse>, native: bool) -> Self {
         let root = tempfile::tempdir().unwrap();
         let account = root.path().join("profile");
-        let store = Arc::new(StateStore::open(&account).unwrap());
+        let store = fixture_store(&account);
         let credentials = Credentials::open(store, ApiOrigin::Pc).unwrap();
         let target = ApiOrigin::Pc.url();
         let original = credentials.request_credentials(&target).unwrap();
@@ -94,7 +122,7 @@ impl Fixture {
         ));
         let context = native.then(|| {
             let service = PcConfig::new(
-                Arc::new(StateStore::open(root.path().join("config")).unwrap()),
+                fixture_store(&root.path().join("config")),
                 Arc::new(ClosedConfig),
             )
             .unwrap();
@@ -111,9 +139,11 @@ impl Fixture {
         } else {
             ClientProfile::default()
         };
+        let host = root.path().join("host");
+        seed_empty_state(&host);
         let client = Arc::new(
             MusicClient::open_with_request_context(
-                &root.path().join("host"),
+                &host,
                 Some(&account),
                 profile,
                 Some(http.clone()),
@@ -477,13 +507,8 @@ fn vinyl_http_with_credentials(
     Arc<Credentials>,
 ) {
     use cumulus_core::protocol::http::{MusicHttpClient, RequestOptions, RoutingPolicy};
-    let credentials = Arc::new(
-        Credentials::open(
-            Arc::new(StateStore::open(root.join("profile")).unwrap()),
-            ApiOrigin::Pc,
-        )
-        .unwrap(),
-    );
+    let credentials =
+        Arc::new(Credentials::open(fixture_store(&root.join("profile")), ApiOrigin::Pc).unwrap());
     let url = ApiOrigin::Pc.url();
     let revision = credentials.request_credentials(&url).unwrap().revision;
     credentials
@@ -494,11 +519,8 @@ fn vinyl_http_with_credentials(
             &revision,
         )
         .unwrap();
-    let config = PcConfig::new(
-        Arc::new(StateStore::open(root.join("config")).unwrap()),
-        Arc::new(ClosedConfig),
-    )
-    .unwrap();
+    let config =
+        PcConfig::new(fixture_store(&root.join("config")), Arc::new(ClosedConfig)).unwrap();
     let context = RequestContext::from_pc(config, "3.1.42.205594", Arc::new(ClosedConfig)).unwrap();
     let http = Arc::new(ScriptHttp::new(replies));
     let client = MusicHttpClient::with_backend(

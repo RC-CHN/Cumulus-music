@@ -1,7 +1,7 @@
 use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http_with_credentials};
 use cumulus_core::{
     Error,
-    account::{AccountSession, credentials::Credentials, profiles::ProfileRegistry},
+    account::{AccountSession, credentials::Credentials},
     client::{
         MusicClient,
         dto::{PlaySelection, PlayerAction, VinylVoiceRecommendationsView},
@@ -77,7 +77,7 @@ impl Fixture {
                 json!({"code":200,"data":[{"id":SONG,"code":200,"url":"https://m1.music.126.net/episode.mp3?auth=DO_NOT_EXPORT","md5":"abc","level":"standard","expi":120}]}).into(),
             ].into_iter().chain(extra).chain(replies),
         );
-        let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+        let registry = super::fixture_registry(&root.path().join("host"));
         let session = Arc::new(AccountSession::new(native.clone(), Some(registry.store())));
         session
             .adopt(
