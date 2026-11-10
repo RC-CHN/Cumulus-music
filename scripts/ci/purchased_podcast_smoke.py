@@ -15,7 +15,8 @@ from window_manager import launch
 
 STAGES = ('mixed', 'selected', 'compact', 'normal', 'radio', 'parent', 'denied', 'more', 'ready',
           'cancelled', 'confirm', 'published')
-PLAYBACK_STAGES = ('baseline', 'radio_rejected', 'denied', 'inserted', 'paused', 'resumed')
+PLAYBACK_STAGES = ('baseline', 'radio_rejected', 'denied', 'inserted', 'paused', 'resumed',
+                   'menu', 'menu_playing', 'menu_resumed', 'menu_next', 'menu_share')
 BOUGHT = '/api/voicelist/bought/list'
 RADIO = '/api/djradio/v3/get'
 PROGRAMS = '/api/v6/dj/program/byradio'
@@ -26,6 +27,7 @@ DETAIL = '/api/dj/program/detail'
 URL = '/api/song/enhance/download/url/v1'
 PLAY_RIGHTS = '/api/dj/play/url/check'
 PLAY_URL = '/api/song/enhance/player/url/v1'
+COMMENTS = '/api/resource/commentInfo/list'
 ORDER = ['radio:81', 'episode:81', 'episode:82']
 CHOICES = [['standard', '普通（1.0M）', True], ['higher', '较高（2.0M）', False]]
 SOURCE = Path(__file__).resolve().parents[2] / 'core/tests/fixtures/tag_audio/seed.mp3'
@@ -155,21 +157,22 @@ def verify_playback(root, capture):
     assert native['paused']['position'] >= current['position']
     assert native['resumed']['position'] > native['paused']['position'] + .1
 
-    final = stages['resumed']
-    for name, count in zip(PLAYBACK_STAGES, (0, 0, 1, 2, 3, 4), strict=True):
+    final = stages['menu_share']
+    for name, count in zip(PLAYBACK_STAGES, (0, 0, 1, 2, 3, 4, 4, 5, 6, 6, 6), strict=True):
         assert stages[name]['preparations'] == final['preparations'][:count]
         assert stages[name]['selections'] == final['selections'][:count]
-    assert len(final['preparations']) == len(final['selections']) == 4
-    for prepared, selection, source, voice in zip(
-        final['preparations'], final['selections'], (old, old, current, current),
-        ('81', '82', '82', '82'), strict=True,
-    ):
+    assert len(final['preparations']) == len(final['selections']) == 6
+    for index, (prepared, selection, source, voice) in enumerate(zip(
+        final['preparations'], final['selections'], (old, old, current, current, current, current),
+        ('81', '82', '82', '82', '82', '82'), strict=True,
+    )):
         assert prepared == {
             'owner': selection['owner'], 'playId': source['playId'],
             'queueRevision': source['queueRevision'],
         }
         assert selection['kind'] == 'podcast_purchased_episode'
         assert selection['target'] == {'kind': 'episode', 'id': voice, 'revision': revision}
+        assert selection.get('menu', False) == (index >= 4)
         if voice == '81':
             assert selection['error'] == 'unavailable' and 'reply' not in selection
         else:
@@ -186,10 +189,37 @@ def verify_playback(root, capture):
     wire_allowed = [
         *wire_denied, [DETAIL, {'id': '82'}], [PLAY_RIGHTS, {'voiceId': '82'}], playback_url('182'),
     ]
-    for name, wire in zip(PLAYBACK_STAGES, (wire_old, wire_old, wire_denied,
+    for name, wire in zip(PLAYBACK_STAGES[:6], (wire_old, wire_old, wire_denied,
                                            wire_allowed, wire_allowed, wire_allowed), strict=True):
-        assert stages[name]['purchasedTrace']['calls'] == wire, stages[name]['purchasedTrace']
-    assert complete['purchasedTrace']['calls'] == wire_allowed
+        assert [call for call in stages[name]['purchasedTrace']['calls'] if call[0] != COMMENTS] == wire
+    for name in ('menu', 'menu_playing', 'menu_resumed'):
+        assert native[name]['state'] == 'playing'
+        assert all(native[name][key] == current[key] for key in stable)
+    assert stages['menu']['menuKeys'] == ['play', 'next', 'comments', 'download', 'share', 'copy']
+    appended = native['menu_next']
+    assert appended['state'] == 'paused' and appended['mode'] == 'sequential'
+    assert all(appended[key] == current[key] for key in ('song', 'voice', 'kind', 'entryId', 'playId', 'current'))
+    assert appended['queueRevision'] != current['queueRevision']
+    assert appended['rows'][:4] == current['rows']
+    assert [(row['song'], row['voice']) for row in appended['rows'][4:]] == [('181', '81')]
+    assert all(native['menu_share'][key] == appended[key] for key in stable)
+    assert stages['menu_share']['link'] == 'https://music.163.com/dj?id=82'
+    trace = [call for call in complete['purchasedTrace']['calls'] if call[0] != COMMENTS]
+    assert trace[:len(wire_allowed)] == wire_allowed
+    # A queued next program can be prefetched after insertion. Its normal
+    # rights denial must stop before a media URL; no current-source reopen.
+    assert trace[len(wire_allowed):] in ([], [[DETAIL, {'id': '81'}]],
+        [[DETAIL, {'id': '81'}], [PLAY_RIGHTS, {'voiceId': '81'}]])
+    def counts(receipt):
+        return [json.loads(args['resourceIds']) for path, args in receipt['purchasedTrace']['calls']
+                if path == COMMENTS]
+
+    # The now-playing comment affordance independently observes the loaded
+    # voice. It already ran before the first purchased row menu opened.
+    background_counts = counts(stages['resumed'])
+    assert background_counts in ([], [['82']])
+    assert counts(complete)[:len(background_counts)] == background_counts
+    assert counts(complete)[len(background_counts):] in ([], [['82'], ['82'], ['81'], ['82']])
     if sys.platform == 'linux':
         locale = read(output / 'locale.json')
         assert locale['numeric'] == 'C' and all(locale[key] != 'C' for key in ('messages', 'characters'))
@@ -197,7 +227,9 @@ def verify_playback(root, capture):
     assert [p.stem for p in pngs] == ([p.stem for p in paths] if capture else [])
     return dict(ok=True, actualWebView=True, stages=list(PLAYBACK_STAGES), screenshots=len(pngs),
                 syntheticVoice='82', syntheticMedia='182', preservedQueue=['1', '2', '3', '182'],
-                playUrlRequests=2, programEntitlementRequests=2,
+                playUrlRequests=2, foregroundProgramEntitlementRequests=2,
+                prefetchProgramEntitlementRequests=sum(call[0] == PLAY_RIGHTS for call in trace[len(wire_allowed):]),
+                menuVerified=True,
                 realMusicRequests=0, realAccountWrites=0)
 
 

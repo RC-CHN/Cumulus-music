@@ -129,9 +129,10 @@
     observe('playSelection', ([owner, selection]) => directSelections.push({ owner, kind: selection.kind }));
     observe('preparePlaySelection', ([owner, queueRevision, playId]) =>
       preparations.push({ owner, queueRevision, playId }));
-    observe('commitPreparedSelection', () => {}, ([owner, , { kind, target }], value) =>
-      selections.push({ owner, kind, target, reply: identity(value) }),
-    ([owner, , { kind, target }], error) => selections.push({ owner, kind, target, error: error?.code }));
+    observe('commitPreparedSelection', () => {}, ([owner, , { kind, target, menu }], value) =>
+      selections.push({ owner, kind, target, ...(menu ? { menu } : {}), reply: identity(value) }),
+    ([owner, , { kind, target, menu }], error) => selections.push({ owner, kind, target,
+      ...(menu ? { menu } : {}), error: error?.code }));
 
     await click(() => button('我的播客', one('.sidebar-navigation[aria-label="我的"]')), 'open My Podcasts');
     await click(() => button('我的购买', one('.podcast-tabs')), 'open My Purchases');
@@ -210,6 +211,56 @@
     }, 'same purchased program clock resumes');
     const resumed = await stage('resumed');
     assert(samePlayback(inserted, resumed), 'resume preserves the exact program and queue');
+
+    const menuFor = (id) => one(`[role="menu"][aria-label="单集菜单：合成已购单集 ${id}"]:not([inert]):not(.menu-leave-active)`);
+    const item = (id, key) => one(`[data-menu-key="${key}"]`, menuFor(id));
+    const more = (id) => one('[data-purchased-menu]', row('episode', id));
+    const opened = async (id) => wait(() => {
+      const panel = menuFor(id);
+      return panel && ready(item(id, 'play')) && settle() &&
+        !panel.classList.contains('menu-enter-active') && getComputedStyle(panel).opacity === '1' && panel;
+    }, 'painted purchased menu ' + id);
+    title('82').focus();
+    title('82').dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }));
+    const firstMenu = await opened('82');
+    const menuKeys = all('[data-menu-key]', firstMenu).map((node) => node.dataset.menuKey);
+    assert(menuKeys.join(',') === 'play,next,comments,download,share,copy' && !item('82','download').disabled,
+      'official single-program menu order and download state');
+    await stage('menu', { menuKeys });
+    await click(() => item('82','play'), 'play in menu while current voice is already playing');
+    assert((await expectSelection(5, '82')).reply?.playId === inserted.playId, 'menu Play retained source');
+    const menuPlaying = await stage('menu_playing');
+    assert(menuPlaying.state === 'playing' && samePlayback(resumed, menuPlaying), 'menu Play cannot pause');
+
+    await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    await wait(async () => (await player()).state === 'paused' && bar() === 'paused', 'same episode paused before menu Play');
+    await click(() => more('82'), 'open purchased menu by button');
+    await opened('82');
+    await click(() => item('82','play'), 'resume the paused episode from the menu');
+    assert((await expectSelection(6, '82')).reply?.playId === inserted.playId, 'menu resume retains source');
+    await wait(async () => (await player()).state === 'playing' && bar() === 'playing', 'menu resumes same episode');
+    assert(samePlayback(resumed, await stage('menu_resumed')), 'menu resume leaves entries intact');
+
+    await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    const nextBefore = await wait(async () => {
+      const view = await player();
+      return view.state === 'paused' && view.mode === 'sequential' && view;
+    }, 'native episode paused before Next');
+    await click(() => more('81'), 'open the other episode without selecting its same-ID radio');
+    await opened('81');
+    await click(() => item('81','next'), 'queue only the exact other purchased episode');
+    await wait(async () => (await queue()).tracks.some((entry) => entry.track.voiceId === '81'), 'native next row 81');
+    const next = await stage('menu_next', { previous: identity(nextBefore) });
+    assert(next.state === 'paused' && next.playId === nextBefore.playId && next.entryId === nextBefore.entryId &&
+      next.mode === 'sequential' && next.rows.map((entry) => entry.song).join(',') === '1,2,3,182,181',
+      'Next adds one program without starting or replacing the paused decoder');
+
+    await click(() => more('82'), 'open sharing for the current episode');
+    await opened('82');
+    await click(() => item('82','share'), 'share the program public link');
+    const share = await wait(() => all('dialog[open] input').find((node) =>
+      node.value === 'https://music.163.com/dj?id=82'), 'public episode link without credentials');
+    await stage('menu_share', { link: share.value });
     await emit('complete', { ok: true, stageCount: count, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { checkpoint, error: error?.message || String(error), visibleRows: rowOrder(),

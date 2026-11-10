@@ -99,6 +99,16 @@ impl Fixture {
                 assert!(matches!(args["radioId"].as_str(), Some("81" | "71")));
                 json!({"code":200,"data":{"resumePlayValue":0}})
             }
+            "/api/resource/commentInfo/list" if self.playback => {
+                let ids: Vec<String> =
+                    serde_json::from_str(args["resourceIds"].as_str().unwrap()).unwrap();
+                let [id] = ids.as_slice() else {
+                    panic!("one purchased voice comment count")
+                };
+                assert!(matches!(id.as_str(), "81" | "82"));
+                assert_eq!(args["resourceType"], 1);
+                json!({"code":200,"data":[{"threadId":format!("A_DJ_1_{id}"),"commentCount":36}]})
+            }
             "/api/dj/program/detail" if self.playback => {
                 let id = match args["id"].as_str() {
                     Some("81") => 81,
