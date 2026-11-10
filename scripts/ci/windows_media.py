@@ -121,6 +121,7 @@ def install(msys, profile='debug', primary_match='', legacy_match=''):
     # The real current plugin must load, not merely appear in a capability list.
     plugin, probe = proof_binaries(profile)
     assert plugin.is_file() and probe.is_file(), 'build the current Cumulus DSP and player probe before runtime verification'
+    player_hash = sha256(probe)
     shutil.copy2(plugin, BUILD / 'cumulus_audio_filter.dll')
     subprocess.run([str(binary / 'ffmpeg.exe'), '-nostdin', '-hide_banner', '-v', 'error',
                     '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=0.1',
@@ -144,12 +145,13 @@ def install(msys, profile='debug', primary_match='', legacy_match=''):
             raise
     pcm = native_pcm_report(result.stdout, BUILD / 'player-probe.stdout.log', BUILD / 'player-probe.log')
     write_json(BUILD / 'player-probe.json', pcm)
+    assert sha256(probe) == player_hash, 'Windows player probe changed during media verification'
     libraries = {p.name: sha256(p) for p in sorted(binary.glob('*.dll'))
                  if p.name.startswith(('avcodec-', 'avdevice-', 'avfilter-', 'avformat-', 'avutil-', 'swresample-', 'swscale-'))}
     assert len(libraries) == 7, f'FFmpeg library set changed: {sorted(libraries)}'
     receipt = {'key': plan['key'], 'package': version, 'configuration': current,
                'libraries': libraries, 'filterLoaded': True, 'nativePcmVerified': True,
-               'pluginSha256': sha256(plugin)}
+               'pluginSha256': sha256(plugin), 'playerProbeSha256': player_hash}
     if seeded_from:
         receipt['seededFrom'] = seeded_from
     write_json(BUILD / 'installed.json', receipt)

@@ -91,11 +91,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=["linux-x64", "windows-x64"], required=True)
     parser.add_argument("--windows-runtime", type=Path, help="use the verified same-attempt Windows runtime")
+    parser.add_argument("--windows-probes", type=Path, help="use the verified same-attempt Windows release probes")
     args = parser.parse_args()
     os.chdir(ROOT)
     windows = args.platform == "windows-x64"
     assert windows == (sys.platform == "win32"), "build on the target platform"
-    assert windows or args.windows_runtime is None, "the shared runtime is Windows-only"
+    if bool(args.windows_runtime) != bool(args.windows_probes):
+        parser.error("--windows-runtime and --windows-probes must be supplied together")
+    assert windows or args.windows_runtime is None, "the shared runtime and probes are Windows-only"
     version = check_versions()
     sha = git("rev-parse", "HEAD")
     assert not git("status", "--porcelain", "--untracked-files=normal"), "commit source changes before building release packages"
@@ -109,16 +112,19 @@ def main():
     runtime_receipt = None
     suffix = ".exe" if windows else ""
     filter_name = "cumulus_audio_filter.dll" if windows else "libcumulus_audio_filter.so"
-    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe", "--example", "parametric_probe"])
+    package_probes = None
     if args.windows_runtime:
-        from windows_release_runtime import restore
-        from windows_webview_inputs import ci_identity
+        from windows_package_probes import verify as verify_package_probes
+        from windows_release_runtime import MEDIA_PROOF, restore
+        from windows_webview_inputs import ci_identity, file_receipt
 
         identity = ci_identity(os.environ)
         assert sha == identity["commit"], "checkout differs from shared runtime commit"
         runtime_receipt = restore(args.windows_runtime, identity, native, include_notices=True)
         dlls, flac_decoder = runtime_receipt["dlls"], runtime_receipt["flac"]
+        package_probes = verify_package_probes(args.windows_probes, identity, native / MEDIA_PROOF)
     else:
+        run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe", "--example", "parametric_probe"])
         native.mkdir()
         shutil.copy2(target / "release" / filter_name, native / filter_name)
         if windows:
@@ -156,8 +162,17 @@ def main():
         env = {key: value for key, value in env.items() if key.upper() not in ("MPV_DLL_DIR_CUMULUS", "PATH")}
         system = Path(os.environ["SystemRoot"])
         env["PATH"] = os.pathsep.join(map(str, [portable, system / "System32", system]))
+
+    def copy_probe(destination):
+        if package_probes is None:
+            shutil.copy2(target / "release/examples" / destination.name, destination)
+        else:
+            source, expected = package_probes[destination.name]
+            shutil.copyfile(source, destination)
+            assert file_receipt(destination) == expected, "package probe changed before execution"
+
     probe = portable / f"engine_roundtrip{suffix}"
-    shutil.copy2(target / "release/examples" / probe.name, probe)
+    copy_probe(probe)
     diagnostics = ROOT / ".build" / f"ci-engine-roundtrip-{args.platform}.log"
     # Preserve partial progress even on native access violations. A failed
     # probe still fails packaging; there is no retry or skipped media gate.
@@ -170,7 +185,7 @@ def main():
     # including Unicode/quoted paths and live controls. On Windows the probe is
     # beside the exact bundled DLLs and inherits the same restricted PATH.
     eq_probe = portable / f"player_probe{suffix}"
-    shutil.copy2(target / "release/examples" / eq_probe.name, eq_probe)
+    copy_probe(eq_probe)
     eq_log = ROOT / ".build" / f"ci-equalizer-roundtrip-{args.platform}.log"
     with eq_log.open("x", encoding="utf-8") as log:
         eq = run([eq_probe, portable / filter_name, stage / "equalizer-proof"],
@@ -180,7 +195,7 @@ def main():
     eq_probe.unlink()
 
     peq_probe = portable / f"parametric_probe{suffix}"
-    shutil.copy2(target / "release/examples" / peq_probe.name, peq_probe)
+    copy_probe(peq_probe)
     peq_log = ROOT / ".build" / f"ci-parametric-roundtrip-{args.platform}.log"
     with peq_log.open("x", encoding="utf-8") as log:
         peq = run([peq_probe, portable / filter_name], env=env, stdout=subprocess.PIPE,
@@ -193,7 +208,7 @@ def main():
     # Run the pinned decoder beside the exact portable Windows DLL closure;
     # Linux uses the system libmpv required by the Debian package.
     pinned_probe = portable / f"pinned_audio_probe{suffix}"
-    shutil.copy2(target / "release/examples" / pinned_probe.name, pinned_probe)
+    copy_probe(pinned_probe)
     pinned_log = ROOT / ".build" / f"ci-pinned-audio-roundtrip-{args.platform}.log"
     with pinned_log.open("x", encoding="utf-8") as log:
         pinned = run([pinned_probe], env=env, stdout=subprocess.PIPE, stderr=log,

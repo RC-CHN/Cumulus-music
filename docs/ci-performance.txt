@@ -392,3 +392,19 @@ Windows FFmpeg 配方缓存边界
   加载拒绝；成功后才原子重写旧回执为新键。若安装后的验收失败则保留失败，
   不在已变更的 MSYS2 环境中重试冷构建。合成控制已通过，迁移和缓存命中
   仍须托管 Windows 实测。
+
+Windows 发行包媒体探针并行（候选）
+- 全绿基线 42733866949 的 Windows 打包作业 129567964277 在实际恢复
+  发行运行库前，先用 4:56 编译四支发行探针；随后 Tauri 另用 14:59，
+  并重新编译 cumulus-core 与 reqwest 等不同特性／实际 FLAC 摘要的目标。
+  这 4:56 不包含 Tauri 应用编译，也不代表完整 CI 可直接节省 4:56。
+- engine_roundtrip、pinned_audio_probe 和 parametric_probe 在独立 Windows
+  runner 用相同的锁文件和发行配置编译；无前端、MSYS2 或打包运行库依赖。
+  共享发行依赖只读恢复；该 runner 不写缓存。player_probe 继续由发行
+  运行库作业编译并实际运行一次，其可执行文件哈希进入原有媒体验证回执，
+  打包不重新链接它。
+- 打包核验两组固定文件、Windows x64 PE、大小、SHA-256 及当前提交、
+  run 和 attempt，并对照运行库验证过的 player_probe 哈希。仍在原便携
+  运行库目录、原受限 PATH 中执行全部四支探针，保留报告和最终 ZIP
+  回读；Tauri 继续用已验证的实际 FLAC 摘要和资源。后置 WebView 验收和
+  发布门禁照旧。没有新的 MSVC 托管计时前，只能确认依赖路径的变化。

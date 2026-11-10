@@ -480,7 +480,8 @@ jobs:
             mingw-w64-ucrt-x86_64-ladspa-sdk
       - name: Install pinned toolchain
         run: rustup show
-      - name: Reuse Windows release dependency builds
+      - &windows_release_dependencies
+        name: Reuse Windows release dependency builds
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           # Package writes only third-party dependencies to this key.
@@ -507,6 +508,15 @@ jobs:
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: python scripts/ci/windows_release_runtime.py --msys "$CUMULUS_MSYS2_ROOT"
+      - name: Bind the release player executable already verified by this runner
+        run: python scripts/ci/windows_package_probes.py verified-player
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-package-probes-verified-player-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes/verified-player/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-release-runtime-attempt-${{ github.run_attempt }}
@@ -516,9 +526,39 @@ jobs:
           retention-days: 3
           compression-level: 1
 
+  windows-package-probes:
+    name: Windows release package probes
+    # These core examples link without frontend assets or the native runtime.
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned toolchain
+        run: rustup show
+      - *windows_release_dependencies
+      - name: Build and bind the remaining Windows release package probes
+        env:
+          CARGO_BUILD_JOBS: '3'
+        run: python scripts/ci/windows_package_probes.py helpers
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-package-probes-helpers-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes/helpers/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+
   package-windows:
     name: Package and verify (windows-x64)
-    needs: [frontend, windows-release-runtime]
+    needs: [frontend, windows-release-runtime, windows-package-probes]
     runs-on: windows-2022
     timeout-minutes: 150
     defaults:
@@ -560,6 +600,14 @@ jobs:
         with:
           name: windows-release-runtime-attempt-${{ github.run_attempt }}
           path: .build/windows-release-runtime
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-package-probes-helpers-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes/helpers
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-package-probes-verified-player-attempt-${{ github.run_attempt }}
+          path: .build/windows-package-probes/verified-player
       - run: npm --prefix frontend ci
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -569,7 +617,10 @@ jobs:
         env:
           # Scope the concurrency trial to Release; debug and GUI keep the default.
           CARGO_BUILD_JOBS: '3'
-        run: python scripts/ci/package.py --platform windows-x64 --windows-runtime .build/windows-release-runtime
+        run: >-
+          python scripts/ci/package.py --platform windows-x64
+          --windows-runtime .build/windows-release-runtime
+          --windows-probes .build/windows-package-probes
       # The portable runtime, FLAC and local-queue proofs consume this exact
       # package in parallel with the other Windows regression shards.
       - name: Archive synthetic failure diagnostics
@@ -2108,7 +2159,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native-linux, native, windows-rust-lint, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-package-probes, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, native, windows-rust-lint, package-linux, package-windows, windows-webview-probes, linux-webview-probe, linux-package-probes, linux-webview, linux-webview-ux, windows-webview, windows-webview-packaged, windows-release-runtime, windows-package-probes, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -2128,6 +2179,7 @@ jobs:
           WINDOWS_WEBVIEW: ${{ needs.windows-webview.result }}
           WINDOWS_WEBVIEW_PACKAGED: ${{ needs.windows-webview-packaged.result }}
           WINDOWS_RELEASE_RUNTIME: ${{ needs.windows-release-runtime.result }}
+          WINDOWS_PACKAGE_PROBES: ${{ needs.windows-package-probes.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
           SMTC: ${{ needs.smtc-diagnostic.result }}
@@ -2147,6 +2199,7 @@ jobs:
           test "$WINDOWS_WEBVIEW" = success
           test "$WINDOWS_WEBVIEW_PACKAGED" = success
           test "$WINDOWS_RELEASE_RUNTIME" = success
+          test "$WINDOWS_PACKAGE_PROBES" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success
           else
