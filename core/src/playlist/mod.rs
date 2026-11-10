@@ -16,8 +16,8 @@ pub use external_input::{
 };
 pub use local_membership::{
     PlaylistLocalChange, PlaylistLocalMembership, PlaylistLocalMutation, PlaylistLocalRef,
-    PlaylistLocalRow, PlaylistLocalStore, PlaylistMixedOrderRow, PlaylistMixedReorderEvidence,
-    PlaylistMixedReorderReceipt,
+    PlaylistLocalRow, PlaylistLocalStore, PlaylistMixedOrderRow, PlaylistMixedRemoveReceipt,
+    PlaylistMixedReorderEvidence, PlaylistMixedReorderReceipt,
 };
 pub use service::PlaylistService;
 pub(crate) use service::{GroupDownloadLikedOrigin, GroupDownloadPlaylistProof};

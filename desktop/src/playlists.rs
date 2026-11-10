@@ -2,7 +2,7 @@ use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
     playlist::{
         ExternalPlaylistInput, PlaylistCommand, PlaylistLocalChange, PlaylistMixedOrderRow,
-        PlaylistMixedReorderReceipt, preview_external_playlist_inputs,
+        PlaylistMixedRemoveReceipt, PlaylistMixedReorderReceipt, preview_external_playlist_inputs,
     },
 };
 #[tauri::command]
@@ -134,6 +134,44 @@ pub async fn reconcile_playlist_mixed_reorder(
 ) -> Result<AccountData<PlaylistMixedReorderReceipt>, ClientError> {
     client
         .reconcile_playlist_mixed_reorder(&epoch, &id, &operation_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn remove_playlist_mixed(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    revision: String,
+    selected: Vec<PlaylistMixedOrderRow>,
+) -> Result<AccountData<PlaylistMixedRemoveReceipt>, ClientError> {
+    client
+        .remove_playlist_mixed(&epoch, &id, &revision, selected)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn playlist_mixed_remove_receipt(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+) -> Result<AccountData<Option<PlaylistMixedRemoveReceipt>>, ClientError> {
+    client
+        .playlist_mixed_remove_receipt(&epoch, &id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn reconcile_playlist_mixed_remove(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    operation_id: String,
+) -> Result<AccountData<PlaylistMixedRemoveReceipt>, ClientError> {
+    client
+        .reconcile_playlist_mixed_remove(&epoch, &id, &operation_id)
         .await
         .map_err(Into::into)
 }

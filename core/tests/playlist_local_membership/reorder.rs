@@ -1,5 +1,6 @@
 use super::*;
 use cumulus_core::playlist::{PlaylistMixedOrderRow, PlaylistMixedReorderEvidence, PlaylistPhase};
+use cumulus_core::protocol::api::{GuardedPlaylistRemove, PlaylistAddPermission};
 use std::{
     path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
@@ -12,6 +13,7 @@ const UPDATE: &str = "/api/v1/playlist/manipulate/tracks";
 #[derive(Clone, Copy)]
 enum Reply {
     Ack,
+    AckNotApplied,
     Lost,
     Reject,
     NotSent,
@@ -22,6 +24,8 @@ struct ReorderServer {
     detail: Mutex<Value>,
     writes: Mutex<Vec<Value>>,
     reply: Reply,
+    scope: Mutex<String>,
+    rotate_scope_at_dispatch: AtomicBool,
     hold: AtomicBool,
     entered: Notify,
     release: Notify,
@@ -39,6 +43,8 @@ impl ReorderServer {
             detail: Mutex::new(detail),
             writes: Mutex::new(Vec::new()),
             reply,
+            scope: Mutex::new("fixture-a".into()),
+            rotate_scope_at_dispatch: AtomicBool::new(false),
             hold: AtomicBool::new(false),
             entered: Notify::new(),
             release: Notify::new(),
@@ -58,6 +64,29 @@ impl ReorderServer {
 }
 
 impl Api for ReorderServer {
+    fn local_collection_scope_revision(&self) -> Result<Option<String>> {
+        Ok(Some(self.scope.lock().unwrap().clone()))
+    }
+
+    fn request_guarded_playlist_remove<'a>(
+        &'a self,
+        write: GuardedPlaylistRemove,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            assert_eq!(revision, self.scope.lock().unwrap().as_str());
+            if self.rotate_scope_at_dispatch.swap(false, Ordering::SeqCst) {
+                *self.scope.lock().unwrap() = "fixture-b".into();
+            }
+            let (path, payload) = write.into_request()?;
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            self.request(path, payload, false).await
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             assert!(!cache);
@@ -68,7 +97,8 @@ impl Api for ReorderServer {
                 }
                 UPDATE => {
                     assert_eq!(payload["pid"], "73");
-                    assert_eq!(payload["op"], "update");
+                    let op = payload["op"].as_str().unwrap().to_owned();
+                    assert!(matches!(op.as_str(), "update" | "del"));
                     assert!(payload.get("imme").is_none());
                     let ids: Vec<String> =
                         serde_json::from_str(payload["trackIds"].as_str().unwrap()).unwrap();
@@ -80,20 +110,40 @@ impl Api for ReorderServer {
                     if matches!(self.reply, Reply::Ack | Reply::Lost | Reply::MissingCode) {
                         let mut detail = self.detail.lock().unwrap();
                         let original = detail["trackIds"].as_array().unwrap();
-                        detail["trackIds"] = json!(
-                            ids.iter()
-                                .map(|id| {
-                                    original
-                                        .iter()
-                                        .find(|row| row["id"].to_string().trim_matches('"') == id)
-                                        .expect("update leaked local ID or changed membership")
-                                        .clone()
-                                })
-                                .collect::<Vec<_>>()
-                        );
+                        detail["trackIds"] = if op == "update" {
+                            json!(
+                                ids.iter()
+                                    .map(|id| {
+                                        original
+                                            .iter()
+                                            .find(|row| {
+                                                row["id"].to_string().trim_matches('"') == id
+                                            })
+                                            .expect("update leaked local ID or changed membership")
+                                            .clone()
+                                    })
+                                    .collect::<Vec<_>>()
+                            )
+                        } else {
+                            assert!(
+                                ids.iter().all(|id| original
+                                    .iter()
+                                    .any(|row| { row["id"].to_string().trim_matches('"') == id })),
+                                "delete leaked a device ID or an unrecognized online selection"
+                            );
+                            json!(
+                                original
+                                    .iter()
+                                    .filter(|row| {
+                                        !ids.iter()
+                                            .any(|id| row["id"].to_string().trim_matches('"') == id)
+                                    })
+                                    .collect::<Vec<_>>()
+                            )
+                        };
                     }
                     match self.reply {
-                        Reply::Ack => Ok(json!({"code":"200"})),
+                        Reply::Ack | Reply::AckNotApplied => Ok(json!({"code":"200"})),
                         Reply::Lost => Err(Error::Transport("synthetic lost response".into())),
                         Reply::Reject => Ok(json!({"code":405, "msg":"synthetic"})),
                         Reply::NotSent => Err(Error::RequestNotSent(Box::new(Error::Cancelled))),
@@ -150,6 +200,234 @@ impl Fixture {
 
 fn online(id: u32) -> PlaylistMixedOrderRow {
     PlaylistMixedOrderRow::Online { id: id.to_string() }
+}
+
+#[tokio::test]
+async fn mixed_delete_sends_only_selected_online_ids_in_order_and_retains_colliding_remote() {
+    let fixture = Fixture::new(&[10, 20, 30], Reply::Ack).await;
+    let (client, session) = fixture.open();
+    let collision = "9".repeat(64);
+    let local_collision = PlaylistLocalRef {
+        id: collision.clone(),
+        revision: "b".repeat(64),
+    };
+    // Synthetic stored binding, using a valid all-decimal digest to exercise
+    // the exact collision of the independent device and catalog namespaces.
+    ProfileRegistry::open(&fixture.profile, ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .put(
+            "9",
+            "playlist-local-membership-v1",
+            "73",
+            &json!({"generation":8,"local":[
+                {"position":1,"reference":fixture.rows[0]},
+                {"position":3,"reference":local_collision}
+            ]}),
+        )
+        .unwrap();
+    fixture.api.detail.lock().unwrap()["trackIds"] =
+        json!([{"id":10,"v":0},{"id":collision,"v":0},{"id":20,"v":0},{"id":30,"v":0}]);
+    let before = fixture.api.current(&session);
+    let receipt = client
+        .remove_playlist_mixed(
+            "1",
+            "73",
+            &before.revision,
+            vec![
+                online(30),
+                PlaylistMixedOrderRow::Local(local_collision),
+                online(10),
+            ],
+        )
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(receipt.phase, PlaylistPhase::Confirmed);
+    assert_eq!(
+        receipt.evidence,
+        Some(PlaylistMixedReorderEvidence::Acknowledged)
+    );
+    assert_eq!(
+        *fixture.api.writes.lock().unwrap(),
+        [json!({
+            "pid":"73", "op":"del", "trackIds":"[\"30\",\"10\"]"
+        })]
+    );
+    assert_eq!(
+        fixture.api.detail.lock().unwrap()["trackIds"],
+        json!([{"id":collision,"v":0},{"id":20,"v":0}])
+    );
+    let after = fixture.api.current(&session);
+    assert_eq!(
+        after.rows,
+        [
+            PlaylistLocalRow::Local(fixture.rows[0].clone()),
+            PlaylistLocalRow::Remote { index: 0 },
+            PlaylistLocalRow::Remote { index: 1 }
+        ]
+    );
+    assert_eq!(after.generation(), Some(9));
+    assert!(
+        client
+            .playlist_mixed_reorder_receipt("1", "73")
+            .unwrap()
+            .value
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn mixed_delete_readback_is_send_once_and_can_confirm_last_device_row_after_restart() {
+    for reply in [Reply::Lost, Reply::AckNotApplied] {
+        let fixture = Fixture::new(&[10, 20], reply).await;
+        let (client, session) = fixture.open();
+        let before = fixture.api.current(&session);
+        let receipt = client
+            .remove_playlist_mixed(
+                "1",
+                "73",
+                &before.revision,
+                vec![fixture.local(0), online(20), fixture.local(1), online(10)],
+            )
+            .await
+            .unwrap()
+            .value;
+        assert_eq!(receipt.phase, PlaylistPhase::Uncertain);
+        let pending = fixture.api.current(&session);
+        assert_eq!(pending.generation(), before.generation());
+        assert!(
+            pending
+                .rows
+                .contains(&PlaylistLocalRow::Local(fixture.rows[0].clone()))
+        );
+        assert!(matches!(
+            client
+                .move_playlist_mixed("1", "73", &pending.revision, vec![fixture.local(0)], 0)
+                .await,
+            Err(Error::MutationUncertain)
+        ));
+        assert!(matches!(
+            client
+                .mutate_playlist_local("1", "73", &pending.revision, remove(&fixture.rows))
+                .await,
+            Err(Error::MutationUncertain)
+        ));
+        drop(client);
+        drop(session);
+
+        let (client, session) = fixture.open();
+        assert_eq!(
+            client
+                .playlist_mixed_remove_receipt("1", "73")
+                .unwrap()
+                .value,
+            Some(receipt.clone())
+        );
+        let (other, _, _) = open(&fixture.profile, fixture.api.clone(), Some(10));
+        assert!(matches!(
+            other
+                .reconcile_playlist_mixed_remove("1", "73", &receipt.operation_id)
+                .await,
+            Err(Error::StaleResponse)
+        ));
+        fixture.api.detail.lock().unwrap()["trackIds"] = json!([{"id":30,"v":0}]);
+        assert_eq!(
+            client
+                .reconcile_playlist_mixed_remove("1", "73", &receipt.operation_id)
+                .await
+                .unwrap()
+                .value
+                .phase,
+            PlaylistPhase::Uncertain
+        );
+        fixture.api.detail.lock().unwrap()["trackIds"] = json!([]);
+        let settled = client
+            .reconcile_playlist_mixed_remove("1", "73", &receipt.operation_id)
+            .await
+            .unwrap()
+            .value;
+        assert_eq!(settled.phase, PlaylistPhase::Confirmed);
+        assert_eq!(
+            settled.evidence,
+            Some(PlaylistMixedReorderEvidence::ChangedReadback)
+        );
+        let after = fixture.api.current(&session);
+        assert!(after.rows.is_empty());
+        assert_eq!(
+            after.generation(),
+            before.generation().map(|version| version + 1)
+        );
+        assert_eq!(fixture.api.writes.lock().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn mixed_delete_rejects_ambiguous_detail_and_stale_device_refs_without_any_write() {
+    let fixture = Fixture::new(&[10, 20], Reply::Ack).await;
+    let (client, session) = fixture.open();
+    let before = fixture.api.current(&session);
+    let mut stale = fixture.rows[0].clone();
+    stale.revision = "e".repeat(64);
+    for selection in [
+        vec![fixture.local(0)],
+        vec![online(10), online(10)],
+        vec![online(10), PlaylistMixedOrderRow::Local(stale)],
+    ] {
+        assert!(matches!(
+            client
+                .remove_playlist_mixed("1", "73", &before.revision, selection)
+                .await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    fixture.api.detail.lock().unwrap()["creator"] = json!({"userId":10});
+    assert!(matches!(
+        client
+            .remove_playlist_mixed("1", "73", &before.revision, vec![online(10)])
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    fixture.api.detail.lock().unwrap()["creator"] = json!({"userId":9});
+    fixture.api.detail.lock().unwrap()["trackIds"][0]["v"] = json!(-1);
+    let unbound = fixture.api.current(&session);
+    assert!(matches!(
+        client
+            .remove_playlist_mixed("1", "73", &unbound.revision, vec![online(20)])
+            .await,
+        Err(Error::State(_))
+    ));
+    assert!(fixture.api.writes.lock().unwrap().is_empty());
+    assert!(
+        client
+            .playlist_mixed_remove_receipt("1", "73")
+            .unwrap()
+            .value
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn mixed_delete_refuses_a_credential_change_at_the_actual_dispatch_boundary() {
+    let fixture = Fixture::new(&[10, 20], Reply::Ack).await;
+    let (client, session) = fixture.open();
+    let before = fixture.api.current(&session);
+    fixture
+        .api
+        .rotate_scope_at_dispatch
+        .store(true, Ordering::SeqCst);
+    let receipt = client
+        .remove_playlist_mixed("1", "73", &before.revision, vec![online(10)])
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(receipt.phase, PlaylistPhase::Rejected);
+    assert_eq!(
+        receipt.evidence,
+        Some(PlaylistMixedReorderEvidence::NotSent)
+    );
+    assert!(fixture.api.writes.lock().unwrap().is_empty());
+    assert_eq!(fixture.api.current(&session), before);
 }
 
 #[tokio::test]

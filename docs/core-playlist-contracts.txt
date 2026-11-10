@@ -93,7 +93,8 @@ Rust 纯本地增删先以当前账号读取完整 /api/v6/playlist/detail，确
 
 本机成员未同步到其他设备。远端 v=-1 行是没有可靠设备绑定的占位项，既不按数字 ID
 猜本机文件，也不能用本机增删移除。已绑定设备成员的 Rust 混合重排见
-playlist-mixed-reorder-contracts.txt；混合增删、自动云盘上传后换绑仍是独立缺口。
+playlist-mixed-reorder-contracts.txt；有在线项的混合删除见
+playlist-mixed-remove-contracts.txt。混合添加、自动云盘上传后换绑仍是独立缺口。
 测试使用合成服务和本地 SQLite；没有使用真实账号或线上写请求。
 
 状态机、持久化与账号隔离

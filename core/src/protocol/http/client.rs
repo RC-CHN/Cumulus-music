@@ -9,11 +9,11 @@ use crate::{
     protocol::{
         api::{
             Api, ApiFuture, CopyrightNotificationRead, DailyNotificationRead, GuardedPlaylistAdd,
-            GuardedPlaylistCreate, GuardedSongLike, LyricBountyPermission, MESSAGE_COUNT_PATH,
-            MESSAGE_READ_ALL_PATH, MessageReadAllPermission, PlaybackChorusPermission,
-            PlaybackChorusRead, PlayerPodcastResumeRead, PlayerPodcastResumeWrite,
-            PlaylistAddPermission, SongCardLikedRead, SongLikePermission, SystemLikedRead,
-            VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            GuardedPlaylistCreate, GuardedPlaylistRemove, GuardedSongLike, LyricBountyPermission,
+            MESSAGE_COUNT_PATH, MESSAGE_READ_ALL_PATH, MessageReadAllPermission,
+            PlaybackChorusPermission, PlaybackChorusRead, PlayerPodcastResumeRead,
+            PlayerPodcastResumeWrite, PlaylistAddPermission, SongCardLikedRead, SongLikePermission,
+            SystemLikedRead, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
             VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
             VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
             VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
@@ -2213,6 +2213,30 @@ impl Api for MusicHttpClient {
                 payload,
                 false,
                 None,
+                Jsk::None,
+                Some(RequestBinding::PlaylistWrite {
+                    permission,
+                    dispatched,
+                }),
+            )
+            .await
+        })
+    }
+
+    fn request_guarded_playlist_remove<'a>(
+        &'a self,
+        write: GuardedPlaylistRemove,
+        revision: &'a str,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = write.into_request()?;
+            self.execute(
+                path,
+                payload,
+                false,
+                Some(revision),
                 Jsk::None,
                 Some(RequestBinding::PlaylistWrite {
                     permission,

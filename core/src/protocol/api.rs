@@ -93,6 +93,38 @@ pub struct GuardedPlaylistAdd {
     songs: Vec<String>,
 }
 
+/// The recovered mixed unfav branch is a fixed remove; device IDs are never
+/// part of its wire payload and the ordinary editor's `imme` is absent.
+pub struct GuardedPlaylistRemove {
+    playlist: String,
+    songs: Vec<String>,
+}
+
+impl GuardedPlaylistRemove {
+    pub(crate) const PATH: &str = GuardedPlaylistAdd::PATH;
+
+    pub(crate) fn new(playlist: String, songs: Vec<String>) -> Result<Self> {
+        if songs.is_empty() || songs.len() > 100_000 {
+            return Err(Error::InvalidInput("invalid guarded remove selection"));
+        }
+        Ok(Self { playlist, songs })
+    }
+
+    pub fn into_request(self) -> Result<(&'static str, Value)> {
+        let ids = packed_ids(
+            &self
+                .songs
+                .into_iter()
+                .map(Value::String)
+                .collect::<Vec<_>>(),
+        )?;
+        Ok((
+            Self::PATH,
+            json!({"pid":identifier(&json!(self.playlist))?,"trackIds":ids,"op":"del"}),
+        ))
+    }
+}
+
 pub struct GuardedPlaylistCreate {
     uid: String,
     name: String,
@@ -831,6 +863,16 @@ pub trait Api: Send + Sync + std::any::Any {
         _dispatched: &'a std::sync::atomic::AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async { Err(Error::State("guarded playlist add is unavailable")) })
+    }
+
+    fn request_guarded_playlist_remove<'a>(
+        &'a self,
+        _write: GuardedPlaylistRemove,
+        _revision: &'a str,
+        _permission: &'a PlaylistAddPermission<'a>,
+        _dispatched: &'a std::sync::atomic::AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("guarded mixed playlist remove is unavailable")) })
     }
 
     fn request_guarded_playlist_create<'a>(

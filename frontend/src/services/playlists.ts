@@ -77,6 +77,7 @@ export interface PlaylistMixedReorderReceipt {
   evidence: 'acknowledged' | 'changed_readback' | 'explicit_rejection' | 'not_sent' | null;
   serviceCode: number | null;
 }
+export type PlaylistMixedRemoveReceipt = PlaylistMixedReorderReceipt;
 export type ExternalPlaylistSource = 'qq' | 'kugou' | 'kuwo' | 'xiaomi';
 export type ExternalPlaylistInput =
   | { kind: 'empty' }
@@ -116,6 +117,21 @@ export interface PlaylistClient {
     id: string,
     operationId: string,
   ): Promise<AccountData<PlaylistMixedReorderReceipt>>;
+  removePlaylistMixed(
+    epoch: string,
+    id: string,
+    revision: string,
+    selected: PlaylistMixedOrderRow[],
+  ): Promise<AccountData<PlaylistMixedRemoveReceipt>>;
+  playlistMixedRemoveReceipt(
+    epoch: string,
+    id: string,
+  ): Promise<AccountData<PlaylistMixedRemoveReceipt | null>>;
+  reconcilePlaylistMixedRemove(
+    epoch: string,
+    id: string,
+    operationId: string,
+  ): Promise<AccountData<PlaylistMixedRemoveReceipt>>;
 }
 export const playlistPending = (phase: PlaylistPhase) =>
   ['sending', 'verifying', 'uncertain'].includes(phase);

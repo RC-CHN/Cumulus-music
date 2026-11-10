@@ -3,7 +3,7 @@ use crate::{
     Result,
     playlist::{
         PlaylistLocalChange, PlaylistLocalMutation, PlaylistLocalStore, PlaylistMixedOrderRow,
-        PlaylistMixedReorderReceipt,
+        PlaylistMixedRemoveReceipt, PlaylistMixedReorderReceipt,
     },
 };
 
@@ -87,6 +87,55 @@ impl MusicClient {
         let token = self.playlist_token(epoch)?;
         let value = PlaylistLocalStore::new(self.session.clone())?
             .reconcile_mixed_reorder(&token, id, operation_id)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+
+    pub async fn remove_playlist_mixed(
+        &self,
+        epoch: &str,
+        id: &str,
+        expected_revision: &str,
+        selected: Vec<PlaylistMixedOrderRow>,
+    ) -> Result<AccountData<PlaylistMixedRemoveReceipt>> {
+        let token = self.playlist_token(epoch)?;
+        let value = PlaylistLocalStore::new(self.session.clone())?
+            .remove_mixed(&token, id, expected_revision, selected)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+
+    pub fn playlist_mixed_remove_receipt(
+        &self,
+        epoch: &str,
+        id: &str,
+    ) -> Result<AccountData<Option<PlaylistMixedRemoveReceipt>>> {
+        let token = self.playlist_token(epoch)?;
+        let value =
+            PlaylistLocalStore::new(self.session.clone())?.mixed_remove_receipt(&token, id)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+
+    pub async fn reconcile_playlist_mixed_remove(
+        &self,
+        epoch: &str,
+        id: &str,
+        operation_id: &str,
+    ) -> Result<AccountData<PlaylistMixedRemoveReceipt>> {
+        let token = self.playlist_token(epoch)?;
+        let value = PlaylistLocalStore::new(self.session.clone())?
+            .reconcile_mixed_remove(&token, id, operation_id)
             .await?;
         self.session.check_generation(&token)?;
         Ok(AccountData {
