@@ -397,7 +397,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [a, b]
+        shard: [a, b, c]
     runs-on: windows-2022
     timeout-minutes: 150
     defaults:
@@ -534,6 +534,7 @@ jobs:
           python3 scripts/ci/windows_native_shard.py --verify
           "$RUNNER_TEMP/windows-native-receipts/cumulus-native-a.jsonl"
           "$RUNNER_TEMP/windows-native-receipts/cumulus-native-b.jsonl"
+          "$RUNNER_TEMP/windows-native-receipts/cumulus-native-c.jsonl"
 
   windows-release-runtime:
     name: Windows release media runtime

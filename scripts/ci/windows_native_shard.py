@@ -9,21 +9,25 @@ import subprocess
 import sys
 
 
-SHARDS = ("a", "b")
-# Published RC.2 timings identify the largest suites. Balance those explicitly;
-# hash the remaining inventory so newly added tests always get an owner.
+SHARDS = ("a", "b", "c")
+# Hosted run 42771356552 timed all 416 targets. Balance the core suites that
+# took at least 20 seconds; hash the rest so new targets always get an owner.
 HEAVY = {
-    "a": frozenset(("client_downloads", "client_cloud", "client_player", "completed_downloads")),
-    "b": frozenset(("relay_publication", "pc_experiment_transport", "download_directory",
-                    "client_together", "history")),
+    "a": frozenset(("download_directory", "client_cloud", "completed_downloads",
+                    "cumulus_core", "client_relay_publication", "cloud_upload")),
+    "b": frozenset(("pc_experiment_transport", "relay_publication", "client_player",
+                    "client_fm", "effects_service", "client_podcast")),
+    "c": frozenset(("client_downloads", "client_together", "history", "cloud_download",
+                    "download_service", "playback_controller")),
 }
 
 
 def owner(target):
-    name = target[1].rsplit("/", 1)[-1]
-    for shard, names in HEAVY.items():
-        if target[0] == "core" and name in names:
-            return shard
+    if target[0] == "core" and target[1].startswith("deps/"):
+        name = target[1].removeprefix("deps/")
+        for shard, names in HEAVY.items():
+            if name in names:
+                return shard
     return SHARDS[hashlib.sha256("\0".join(target).encode()).digest()[0] % len(SHARDS)]
 
 
@@ -78,9 +82,11 @@ def verify(receipts):
         if not entries or all(status is None for status in entries.values()):
             raise ValueError(f"empty Windows Rust shard {shard}")
         inventories[shard] = entries
-    first, second = (inventories[shard].keys() for shard in SHARDS)
-    if first != second:
-        raise ValueError(f"Windows Cargo test inventories differ: {sorted(first ^ second)}")
+    first = inventories[SHARDS[0]].keys()
+    for shard in SHARDS[1:]:
+        targets = inventories[shard].keys()
+        if targets != first:
+            raise ValueError(f"Windows Cargo test inventories differ on {shard}: {sorted(first ^ targets)}")
     print(f"Verified {len(first)} Cargo test targets across Windows Rust shards: " + ", ".join(
         f"{shard}={sum(status is not None for status in inventories[shard].values())}" for shard in SHARDS
     ))
