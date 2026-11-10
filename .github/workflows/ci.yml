@@ -499,7 +499,10 @@ jobs:
             .build/target/release/.fingerprint
             .build/target/release/build
             .build/target/release/deps
-          key: rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
+          key: rust-windows-2022-release-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
+            rust-windows-2022-release-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-
       - name: Stage the exact native files shared with packaging
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
@@ -547,7 +550,12 @@ jobs:
             .build/target/release/.fingerprint
             .build/target/release/build
             .build/target/release/deps
-          key: rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
+          key: rust-windows-2022-release-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          # Restore only compatible dependency builds across version changes.
+          # The v1 archive can seed v2 only at an exact manifest match.
+          restore-keys: |
+            rust-windows-2022-release-deps-v1-${{ hashFiles('**/Cargo.toml', 'Cargo.lock', '.cargo/config.toml', 'rust-toolchain.toml') }}
+            rust-windows-2022-release-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-release-runtime-attempt-${{ github.run_attempt }}
