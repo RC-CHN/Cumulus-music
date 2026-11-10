@@ -1,6 +1,7 @@
 import type { CoreClient, PlaylistView, TrackView } from './contracts';
 import type { MenuItem } from './menu';
 
+export const offlineQueueMenuPrefix = 'queue-offline:';
 export type PlaylistMenuScene = 'collection' | 'detail';
 export type PlaylistActionTarget = Pick<PlaylistView, 'id' | 'name' | 'owned' | 'private'> &
   Partial<Pick<PlaylistView, 'trackCount' | 'creator'>>;

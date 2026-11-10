@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import { playlistCoverCount, playlistDate } from '../../services/playlistHeader';
+import { offlineQueueMenuPrefix } from '../../services/playlistMenu';
 import type { PlaylistView } from '../../services/contracts';
 import type { MenuItem } from '../../services/menu';
 import ActionMenu from '../ActionMenu.vue';
@@ -28,7 +29,9 @@ const coverCount = computed(() =>
 );
 const date = computed(() => playlistDate(props.playlist.headerDate?.timestampMs));
 const menuItems = computed(() =>
-  props.offline ? props.items.filter((item) => item.key === 'queue-offline') : props.items,
+  props.offline
+    ? props.items.filter((item) => item.key.startsWith(offlineQueueMenuPrefix))
+    : props.items,
 );
 const failedAvatar = ref<string>();
 const emit = defineEmits<{
@@ -197,6 +200,7 @@ function play(event: MouseEvent) {
           <ActionMenu
             variant="song"
             v-if="menuItems.length"
+            :key="offline ? menuItems[0]?.key : 'live'"
             label="更多歌单操作"
             :items="menuItems"
             @select="$emit('action', $event)"

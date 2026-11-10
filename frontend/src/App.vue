@@ -117,6 +117,7 @@ import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import { usePlaylistCommentTab } from './composables/usePlaylistCommentTab';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
 import {
+  offlineQueueMenuPrefix,
   playlistMenuItems,
   type PlaylistActionTarget,
   type PlaylistMenuScene,
@@ -4487,12 +4488,13 @@ const searchKnownPlaylistIds = computed(() =>
 );
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
   if (cachedPlaylist.value && playlistPanelId() === list.id) {
-    if (scene !== 'detail') return [];
+    const revision = result.value?.playlistLocal?.revision;
+    if (scene !== 'detail' || !revision) return [];
     const special =
       player.view.value?.fm || !!player.view.value?.intelligence || !!together.view.value?.attached;
     return [
       {
-        key: 'queue-offline',
+        key: `${offlineQueueMenuPrefix}${account.value.epoch}:${list.id}:${revision}:${cachedPlaylist.value.cachedAtMs}`,
         label: '添加全部至播放列表',
         icon: 'list',
         disabled:
@@ -4583,7 +4585,7 @@ function scopedPlaylistQueue(id: string, track?: TrackView) {
 function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
   const item = playlistMenu(list, scene).find((item) => item.key === key);
   if (!item || item.disabled) return;
-  if (key === 'queue-offline') {
+  if (key.startsWith(offlineQueueMenuPrefix)) {
     const scoped = scopedOfflinePlaylistQueue(list.id);
     if (scoped) playlistActions.value?.show(list, 'queue', scoped);
   } else if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
