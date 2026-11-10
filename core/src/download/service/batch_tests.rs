@@ -137,6 +137,96 @@ impl Fixture {
 }
 
 #[tokio::test]
+async fn ordinary_and_receipt_entries_share_the_native_song_admission_in_both_orders() {
+    use crate::{download::service::CatalogAdmission, library::LocalLibrary};
+    use std::{cell::Cell, sync::mpsc, thread};
+
+    let f = Fixture::new().await;
+    let token = f.service.session.token().unwrap();
+    let library = LocalLibrary::new(f.service.store.clone()).unwrap();
+    let ordinary = |song: &str| {
+        f.service.admit_catalog_songs(
+            &token,
+            &library,
+            vec![song.into()],
+            DownloadOptions::default(),
+            &AtomicBool::new(false),
+        )
+    };
+    let scope = || OperationLock::acquire(f.root.path(), "test", "scope");
+    let batch = |receipt: &str, ids: &[&str]| GuardedSongBatch {
+        receipt: receipt.into(),
+        admission: SongBatchAdmission::LikedAnchor("42".into()),
+        songs: ids.iter().map(|id| (*id).into()).collect(),
+        options: DownloadOptions::default(),
+        existing: Arc::new(BTreeMap::new()),
+    };
+    let (started, entered) = mpsc::sync_channel(1);
+    let (release, released) = mpsc::sync_channel(1);
+    thread::scope(|threads| {
+        let service = &f.service;
+        let scope = &scope;
+        let plan = batch("receipt-first", &["31"]);
+        let peer = threads.spawn(move || {
+            let first = Cell::new(true);
+            service.create_guarded_song_batch(
+                plan,
+                &|| {
+                    if first.replace(false) {
+                        started.send(()).unwrap();
+                        released.recv_timeout(Duration::from_secs(5)).unwrap();
+                    }
+                    scope()
+                },
+                &AtomicBool::new(false),
+            )
+        });
+        entered.recv_timeout(Duration::from_secs(5)).unwrap();
+        let concurrent = ordinary("31");
+        release.send(()).unwrap();
+        assert!(matches!(concurrent, Err(Error::MutationBusy)));
+        assert_eq!(peer.join().unwrap().unwrap().len(), 1);
+    });
+    assert!(matches!(
+        ordinary("31").unwrap()[0].1,
+        Ok(CatalogAdmission::Waiting)
+    ));
+
+    let mut generic = ordinary("61").unwrap();
+    let Ok(CatalogAdmission::Admitted(id)) = generic.remove(0).1 else {
+        panic!("ordinary entry did not admit a fresh task")
+    };
+    assert!(matches!(
+        f.service.create_guarded_song_batch(
+            batch("ordinary-first", &["62", "61"]),
+            &scope,
+            &AtomicBool::new(false),
+        ),
+        Err(Error::State("song already has a download"))
+    ));
+    assert!(matches!(
+        f.service.create_guarded_song(
+            &json!(61),
+            DownloadOptions::default(),
+            &|| Ok(()),
+            &AtomicBool::new(false),
+            || panic!("duplicate single receipt committed"),
+        ),
+        Err(Error::State("song already has a download"))
+    ));
+    let tasks = f.service.list().unwrap();
+    assert_eq!(tasks.len(), 2);
+    assert!(tasks.iter().any(|task| task.id == id));
+    assert_eq!(
+        std::fs::read_dir(f.root.path().join("out"))
+            .unwrap()
+            .count(),
+        2
+    );
+    assert!(f.wire.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn mixed_admission_keeps_old_task_and_schedules_its_new_position() {
     let f = Fixture::new().await;
     let old = f.paused("41");

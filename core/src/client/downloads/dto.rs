@@ -238,11 +238,31 @@ pub struct DownloadFailure {
     pub id: String,
     pub message: &'static str,
 }
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadSkipReason {
+    Downloaded,
+    Local,
+    Waiting,
+    Working,
+    Cancelling,
+    OptionsChanged,
+    Existing,
+    Missing,
+    Conflict,
+}
+#[derive(Serialize)]
+pub struct DownloadSkip {
+    pub id: String,
+    pub reason: DownloadSkipReason,
+}
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadResult {
     pub epoch: String,
     pub accepted: Vec<String>,
     pub failed: Vec<DownloadFailure>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skipped: Vec<DownloadSkip>,
     pub operation_id: Option<String>,
 }

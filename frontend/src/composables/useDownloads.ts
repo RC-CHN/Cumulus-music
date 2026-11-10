@@ -2,7 +2,7 @@ import { computed, ref, shallowRef } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
-import { downloadCommandLabel } from '../services/downloadFeedback.ts';
+import { downloadAdmissionSummary, downloadCommandLabel } from '../services/downloadFeedback.ts';
 import { downloadViewportKey, type DownloadViewport } from '../services/downloadViewport.ts';
 import type {
   DownloadClearPlan,
@@ -207,7 +207,9 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     try {
       const result = await core.downloadCommand(captured, input);
       if (version !== generation || result.epoch !== epoch) return;
-      if (input.kind === 'delete_files')
+      const admissionSummary = downloadAdmissionSummary(result);
+      if (admissionSummary) notice.value = admissionSummary;
+      else if (input.kind === 'delete_files')
         notice.value =
           `已删除 ${result.accepted.length} 项` +
           (result.failed.length
@@ -225,7 +227,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
             : '已保存';
       notice.value = `${label}：${notice.value}`;
       await refresh(true);
-      return result;
+      if (version === generation && captured === epoch) return result;
     } catch (e) {
       if (version === generation) issue(e, false, label);
     } finally {

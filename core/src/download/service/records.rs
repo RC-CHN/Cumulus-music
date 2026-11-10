@@ -15,13 +15,18 @@ pub enum OutputContainer {
     Ncm,
     Official,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DownloadOptions {
     pub quality: Quality,
     pub tags: bool,
     pub cover: bool,
     pub lyrics: bool,
     pub container: OutputContainer,
+}
+impl DownloadOptions {
+    pub(super) fn normalize(&mut self) {
+        self.cover &= self.tags || self.container != OutputContainer::Audio;
+    }
 }
 impl Default for DownloadOptions {
     fn default() -> Self {

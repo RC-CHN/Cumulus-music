@@ -146,10 +146,21 @@ export type DownloadCommand =
   | { kind: 'rename'; task_id: string; name: string }
   | { kind: 'move_to_directory'; task_id: string; root: string }
   | { kind: 'stop_operation'; operation_id: string };
+export type DownloadSkipReason =
+  | 'downloaded'
+  | 'local'
+  | 'waiting'
+  | 'working'
+  | 'cancelling'
+  | 'options_changed'
+  | 'existing'
+  | 'missing'
+  | 'conflict';
 export interface DownloadResult {
   epoch: string;
   accepted: string[];
   failed: { id: string; message: string }[];
+  skipped?: { id: string; reason: DownloadSkipReason }[];
   operationId: string | null;
 }
 export interface DownloadQualityPreferences {

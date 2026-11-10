@@ -68,14 +68,26 @@ impl LocalLibrary {
         token: &SessionToken,
         song_ids: &BTreeSet<&str>,
     ) -> Result<OperationLock> {
-        let lock = self.lock()?;
-        if !self
-            .files_for_online_songs(session, token, song_ids)?
-            .is_empty()
-        {
+        let (lock, matches) = self.hold_online_song_matches(session, token, song_ids)?;
+        if !matches.is_empty() {
             return Err(Error::State("download selection gained a local file"));
         }
         Ok(lock)
+    }
+
+    pub(crate) fn hold_online_song_matches(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        song_ids: &BTreeSet<&str>,
+    ) -> Result<(OperationLock, BTreeSet<String>)> {
+        let lock = self.lock()?;
+        let matches = self
+            .files_for_online_songs(session, token, song_ids)?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        Ok((lock, matches))
     }
 
     fn files_for_online_songs(

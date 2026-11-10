@@ -8,11 +8,12 @@ import type {
   DownloadQualityPreferences,
 } from '../services/downloads';
 import { failure } from '../services/contracts';
+import { downloadAdmissionSummary } from '../services/downloadFeedback';
 import { defaultDownloadOptions, downloadStatus } from '../services/downloads';
 import DownloadOptions from './DownloadOptions.vue';
 import Icon from './Icon.vue';
 const props = defineProps<{ model: DownloadModel; target: DownloadDialogTarget }>();
-const emit = defineEmits<{ close: []; started: [] }>();
+const emit = defineEmits<{ close: []; started: []; manage: [tab: 'active' | 'completed'] }>();
 const { view, busy, error } = props.model;
 const dialog = ref<HTMLDialogElement>(),
   root = ref(view.value?.directory?.root ?? '');
@@ -74,6 +75,8 @@ const directoryMode = ref<'future' | 'migrate'>('future');
 const rename = ref(''),
   destination = ref(''),
   localError = ref(''),
+  admissionNotice = ref(''),
+  admissionTab = ref<'active' | 'completed' | undefined>(),
   choosing = ref(false);
 const confirmation = ref<'delete' | 'forget' | 'move' | 'rename' | undefined>(
   props.target.kind === 'file' ? props.target.action : undefined,
@@ -170,6 +173,12 @@ function close() {
   )
     emit('close');
 }
+function manageAdmission() {
+  const tab = admissionTab.value;
+  if (!tab || busy.value || choosing.value) return;
+  emit('close');
+  emit('manage', tab);
+}
 async function choose(kind: 'root' | 'file') {
   choosing.value = true;
   try {
@@ -185,21 +194,33 @@ async function choose(kind: 'root' | 'file') {
 async function perform(command: DownloadCommand) {
   if (blocked.value) return;
   const result = await props.model.command(command);
-  if (staleVoice.value) return;
+  if (!dialogOpen || staleVoice.value) return;
+  if (command.kind === 'start' && result?.skipped?.length) {
+    admissionNotice.value = downloadAdmissionSummary(result) ?? '';
+    const reasons = result.skipped.map(({ reason }) => reason);
+    admissionTab.value =
+      result.accepted.length || reasons.some((r) => !['downloaded', 'missing', 'local'].includes(r))
+        ? 'active'
+        : reasons.some((r) => r !== 'local')
+          ? 'completed'
+          : undefined;
+    return;
+  }
   if (result?.failed.length)
     localError.value = `已受理 ${result.accepted.length} 项，${result.failed.length} 项未完成：${result.failed[0]?.message}`;
   if (result && !result.failed.length) {
     emit('close');
     if (
-      command.kind === 'start' ||
-      command.kind === 'start_cloud' ||
-      command.kind === 'start_voice'
+      result.accepted.length &&
+      (command.kind === 'start' || command.kind === 'start_cloud' || command.kind === 'start_voice')
     )
       emit('started');
   }
 }
 async function save() {
   localError.value = '';
+  admissionNotice.value = '';
+  admissionTab.value = undefined;
   if (!root.value.trim()) {
     localError.value = '请选择下载目录';
     return;
@@ -217,24 +238,32 @@ async function save() {
       revision: quality.value!.revision,
       options: { ...options.value },
     });
-    if (!settings || settings.failed.length) return;
+    if (!dialogOpen || !settings || settings.failed.length) return;
     const configured = await props.model.command({
       kind: 'configure',
       root: previousRoot,
       path_type: pathType.value,
       file_type: fileType.value,
     });
-    if (!configured || configured.failed.length) return;
+    if (!dialogOpen || !configured || configured.failed.length) return;
     await perform({ kind: 'migrate', root: root.value.trim() });
     return;
   }
-  const configured = await props.model.command({
-    kind: 'configure',
-    root: root.value.trim(),
-    path_type: pathType.value,
-    file_type: fileType.value,
-  });
-  if (!configured || configured.failed.length) return;
+  const currentDirectory = view.value?.directory;
+  if (
+    props.target.kind !== 'start' ||
+    currentDirectory?.root !== root.value.trim() ||
+    currentDirectory.path_type !== pathType.value ||
+    currentDirectory.file_type !== fileType.value
+  ) {
+    const configured = await props.model.command({
+      kind: 'configure',
+      root: root.value.trim(),
+      path_type: pathType.value,
+      file_type: fileType.value,
+    });
+    if (!dialogOpen || !configured || configured.failed.length) return;
+  }
   if (props.target.kind === 'voice_song') {
     if (props.target.live() && (await props.target.start({ ...options.value }))) emit('started');
     return;
@@ -312,6 +341,7 @@ async function fileAction() {
       </button>
     </header>
     <div v-if="error || localError" class="error-state" role="alert">{{ localError || error }}</div>
+    <div v-if="admissionNotice" class="muted" role="status">{{ admissionNotice }}</div>
     <p v-if="staleVoice" class="form-warning" role="alert">所选节目已变化，请关闭后重新选择。</p>
     <p v-if="view?.migration" class="form-warning">目录迁移尚未完成，请在下载管理中继续或撤销。</p>
     <p v-if="stale" class="form-warning" role="alert">
@@ -449,6 +479,15 @@ async function fileAction() {
         </fieldset>
       </div>
       <footer>
+        <button
+          v-if="admissionTab"
+          type="button"
+          class="text-button"
+          :disabled="busy || choosing"
+          @click="manageAdmission"
+        >
+          打开下载管理
+        </button>
         <button type="button" class="text-button" :disabled="busy || choosing" @click="close">
           取消</button
         ><button class="primary" :disabled="blocked || !root.trim()">

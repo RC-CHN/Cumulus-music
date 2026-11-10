@@ -1,5 +1,7 @@
 #[path = "support/download_collection.rs"]
 mod download_collection;
+#[path = "client_downloads/ordinary_admission.rs"]
+mod ordinary_admission;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback_support;

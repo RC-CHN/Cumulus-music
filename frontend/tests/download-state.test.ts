@@ -241,6 +241,42 @@ test('download account switch discards late reads, writes and native picker sele
   assert.equal(model.busy.value, false);
   model.dispose();
 });
+
+test('a confirmed old directory cannot admit songs after its refresh changes account', async () => {
+  const entered = deferred<void>();
+  const held = deferred<DownloadsView>();
+  let oldReads = 0;
+  const commands: string[] = [];
+  const model = useDownloads({
+    downloads: async (epoch) => {
+      if (epoch === '1' && ++oldReads === 2) {
+        entered.resolve();
+        return held.promise;
+      }
+      return state(epoch);
+    },
+    downloadCommand: async (epoch, command) => {
+      commands.push(`${epoch}:${command.kind}`);
+      return { epoch, accepted: [], failed: [], operationId: null };
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  const configured = model
+    .command({ kind: 'configure', root: '/old', path_type: 0, file_type: 1 })
+    .then(async (result) => {
+      if (result)
+        await model.command({ kind: 'start', song_ids: ['123'], options: state().options });
+      return result;
+    });
+  await entered.promise;
+  await model.connect(account('2'));
+  held.resolve(state('1'));
+  assert.equal(await configured, undefined);
+  assert.deepEqual(commands, ['1:configure']);
+  assert.equal(model.view.value?.epoch, '2');
+  model.dispose();
+});
+
 test('newer download query wins and resets a growing window to its initial prefix', async () => {
   const old = deferred<DownloadsView>();
   const limits: number[] = [];

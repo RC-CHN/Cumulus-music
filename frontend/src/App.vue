@@ -7463,6 +7463,7 @@ onUnmounted(() => {
         :target="downloadDialog"
         @close="downloadDialog = undefined"
         @started="music.navigate({ kind: 'downloads', initialTab: 'active' })"
+        @manage="(tab) => music.navigate({ kind: 'downloads', initialTab: tab })"
       />
     </ModalTransition>
     <ModalTransition

@@ -2,6 +2,7 @@
 use super::{
     DownloadAction, DownloadDestination, DownloadOptions, DownloadOrigin, DownloadPhase,
     DownloadService, DownloadStatus, DownloadTask,
+    admission::catalog_admission_ids,
     control::{Control, ObservedControl},
     dispatch::Dispatch,
     files,
@@ -61,9 +62,19 @@ pub(crate) struct ExistingSongAdmission {
     row: Value,
     raw: Option<Value>,
     control: ObservedControl,
+    options: DownloadOptions,
+    bound_prefix: bool,
 }
 
 impl ExistingSongAdmission {
+    pub(crate) fn options(&self) -> &DownloadOptions {
+        &self.options
+    }
+
+    pub(crate) fn has_bound_prefix(&self) -> bool {
+        self.bound_prefix
+    }
+
     pub(crate) fn observe(
         tx: &StateTransaction<'_>,
         owner: &str,
@@ -95,7 +106,7 @@ impl ExistingSongAdmission {
             return Ok(None);
         }
         let raw = tx.get(owner, TRANSFERS, id)?;
-        if let Some(value) = &raw {
+        let bound_prefix = if let Some(value) = &raw {
             let job: TransferJob = serde_json::from_value(value.clone())?;
             if job.id != id
                 || job.resource_id.as_deref() != Some(song)
@@ -114,18 +125,25 @@ impl ExistingSongAdmission {
             {
                 return Ok(None);
             }
+            job.bytes == 0
+                || (job.resource.size.is_some_and(|size| size > 0)
+                    && job.resource.md5.as_ref().is_some_and(|md5| !md5.is_empty()))
         } else if task.bytes != 0 {
             return Ok(None);
-        }
+        } else {
+            true
+        };
         Ok(Some(Self {
             id: id.into(),
             row,
             raw,
             control,
+            options: task.options,
+            bound_prefix,
         }))
     }
 
-    fn check(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
+    pub(super) fn check(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
         if tx.get(owner, KIND, &self.id)?.as_ref() != Some(&self.row)
             || tx.get(owner, TRANSFERS, &self.id)? != self.raw
             || Control::observe(tx, owner, &self.id)? != self.control
@@ -135,7 +153,7 @@ impl ExistingSongAdmission {
         Ok(())
     }
 
-    fn stage(&self, service: &DownloadService) -> Result<BatchTask> {
+    pub(super) fn stage(&self, service: &DownloadService) -> Result<HeldSongAdmission> {
         let task_lock = service.lock(&self.id)?;
         let task: DownloadTask = serde_json::from_value(self.row.clone())?;
         let raw = self.raw.clone().map(serde_json::from_value).transpose()?;
@@ -144,36 +162,46 @@ impl ExistingSongAdmission {
         if task.target.is_some() {
             files::absent(files::target(&task)?)?;
         }
-        Ok(BatchTask::Existing(
-            Box::new(task),
-            task_lock,
-            transfer_lock,
-        ))
+        Ok(HeldSongAdmission {
+            task,
+            _transfer: transfer_lock,
+            _task: task_lock,
+        })
+    }
+}
+
+pub(super) struct HeldSongAdmission {
+    pub(super) task: DownloadTask,
+    _transfer: OperationLock,
+    _task: OperationLock,
+}
+
+impl HeldSongAdmission {
+    pub(super) fn readmit(&mut self, tx: &mut StateTransaction<'_>, owner: &str) -> Result<()> {
+        tx.delete(owner, CONTROL, &self.task.id)?;
+        self.task.status = DownloadStatus::Queued;
+        self.task.last_error = None;
+        self.task.service_code = None;
+        Ok(())
     }
 }
 
 enum BatchTask {
     New(Box<StagedTask>),
-    Existing(Box<DownloadTask>, OperationLock, OperationLock),
+    Existing(Box<HeldSongAdmission>),
 }
 
 impl BatchTask {
     fn task_mut(&mut self) -> &mut DownloadTask {
         match self {
             Self::New(task) => task.task_mut(),
-            Self::Existing(task, ..) => task,
+            Self::Existing(held) => &mut held.task,
         }
     }
 
     fn commit(self) {
-        match self {
-            Self::New(task) => {
-                task.commit();
-            }
-            Self::Existing(_, task, transfer) => {
-                drop(transfer);
-                drop(task);
-            }
+        if let Self::New(task) = self {
+            task.commit();
         }
     }
 }
@@ -257,7 +285,7 @@ impl DownloadService {
             .iter()
             .map(|song| {
                 if let Some(previous) = existing.get(song) {
-                    previous.stage(self)
+                    Ok(BatchTask::Existing(Box::new(previous.stage(self)?)))
                 } else {
                     Ok(BatchTask::New(Box::new(self.stage_task(
                         new_ids.next().expect("staged new ID"),
@@ -318,27 +346,30 @@ impl DownloadService {
                 let sequence = Dispatch::reserve(tx, owner)?;
                 let mut task_ids = Vec::with_capacity(staged.len());
                 for (index, staged) in staged.iter_mut().enumerate() {
-                    let task = staged.task_mut();
-                    let rows = tx.playback_download_rows(
-                        owner,
-                        &task.song_id,
-                        PlaybackDownloadKind::Song,
-                    )?;
-                    let mut current = rows.iter().filter(|row| row.status != "cancelled");
-                    if let Some(previous) = existing.get(&task.song_id) {
-                        if current.next().is_none_or(|row| row.id != task.id)
-                            || current.next().is_some()
-                        {
-                            return Err(Error::StaleResponse);
+                    let current = catalog_admission_ids(tx, owner, &staged.task_mut().song_id)?;
+                    match staged {
+                        BatchTask::Existing(held) => {
+                            let [row] = current.as_slice() else {
+                                return Err(Error::StaleResponse);
+                            };
+                            if *row != held.task.id {
+                                return Err(Error::StaleResponse);
+                            }
+                            existing
+                                .get(&held.task.song_id)
+                                .ok_or(Error::StaleResponse)?
+                                .check(tx, owner)?;
+                            held.readmit(tx, owner)?;
                         }
-                        previous.check(tx, owner)?;
-                        tx.delete(owner, CONTROL, &task.id)?;
-                        task.status = DownloadStatus::Queued;
-                        task.last_error = None;
-                        task.service_code = None;
-                    } else if current.next().is_some() || tx.get(owner, KIND, &task.id)?.is_some() {
-                        return Err(Error::State("song already has a download"));
+                        BatchTask::New(task) => {
+                            if !current.is_empty()
+                                || tx.get(owner, KIND, &task.task_mut().id)?.is_some()
+                            {
+                                return Err(Error::State("song already has a download"));
+                            }
+                        }
                     }
+                    let task = staged.task_mut();
                     task.dispatch = Some(Dispatch::new(sequence, index));
                     tx.put(owner, KIND, &task.id, &serde_json::to_value(&*task)?)?;
                     task_ids.push(task.id.clone());
