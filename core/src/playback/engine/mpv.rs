@@ -983,6 +983,12 @@ impl AudioEngine for MpvEngine {
     fn local_equalizer_entry(&self) -> Option<i64> {
         self.local_equalizer.as_ref().and(self.entry)
     }
+    fn modern_effect_owned_source(
+        &self,
+        entry: i64,
+    ) -> Result<Option<super::NativeModernEffectSource>> {
+        self.owned_modern_effect_source(entry)
+    }
     fn pump_local_equalizer(&mut self) -> Result<()> {
         self.observe_local_equalizer_clock()
     }

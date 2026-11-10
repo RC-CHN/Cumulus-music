@@ -39,6 +39,28 @@ impl LocalEqualizer {
 }
 
 impl MpvEngine {
+    pub(super) fn owned_modern_effect_source(
+        &self,
+        entry: i64,
+    ) -> Result<Option<crate::playback::engine::NativeModernEffectSource>> {
+        let Some(local) = self
+            .local_equalizer
+            .as_ref()
+            .filter(|local| local.original_demuxer == "wav")
+        else {
+            return Ok(None);
+        };
+        if self.entry != Some(entry)
+            || self.equalizer.is_some()
+            || self.parametric.is_some()
+            || self.loudness.is_some()
+        {
+            return Ok(None);
+        }
+        crate::playback::engine::NativeModernEffectSource::new(local.pass.control(), entry)
+            .map(Some)
+    }
+
     pub fn with_local_equalizer_decoder(mut self, runtime: TrustedFlacRuntime) -> Self {
         self.local_flac = Some(runtime);
         self

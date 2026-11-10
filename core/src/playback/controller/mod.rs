@@ -10,6 +10,8 @@ mod history;
 mod intelligence;
 mod load;
 mod loudness;
+mod modern_effect;
+pub(crate) use modern_effect::ModernEffectSource;
 mod parametric;
 mod podcast_progress;
 mod power;
@@ -73,6 +75,7 @@ enum Message {
     Parametric(Box<parametric::Request>),
     ObserveParametric(parametric::ObserveRequest),
     InspectParametric(parametric::InspectRequest),
+    InspectModernEffect(modern_effect::Request),
     Cancel(String),
     Shutdown,
     Loading {

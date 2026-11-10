@@ -1,3 +1,4 @@
+mod modern;
 use super::MusicClient;
 use crate::{
     Error, Result,

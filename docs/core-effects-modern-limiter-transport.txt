@@ -106,18 +106,17 @@ Production wiring and its remaining gates
   native type 2. The Cumulus acquisition adds strict file verification.
   M/308 `restoreAudioEffect` separately handles the persisted on/rights and
   recycle conditions; device and intelligent material routes differ.
-- `EffectsLibrary::acquire_with_rights` and material Ready records already
-  verify cache/CDN identity, account generation and content digest. The
-  current native preparation, authorization binding, controller supervision
-  and desktop acknowledgement accept only a single routed PEQ. The modern
-  material fails that gate even when extra sections are explicitly off.
-  A future separate typed binding must join the exact prepared material,
-  a fresh known non-trial observation, confirmed registration operation /
-  revision, current account, source identity and native entry. Keep source
-  authority in the held decoder and sink; check effect authority at attach,
-  resume and seek plus actor supervision, without SQLite or network calls
-  in an audio callback. Release only after confirmed local detach and keep
-  uncertain server receipts distinct from local playback status.
+- Material Ready records verify cache/CDN identity, account generation and
+  content digest. The desktop/controller path still mounts only the single
+  routed PEQ scope. The separate native modern registration now binds the
+  exact first verified material, fresh non-trial authorization, acknowledged
+  registration revision, current account and already-owned WAV entry (see
+  core-effects-authorization.txt). It cannot switch the decoder or install
+  the graph. A production handoff must keep source authority in the held
+  decoder/sink and check effect authority at attach, resume and seek plus
+  actor supervision, without SQLite or network calls in an audio callback.
+  Release only after confirmed local detach and keep uncertain server
+  receipts distinct from local playback status.
 - M/308:2184–2218 closes the saved regular type 2 effect when `Ge=false`
   and `playInfo.bitrate` is one of `[2999,3999,5999,6999]`, and sets
   `Ge=true`. Its else branch opens if `Ge` was true and clears it, even

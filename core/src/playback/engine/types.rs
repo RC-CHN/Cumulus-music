@@ -57,6 +57,58 @@ impl Cancellation {
     }
 }
 
+/// Native ownership receipt for the exact currently installed held PCM WAV.
+/// No path, descriptor, source URL or playback control is exposed.
+pub struct NativeModernEffectSource {
+    control: super::StereoPcmControl,
+    entry: i64,
+    format: crate::effects::dsp::Format,
+}
+
+impl NativeModernEffectSource {
+    pub(crate) fn new(control: super::StereoPcmControl, entry: i64) -> Result<Self> {
+        let format = crate::effects::dsp::Format::new(control.rate() as f32, 2, 2048)?;
+        let receipt = Self {
+            control,
+            entry,
+            format,
+        };
+        receipt.check()?;
+        Ok(receipt)
+    }
+
+    pub(crate) fn check(&self) -> Result<()> {
+        self.control.validate_host()?;
+        let state = self.control.snapshot()?;
+        if state.native_entry != Some(self.entry)
+            || state.graph_end
+            || state.cancelled
+            || state.failed
+            || state.reader_closed
+            || state.native_sink_retired
+            || state.seeking
+        {
+            return Err(Error::StaleResponse);
+        }
+        self.control.validate_host()
+    }
+
+    pub(crate) fn format(&self) -> crate::effects::dsp::Format {
+        self.format
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_source(
+        rate: u32,
+        lifetime: Cancellation,
+    ) -> Result<(Self, super::StereoPcmReader)> {
+        let (reader, control, _) = super::stereo_pcm::native_channel(rate, 0, 48_000, lifetime)?;
+        control.publish_sink()?;
+        control.bind_entry(7)?;
+        Ok((Self::new(control, 7)?, reader))
+    }
+}
+
 #[derive(Clone)]
 pub struct LoadRequest {
     pub source: MediaInput,

@@ -190,6 +190,11 @@ pub trait AudioEngine: Send {
     fn local_equalizer_entry(&self) -> Option<i64> {
         None
     }
+    /// Read-only check of a native owned source. Generic or stock adapters
+    /// cannot mint ownership from a reported codec, a path, or queue state.
+    fn modern_effect_owned_source(&self, _entry: i64) -> Result<Option<NativeModernEffectSource>> {
+        Ok(None)
+    }
     fn pump_local_equalizer(&mut self) -> Result<()> {
         Ok(())
     }

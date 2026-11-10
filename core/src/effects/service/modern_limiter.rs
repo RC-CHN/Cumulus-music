@@ -7,6 +7,7 @@ use crate::{
     download::transfer::RunOptions,
     effects::{catalog::EffectId, dsp::Format, material::ModernLimiterPlan},
     protocol::api::Api,
+    storage::OperationLock,
 };
 use std::sync::{Arc, Weak};
 
@@ -37,6 +38,20 @@ impl VerifiedModernLimiterMaterial {
     /// open, decode or attach a playback source.
     pub fn supports_graph_format(&self, format: Format) -> bool {
         self.plan.supports_format(format)
+    }
+
+    pub(crate) fn require_live_format(&self, format: Format) -> Result<()> {
+        if !self.supports_graph_format(format) {
+            return Err(Error::State(
+                "owned source geometry is unsupported for modern effect",
+            ));
+        }
+        self.plan.prepare_control(format, false)?;
+        Ok(())
+    }
+
+    pub(crate) fn revision(&self) -> &str {
+        self.scope.revision()
     }
 
     fn ready_record(&self, library: &EffectsLibrary, token: &SessionToken) -> Result<Record> {
@@ -108,10 +123,50 @@ impl EffectsLibrary {
         token: &SessionToken,
         receipt: &VerifiedModernLimiterMaterial,
     ) -> Result<()> {
+        self.hold_modern_limiter_material(token, receipt)
+            .await
+            .map(drop)
+    }
+
+    pub(crate) async fn hold_modern_limiter_material(
+        &self,
+        token: &SessionToken,
+        receipt: &VerifiedModernLimiterMaterial,
+    ) -> Result<OperationLock> {
         receipt.scope.check(&self.session, token)?;
         let owner = self.owner(token)?;
-        let _lock = self.lock(&owner, &receipt.handle.lock_key())?;
+        let lock = self.lock(&owner, &receipt.handle.lock_key())?;
+        self.verify_locked_modern_limiter_material(token, receipt)
+            .await?;
+        Ok(lock)
+    }
+
+    pub(crate) fn check_modern_limiter_material(
+        &self,
+        token: &SessionToken,
+        receipt: &VerifiedModernLimiterMaterial,
+    ) -> Result<()> {
+        self.current_modern_limiter_record(token, receipt).map(drop)
+    }
+
+    fn current_modern_limiter_record(
+        &self,
+        token: &SessionToken,
+        receipt: &VerifiedModernLimiterMaterial,
+    ) -> Result<Record> {
+        receipt.scope.check(&self.session, token)?;
         let record = receipt.ready_record(self, token)?;
+        receipt.scope.current()?;
+        Ok(record)
+    }
+
+    pub(crate) async fn verify_locked_modern_limiter_material(
+        &self,
+        token: &SessionToken,
+        receipt: &VerifiedModernLimiterMaterial,
+    ) -> Result<()> {
+        let owner = self.owner(token)?;
+        let record = self.current_modern_limiter_record(token, receipt)?;
         let child = self.ready_material_transfer(&owner, &record)?;
         let material = tokio::task::spawn_blocking(move || files::verify(&child))
             .await

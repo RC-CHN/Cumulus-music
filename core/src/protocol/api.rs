@@ -608,6 +608,7 @@ pub enum EffectCatalogueRead {
     More,
     PcMaterialDetail(crate::effects::catalog::EffectId),
     MaterialAuthorization(crate::effects::catalog::EffectId),
+    MaterialRecycle(crate::effects::catalog::EffectId),
 }
 
 impl EffectCatalogueRead {
@@ -623,6 +624,10 @@ impl EffectCatalogueRead {
             MaterialAuthorization(id) => (
                 "/api/vipauth/app/interests/auth/query",
                 effect_authorization_payload(id),
+            ),
+            MaterialRecycle(id) => (
+                "/api/vipauth/app/interests/recyclequery",
+                json!({"queryInfo":{id.interests_type().to_string():[id.value().to_string()]}}),
             ),
             HighlyRecommended | Recommended | More => {
                 let expose_type = match self {
@@ -652,6 +657,27 @@ pub(crate) fn effect_authorization_payload(id: crate::effects::catalog::EffectId
     json!({"queryInfo":{"interestsMap":{id.interests_type().to_string():[id.value()]}}})
 }
 
+/// A fixed native registration for one ordinary material effect.
+pub struct NativeEffectRegistration(crate::effects::catalog::EffectId);
+
+impl NativeEffectRegistration {
+    pub(crate) fn ordinary(id: crate::effects::catalog::EffectId) -> Result<Self> {
+        if id.interests_type() != 127 {
+            return Err(Error::InvalidInput(
+                "unsupported native effect registration type",
+            ));
+        }
+        Ok(Self(id))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (
+            "/api/vipauth/app/interests/auth/set",
+            json!({"interestsType":127,"interestsId":self.0.value().to_string(),"type":0}),
+        )
+    }
+}
+
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
@@ -673,6 +699,21 @@ pub trait Api: Send + Sync + std::any::Any {
             current()?;
             let (path, payload) = read.into_request();
             self.call(path, payload, false, &[200]).await
+        })
+    }
+
+    /// Require an actual native signed transport; generic adapters have no
+    /// implicit write fallback for an owned-source registration.
+    fn request_native_effect_registration<'a>(
+        &'a self,
+        _write: NativeEffectRegistration,
+        _revision: &'a str,
+        _permission: &'a EffectCataloguePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::RequestNotSent(Box::new(Error::State(
+                "native effect registration transport unavailable",
+            ))))
         })
     }
 

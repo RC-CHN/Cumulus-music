@@ -73,6 +73,10 @@ impl Jsk {
 
 #[derive(Clone, Copy)]
 enum RequestBinding<'a> {
+    NativeEffectRegistration {
+        permission: &'a crate::protocol::api::EffectCataloguePermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     Login(&'a super::JskLoginContext),
     VinylComment,
     VinylDiscovery,
@@ -703,6 +707,16 @@ impl MusicHttpClient {
                 "lyric bounty requires uncached native PC EAPI",
             ));
         }
+        if matches!(
+            binding,
+            Some(RequestBinding::NativeEffectRegistration { .. })
+        ) && (origin != super::ApiOrigin::Pc
+            || self.anonymous_store
+            || route != WireRoute::Eapi
+            || cache)
+        {
+            return Err(Error::CredentialChanged);
+        }
         // Async gate serializes cookie rotation for one candidate/profile;
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
@@ -946,6 +960,23 @@ impl MusicHttpClient {
                 }
                 self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])?;
                 permission()?;
+            }
+            if let Some(RequestBinding::NativeEffectRegistration {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                let current = self.credentials.request_credentials(&target)?;
+                if current.revision != snapshot.revision
+                    || current.device_id != snapshot.device_id
+                    || current.unique_music_u().is_none()
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])?;
+                permission()?;
+                dispatched.store(true, Ordering::Relaxed);
             }
             if let Some(RequestBinding::PlaybackChorus(permission)) = binding {
                 if origin != super::ApiOrigin::Pc || self.anonymous_store {
@@ -1275,6 +1306,38 @@ impl Api for MusicHttpClient {
                     Some(RequestBinding::EffectCatalogue(current)),
                 )
                 .await?;
+            crate::protocol::api::validate_response(path, response, &[200])
+        })
+    }
+
+    fn request_native_effect_registration<'a>(
+        &'a self,
+        write: crate::protocol::api::NativeEffectRegistration,
+        revision: &'a str,
+        permission: &'a crate::protocol::api::EffectCataloguePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let dispatched = AtomicBool::new(false);
+            let (path, payload) = write.into_request();
+            let response = self
+                .execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::NativeEffectRegistration {
+                        permission,
+                        dispatched: &dispatched,
+                    }),
+                )
+                .await;
+            let response = match response {
+                Err(error) if !dispatched.load(Ordering::Relaxed) => {
+                    return Err(Error::RequestNotSent(Box::new(error)));
+                }
+                result => result?,
+            };
             crate::protocol::api::validate_response(path, response, &[200])
         })
     }

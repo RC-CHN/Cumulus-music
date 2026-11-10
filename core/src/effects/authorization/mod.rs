@@ -2,7 +2,9 @@
 //! Server canUse/canRecycle are entitlement facts, not occupancy receipts.
 //! Hosts apply/disable the DSP separately and schedule reads on restore or
 //! rights changes. No guessed trial deadline or background write timer.
+mod modern;
 mod mutate;
+pub use modern::NativeModernLimiterBinding;
 pub use mutate::{NativeEffectReleaseReceipt, PendingNativeEffectRegistration};
 mod observe;
 mod parametric;
@@ -15,6 +17,40 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 pub use record::{EffectLease, LeaseObservation, LeasePhase, ReleaseRetry, TrialConsent};
+#[derive(Clone, Copy)]
+struct RegistrationScope<'a> {
+    revision: &'a str,
+    current: &'a crate::protocol::api::EffectCataloguePermission<'a>,
+}
+
+impl RegistrationScope<'_> {
+    async fn authorization(
+        scope: Option<Self>,
+        api: &crate::effects::api::EffectsApi,
+        id: EffectId,
+    ) -> Result<Option<crate::effects::rights::Authorization>> {
+        match scope {
+            Some(scope) => {
+                api.guarded_material_authorization(id, scope.revision, scope.current)
+                    .await
+            }
+            None => api.authorization(id).await,
+        }
+    }
+    async fn recyclable(
+        scope: Option<Self>,
+        api: &crate::effects::api::EffectsApi,
+        id: EffectId,
+    ) -> Result<Option<bool>> {
+        match scope {
+            Some(scope) => {
+                api.guarded_material_recyclable(id, scope.revision, scope.current)
+                    .await
+            }
+            None => api.recyclable(id).await,
+        }
+    }
+}
 use std::sync::Arc;
 const JOURNAL: &str = "effect-authorizations-v1";
 

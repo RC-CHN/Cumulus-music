@@ -1,5 +1,6 @@
 use super::{
-    EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase, ReleaseRetry, TrialConsent,
+    EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase, RegistrationScope,
+    ReleaseRetry, TrialConsent,
     parametric::{current_non_trial, registered_non_trial},
 };
 use crate::{
@@ -69,7 +70,7 @@ impl EffectAuthorizations {
     ) -> Result<LeaseObservation> {
         let owner = self.owner(token)?;
         let _lock = self.lock(&owner)?;
-        self.begin_locked(token, &owner, effect, trial, |lease| {
+        self.begin_locked(token, &owner, effect, trial, None, |lease| {
             self.session.with_token(token, |_| self.save(&owner, lease))
         })
         .await
@@ -81,6 +82,7 @@ impl EffectAuthorizations {
         owner: &str,
         effect: EffectId,
         trial: TrialConsent,
+        scope: Option<RegistrationScope<'_>>,
         commit: impl FnOnce(&EffectLease) -> Result<()>,
     ) -> Result<LeaseObservation> {
         for lease in self.records_for(token)? {
@@ -92,12 +94,15 @@ impl EffectAuthorizations {
         }
         if let Some(lease) = self.get(owner, effect)? {
             if lease.phase == LeasePhase::Registered {
+                if scope.is_some() {
+                    return Err(Error::State("fresh native effect registration required"));
+                }
                 if trial == TrialConsent::KnownNonTrial && !registered_non_trial(&lease) {
                     return Err(Error::State(
                         "no acknowledged non-trial effect registration",
                     ));
                 }
-                return self.observe_begin(token, owner, lease, trial).await;
+                return self.observe_begin(token, owner, lease, trial, scope).await;
             }
             if lease.phase.needs_release() {
                 return Err(Error::MutationUncertain);
@@ -106,7 +111,7 @@ impl EffectAuthorizations {
         let authorization = self
             .session
             .run_for(token, |api, _| async move {
-                EffectsApi::new(api).authorization(effect).await
+                RegistrationScope::authorization(scope, &EffectsApi::new(api), effect).await
             })
             .await?
             .filter(|auth| auth.can_use)
@@ -134,8 +139,8 @@ impl EffectAuthorizations {
             last_error: None,
         };
         commit(&lease)?;
-        self.send(token, owner, &mut lease, true).await?;
-        self.observe_begin(token, owner, lease, trial).await
+        self.send(token, owner, &mut lease, true, scope).await?;
+        self.observe_begin(token, owner, lease, trial, scope).await
     }
 
     async fn observe_begin(
@@ -144,8 +149,11 @@ impl EffectAuthorizations {
         owner: &str,
         lease: EffectLease,
         trial: TrialConsent,
+        scope: Option<RegistrationScope<'_>>,
     ) -> Result<LeaseObservation> {
-        let mut observation = self.observe_locked(token, owner, lease).await?;
+        let mut observation = self
+            .observe_scoped_locked(token, owner, lease, scope)
+            .await?;
         if trial == TrialConsent::KnownNonTrial && !current_non_trial(&observation.lease) {
             // Preserve the receipt and release path even when the fresh rights
             // observation does not permit this client to use the registration.
@@ -279,7 +287,7 @@ impl EffectAuthorizations {
         lease.advance()?;
         self.session
             .with_token(token, |_| self.save(owner, &lease))?;
-        self.send(token, owner, &mut lease, false).await?;
+        self.send(token, owner, &mut lease, false, None).await?;
         Ok(lease)
     }
 
@@ -289,15 +297,19 @@ impl EffectAuthorizations {
         owner: &str,
         lease: &mut EffectLease,
         start: bool,
+        scope: Option<RegistrationScope<'_>>,
     ) -> Result<()> {
         let result = self
             .session
             .run_for(token, |api, _| async {
                 let api = EffectsApi::new(api);
-                let result = if start {
-                    api.register_interest(lease.effect).await
-                } else {
-                    api.release_interest(lease.effect).await
+                let result = match (start, scope) {
+                    (true, Some(scope)) => {
+                        api.guarded_register_interest(lease.effect, scope.revision, scope.current)
+                            .await
+                    }
+                    (true, None) => api.register_interest(lease.effect).await,
+                    (false, _) => api.release_interest(lease.effect).await,
                 };
                 match &result {
                     Ok(()) => {
@@ -313,9 +325,11 @@ impl EffectAuthorizations {
                     Err(error) => {
                         // Explicit business rejection is not an ambiguous transport
                         // failure. Other service codes remain uncertain.
-                        let rejected = [301, 400, 403, 405]
-                            .iter()
-                            .any(|code| error.is_service_code(*code));
+                        let rejected = (scope.is_some()
+                            && matches!(error, Error::RequestNotSent(_)))
+                            || [301, 400, 403, 405]
+                                .iter()
+                                .any(|code| error.is_service_code(*code));
                         lease.phase = match (start, rejected) {
                             (true, true) => LeasePhase::StartRejected,
                             (true, false) => LeasePhase::StartUncertain,

@@ -195,3 +195,38 @@ MusicClient::native_effect_release_receipt 只读本地日志，为已记录的�
 停止回执丢失时，重新读取本地日志并明确选择 ExplicitAfterUnknownResult 才能
 再次发送。权益及可回收查询不能替代停止回执，启动时不重发。旧版没有参与使用锁
 的进程及不绑定登记的可信实验 PEQ 不在此证明范围。
+
+现代组合限幅的原生登记绑定
+------------------------
+
+`MusicClient::register_native_owned_modern_limiter` 只供显式原生宿主调用，
+没有桌面 IPC 或前端入口。它先向播放 actor 取得当前已加载、仍存活的
+原生 PCM WAV 所有权，核对账号代次、播放代次、精确 native entry、
+实际速率以及相应 worker 和 sink 生命周期。排队中的歌曲、普通 URL、
+stock 解码、非 WAV、未加载/切换中的源和正在拆除的其它滤镜均不能作
+为凭据。合成普通 adapter 没有默认写路径。
+
+接着按 M/342 读取 PC detail、查权限并验证第一份材料。现代图只接受
+已恢复的 GEQ、BT、PEQ、B0 范围，且必须能对当前 44.1/48 kHz 双声道
+音源执行已验证的同材质切换。材料不完整、首项无效、MD5/NCAE/明文摘要
+校验失败、类型/拓扑/几何不支持或非试用权限未知均不登记；不尝试第二项、
+旧版降级或单一 PEQ。登记时锁定该 Ready 文件的 owner、下载 attempt
+和 SHA-256，再按顺序执行：
+
+  /api/vipauth/app/interests/auth/query    当前 canUse=true，类型 10/11/12
+  /api/vipauth/app/interests/auth/set      {interestsType:127,interestsId:"…",type:0}
+  /api/vipauth/app/interests/auth/query    回读非试用权限
+  /api/vipauth/app/interests/recyclequery  同效果 canRecycle=false
+
+`auth/set` 沿用原账号登记日志，先持久化 Registering，再由无缓存 PC EAPI
+发送一次。表单转换按官方规则把顶层数值转成字符串。当前设备/Cookie scope、
+凭据版本、源生命周期和原材料记录在
+实际 HTTP 调用前复验。确定未发送保留 StartRejected，回包不明保留
+StartUncertain 并禁止自动重发。已确认的登记不会因切歌、凭据变化或
+随后权限读失败被改写成未发送；仍保留精确的人工解除回执。不重新认领
+历史登记，也不自动 auth/stop。
+
+只有登记已确认、两项回读均符合、第一份材料再次验证且同源仍有效时才
+返回不可序列化的 `NativeModernLimiterBinding`。读取式复验检查同一
+账号、登记操作及修订、材料摘要和 native entry；不会重新登记或换源。
+这个绑定尚未交给播放器。真实替换仍需独立的授权挂载/失败收尾验证。

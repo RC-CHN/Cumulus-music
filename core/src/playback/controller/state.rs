@@ -521,6 +521,10 @@ impl Actor {
                     Some(Message::Parametric(request)) => self.parametric_request(*request).await,
                     Some(Message::ObserveParametric(request)) => self.parametric_observe(request).await,
                     Some(Message::InspectParametric(request)) => self.parametric_inspect(request),
+                    Some(Message::InspectModernEffect(request)) => {
+                        let source = self.modern_effect_source(&request).await;
+                        let _ = request.reply.send(source);
+                    }
                     Some(Message::Cancel(id)) => {
                         if self.pending.as_ref().is_some_and(|p| p.id == id) {
                             let _ = self.stop(false).await;

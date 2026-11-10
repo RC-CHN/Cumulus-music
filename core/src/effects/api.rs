@@ -7,8 +7,8 @@ use super::{
 use crate::{
     Error, Result,
     protocol::api::{
-        Api, EffectCataloguePermission, EffectCatalogueRead, effect_authorization_payload,
-        effect_detail_payload, identifier,
+        Api, EffectCataloguePermission, EffectCatalogueRead, NativeEffectRegistration,
+        effect_authorization_payload, effect_detail_payload, identifier,
     },
 };
 use serde_json::{Value, json};
@@ -218,7 +218,24 @@ impl EffectsApi {
     }
     /// A missing row is unknown, not evidence that registration was released.
     pub async fn recyclable(&self, id: EffectId) -> Result<Option<bool>> {
-        let value = self.recycle_query(id).await?;
+        Self::recycle_response(id, self.recycle_query(id).await?)
+    }
+    pub(super) async fn guarded_material_recyclable(
+        &self,
+        id: EffectId,
+        revision: &str,
+        current: &EffectCataloguePermission<'_>,
+    ) -> Result<Option<bool>> {
+        let value = self
+            .guarded_data(
+                EffectCatalogueRead::MaterialRecycle(id),
+                Some(revision),
+                current,
+            )
+            .await?;
+        Self::recycle_response(id, value)
+    }
+    fn recycle_response(id: EffectId, value: Value) -> Result<Option<bool>> {
         if !value.is_object() {
             return Err(Error::Response("invalid effect recycle response"));
         }
@@ -247,6 +264,19 @@ impl EffectsApi {
     pub async fn register_interest(&self, id: EffectId) -> Result<()> {
         let value = self.api.call("/api/vipauth/app/interests/auth/set", json!({"interestsType":id.interests_type(),"interestsId":id.value().to_string(),"type":0}), false, &[200]).await?;
         acknowledged(value)
+    }
+    pub(super) async fn guarded_register_interest(
+        &self,
+        id: EffectId,
+        revision: &str,
+        current: &EffectCataloguePermission<'_>,
+    ) -> Result<()> {
+        let write = NativeEffectRegistration::ordinary(id)?;
+        acknowledged(
+            self.api
+                .request_native_effect_registration(write, revision, current)
+                .await?,
+        )
     }
     /// M/28 G. A successful acknowledgement does not imply auth/query.canUse
     /// becomes false: membership and occupancy are different server concepts.

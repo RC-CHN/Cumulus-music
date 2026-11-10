@@ -1,4 +1,4 @@
-use super::{EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase};
+use super::{EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase, RegistrationScope};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -24,7 +24,16 @@ impl EffectAuthorizations {
         &self,
         token: &SessionToken,
         owner: &str,
+        lease: EffectLease,
+    ) -> Result<LeaseObservation> {
+        self.observe_scoped_locked(token, owner, lease, None).await
+    }
+    pub(super) async fn observe_scoped_locked(
+        &self,
+        token: &SessionToken,
+        owner: &str,
         mut lease: EffectLease,
+        scope: Option<RegistrationScope<'_>>,
     ) -> Result<LeaseObservation> {
         lease.phase = match lease.phase {
             LeasePhase::Registering => LeasePhase::StartUncertain,
@@ -44,13 +53,13 @@ impl EffectAuthorizations {
             let auth = self
                 .session
                 .run_for(token, |api, _| async move {
-                    EffectsApi::new(api).authorization(effect).await
+                    RegistrationScope::authorization(scope, &EffectsApi::new(api), effect).await
                 })
                 .await?;
             let recycle = self
                 .session
                 .run_for(token, |api, _| async move {
-                    EffectsApi::new(api).recyclable(effect).await
+                    RegistrationScope::recyclable(scope, &EffectsApi::new(api), effect).await
                 })
                 .await?;
             Ok::<_, Error>((auth, recycle))
