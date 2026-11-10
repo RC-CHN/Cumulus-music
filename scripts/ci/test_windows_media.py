@@ -1,6 +1,8 @@
 """Runtime cache/source integrity, using synthetic archives and recipes only."""
 import hashlib
 import json
+import os
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,7 +11,10 @@ import urllib.error
 import contextlib
 import io
 
-from windows_media import HERE, configuration, patch_recipe, sha256, verify_cache, native_pcm_report, download
+from windows_media import verify_cache, native_pcm_report
+from windows_media_recipe import (
+    HERE, PACKAGE, RECIPE_INPUTS, build_package, configuration, download, patch_recipe, prepare, sha256,
+)
 
 RECIPE = '''pkgrel=3
 depends=("${MINGW_PACKAGE_PREFIX}-aom")
@@ -46,7 +51,7 @@ class WindowsSourceFallback(unittest.TestCase):
         mirror = 'https://mirror.invalid/source.tar.xz'
         source = b'synthetic locked archive'
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()), \
-                patch('windows_media.time.sleep'), patch('windows_media.urllib.request.urlopen') as open_url:
+                patch('windows_media_recipe.time.sleep'), patch('windows_media_recipe.urllib.request.urlopen') as open_url:
             target = Path(directory) / 'source.tar.xz'
             open_url.side_effect = [urllib.error.URLError(TimeoutError('synthetic TLS timeout')), io.BytesIO(source)]
             download(primary, target, hashlib.sha256(source).hexdigest(), mirror=mirror)
@@ -56,7 +61,7 @@ class WindowsSourceFallback(unittest.TestCase):
 
     def test_mirror_bytes_with_wrong_digest_are_not_published_or_retried(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()), \
-                patch('windows_media.time.sleep'), patch('windows_media.urllib.request.urlopen') as open_url:
+                patch('windows_media_recipe.time.sleep'), patch('windows_media_recipe.urllib.request.urlopen') as open_url:
             target = Path(directory) / 'source.tar.xz'
             open_url.side_effect = [TimeoutError('synthetic TLS timeout'), io.BytesIO(b'wrong source')]
             with self.assertRaisesRegex(ValueError, 'source checksum mismatch'):
@@ -64,6 +69,48 @@ class WindowsSourceFallback(unittest.TestCase):
                          hashlib.sha256(b'locked source').hexdigest(), mirror='https://mirror.invalid/source.tar.xz')
             self.assertEqual(open_url.call_count, 2)
             self.assertEqual(list(Path(directory).iterdir()), [])
+
+
+class WindowsRecipeCachePlan(unittest.TestCase):
+    def test_prepare_reuses_dependency_key_after_probe_only_edits(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(directory)
+            for name in RECIPE_INPUTS:
+                shutil.copyfile(HERE / name, root / name)
+            version = json.loads((root / 'windows_media.lock.json').read_text())['upstreamPackage']
+            installed = f'{PACKAGE} {version}\ntoolchain 1\n'
+            baseline = 'ffmpeg synthetic\nconfiguration: --enable-shared --enable-gpl\n'
+            build = root / 'out'
+            github_output = root / 'github-output'
+
+            def key(inventory=installed, config=baseline):
+                github_output.unlink(missing_ok=True)
+                with patch('windows_media_recipe.HERE', root), patch('windows_media_recipe.BUILD', build), \
+                        patch('windows_media_recipe.output', side_effect=[inventory, config]), \
+                        patch.dict(os.environ, GITHUB_OUTPUT=str(github_output)):
+                    prepare(root)
+                plan = json.loads((build / 'plan.json').read_text())
+                self.assertEqual(plan['packages'], inventory)
+                self.assertEqual(plan['configuration'], configuration(config))
+                self.assertEqual(github_output.read_text().strip(), 'cache-key=' + plan['key'])
+                return plan['key']
+
+            installer = root / 'windows_media.py'
+            installer.write_bytes(b'debug PCM verification')
+            before = key()
+            installer.write_bytes(b'release PCM verification with another player')
+            self.assertEqual(key(), before)
+            self.assertNotEqual(key(installed.replace('toolchain 1', 'toolchain 2')), before)
+            self.assertNotEqual(key(config=baseline.replace('--enable-gpl', '--disable-gpl')), before)
+            for name in RECIPE_INPUTS:
+                with self.subTest(recipe_input=name):
+                    path = root / name
+                    original = path.read_bytes()
+                    path.write_bytes(original + b'\n')
+                    try:
+                        self.assertNotEqual(key(), before)
+                    finally:
+                        path.write_bytes(original)
 
 
 class WindowsRuntimeIntegrity(unittest.TestCase):
@@ -85,9 +132,9 @@ class WindowsRuntimeIntegrity(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.cache = Path(directory.name)
-        self.lock = {'recipeFiles': {'PKGBUILD': hashlib.sha256(RECIPE.encode()).hexdigest()},
+        self.lock = {'recipeCommit': 'synthetic-locked-recipe', 'recipeFiles': {'PKGBUILD': hashlib.sha256(RECIPE.encode()).hexdigest()},
                      'source': {'name': 'ffmpeg-synthetic.tar.xz', 'sha256': hashlib.sha256(b'source').hexdigest()}}
-        self.plan = {'key': 'synthetic-dependency-identity'}
+        self.plan = {'key': 'synthetic-dependency-identity', 'packages': 'synthetic-build-dependencies 1\n'}
         (self.cache / 'PKGBUILD.upstream').write_text(RECIPE, encoding='utf-8')
         (self.cache / 'PKGBUILD').write_text(patch_recipe(RECIPE), encoding='utf-8')
         (self.cache / 'ffmpeg-synthetic.tar.xz').write_bytes(b'source')
@@ -96,9 +143,40 @@ class WindowsRuntimeIntegrity(unittest.TestCase):
         (self.cache / 'ffmpeg-ladspa-windows.patch').write_bytes((HERE / 'ffmpeg-ladspa-windows.patch').read_bytes())
         self.record()
 
-    def record(self):
+    def record(self, **metadata):
         files = {p.name: sha256(p) for p in self.cache.iterdir() if p.name != 'build.json'}
-        (self.cache / 'build.json').write_text(json.dumps({'key': self.plan['key'], 'files': files}), encoding='utf-8')
+        value = {'key': self.plan['key'], 'packages': self.plan['packages'],
+                 'recipeCommit': self.lock['recipeCommit'], 'source': self.lock['source'], 'files': files}
+        value.update(metadata)
+        (self.cache / 'build.json').write_text(json.dumps(value), encoding='utf-8')
+
+    def test_cold_builder_receipt_matches_the_same_strict_cache_verifier(self):
+        build = self.cache / 'cold'
+        build.mkdir()
+        cache = build / 'cache'
+        inputs = {'PKGBUILD': RECIPE.encode(), self.lock['source']['name']: b'source'}
+        self.lock['source']['url'] = 'https://example.invalid/synthetic-source.tar.xz'
+
+        def download_pinned(_url, target, expected, **_):
+            content = inputs[target.name]
+            self.assertEqual(hashlib.sha256(content).hexdigest(), expected)
+            target.write_bytes(content)
+
+        def build_synthetic(command, **_):
+            self.assertEqual(command[1:3], ['--login', '/synthetic-makepkg-script'])
+            self.assertEqual(Path(command[3]), cache)
+            self.assertEqual((cache / 'PKGBUILD').read_text(), patch_recipe(RECIPE))
+            (cache / 'ffmpeg-synthetic.pkg.tar.zst').write_bytes(b'isolated synthetic package')
+            (cache / 'src').mkdir()
+
+        with patch('windows_media_recipe.BUILD', build), \
+                patch('windows_media_recipe.download', side_effect=download_pinned), \
+                patch('windows_media_recipe.output', return_value='/synthetic-makepkg-script\n'), \
+                patch('windows_media_recipe.subprocess.run', side_effect=build_synthetic), \
+                contextlib.redirect_stdout(io.StringIO()):
+            build_package(self.cache, cache, self.plan, self.lock)
+        self.assertFalse((cache / 'src').exists())
+        self.assertEqual(verify_cache(cache, self.plan, self.lock).read_bytes(), b'isolated synthetic package')
 
     def test_intact_source_and_package_are_accepted_without_executing_them(self):
         self.assertEqual(verify_cache(self.cache, self.plan, self.lock), self.package)
@@ -111,6 +189,17 @@ class WindowsRuntimeIntegrity(unittest.TestCase):
     def test_dependency_identity_mismatch_is_rejected(self):
         with self.assertRaisesRegex(AssertionError, 'identity mismatch'):
             verify_cache(self.cache, {'key': 'another-compiler'}, self.lock)
+
+    def test_exact_key_does_not_override_inconsistent_receipt_identity(self):
+        for metadata, message in (
+            ({'packages': 'unreviewed-toolchain 2'}, 'package inventory mismatch'),
+            ({'recipeCommit': 'different-upstream'}, 'recipe or source identity mismatch'),
+            ({'source': {'name': 'unlocked-source'}}, 'recipe or source identity mismatch'),
+        ):
+            with self.subTest(metadata=metadata):
+                self.record(**metadata)
+                with self.assertRaisesRegex(AssertionError, message):
+                    verify_cache(self.cache, self.plan, self.lock)
 
     def test_source_cannot_be_omitted_from_a_rehashed_cache(self):
         (self.cache / 'ffmpeg-synthetic.tar.xz').unlink()
