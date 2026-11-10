@@ -425,8 +425,13 @@
       await capture("around_empty");
       click(action("今日最热", full()));
       const title = (id) => row("播放", id, full())?.closest("li")?.querySelector(".rank-episode strong");
-      const double = (node) => node.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
-      double(await wait(() => title(410), "visible exact chart row"));
+      const double = async (id) => {
+        await wait(() => title(id) && !row("播放", id, full()).disabled, "enabled voice rank row " + id);
+        const node = title(id);
+        assert(node?.isConnected, "voice rank row was replaced before double click " + id);
+        node.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
+      };
+      await double(410);
       await waitPlayer("playing", "410");
       const replaced = await snapshot();
       assert(replaced.mode === "sequential" && (await queue()).join() === "407,410,409",
@@ -446,7 +451,7 @@
       } });
       await invoke("play_selection", { epoch, selection: { kind: "voice", id: "401" } });
       await waitPlayer("playing", "401");
-      double(await wait(() => title(407), "retained double click target"));
+      await double(407);
       await waitPlayer("playing", "407");
       assert((await queue()).join() === "401,409,407,410", "replace-off double click uses the surrounding episode order");
       await capture("rank_double_keep");
