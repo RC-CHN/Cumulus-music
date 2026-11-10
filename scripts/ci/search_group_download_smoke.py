@@ -152,7 +152,7 @@ def run(args):
         )]
         if args.playlist:
             assert len(journal) == 1 and journal[0]['phase'] == 'confirmed'
-            assert journal[0]['system_liked_group'] == args.liked
+            assert journal[0].get('system_liked_group', False) == args.liked
         else:
             assert journal == []
     published = list((root / 'group-output').rglob('*.flac'))
