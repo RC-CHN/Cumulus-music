@@ -37,8 +37,31 @@
       player.entryId === before.entryId && player.position === before.position &&
       player.queueRevision === before.queueRevision && queue.current === before.entryId &&
       queue.tracks.length === 1 && queue.tracks[0].track.id === '701', 'independent paused playback');
+    const picker = one('[data-search-group-download-picker][open]');
+    const paintSamples = [];
+    if (label === 'choose' || label === 'reconcile') {
+      assert(picker, 'the live picker is open for capture');
+      const r = picker.getBoundingClientRect();
+      const style = getComputedStyle(picker);
+      assert(style.opacity === '1' && /^rgb\(\d+, \d+, \d+\)$/.test(style.backgroundColor),
+        'the picker has opaque composited padding');
+      const samples = [[r.left+12,r.bottom-26,style.backgroundColor]];
+      if (label === 'choose') {
+        const cover = picker.querySelector('[data-playlist-id="81"] .collect-cover');
+        assert(cover, 'the selected destination owns a painted cover slot');
+        const box = cover.getBoundingClientRect();
+        const color = getComputedStyle(cover).backgroundColor;
+        assert(color !== style.backgroundColor && /^rgb\(\d+, \d+, \d+\)$/.test(color),
+          'the destination cover distinguishes the modal from its stale backdrop');
+        samples.push([box.left+9,box.top+box.height/2,color]);
+      } else samples.push([r.left+12,r.top+42,style.backgroundColor]);
+      for (const [x,y,color] of samples) {
+        assert(picker.contains(document.elementFromPoint(x,y)), 'paint sample belongs to the picker');
+        paintSamples.push({x,y,color});
+      }
+    }
     await emit(`ux_${String(++step).padStart(2,'0')}_${label}`,
-      { player, queue, actions, screenX, screenY, ratio: devicePixelRatio, ...extra });
+      { player, queue, actions, screenX, screenY, ratio: devicePixelRatio, paintSamples, ...extra });
   }
   async function input(label, node, mouseButton = 1, ctrl = false) {
     assert(node?.isConnected && !node.disabled, 'actual enabled target');
@@ -135,6 +158,7 @@
         all('[data-search-group-download-picker] [data-playlist-id]').map(row => row.dataset.playlistId).join() === '81',
         'real picker excludes foreign and system liked destinations');
       assert((await downloads('active')).activeCount === 0, 'opening does not enqueue');
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       await input('choose',destination());
       const reconcile = () => picker()?.querySelector('[data-search-group-reconcile]');
       await wait(() => reconcile() && !reconcile().disabled && actions.length === 3 &&

@@ -67,6 +67,9 @@ def run(args):
         path = output / f'ux_{index:02}_{label}.json'
         rows.append(load(path))
         assert path.with_suffix('.png').is_file()
+        if label in ('choose', 'reconcile'):
+            paint = load(path.with_name('paint-' + path.name))
+            assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples'])
     first, last = rows[0], rows[-1]
     assert first['searchGroupDownload'] == []
     assert all(row['queue'] == first['queue'] for row in rows)
