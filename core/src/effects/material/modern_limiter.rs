@@ -7,8 +7,9 @@ use super::{
 use crate::{
     Error, Result,
     effects::dsp::{
-        Coefficients, Format, GraphicEq, LimiterStream, LimiterStreamQuantum, LimiterStreamRead,
-        LimiterStreamWrite, ParametricBand, ParametricEq, ParametricKind, Slot50Tone,
+        Coefficients, Format, GraphicEq, LimiterBlockFlow, LimiterStage, LimiterStream,
+        LimiterStreamQuantum, LimiterStreamRead, LimiterStreamWrite, ParametricBand, ParametricEq,
+        ParametricKind, PlanarBlock, Slot50Tone,
     },
 };
 use serde_json::{Map, Value};
@@ -122,6 +123,24 @@ impl ModernLimiterPlan {
         format: Format,
         fifo_capacity: u32,
     ) -> Result<ModernLimiterRenderer> {
+        Ok(ModernLimiterRenderer {
+            stages: self.stages(format)?,
+            stream: self.limiter.pcm_stream(format, fifo_capacity)?,
+            quarantined: false,
+        })
+    }
+
+    // For a transport that already owns the native input quantum and EOF
+    // sentinel. The standalone API must not be wrapped in a second FIFO.
+    #[cfg(test)]
+    pub(crate) fn native_test_blocks(
+        &self,
+        format: Format,
+    ) -> Result<(ModernLimiterStages, LimiterStage)> {
+        Ok((self.stages(format)?, self.limiter.pcm_stage(format)?))
+    }
+
+    fn stages(&self, format: Format) -> Result<ModernLimiterStages> {
         if !matches!(format.rate(), 44_100.0 | 48_000.0)
             || format.channels() != 2
             || format.capacity() != 2048
@@ -165,13 +184,7 @@ impl ModernLimiterPlan {
         peq.reset()?;
         apply_peq(&mut peq, &self.peq)?;
 
-        Ok(ModernLimiterRenderer {
-            geq,
-            bt,
-            peq,
-            stream: self.limiter.pcm_stream(format, fifo_capacity)?,
-            quarantined: false,
-        })
+        Ok(ModernLimiterStages { geq, bt, peq })
     }
 }
 
@@ -232,11 +245,53 @@ fn require_peq_controls(peq: &Value) -> Result<()> {
 /// Owned offline PCM stream for the qualified topology. Holds only DSP state
 /// and bounded PCM. It does not hold files, identities, URLs, tokens or leases.
 pub struct ModernLimiterRenderer {
+    stages: ModernLimiterStages,
+    stream: LimiterStream,
+    quarantined: bool,
+}
+
+pub(crate) struct ModernLimiterStages {
     geq: GraphicEq,
     bt: Slot50Tone,
     peq: ParametricEq,
-    stream: LimiterStream,
-    quarantined: bool,
+}
+
+impl ModernLimiterStages {
+    pub(crate) fn reset(&mut self) -> Result<()> {
+        self.geq.reset()?;
+        self.bt.reset()?;
+        self.peq.reset()
+    }
+
+    pub(crate) fn process(
+        &mut self,
+        limiter: &mut LimiterStage,
+        block: &mut PlanarBlock,
+        frames: u32,
+        end: bool,
+    ) -> Result<LimiterBlockFlow> {
+        let valid = frames as usize;
+        let stride = block.format().capacity();
+        if valid > stride {
+            return Err(Error::InvalidInput("modern limiter block exceeds capacity"));
+        }
+        for channel in block.samples_mut().chunks_exact_mut(stride) {
+            channel[valid..].fill(0.0);
+        }
+        self.geq.process(block, valid)?;
+        self.bt.process(block, valid)?;
+        self.peq.process(block, valid)?;
+        let timing = limiter.process(block, frames, end)?;
+        let valid = timing.output_frames as usize;
+        if block
+            .samples()
+            .chunks_exact(stride)
+            .any(|channel| channel[..valid].iter().any(|sample| !sample.is_finite()))
+        {
+            return Err(Error::Media("non-finite modern limiter graph output"));
+        }
+        Ok(timing)
+    }
 }
 
 impl ModernLimiterRenderer {
@@ -268,24 +323,7 @@ impl ModernLimiterRenderer {
             timestamp_ms,
             |limiter, block, frames, end| {
                 processing = true;
-                let valid = frames as usize;
-                let stride = block.format().capacity();
-                for channel in block.samples_mut().chunks_exact_mut(stride) {
-                    channel[valid..].fill(0.0);
-                }
-                self.geq.process(block, valid)?;
-                self.bt.process(block, valid)?;
-                self.peq.process(block, valid)?;
-                let timing = limiter.process(block, frames, end)?;
-                let valid = timing.output_frames as usize;
-                if block
-                    .samples()
-                    .chunks_exact(stride)
-                    .any(|channel| channel[..valid].iter().any(|sample| !sample.is_finite()))
-                {
-                    return Err(Error::Media("non-finite modern limiter graph output"));
-                }
-                Ok(timing)
+                self.stages.process(limiter, block, frames, end)
             },
             observe,
         );
@@ -306,12 +344,7 @@ impl ModernLimiterRenderer {
     /// controls and settle the wrappers to their current active targets.
     pub fn reset(&mut self) -> Result<()> {
         self.ensure_live()?;
-        if let Err(error) = self
-            .geq
-            .reset()
-            .and_then(|()| self.bt.reset())
-            .and_then(|()| self.peq.reset())
-        {
+        if let Err(error) = self.stages.reset() {
             self.quarantined = true;
             return Err(error);
         }

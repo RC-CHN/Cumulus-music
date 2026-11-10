@@ -80,6 +80,27 @@ impl NativeStereoSource {
         authority: Cancellation,
         plan: LocalEqualizerMaterialPlan,
     ) -> Result<NativeStereoSelection> {
+        Self::select_wave_graph(file, authority, |format| {
+            SourceGraph::new_local(format, plan)
+        })
+    }
+
+    #[cfg(test)]
+    fn select_modern_wave_test(
+        file: File,
+        authority: Cancellation,
+        plan: &crate::effects::material::ModernLimiterPlan,
+    ) -> Result<NativeStereoSelection> {
+        Self::select_wave_graph(file, authority, |format| {
+            SourceGraph::new_modern_test(format, plan)
+        })
+    }
+
+    fn select_wave_graph(
+        file: File,
+        authority: Cancellation,
+        graph: impl FnOnce(crate::effects::dsp::Format) -> Result<SourceGraph>,
+    ) -> Result<NativeStereoSelection> {
         let mut reader = NativeStereoFile::new(file, authority)?;
         let layout = PcmWave::inspect(&mut reader)?;
         reader.wave_layout = Some(layout);
@@ -89,7 +110,7 @@ impl NativeStereoSource {
                 DecoderKind::Wave(layout),
                 layout.rate,
                 layout.frames,
-                |format| SourceGraph::new_local(format, plan),
+                graph,
             )? {
                 Selection::Qualified(source) => {
                     NativeStereoSelection::Qualified(Box::new(Self(*source)))
@@ -246,3 +267,6 @@ impl Seek for NativeStereoFile {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod modern_tests;

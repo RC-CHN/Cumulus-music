@@ -1,0 +1,134 @@
+Held-source proof for the modern limiter graph
+
+The offline renderer and this proof share one GEQ / modern BT / material
+PEQ / B0 block implementation. The held producer already owns decoded
+packet order, input framing, the single empty-FIFO sentinel and each
+2048-frame call; it passes those blocks to the same stages. B0 alone
+holds lookahead, pads its tail and reports graph EOF. Nesting the offline
+stream inside this producer would create a second FIFO and sentinel.
+
+Only a core test can select the modern graph for this worker. It uses one
+already-open WAV descriptor from the real native file/fingerprint check,
+a bounded built-in stereo s16 decoder and the production owned worker,
+raw PCM reader, cancellation and optional libmpv sink. The fixture has
+no account, media URL, actual effect registration or service calls. The
+ordinary local EQ still uses its existing constructor. No desktop, IPC,
+factory, source selection or product preset entry is enabled by the test.
+
+The hardware-free test compares bytes read from the real worker against
+both official synthetic recipes at 44.1/48 kHz. A new held file is renamed
+and its original pathname replaced after the descriptor check. The first
+block uses the original dry-to-wet transitions. Reclaim waits until the old
+reader is closed, the sink retired, and the worker returned the one source
+and graph. A frame seek reuses that graph, resets its histories and B0,
+and preserves parameters and the PEQ gain state. Its exact 4096-frame
+suffix emits the native sentinel for 4097 total frames and the original
+hash. Producer EOF and delivered bytes are checked separately.
+
+The opt-in native test exercises the same worker with libmpv's real raw
+stereo f32 reader and null output. It checks native progress, pause, refusal
+of arbitrary raw byte seek, stop and native reader retirement before source
+reclaim, a new entry from the same descriptor, and producer drain plus a
+matching natural native EOF. It also revokes the held source mid-play and
+requires retirement without allowing that source to be reclaimed. The test
+uses native sink entry IDs and the independent source clock; it does not
+call the desktop seek IPC or prove GUI initialization/physical audio.
+
+    cargo test --locked -p cumulus-core --lib modern_held_wave_worker
+    cargo test --locked -p cumulus-core --lib modern_held_wave_native_sink -- --ignored --nocapture
+
+`CUMULUS_LIMITER_PROBE_MPV` can select an explicit trusted native libmpv.
+There is no FFmpeg child, separate decoder runtime, or dependency on the
+Windows SDK in either test. The original SDK-generated synthetic vector
+and the portable renderer are documented in
+`core-effects-modern-limiter-renderer.txt` and the original graph report.
+Both tests passed together on Linux x86_64 in a loopback-only namespace
+with libmpv `0.41.0-2ubuntu4` (SHA-256
+`2051bdd3bce70349ffa9513c5db4ac0d7fa4aad869004b243f39da93768e8bc5`).
+No physical audio output, desktop window or native Windows run was used.
+
+Production wiring and its remaining gates
+
+- The archived whole-material sample is ordinary catalogue `3592427`
+  (清澈人声), rights type 127. Its archived canUseType=10 and exact NCAE
+  hash demonstrate material acquisition at that time. They are not a
+  current entitlement, registration acknowledgement or permission to
+  apply an effect to another account or source. M/342 `handleClickAudioEffectNew`
+  and `activeAudioEffect` obtain permission, select the first declared
+  material, match cached paths by MD5, and route ordinary materials as
+  native type 2. The Cumulus acquisition adds strict file verification.
+  M/308 `restoreAudioEffect` separately handles the persisted on/rights and
+  recycle conditions; device and intelligent material routes differ.
+- `EffectsLibrary::acquire_with_rights` and material Ready records already
+  verify cache/CDN identity, account generation and content digest. The
+  current native preparation, authorization binding, controller supervision
+  and desktop acknowledgement accept only a single routed PEQ. The modern
+  material fails that gate even when extra sections are explicitly off.
+  A future separate typed binding must join the exact prepared material,
+  a fresh known non-trial observation, confirmed registration operation /
+  revision, current account, source identity and native entry. Keep source
+  authority in the held decoder and sink; check effect authority at attach,
+  resume and seek plus actor supervision, without SQLite or network calls
+  in an audio callback. Release only after confirmed local detach and keep
+  uncertain server receipts distinct from local playback status.
+- M/308:2184–2218 closes the saved regular type 2 effect when `Ge=false`
+  and `playInfo.bitrate` is one of `[2999,3999,5999,6999]`, and sets
+  `Ge=true`. Its else branch opens if `Ge` was true and clears it, even
+  for a second consecutive special rate. Replaying the original expression
+  in a sealed Node VM for `[320000,2999,3999,320000,6999,320000]` emitted
+  `[none,off,on,none,off,on]`. This is JS dispatch evidence; whether the
+  native host still suppresses rendering on the second special source is
+  unverified. M/342:366–382 has a distinct selection-time `listenReg` guard
+  using the same codes. User-selected effects also suppress assigned track
+  effects, and M/342 `switchNew` routes the saved `isOn` through a type-2
+  call. No file-extension or approximate quality mapping substitutes for
+  those source states. Stock EQ/normalization, catalogue PEQ, device PEQ
+  and the older held material must not double-process this graph.
+- The existing held source's normal/expired prepare, sole descriptor,
+  retire/close/join, real decoder, source frame seek and sink failure
+  fences are reusable. Its `local_equalizer` actor currently owns distinct
+  local-settings semantics; a modern receipt must not be hidden inside
+  that actor flag. The proof covers the worker and native sink, not an
+  authorized mid-track apply/off/reapply with audible buffers in flight.
+  A separate sealed SDK run of the exact archived receipt confirms a
+  concrete timeline change: after a full active block, keep unread output
+  and 511 pending input frames, call master bypass `68770(true)`, process
+  the second full block, leave unread output and 257 pending input frames,
+  then run the same `EFB760` material sequence and drain. Neither control
+  called graph reset `1B960` or B0 reset marker `65490`; queued old output
+  before the first control stayed byte-identical and both pending inputs
+  still made the next full blocks. The actual native B0 nevertheless
+  withholds its lookahead again after each change. For 6151 input frames,
+  output was `[1829,1829,1829,226]` = 5713 at 44.1 kHz and
+  `[1810,1810,1810,245]` = 5675 at 48 kHz. No-switch controls both
+  produced 6151. The sanitized private report has SHA-256
+  `804ee5f7d06bcc65b335dc1159440cafb60ef79df3ebe27e54cb557047ce34c4`.
+  This is actual SDK output, not evidence of how the desktop clock maps
+  the missing frames or handles old audio already inside its device queue.
+- The exact B0 release change explains the restart independently of a
+  master setting or a graph reset. Setter `654B0` at `655A0–655A5` writes
+  a changed positive release and marks `+C5`; attack has its own analogous
+  branch. `63B90` invokes setup `64F40` when either `+C4` (reset) or `+C5`
+  (parameters) is set. An isolated native control changing only threshold
+  and output gain left both flags zero and emitted 2048 frames. A later
+  release-only change to the native default set `[C4,C5]=[0,1]` and emitted
+  1829/1810 frames at 44.1/48 kHz respectively. Receipt SHA-256
+  `c591c0c3cd174320eb2eb2e33bae7b2a2839a3ce9fef8ebad5f830803ad7a024`.
+- Recover the exact hot bypass/reapply state, including the in-node
+  limiter update and source-clock accounting, then verify real controller
+  takeover and failed handoff before enabling this selection. Do not
+  silently fall back to stock after an audible failure or reopen a revoked
+  descriptor or request a new stream. Authorized online/cache decoder
+  formats, trial, additional topologies and physical devices remain out
+  of this proof.
+- The ordinary official type-4 cache/online source feeds the device PCM
+  route (`10555B0` negotiated geometry; `1055EF0` SDK write/read); it does
+  not infer the graph format from song bitrate. The ordinary seek discards
+  old packets, flushes and seeks the decoder, then invokes
+  `101A270 → 101A230 → 67F70` before reading its next frame if no newer seek
+  superseded it. Its accepted AVFrame need not begin at the same sample
+  as our owned WAV seek. `core-effects-online-tone-boundary.txt`
+  also demonstrates that Cumulus's stock HTTPS decoder can send a pre-roll
+  AVFrame through a filter before clipping to the requested presented
+  frame. A fixed-length stock LADSPA block neither solves that boundary
+  nor supports the modern limiter's observed variable output and drain.

@@ -62,6 +62,19 @@ impl MpvEngine {
         })
     }
 
+    /// Exercise the same intentional retirement as local source-frame seek
+    /// without labeling the fixture's immutable graph a settings equalizer.
+    #[cfg(test)]
+    pub(in crate::playback::engine) fn test_retire_held_stereo(
+        &mut self,
+        entry: i64,
+        cancel: &Cancellation,
+    ) -> Result<()> {
+        self.retire_local_pinned_with(entry, cancel, |engine, entry, guard| {
+            engine.pinned_stop_command(entry, c"stop", guard)
+        })
+    }
+
     fn retire_local_pinned_with(
         &mut self,
         entry: i64,

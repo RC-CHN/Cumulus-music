@@ -1,4 +1,9 @@
 //! Single held-source graph lifetime. Preparing a decoder is not PCM use.
+#[cfg(test)]
+use crate::effects::{
+    dsp::LimiterStage,
+    material::{ModernLimiterPlan, ModernLimiterStages},
+};
 use crate::{
     Error, Result,
     effects::{
@@ -18,6 +23,8 @@ pub(super) struct SourceGraph {
 enum Material {
     Cold(LocalFixedStereoMaterial),
     Local(LocalEqualizerStereoMaterial),
+    #[cfg(test)]
+    Modern(Box<ModernBlocks>),
 }
 impl SourceGraph {
     pub fn new(format: Format, plan: LocalStereoMaterialPlan) -> Result<Self> {
@@ -32,10 +39,25 @@ impl SourceGraph {
             driven: false,
         })
     }
+    #[cfg(test)]
+    pub fn new_modern_test(format: Format, plan: &ModernLimiterPlan) -> Result<Self> {
+        let (stages, limiter) = plan.native_test_blocks(format)?;
+        Ok(Self {
+            material: Material::Modern(Box::new(ModernBlocks {
+                format,
+                stages,
+                limiter,
+                failed: false,
+            })),
+            driven: false,
+        })
+    }
     pub fn format(&self) -> Format {
         match &self.material {
             Material::Cold(graph) => graph.format(),
             Material::Local(graph) => graph.format(),
+            #[cfg(test)]
+            Material::Modern(graph) => graph.format,
         }
     }
     /// Fresh zero-start preserves the graph's initial transition: cold keeps
@@ -46,6 +68,8 @@ impl SourceGraph {
             match &mut self.material {
                 Material::Cold(graph) => graph.reset()?,
                 Material::Local(graph) => graph.reset()?,
+                #[cfg(test)]
+                Material::Modern(graph) => graph.reset()?,
             }
             self.driven = true;
         }
@@ -81,6 +105,54 @@ impl SourceGraph {
         match &mut self.material {
             Material::Cold(graph) => graph.process(pcm, frames, end),
             Material::Local(graph) => graph.process(pcm, frames, end),
+            #[cfg(test)]
+            Material::Modern(graph) => graph.process(pcm, frames, end),
+        }
+    }
+}
+
+#[cfg(test)]
+struct ModernBlocks {
+    format: Format,
+    stages: ModernLimiterStages,
+    limiter: LimiterStage,
+    failed: bool,
+}
+
+#[cfg(test)]
+impl ModernBlocks {
+    fn reset(&mut self) -> Result<()> {
+        if self.failed {
+            return Err(Error::State("held modern limiter graph is quarantined"));
+        }
+        if let Err(error) = self.stages.reset() {
+            self.failed = true;
+            return Err(error);
+        }
+        self.limiter.reset_stream_state();
+        Ok(())
+    }
+
+    fn process(
+        &mut self,
+        pcm: &mut PlanarBlock,
+        frames: usize,
+        end: bool,
+    ) -> Result<AmbienceOneResult> {
+        if self.failed {
+            return Err(Error::State("held modern limiter graph is quarantined"));
+        }
+        let frames = u32::try_from(frames)
+            .map_err(|_| Error::InvalidInput("invalid held modern limiter frame count"))?;
+        match self.stages.process(&mut self.limiter, pcm, frames, end) {
+            Ok(flow) => Ok(AmbienceOneResult {
+                valid_frames: flow.output_frames as usize,
+                end: flow.output_end,
+            }),
+            Err(error) => {
+                self.failed = true;
+                Err(error)
+            }
         }
     }
 }

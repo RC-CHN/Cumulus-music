@@ -16,6 +16,8 @@ pub use equalization::{EqualizationCall, bass_treble_calls, graphic_calls};
 pub use limiter::{
     LimiterBeginCall, MATERIAL_BEGIN_LIMITER, MaterialLimiterPlan, material_limiter_plan,
 };
+#[cfg(test)]
+pub(crate) use modern_limiter::ModernLimiterStages;
 pub use modern_limiter::{ModernLimiterPlan, ModernLimiterRenderer};
 pub use routing::{Component, ComponentSection, MaterialRouting, MaterialSchema, route_sections};
 use serde::{Deserialize, Serialize};
