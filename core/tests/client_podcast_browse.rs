@@ -30,11 +30,12 @@ struct Fixture {
     mode: AtomicU8,
     credential: AtomicU64,
     hold_around: AtomicBool,
-    hold_permission: AtomicBool,
+    hold_permission: AtomicU64,
     deny_permission: AtomicU64,
     purchase_revision_salt: AtomicU64,
     entered: Notify,
     released: Notify,
+    rank_neighbor_url_requested: Notify,
 }
 
 fn episode(id: u64) -> Value {
@@ -115,7 +116,11 @@ impl Api for Fixture {
                 }
                 "/api/dj/play/url/check" => {
                     let id: u64 = args["voiceId"].as_str().unwrap().parse().unwrap();
-                    if id == 82 && self.hold_permission.swap(false, Ordering::SeqCst) {
+                    if self
+                        .hold_permission
+                        .compare_exchange(id, 0, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
                         self.entered.notify_one();
                         self.released.notified().await;
                     }
@@ -128,6 +133,9 @@ impl Api for Fixture {
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
+                    if ids == [json!("186")] {
+                        self.rank_neighbor_url_requested.notify_one();
+                    }
                     json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/synthetic.mp3","md5":"test","expi":300,"level":"standard"}]})
                 }
                 _ => panic!("unexpected synthetic route {path}"),
@@ -536,7 +544,7 @@ async fn a_retired_purchase_list_cannot_submit_late_source_authorization() {
     let old = old_selection(&client).await;
     let revision = purchases(&client, false).await;
     api.calls.lock().unwrap().clear();
-    api.hold_permission.store(true, Ordering::SeqCst);
+    api.hold_permission.store(82, Ordering::SeqCst);
     let pending = tokio::spawn({
         let client = client.clone();
         let revision = revision.clone();
@@ -619,7 +627,13 @@ async fn rank_double_click_uses_bound_chart_or_around_according_to_the_native_pr
         )
         .await
         .unwrap();
+    // Loading the chart starts asynchronous prefetch for the next row. Hold
+    // its permission reply until the current-row toggle's observation window.
+    api.hold_permission.store(86, Ordering::SeqCst);
     let playing = select_gesture(&client, full.clone(), true).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), api.entered.notified())
+        .await
+        .expect("initial chart playback must prefetch the next row");
     assert_eq!(playing.mode, PlaybackMode::Sequential);
     assert_eq!(
         playing.track.as_ref().unwrap().voice_id.as_deref(),
@@ -644,6 +658,7 @@ async fn rank_double_click_uses_bound_chart_or_around_according_to_the_native_pr
         .await
         .unwrap();
     api.calls.lock().unwrap().clear();
+    api.released.notify_one();
     let paused = select_gesture(&client, full, true).await.unwrap();
     assert_eq!(paused.state, PlaybackStatus::Paused);
     assert_eq!(paused.play_id, playing.play_id);
@@ -651,7 +666,28 @@ async fn rank_double_click_uses_bound_chart_or_around_according_to_the_native_pr
     assert_eq!(paused.position, playing.position);
     assert_eq!(paused.mode, PlaybackMode::Sequential);
     assert_eq!(queue(&client).await, ["82", "86", "84"]);
-    assert!(api.calls.lock().unwrap().is_empty());
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        api.rank_neighbor_url_requested.notified(),
+    )
+    .await
+    .expect("the held neighbor authorization must enter the observation window");
+    {
+        let calls = api.calls.lock().unwrap();
+        // Only the other chart rows may be prefetched as the modes change.
+        // No around, current detail, rights, or current media URL reread.
+        assert!(
+            calls.iter().all(|(path, args)| match path.as_str() {
+                "/api/dj/program/detail" => matches!(args["id"].as_str(), Some("84" | "86")),
+                "/api/dj/play/url/check" => matches!(args["voiceId"].as_str(), Some("84" | "86")),
+                "/api/song/enhance/player/url/v1" => {
+                    matches!(args["ids"].as_str(), Some(r#"["184"]"# | r#"["186"]"#))
+                }
+                _ => false,
+            }),
+            "chart toggle made a request other than neighbor prefetch: {calls:?}"
+        );
+    }
 
     old_selection(&client).await;
     client
@@ -760,7 +796,7 @@ async fn held_rights_cannot_dispatch_url_or_overwrite_a_new_native_control() {
     let old = old_selection(&client).await;
     let receipt = weekly(&client).await;
     api.calls.lock().unwrap().clear();
-    api.hold_permission.store(true, Ordering::SeqCst);
+    api.hold_permission.store(82, Ordering::SeqCst);
     let pending = {
         let client = client.clone();
         tokio::spawn(async move { select(&client, receipt).await })
