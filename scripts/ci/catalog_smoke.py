@@ -893,6 +893,13 @@ def main():
     elif args.settings:
         assert all(v['scrollBottom'] <= v['mainBottom'] + 1 for v in stages)
     elif args.history:
+        if sys.platform == 'linux':
+            import locale
+            observed = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
+            messages = locale.setlocale(locale.LC_MESSAGES, '')
+            characters = locale.setlocale(locale.LC_CTYPE, '')
+            assert messages != 'C' and characters != 'C'
+            assert observed == {'numeric': 'C', 'messages': messages, 'characters': characters}
         history_rows = [v for v in stages if not v.get('preferenceUi')]
         assert all(v['rows'] <= 35 and v['footerBottom'] <= v['mainBottom'] + 1 for v in history_rows)
         assert {v['scope'] for v in history_rows} == {'歌曲', '播客', '有声书', '声音', '歌单', '专辑'}
