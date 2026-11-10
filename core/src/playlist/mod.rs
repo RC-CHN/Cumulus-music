@@ -19,8 +19,8 @@ pub use local_membership::{
     PlaylistLocalRow, PlaylistLocalStore, PlaylistMixedOrderRow, PlaylistMixedReorderEvidence,
     PlaylistMixedReorderReceipt,
 };
-pub(crate) use service::GroupDownloadPlaylistProof;
 pub use service::PlaylistService;
+pub(crate) use service::{GroupDownloadLikedOrigin, GroupDownloadPlaylistProof};
 pub(crate) use snapshot::playlist_entry_id;
 pub use snapshot::{PlaylistList, PlaylistSnapshot, PlaylistSummary};
 pub use types::*;

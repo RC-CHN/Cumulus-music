@@ -7400,6 +7400,7 @@ onUnmounted(() => {
       @manage="(track, playlist) => (playlistDialog = { kind: 'track', track, playlist })"
       @queue-action="applyQueueMenu"
       @download-settings="(epoch) => openSettingsSection(epoch, 'settings-download')"
+      @download-likes="music.mergeVerifiedPlaylistLikes"
     />
     <ModalTransition
       :restore-focus="

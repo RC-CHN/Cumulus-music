@@ -280,6 +280,7 @@ export type SearchGroupDownloadCommand =
   | { kind: 'start' | 'status' | 'cancel' | 'reconcile'; receipt: string }
   | { kind: 'destinations'; receipt: string; sort: SearchGroupDownloadSort; page: number }
   | { kind: 'choose'; receipt: string; playlistId: string }
+  | { kind: 'choose_liked'; receipt: string; destinationReceipt: string }
   | { kind: 'start_from_playlist'; receipt: string; continuation: string };
 export type SearchGroupDownloadReply =
   | {
@@ -301,6 +302,7 @@ export type SearchGroupDownloadReply =
   | {
       kind: 'destinations';
       page: AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>;
+      systemLikedReceipt: string | null;
     }
   | {
       kind: 'playlist';
@@ -311,6 +313,7 @@ export type SearchGroupDownloadReply =
         phase: import('./playlists').PlaylistPhase;
         addFailed: boolean;
         continuation: string | null;
+        likedIds: string[];
       };
     }
   | { kind: 'pending' | 'not_started' | 'cancelled' | 'directory_required' };

@@ -8,6 +8,7 @@ use crate::{
     protocol::api::{Api, GuardedPlaylistAdd, PlaylistAddPermission, identifier},
     storage::{OperationLock, StateStore, StateTransaction},
 };
+pub(crate) use liked::Origin as GroupDownloadLikedOrigin;
 use serde_json::{Value, json};
 use std::{
     sync::{
@@ -24,14 +25,14 @@ pub(crate) struct GroupDownloadPlaylistProof {
     pub playlist: String,
     pub songs: Arc<[String]>,
     pub creation: Option<String>,
-    pub system_liked: bool,
+    pub liked_origin: Option<GroupDownloadLikedOrigin>,
 }
 
 impl GroupDownloadPlaylistProof {
     pub(crate) fn outcome(&self, record: &PlaylistMutation, owner: &str) -> Result<(bool, bool)> {
         if record.operation_id != self.operation
             || record.local_batch_favorite
-            || record.system_liked_group != self.system_liked
+            || record.system_liked_group != self.liked_origin.is_some()
             || record.playlist_id.as_deref() != Some(self.playlist.as_str())
             || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
                 if id == &self.playlist && ids.as_slice() == self.songs.as_ref())
@@ -39,8 +40,10 @@ impl GroupDownloadPlaylistProof {
             return Err(Error::StaleResponse);
         }
         let outcome = record.download_picker_outcome(self.creation.is_none());
-        if outcome.0 && self.system_liked {
-            liked::verify_download_readback(record, owner, &self.playlist, &self.songs)?;
+        if outcome.0
+            && let Some(origin) = self.liked_origin
+        {
+            liked::verify_download_readback(record, owner, &self.playlist, &self.songs, origin)?;
         }
         Ok(outcome)
     }
@@ -480,10 +483,28 @@ impl PlaylistService {
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
+        self.guarded_collect_download_liked_group(
+            token,
+            playlist,
+            &[song.into()],
+            operation_id,
+            permission,
+        )
+        .await
+    }
+
+    pub(crate) async fn guarded_collect_download_liked_group(
+        &self,
+        token: &SessionToken,
+        playlist: &str,
+        songs: &[String],
+        operation_id: &str,
+        permission: &PlaylistAddPermission<'_>,
+    ) -> Result<PlaylistMutation> {
         self.guarded_add_songs(
             token,
             AddDestination::DownloadSystemLiked(playlist),
-            &[song.into()],
+            songs,
             operation_id,
             permission,
             |api| api.download_system_liked_scope_revision(),

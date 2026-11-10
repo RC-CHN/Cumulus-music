@@ -394,6 +394,7 @@ async fn search_group_download_requires_known_anchor_directory_and_live_credenti
 #[tokio::test]
 async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_recovery() {
     const LIST: &str = "/api/user/playlist/v2";
+    const STAR_LIST: &str = "/api/user/playlist";
     const DETAIL: &str = "/api/v6/playlist/detail";
     const ADD: &str = "/api/v1/playlist/manipulate/tracks";
     let summary = |id, owner, special| {
@@ -413,6 +414,7 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
         search_page_with_destination(true),
         json!({"code":200,"ids":[43]}).into(),
         json!({"code":200,"playlist":[summary(81,71,0),summary(82,76,0),summary(83,71,5)],"more":false}).into(),
+        json!({"code":200,"playlist":[],"more":false}).into(),
         detail(&[]),
         HttpResponse::Ready(Err(Error::Transport("synthetic lost search add".into()))),
         detail(&[]),
@@ -463,7 +465,10 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
         client.search_group_download(&epoch, choose("81")).await,
         Err(Error::StaleResponse)
     ));
-    let R::Destinations { page } = client
+    let R::Destinations {
+        page,
+        system_liked_receipt,
+    } = client
         .search_group_download(
             &epoch,
             C::Destinations {
@@ -477,6 +482,7 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
     else {
         panic!("expected verified destinations")
     };
+    assert!(system_liked_receipt.is_none());
     assert_eq!(
         page.value
             .playlists
@@ -496,7 +502,7 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
             .iter()
             .map(|call| call.path.as_str())
             .collect::<Vec<_>>()[1..],
-        [LIKED, LIST]
+        [LIKED, LIST, STAR_LIST]
     );
     for _ in 0..2 {
         let reply = client
@@ -516,7 +522,7 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
     );
     assert_eq!(
         http.calls().len(),
-        6,
+        7,
         "one write; reselect never repeats it"
     );
     let reply = client
@@ -551,14 +557,16 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
             .collect::<Vec<_>>(),
         ["41", "46", "43"]
     );
-    http.wait(10).await;
+    http.wait(11).await;
     let calls = http.calls();
     let trace: Vec<_> = calls.iter().map(|call| call.path.as_str()).collect();
     assert_eq!(
         trace[1..],
-        [LIKED, LIST, DETAIL, ADD, DETAIL, DETAIL, AUTH, AUTH, AUTH]
+        [
+            LIKED, LIST, STAR_LIST, DETAIL, ADD, DETAIL, DETAIL, AUTH, AUTH, AUTH
+        ]
     );
-    let mut wire = calls[4].payload.clone();
+    let mut wire = calls[5].payload.clone();
     let header = wire.as_object_mut().unwrap().remove("header").unwrap();
     let header: Value = serde_json::from_str(header.as_str().unwrap()).unwrap();
     assert_eq!(header["appver"], "3.1.42.205594");
@@ -567,4 +575,205 @@ async fn search_group_download_owned_playlist_uses_second_filter_and_read_only_r
         wire,
         json!({"op":"add","pid":"81","trackIds":r#"["43","41"]"#})
     );
+}
+
+#[tokio::test]
+async fn search_group_download_system_liked_requires_two_coherent_membership_reads() {
+    const LIST: &str = "/api/user/playlist/v2";
+    const STAR: &str = "/api/user/playlist";
+    const DETAIL: &str = "/api/v6/playlist/detail";
+    const ADD: &str = "/api/v1/playlist/manipulate/tracks";
+    let star = json!({"id":83,"userId":71,"creator":{"userId":71},"name":"合成系统喜欢",
+        "specialType":5,"privacy":10,"tags":[]});
+    let list = || json!({"code":200,"playlist":[star.clone()],"more":false}).into();
+    let detail = |tracks: &[u64]| {
+        let mut row = star.clone();
+        row["trackIds"] = json!(tracks.iter().map(|id| json!({"id":id})).collect::<Vec<_>>());
+        json!({"code":200,"playlist":row}).into()
+    };
+    let likes = |ids: &[u64]| json!({"code":200,"ids":ids}).into();
+    let deny = || json!({"code":200,"data":{"code":403}}).into();
+    let root = tempfile::tempdir().unwrap();
+    let (api, http) = vinyl_http(
+        root.path(),
+        &[COOKIE],
+        [
+            search_page_with_destination(true),
+            likes(&[43]),
+            list(),
+            list(),
+            detail(&[43]),
+            list(),
+            list(),
+            detail(&[43]),
+            list(),
+            detail(&[43]),
+            likes(&[43]),
+            HttpResponse::Ready(Err(Error::Transport(
+                "sealed star add acknowledgement lost".into(),
+            ))),
+            list(),
+            detail(&[43, 41]),
+            likes(&[43]),
+            list(),
+            detail(&[43, 41]),
+            likes(&[43, 41]),
+            deny(),
+            deny(),
+            deny(),
+        ],
+    );
+    StateStore::open(root.path().join("config"))
+        .unwrap()
+        .put(
+            "transport",
+            "pc-mconfig-v1",
+            "pc",
+            &serde_json::to_value(Snapshot {
+                origin: ApiOrigin::Pc,
+                version: 1,
+                bucket: String::new(),
+                generation: 1,
+                source_url: Some("https://p1.music.126.net/obj/fixture.data".into()),
+                data: Some(json!({})),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    let (client, session, epoch) = client(root.path(), api);
+    let rows = search(&client, &epoch).await;
+    client.liked_ids().await.unwrap();
+    directory(&client, &epoch, root.path()).await;
+    let receipt = decision(
+        &client,
+        &epoch,
+        prepare(&rows, 1, &[2, 5, 1, 0]),
+        D::PlaylistRequired,
+    )
+    .await
+    .unwrap();
+    let choices = || {
+        client.search_group_download(
+            &epoch,
+            C::Destinations {
+                receipt: receipt.clone(),
+                sort: PlaylistCollectSort::Default,
+                page: 0,
+            },
+        )
+    };
+    let choose_liked = |destination_receipt: &str| {
+        client.search_group_download(
+            &epoch,
+            C::ChooseLiked {
+                receipt: receipt.clone(),
+                destination_receipt: destination_receipt.into(),
+            },
+        )
+    };
+    let R::Destinations {
+        page,
+        system_liked_receipt: Some(old),
+    } = choices().await.unwrap()
+    else {
+        panic!("missing verified system liked destination")
+    };
+    assert!(page.value.playlists.is_empty());
+    let R::Destinations {
+        system_liked_receipt: Some(grant),
+        ..
+    } = choices().await.unwrap()
+    else {
+        panic!("missing refreshed star grant")
+    };
+    assert_ne!(old, grant);
+    for forged in [&old, "83"] {
+        assert!(matches!(
+            choose_liked(forged).await,
+            Err(Error::StaleResponse)
+        ));
+    }
+    assert!(matches!(
+        client
+            .search_group_download(
+                &epoch,
+                C::Choose {
+                    receipt: receipt.clone(),
+                    playlist_id: "83".into()
+                }
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    for _ in 0..2 {
+        let result = serde_json::to_value(choose_liked(&grant).await.unwrap()).unwrap();
+        assert_eq!(result["result"]["phase"], "uncertain");
+        assert!(result["result"]["continuation"].is_null());
+    }
+    assert!(
+        DownloadService::new(session.clone())
+            .unwrap()
+            .list()
+            .unwrap()
+            .is_empty()
+    );
+    let result = client
+        .search_group_download(
+            &epoch,
+            C::Reconcile {
+                receipt: receipt.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let result = serde_json::to_value(result).unwrap();
+    assert_eq!(result["result"]["phase"], "confirmed");
+    assert_eq!(result["result"]["likedIds"], json!(["43", "41"]));
+    let continuation = result["result"]["continuation"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let result = client
+        .search_group_download(
+            &epoch,
+            C::StartFromPlaylist {
+                receipt,
+                continuation,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(result, R::Accepted { .. }));
+    let tasks = DownloadService::new(session.clone())
+        .unwrap()
+        .list()
+        .unwrap();
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|task| task.song_id.as_str())
+            .collect::<Vec<_>>(),
+        ["41", "46", "43"]
+    );
+    let records = cumulus_core::playlist::PlaylistService::new(session.clone())
+        .unwrap()
+        .operations(&session.token().unwrap())
+        .unwrap();
+    assert_eq!(records.len(), 1);
+    assert!(records[0].system_liked_group);
+    assert_eq!(records[0].before["origin"], "download");
+    http.wait(21).await;
+    let calls = http.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>()[1..],
+        [
+            LIKED, LIST, STAR, DETAIL, LIST, STAR, DETAIL, STAR, DETAIL, LIKED, ADD, STAR, DETAIL,
+            LIKED, STAR, DETAIL, LIKED, AUTH, AUTH, AUTH
+        ]
+    );
+    assert_eq!(calls[11].payload["pid"], "83");
+    assert_eq!(calls[11].payload["trackIds"], r#"["43","41"]"#);
 }

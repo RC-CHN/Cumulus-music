@@ -24,6 +24,7 @@ const emit = defineEmits<{
   collect: [track: TrackView];
   download: [track: TrackView];
   downloadSettings: [epoch: string];
+  downloadLikes: [epoch: string, ids: string[]];
   comments: [track: TrackView];
   remove: [track: TrackView, playlist: PlaylistView];
   manage: [track: TrackView, playlist: PlaylistView];
@@ -636,6 +637,7 @@ defineExpose({ show, showQueue, close });
     @accepted="searchDownloadPicked"
     @directory="searchDownloadPickerDirectory"
     @unknown="searchDownloadPickerUnknown"
+    @liked="(epoch, ids) => emit('downloadLikes', epoch, ids)"
   />
   <MenuTransition
     ><div v-if="message" class="track-action-feedback" :class="{ failed }" role="status">

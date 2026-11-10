@@ -13,6 +13,7 @@ const emit = defineEmits<{
   accepted: [count: number, addFailed: boolean];
   directory: [];
   unknown: [];
+  liked: [epoch: string, ids: string[]];
 }>();
 const core = useCore();
 const dialog = ref<HTMLDialogElement>();
@@ -21,6 +22,7 @@ const busy = ref(false);
 const error = ref('');
 const pending = ref(false);
 const rows = ref<PlaylistView[]>([]);
+const likedReceipt = ref<string | null>(null);
 const cursor = ref<number | null>(0);
 const preference = 'cumulus.playlist-collect-sort.v1';
 const options = [
@@ -60,6 +62,7 @@ async function read() {
       page,
     });
     if (!live() || response.kind !== 'destinations' || response.page.epoch !== props.epoch) return;
+    likedReceipt.value = response.systemLikedReceipt;
     const seen = new Set(rows.value.map((row) => row.id));
     for (const row of response.page.value.playlists) {
       if (row.owned && !row.favorite && !seen.has(row.id)) {
@@ -79,6 +82,7 @@ function selectSort(value: SearchGroupDownloadSort) {
   if (!live() || pending.value || busy.value || value === sort.value) return;
   sort.value = value;
   rows.value = [];
+  likedReceipt.value = null;
   cursor.value = 0;
   scrollTop.value = 0;
   try {
@@ -125,6 +129,8 @@ async function afterPlaylist(response: SearchGroupDownloadReply) {
     error.value = '加入歌单的结果尚未确认。请核对后再继续。';
     return;
   }
+  if (response.result.likedIds.length)
+    emit('liked', response.result.epoch, response.result.likedIds);
   try {
     const result = await core.searchGroupDownload(props.epoch, {
       kind: 'start_from_playlist',
@@ -143,11 +149,16 @@ async function afterPlaylist(response: SearchGroupDownloadReply) {
     if (live()) emit('unknown');
   }
 }
-async function submit(playlistId?: string) {
+type Choice = { kind: 'regular'; id: string } | { kind: 'liked'; receipt: string };
+async function submit(choice?: Choice) {
   if (
     !live() ||
     busy.value ||
-    (playlistId && (pending.value || !rows.value.some((row) => row.id === playlistId)))
+    (choice &&
+      (pending.value ||
+        (choice.kind === 'regular'
+          ? !rows.value.some((row) => row.id === choice.id)
+          : likedReceipt.value !== choice.receipt)))
   )
     return;
   pending.value = true;
@@ -156,9 +167,15 @@ async function submit(playlistId?: string) {
   try {
     const response = await core.searchGroupDownload(
       props.epoch,
-      playlistId
-        ? { kind: 'choose', receipt: props.receipt, playlistId }
-        : { kind: 'reconcile', receipt: props.receipt },
+      !choice
+        ? { kind: 'reconcile', receipt: props.receipt }
+        : choice.kind === 'regular'
+          ? { kind: 'choose', receipt: props.receipt, playlistId: choice.id }
+          : {
+              kind: 'choose_liked',
+              receipt: props.receipt,
+              destinationReceipt: choice.receipt,
+            },
     );
     await afterPlaylist(response);
   } catch (issue) {
@@ -216,13 +233,15 @@ async function submit(playlistId?: string) {
         purpose="download"
         :playlists="rows"
         :include-create="false"
+        :system-liked="likedReceipt !== null"
         :disabled="busy"
         :scroll-top="scrollTop"
         selected-id=""
         :loading="busy || !!error || cursor !== null"
         @scroll="scrollTop = $event"
         @near-end="!error && read()"
-        @select="submit"
+        @select="(id) => submit({ kind: 'regular', id })"
+        @liked="likedReceipt && submit({ kind: 'liked', receipt: likedReceipt })"
       />
       <button
         v-if="cursor !== null && (rows.length || error)"

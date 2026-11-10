@@ -162,6 +162,10 @@ pub enum SearchGroupDownloadCommand {
         receipt: String,
         playlist_id: String,
     },
+    ChooseLiked {
+        receipt: String,
+        destination_receipt: String,
+    },
     Reconcile {
         receipt: String,
     },
@@ -202,6 +206,7 @@ pub enum SearchGroupDownloadReply {
     },
     Destinations {
         page: AccountData<PlaylistCollectPage>,
+        system_liked_receipt: Option<String>,
     },
     Playlist {
         result: SearchGroupDownloadPlaylistResult,
@@ -542,8 +547,22 @@ impl MusicClient {
                 playlist_id,
             } => {
                 let lease = Lease(host.use_plan(&token, &receipt, true)?);
-                self.search_group_download_choose(&lease, &playlist_id)
-                    .await
+                self.search_group_download_choose(
+                    &lease,
+                    destination::Choice::Regular(&playlist_id),
+                )
+                .await
+            }
+            C::ChooseLiked {
+                receipt,
+                destination_receipt,
+            } => {
+                let lease = Lease(host.use_plan(&token, &receipt, true)?);
+                self.search_group_download_choose(
+                    &lease,
+                    destination::Choice::SystemLiked(&destination_receipt),
+                )
+                .await
             }
             C::Reconcile { receipt } => {
                 let lease = Lease(host.use_plan(&token, &receipt, true)?);
@@ -573,10 +592,14 @@ impl MusicClient {
         let session = self.session.clone();
         let host = self.search.group_downloads.clone();
         let login = self.auth.pending_guard();
+        let system_liked = matches!(&admission,
+            SongBatchAdmission::SearchPlaylist { proof, .. } if proof.liked_origin.is_some());
         let check = move || {
             login()?;
             authorization(&session, &observed)?;
-            if through_playlist {
+            if system_liked {
+                destination::authorize_liked(&observed)?;
+            } else if through_playlist {
                 destination::authorize_collection(&observed)?;
             }
             host.current(&observed)

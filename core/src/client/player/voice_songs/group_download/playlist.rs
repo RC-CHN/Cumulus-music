@@ -11,8 +11,8 @@ use crate::{
     },
     download::service::SongBatchAdmission,
     playlist::{
-        GroupDownloadPlaylistProof, PlaylistCommand, PlaylistMutation, PlaylistPhase,
-        PlaylistService,
+        GroupDownloadLikedOrigin, GroupDownloadPlaylistProof, PlaylistCommand, PlaylistMutation,
+        PlaylistPhase, PlaylistService,
     },
     protocol::api::{PlaylistAddPermission, identifier},
 };
@@ -108,7 +108,8 @@ impl Attempt {
                 Target::Created { operation, .. } => Some(operation.clone()),
                 Target::Existing(_) | Target::SystemLiked { .. } => None,
             },
-            system_liked: matches!(self.target, Target::SystemLiked { .. }),
+            liked_origin: matches!(self.target, Target::SystemLiked { .. })
+                .then_some(GroupDownloadLikedOrigin::Voice),
         }
     }
 
@@ -122,7 +123,7 @@ impl Attempt {
         let owner = page.token.uid.as_deref().ok_or(Error::StaleResponse)?;
         let proof = self.proof(lease, id.into());
         let (completed, add_failed) = proof.outcome(&record, owner)?;
-        let liked_ids = if proof.system_liked
+        let liked_ids = if proof.liked_origin.is_some()
             && completed
             && !add_failed
             && matches!(

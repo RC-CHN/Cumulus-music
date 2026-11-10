@@ -1,8 +1,11 @@
-//! Verified existing ordinary playlist destination for search group download.
+//! Verified existing playlist destinations for search group download.
 use super::*;
 use crate::{
     client::content::PLAYLIST_COLLECT_LAST_PAGE,
-    playlist::{GroupDownloadPlaylistProof, PlaylistMutation, PlaylistPhase, PlaylistService},
+    playlist::{
+        GroupDownloadLikedOrigin, GroupDownloadPlaylistProof, PlaylistMutation, PlaylistPhase,
+        PlaylistService,
+    },
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -10,12 +13,24 @@ use std::collections::BTreeMap;
 #[derive(Default)]
 pub(super) struct Destination {
     observed: BTreeMap<(&'static str, u32), Vec<String>>,
+    liked: Option<LikedTarget>,
     attempt: Option<Attempt>,
+}
+
+struct LikedTarget {
+    playlist: String,
+    receipt: String,
+}
+
+pub(super) enum Choice<'a> {
+    Regular(&'a str),
+    SystemLiked(&'a str),
 }
 
 #[derive(Clone)]
 struct Attempt {
     playlist: String,
+    liked_receipt: Option<String>,
     operation: String,
     continuation: String,
 }
@@ -29,6 +44,7 @@ pub struct SearchGroupDownloadPlaylistResult {
     phase: PlaylistPhase,
     add_failed: bool,
     continuation: Option<String>,
+    liked_ids: Vec<String>,
 }
 
 impl Attempt {
@@ -38,7 +54,10 @@ impl Attempt {
             playlist: self.playlist.clone(),
             songs: plan.collection.clone(),
             creation: None,
-            system_liked: false,
+            liked_origin: self
+                .liked_receipt
+                .is_some()
+                .then_some(GroupDownloadLikedOrigin::Download),
         }
     }
 
@@ -49,7 +68,19 @@ impl Attempt {
             .uid
             .as_deref()
             .ok_or(Error::StaleResponse)?;
-        let (completed, add_failed) = self.proof(plan).outcome(record, owner)?;
+        let proof = self.proof(plan);
+        let (completed, add_failed) = proof.outcome(record, owner)?;
+        let liked_ids = if proof.liked_origin.is_some()
+            && completed
+            && !add_failed
+            && matches!(
+                record.phase,
+                PlaylistPhase::Confirmed | PlaylistPhase::Unchanged
+            ) {
+            proof.songs.to_vec()
+        } else {
+            Vec::new()
+        };
         Ok(SearchGroupDownloadReply::Playlist {
             result: SearchGroupDownloadPlaylistResult {
                 epoch: plan.observed.owner.generation.to_string(),
@@ -58,6 +89,7 @@ impl Attempt {
                 phase: record.phase,
                 add_failed,
                 continuation: completed.then(|| self.continuation.clone()),
+                liked_ids,
             },
         })
     }
@@ -80,10 +112,23 @@ pub(super) fn authorize_collection(observed: &Observed) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn authorize_liked(observed: &Observed) -> Result<()> {
+    if observed
+        .api
+        .download_system_liked_scope_revision()?
+        .as_deref()
+        != Some(&observed.revision)
+    {
+        return Err(Error::StaleResponse);
+    }
+    Ok(())
+}
+
 impl MusicClient {
     fn search_group_playlist_permission(
         &self,
         plan: &Plan,
+        system_liked: bool,
     ) -> Result<impl Fn() -> Result<()> + Send + Sync + 'static + use<>> {
         if plan.purpose != SearchGroupDownloadDecision::PlaylistRequired
             || plan.collection.is_empty()
@@ -97,7 +142,11 @@ impl MusicClient {
         let check = move || {
             login()?;
             authorization(&session, &observed)?;
-            authorize_collection(&observed)?;
+            if system_liked {
+                authorize_liked(&observed)?;
+            } else {
+                authorize_collection(&observed)?;
+            }
             pages.current(&observed)
         };
         check()?;
@@ -114,7 +163,7 @@ impl MusicClient {
         if page > PLAYLIST_COLLECT_LAST_PAGE {
             return Err(Error::InvalidInput("invalid download playlist page"));
         }
-        let check = self.search_group_playlist_permission(&lease.0)?;
+        let check = self.search_group_playlist_permission(&lease.0, false)?;
         let key = (sort.wire(), page);
         {
             let mut destination = lease
@@ -126,55 +175,96 @@ impl MusicClient {
                 return Err(Error::StaleResponse);
             }
             destination.observed.remove(&key);
+            if page == 0 {
+                destination.liked = None;
+            }
         }
         let reply = self
             .playlist_collect_page_scope(epoch, sort, page, true)
             .await?;
+        // Only advertise the fixed account-owned system row if a current
+        // signed observation identifies it. Missing capability or failure of
+        // that independent read does not invalidate ordinary destinations.
+        let liked = if page == 0
+            && let Ok(liked_check) = self.search_group_playlist_permission(&lease.0, true)
+        {
+            PlaylistService::new(self.session.clone())?
+                .download_system_liked_destination(&lease.0.observed.owner, &liked_check)
+                .await
+                .ok()
+                .flatten()
+                .map(|playlist| LikedTarget {
+                    playlist,
+                    receipt: uuid::Uuid::new_v4().simple().to_string(),
+                })
+        } else {
+            None
+        };
         check()?;
-        lease
+        let mut destination = lease
             .0
             .destination
             .lock()
-            .map_err(|_| Error::LockPoisoned)?
-            .observed
-            .insert(
-                key,
-                reply
-                    .value
-                    .playlists
-                    .iter()
-                    .map(|row| row.id.clone())
-                    .collect(),
-            );
-        Ok(SearchGroupDownloadReply::Destinations { page: reply })
+            .map_err(|_| Error::LockPoisoned)?;
+        destination.observed.insert(
+            key,
+            reply
+                .value
+                .playlists
+                .iter()
+                .map(|row| row.id.clone())
+                .collect(),
+        );
+        if page == 0 {
+            destination.liked = liked;
+        }
+        Ok(SearchGroupDownloadReply::Destinations {
+            page: reply,
+            system_liked_receipt: destination.liked.as_ref().map(|row| row.receipt.clone()),
+        })
     }
 
     pub(super) async fn search_group_download_choose(
         &self,
         lease: &Lease,
-        playlist: &str,
+        choice: Choice<'_>,
     ) -> Result<SearchGroupDownloadReply> {
-        let check = self.search_group_playlist_permission(&lease.0)?;
-        let id = identifier(&json!(playlist))?;
+        let system_liked = matches!(choice, Choice::SystemLiked(_));
+        let check = self.search_group_playlist_permission(&lease.0, system_liked)?;
         let plan = &lease.0;
         let (attempt, first) = {
             let mut destination = plan.destination.lock().map_err(|_| Error::LockPoisoned)?;
+            let (id, liked_receipt) = match choice {
+                Choice::Regular(playlist) => {
+                    let id = identifier(&json!(playlist))?;
+                    if !destination
+                        .observed
+                        .values()
+                        .flatten()
+                        .any(|row| row == &id)
+                    {
+                        return Err(Error::StaleResponse);
+                    }
+                    (id, None)
+                }
+                Choice::SystemLiked(receipt) => {
+                    let liked = destination
+                        .liked
+                        .as_ref()
+                        .filter(|target| target.receipt == receipt)
+                        .ok_or(Error::StaleResponse)?;
+                    (liked.playlist.clone(), Some(liked.receipt.clone()))
+                }
+            };
             if let Some(attempt) = &destination.attempt {
-                if attempt.playlist != id {
+                if attempt.playlist != id || attempt.liked_receipt != liked_receipt {
                     return Err(Error::StaleResponse);
                 }
                 (attempt.clone(), false)
             } else {
-                if !destination
-                    .observed
-                    .values()
-                    .flatten()
-                    .any(|row| row == &id)
-                {
-                    return Err(Error::StaleResponse);
-                }
                 let attempt = Attempt {
                     playlist: id,
+                    liked_receipt,
                     operation: uuid::Uuid::new_v4().simple().to_string(),
                     continuation: uuid::Uuid::new_v4().simple().to_string(),
                 };
@@ -191,16 +281,28 @@ impl MusicClient {
                 if liked != Some(false) || pending.is_some_and(|record| record.phase.pending()) {
                     return Err(Error::StaleResponse);
                 }
-                service
-                    .guarded_collect_download(
-                        token,
-                        &attempt.playlist,
-                        &plan.collection,
-                        true,
-                        &attempt.operation,
-                        &check,
-                    )
-                    .await?
+                if system_liked {
+                    service
+                        .guarded_collect_download_liked_group(
+                            token,
+                            &attempt.playlist,
+                            &plan.collection,
+                            &attempt.operation,
+                            &check,
+                        )
+                        .await?
+                } else {
+                    service
+                        .guarded_collect_download(
+                            token,
+                            &attempt.playlist,
+                            &plan.collection,
+                            true,
+                            &attempt.operation,
+                            &check,
+                        )
+                        .await?
+                }
             } else {
                 service
                     .operation_for(token, &attempt.operation)?
@@ -215,8 +317,9 @@ impl MusicClient {
         lease: &Lease,
     ) -> Result<SearchGroupDownloadReply> {
         let plan = &lease.0;
-        let check = self.search_group_playlist_permission(plan)?;
         let attempt = current_attempt(plan)?;
+        let system_liked = attempt.liked_receipt.is_some();
+        let check = self.search_group_playlist_permission(plan, system_liked)?;
         let service = PlaylistService::new(self.session.clone())?;
         let record = service
             .reconcile_guarded_collect(
@@ -224,7 +327,7 @@ impl MusicClient {
                 &attempt.operation,
                 &attempt.playlist,
                 &plan.collection,
-                false,
+                system_liked,
                 &check,
             )
             .await?;
@@ -239,8 +342,8 @@ impl MusicClient {
         continuation: &str,
     ) -> Result<SearchGroupDownloadReply> {
         let plan = &lease.0;
-        let check = self.search_group_playlist_permission(plan)?;
         let attempt = current_attempt(plan)?;
+        let check = self.search_group_playlist_permission(plan, attempt.liked_receipt.is_some())?;
         if attempt.continuation != continuation {
             return Err(Error::StaleResponse);
         }
