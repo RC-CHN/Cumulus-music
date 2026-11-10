@@ -42,22 +42,26 @@
     .filter(([path]) => path === '/api/pl/count').length;
   async function capture(label) {
     stage = label;
-    // WebKit's Web Animations list can settle before the transformed fixed
-    // box reports its final position. Wait for the real layout as well.
-    await wait(
-      () => {
+    // CSS animations may not be registered until WebKit paints the new
+    // drawer. Sample on a paint and use that same settled rect for assertions.
+    const { panel, bounds } = await wait(
+      async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const panel = drawer();
         if (!panel) return false;
         const bounds = panel.getBoundingClientRect();
-        return Math.abs(bounds.right - innerWidth) < 0.5 && panel.getAnimations().every(
-          (animation) => !animation.pending && animation.playState !== 'running',
-        );
+        const style = getComputedStyle(panel);
+        const settled = style.transform === 'none' && style.opacity === '1' &&
+          panel.getAnimations().every(
+            (animation) => !animation.pending && animation.playState !== 'running',
+          );
+        return settled ? { panel, bounds } : false;
       },
       'drawer transition settled',
     );
-    const bounds = drawer().getBoundingClientRect();
+    assert(Math.abs(bounds.right - innerWidth) < 0.5, 'drawer is aligned with the viewport edge');
     assert(bounds.width <= 387 && bounds.right <= innerWidth + 1 && bounds.bottom <= innerHeight,
-      'drawer remains within window: ' + JSON.stringify({ bounds: bounds.toJSON(), innerWidth, innerHeight, position: getComputedStyle(drawer()).position }));
+      'drawer remains within window: ' + JSON.stringify({ bounds: bounds.toJSON(), innerWidth, innerHeight, position: getComputedStyle(panel).position }));
     assert(document.documentElement.scrollWidth <= innerWidth, 'drawer causes no horizontal overflow');
     let paint = {};
     if (window.__cumulusMessageDeletionProof) {
