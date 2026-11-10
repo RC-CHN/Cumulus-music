@@ -123,6 +123,7 @@ pub(super) fn page(saved: SavedCatalogPage, cached: bool, viewer: &str) -> Resul
             let mut tracks = tracks(&value["songs"])?;
             for (track, song) in tracks.iter_mut().zip(rows(&value["songs"])?) {
                 track.duration_ms = crate::catalog::details::album_duration(song);
+                track.album_popularity = Some(crate::catalog::details::album_popularity(song));
             }
             CatalogPageView::Album {
                 album: cards::album(&value["album"])?,

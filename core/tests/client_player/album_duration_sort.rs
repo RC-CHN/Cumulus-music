@@ -105,6 +105,108 @@ async fn filtered_row_uses_bound_visible_order_full_header_uses_fresh_whole_albu
 }
 
 #[tokio::test]
+async fn popularity_orders_cached_rows_and_fresh_album_and_retires_same_id_score_changes() {
+    let (_dir, api, _session, client, _count) = fixture();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: cumulus_core::playback::PlaybackMode::SingleLoop,
+            },
+        )
+        .await
+        .unwrap();
+    let mut songs = tracks(180_000);
+    for (song, score) in songs
+        .iter_mut()
+        .zip([json!(25), json!(96.0), json!(96), json!("99")])
+    {
+        song["pop"] = score;
+    }
+    *api.album_tracks.lock().unwrap() = Some(songs.clone());
+    let (album, id_revision) = scope(&client, AlbumTrackOrder::PopularityDescending).await;
+    let cached = client
+        .catalog_page("1", CatalogQuery::Album { id: "7".into() }, false)
+        .await
+        .unwrap()
+        .value
+        .unwrap();
+    let CatalogPageView::Album { tracks, .. } = cached.page else {
+        panic!("expected album")
+    };
+    assert_eq!(
+        tracks
+            .iter()
+            .map(|row| row.album_popularity)
+            .collect::<Vec<_>>(),
+        [Some(25), Some(96), Some(96), Some(0)]
+    );
+    assert_eq!(
+        serde_json::to_value(&tracks[1]).unwrap()["albumPopularity"],
+        96
+    );
+    api.calls.lock().unwrap().clear();
+
+    let selected = client
+        .play_selection(
+            "1",
+            selection(album.clone(), Some(row(vec![0, 2, 3], 0, "11"))),
+        )
+        .await
+        .unwrap();
+    assert_eq!(selected.track.unwrap().id, "11");
+    assert_eq!(ids(&client).await, ["13", "11", "14"]);
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path.starts_with("/api/album/"))
+    );
+
+    // A header action reads the full album anew; stale on-screen popularity
+    // must not decide the new list's order.
+    songs[0]["pop"] = json!(100);
+    *api.album_tracks.lock().unwrap() = Some(songs);
+    api.calls.lock().unwrap().clear();
+    let full = client
+        .play_selection("1", selection(album.clone(), None))
+        .await
+        .unwrap();
+    assert_eq!(full.track.unwrap().id, "11");
+    assert_eq!(ids(&client).await, ["11", "12", "13", "14"]);
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.starts_with("/api/album/"))
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["/api/album/v3/detail", "/api/album/privilege"]
+    );
+
+    let (updated, same_ids) = scope(&client, AlbumTrackOrder::PopularityAscending).await;
+    assert_eq!(same_ids, id_revision);
+    assert_ne!(updated.revision, album.revision);
+    api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        client
+            .play_selection("1", selection(album, Some(row(vec![0, 2, 3], 2, "13"))))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(api.calls.lock().unwrap().is_empty());
+
+    let ascending = client
+        .play_selection("1", selection(updated, None))
+        .await
+        .unwrap();
+    assert_eq!(ascending.track.unwrap().id, "14");
+    assert_eq!(ids(&client).await, ["14", "12", "13", "11"]);
+}
+
+#[tokio::test]
 async fn whole_append_preserves_paused_identity_and_stable_order_without_the_filter() {
     let (_dir, api, _session, client, _count) = fixture();
     *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
@@ -287,7 +389,13 @@ async fn album_double_click_replaces_with_sorted_visible_rows_or_inserts_only_se
 }
 
 #[tokio::test]
-async fn version_one_recovery_snapshot_upgrades_without_fresh_album_request() {
+async fn older_recovery_snapshots_upgrade_without_fresh_album_request() {
+    for legacy in ["catalog-detail-pages-v1", "catalog-album-pages-v2"] {
+        check_cached_album_upgrade(legacy).await;
+    }
+}
+
+async fn check_cached_album_upgrade(legacy: &str) {
     let (dir, api, _session, client, _count) = fixture();
     *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
     let (album, _) = scope(&client, AlbumDurationOrder::Descending).await;
@@ -296,12 +404,18 @@ async fn version_one_recovery_snapshot_upgrades_without_fresh_album_request() {
     let store = registry.store();
     store
         .transaction(|tx| {
-            let mut entries = tx.values("9", "catalog-album-pages-v2")?;
+            let mut entries = tx.values("9", "catalog-album-pages-v3")?;
             assert_eq!(entries.len(), 1);
             let (key, page) = entries.pop_first().unwrap();
-            tx.put("9", "catalog-detail-pages-v1", &key, &page)?;
-            tx.delete("9", "catalog-album-pages-v2", &key)?;
-            tx.delete("9", "catalog-album-playback-marker-v1", &key)
+            tx.put("9", legacy, &key, &page)?;
+            tx.delete("9", "catalog-album-pages-v3", &key)?;
+            tx.delete("9", "catalog-album-playback-marker-v2", &key)?;
+            tx.put(
+                "9",
+                "catalog-album-playback-marker-v1",
+                &key,
+                &json!("legacy-duration-marker"),
+            )
         })
         .unwrap();
 
@@ -317,7 +431,7 @@ async fn version_one_recovery_snapshot_upgrades_without_fresh_album_request() {
     );
     assert!(
         store
-            .values("9", "catalog-album-playback-marker-v1")
+            .values("9", "catalog-album-playback-marker-v2")
             .unwrap()
             .is_empty()
     );
@@ -329,13 +443,13 @@ async fn version_one_recovery_snapshot_upgrades_without_fresh_album_request() {
     assert_eq!(ids(&client).await, ["11", "13", "12"]);
     assert_eq!(
         store
-            .values("9", "catalog-album-playback-marker-v1")
+            .values("9", "catalog-album-playback-marker-v2")
             .unwrap()
             .len(),
         1
     );
     assert_eq!(
-        store.values("9", "catalog-album-pages-v2").unwrap().len(),
+        store.values("9", "catalog-album-pages-v3").unwrap().len(),
         1
     );
     assert!(

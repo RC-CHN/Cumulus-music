@@ -25,6 +25,7 @@ pub(crate) fn track(id: String, metadata: &AudioMetadata, missing: bool) -> Trac
         album_id: None,
         cover_url: None,
         duration_ms: (metadata.duration * 1000.0).max(0.0) as u64,
+        album_popularity: None,
         fee: 0,
         missing,
         local: true,

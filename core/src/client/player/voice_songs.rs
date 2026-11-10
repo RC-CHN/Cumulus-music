@@ -235,6 +235,7 @@ fn track(row: &Value) -> Result<Option<Row>> {
             .filter(|duration| *duration <= MAX_JS_INTEGER)
             .unwrap_or(0),
         fee: row["fee"].as_i64().unwrap_or(0),
+        album_popularity: None,
         voice_id: None,
         missing: false,
         local: false,

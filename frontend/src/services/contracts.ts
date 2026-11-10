@@ -432,6 +432,7 @@ export interface TrackView {
   albumId?: string | null;
   coverUrl: string | null;
   durationMs: number;
+  albumPopularity?: number;
   fee: number;
   missing: boolean;
   local: boolean;

@@ -1,6 +1,6 @@
 import { commentStartPosition } from '../services/comments.ts';
 import { computed, ref } from 'vue';
-import type { AlbumDurationOrder } from '../services/albumDurationSort.ts';
+import type { AlbumTrackOrder } from '../services/albumDurationSort.ts';
 import type { AccountView, CoreClient } from '../services/contracts.ts';
 import type {
   ArtistTab,
@@ -29,7 +29,7 @@ export function useCatalogSession(
   core: CoreClient,
   expired: () => void,
   membershipChanged: CatalogMembershipListener = () => {},
-  albumOrder = ref<AlbumDurationOrder>('original'),
+  albumOrder = ref<AlbumTrackOrder>('original'),
 ) {
   resource = { ...resource };
   const owner = account.epoch;

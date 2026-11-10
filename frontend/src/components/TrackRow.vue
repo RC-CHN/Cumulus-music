@@ -29,6 +29,7 @@ const props = defineProps<{
   navigable?: boolean;
   readOnly?: boolean;
   selection?: boolean;
+  showPopularity?: boolean;
 }>();
 const emit = defineEmits<{
   like: [track: TrackView];
@@ -176,7 +177,11 @@ function duration(ms: number) {
         <SearchSongTitleHint v-if="searchTitleHint" :hint="searchTitleHint" />
       </div>
     </div>
-    <span class="track-album ellipsis" :role="cellRole" :data-tooltip="track.album"
+    <span
+      v-if="!showPopularity"
+      class="track-album ellipsis"
+      :role="cellRole"
+      :data-tooltip="track.album"
       ><button
         v-if="navigable && track.albumId"
         class="track-album-link ellipsis"
@@ -216,5 +221,34 @@ function duration(ms: number) {
       >
         <Icon name="more" /></button
     ></span>
+    <span v-if="showPopularity" :role="cellRole">
+      <span
+        class="track-popularity"
+        role="meter"
+        aria-label="热度"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="track.albumPopularity ?? 0"
+      >
+        <span :style="{ width: `${track.albumPopularity ?? 0}%` }" />
+      </span>
+    </span>
   </div>
 </template>
+
+<style scoped>
+.track-popularity {
+  display: block;
+  width: min(100%, 60px);
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+.track-popularity span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  opacity: 0.7;
+}
+</style>

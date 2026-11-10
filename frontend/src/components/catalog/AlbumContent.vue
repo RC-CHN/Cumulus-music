@@ -12,7 +12,8 @@ import type { CatalogSession } from '../../composables/useCatalogSession';
 import type { AlbumTab } from '../../services/catalogNavigation';
 import {
   nextAlbumDurationOrder,
-  sortAlbumDuration,
+  nextAlbumPopularityOrder,
+  sortAlbumTracks,
   type AlbumPlaybackRow,
 } from '../../services/albumDurationSort';
 import type { AlbumQueueDropGesture } from '../../services/player';
@@ -48,7 +49,7 @@ const selected = props.model.albumTab;
 const comments = props.model.comments;
 const keyword = ref('');
 const filtered = computed(() => filterTrackScope(props.tracks, keyword.value));
-const visibleRows = computed(() => sortAlbumDuration(filtered.value, props.model.albumOrder.value));
+const visibleRows = computed(() => sortAlbumTracks(filtered.value, props.model.albumOrder.value));
 const selectionScope = computed(() => {
   const current = props.model.detail.view.value;
   if (
@@ -111,6 +112,9 @@ function play(index: number, gesture?: TrackPlayGesture) {
 }
 function sortDuration() {
   props.model.albumOrder.value = nextAlbumDurationOrder(props.model.albumOrder.value);
+}
+function sortPopularity() {
+  props.model.albumOrder.value = nextAlbumPopularityOrder(props.model.albumOrder.value);
 }
 const tabs = computed<{ key: Tab; label: string; count?: number }[]>(() => [
   { key: 'songs', label: '歌曲', count: props.album.trackCount },
@@ -208,7 +212,7 @@ function keydown(event: KeyboardEvent, index: number) {
             v-if="filtered.tracks.length"
             navigable
             :tracks="visibleRows.tracks"
-            :duration-order="model.albumOrder.value"
+            :album-order="model.albumOrder.value"
             :match-keyword="filtered.positions !== null ? keyword : undefined"
             :liked="liked"
             :busy="busyLikes"
@@ -220,6 +224,7 @@ function keydown(event: KeyboardEvent, index: number) {
             :queue-drop-enabled="queueDropEnabled"
             @play="play"
             @sort-duration="sortDuration"
+            @sort-popularity="sortPopularity"
             @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
             @like="emit('like', $event)"
             @more="emit('more', $event)"

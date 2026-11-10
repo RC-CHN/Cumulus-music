@@ -138,6 +138,7 @@ pub(super) fn missing_playlist_row(id: String, local: bool) -> TrackView {
         album_id: None,
         cover_url: None,
         duration_ms: 0,
+        album_popularity: None,
         fee: 0,
         missing: true,
         local,

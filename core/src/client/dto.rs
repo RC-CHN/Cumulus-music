@@ -277,6 +277,9 @@ pub struct TrackView {
     pub album_id: Option<String>,
     pub cover_url: Option<String>,
     pub duration_ms: u64,
+    /// Bounded catalogue display score, projected only for ordinary album rows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album_popularity: Option<u8>,
     pub fee: i64,
     pub missing: bool,
     pub local: bool,
@@ -371,10 +374,10 @@ pub use super::auth::{
     LogoutView, RenewalAction, RenewalState, SavedAccountView, SessionRenewalView,
 };
 pub use super::catalog::{
-    AlbumCard, AlbumDurationOrder, AlbumPlaybackRow, AlbumPlaybackScope, ArtistCard, CatalogDate,
-    CatalogIntroduction, CatalogMembershipAction, CatalogMembershipOperation,
-    CatalogMembershipView, CatalogPageView, CatalogResource, CatalogSelectionPage,
-    CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
+    AlbumCard, AlbumDurationOrder, AlbumPlaybackRow, AlbumPlaybackScope, AlbumTrackOrder,
+    ArtistCard, CatalogDate, CatalogIntroduction, CatalogMembershipAction,
+    CatalogMembershipOperation, CatalogMembershipView, CatalogPageView, CatalogResource,
+    CatalogSelectionPage, CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
 };
 pub use super::catalog::{ArtistGalleryPage, ArtistGalleryQuery, FollowLatest, FollowNewSongPage};
 pub use super::catalog::{

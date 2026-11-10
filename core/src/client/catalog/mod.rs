@@ -12,7 +12,9 @@ use crate::{
     Error, Result,
     catalog::details::{CatalogDetails, CatalogQuery},
 };
-pub use album_playback::{AlbumDurationOrder, AlbumPlaybackRow, AlbumPlaybackScope};
+pub use album_playback::{
+    AlbumDurationOrder, AlbumPlaybackRow, AlbumPlaybackScope, AlbumTrackOrder,
+};
 pub use dto::*;
 pub(super) use follow_new_song::FollowLatestHost;
 pub use follow_new_song::notification::{ReleaseNotificationAction, ReleaseNotificationState};

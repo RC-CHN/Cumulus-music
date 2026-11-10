@@ -10,8 +10,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 const CACHE: &str = "catalog-detail-pages-v1";
-const ALBUM_CACHE: &str = "catalog-album-pages-v2";
-const ALBUM_PLAYBACK_MARKER: &str = "catalog-album-playback-marker-v1";
+const ALBUM_CACHE: &str = "catalog-album-pages-v3";
+const LEGACY_ALBUM_CACHE: &str = "catalog-album-pages-v2";
+const ALBUM_PLAYBACK_MARKER: &str = "catalog-album-playback-marker-v2";
 const ARTIST_SONGS_CACHE: &str = "catalog-artist-songs-v2";
 const ARTIST_SONGS_MARKER: &str = "catalog-artist-songs-marker-v1";
 
@@ -23,6 +24,14 @@ pub(crate) fn album_duration(song: &Value) -> u64 {
         // Preserve exact numeric ordering on both sides of IPC.
         .filter(|n| *n <= 9_007_199_254_740_991)
         .unwrap_or(0)
+}
+
+/// M/21's `pop` is used directly as the M/352 bar percentage and sort key.
+pub(crate) fn album_popularity(song: &Value) -> u8 {
+    song["pop"]
+        .as_f64()
+        .filter(|n| (0.0..=100.0).contains(n) && n.fract() == 0.0)
+        .map_or(0, |n| n as u8)
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -65,6 +74,7 @@ impl SavedCatalogPage {
                 .collect::<Vec<_>>();
             stamp.update(serde_json::to_vec(&(
                 album_duration(song),
+                album_popularity(song),
                 name,
                 artists,
                 album_name,
@@ -206,7 +216,14 @@ impl CatalogDetails {
                     self.store
                         .read_snapshot(|tx| match tx.get(uid, scope, &key)? {
                             Some(current) => Ok(Some(current)),
-                            None => tx.get(uid, CACHE, &key),
+                            None => {
+                                if matches!(query, CatalogQuery::Album { .. })
+                                    && let Some(legacy) = tx.get(uid, LEGACY_ALBUM_CACHE, &key)?
+                                {
+                                    return Ok(Some(legacy));
+                                }
+                                tx.get(uid, CACHE, &key)
+                            }
                         })?
                 }
                 None => self.store.get(uid, CACHE, &key)?,
@@ -259,9 +276,12 @@ impl CatalogDetails {
                 }
                 let raw = match tx.get(owner, ALBUM_CACHE, &fence.key)? {
                     Some(current) => current,
-                    None => tx
-                        .get(owner, CACHE, &fence.key)?
-                        .ok_or(Error::QueueChanged)?,
+                    None => match tx.get(owner, LEGACY_ALBUM_CACHE, &fence.key)? {
+                        Some(legacy) => legacy,
+                        None => tx
+                            .get(owner, CACHE, &fence.key)?
+                            .ok_or(Error::QueueChanged)?,
+                    },
                 };
                 let saved = decode_cached(query, raw)?;
                 let marker = saved.album_playback_revision()?;

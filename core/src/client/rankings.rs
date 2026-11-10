@@ -117,6 +117,7 @@ fn project(saved: SavedRanking, cached: bool, choice_hours: Option<f64>) -> Resu
                                 .as_ref()
                                 .and_then(|s| mapping::artwork(&json!(s))),
                             duration_ms: 0,
+                            album_popularity: None,
                             fee: 0,
                             missing: true,
                             local: false,

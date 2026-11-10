@@ -7,7 +7,9 @@ use crate::{
     account::SessionToken,
     catalog::{
         CatalogApi,
-        details::{CatalogDetails, CatalogQuery, SavedCatalogPage, album_duration},
+        details::{
+            CatalogDetails, CatalogQuery, SavedCatalogPage, album_duration, album_popularity,
+        },
     },
     playback::engine::Cancellation,
     protocol::api::identifier,
@@ -19,19 +21,24 @@ const ALBUM_LIMIT: usize = 50_000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AlbumDurationOrder {
+pub enum AlbumTrackOrder {
     #[default]
     Original,
     Ascending,
     Descending,
+    PopularityAscending,
+    PopularityDescending,
 }
+
+/// Existing duration-order callers keep the same wire values.
+pub type AlbumDurationOrder = AlbumTrackOrder;
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AlbumPlaybackScope {
     pub id: String,
     pub revision: String,
-    pub order: AlbumDurationOrder,
+    pub order: AlbumTrackOrder,
 }
 
 #[derive(Deserialize)]
@@ -46,7 +53,7 @@ pub struct AlbumPlaybackRow {
 
 fn sorted_ordinals(
     songs: &[Value],
-    order: AlbumDurationOrder,
+    order: AlbumTrackOrder,
     visible: Option<Vec<usize>>,
 ) -> Result<Vec<usize>> {
     if songs.len() > ALBUM_LIMIT {
@@ -62,10 +69,16 @@ fn sorted_ordinals(
         return Err(Error::InvalidInput("invalid album row scope"));
     }
     match order {
-        AlbumDurationOrder::Original => {}
-        AlbumDurationOrder::Ascending => ordinals.sort_by_key(|&i| album_duration(&songs[i])),
-        AlbumDurationOrder::Descending => {
+        AlbumTrackOrder::Original => {}
+        AlbumTrackOrder::Ascending => ordinals.sort_by_key(|&i| album_duration(&songs[i])),
+        AlbumTrackOrder::Descending => {
             ordinals.sort_by_key(|&i| std::cmp::Reverse(album_duration(&songs[i])));
+        }
+        AlbumTrackOrder::PopularityAscending => {
+            ordinals.sort_by_key(|&i| album_popularity(&songs[i]));
+        }
+        AlbumTrackOrder::PopularityDescending => {
+            ordinals.sort_by_key(|&i| std::cmp::Reverse(album_popularity(&songs[i])));
         }
     }
     Ok(ordinals)
@@ -146,8 +159,8 @@ impl MusicClient {
                 })
                 .await?;
             // The existing original-order receipt still guards replaced or
-            // reordered album membership. Durations can legitimately change
-            // in the fresh response, and M/470 sorts that response itself.
+            // reordered album membership. The fresh response can change sort
+            // keys, and M/470 sorts that response itself.
             saved.verify_song_order(&songs)?;
             let order = sorted_ordinals(&songs, scope.order, None)?;
             let index = order

@@ -16,14 +16,14 @@ import { useVirtualRows } from '../composables/useVirtualRows';
 import { useMixedPlaylistDrag } from '../composables/useMixedPlaylistDrag';
 import { expandedRows, rowBoundary, rowExtent, rowTop } from '../services/virtualWindow';
 import type { TrackView } from '../services/contracts';
-import type { AlbumDurationOrder } from '../services/albumDurationSort';
+import type { AlbumTrackOrder } from '../services/albumDurationSort';
 import type { SearchSongTableHint } from '../services/search';
 import TrackRow from './TrackRow.vue';
 const props = defineProps<{
   tracks: TrackView[];
   matchKeyword?: string;
   searchTitleHints?: readonly (SearchSongTableHint | undefined)[];
-  durationOrder?: AlbumDurationOrder;
+  albumOrder?: AlbumTrackOrder;
   originalRecordings?: ReadonlySet<string>;
   liked: Set<string>;
   busy: Set<string>;
@@ -47,6 +47,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   sortDuration: [];
+  sortPopularity: [];
   like: [track: TrackView];
   play: [index: number, gesture?: TrackPlayGesture];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
@@ -68,6 +69,16 @@ const emit = defineEmits<{
     current: () => boolean,
   ];
 }>();
+const albumTable = computed(() => props.albumOrder !== undefined);
+const durationDirection = computed(() => {
+  const order = props.albumOrder;
+  return order === 'ascending' || order === 'descending' ? order : 'none';
+});
+const popularityDirection = computed(() => {
+  if (props.albumOrder === 'popularity_ascending') return 'ascending';
+  if (props.albumOrder === 'popularity_descending') return 'descending';
+  return 'none';
+});
 const rowHeight = 56;
 const searchRows = computed(
   () =>
@@ -349,28 +360,44 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
 <template>
   <div
     class="track-table"
+    :class="{ 'album-track-table': albumTable }"
     :role="playlistSelectionScope ? 'grid' : 'table'"
     :aria-label="playlistSelectionScope ? (selectionLabel ?? '歌单歌曲') : undefined"
     :aria-multiselectable="playlistSelectionScope ? true : undefined"
     :aria-rowcount="tracks.length + 1"
   >
     <div class="track-columns track-header" role="row">
-      <span role="columnheader">#</span><span role="columnheader">歌曲 / 歌手</span
-      ><span role="columnheader">专辑</span><span role="columnheader">喜欢</span
-      ><span role="columnheader" :aria-sort="durationOrder === 'original' ? 'none' : durationOrder">
+      <span role="columnheader">#</span>
+      <span role="columnheader">歌曲 / 歌手</span>
+      <span v-if="!albumTable" role="columnheader">专辑</span>
+      <span role="columnheader">喜欢</span>
+      <span role="columnheader" :aria-sort="albumTable ? durationDirection : undefined">
         <button
-          v-if="durationOrder"
+          v-if="albumTable"
           type="button"
-          class="track-duration-sort"
+          class="track-sort"
           aria-label="按时长排序"
           data-catalog-key="duration-sort"
           @click="emit('sortDuration')"
         >
-          时长<span v-if="durationOrder !== 'original'" aria-hidden="true">
-            {{ durationOrder === 'ascending' ? '↑' : '↓' }}
+          时长<span v-if="durationDirection !== 'none'" aria-hidden="true">
+            {{ durationDirection === 'ascending' ? '↑' : '↓' }}
           </span>
         </button>
         <template v-else>时长</template>
+      </span>
+      <span v-if="albumTable" role="columnheader" :aria-sort="popularityDirection">
+        <button
+          type="button"
+          class="track-sort"
+          aria-label="按热度排序"
+          data-catalog-key="popularity-sort"
+          @click="emit('sortPopularity')"
+        >
+          热度<span v-if="popularityDirection !== 'none'" aria-hidden="true">
+            {{ popularityDirection === 'ascending' ? '↑' : '↓' }}
+          </span>
+        </button>
       </span>
     </div>
     <div
@@ -416,8 +443,10 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
           locateIndex !== undefined,
           !!playlistSelectionScope,
           selected.has(track.id),
+          albumTable,
         ]"
         :track="track"
+        :show-popularity="albumTable"
         :tabindex="playlistSelectionScope || locateIndex !== undefined ? -1 : undefined"
         :selection="playlistSelectionScope ? selected.has(track.id) : undefined"
         :match-keyword="matchKeyword"
@@ -479,7 +508,7 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
   background: var(--accent);
   pointer-events: none;
 }
-.track-duration-sort {
+.track-sort {
   display: inline-flex;
   gap: 3px;
   align-items: center;
@@ -491,7 +520,15 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
   white-space: nowrap;
   cursor: pointer;
 }
-.track-duration-sort:hover {
+.track-sort:hover {
   color: var(--text-primary, currentColor);
+}
+.album-track-table :deep(.track-columns) {
+  grid-template-columns: 32px minmax(0, 1fr) 48px 84px 64px;
+}
+@media (max-width: 950px) {
+  .album-track-table :deep(.track-columns) {
+    grid-template-columns: 25px minmax(0, 1fr) 32px 78px 56px;
+  }
 }
 </style>

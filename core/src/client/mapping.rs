@@ -88,6 +88,7 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
             .or_else(|| value.get("duration"))
             .and_then(Value::as_u64)
             .unwrap_or(0),
+        album_popularity: None,
         fee: value["fee"].as_i64().unwrap_or(0),
         missing: false,
         local: false,

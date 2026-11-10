@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue';
-import type { AlbumDurationOrder } from '../services/albumDurationSort.ts';
+import type { AlbumTrackOrder } from '../services/albumDurationSort.ts';
 import type { AccountView, CoreClient } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { catalogVisitKey, type CatalogLocation } from '../services/catalogNavigation.ts';
@@ -16,9 +16,9 @@ export function useCatalogWorkspace(
   if (!Number.isInteger(capacity) || capacity < 2) throw Error('invalid catalog memory capacity');
   const sessions = new Map<string, ReturnType<typeof useCatalogSession>>();
   // Official TableViewer remembers order by resource pathname, not visit ID.
-  const albumOrders = new Map<string, Ref<AlbumDurationOrder>>();
+  const albumOrders = new Map<string, Ref<AlbumTrackOrder>>();
   function albumOrder(id: string) {
-    const order = albumOrders.get(id) ?? ref<AlbumDurationOrder>('original');
+    const order = albumOrders.get(id) ?? ref<AlbumTrackOrder>('original');
     albumOrders.delete(id);
     albumOrders.set(id, order);
     if (albumOrders.size > 64) {
