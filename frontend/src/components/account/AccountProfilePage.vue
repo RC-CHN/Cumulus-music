@@ -19,11 +19,12 @@ import AccountProfileEdit from './AccountProfileEdit.vue';
 import AccountBindingQrDialog from './AccountBindingQrDialog.vue';
 import AccountReadLayout from './AccountReadLayout.vue';
 import Icon from '../Icon.vue';
-const props = defineProps<{ account: AccountView }>();
+const props = defineProps<{ account: AccountView; directEdit?: boolean }>();
 const emit = defineEmits<{ back: []; expired: [] }>();
 const core = useCore();
 const read = useAccountRead(
-  () => (props.account.status === 'authenticated' ? props.account.epoch : null),
+  () =>
+    !props.directEdit && props.account.status === 'authenticated' ? props.account.epoch : null,
   (epoch) => core.accountProfileDetail(epoch),
   undefined,
   () => emit('expired'),
@@ -31,9 +32,17 @@ const read = useAccountRead(
 const { value, state, error, refresh } = read;
 const avatarFailed = ref(false);
 const editor = ref<InstanceType<typeof AccountProfileEdit>>();
-const editOpen = ref(false);
+const editOpen = ref(!!props.directEdit && props.account.status === 'authenticated');
 const editTrigger = ref<HTMLButtonElement>();
-let editOwner: string | undefined;
+let editOwner = editOpen.value ? props.account.epoch : undefined;
+const directAvatar = ref<string | null>();
+const avatarUrl = computed(() =>
+  props.directEdit
+    ? directAvatar.value === undefined
+      ? editor.value?.avatarUrl
+      : directAvatar.value
+    : value.value?.profile.avatarUrl,
+);
 const bindingQrOpen = ref(false);
 const savedNotice = ref('');
 const avatarNotice = ref('');
@@ -56,16 +65,20 @@ function startAvatar() {
 async function adoptAvatar(task: AvatarTask, observedNow: boolean) {
   const owner = avatarOwner();
   if (!owner || owner !== editOwner) return;
-  if (observedNow && value.value && task.observedRevision)
-    value.value = {
-      ...value.value,
-      profile: { ...value.value.profile, avatarUrl: task.observedAvatarUrl },
-    };
+  if (observedNow && task.observedRevision) {
+    if (props.directEdit) directAvatar.value = task.observedAvatarUrl;
+    else if (value.value)
+      value.value = {
+        ...value.value,
+        profile: { ...value.value.profile, avatarUrl: task.observedAvatarUrl },
+      };
+  }
   avatarNotice.value = task.phase === 'confirmed' ? '头像已更新。' : '已采用当前头像。';
   const snapshot = await editor.value?.refreshForAvatar();
-  if (owner !== avatarOwner() || !snapshot || value.value?.profile.uid !== snapshot.profile.uid)
-    return;
-  value.value = { ...value.value, profile: snapshot.profile };
+  if (owner !== avatarOwner() || !snapshot) return;
+  if (props.directEdit) directAvatar.value = undefined;
+  else if (value.value?.profile.uid === snapshot.profile.uid)
+    value.value = { ...value.value, profile: snapshot.profile };
 }
 function openEdit() {
   if (props.account.status !== 'authenticated') return;
@@ -77,6 +90,10 @@ function openEdit() {
 async function closeEdit() {
   editOwner = undefined;
   editOpen.value = false;
+  if (props.directEdit) {
+    emit('back');
+    return;
+  }
   await nextTick();
   if (editTrigger.value?.isConnected) editTrigger.value.focus({ preventScroll: true });
 }
@@ -89,12 +106,13 @@ function acceptEdit(snapshot: ProfileEditSnapshot, confirmed: boolean) {
     return;
   if (value.value?.profile.uid === snapshot.profile.uid)
     value.value = { ...value.value, profile: snapshot.profile };
-  if (confirmed) {
+  if (confirmed && !props.directEdit) {
     savedNotice.value = '个人资料已保存。';
     void closeEdit();
   }
 }
 function requestLeave(commit: () => void) {
+  if (!editOpen.value) return commit();
   if (avatarOpen.value || avatarBusy.value) return;
   if (editor.value) void editor.value.requestLeave(commit);
   else commit();
@@ -107,14 +125,12 @@ watch(
     bindingQrOpen.value = false;
     savedNotice.value = '';
     avatarNotice.value = '';
+    directAvatar.value = undefined;
   },
   { flush: 'sync' },
 );
 defineExpose({ requestLeave });
-watch(
-  () => value.value?.profile.avatarUrl,
-  () => (avatarFailed.value = false),
-);
+watch(avatarUrl, () => (avatarFailed.value = false));
 const fields = computed(() => {
   const profile = value.value?.profile;
   if (!profile) return [];
@@ -137,6 +153,7 @@ const fields = computed(() => {
     :epoch="account.epoch"
     :active="account.status === 'authenticated'"
     :avatar-busy="avatarBusy || avatarOpen"
+    :direct-edit="directEdit"
     @close="closeEdit"
     @saved="acceptEdit"
     @expired="emit('expired')"
@@ -154,8 +171,8 @@ const fields = computed(() => {
           @click="avatarFocus.run($event, startAvatar)"
         >
           <img
-            v-if="value?.profile.avatarUrl && !avatarFailed"
-            :src="value.profile.avatarUrl"
+            v-if="avatarUrl && !avatarFailed"
+            :src="avatarUrl"
             alt=""
             referrerpolicy="no-referrer"
             @error="avatarFailed = true"
@@ -168,7 +185,7 @@ const fields = computed(() => {
     </template>
   </AccountProfileEdit>
   <AccountReadLayout
-    v-else
+    v-else-if="!directEdit"
     kind="profile"
     :epoch="account.epoch"
     title="个人资料"

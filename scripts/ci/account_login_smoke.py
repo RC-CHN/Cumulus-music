@@ -222,16 +222,27 @@ def main():
             assert '/api/user/profile/update' not in row['fixture']['paths']
             assert 'binding-private-' not in json.dumps(row, ensure_ascii=False)
     elif args.profile_edit:
-        assert complete['profileEdit'] and complete['profileRegionsVerified']
+        assert complete['profileEdit'] and complete['profileRegionsVerified'] and complete['profileDirectVerified']
         paths = complete['fixture']['paths']
         by_name = {state['stage'].split('_', 2)[2]: state for state in states}
+        detail = '/api/w/v1/user/detail/2'
+        bindings = '/api/w/v1/user/bindings/2'
+        update = '/api/user/profile/update'
+        dirty = by_name['profile_edit_dirty_light']['fixture']['paths']
+        assert dirty[detail] == 1
+        assert dirty[bindings] == 1
+        assert update not in dirty
+        saved = by_name['profile_edit_saved_light']['fixture']['paths']
+        assert saved[detail] == dirty[detail] + 2  # Preflight and confirmed readback.
+        assert saved[bindings] == dirty[bindings]
+        assert saved[update] == 1
         qr_paths = by_name['binding_qr_light']['fixture']['paths']
-        assert qr_paths['/api/w/v1/user/detail/2'] == 1
-        assert qr_paths['/api/w/v1/user/bindings/2'] == 2
+        assert qr_paths[detail] == saved[detail] + 1
+        assert qr_paths[bindings] == saved[bindings] + 1
+        assert qr_paths[update] == saved[update]
         assert not any('bindaccount' in path for path in paths)
         assert paths['/api/user/profile/update'] == 2
         assert paths['/api/lbs/region/code'] == 2
-        assert by_name['profile_edit_saved_light']['fixture']['paths']['/api/user/profile/update'] == 1
         before = by_name['profile_edit_recovery_dark']['fixture']['paths']
         assert before['/api/user/profile/update'] == 2
         assert paths['/api/w/v1/user/detail/2'] > before['/api/w/v1/user/detail/2']

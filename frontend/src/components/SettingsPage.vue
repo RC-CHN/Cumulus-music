@@ -193,9 +193,11 @@ function accept(op: SettingsOperation) {
 </script>
 <template>
   <AccountProfilePage
-    v-if="accountDetail === 'profile'"
+    v-if="accountDetail === 'profile' || accountDetail === 'profile_edit'"
+    :key="accountDetail"
     ref="profilePage"
     :account="account"
+    :direct-edit="accountDetail === 'profile_edit'"
     @back="emit('back')"
     @expired="emit('expired')"
   />
@@ -315,6 +317,14 @@ function accept(op: SettingsOperation) {
                 @open="(event) => openDetail('bindings', event)"
                 @expired="emit('expired')"
               />
+              <button
+                type="button"
+                class="secondary"
+                data-testid="account-profile-edit-direct"
+                @click="openDetail('profile_edit', $event)"
+              >
+                修改个人信息
+              </button>
               <button
                 type="button"
                 class="secondary"

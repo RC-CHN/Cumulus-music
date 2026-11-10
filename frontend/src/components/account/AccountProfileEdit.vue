@@ -15,7 +15,12 @@ import { nicknameLength } from '../../services/nickname';
 import Icon from '../Icon.vue';
 import '../../styles/account-profile-edit.css';
 
-const props = defineProps<{ epoch: string; active: boolean; avatarBusy?: boolean }>();
+const props = defineProps<{
+  epoch: string;
+  active: boolean;
+  avatarBusy?: boolean;
+  directEdit?: boolean;
+}>();
 const emit = defineEmits<{
   close: [];
   saved: [snapshot: ProfileEditSnapshot, confirmed: boolean];
@@ -48,6 +53,7 @@ async function refreshRegions() {
 }
 
 const {
+  avatarUrl,
   draft,
   blocked,
   unseen,
@@ -174,7 +180,7 @@ function discard() {
 async function saveDraft(leave = false) {
   if (!canSave.value || props.avatarBusy) return;
   if (leave) {
-    afterSave = afterDiscard;
+    afterSave = props.directEdit ? undefined : afterDiscard;
     afterDiscard = undefined;
     dismissPrompt(false);
   }
@@ -209,6 +215,7 @@ onBeforeUnmount(() => {
   }
 });
 defineExpose({
+  avatarUrl,
   requestLeave,
   refreshForAvatar,
   avatarAvailable: computed(() => !busy.value && !loading.value),
@@ -227,7 +234,7 @@ defineExpose({
       <button
         type="button"
         class="icon-button"
-        aria-label="返回个人资料"
+        :aria-label="directEdit ? '返回设置' : '返回个人资料'"
         :disabled="busy"
         @click="requestLeave(() => emit('close'))"
       >
@@ -492,20 +499,24 @@ defineExpose({
           <Icon name="close" />
         </button>
       </header>
-      <p>修改的信息尚未保存，是否保存后离开？</p>
+      <p>
+        {{ directEdit ? '修改的信息尚未保存，是否保存？' : '修改的信息尚未保存，是否保存后离开？' }}
+      </p>
       <footer>
-        <button type="button" class="secondary" autofocus @click="keepEditing">继续编辑</button>
-        <button type="button" class="secondary" data-testid="profile-edit-discard" @click="discard">
-          放弃修改
+        <button v-if="!directEdit" type="button" class="secondary" autofocus @click="keepEditing">
+          继续编辑
         </button>
         <button
           type="button"
           class="primary"
-          data-testid="profile-edit-save-and-leave"
+          :data-testid="directEdit ? 'profile-edit-save-in-dialog' : 'profile-edit-save-and-leave'"
           :disabled="!canSave || avatarBusy"
           @click="saveDraft(true)"
         >
           保存
+        </button>
+        <button type="button" class="secondary" data-testid="profile-edit-discard" @click="discard">
+          {{ directEdit ? '取消' : '放弃修改' }}
         </button>
       </footer>
     </dialog>

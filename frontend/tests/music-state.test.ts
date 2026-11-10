@@ -2,7 +2,13 @@ import { defaultLocalQuery } from '../src/services/local.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useMusic } from '../src/composables/useMusic.ts';
-import type { AccountData, CoreClient, TrackPage, TrackView } from '../src/services/contracts.ts';
+import type {
+  AccountData,
+  AccountView,
+  CoreClient,
+  TrackPage,
+  TrackView,
+} from '../src/services/contracts.ts';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -200,6 +206,37 @@ test('switching account generation discards the previous account navigation stac
   assert.equal(music.historyLength.value, 0);
   music.back();
   assert.equal(music.page.value.kind, 'settings');
+});
+
+test('the settings profile editor retires before an expired or replaced account can reuse it', async () => {
+  for (const next of [
+    { epoch: '1', status: 'expired' },
+    { epoch: '2', status: 'authenticated' },
+  ] as const) {
+    let account: AccountView = {
+      epoch: '1',
+      status: 'authenticated',
+      nickname: 'first',
+      avatarUrl: null,
+    };
+    let blockDirtyExit = false;
+    let attemptedGuard = 0;
+    const music = useMusic(backend({ accountSnapshot: async () => account }), (commit) => {
+      if (blockDirtyExit) attemptedGuard++;
+      else commit();
+    });
+    await music.bootstrap(false);
+    music.navigate({ kind: 'settings' });
+    music.navigate({ kind: 'settings', accountDetail: 'profile_edit' });
+    blockDirtyExit = true;
+    await music.bootstrap(false);
+    assert.deepEqual(music.page.value, { kind: 'settings', accountDetail: 'profile_edit' });
+    account = { ...next, nickname: null, avatarUrl: null };
+    await music.bootstrap(false);
+    assert.deepEqual(music.page.value, { kind: 'settings' });
+    assert.equal(music.historyLength.value, next.epoch === '1' ? 1 : 0);
+    assert.equal(attemptedGuard, 0);
+  }
 });
 
 test('repeating a search starts a fresh visit while category navigation and back keep its identity', async () => {

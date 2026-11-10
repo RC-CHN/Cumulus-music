@@ -181,6 +181,15 @@ export function useMusic(
   function accept<T>(data: AccountData<T>): T | undefined {
     return data.epoch === account.value.epoch && signedIn.value ? data.value : undefined;
   }
+  function retireProfileEditor() {
+    if (page.value.kind !== 'settings' || page.value.accountDetail !== 'profile_edit') return;
+    const previous = history.at(-1);
+    if (previous?.kind === 'settings' && !previous.accountDetail) {
+      history.pop();
+      historyLength.value = history.length;
+      page.value = previous;
+    } else page.value = { kind: 'settings' };
+  }
   function handle(e: unknown) {
     const issue = failure(e);
     error.value = issue.message;
@@ -189,6 +198,7 @@ export function useMusic(
       loading.value = false;
       resourceRequest++;
       resourcesLoading.value = false;
+      retireProfileEditor();
       account.value = { ...account.value, status: 'expired', nickname: null, avatarUrl: null };
       notice.value = '';
       playlists.value = [];
@@ -522,6 +532,8 @@ export function useMusic(
         likeNotice.value = '';
         notice.value = '';
       }
+      if (next.epoch !== account.value.epoch || next.status !== 'authenticated')
+        retireProfileEditor();
       account.value = next;
       accountReady.value = true;
       if (signedIn.value) {

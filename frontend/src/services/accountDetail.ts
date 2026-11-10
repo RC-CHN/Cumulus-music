@@ -81,7 +81,7 @@ export interface LoginDevicesView {
 export interface AccountBindingQrView {
   modules: boolean[][];
 }
-export type AccountDetailKind = 'profile' | 'devices' | 'blacklist' | 'bindings';
+export type AccountDetailKind = 'profile' | 'profile_edit' | 'devices' | 'blacklist' | 'bindings';
 
 export interface AccountDetailClient {
   accountProfileDetail(epoch: string): Promise<AccountData<AccountProfileDetail>>;

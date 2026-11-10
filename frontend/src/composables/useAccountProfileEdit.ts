@@ -87,6 +87,7 @@ export function useAccountProfileEdit(
     if (!op) return false;
     if (op.phase === 'confirmed' && op.observed) {
       setBaseline(op.observed);
+      notice.value = '个人资料已保存。';
       saved(op.observed, true);
       return true;
     }
@@ -248,6 +249,7 @@ export function useAccountProfileEdit(
     page.value = undefined;
   });
   return {
+    avatarUrl: computed(() => baseline.value?.profile.avatarUrl),
     draft,
     blocked,
     unseen,

@@ -537,25 +537,19 @@
     await email();
     await logged();
     click(button("打开设置"));
-    await wait(() => test("account-profile-open"), "profile entry");
+    const direct = () => test("account-profile-edit-direct");
+    const scroll = () => one(".settings-scroll");
+    await wait(() => direct(), "direct edit entry");
     await settle();
-    click(test("account-profile-open"));
-    await wait(() => hasSignature("这是合成的账号资料"), "profile ready");
-    await settle();
-    click(test("account-binding-qr-open"));
-    await wait(() => one("svg[data-account-binding-qr]"), "local binding QR");
-    await stage("binding_qr_light", { expectNickname });
-    click(button("关闭扫码设置"));
-    await wait(() => !one(".account-binding-qr-dialog"), "binding QR closed");
-    await settle();
+    direct().scrollIntoView({ block: "nearest" });
+    const settingsScroll = scroll().scrollTop;
+    click(direct());
     async function edit(signature) {
-      click(test("account-profile-edit-open"));
       await wait(() => state() === "ready" && test("profile-edit-signature"), "edit ready");
       await wait(() =>
         test("profile-edit-province")?.selectedOptions[0]?.textContent.includes("浙江省（合成）") &&
         test("profile-edit-city")?.selectedOptions[0]?.textContent.includes("杭州市（合成）"),
       "server region or validated cache selected");
-
       await settle();
       const field = test("profile-edit-signature");
       field.focus();
@@ -565,17 +559,45 @@
       await settle();
     }
     await edit("桌面验证：已保存");
+    assert(!one(".account-profile-content"), "direct entry bypasses read-only profile");
+    click(test("profile-edit-cancel"));
+    await wait(() => test("profile-edit-save-in-dialog")?.closest("dialog")?.open, "dirty leave prompt");
     await stage("profile_edit_dirty_light", { expectNickname });
-    click(test("profile-edit-save"));
+    click(test("profile-edit-save-in-dialog"));
+    await wait(
+      () => state() === "ready" && test("profile-edit-signature")?.value === "桌面验证：已保存" &&
+        test("profile-edit-save")?.disabled &&
+        one(".profile-edit-message[role='status']")?.textContent.includes("个人资料已保存"),
+      "confirmed save resets the draft and stays on the direct editor",
+    );
+    await stage("profile_edit_saved_light", { expectNickname });
+    await edit("桌面验证：不会写入");
+    click(button("返回设置"));
+    await wait(() => test("profile-edit-discard")?.closest("dialog")?.open, "direct back asks before discard");
+    click(test("profile-edit-discard"));
+    await wait(
+      () => !state() && visible(direct()) && document.activeElement === direct() &&
+        Math.abs(scroll().scrollTop - settingsScroll) <= 1,
+      "discard returns to the same settings action and scroll position",
+    );
+    await settle();
+    click(test("account-profile-open"));
     await wait(
       () => hasSignature("桌面验证：已保存") &&
         one('[data-profile-field="region"]')?.textContent.includes("杭州市（合成）"),
-      "profile readback uses cached region name",
+      "read-only profile uses the last confirmed write and cached region name",
     );
-    await stage("profile_edit_saved_light", { expectNickname });
+    await settle();
+    click(test("account-binding-qr-open"));
+    await wait(() => one("svg[data-account-binding-qr]"), "local binding QR");
+    await stage("binding_qr_light", { expectNickname });
+    click(button("关闭扫码设置"));
+    await wait(() => !one(".account-binding-qr-dialog"), "binding QR closed");
+    await settle();
     await theme("dark");
     await resize(880, 670);
     await mode("profile_ack_lost");
+    click(test("account-profile-edit-open"));
     await edit("桌面验证：回包丢失");
     click(test("profile-edit-save"));
     await wait(() => state() === "recovery", "uncertain write recovery");
@@ -584,7 +606,7 @@
     click(test("profile-edit-reconcile"));
     await wait(() => hasSignature("桌面验证：回包丢失"), "read-only recovery applied");
     await stage("profile_edit_reconciled_dark", { expectNickname });
-    await emit("complete", { ok: true, profileEdit: true, profileRegionsVerified: true, stageCount: count, expectNickname });
+    await emit("complete", { ok: true, profileEdit: true, profileRegionsVerified: true, profileDirectVerified: true, stageCount: count, expectNickname });
   }
   async function accountAvatar() {
     const expectNickname = "邮箱验证账号";
