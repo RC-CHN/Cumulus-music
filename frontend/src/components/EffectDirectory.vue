@@ -667,22 +667,7 @@ onUnmounted(() => {
   font-weight: 500;
 }
 .effect-directory-grid-legacy_recommended .effect-directory-card[aria-pressed='true'],
-.effect-directory-grid-legacy_all .effect-card-new {
-  display: inline-grid;
-  width: 28px;
-  height: 16px;
-  margin-inline-start: 4px;
-  place-items: center;
-  border-radius: 8px;
-  background: linear-gradient(to right, #ff1168, #fc3d49);
-  color: white;
-  font-size: 8px;
-  font-style: italic;
-  font-weight: 700;
-  line-height: 1;
-  vertical-align: middle;
-}
-.effect-directory-card[aria-pressed='true'] {
+.effect-directory-grid-legacy_all .effect-directory-card[aria-pressed='true'] {
   border-color: var(--accent);
 }
 .effect-directory-grid-legacy_all .effect-directory-card {
@@ -732,6 +717,21 @@ onUnmounted(() => {
   font-size: 10px;
   line-height: 14px;
   white-space: nowrap;
+}
+.effect-card-new {
+  display: inline-grid;
+  width: 28px;
+  height: 16px;
+  margin-inline-start: 4px;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(to right, #ff1168, #fc3d49);
+  color: white;
+  font-size: 8px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
 }
 .effect-directory-card[aria-pressed='true'] {
   border-color: var(--accent);
