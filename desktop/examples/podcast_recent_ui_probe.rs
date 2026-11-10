@@ -8,6 +8,8 @@ mod capture_ack;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/podcast_liked_waterfall_fixture.rs"]
+mod liked_waterfall_fixture;
 #[path = "support/purchased_podcast_fixture.rs"]
 mod purchased_podcast_fixture;
 #[allow(dead_code)]
@@ -84,6 +86,7 @@ struct Library {
     program_menu: bool,
     recent_program_menu: bool,
     liked_withdrawn: bool,
+    liked_waterfall: Option<liked_waterfall_fixture::Fixture>,
     voice_list_compact: AtomicBool,
     purchased: Option<Arc<purchased_podcast_fixture::Fixture>>,
     recent_menu_count_held: AtomicBool,
@@ -551,6 +554,11 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(fixture) = &self.liked_waterfall
+                && let Some(result) = fixture.read(path, &body, cache).await
+            {
+                return result;
+            }
             if let Some(liked) = &self.voice_song_group_liked {
                 match path {
                     voice_song_group_liked_fixture::ACCOUNT => {
@@ -858,6 +866,8 @@ fn main() {
         std::env::var("CUMULUS_PODCAST_RECENT_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
     let liked_withdrawn =
         std::env::var("CUMULUS_PODCAST_LIKED_WITHDRAWN_PROOF").as_deref() == Ok("1");
+    let liked_waterfall =
+        std::env::var("CUMULUS_PODCAST_LIKED_WATERFALL_PROOF").as_deref() == Ok("1");
     let purchased_download_proof =
         std::env::var("CUMULUS_PODCAST_PURCHASED_PROOF").as_deref() == Ok("1");
     let purchased_playback_proof =
@@ -869,6 +879,7 @@ fn main() {
             + u8::from(purchased_download_proof)
             + u8::from(purchased_playback_proof)
             + u8::from(liked_withdrawn)
+            + u8::from(liked_waterfall)
             <= 1
     );
     let recommendations_enabled =
@@ -1029,6 +1040,7 @@ fn main() {
         program_menu,
         recent_program_menu,
         liked_withdrawn,
+        liked_waterfall: liked_waterfall.then(liked_waterfall_fixture::Fixture::default),
         purchased: purchased.clone(),
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
         scene_home,
@@ -1092,6 +1104,8 @@ fn main() {
                 include_str!("podcast_recent_program_menu_ui_probe.js").to_owned()
             } else if liked_withdrawn {
                 include_str!("podcast_liked_withdrawn_ui_probe.js").to_owned()
+            } else if liked_waterfall {
+                include_str!("podcast_liked_waterfall_ui_probe.js").to_owned()
             } else if program_menu {
                 include_str!("podcast_program_menu_ui_probe.js").to_owned()
             } else if badges_enabled {
@@ -1159,7 +1173,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
-            if progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof || liked_withdrawn {
+            if progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof || liked_withdrawn || liked_waterfall {
                 fs::write(output.join("locale.json"), serde_json::to_vec(&json!({
                     "numeric":locale(libc::LC_NUMERIC),
                     "messages":locale(libc::LC_MESSAGES),
@@ -1172,6 +1186,13 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let mut value: Value = serde_json::from_str(event.payload()).unwrap();
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
+                if let Some(fixture) = &api.liked_waterfall {
+                    if stage == "reject_held_liked_page" {
+                        fixture.reject_held_page();
+                        return;
+                    }
+                    value["likedWaterfallTrace"] = fixture.trace();
+                }
                 if (liked_withdrawn || recent_program_menu) && stage == "voice_list_cohort" {
                     let compact = value["compact"].as_bool().expect("synthetic voice list assignment");
                     api.voice_list_compact.store(compact, Ordering::SeqCst);
@@ -1350,7 +1371,7 @@ fn main() {
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" {0} else {1});
                     } else if capture_ack::acknowledge(&handle, &output, &stage, true).await
-                        && (progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof || liked_withdrawn)
+                        && (progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof || liked_withdrawn || liked_waterfall)
                     {
                         handle.get_webview_window("main").unwrap().eval(format!(
                             "window.__podcastProgressStage = {};",
