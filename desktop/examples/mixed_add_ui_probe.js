@@ -2,6 +2,7 @@
 (async () => {
   if (window.__mixedAddStarted) return;
   window.__mixedAddStarted = true;
+  const batch = window.__mixedBatchAddProof === true;
   const one = (selector) => document.querySelector(selector);
   const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
   const report = (stage, details = {}) =>
@@ -10,8 +11,13 @@
   const check = (ok, message) => { if (!ok) throw Error(message); };
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const row = (id) => one('.track-scroll .track-row[data-track-id="' + CSS.escape(id) + '"]');
-  const rows = () => [...document.querySelectorAll('.track-scroll .track-row[data-track-id]')]
-    .map((node) => node.dataset.trackId);
+  const batchPage = () => one('.playlist-batch-page');
+  const batchBox = (id) => batchPage()?.querySelector('[aria-label="选择 合成线上曲目 ' + id + '"]');
+  const rows = () => batch && batchPage()
+    ? [...batchPage().querySelectorAll('input[aria-label^="选择 合成线上曲目 "]')]
+      .map((node) => node.getAttribute('aria-label').split(' ').at(-1))
+    : [...document.querySelectorAll('.track-scroll .track-row[data-track-id]')]
+      .map((node) => node.dataset.trackId);
   const button = (text, root = document) => [...root.querySelectorAll('button')]
     .find((node) => node.textContent.trim() === text && !node.disabled);
   const picker = () => one('dialog.playlist-collect-dialog[open]:not([inert])');
@@ -106,8 +112,19 @@
     await navigate('12');
     await wait(() => same(rows(), ['703', '704']), 'ordinary source tracks');
     step = 'choose first';
-    await capture('ux_01_source', { point: point('703') });
-    click(await wait(menuItem, 'song context menu'));
+    if (batch) {
+      click(await wait(() => one('.playlist-hero button[aria-label="更多歌单操作"]'), 'source detail menu'));
+      click(await wait(() => menu() && button('批量操作', menu()), 'source batch entry'));
+      await wait(() => batchBox('703') && batchBox('704'), 'ordinary source batch rows');
+      click(batchBox('704'));
+      click(batchBox('703'));
+      await wait(() => batchBox('703').checked && batchBox('704').checked, 'reverse click batch selection');
+      await capture('ux_01_source', { selected: rows().filter((id) => batchBox(id).checked) });
+      click(button('收藏', batchPage()));
+    } else {
+      await capture('ux_01_source', { point: point('703') });
+      click(await wait(menuItem, 'song context menu'));
+    }
     await wait(() => enabled(target()) && target(), 'choose mixed destination');
     await capture('ux_02_picker');
     click(target());
@@ -116,9 +133,16 @@
     await capture('ux_03_uncertain');
     click(picker().querySelector('[aria-label="关闭歌单操作"]'));
     await wait(() => !one('dialog.playlist-collect-dialog'), 'close prior picker');
-    step = 'choose different song';
-    await capture('ux_04_earlier', { point: point('704') });
-    click(await wait(menuItem, 'second song context menu'));
+    step = 'choose different selection';
+    if (batch) {
+      click(batchBox('703'));
+      await wait(() => !batchBox('703').checked && batchBox('704').checked, 'second selection');
+      await capture('ux_04_earlier', { selected: rows().filter((id) => batchBox(id).checked) });
+      click(button('收藏', batchPage()));
+    } else {
+      await capture('ux_04_earlier', { point: point('704') });
+      click(await wait(menuItem, 'second song context menu'));
+    }
     await wait(() => enabled(target()) && target(), 'same mixed destination');
     click(target());
     const verify = await wait(() => {
@@ -132,9 +156,14 @@
     await capture('ux_05_readback');
     click(picker().querySelector('[aria-label="关闭歌单操作"]'));
     await wait(() => !one('dialog.playlist-collect-dialog'), 'close second picker');
+    if (batch) {
+      click(button('完成', batchPage()));
+      await wait(() => !batchPage(), 'close batch page');
+    }
     await navigate('11');
-    await wait(() => same(rows(), ['703', localId, '701', '702']), 'confirmed complete mixed order');
-    check(same(context, [['703', true], ['704', true]]), 'trusted context gestures for distinct songs');
+    await wait(() => same(rows(), batch ? ['703', '704', localId, '701', '702'] :
+      ['703', localId, '701', '702']), 'confirmed complete mixed order');
+    check(same(context, batch ? [] : [['703', true], ['704', true]]), 'exact source gestures');
     await capture('ux_06_target');
     await report('complete', { ok: true, localId, context });
   } catch (error) {

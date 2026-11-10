@@ -64,12 +64,18 @@ pub enum Mode {
     Reorder,
     Remove,
     Add,
+    BatchAdd,
+}
+impl Mode {
+    fn adding(self) -> bool {
+        matches!(self, Self::Add | Self::BatchAdd)
+    }
 }
 
 struct Server {
     order: [&'static str; 2],
     removed: bool,
-    added: bool,
+    added: usize,
     writes: Vec<Value>,
     reads: usize,
     unexpected: usize,
@@ -80,7 +86,9 @@ impl Server {
     fn visible_order(&self) -> &[&'static str] {
         if self.removed {
             &self.order[1..]
-        } else if self.added {
+        } else if self.added == 2 {
+            &["703", "704", "701", "702"]
+        } else if self.added == 1 {
             &["703", "701", "702"]
         } else {
             &self.order
@@ -104,7 +112,7 @@ impl Fixture {
             server: Mutex::new(Server {
                 order: ["701", "702"],
                 removed: false,
-                added: false,
+                added: 0,
                 writes: Vec::new(),
                 reads: 0,
                 unexpected: 0,
@@ -133,7 +141,7 @@ impl Fixture {
         let kind = match self.mode {
             Mode::Reorder => JOURNAL,
             Mode::Remove => REMOVE_JOURNAL,
-            Mode::Add => ADD_JOURNAL,
+            Mode::Add | Mode::BatchAdd => ADD_JOURNAL,
         };
         let journal = store.get("2", kind, TARGET)?.unwrap_or(Value::Null);
         let server = self.server.lock().unwrap();
@@ -158,15 +166,16 @@ impl Fixture {
 
     async fn update(&self, args: Value, cache: bool) -> Result<Value> {
         if self.mode != Mode::Reorder {
-            let (op, id) = if self.mode == Mode::Remove {
-                ("del", "701")
-            } else {
-                ("add", "703")
+            let (op, ids): (&str, &[&str]) = match self.mode {
+                Mode::Remove => ("del", &["701"]),
+                Mode::Add => ("add", &["703"]),
+                Mode::BatchAdd => ("add", &["703", "704"]),
+                Mode::Reorder => unreachable!(),
             };
             let mut server = self.server.lock().unwrap();
             if cache
                 || !server.writes.is_empty()
-                || args != json!({"pid":TARGET,"op":op,"trackIds":serde_json::to_string(&[id])?})
+                || args != json!({"pid":TARGET,"op":op,"trackIds":serde_json::to_string(ids)?})
             {
                 server.unexpected += 1;
                 return Err(Error::Response(
@@ -175,7 +184,7 @@ impl Fixture {
             }
             server.writes.push(args);
             server.removed = self.mode == Mode::Remove;
-            server.added = self.mode == Mode::Add;
+            server.added = if self.mode.adding() { ids.len() } else { 0 };
             return Err(Error::Transport(
                 "synthetic mixed edit lost response".into(),
             ));
@@ -230,7 +239,7 @@ impl Api for Fixture {
     }
 
     fn mixed_playlist_add_scope_revision(&self) -> Result<Option<String>> {
-        Ok((self.mode == Mode::Add).then(|| "synthetic-mixed-add".into()))
+        Ok(self.mode.adding().then(|| "synthetic-mixed-add".into()))
     }
 
     fn request_guarded_mixed_playlist_add<'a>(
@@ -241,7 +250,7 @@ impl Api for Fixture {
         dispatched: &'a AtomicBool,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            if self.mode != Mode::Add || revision != "synthetic-mixed-add" {
+            if !self.mode.adding() || revision != "synthetic-mixed-add" {
                 return Err(Error::CredentialChanged);
             }
             let (path, args) = write.into_request()?;
@@ -277,18 +286,18 @@ impl Api for Fixture {
                     Ok(json!({"code":200,"more":false,"playlist":[
                         playlist(10,2,5,"我喜欢的音乐",&[]),
                         playlist(11,2,0,"合成自建混排歌单",server.visible_order()),
-                        if self.mode == Mode::Add { playlist(12,2,0,"合成收藏来源",&["703","704"]) }
+                        if self.mode.adding() { playlist(12,2,0,"合成收藏来源",&["703","704"]) }
                         else { playlist(12,3,0,"合成收藏歌单",&[]) }
                     ]}))
                 }
-                "/api/user/playlist/v2" if self.mode == Mode::Add => {
+                "/api/user/playlist/v2" if self.mode.adding() => {
                     let server = self.server.lock().unwrap();
                     Ok(json!({"code":200,"playlist":[
                         playlist(11,2,0,"合成自建混排歌单",server.visible_order()),
                         playlist(12,2,0,"合成收藏来源",&["703","704"])
                     ],"more":false}))
                 }
-                "/api/v6/playlist/detail" if self.mode == Mode::Add && args["id"] == "12" => Ok(
+                "/api/v6/playlist/detail" if self.mode.adding() && args["id"] == "12" => Ok(
                     json!({"code":200,"playlist":playlist(12,2,0,"合成收藏来源",&["703","704"])}),
                 ),
                 "/api/v6/playlist/detail"
@@ -301,7 +310,7 @@ impl Api for Fixture {
                     )
                 }
                 REORDER => self.update(args, cache).await,
-                "/api/v3/song/detail" if self.mode == Mode::Add => {
+                "/api/v3/song/detail" if self.mode.adding() => {
                     let ids = serde_json::from_str::<Vec<Value>>(
                         args["c"]
                             .as_str()

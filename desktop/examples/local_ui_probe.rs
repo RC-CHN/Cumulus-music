@@ -211,7 +211,8 @@ fn main() {
     let mixed_membership = std::env::var_os("CUMULUS_MIXED_PLAYLIST_PROOF").is_some();
     let mixed_queue = std::env::var_os("CUMULUS_MIXED_PLAYLIST_QUEUE_PROOF").is_some();
     let mixed_remove = std::env::var_os("CUMULUS_MIXED_REMOVE_PROOF").is_some();
-    let mixed_add = std::env::var_os("CUMULUS_MIXED_ADD_PROOF").is_some();
+    let mixed_batch_add = std::env::var_os("CUMULUS_MIXED_BATCH_ADD_PROOF").is_some();
+    let mixed_add = mixed_batch_add || std::env::var_os("CUMULUS_MIXED_ADD_PROOF").is_some();
     let mixed_reorder = std::env::var_os("CUMULUS_MIXED_REORDER_PROOF").is_some();
     assert!(
         [mixed_remove, mixed_reorder, mixed_add]
@@ -275,6 +276,8 @@ fn main() {
                 &root,
                 if mixed_remove {
                     mixed_reorder_fixture::Mode::Remove
+                } else if mixed_batch_add {
+                    mixed_reorder_fixture::Mode::BatchAdd
                 } else if mixed_add {
                     mixed_reorder_fixture::Mode::Add
                 } else {
