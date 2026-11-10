@@ -149,7 +149,7 @@ pub(crate) async fn read_for(
     read_observed(session, token, identifier(id)?, None).await
 }
 
-pub(super) async fn read_player_for(
+pub(crate) async fn read_player_for(
     session: &AccountSession,
     token: &SessionToken,
     id: &str,

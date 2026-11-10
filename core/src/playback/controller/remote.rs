@@ -247,13 +247,33 @@ impl Actor {
             return Err(Error::StaleResponse);
         }
         authority.check()?;
+        let store = self.session.persistent_store()?;
         crate::history::HistoryService::new(self.session.clone())?.with_matching_revision(
             &self.token,
             update.kind,
             &update.revision,
-            || self.queue.install(update.queue),
+            |owner| {
+                if let Some(binding) = &update.shuffle_anchor {
+                    if !update.start
+                        || update.kind != crate::history::HistoryKind::Voice
+                        || update.queue.mode != crate::playback::PlaybackMode::Random
+                        || !update
+                            .queue
+                            .selected()
+                            .is_some_and(|item| binding.anchor.matches(&item.resource))
+                    {
+                        return Err(Error::QueueChanged);
+                    }
+                    binding.setting.check()?;
+                    binding.anchor.require_current(&store, owner)?;
+                }
+                self.queue.install(update.queue)
+            },
         )?;
-        Ok(update.start.then(LoadOptions::default))
+        Ok(update.start.then(|| LoadOptions {
+            history_shuffle_anchor: update.shuffle_anchor,
+            ..LoadOptions::default()
+        }))
     }
 
     pub(super) async fn apply_local_batch(

@@ -1,14 +1,17 @@
 //! M3085 history Add -> M308 play=false -> M1384 ordinary queue insertion.
+mod shuffle;
 use super::{MusicClient, PlayerResourceKind, PlayerView, identity, mapping, project};
 use crate::{
     Error, Result,
     account::SessionToken,
     client::history::Selection,
+    history::HistoryKind,
     playback::{
         PlaybackMode, QueueSnapshot,
         controller::{HistoryQueueUpdate, PlaybackCommand, PlaybackStatus},
         engine::Cancellation,
     },
+    podcast::progress::latest::ShuffleAnchor,
 };
 use rand::{Rng, seq::IndexedRandom};
 use serde_json::Value;
@@ -45,13 +48,33 @@ impl MusicClient {
         room.check()?;
         pending.check()?;
         let start = queue.items.is_empty();
-        let queue = plan(queue, resources, source, &mut rand::rng())?;
+        let shuffle_anchor =
+            if start && queue.mode == PlaybackMode::Random && kind == HistoryKind::Voice {
+                match resources.first() {
+                    Some(first) => {
+                        self.history_shuffle_anchor(token, first, &pending, &room)
+                            .await?
+                    }
+                    None => None,
+                }
+            } else {
+                None
+            };
+        pending.check()?;
+        let queue = plan(
+            queue,
+            resources,
+            source,
+            shuffle_anchor.as_ref().map(|binding| &binding.anchor),
+            &mut rand::rng(),
+        )?;
         let update = HistoryQueueUpdate {
             expected: before.fence(),
             queue,
             start,
             kind,
             revision,
+            shuffle_anchor,
         };
         // The metadata reads did not hold this lock. Prevent a room join or
         // recovered persisted room from racing the ordinary queue commit.
@@ -68,8 +91,15 @@ impl MusicClient {
             let history = crate::history::HistoryService::new(self.session.clone())?;
             let captured = token.clone();
             let revision = update.revision.clone();
+            let setting = update
+                .shuffle_anchor
+                .as_ref()
+                .map(|binding| binding.setting.clone());
             let authority = Cancellation::new(move || {
                 !room.is_cancelled()
+                    && setting
+                        .as_ref()
+                        .is_none_or(|setting| !setting.is_cancelled())
                     && history
                         .snapshot_for(&captured, kind)
                         .is_ok_and(|snapshot| snapshot.revision == revision)
@@ -100,6 +130,7 @@ fn plan(
     mut queue: QueueSnapshot,
     mut resources: Vec<Value>,
     source: Value,
+    shuffle_anchor: Option<&ShuffleAnchor>,
     rng: &mut impl Rng,
 ) -> Result<QueueSnapshot> {
     use super::queue_playlist::{QUEUE_LIMIT, insert_collection_by_key};
@@ -168,11 +199,15 @@ fn plan(
         let first = entry_id(first).ok_or(Error::QueueChanged)?;
         let in_batch = selected.iter().filter_map(entry_id).collect();
         let start_id = start.then(|| {
-            selected
-                .choose(rng)
-                .and_then(entry_id)
-                .map(str::to_owned)
-                .ok_or(Error::QueueChanged)
+            if let Some(anchor) = shuffle_anchor {
+                next.items
+                    .iter()
+                    .find(|row| anchor.matches(&row.resource))
+                    .map(|row| row.entry_id.clone())
+            } else {
+                selected.choose(rng).and_then(entry_id).map(str::to_owned)
+            }
+            .ok_or(Error::QueueChanged)
         });
         next.order = super::local_batch::random_order(&next, &in_batch, first, !start, rng);
         if let Some(id) = start_id {

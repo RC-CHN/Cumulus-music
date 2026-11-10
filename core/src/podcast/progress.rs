@@ -134,6 +134,31 @@ pub(crate) async fn position(
     record_position_for(session, token, resource, supplied_checkpoint, &id, &media)
 }
 
+pub(crate) fn history_shuffle_position(
+    session: &AccountSession,
+    token: &SessionToken,
+    resource: &Value,
+    anchor: &latest::ShuffleAnchor,
+    setting: &crate::playback::engine::Cancellation,
+) -> Result<Option<f64>> {
+    if !anchor.matches(resource) {
+        return Ok(None);
+    }
+    // M308 consults the same M3160 setting when consuming the breakpoint.
+    // An already observed setting is cached there; don't send it twice.
+    let store = session.persistent_store()?;
+    session.with_token(token, |owner| {
+        if setting.is_cancelled() {
+            return Ok(None);
+        }
+        match anchor.require_current(&store, owner) {
+            Ok(()) => Ok(Some(anchor.seconds())),
+            Err(crate::Error::QueueChanged) => Ok(None),
+            Err(error) => Err(error),
+        }
+    })
+}
+
 pub(crate) fn record_position(
     session: &AccountSession,
     token: &SessionToken,

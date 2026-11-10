@@ -32,6 +32,7 @@ pub(super) struct LoadOptions {
     pub relative: bool,
     pub restart_at_end: bool,
     pub supplied_voice_checkpoint: bool,
+    pub history_shuffle_anchor: Option<super::HistoryShuffleAnchor>,
     pub prefer_search_download: bool,
     pub explicit_local_recovery: bool,
     pub source: LoadSource,
@@ -46,10 +47,26 @@ pub(super) struct Prepared {
     pub timeline: Timeline,
     pub position: f64,
     pub reset: bool,
+    history_shuffle_anchor: Option<super::HistoryShuffleAnchor>,
     stock_fallback: Option<Cancellation>,
     audiobook_skip: Option<crate::podcast::AudiobookIntervals>,
     audiobook_skip_sequence: u64,
     apply_audiobook_intro: bool,
+}
+
+impl Prepared {
+    fn apply_intro_skip(&mut self, sequence: u64) {
+        if self.audiobook_skip_sequence == sequence
+            && self.apply_audiobook_intro
+            && let Some(intervals) = self.audiobook_skip
+            && let Some(duration) = self.timeline.display_end()
+        {
+            let adjusted = intervals.start_position(self.position, duration);
+            if self.timeline.to_media(adjusted).is_ok() {
+                self.position = adjusted;
+            }
+        }
+    }
 }
 
 fn with_stock_fallback(transport: Cancellation, fallback: Option<Cancellation>) -> Cancellation {
@@ -347,17 +364,18 @@ impl Actor {
                     source.timeline(None)?,
                 )?;
                 let snapshot = timeline.snapshot();
-                let resumed = if options.position.is_none() {
-                    resolver
-                        .voice_resume_position(
-                            &item.resource,
-                            &token,
-                            options.supplied_voice_checkpoint,
-                        )
-                        .await?
-                } else {
-                    None
-                };
+                let resumed =
+                    if options.history_shuffle_anchor.is_none() && options.position.is_none() {
+                        resolver
+                            .voice_resume_position(
+                                &item.resource,
+                                &token,
+                                options.supplied_voice_checkpoint,
+                            )
+                            .await?
+                    } else {
+                        None
+                    };
                 cancel.check()?;
                 let recover = options.recover || resumed.is_some();
                 let mut position = options.position.or(resumed).unwrap_or(snapshot.start);
@@ -536,6 +554,7 @@ impl Actor {
                     timeline,
                     position,
                     reset,
+                    history_shuffle_anchor: options.history_shuffle_anchor,
                     stock_fallback,
                     audiobook_skip,
                     audiobook_skip_sequence,
@@ -580,15 +599,8 @@ impl Actor {
         let mut applied_seek = None;
         let result = match result {
             Ok(mut prepared) => {
-                if prepared.audiobook_skip_sequence == self.audiobook_skip_sequence
-                    && prepared.apply_audiobook_intro
-                    && let Some(intervals) = prepared.audiobook_skip
-                    && let Some(duration) = prepared.timeline.display_end()
-                {
-                    let adjusted = intervals.start_position(prepared.position, duration);
-                    if prepared.timeline.to_media(adjusted).is_ok() {
-                        prepared.position = adjusted;
-                    }
+                if prepared.history_shuffle_anchor.is_none() {
+                    prepared.apply_intro_skip(self.audiobook_skip_sequence);
                 }
                 if prepared.item.entry_id == pending.item.entry_id
                     && prepared.item.resource == pending.item.resource
@@ -640,6 +652,23 @@ impl Actor {
                         let _ = reply.send(Err(error));
                     }
                     return;
+                }
+                if let Some(binding) = prepared.history_shuffle_anchor.take() {
+                    if let Ok(Some(position)) = self.resolver.history_shuffle_position(
+                        &prepared.item.resource,
+                        &self.token,
+                        &binding.anchor,
+                        &binding.setting,
+                    ) && prepared
+                        .timeline
+                        .display_end()
+                        .is_some_and(|end| position < end)
+                    {
+                        // Consume the one-shot M308 bookmark only after native
+                        // decoding supplies duration. A user seek still wins.
+                        prepared.position = position.max(prepared.timeline.snapshot().start);
+                    }
+                    prepared.apply_intro_skip(self.audiobook_skip_sequence);
                 }
                 if let Some((position, revision, authority)) = pending.seek
                     && !authority.is_cancelled()

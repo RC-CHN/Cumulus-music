@@ -49,6 +49,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use tokio::sync::{mpsc, oneshot, watch};
+pub(crate) use types::HistoryShuffleAnchor;
 use types::Reply;
 pub use types::{
     FmRestore, HistoryQueueUpdate, IntelligenceUpdate, LocalBatchUpdate,

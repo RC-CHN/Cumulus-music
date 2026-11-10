@@ -210,13 +210,13 @@ impl HistoryService {
         token: &SessionToken,
         kind: HistoryKind,
         expected: &str,
-        commit: impl FnOnce() -> Result<T>,
+        commit: impl FnOnce(&str) -> Result<T>,
     ) -> Result<T> {
         self.session.with_local_owner(token, |owner| {
             if self.snapshot_for_owner(owner, kind)?.revision != expected {
                 return Err(Error::QueueChanged);
             }
-            commit()
+            commit(owner)
         })
     }
     fn snapshot_for_owner(&self, owner: &str, kind: HistoryKind) -> Result<HistorySnapshot> {

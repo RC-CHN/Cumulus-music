@@ -174,6 +174,12 @@ pub struct HistoryQueueUpdate {
     pub(crate) start: bool,
     pub(crate) kind: crate::history::HistoryKind,
     pub(crate) revision: String,
+    pub(crate) shuffle_anchor: Option<HistoryShuffleAnchor>,
+}
+/// The pre-add setting observation and local departure receipt are native-only.
+pub(crate) struct HistoryShuffleAnchor {
+    pub(crate) anchor: crate::podcast::progress::latest::ShuffleAnchor,
+    pub(crate) setting: crate::playback::engine::Cancellation,
 }
 /// Install an owned cache selection while its index and durable stamp still match.
 pub struct OfflinePlaylistQueueUpdate {
