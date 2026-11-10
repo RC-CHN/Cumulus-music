@@ -273,7 +273,7 @@ impl MusicClient {
                     let row = slot.as_mut().ok_or(Error::QueueChanged)?;
                     if row.id != visit
                         || row.revision != revision
-                        || !row.suspended_at.is_some_and(|at| at.elapsed() < RETAIN_FOR)
+                        || row.suspended_at.is_none_or(|at| at.elapsed() >= RETAIN_FOR)
                     {
                         return Err(Error::QueueChanged);
                     }
