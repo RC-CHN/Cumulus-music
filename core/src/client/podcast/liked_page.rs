@@ -5,6 +5,7 @@ use crate::{
     Error, Result,
     account::SessionToken,
     client::dto::AccountData,
+    playback::engine::Cancellation,
     podcast::{Episode, LikedVoicePage},
     protocol::api::identifier,
 };
@@ -111,6 +112,7 @@ struct Visit {
     pages: usize,
     capped: bool,
     load: Arc<tokio::sync::Mutex<()>>,
+    playback: Cancellation,
 }
 
 impl Default for Visit {
@@ -130,7 +132,14 @@ impl Default for Visit {
             pages: 0,
             capped: false,
             load: Arc::default(),
+            playback: Cancellation::default(),
         }
+    }
+}
+
+impl Drop for Visit {
+    fn drop(&mut self) {
+        self.playback.cancel();
     }
 }
 
@@ -207,6 +216,12 @@ struct Slot {
 #[derive(Default)]
 pub(in crate::client) struct PodcastLikedHost(Mutex<Slot>);
 
+pub(in crate::client) struct LikedPagePlayback {
+    pub row: Episode,
+    pub prefix: Option<Vec<Episode>>,
+    pub authority: Cancellation,
+}
+
 impl MusicClient {
     fn with_liked_visit<T>(
         &self,
@@ -249,6 +264,7 @@ impl MusicClient {
                     let row = slot.as_mut().ok_or(Error::QueueChanged)?;
                     row.current(&visit, &revision)?;
                     row.suspended_at = Some(Instant::now());
+                    row.playback.cancel();
                     Ok(row.view(Vec::new()))
                 })?
             }
@@ -264,6 +280,7 @@ impl MusicClient {
                     row.suspended_at = None;
                     row.revision = receipt();
                     row.load = Arc::default();
+                    row.playback = Cancellation::default();
                     Ok(row.view(row.rows.iter().map(project_list_row).collect()))
                 })?
             }
@@ -365,5 +382,57 @@ impl MusicClient {
             return Err(Error::QueueChanged);
         }
         Ok(row)
+    }
+
+    /// Capture the clicked row and optional currently displayed prefix. The
+    /// result never opens another page or the separate membership snapshot.
+    pub(in crate::client) fn liked_page_playback(
+        &self,
+        token: &SessionToken,
+        target: &PodcastLikedPageTarget,
+        limit: Option<usize>,
+    ) -> Result<LikedPagePlayback> {
+        let id = identifier(&json!(target.voice_id))?;
+        let library = PodcastLibrary::new(self.session.clone())?;
+        let generation = library.with_generation_for(token, Ok)?;
+        let (row, prefix, active) = self.with_liked_visit(token, |slot| {
+            let visit = slot.as_ref().ok_or(Error::QueueChanged)?;
+            visit.current(&target.visit, &target.revision)?;
+            let row = &visit.rows[*visit.indices.get(&id).ok_or(Error::QueueChanged)?];
+            if row.display_status_withdrawn() {
+                return Err(Error::State("liked voice withdrawn"));
+            }
+            if row.raw["grayDisplay"] == true {
+                return Err(Error::State("liked voice media unavailable"));
+            }
+            let prefix = limit.map(|limit| {
+                visit
+                    .rows
+                    .iter()
+                    .filter(|voice| {
+                        voice.id == id
+                            || (voice.song_id.is_some()
+                                && !voice.display_status_withdrawn()
+                                && voice.raw["grayDisplay"] != true)
+                    })
+                    .take(limit)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            });
+            Ok((row.clone(), prefix, visit.playback.clone()))
+        })?;
+        let token = token.clone();
+        let authority = Cancellation::new(move || {
+            !active.is_cancelled()
+                && library
+                    .with_generation_for(&token, |current| Ok(current == generation))
+                    .unwrap_or(false)
+        });
+        authority.check()?;
+        Ok(LikedPagePlayback {
+            row,
+            prefix,
+            authority,
+        })
     }
 }

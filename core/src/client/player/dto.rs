@@ -484,6 +484,11 @@ pub enum PlaySelection {
     PodcastLikedEpisode {
         target: crate::client::dto::PodcastLikedProgramTarget,
     },
+    PodcastLikedPageEpisode {
+        target: crate::client::dto::PodcastLikedPageTarget,
+        #[serde(default)]
+        double_click: bool,
+    },
     SearchResultVoice {
         id: String,
     },

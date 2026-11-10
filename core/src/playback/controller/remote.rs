@@ -357,6 +357,23 @@ impl Actor {
             .await
     }
 
+    pub(super) async fn apply_scoped_podcast_queue(
+        &mut self,
+        value: super::QueueUpdate,
+        first_source: Arc<ResolvedSource>,
+        reply: &Response,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<LoadOptions>> {
+        self.update_queue_inner(
+            value,
+            Some(reply),
+            Some(first_source),
+            false,
+            Some(authority),
+        )
+        .await
+    }
+
     pub(super) async fn apply_search_group_next(
         &mut self,
         value: super::QueueUpdate,

@@ -5,6 +5,8 @@ mod badges;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
+#[path = "client_podcast/liked_page_playback.rs"]
+mod liked_page_playback;
 #[path = "client_podcast/liked_playback.rs"]
 mod liked_playback;
 #[path = "client_podcast/program_menu.rs"]
@@ -44,6 +46,7 @@ struct Backend {
     resume: AtomicBool,
     liked: Mutex<Vec<u64>>,
     liked_cards: Mutex<Option<Vec<Value>>>,
+    liked_page_replies: Mutex<Vec<(Value, Value)>>,
     liked_details: Mutex<std::collections::BTreeMap<u64, Value>>,
     lost: AtomicBool,
     offline: AtomicBool,
@@ -287,6 +290,15 @@ impl Api for Backend {
                     }).collect::<Vec<_>>(),"count":count,"more":offset+limit<count,"asc":p["asc"]}})
                 }
                 "/api/content/my/liked/voice" => {
+                    let pages = self.liked_page_replies.lock().unwrap();
+                    if !pages.is_empty() {
+                        assert_eq!(p["limit"], 100);
+                        let reply = pages
+                            .iter()
+                            .find(|(cursor, _)| *cursor == p["likeTime"])
+                            .expect("unexpected liked page cursor");
+                        return Ok(reply.1.clone());
+                    }
                     if let Some(cards) = self.liked_cards.lock().unwrap().as_ref() {
                         assert_eq!(p, json!({"limit":100,"likeTime":0}));
                         return Ok(json!({"code":200,"data":{"data":cards,"hasMore":false}}));

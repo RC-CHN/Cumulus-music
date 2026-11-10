@@ -356,25 +356,27 @@ impl Actor {
                 update,
                 first_source,
             } => {
+                let authority = &request.guard.as_ref().expect("guarded podcast browse").1;
                 if self.queue.is_fm()
                     || first_source.needs_renewal_for_reopen(self.resolver.now())
-                    || request
-                        .guard
-                        .as_ref()
-                        .is_none_or(|(_, guard)| guard.is_cancelled())
+                    || authority.is_cancelled()
                 {
                     Err(Error::StaleResponse)
                 } else {
-                    self.update_queue_with_source(update, Some(&request.reply), Some(first_source))
+                    self.apply_scoped_podcast_queue(update, first_source, &request.reply, authority)
                         .await
                         .map(|value| options = value)
                 }
             }
             PlaybackCommand::TogglePodcastRank { paused, mode, .. } => {
-                let result = mode.map_or(Ok(()), |mode| self.queue.set_mode(mode));
-                match result {
-                    Ok(()) => self.pause(paused).await,
-                    Err(error) => Err(error),
+                let authority = &request.guard.as_ref().expect("guarded podcast row").1;
+                if request.reply.is_closed() || authority.is_cancelled() {
+                    Err(Error::StaleResponse)
+                } else {
+                    match mode.map_or(Ok(()), |mode| self.queue.set_mode(mode)) {
+                        Ok(()) => self.pause(paused).await,
+                        Err(error) => Err(error),
+                    }
                 }
             }
             PlaybackCommand::ApplyLocalBatch(update) => {

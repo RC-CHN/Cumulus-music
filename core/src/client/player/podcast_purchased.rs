@@ -1,18 +1,20 @@
 //! Single-program actions in the mixed purchase and liked tables.
 use super::{
     MusicClient, PlaybackCommand, PlaybackStatus, PlayerResourceKind, identity,
-    podcast_browse::resource, prepared_selection::PreparedSelection,
-    queue_playlist::insert_collection_bound, voice_detail::bound_episode,
+    podcast_browse::{resource, voice_replacement_mode},
+    prepared_selection::PreparedSelection,
+    queue_playlist::{QUEUE_LIMIT, insert_collection_bound},
+    voice_detail::bound_episode,
 };
 use crate::{
     Error, Result,
     account::SessionToken,
     client::podcast::{
-        PodcastLikedProgramTarget, PodcastPurchasedTarget, liked_menu::liked_playable_program,
-        purchased::purchased_playback_episode,
+        PodcastLikedPageTarget, PodcastLikedProgramTarget, PodcastPurchasedTarget,
+        liked_menu::liked_playable_program, purchased::purchased_playback_episode,
     },
     playback::{
-        PlaybackMode,
+        PlaybackMode, QueueSnapshot,
         controller::{QueueTransport, QueueUpdate},
         engine::Cancellation,
     },
@@ -29,12 +31,16 @@ pub(super) fn purchased_origin() -> Value {
 pub(super) enum ScopedProgram<'a> {
     Purchased(&'a PodcastPurchasedTarget),
     Liked(&'a PodcastLikedProgramTarget),
+    PagedLiked(&'a PodcastLikedPageTarget),
 }
 impl ScopedProgram<'_> {
     pub(super) fn origin(&self) -> Value {
         match self {
             Self::Purchased(_) => purchased_origin(),
             Self::Liked(target) => {
+                json!({"kind":"podcast","scope":{"kind":"liked"},"scene":"myLikedVoice","revision":target.revision})
+            }
+            Self::PagedLiked(target) => {
                 json!({"kind":"podcast","scope":{"kind":"liked"},"scene":"myLikedVoice","revision":target.revision})
             }
         }
@@ -153,9 +159,41 @@ impl MusicClient {
         menu: bool,
         prepared: &PreparedSelection,
     ) -> Result<(PlaybackCommand, Cancellation)> {
-        let (cached, api, guard) = match target {
-            ScopedProgram::Purchased(target) => self.purchased_episode_scope(token, target)?,
-            ScopedProgram::Liked(target) => self.liked_episode_scope(token, target)?,
+        let replace = matches!(target, ScopedProgram::PagedLiked(_))
+            && !menu
+            && self.replace_queue_on_double_click(token)?;
+        let (cached, api, guard, prefix) = match target {
+            ScopedProgram::Purchased(target) => {
+                let (row, api, guard) = self.purchased_episode_scope(token, target)?;
+                (row, api, guard, None)
+            }
+            ScopedProgram::Liked(target) => {
+                let (row, api, guard) = self.liked_episode_scope(token, target)?;
+                (row, api, guard, None)
+            }
+            ScopedProgram::PagedLiked(target) => {
+                let api = self.session.native_api(token)?;
+                let credential = api.playback_source_credential_revision()?;
+                let selected =
+                    self.liked_page_playback(token, target, replace.then_some(QUEUE_LIMIT))?;
+                let session = self.session.clone();
+                let owner = token.clone();
+                let expected = api.clone();
+                let login = self.auth.pending_guard();
+                let room = self.together_detached_guard(token);
+                let authority = selected.authority;
+                let guard = Cancellation::new(move || {
+                    !authority.is_cancelled()
+                        && login().is_ok()
+                        && !room.is_cancelled()
+                        && session.require_api(&owner, &expected).is_ok()
+                        && expected
+                            .playback_source_credential_revision()
+                            .is_ok_and(|value| value == credential)
+                });
+                guard.check()?;
+                (selected.row, api, guard, selected.prefix)
+            }
         };
         let controller = self.player.controller().await?;
         let (before, mut queue) = controller.queue_with_state(token).await?;
@@ -180,8 +218,24 @@ impl MusicClient {
                     .as_ref()
                     .is_some_and(|entry| same_online_voice(&entry.resource, episode))
         };
-        let current_command = || {
-            if !menu {
+        let card_category = cached.raw["categoryId"].clone();
+        let replacement_mode = |episode: &Episode, old_mode| {
+            voice_replacement_mode(
+                episode.raw.get("categoryId").unwrap_or(&card_category),
+                old_mode,
+            )
+        };
+        let current_command = |episode: &Episode| {
+            if matches!(target, ScopedProgram::PagedLiked(_)) && (!menu || before.paused) {
+                let mode = replace
+                    .then(|| replacement_mode(episode, queue.mode))
+                    .filter(|mode| *mode != queue.mode);
+                PlaybackCommand::TogglePodcastRank {
+                    expected: before.fence(),
+                    paused: !before.paused,
+                    mode,
+                }
+            } else if !menu {
                 PlaybackCommand::Pause(!before.paused)
             } else if before.paused {
                 PlaybackCommand::Pause(false)
@@ -190,22 +244,53 @@ impl MusicClient {
             }
         };
         if identifier(&cached.raw["mainSong"]["id"]).is_ok() && loaded(&cached) {
-            return Ok((current_command(), guard));
+            return Ok((current_command(&cached), guard));
         }
 
         let detail = if matches!(target, ScopedProgram::Purchased(_))
             || identifier(&cached.raw["mainSong"]["id"]).is_err()
         {
-            self.read_scoped_program_detail(token, &cached, &preparing)
-                .await?
+            match self
+                .read_scoped_program_detail(token, &cached, &preparing)
+                .await
+            {
+                Err(error)
+                    if matches!(target, ScopedProgram::PagedLiked(_))
+                        && (error.is_service_code(404)
+                            || matches!(error.root(), Error::HttpStatus { status: 404, .. })) =>
+                {
+                    return Err(Error::State("liked voice media unavailable"));
+                }
+                reply => reply?,
+            }
         } else {
             cached
         };
         if loaded(&detail) {
-            return Ok((current_command(), guard));
+            return Ok((current_command(&detail), guard));
         }
 
+        if matches!(target, ScopedProgram::PagedLiked(_)) && detail.song_id.is_none() {
+            return Err(Error::State("liked voice media unavailable"));
+        }
         let selected = resource(&detail)?;
+        let resources = match prefix {
+            Some(rows) => {
+                if !rows.iter().any(|row| row.id == detail.id) {
+                    return Err(Error::QueueChanged);
+                }
+                rows.iter()
+                    .map(|row| {
+                        if row.id == detail.id {
+                            Ok(selected.clone())
+                        } else {
+                            resource(row)
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?
+            }
+            None => vec![selected.clone()],
+        };
         let position = self
             .podcast_browse_position(token, &api, &detail, &selected, &preparing)
             .await?;
@@ -221,14 +306,13 @@ impl MusicClient {
             .unwrap_or_else(|| timeline.snapshot().start);
 
         let source = target.origin();
-        queue = insert_collection_bound(
-            queue,
-            vec![selected.clone()],
-            source.clone(),
-            false,
-            true,
-            true,
-        );
+        if replace {
+            queue = QueueSnapshot {
+                mode: replacement_mode(&detail, queue.mode),
+                ..QueueSnapshot::default()
+            };
+        }
+        queue = insert_collection_bound(queue, resources, source.clone(), false, true, true);
         let entry = queue
             .items
             .iter()
@@ -237,9 +321,18 @@ impl MusicClient {
             .ok_or(Error::QueueChanged)?;
         queue.current = Some(entry.clone());
         if queue.mode == PlaybackMode::Random {
+            let inserted = if replace {
+                queue
+                    .items
+                    .iter()
+                    .map(|row| row.entry_id.as_str())
+                    .collect()
+            } else {
+                HashSet::from([entry.as_str()])
+            };
             queue.order = super::local_batch::random_order(
                 &queue,
-                &HashSet::from([entry.as_str()]),
+                &inserted,
                 &entry,
                 false,
                 &mut rand::rng(),

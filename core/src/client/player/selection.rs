@@ -128,7 +128,8 @@ impl MusicClient {
             )),
             PlaySelection::PodcastBrowseVoice { .. }
             | PlaySelection::PodcastPurchasedEpisode { .. }
-            | PlaySelection::PodcastLikedEpisode { .. } => Err(Error::InvalidInput(
+            | PlaySelection::PodcastLikedEpisode { .. }
+            | PlaySelection::PodcastLikedPageEpisode { .. } => Err(Error::InvalidInput(
                 "podcast browse playback requires a preparation ticket",
             )),
             PlaySelection::SearchPodcastCard { .. } | PlaySelection::SearchPodcastRow { .. } => {
@@ -636,7 +637,8 @@ impl MusicClient {
                 return project(&state, &token);
             }
             selected @ (PlaySelection::PodcastPurchasedEpisode { .. }
-            | PlaySelection::PodcastLikedEpisode { .. }) => {
+            | PlaySelection::PodcastLikedEpisode { .. }
+            | PlaySelection::PodcastLikedPageEpisode { .. }) => {
                 use super::podcast_purchased::ScopedProgram;
                 let (target, menu) = match &selected {
                     PlaySelection::PodcastPurchasedEpisode { target, menu } => {
@@ -645,6 +647,10 @@ impl MusicClient {
                     PlaySelection::PodcastLikedEpisode { target } => {
                         (ScopedProgram::Liked(target), true)
                     }
+                    PlaySelection::PodcastLikedPageEpisode {
+                        target,
+                        double_click,
+                    } => (ScopedProgram::PagedLiked(target), !double_click),
                     _ => unreachable!("scoped program selected"),
                 };
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
@@ -1432,6 +1438,7 @@ impl MusicClient {
                     | PlaySelection::PodcastBrowseVoice { .. }
                     | PlaySelection::PodcastPurchasedEpisode { .. }
                     | PlaySelection::PodcastLikedEpisode { .. }
+                    | PlaySelection::PodcastLikedPageEpisode { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {
                         unreachable!("cloud handled before song detail requests")
