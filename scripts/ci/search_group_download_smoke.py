@@ -52,7 +52,7 @@ def run(args):
     if args.mixed:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_MIXED_PROOF'] = '1'
     output = root / 'first'
-    labels = PLAYLIST if args.playlist else DIRECT
+    labels = (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else PLAYLIST if args.playlist else DIRECT
     with ExitStack() as stack:
         driver = TrustedClicks()
         stack.callback(driver.close)
@@ -95,10 +95,13 @@ def run(args):
     assert all(step['command']['receipt'] == receipt for step in last['actions'][1:])
     trace = last['searchGroupDownload'][prefix:]
     if args.playlist:
-        prepare, listing, choose, check, start = last['actions']
-        assert [step['command']['kind'] for step in last['actions']] == [
-            'prepare', 'destinations', 'choose_liked' if args.liked else 'choose',
-            'reconcile', 'start_from_playlist']
+        prepare, listing, choose, check, start = last['actions'][:5]
+        expected = ['prepare', 'destinations', 'choose_liked' if args.liked else 'choose',
+                    'reconcile', 'start_from_playlist']
+        if args.mixed:
+            expected.append('status')
+            assert last['actions'][5]['reply']['result']['accepted'] == start['reply']['result']['accepted']
+        assert [step['command']['kind'] for step in last['actions']] == expected
         assert [row['trackId'] for row in prepare['command']['rows']] == ['103', '102', '101', '104']
         assert prepare['reply']['decision'] == 'playlist_required'
         assert [row['id'] for row in listing['reply']['page']['value']['playlists']] == ['81']
@@ -117,8 +120,8 @@ def run(args):
             opened = ['playlist_list', 'liked_list', 'liked_detail']
             observation = ['liked_list', 'liked_detail', 'liked_membership']
             after_choose = opened + observation + ['playlist_add'] + observation
-            assert [step['kind'] for step in rows[-3]['searchGroupDownload'][prefix:]] == opened
-            assert [step['kind'] for step in rows[-2]['searchGroupDownload'][prefix:]] == after_choose
+            assert [step['kind'] for step in rows[labels.index('choose')]['searchGroupDownload'][prefix:]] == opened
+            assert [step['kind'] for step in rows[labels.index('reconcile')]['searchGroupDownload'][prefix:]] == after_choose
             before_media = after_choose + observation
             assert [step['kind'] for step in trace[:len(before_media)]] == before_media
             assert trace[6]['args'] == {'op': 'add', 'pid': '83', 'trackIds': '["103","101"]'}
@@ -126,8 +129,8 @@ def run(args):
             assert trace[9]['ids'] == [103] and trace[12]['ids'] == [103, 101]
             trace = trace[len(before_media):]
         else:
-            assert [step['kind'] for step in rows[-3]['searchGroupDownload'][prefix:]] == ['playlist_list']
-            assert [step['kind'] for step in rows[-2]['searchGroupDownload'][prefix:]] == [
+            assert [step['kind'] for step in rows[labels.index('choose')]['searchGroupDownload'][prefix:]] == ['playlist_list']
+            assert [step['kind'] for step in rows[labels.index('reconcile')]['searchGroupDownload'][prefix:]] == [
                 'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail']
             assert [step['kind'] for step in trace[:5]] == [
                 'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail', 'playlist_detail']

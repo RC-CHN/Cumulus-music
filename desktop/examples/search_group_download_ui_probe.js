@@ -141,7 +141,8 @@
       const reply = await original(owner, command);
       actions.push({ command, reply });
       // Only simulate delivery loss after the actual native write/receipt.
-      if (!playlist && command.kind === 'start') throw Error('sealed start reply lost');
+      if ((!playlist && command.kind === 'start') || (old && command.kind === 'start_from_playlist'))
+        throw Error('sealed start reply lost');
       return reply;
     };
 
@@ -181,6 +182,12 @@
       assert(await noNewTasks(), 'no task before verified readback');
       if (liked) assert(!isLiked('101'), 'uncertain star write never changes hearts');
       await input('reconcile',reconcile());
+      if (old) {
+        await wait(() => button('核对下载') && actions.length === 5 &&
+          one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost mixed admission offers only readback');
+        assert(!picker(), 'confirmed playlist cannot offer another add');
+        await input('check',button('核对下载'));
+      }
     } else {
       await wait(() => button('核对下载') && actions.length === 2 &&
         one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost reply offers only readback');
@@ -190,7 +197,7 @@
     const expected = playlist ? ['101','103','104'] : ['101','103'];
     const result = await wait(async () => {
       const view = await downloads('completed');
-      return actions.length === (playlist ? 5 : 3) && view.completedCount === expected.length &&
+      return actions.length === (old ? 6 : playlist ? 5 : 3) && view.completedCount === expected.length &&
         one('.track-action-feedback')?.textContent.includes(`已添加 ${expected.length} 首到下载列表，跳过 1 首`) && view;
     }, 'actual native files and read-only confirmation');
     assert(result.tasks.map((task) => task.track.id).sort().join(',') === expected.join(','),
