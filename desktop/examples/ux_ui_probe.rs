@@ -336,6 +336,9 @@ impl Api for Library {
         }
     }
     fn download_system_liked_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        if search_group_download_fixture::liked() {
+            return Ok(Some(search_group_download_fixture::REVISION.into()));
+        }
         Ok(download_liked_fixture::enabled().then(|| download_liked_fixture::REVISION.into()))
     }
     fn request_download_system_liked<'a>(
@@ -345,6 +348,13 @@ impl Api for Library {
         permission: &'a cumulus_core::protocol::api::PlaylistAddPermission<'a>,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if search_group_download_fixture::liked() {
+                if revision != search_group_download_fixture::REVISION {
+                    return Err(cumulus_core::Error::CredentialChanged);
+                }
+                permission()?;
+                return search_group_download_fixture::liked_read(read);
+            }
             if !download_liked_fixture::enabled() || revision != download_liked_fixture::REVISION {
                 return Err(cumulus_core::Error::CredentialChanged);
             }
@@ -1820,7 +1830,7 @@ fn main() {
                 let handle=handle.clone(); let root=cover_root.clone();
                 tauri::async_runtime::spawn(async move {
                     let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root).await;
-                    let ack=json!({"ok":result.is_ok(),"playlist":search_group_download_fixture::destination()});
+                    let ack=json!({"ok":result.is_ok(),"playlist":search_group_download_fixture::destination(),"liked":search_group_download_fixture::liked()});
                     handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();
                 });
                 return;

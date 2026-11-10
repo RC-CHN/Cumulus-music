@@ -11,8 +11,11 @@ use std::{collections::BTreeMap, path::Path, sync::Mutex};
 const AUDIO: &[u8] = include_bytes!("../../../core/tests/fixtures/stereo-pcm-source.flac");
 const ROOT: &str = "https://m1.music.126.net/cumulus-group-download-";
 const LIST: &str = "/api/user/playlist/v2";
+const STAR_LIST: &str = "/api/user/playlist";
 const DETAIL: &str = "/api/v6/playlist/detail";
 const WRITE: &str = "/api/v1/playlist/manipulate/tracks";
+const MEMBERSHIP: &str = "/api/song/like/get";
+pub const REVISION: &str = "synthetic-search-group-download";
 const MD5: &str = "4e25192f88135eb81a995c6aa5fa7848";
 static TRACE: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 
@@ -22,6 +25,10 @@ pub fn enabled() -> bool {
 
 pub fn destination() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_DESTINATION_PROOF").is_some()
+}
+
+pub fn liked() -> bool {
+    destination() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_LIKED_PROOF").is_some()
 }
 
 fn song_allowed(id: &str) -> bool {
@@ -35,9 +42,10 @@ fn playlist(id: u64, owner: u64, special: u64) -> Value {
 
 pub fn write(path: &str, args: &Value) -> Result<Value> {
     let mut trace = TRACE.lock().unwrap();
+    let target = if liked() { "83" } else { "81" };
     if !destination()
         || path != WRITE
-        || *args != json!({"op":"add","pid":"81","trackIds":r#"["103","101"]"#})
+        || *args != json!({"op":"add","pid":target,"trackIds":r#"["103","101"]"#})
         || trace.iter().any(|row| row["kind"] == "playlist_add")
     {
         trace.push(json!({"kind":"unexpected_write","path":path}));
@@ -45,6 +53,41 @@ pub fn write(path: &str, args: &Value) -> Result<Value> {
     }
     trace.push(json!({"kind":"playlist_add","args":args}));
     Err(Error::Transport("sealed playlist response lost".into()))
+}
+
+pub fn liked_read(read: cumulus_core::protocol::api::SystemLikedRead) -> Result<Value> {
+    let (path, args) = read.into_request();
+    let mut trace = TRACE.lock().unwrap();
+    let wrote = trace.iter().any(|row| row["kind"] == "playlist_add");
+    Ok(match path {
+        STAR_LIST if args == json!({"uid":"2","offset":0,"limit":1000}) => {
+            trace.push(json!({"kind":"liked_list"}));
+            json!({"code":200,"playlist":[playlist(81,2,0),playlist(83,2,5)],"more":false})
+        }
+        DETAIL if args == json!({"id":"83","n":100000,"s":0}) => {
+            let mut row = playlist(83, 2, 5);
+            row["trackIds"] = if wrote {
+                json!([{"id":103},{"id":101}])
+            } else {
+                json!([{"id":103}])
+            };
+            trace.push(json!({"kind":"liked_detail","tracks":row["trackIds"]}));
+            json!({"code":200,"playlist":row})
+        }
+        MEMBERSHIP if args == json!({"uid":"2"}) => {
+            let previous_after_write = trace
+                .iter()
+                .any(|row| row["kind"] == "liked_membership" && row["afterWrite"] == true);
+            let ids = if wrote && previous_after_write {
+                json!([103, 101])
+            } else {
+                json!([103])
+            };
+            trace.push(json!({"kind":"liked_membership","ids":ids,"afterWrite":wrote}));
+            json!({"code":200,"ids":ids})
+        }
+        _ => return Err(Error::InvalidInput("unexpected system liked proof read")),
+    })
 }
 
 pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>> {

@@ -19,6 +19,7 @@
   const button = (label, root = document) => [...root.querySelectorAll('button')].find(
     (node) => node.getAttribute('aria-label') === label || node.textContent.trim() === label);
   const row = (id) => one(`.search-song-panel .track-row[data-track-id="${id}"]`);
+  const isLiked = (id) => !!row(id)?.querySelector('button[aria-label^="取消喜欢 "]');
   const title = (id) => row(id)?.querySelector('.track-row-title-text');
   const download = () => all('[data-menu-key="download"]').find(
     (node) => node.getClientRects().length && !node.closest('[inert]'));
@@ -47,7 +48,9 @@
         'the picker has opaque composited padding');
       const samples = [[r.left+12,r.bottom-26,style.backgroundColor]];
       if (label === 'choose') {
-        const cover = picker.querySelector('[data-playlist-id="81"] .collect-cover');
+        const selector = window.__groupDownloadConfigured.liked
+          ? '[data-voice-group-destination-liked]' : '[data-playlist-id="81"]';
+        const cover = picker.querySelector(selector + ' .collect-cover');
         assert(cover, 'the selected destination owns a painted cover slot');
         const box = cover.getBoundingClientRect();
         const color = getComputedStyle(cover).backgroundColor;
@@ -96,6 +99,7 @@
     await emit('search-group-download-configure');
     await wait(() => window.__groupDownloadConfigured?.ok, 'native isolated download settings');
     const playlist = window.__groupDownloadConfigured.playlist;
+    const liked = window.__groupDownloadConfigured.liked;
     await invoke('player_action', {epoch, action:{kind:'mode',mode:'single_loop'}});
     await invoke('play_selection', {epoch,selection:{kind:'songs',ids:['701'],index:0,quality:'standard'}});
     await wait(() => bar()?.dataset.state === 'playing' && Number(bar().dataset.position) > .2,
@@ -151,12 +155,14 @@
     await input('download',download());
     if (playlist) {
       const picker = () => one('[data-search-group-download-picker][open]');
-      const destination = () => picker()?.querySelector('[data-playlist-id="81"]');
+      const star = () => picker()?.querySelector('[data-voice-group-destination-liked]');
+      const destination = () => liked ? star() : picker()?.querySelector('[data-playlist-id="81"]');
       await wait(() => destination() && !destination().disabled && actions.length === 2,
-        'owned ordinary picker has loaded');
+        'verified download picker has loaded');
       assert(picker().querySelector('h2').textContent === '下载到歌单' &&
-        all('[data-search-group-download-picker] [data-playlist-id]').map(row => row.dataset.playlistId).join() === '81',
-        'real picker excludes foreign and system liked destinations');
+        all('[data-search-group-download-picker] [data-playlist-id]').map(row => row.dataset.playlistId).join() === '81' &&
+        (liked ? star()?.getAttribute('aria-label') === '我喜欢的音乐' : !star()),
+        'real picker excludes foreign IDs and displays the star only after native verification');
       assert((await downloads('active')).activeCount === 0, 'opening does not enqueue');
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       await input('choose',destination());
@@ -164,6 +170,7 @@
       await wait(() => reconcile() && !reconcile().disabled && actions.length === 3 &&
         picker().textContent.includes('加入歌单的结果尚未确认'), 'lost actual native add result needs readback');
       assert((await downloads('active')).activeCount === 0, 'no task before verified readback');
+      if (liked) assert(!isLiked('101'), 'uncertain star write never changes hearts');
       await input('reconcile',reconcile());
     } else {
       await wait(() => button('核对下载') && actions.length === 2 &&
@@ -179,6 +186,10 @@
     }, 'actual native files and read-only confirmation');
     assert(result.tasks.map((task) => task.track.id).sort().join(',') === expected.join(','),
       'filtered IDs completed');
+    if (liked) {
+      assert(isLiked('101') && isLiked('103') && !isLiked('104'),
+        'verified system star updates only the confirmed collectable hearts');
+    }
     await capture('accepted', { completed: result.tasks.map(({id, track}) => ({id, trackId:track.id})) });
     core.searchGroupDownload = original;
     await emit('complete',{ok:true,stageCount:step,realAccountWrites:0,realMusicRequests:0});

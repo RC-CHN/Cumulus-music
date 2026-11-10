@@ -47,6 +47,8 @@ def run(args):
         env[key] = str(directory)
     if args.playlist:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_DESTINATION_PROOF'] = '1'
+    if args.liked:
+        env['CUMULUS_SEARCH_GROUP_DOWNLOAD_LIKED_PROOF'] = '1'
     output = root / 'first'
     labels = PLAYLIST if args.playlist else DIRECT
     with ExitStack() as stack:
@@ -84,24 +86,44 @@ def run(args):
     if args.playlist:
         prepare, listing, choose, check, start = last['actions']
         assert [step['command']['kind'] for step in last['actions']] == [
-            'prepare', 'destinations', 'choose', 'reconcile', 'start_from_playlist']
+            'prepare', 'destinations', 'choose_liked' if args.liked else 'choose',
+            'reconcile', 'start_from_playlist']
         assert [row['trackId'] for row in prepare['command']['rows']] == ['103', '102', '101', '104']
         assert prepare['reply']['decision'] == 'playlist_required'
         assert [row['id'] for row in listing['reply']['page']['value']['playlists']] == ['81']
-        assert choose['command']['playlistId'] == '81'
+        grant = listing['reply']['systemLikedReceipt']
+        if args.liked:
+            assert grant and choose['command']['destinationReceipt'] == grant
+        else:
+            assert grant is None and choose['command']['playlistId'] == '81'
         assert choose['reply']['result']['phase'] == 'uncertain'
         assert choose['reply']['result']['continuation'] is None
+        assert choose['reply']['result']['likedIds'] == []
         assert check['reply']['result']['phase'] == 'confirmed'
+        assert check['reply']['result']['likedIds'] == (['103', '101'] if args.liked else [])
         assert check['reply']['result']['continuation'] == start['command']['continuation']
-        assert [step['kind'] for step in rows[-3]['searchGroupDownload']] == ['playlist_list']
-        assert [step['kind'] for step in rows[-2]['searchGroupDownload']] == [
-            'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail']
-        assert [step['kind'] for step in trace[:5]] == [
-            'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail', 'playlist_detail']
-        assert trace[2]['args'] == {'op': 'add', 'pid': '81', 'trackIds': '["103","101"]'}
-        assert trace[1]['tracks'] == trace[3]['tracks'] == []
-        assert trace[4]['tracks'] == [{'id': 103}, {'id': 101}]
-        trace = trace[5:]
+        if args.liked:
+            opened = ['playlist_list', 'liked_list', 'liked_detail']
+            observation = ['liked_list', 'liked_detail', 'liked_membership']
+            after_choose = opened + observation + ['playlist_add'] + observation
+            assert [step['kind'] for step in rows[-3]['searchGroupDownload']] == opened
+            assert [step['kind'] for step in rows[-2]['searchGroupDownload']] == after_choose
+            before_media = after_choose + observation
+            assert [step['kind'] for step in trace[:len(before_media)]] == before_media
+            assert trace[6]['args'] == {'op': 'add', 'pid': '83', 'trackIds': '["103","101"]'}
+            assert trace[8]['tracks'] == trace[11]['tracks'] == [{'id': 103}, {'id': 101}]
+            assert trace[9]['ids'] == [103] and trace[12]['ids'] == [103, 101]
+            trace = trace[len(before_media):]
+        else:
+            assert [step['kind'] for step in rows[-3]['searchGroupDownload']] == ['playlist_list']
+            assert [step['kind'] for step in rows[-2]['searchGroupDownload']] == [
+                'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail']
+            assert [step['kind'] for step in trace[:5]] == [
+                'playlist_list', 'playlist_detail', 'playlist_add', 'playlist_detail', 'playlist_detail']
+            assert trace[2]['args'] == {'op': 'add', 'pid': '81', 'trackIds': '["103","101"]'}
+            assert trace[1]['tracks'] == trace[3]['tracks'] == []
+            assert trace[4]['tracks'] == [{'id': 103}, {'id': 101}]
+            trace = trace[5:]
     else:
         prepare, start, check = last['actions']
         assert [step['command']['kind'] for step in last['actions']] == ['prepare', 'start', 'status']
@@ -130,6 +152,7 @@ def run(args):
         )]
         if args.playlist:
             assert len(journal) == 1 and journal[0]['phase'] == 'confirmed'
+            assert journal[0]['system_liked_group'] == args.liked
         else:
             assert journal == []
     published = list((root / 'group-output').rglob('*.flac'))
@@ -139,6 +162,7 @@ def run(args):
     summary = {'ok': True, 'screenshots': len(labels), 'actualWebView': True,
                'orderedTasks': ordered, 'anchor': '102', 'readOnlyLostReplyRecovery': True,
                'playlistAddCount': len(journal), 'playlistAddedInOrder': ['103', '101'] if args.playlist else [],
+               'systemLikedDestination': args.liked,
                'exactFlacFrames': True, 'realAccountWrites': 0, 'realMusicRequests': 0}
     (root / 'report.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(summary))
@@ -148,8 +172,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path, required=True)
-    parser.add_argument('--playlist', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--playlist', action='store_true')
+    mode.add_argument('--liked', action='store_true')
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
+    args.playlist = args.playlist or args.liked
     require_xvfb()
     run(args)
