@@ -67,6 +67,12 @@ null 输出，无真实音源授权或写入；加密下载另有 Rust 证据，
 及实服离线权益变化未在本批验证。详见
 `.build/ui-proof/phase237-offline-download-playlist/receipt.json`。
 
+下一批[合并实窗](desktop-main-flow-proof.txt)验证了全歌单时长排序、
+在线混排 CUE 与离线下载、搜索组选后直接播放、两套耳机调音布局以及
+一起听 488 退出核对。同源码另启动普通程序，以私有 PipeWire 测得真实
+合成 PCM 和暂停静音。截图、哈希及后续旧房间回执防护的 Rust 检查分别
+归到实际测试的提交；不作为 Windows 或双账号验证。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
 | **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 候选四条独立探针已有真实虚拟机只读观测；未接入产品默认签名，也未证明实体设备、完整官方引擎或全部风控分支等价。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) · [原生诊断](windows-hardware-collector-plan.txt) |

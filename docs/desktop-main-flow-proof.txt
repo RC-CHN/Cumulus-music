@@ -1196,3 +1196,23 @@ scripts/ci/playback_power_smoke.py。
 - [签名证据与可复现边界](signed-window-read-proof.txt)含实际时钟和构建摘要。
   音频输出为 null，不能代替实体听感或 Windows 发行包测试；歌单编辑和完整下载
   仍按独立合成闭环及已授权、可逆的分支分别记录。
+
+2026-11-10 合并候选：歌单时长、搜索播放、耳机对比、一起听恢复
+----------------------------------------------------------
+- 精确源码 ce7e82e79bf2784edf69f7372d915377e9b800bd 的生产 Vue 构建与
+  Linux Tauri 验证：普通歌单全量时长排序及在线 CUE／离线下载 20 态，
+  搜索批量选择后从原点击曲目播放 13 态，耳机调音两种布局各 8 态，
+  一起听 488 确认和回执丢失核对 4 态。53 个检查点各有一张截图。
+- 同一源码的普通 cumulus（非探针宿主）从空目录绘制 1120×760 窗口，
+  本地导入合成 FLAC，原生位置前进；私有 PipeWire 输出测到 60、440、
+  10000 Hz，播放 RMS 1702.681，暂停 RMS 0。使用小数逗号的 de_DE.utf8
+  启动同一二进制再次通过。整个批次使用隔离 Linux，
+  合成账号／媒体，无外网和实体声卡。回执含原始文件哈希：
+  .build/ui-proof/phase247-combined-desktop/receipt.json。
+- 前端 1058 项测试、格式与类型/构建通过。随后独立的旧一起听回执
+  防护（3ae6242c9b37ed73cac3f2a7d2f75a3630b6d3a5）未改前端；
+  工作区 Rust 格式与严格 Clippy 通过，596 项相关 Rust 测试通过，
+  25 项按配置忽略。此前的 53 态仍只归属 ce7e82e7。
+- 相关契约见 playlist-detail-ui-contracts.txt、search-results-ui-contracts.txt、
+  effects-directory-desktop.txt 和 core-listen-together-lifecycle.txt。
+  两个候选都没有发布；未用此批合成结果替代真实账号或 Windows 验收。
