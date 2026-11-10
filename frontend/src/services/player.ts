@@ -442,6 +442,12 @@ export type PlaySelection =
   | { kind: 'podcast_browse_voice'; receipt: string; double_click?: boolean }
   | { kind: 'podcast_liked_episode'; target: import('./podcast').PodcastLikedProgramTarget }
   | {
+      kind: 'podcast_liked_page_episode';
+      target: import('./podcast').PodcastLikedPageTarget;
+      double_click?: boolean;
+      toggle_current?: boolean;
+    }
+  | {
       kind: 'podcast_purchased_episode';
       target: import('./podcast').PodcastPurchasedTarget;
       menu?: boolean;
@@ -741,6 +747,11 @@ export type PlayerAction =
   | {
       kind: 'queue_liked_program';
       target: import('./podcast').PodcastLikedProgramTarget;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'queue_liked_page_program';
+      target: import('./podcast').PodcastLikedPageTarget;
       expected_queue_revision: string;
     }
   | {

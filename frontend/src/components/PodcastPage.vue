@@ -6,6 +6,8 @@ import { time } from '../services/player';
 import type { PodcastModel } from '../composables/usePodcasts';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
 import PodcastRecentList from './PodcastRecentList.vue';
+import PodcastLikedList from './PodcastLikedList.vue';
+import type { PodcastLikedModel } from '../composables/usePodcastLiked';
 import PodcastPurchasedRows from './PodcastPurchasedRows.vue';
 import PodcastProgramMenu from './PodcastProgramMenu.vue';
 import PodcastSubscriptionRecommendations from './PodcastSubscriptionRecommendations.vue';
@@ -13,7 +15,8 @@ import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import { audiobookSkipSaved, type AudiobookSkipContext } from '../services/audiobookSkip';
 import type {
   PodcastScope,
-  PodcastLikedProgramTarget,
+  PodcastLikedEpisode,
+  PodcastLikedPageTarget,
   EpisodeView,
   PodcastRecommendationAction,
   PodcastProgramTarget,
@@ -23,14 +26,15 @@ import type {
 const props = defineProps<{
   model: PodcastModel;
   recent: PodcastRecentModel;
+  liked: PodcastLikedModel;
   purchasesCompact: boolean;
   playable: boolean;
   queueable: boolean;
   queueProgram: (epoch: string, program: PodcastProgramTarget) => Promise<boolean>;
   queueRecentProgram: (epoch: string, program: PodcastRecentProgramTarget) => Promise<boolean>;
-  queueLikedProgram: (
+  queueLikedPageProgram: (
     epoch: string,
-    target: PodcastLikedProgramTarget,
+    target: PodcastLikedPageTarget,
     live: () => boolean,
   ) => Promise<boolean>;
   queuePurchasedProgram: (
@@ -39,6 +43,7 @@ const props = defineProps<{
     live: () => boolean,
   ) => Promise<boolean>;
   currentId?: string;
+  currentActive: boolean;
   currentRadioId?: string;
   playing: boolean;
 }>();
@@ -53,9 +58,15 @@ const emit = defineEmits<{
     voices: EpisodeView[],
     live?: () => boolean,
     purchased?: PodcastPurchasedTarget,
-    liked?: PodcastLikedProgramTarget,
+    pagedLiked?: PodcastLikedPageTarget,
   ];
-  likedPlay: [epoch: string, target: PodcastLikedProgramTarget, live: () => boolean];
+  likedPagePlay: [
+    epoch: string,
+    target: PodcastLikedPageTarget,
+    live: () => boolean,
+    doubleClick?: boolean,
+    toggleCurrent?: boolean,
+  ];
   purchasedPlay: [
     epoch: string,
     target: PodcastPurchasedTarget,
@@ -104,16 +115,40 @@ function episodeGesture(event: Event, voice: EpisodeView, double = false) {
 }
 const detail = computed(() => !recentSelected.value && scope.value.kind === 'radio');
 const likedList = computed(() => !recentSelected.value && scope.value.kind === 'liked');
-const rowMenu = computed(() => likedList.value || detail.value);
+const rowMenu = computed(() => detail.value);
+const pagedLikedMenu = ref<InstanceType<typeof PodcastProgramMenu>>();
+function playPagedLikedRow(
+  voice: PodcastLikedEpisode,
+  doubleClick: boolean,
+  toggleCurrent = false,
+) {
+  const source = props.liked.captureProgram(voice);
+  if (source && !voice.unavailable && !voice.withdrawn)
+    emit('likedPagePlay', source.epoch, source.target, source.live, doubleClick, toggleCurrent);
+}
+async function actOnPagedLikedRow(
+  voice: PodcastLikedEpisode,
+  kind: 'comments' | 'download' | 'unlike',
+) {
+  const source = props.liked.captureProgram(voice);
+  if (!source || voice.withdrawn) return;
+  if (kind === 'unlike') {
+    await props.model.change('like', voice.id, false);
+    return;
+  }
+  const row = await props.liked.resolveProgram(voice);
+  if (!row || !source.live() || row.withdrawn) return;
+  if (kind === 'comments') emit('comments', row.id, row.name);
+  else if (!row.unavailable) emit('download', [row], source.live, undefined, source.target);
+}
 const menuPage = computed(() => {
   const displayed = page.value,
     requested = scope.value;
   const sameScope =
-    (displayed?.scope.kind === 'liked' && requested.kind === 'liked') ||
-    (displayed?.scope.kind === 'radio' &&
-      requested.kind === 'radio' &&
-      displayed.scope.id === requested.id &&
-      displayed.scope.ascending === requested.ascending);
+    displayed?.scope.kind === 'radio' &&
+    requested.kind === 'radio' &&
+    displayed.scope.id === requested.id &&
+    displayed.scope.ascending === requested.ascending;
   return rowMenu.value &&
     !loading.value &&
     displayed?.epoch === props.model.epoch.value &&
@@ -137,19 +172,6 @@ function openProgramMenu(event: MouseEvent | KeyboardEvent, voice: EpisodeView) 
       ? { x: event.clientX, y: event.clientY }
       : undefined;
   void programMenu.value?.open(voice, anchor, point);
-}
-function downloadEpisode(voice: EpisodeView) {
-  if (scope.value.kind !== 'liked') {
-    emit('download', [voice]);
-    return;
-  }
-  const captured = menuPage.value;
-  if (captured?.scope.kind !== 'liked' || voice.unavailable || !captured.episodes.includes(voice))
-    return;
-  emit('download', [voice], () => menuPage.value === captured, undefined, {
-    revision: captured.revision,
-    voiceId: voice.id,
-  });
 }
 function programContext(event: MouseEvent, voice: EpisodeView) {
   if (!menuPage.value && !voice.withdrawn) return;
@@ -216,12 +238,26 @@ onMounted(restoreRecentScroll);
 watch(recentSelected, restoreRecentScroll);
 function scrolled() {
   const pane = root.value;
-  if (!pane || !recentSelected.value) return;
+  if (!pane) return;
+  if (likedList.value) {
+    if (
+      props.liked.page.value?.episodes.length &&
+      pane.querySelector('[data-podcast-liked] [role="list"]')
+    )
+      props.liked.scrollTop.value = pane.scrollTop;
+    return;
+  }
+  if (!recentSelected.value) return;
   props.recent.scrollTop.value = pane.scrollTop;
   if (pane.scrollTop > 0 && pane.scrollHeight - pane.clientHeight - pane.scrollTop < 200)
     props.recent.next();
 }
 async function refresh() {
+  if (likedList.value) {
+    void props.liked.open();
+    void props.liked.readCount();
+    return;
+  }
   if (!recentSelected.value) {
     void props.model.load(true);
     return;
@@ -250,14 +286,20 @@ const pending = props.model.pending;
       <h1>{{ detail ? '播客详情' : '我的播客' }}</h1>
       <button
         class="text-button"
-        :disabled="recentSelected ? recent.pending.value : loading || busy"
+        :disabled="
+          recentSelected
+            ? recent.pending.value
+            : likedList
+              ? liked.pending.value || busy
+              : loading || busy
+        "
         @click="refresh"
       >
         <Icon name="refresh" />刷新
       </button>
     </header>
     <form
-      v-if="!detail && !recentSelected"
+      v-if="!detail && !recentSelected && !likedList"
       class="podcast-open"
       @submit.prevent="model.open(reference)"
     >
@@ -277,6 +319,7 @@ const pending = props.model.pending;
       <button
         v-for="t in tabs"
         :key="t.kind"
+        :data-podcast-liked-tab="t.kind === 'liked' ? '' : undefined"
         :class="{
           active:
             !recentSelected &&
@@ -285,6 +328,9 @@ const pending = props.model.pending;
         @click="tab({ kind: t.kind })"
       >
         {{ t.label }}
+        <small v-if="t.kind === 'liked' && liked.count.value !== null" data-liked-count>
+          {{ liked.count.value }}
+        </small>
       </button>
       <button
         type="button"
@@ -297,6 +343,24 @@ const pending = props.model.pending;
         最近更新单集
       </button>
     </nav>
+    <div v-if="!recentSelected && error" class="error-state" role="alert">
+      {{ error }}
+      <button class="text-button" :disabled="loading || busy" @click="refresh">重试</button>
+    </div>
+    <p v-if="!recentSelected && notice" role="status" class="form-success">{{ notice }}</p>
+    <div v-if="!recentSelected && operations.length" class="podcast-pending">
+      <p>以下操作尚未确认，请先核对结果。</p>
+      <button
+        v-for="op in operations"
+        :key="op.action + op.id"
+        class="secondary"
+        :disabled="busy"
+        @click="model.command({ kind: 'reconcile', action: op.action, id: op.id })"
+      >
+        核对{{ op.action === 'like' ? '单集点赞' : op.action === 'resume' ? '续播设置' : '收藏' }} ·
+        {{ op.id }}
+      </button>
+    </div>
     <PodcastRecentList
       v-if="recentSelected"
       ref="recentList"
@@ -313,6 +377,35 @@ const pending = props.model.pending;
       @download="(voices) => emit('download', voices)"
       @radio="openRecentRadio"
     />
+    <template v-else-if="likedList">
+      <PodcastLikedList
+        :model="liked"
+        :compact="purchasesCompact"
+        :playable="playable"
+        :current-id="currentId"
+        :current-active="currentActive"
+        :playing="playing"
+        :removing="(id) => busy || pending('like', id)"
+        @play="playPagedLikedRow"
+        @menu="(voice, anchor, point) => pagedLikedMenu?.open(voice, anchor, point)"
+        @comments="(voice) => actOnPagedLikedRow(voice, 'comments')"
+        @download="(voice) => actOnPagedLikedRow(voice, 'download')"
+        @unlike="(voice) => actOnPagedLikedRow(voice, 'unlike')"
+      />
+      <PodcastProgramMenu
+        ref="pagedLikedMenu"
+        :page="liked.page.value"
+        :playable="playable"
+        :queueable="queueable"
+        :capture-liked-page="liked.captureProgram"
+        :queue-liked-page="queueLikedPageProgram"
+        @liked-page-play="(epoch, target, live) => emit('likedPagePlay', epoch, target, live)"
+        @liked-page-download="
+          (voice, live, target) => emit('download', [voice], live, undefined, target)
+        "
+        @comments="(id, title) => emit('comments', id, title)"
+      />
+    </template>
     <template v-else>
       <div v-if="['podcasts', 'audiobooks'].includes(scope.kind)" class="podcast-subtabs">
         <button :class="{ active: scope.kind === 'podcasts' }" @click="tab({ kind: 'podcasts' })">
@@ -322,25 +415,6 @@ const pending = props.model.pending;
           @click="tab({ kind: 'audiobooks' })"
         >
           有声书
-        </button>
-      </div>
-      <div v-if="error" class="error-state" role="alert">
-        {{ error }}
-        <button class="text-button" :disabled="loading" @click="model.load(true)">重试</button>
-      </div>
-      <p v-if="notice" role="status" class="form-success">{{ notice }}</p>
-      <div v-if="operations.length" class="podcast-pending">
-        <p>以下操作尚未确认，请先核对结果。</p>
-        <button
-          v-for="op in operations"
-          :key="op.action + op.id"
-          class="secondary"
-          :disabled="busy"
-          @click="model.command({ kind: 'reconcile', action: op.action, id: op.id })"
-        >
-          核对{{ op.action === 'like' ? '单集点赞' : op.action === 'resume' ? '续播设置' : '收藏' }}
-          ·
-          {{ op.id }}
         </button>
       </div>
       <div v-if="page?.radio" class="podcast-cover">
@@ -499,13 +573,10 @@ const pending = props.model.pending;
           :class="{
             current: currentId === voice.id,
             'with-more': rowMenu,
-            'liked-episode': likedList,
-            'liked-episode-compact': likedList && purchasesCompact,
             'episode-withdrawn': voice.withdrawn,
           }"
           :data-voice-id="voice.id"
-          :tabindex="likedList || voice.withdrawn ? 0 : undefined"
-          :aria-haspopup="likedList && !voice.withdrawn ? 'menu' : undefined"
+          :tabindex="voice.withdrawn ? 0 : undefined"
           @contextmenu="programContext($event, voice)"
           @keydown="programKeyboard($event, voice)"
           @keydown.enter.self="voice.withdrawn && announceWithdrawn()"
@@ -520,27 +591,13 @@ const pending = props.model.pending;
           >
             <Icon name="play" />
           </button>
-          <div class="episode-info" :class="{ 'episode-info-with-cover': likedList }">
-            <template v-if="likedList">
-              <img
-                v-if="voice.coverUrl"
-                class="liked-cover"
-                :src="voice.coverUrl"
-                alt=""
-                referrerpolicy="no-referrer"
-              />
-              <span v-else class="liked-cover liked-cover-placeholder" aria-hidden="true"
-                ><Icon name="headphones"
-              /></span>
-            </template>
-            <div class="episode-info-text">
-              <strong :title="voice.name">{{ voice.name }}</strong
-              ><small
-                >{{ voice.creator || voice.radioName || '单集' }}
-                <span v-if="voice.withdrawn"> · 已下线</span>
-                <span v-else-if="voice.feeType"> · 付费内容</span></small
-              >
-            </div>
+          <div class="episode-info">
+            <strong :title="voice.name">{{ voice.name }}</strong>
+            <small>
+              {{ voice.creator || voice.radioName || '单集' }}
+              <span v-if="voice.withdrawn"> · 已下线</span>
+              <span v-else-if="voice.feeType"> · 付费内容</span>
+            </small>
           </div>
           <span class="episode-time">{{ time(voice.durationMs / 1000) }}</span>
           <button
@@ -557,7 +614,7 @@ const pending = props.model.pending;
             class="icon-button"
             aria-label="下载单集"
             :disabled="loading || voice.unavailable"
-            @click="downloadEpisode(voice)"
+            @click="emit('download', [voice])"
           >
             <Icon name="down" /></button
           ><button
@@ -594,12 +651,7 @@ const pending = props.model.pending;
         :playable="playable"
         :queueable="queueable"
         :queue="queueProgram"
-        :queue-liked="queueLikedProgram"
         @play="play"
-        @liked-play="(epoch, target, live) => emit('likedPlay', epoch, target, live)"
-        @liked-download="
-          (voice, live, target) => emit('download', [voice], live, undefined, target)
-        "
         @comments="(id, title) => emit('comments', id, title)"
         @download="(voices) => emit('download', voices)"
       />

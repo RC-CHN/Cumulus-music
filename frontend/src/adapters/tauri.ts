@@ -402,6 +402,13 @@ export function createTauriClient(): CoreClient {
       invoke('podcast_recent_program_menu', { epoch, target }),
     podcastLikedProgramMenu: (epoch, target) =>
       invoke('podcast_liked_program_menu', { epoch, target }),
+    podcastLikedPageProgramMenu: (epoch, { visit, revision, voiceId }) =>
+      invoke('podcast_liked_page_program_menu', { epoch, target: { visit, revision, voiceId } }),
+    podcastOpenLikedPageProgramDownloadDirectory: (epoch, { visit, revision, voiceId }) =>
+      invoke('podcast_open_liked_page_program_download_directory', {
+        epoch,
+        target: { visit, revision, voiceId },
+      }),
     podcastLikedProgram: (epoch, target) => invoke('podcast_liked_program', { epoch, target }),
     podcastOpenLikedProgramDownloadDirectory: (epoch, target) =>
       invoke('podcast_open_liked_program_download_directory', { epoch, target }),

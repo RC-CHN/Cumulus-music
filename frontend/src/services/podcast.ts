@@ -33,6 +33,14 @@ export interface PodcastRecentProgramMenu {
   downloadComplete: boolean | null;
 }
 export interface PodcastProgramMenuClient {
+  podcastLikedPageProgramMenu(
+    epoch: string,
+    target: PodcastLikedPageTarget,
+  ): Promise<AccountData<PodcastRecentProgramMenu>>;
+  podcastOpenLikedPageProgramDownloadDirectory(
+    epoch: string,
+    target: PodcastLikedPageTarget,
+  ): Promise<void>;
   podcastLikedProgramMenu(
     epoch: string,
     target: PodcastLikedProgramTarget,
@@ -160,6 +168,7 @@ export interface PodcastPage {
   remoteTotal: number;
   radio: PodcastCard | null;
   likedIds: string[];
+  likedIdsKnown?: boolean;
   resumeEnabled: boolean | null;
   audiobookSkipEnabled?: boolean | null;
   operations: PodcastMutation[];
@@ -216,9 +225,12 @@ export type PodcastLikedQuery =
   | { kind: 'open' }
   | ({ kind: 'suspend' | 'restore' } & PodcastLikedVisit)
   | ({ kind: 'next'; continuation: string } & PodcastLikedVisit);
+export interface PodcastLikedEpisode extends EpisodeView {
+  listenerCount?: number | null;
+}
 export interface PodcastLikedPage extends PodcastLikedVisit {
   /** Next returns a delta; Open/Restore replace the prefix. */
-  episodes: EpisodeView[];
+  episodes: PodcastLikedEpisode[];
   loadedCount: number;
   count: number | null;
   continuation: string | null;

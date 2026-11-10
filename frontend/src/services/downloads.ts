@@ -282,6 +282,7 @@ export type DownloadDialogTarget =
       tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[];
       purchased?: import('./podcast').PodcastPurchasedTarget;
       liked?: import('./podcast').PodcastLikedProgramTarget;
+      pagedLiked?: import('./podcast').PodcastLikedPageTarget;
       live?: () => boolean;
     }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }
