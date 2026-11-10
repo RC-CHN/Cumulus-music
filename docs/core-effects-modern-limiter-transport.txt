@@ -173,6 +173,9 @@ Production wiring and its remaining gates
   descriptor or request a new stream. Authorized online/cache decoder
   formats, trial, additional topologies and physical devices remain out
   of this proof.
+- `core-effects-modern-limiter-handoff.txt` records why exact native Stop
+  and a freshly constructed graph are not valid substitutes for first
+  apply, including a real failed held-WAV Stop and original PCM controls.
 - The ordinary official type-4 cache/online source feeds the device PCM
   route (`10555B0` negotiated geometry; `1055EF0` SDK write/read); it does
   not infer the graph format from song bitrate. The ordinary seek discards

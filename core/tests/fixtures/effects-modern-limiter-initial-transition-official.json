@@ -1,0 +1,41 @@
+{
+  "sdkSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "cases": [
+    {
+      "rate": 44100,
+      "pendingInput": 511,
+      "alreadyProducedFrames": 1829,
+      "queuedOldPcmSha256": "3ebbef55a89928def2eefaae4b4f4b69f3beaf09d8902ee53c46ec2fb3c4b65e",
+      "newFramesBoth": 1873,
+      "hotGeqBypassPrevious": [
+        0,
+        0
+      ],
+      "freshGeqBypassPrevious": [
+        0,
+        1
+      ],
+      "hotNewPcmSha256": "cbf8dfcf82bf13be062fc063951c3b07523d05c3eff887c9c0868313deb86c27",
+      "freshNewPcmSha256": "db3ea143a93e7450baa284ee2427a6c5b68c5036d57be808a5e98bd48fde9b3d",
+      "sameFrameDifferentSampleWords": 3739
+    },
+    {
+      "rate": 48000,
+      "pendingInput": 511,
+      "alreadyProducedFrames": 1810,
+      "queuedOldPcmSha256": "6e6485b2020d37d6b867c77dea2057f0a0680bbd93bca70025d4e48a84627ad9",
+      "newFramesBoth": 1857,
+      "hotGeqBypassPrevious": [
+        0,
+        0
+      ],
+      "freshGeqBypassPrevious": [
+        0,
+        1
+      ],
+      "hotNewPcmSha256": "d0f80b98e4e81ee931eea7b942d3d07acc82c779d0d02e8ee0105a9032f0a772",
+      "freshNewPcmSha256": "debbe451ff5b37cdc6bbb62af601b1b1818741feaf8ef872033d2c22e35b20da",
+      "sameFrameDifferentSampleWords": 3710
+    }
+  ]
+}

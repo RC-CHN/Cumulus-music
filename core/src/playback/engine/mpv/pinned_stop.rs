@@ -602,3 +602,7 @@ mod tests {
 #[cfg(all(test, target_os = "linux"))]
 #[path = "retired_playback_tests.rs"]
 mod retired_playback_tests;
+
+#[cfg(test)]
+#[path = "modern_handoff_tests.rs"]
+mod modern_handoff_tests;

@@ -1,0 +1,104 @@
+Modern limiter: native handoff audit
+====================================
+
+No production handoff is enabled. The native binding records a fresh
+acknowledged non-trial registration for one first material and one already
+owned WAV entry. The binding is neither a media input nor a transferable
+decoder capability. Losing the original entry invalidates that source proof.
+
+Official behavior and the available primitives
+----------------------------------------------
+
+Recovered 3.1.42.205594 `hybrid_app…/342.js` `activeAudioEffect`, lines
+489–662, applies a cached ordinary effect with `setAudioEffectParams`
+type 2, the cached path and `isOpen=true`. In `switchNew`, lines
+1697–1836, the ordinary branches likewise send type 2 with `isOpen`, and
+the close branch subsequently calls auth/stop. Those ordinary actions do
+not stop, seek or re-open the media. Native EFAB90 → EFB760 applies the
+material to the current SDK object. `core-effects-modern-limiter-renderer.txt`
+records in-place off/reapply with pending input, unread output and native
+B0 lookahead. The actual submitted PCM and the official source/progress
+clock are distinct, as documented in `core-effects-modern-limiter-host-clock.txt`.
+
+Cumulus `seek_local_equalizer` can transfer the single held WAV descriptor
+after exact successful native Stop and worker join. It recreates the
+decoder at an authorized source frame, resets the old graph and loads a
+different raw libmpv entry. `seek_with_receipt` then presents the new clock
+and generation. That is useful for an explicit source discontinuity. It
+cannot preserve the old graph histories, unread output or the original
+native entry as an in-place material apply does. `yield_local_equalizer`
+selects a stock decoder and is outside this scope.
+
+The old graph is `LocalEqualizerStereoMaterial` with its own C graph,
+spatial state, and Rust B0. The modern graph has separate GEQ/BT/PEQ
+wrappers and B0. Swapping these objects at a worker quantum avoids reopening
+the file but does not implement the in-place state transition. In the
+pinned original SDK, start with an old-schema GEQ-only M/3091 profile (one
++3 dB band), process one full quantum, read only 31 frames, queue 511
+input frames, and apply the synthetic modern `neutralTone` profile. The
+remaining old output is byte-identical to the no-switch control. The
+retained input is used in the next whole 2048-frame quantum. No graph Reset
+or B0 Reset marker runs; the B0 parameter setup runs at the next quantum.
+
+Compare that first hot modern output with a fresh original SDK instance
+given exactly the same 2048 source frames and modern material:
+
+    sample rate    output frames (each)    differing stereo f32 words
+    44,100 Hz      1873                    3739 of 3746
+    48,000 Hz      1857                    3710 of 3714
+
+Matching the B0 counts is therefore insufficient for first-apply PCM
+equivalence. At GEQ wrapper +48/+49, current bypass/previous is [0,0]
+after in-place apply and [0,1] on a fresh graph. The fresh graph has a
+dry-to-wet edge that the active old GEQ does not. This exposes one exact
+state difference; it is not proof that other states are transferable.
+The sanitized hashes are in the fixture
+`effects-modern-limiter-initial-transition-official.json`, SHA-256
+`6eaeb24758328cd8081070e6e6432de6e7d1e968007b3229a316326c3894ac7b`.
+The original SDK test used synthetic PCM, not an actual GUI action or
+Windows sound output. To reproduce with the existing optional research
+dependencies and a local copy of the pinned original DLL:
+
+    unshare -Urn python3 scripts/research/probe_modern_limiter_initial_transition.py \
+      --dll LOCAL_ORIGINAL_NEAUDIOEFFECTS_DLL --out NEW.json
+
+Observed failed handoff
+-----------------------
+
+`modern_handoff_cannot_roll_back_a_missing_or_rejected_exact_stop` uses a
+fingerprinted, production-owned signed-16 stereo WAV at 48 kHz. Its path
+is replaced after loading, and libmpv null output first advances its real
+bound clock while already holding more delivered frames. A wrong requested
+entry fails without touching the active ownership receipt. The fixture
+then tests two failures of the intentional handoff path:
+
+- A real invalid native command rejects before any successful Stop.
+- No Stop was sent; a synthetic queued successful Stop for a different
+  entry cannot satisfy the bound entry, and the wait times out.
+
+Both branches invalidate the old transport, synchronously destroy its
+native sink, close the reader and discard the old held descriptor owner.
+The failed path never returns a transfer/rollback receipt. Even the
+existing explicit `reopen_retired_local_sink` can create only a fresh,
+empty paused sink: no native entry, old clock, events or source. This
+does not suggest that a normal libmpv Stop fails; it proves what the
+current ownership contract does on rejection or missing exact ack.
+The real Linux x86_64 null-output test passed in a loopback-only namespace
+with libmpv `0.41.0-2ubuntu4`. The captured old native source clocks were
+10,988/11,036 frames, with 22,290 frames delivered ahead in both cases;
+both empty reopened sinks had no entry or clock. The absolute values are
+run observations, not timing thresholds or physical playback proof.
+
+    cargo test --locked -p cumulus-core --lib \
+      modern_handoff_cannot_roll_back_a_missing_or_rejected_exact_stop \
+      -- --ignored --nocapture
+
+For an eventual production attach, keep the one decoder/descriptor and
+the active native output while applying a qualified graph transition at a
+worker quantum. First verify the original old-to-modern setter/history
+semantics and prevalidate replacement resources before issuing any control.
+Keep rejected/stale work distinguishable from a running acknowledged
+graph and preserve lease cleanup on a failure. An intentionally retired
+entry cannot be reused as an authorization proof. There is no fallback
+to a stock decoder, a new network request, a path reopen or synthetic
+silence in this audit.
