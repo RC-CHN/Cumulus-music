@@ -27,8 +27,9 @@
     await wait(() => text('我的播客') && !text('我的播客').disabled, step);
     text('我的播客').click();
     await wait(() => text('点赞的单集', pane()), 'liked tab');
+    await emit('voice_list_cohort', { compact:true });
     text('点赞的单集', pane()).click();
-    await wait(() => row(501) && row(504), 'all liked rows');
+    await wait(() => row(501) && row(504)?.classList.contains('liked-episode-compact'), 'treatment and all liked rows');
     const epoch = (await invoke('account_snapshot')).epoch;
     const queue = () => invoke('player_queue', { epoch });
     const playerSnapshot = () => invoke('player_snapshot', { epoch });
@@ -38,7 +39,17 @@
     assert(one('button[aria-label^="播放"]', row(501)).disabled && one('button[aria-label="下载单集"]', row(501)).disabled, 'withdrawn playback controls');
     assert(!row(504).classList.contains('episode-withdrawn'), 'normal sibling stays available');
     assert(!one('[data-podcast-program-more]', row(501)) && one('[data-podcast-program-more]', row(504)), 'More belongs to normal rows only');
-    await stage('ux_01_liked_rows', { ids });
+    const height = (node) => Math.round(node.getBoundingClientRect().height);
+    const width = (node) => Math.round(node.getBoundingClientRect().width);
+    const font = (node) => parseInt(getComputedStyle(node).fontSize, 10);
+    const shown = (node) => node && Number(getComputedStyle(node).opacity) >= 0.98;
+    const dimensions = (node, cover, title) => ({
+      height:height(node), cover:width(one(cover, node)), title:font(one(title, node)),
+    });
+    const likedDimensions = (id) => dimensions(row(id), '.liked-cover', '.episode-info strong');
+    const treatment = likedDimensions(504);
+    assert(treatment.height === 56 && treatment.cover === 36 && treatment.title === 14, 'treatment liked geometry 56 / 36 / 14');
+    await stage('ux_01_liked_rows', { ids, ...treatment });
 
     step = 'withdrawn gestures';
     const initial = await queue();
@@ -132,6 +143,69 @@
     const after = await playerSnapshot();
     assert(after.playId === playing.playId && after.queueRevision === playing.queueRevision, `missing target leaves existing native decoder and queue: ${playing.queueRevision} → ${after.queueRevision}`);
     await stage('ux_09_missing_retained', { voice: after.track.voiceId, playIdRetained: true });
+
+    step = 'control liked rows keep geometry, focus and row menus';
+    const menuPainted = () => popup() && Number(getComputedStyle(popup()).opacity) >= 0.98;
+    const focusedMore = more(504);
+    focusedMore.focus({ preventScroll:true });
+    await emit('voice_list_cohort', { compact:false });
+    await wait(() => row(504) && height(row(504)) === 64, 'control liked height');
+    assert(document.activeElement === focusedMore && more(504) === focusedMore && shown(focusedMore), 'focus and visible More survive the experiment update');
+    const control = likedDimensions(504);
+    assert(control.cover === 48 && control.title === 16, 'control liked geometry 64 / 48 / 16');
+    if (matchMedia('(hover: hover)').matches) {
+      const idle = [502,503].map(more).find((node) => !node.closest('article').matches(':hover, :focus-within'));
+      assert(idle && !shown(idle) && getComputedStyle(idle).pointerEvents === 'none', 'idle row actions hidden and not pointer targets');
+    }
+    const openKey = () => new KeyboardEvent('keydown', { key:'F10', shiftKey:true, bubbles:true, cancelable:true });
+    const closeMenu = async (anchor) => {
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', bubbles:true, cancelable:true }));
+      await wait(() => !popup() && document.activeElement === anchor, 'Escape restores More focus');
+    };
+    row(504).dispatchEvent(openKey());
+    await wait(() => menuPainted() && item('查看评论(54)'), 'control liked keyboard menu');
+    await stage('ux_10_liked_control', { ...control, moreRetained:true, keyboard:true });
+    await closeMenu(focusedMore);
+    const point = row(504).getBoundingClientRect();
+    row(504).dispatchEvent(new MouseEvent('contextmenu', { button:2, bubbles:true, cancelable:true, clientX:point.left+35, clientY:point.top+20 }));
+    await wait(() => popup() && item('查看评论(54)'), 'control liked pointer menu');
+    await closeMenu(focusedMore);
+
+    step = 'recent list follows the same cohort and keeps the visible virtual row';
+    one('[data-podcast-recent-tab]').click();
+    const recentRow = (id) => one(`[data-recent-voice="${id}"]`, pane());
+    const recentMore = (id) => one('[data-podcast-recent-more]', recentRow(id));
+    const recentDimensions = (id) => dimensions(recentRow(id), '.recent-title img, .recent-art', '.recent-title strong');
+    const mounted = () => all('[data-recent-voice]', pane()).length;
+    await wait(() => recentRow(503) && height(recentRow(503)) === 64, 'control recent 64 pixels');
+    const controlRecent = recentDimensions(503);
+    assert(controlRecent.cover === 48 && controlRecent.title === 16 && mounted() < 30, 'control recent geometry and bounded rows');
+    recentRow(503).focus({ preventScroll:true });
+    assert(shown(recentMore(503)), 'control recent More appears on row focus');
+    recentRow(503).dispatchEvent(openKey());
+    await wait(() => menuPainted() && item('查看评论(53)'), 'control recent keyboard menu');
+    await stage('ux_11_recent_control', { ...controlRecent, mounted:mounted() });
+    await closeMenu(recentMore(503));
+    recentMore(503).blur();
+    const scroller = pane();
+    const list = one('.recent-rows', scroller);
+    const offset = () => scroller.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    const initialTop = scroller.scrollTop;
+    const start = initialTop + list.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTop = start + 64 * 11 + 12;
+    await wait(() => Math.abs(offset() - (64 * 11 + 12)) <= 2, 'control virtual scroll offset');
+    await emit('voice_list_cohort', { compact:true });
+    await wait(() => Math.abs(offset() - (56 * 11 + 12 * 56 / 64)) <= 3, 'compact keeps the same visible row and fractional offset');
+    scroller.scrollTop = initialTop;
+    await wait(() => recentMore(503) && height(recentRow(503)) === 56, 'treatment recent 56 pixels and More');
+    const compactRecent = recentDimensions(503);
+    assert(compactRecent.cover === 36 && compactRecent.title === 14 && mounted() < 30, 'treatment recent geometry and bounded rows');
+    recentMore(503).focus({ preventScroll:true });
+    assert(shown(recentMore(503)), 'treatment recent More appears on focus');
+    recentMore(503).click();
+    await wait(() => menuPainted() && item('查看评论(53)'), 'treatment recent More menu');
+    await stage('ux_12_recent_treatment', { ...compactRecent, mounted:mounted(), scrollRowRetained:true });
+    await closeMenu(recentMore(503));
     await stage('complete', { ok: true });
   } catch (error) {
     await stage('failed', { step, message: String(error), body: document.body.innerText.slice(-1800) });

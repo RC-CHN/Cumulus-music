@@ -35,12 +35,13 @@ def main():
     assert not failed.exists(), read(failed)
     assert code == 0, f'WebView exited {code}; see {root / "host.log"}'
     names = ['ux_01_liked_rows', 'ux_02_withdrawn', 'ux_03_menu', 'ux_04_single_play', 'ux_05_next',
-             'ux_06_share', 'ux_07_download', 'ux_08_valid_native', 'ux_09_missing_retained']
+             'ux_06_share', 'ux_07_download', 'ux_08_valid_native', 'ux_09_missing_retained',
+             'ux_10_liked_control', 'ux_11_recent_control', 'ux_12_recent_treatment']
     assert sorted(path.stem for path in output.glob('ux_*.json')) == names
     assert sorted(path.stem for path in output.glob('ux_*.png')) == names
     stages = [read(output / f'{name}.json') for name in names]
     assert all(stage['actual'] for stage in stages)
-    assert stages[0]['ids'] == ['501', '502', '503', '504']
+    assert stages[0]['ids'] == ['501', '502', '503', '504'] and stages[0]['height'] == 56
     assert stages[1]['notice'] == '该声音已下线不可收听' and stages[1]['queue'] == 0
     assert stages[2]['labels'] == ['播放', '下一首播放', '查看评论(54)', '下载', '分享...', '复制链接']
     assert stages[3]['voice'] == stages[7]['voice'] == stages[8]['voice'] == '504'
@@ -48,9 +49,18 @@ def main():
     assert stages[5]['link'] == 'https://music.163.com/dj?id=503'
     assert stages[6]['target'] == 503 and stages[6]['beforeCancel']
     assert stages[7]['queue'] == ['503', '504'] and stages[7]['position'] > 0 and stages[8]['playIdRetained']
+    dimensions = lambda row: (row['height'], row['cover'], row['title'])
+    assert dimensions(stages[0]) == dimensions(stages[11]) == (56, 36, 14)
+    assert dimensions(stages[9]) == dimensions(stages[10]) == (64, 48, 16)
+    assert stages[9]['moreRetained'] and stages[9]['keyboard'] and stages[11]['scrollRowRetained']
+    assert all(0 < row['mounted'] < 30 for row in stages[10:12])
     complete = read(output / 'complete.json')
     assert complete['ok']
     calls = complete['calls']
+    liked = '/api/content/my/liked/voice'
+    assert [row for row in stages[9]['calls'] if row[0] == liked] == [row for row in stages[8]['calls'] if row[0] == liked]
+    recent = '/api/social/my/recent/update/voice/list/v1'
+    assert [body for path, body in calls if path == recent] == [{}]
     assert not any(path == '/api/dj/program/detail' for path, _ in stages[1]['calls'])
     detail = [body['id'] for path, body in calls if path == '/api/dj/program/detail']
     assert {'502', '503', '504'} <= set(detail) <= {'502', '503', '504'} and detail[-1] == '502', detail

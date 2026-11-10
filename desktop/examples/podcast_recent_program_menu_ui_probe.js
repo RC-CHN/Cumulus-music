@@ -48,6 +48,9 @@
   async function click(find, label) {
     const el = await wait(() => { const node = find(); return settled() && ready(node) && node; }, label);
     el.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    // Recent-row extras are only hit targets after hover or keyboard row focus.
+    if (el.matches('[data-podcast-recent-more]'))
+      el.closest('[data-recent-voice]')?.focus({ preventScroll: true });
     await frame();
     await wait(() => {
       if (el !== find() || !ready(el) || !settled()) return false;
@@ -117,6 +120,7 @@
     observe('copyText', ([value]) => copied.push(value));
 
     await click(() => button('我的播客', one('.sidebar-navigation[aria-label="我的"]')), 'my podcasts');
+    await emit('voice_list_cohort', { compact: true });
     await click(() => one('[data-podcast-recent-tab]'), 'recent tab');
     await wait(() => pages.length === 1 && ready(trigger('501')), 'first recent revision');
     const old = { revision: pages[0].value.value.revision, voiceId: '501' };

@@ -70,6 +70,7 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 const PROGRESS: &str = "/api/dj/playrecord/upload";
 const PROOF_REVISION: &str = "podcast-progress-fixture";
 const RECENT: &str = "/api/social/my/recent/update/voice/list/v1";
+const VOICE_LIST_COHORT: &str = "sealed-voice-list-cohort-v1";
 const CURSOR: u64 = 1_700_000_000_123;
 const MEDIA: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
 
@@ -83,6 +84,7 @@ struct Library {
     program_menu: bool,
     recent_program_menu: bool,
     liked_withdrawn: bool,
+    voice_list_compact: AtomicBool,
     purchased: Option<Arc<purchased_podcast_fixture::Fixture>>,
     recent_menu_count_held: AtomicBool,
     recent_menu_count_delivered: AtomicBool,
@@ -145,6 +147,9 @@ impl Library {
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        if self.liked_withdrawn || self.recent_program_menu {
+            return Ok(Some(VOICE_LIST_COHORT.into()));
+        }
         if self.purchased.is_some() {
             return Ok(Some(purchased_podcast_fixture::COHORT_REVISION.to_owned()));
         }
@@ -169,6 +174,19 @@ impl Api for Library {
         &'a self,
         revision: &'a str,
     ) -> ApiFuture<'a, PcExperimentGroups> {
+        if self.liked_withdrawn || self.recent_program_menu {
+            return Box::pin(async move {
+                assert_eq!(revision, VOICE_LIST_COHORT);
+                let group = if self.voice_list_compact.load(Ordering::SeqCst) {
+                    "t1"
+                } else {
+                    "c"
+                };
+                PcExperimentGroups::refreshed(
+                    &json!({"data":[{"expName":"PH-PC-listPage-showMore","expGroupName":group}]}),
+                )
+            });
+        }
         if let Some(fixture) = &self.purchased {
             return Box::pin(async move { fixture.groups(revision) });
         }
@@ -714,6 +732,10 @@ impl Api for Library {
             }
             assert!(!self.liked_withdrawn || path != "/api/song/enhance/download/url/v1");
             Ok(match path {
+                RECENT if self.liked_withdrawn => {
+                    assert_eq!(body, json!({}));
+                    json!({"code":200,"data":{"data":(503..=532).map(voice).collect::<Vec<_>>(),"hasMore":false}})
+                }
                 RECENT if self.recent_program_menu => {
                     if body == json!({}) {
                         let mut next = voice(503);
@@ -1150,6 +1172,16 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let mut value: Value = serde_json::from_str(event.payload()).unwrap();
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
+                if (liked_withdrawn || recent_program_menu) && stage == "voice_list_cohort" {
+                    let compact = value["compact"].as_bool().expect("synthetic voice list assignment");
+                    api.voice_list_compact.store(compact, Ordering::SeqCst);
+                    let handle = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let view = handle.state::<MusicClient>().refresh_pc_presentation().await.expect("sealed voice list cohort refresh");
+                        assert_eq!(view.podcast_purchases_compact, compact);
+                    });
+                    return;
+                }
                 if purchased_download_proof && stage == "purchases_cohort" {
                     let compact = value["compact"].as_bool().expect("synthetic cohort selection");
                     api.purchased.as_ref().expect("purchase fixture").set_compact(compact);

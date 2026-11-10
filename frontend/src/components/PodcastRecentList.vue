@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useOuterVirtualRows } from '../composables/useOuterVirtualRows';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
 import type {
@@ -13,6 +13,7 @@ import Icon from './Icon.vue';
 
 const props = defineProps<{
   model: PodcastRecentModel;
+  compact: boolean;
   playable: boolean;
   queueable: boolean;
   queueProgram: (epoch: string, target: PodcastRecentProgramTarget) => Promise<boolean>;
@@ -28,13 +29,26 @@ const emit = defineEmits<{
 }>();
 const { page, pending, issue } = props.model;
 const episodes = computed(() => page.value?.episodes ?? []);
-const height = 64;
+const height = computed(() => (props.compact ? 56 : 64));
 const { container, start, end, update } = useOuterVirtualRows(
   () => episodes.value.length,
-  height,
+  () => height.value,
   (list) => list?.closest<HTMLElement>('.podcast-page') ?? undefined,
   (element) => Number(element.closest<HTMLElement>('[data-recent-index]')?.dataset.recentIndex),
 );
+watch(height, (after, before) => {
+  const list = container.value;
+  const scroller = list?.closest<HTMLElement>('.podcast-page');
+  if (!list || !scroller) return;
+  const scrolled = scroller.getBoundingClientRect().top - list.getBoundingClientRect().top;
+  const top = scroller.scrollTop;
+  if (scrolled <= 0) return;
+  void nextTick(() => {
+    if (container.value !== list || height.value !== after || scroller.scrollTop !== top) return;
+    scroller.scrollTop = top + (scrolled / before) * (after - before);
+    update();
+  });
+});
 const visible = computed(() => episodes.value.slice(start.value, end.value));
 const count = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 });
 function play(episode: PodcastRecentEpisode, doubleClick: boolean) {
@@ -104,11 +118,17 @@ onMounted(props.model.open);
         v-for="(voice, offset) in visible"
         :key="voice.id"
         class="recent-columns recent-episode"
-        :class="{ current: currentId === voice.id, striped: (start + offset) % 2 === 0 }"
+        :class="{
+          current: currentId === voice.id,
+          striped: (start + offset) % 2 === 0,
+          'recent-episode-compact': compact,
+        }"
         :data-recent-index="start + offset"
         :data-recent-voice="voice.id"
-        :style="{ top: (start + offset) * height + 'px' }"
+        :style="{ top: (start + offset) * height + 'px', height: height + 'px' }"
         role="listitem"
+        tabindex="0"
+        aria-haspopup="menu"
         :aria-setsize="episodes.length"
         :aria-posinset="start + offset + 1"
         @contextmenu.stop.prevent="openProgramMenu($event, voice)"
@@ -215,8 +235,15 @@ onMounted(props.model.open);
 .recent-episode {
   position: absolute;
   inset-inline: 0;
-  height: 64px;
   border-radius: 8px;
+  --recent-cover-size: 48px;
+  --recent-cover-radius: 8px;
+  --recent-title-size: 16px;
+}
+.recent-episode-compact {
+  --recent-cover-size: 36px;
+  --recent-cover-radius: 4px;
+  --recent-title-size: 14px;
 }
 .recent-episode.striped {
   background: var(--surface-alt);
@@ -248,11 +275,11 @@ onMounted(props.model.open);
 }
 .recent-title img,
 .recent-art {
-  flex: 0 0 42px;
-  width: 42px;
-  height: 42px;
+  flex: 0 0 var(--recent-cover-size);
+  width: var(--recent-cover-size);
+  height: var(--recent-cover-size);
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--recent-cover-radius);
 }
 .recent-art {
   display: grid;
@@ -267,7 +294,7 @@ onMounted(props.model.open);
 .recent-title strong {
   display: block;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--recent-title-size);
 }
 .recent-title strong,
 .recent-secondary > * {
@@ -295,6 +322,7 @@ onMounted(props.model.open);
 @media (hover: hover) {
   .recent-episode:not(:hover, :focus-within) .recent-program-more {
     opacity: 0;
+    pointer-events: none;
   }
 }
 .recent-footer {

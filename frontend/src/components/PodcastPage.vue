@@ -103,9 +103,8 @@ function episodeGesture(event: Event, voice: EpisodeView, double = false) {
   } else if (double && props.playable && !loading.value && !voice.unavailable) play(voice.id);
 }
 const detail = computed(() => !recentSelected.value && scope.value.kind === 'radio');
-const rowMenu = computed(
-  () => !recentSelected.value && (scope.value.kind === 'liked' || detail.value),
-);
+const likedList = computed(() => !recentSelected.value && scope.value.kind === 'liked');
+const rowMenu = computed(() => likedList.value || detail.value);
 const menuPage = computed(() => {
   const displayed = page.value,
     requested = scope.value;
@@ -302,6 +301,7 @@ const pending = props.model.pending;
       v-if="recentSelected"
       ref="recentList"
       :model="recent"
+      :compact="purchasesCompact"
       :playable="playable"
       :current-id="currentId"
       :playing="playing"
@@ -499,10 +499,13 @@ const pending = props.model.pending;
           :class="{
             current: currentId === voice.id,
             'with-more': rowMenu,
+            'liked-episode': likedList,
+            'liked-episode-compact': likedList && purchasesCompact,
             'episode-withdrawn': voice.withdrawn,
           }"
           :data-voice-id="voice.id"
-          :tabindex="voice.withdrawn ? 0 : undefined"
+          :tabindex="likedList || voice.withdrawn ? 0 : undefined"
+          :aria-haspopup="likedList && !voice.withdrawn ? 'menu' : undefined"
           @contextmenu="programContext($event, voice)"
           @keydown="programKeyboard($event, voice)"
           @keydown.enter.self="voice.withdrawn && announceWithdrawn()"
@@ -517,13 +520,27 @@ const pending = props.model.pending;
           >
             <Icon name="play" />
           </button>
-          <div class="episode-info">
-            <strong :title="voice.name">{{ voice.name }}</strong
-            ><small
-              >{{ voice.creator || voice.radioName || '单集' }}
-              <span v-if="voice.withdrawn"> · 已下线</span>
-              <span v-else-if="voice.feeType"> · 付费内容</span></small
-            >
+          <div class="episode-info" :class="{ 'episode-info-with-cover': likedList }">
+            <template v-if="likedList">
+              <img
+                v-if="voice.coverUrl"
+                class="liked-cover"
+                :src="voice.coverUrl"
+                alt=""
+                referrerpolicy="no-referrer"
+              />
+              <span v-else class="liked-cover liked-cover-placeholder" aria-hidden="true"
+                ><Icon name="headphones"
+              /></span>
+            </template>
+            <div class="episode-info-text">
+              <strong :title="voice.name">{{ voice.name }}</strong
+              ><small
+                >{{ voice.creator || voice.radioName || '单集' }}
+                <span v-if="voice.withdrawn"> · 已下线</span>
+                <span v-else-if="voice.feeType"> · 付费内容</span></small
+              >
+            </div>
           </div>
           <span class="episode-time">{{ time(voice.durationMs / 1000) }}</span>
           <button
