@@ -18,6 +18,10 @@
     (node) => node.getAttribute('aria-label') === label || node.textContent.trim() === label);
   const row = (id) => one(`.search-song-panel [data-track-id="${id}"] .track-row-title-text`);
   const dialog = () => one('dialog.download-dialog[open]:not([inert]):not(.modal-enter-active)');
+  const paintedDialog = () => {
+    const modal = dialog();
+    return modal?.getClientRects().length && getComputedStyle(modal).opacity === '1' ? modal : null;
+  };
   const menuItem = () => [...document.querySelectorAll('[data-menu-key="download"]')].find(
     (node) => node.getClientRects().length && !node.closest('[inert]'));
   const back = () => one('button[aria-label="返回上一页"]');
@@ -142,11 +146,11 @@
 
     await ordinary('104','paused');
     const paused = await wait(() => {
-      const modal = dialog(), manage = modal && button('打开下载管理', modal);
+      const modal = paintedDialog(), manage = modal && button('打开下载管理', modal);
       return actions.length === 1 && manage && !manage.disabled &&
         modal.querySelector('[role="status"]')?.textContent.includes('可按原设置继续') && manage;
     }, 'paused existing task explains the options conflict');
-    await input('paused_notice', paused, 1, samples(dialog()));
+    await input('paused_notice', paused, 1, samples(paused.closest('dialog')));
     await wait(activeReady, 'Manage opens active tab with exact paused task');
     await input('active_manager', back());
 
@@ -160,11 +164,11 @@
 
     await ordinary('101','complete');
     const done = await wait(() => {
-      const modal = dialog(), manage = modal && button('打开下载管理', modal);
+      const modal = paintedDialog(), manage = modal && button('打开下载管理', modal);
       return actions.length === 3 && manage && !manage.disabled &&
         modal.querySelector('[role="status"]')?.textContent.trim() === '资源已下载' && manage;
     }, 'completed song is acknowledged without new Start');
-    await input('completed_notice', done, 1, samples(dialog()));
+    await input('completed_notice', done, 1, samples(done.closest('dialog')));
     await wait(() => one('#download-tab-song[aria-selected="true"]') &&
       one(`[data-download-task="${fresh}"]`) && !one('dialog[open],.page-enter-active,.page-leave-active'),
     'Manage opens completed song tab with exact file');
