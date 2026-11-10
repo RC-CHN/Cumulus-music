@@ -1,0 +1,697 @@
+{
+  "sdkSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "quantum": 2048,
+  "profiles": {
+    "neutralTone": {
+      "aev2": {
+        "eq": {
+          "on": true,
+          "eqs": [
+            2,
+            -1,
+            3,
+            0,
+            0,
+            -2,
+            1,
+            0,
+            0,
+            0
+          ]
+        },
+        "bt": {
+          "on": true,
+          "bass": 0,
+          "treble": 0,
+          "bassFreq": 700,
+          "trebleQ": 14
+        },
+        "peq": {
+          "on": true,
+          "gain": 1.25,
+          "f": [
+            {
+              "band": 0,
+              "type": 7,
+              "gain": -2,
+              "freq": 140,
+              "q": 0.7,
+              "on": true
+            },
+            {
+              "band": 1,
+              "type": 6,
+              "gain": 3,
+              "freq": 1400,
+              "q": 1.25,
+              "on": true
+            },
+            {
+              "band": 4,
+              "type": 8,
+              "gain": 1,
+              "freq": 6500,
+              "q": 0.7,
+              "on": true
+            },
+            {
+              "band": 8,
+              "type": 6,
+              "gain": 2,
+              "freq": 280,
+              "q": 1.8,
+              "on": false
+            }
+          ]
+        },
+        "se": {
+          "on": false
+        },
+        "rvb": {
+          "on": false
+        },
+        "cmp": {
+          "on": false
+        },
+        "limiter": {
+          "on": true,
+          "threshold": -3.25,
+          "attack": 0.004,
+          "release": 0.078,
+          "outputgain": 0.75,
+          "infiniteRatio": true,
+          "ratio": 4
+        }
+      }
+    },
+    "nonzeroTone": {
+      "aev2": {
+        "eq": {
+          "on": true,
+          "eqs": [
+            0,
+            -2,
+            3,
+            -1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        "bt": {
+          "on": true,
+          "bass": -2.25,
+          "treble": 3.5,
+          "bassQ": 21,
+          "trebleFreq": 1010
+        },
+        "peq": {
+          "on": true,
+          "gain": -0.75,
+          "f": [
+            {
+              "band": 0,
+              "type": 4,
+              "gain": 1,
+              "freq": 220,
+              "q": 1.1,
+              "on": true
+            },
+            {
+              "band": 6,
+              "type": 6,
+              "gain": -3,
+              "freq": 2100,
+              "q": 1.5,
+              "on": true
+            }
+          ]
+        },
+        "se": {
+          "on": false
+        },
+        "rvb": {
+          "on": false
+        },
+        "cmp": {
+          "on": false
+        },
+        "limiter": {
+          "on": true,
+          "threshold": -1.5,
+          "attack": 0.006,
+          "release": 0.09,
+          "outputgain": -0.25,
+          "infiniteRatio": true,
+          "ratio": 4
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "profile": "neutralTone",
+      "rate": 44100,
+      "split": {
+        "inputFrames": 6151,
+        "outputFrames": 6151,
+        "outputSha256": "3660427376bf55e728766dd87af322acc751e069faf8dd6e8dc71e19b3bc9f8d"
+      },
+      "resetAfterEof": {
+        "inputFrames": 4096,
+        "outputFrames": 4097,
+        "outputSha256": "c9370ac49de18a5c7d228e53db9629a8d6dd5a8d3f817e1ed3d13aa34bcdde9e"
+      },
+      "resetBeforeEof": {
+        "inputFrames": 4103,
+        "outputFrames": 4103,
+        "outputSha256": "a1a3c83a461c919e39e9654bce1fedcba5f13f1e8ce4b0a7b73c6bac77486d2d"
+      },
+      "partialBeforeReset": {
+        "outputFrames": 31,
+        "outputSha256": "4dc18602abc607fc098bc0a1ee280d8d7e0e8ac5a4f409e13a50a6c5ff481f30"
+      },
+      "quanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1873,
+          "outputEnd": false,
+          "outputSha256": "ba90b9b9a700fbd6bfcd5896ccdfe16fc567ca50dc8f3d6d89c15baf1c65d3ee"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "41adce813e4810e1d947134a6015bd05ab9d90f3528ba0333108585b01941e17"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "ee2126cc80716494b9ecee46480febe26c702a92bae0ba26f24400bacee414a9"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 182,
+          "outputEnd": true,
+          "outputSha256": "684edd38fbdb28bf2ca1b3e3b28ddf6ef32b8ee33dec1e2250dafbf57d47af5e"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1873,
+          "outputEnd": false,
+          "outputSha256": "acb97b13f6e760653c766ac949e6e213b3fb38cb84d9b9243aef4afb80fed55c"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "31e6b8e3c86f1ee9b63202313b494748fdb5b30410d46f15ef1ca2c75e3f4b0f"
+        },
+        {
+          "inputFrames": 1,
+          "inputEnd": true,
+          "outputFrames": 176,
+          "outputEnd": true,
+          "outputSha256": "2085b8b3c573bcaefea5d7bcea9caa7520e18304d6097b341f02f8d30c9d3ed6"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1873,
+          "outputEnd": false,
+          "outputSha256": "0cb55f322b322b8c9334af6e1c3993a926b36ab30c69822c030e02fd74623a4b"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1873,
+          "outputEnd": false,
+          "outputSha256": "9c1841cfa8c4f8f41421892a63e9ecac05c29bed00316c61af6580b4b43f5a41"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "fdd505135cd95598538c8a878cb89e63674dc892dea7c8bd7c320e0df9646e0c"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 182,
+          "outputEnd": true,
+          "outputSha256": "fd6f4214850880f20a1572af113823476286e15bba1fa7f87bd2bcecad4b46dd"
+        }
+      ],
+      "lateDrain": {
+        "inputFrames": 4091,
+        "outputFrames": 4091,
+        "outputSha256": "c94b644655e621f11d5818a88ed1cce7eb4a09f6bc932969b0c79acaf86ed590"
+      },
+      "lateDrainQuanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1873,
+          "outputEnd": false,
+          "outputSha256": "45e4add30f64023eead1b24decf7d397b5a7066ae841d8689ae22468333b8bbd"
+        },
+        {
+          "inputFrames": 2043,
+          "inputEnd": true,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "d9b63fb71ef1889d8b4412db1862bb219a1f679ee3e9b06c4c9beed9b71d3fea"
+        },
+        {
+          "inputFrames": 0,
+          "inputEnd": true,
+          "outputFrames": 170,
+          "outputEnd": true,
+          "outputSha256": "6a98d6e0d0437be60b3bfa22ee6666acd5583e96bf330ab90992859a88c34ecc"
+        }
+      ],
+      "emptySource": {
+        "inputFrames": 0,
+        "outputFrames": 1,
+        "outputSha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+      }
+    },
+    {
+      "profile": "neutralTone",
+      "rate": 48000,
+      "split": {
+        "inputFrames": 6151,
+        "outputFrames": 6151,
+        "outputSha256": "ea21be8ce4a2971d3384c14044a61d16fc79de9470cb1d95a638c81c517ae3df"
+      },
+      "resetAfterEof": {
+        "inputFrames": 4096,
+        "outputFrames": 4097,
+        "outputSha256": "454504bfac229d3d6ec1d838ac34e87bc8d02ac03a0058061d042d4bc88178f5"
+      },
+      "resetBeforeEof": {
+        "inputFrames": 4103,
+        "outputFrames": 4103,
+        "outputSha256": "d59076c0af66f5146f0deb9efa30a45297de08d74bc8a0b4b1c2e3a506eb89c3"
+      },
+      "partialBeforeReset": {
+        "outputFrames": 31,
+        "outputSha256": "2db2664cd27d4d9328e3eac8853019473788eea9f30421536542ec6ccb91bd88"
+      },
+      "quanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1857,
+          "outputEnd": false,
+          "outputSha256": "7d02243f9f2d04a28ccd2fe3172685a6855fee6a962c2f5b80135db640dc8edb"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "9a697c449856f82861f2fddd27b59bf189e14a66aba3d9290d5ac97202158de1"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "fa509dc670e31157b9d5d256cdf783c2a770ffc915af3d3a966bd584c244f98c"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 198,
+          "outputEnd": true,
+          "outputSha256": "7fdff1376b916bf7b6de202fb134f5dd39cb9e88842d8491c02e29f2f0711276"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1857,
+          "outputEnd": false,
+          "outputSha256": "50721ce5bbf7c64e98e049ad63bf01591159e7ddabf96f4b02cc48234febeec1"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "4c9dded31eca4da3ee88b62de48eb733d6810408a0ba5f782d7131808d2ff5bb"
+        },
+        {
+          "inputFrames": 1,
+          "inputEnd": true,
+          "outputFrames": 192,
+          "outputEnd": true,
+          "outputSha256": "5cb5bf3cb91eab800a74bc33c64f350530f5d1c857512a0de9c600ca249ce99d"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1857,
+          "outputEnd": false,
+          "outputSha256": "cdd7371ec16d66b3906ddfb479ef1e96e7b62ad1f51144360b72c54793662f84"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1857,
+          "outputEnd": false,
+          "outputSha256": "9776cb280094084d469cee3d783fe9118ac044979231cd3a3d631550df059fd0"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "416e6189fd62d31e950173119a624e7788bcee91279f4da1a9a4f2b1682965f2"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 198,
+          "outputEnd": true,
+          "outputSha256": "fa6f1c4b62001e0e1cea5a13aaaa6882890560479828d58e5cbab23bce43ca18"
+        }
+      ],
+      "lateDrain": {
+        "inputFrames": 4091,
+        "outputFrames": 4091,
+        "outputSha256": "79823f8922e2ebe1c69dbe271f0c9d7ca1a00d75ee548e1ecd477d563e05a14a"
+      },
+      "lateDrainQuanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1857,
+          "outputEnd": false,
+          "outputSha256": "3e0eedd133500fc71b5850a4699b96322d7b6951470f094705b6c36a8afd686f"
+        },
+        {
+          "inputFrames": 2043,
+          "inputEnd": true,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "2e500e32ee18dc26667ae3cc7270136ed2ff79504df1332d170503d3320e7de0"
+        },
+        {
+          "inputFrames": 0,
+          "inputEnd": true,
+          "outputFrames": 186,
+          "outputEnd": true,
+          "outputSha256": "e428bc9d51707fbc2d242701e6cc6b2c3f559f9a401d5412340357898c8d22f7"
+        }
+      ],
+      "emptySource": {
+        "inputFrames": 0,
+        "outputFrames": 1,
+        "outputSha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+      }
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 44100,
+      "split": {
+        "inputFrames": 6151,
+        "outputFrames": 6151,
+        "outputSha256": "be02685a5290b813882f5ac8c3cfb62e1fa0f9902b618f34c6ec0be9e87a9e7c"
+      },
+      "resetAfterEof": {
+        "inputFrames": 4096,
+        "outputFrames": 4097,
+        "outputSha256": "5a14434dcefdf1f6bdb0aa41c2dc28f4f0a4cf46fe6986c7d2755af4af3f5848"
+      },
+      "resetBeforeEof": {
+        "inputFrames": 4103,
+        "outputFrames": 4103,
+        "outputSha256": "d2dca9c4806402a5b4088ba67cacc48d5dc4e10134744d6befa44b8f9dbc535f"
+      },
+      "partialBeforeReset": {
+        "outputFrames": 31,
+        "outputSha256": "2ab81eddcd8870bd373cf7ea0d8588580555f0892e3d423db2b3f780e2c5d277"
+      },
+      "quanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1785,
+          "outputEnd": false,
+          "outputSha256": "a78dc183cc9f07357b5f205b2b597df51cbfabf3cbc706b749655cb84e4002d9"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "7ecd733bd7ee26f09ff9970dc726e87b0242aa720f4e1e153593dddc339183d6"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "08b87da29d7efb7c0a64436fbe812a1163fe7a418ea6c3e22613d97bcabcd252"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 270,
+          "outputEnd": true,
+          "outputSha256": "4156bd8cbbc9207096177b6fe4427744adc056c10f10ff0a227574d821a8aae1"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1785,
+          "outputEnd": false,
+          "outputSha256": "c6793a97272d91b81319bb2d70aac1e0b3602ec179795ca5cc195cb30fa0b381"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "f020c31d2478d9cd8040354333879ebb76ca00a14705ad631649ec44eefc449a"
+        },
+        {
+          "inputFrames": 1,
+          "inputEnd": true,
+          "outputFrames": 264,
+          "outputEnd": true,
+          "outputSha256": "403384909d5ddd4800209187c1208b45d3eaefd6bb8b078c9065323fb2862910"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1785,
+          "outputEnd": false,
+          "outputSha256": "a6d1fa313a2080d9185e3c3910f1bdad5111c1d13e4cf22b65adf58045ea8d3a"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1785,
+          "outputEnd": false,
+          "outputSha256": "7ea25eb2723067636d1599e0a5cd2f06449633a841653f45348f853c624fbce3"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "6c960e4466d7feca98374ff2d1b033df4134cd2b43ee400a962a11e29185f251"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 270,
+          "outputEnd": true,
+          "outputSha256": "20166e3256e1288eb40cf3ecb13c250e50bf405dc08dad2c5d6dd1aec67bb5f4"
+        }
+      ],
+      "lateDrain": {
+        "inputFrames": 4091,
+        "outputFrames": 4091,
+        "outputSha256": "b95bc75cdf94f5356842f80026ac450c333999077a963a3b54934cf2b8035dca"
+      },
+      "lateDrainQuanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1785,
+          "outputEnd": false,
+          "outputSha256": "202aceef0d2c283e7e474d76e6f6ad671cb69828c151439217a06b21b191f764"
+        },
+        {
+          "inputFrames": 2043,
+          "inputEnd": true,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "6473eb54fcfb9085ca4f1b74c11d97ebc4e960d2dc7bdab098bf24cca2d14deb"
+        },
+        {
+          "inputFrames": 0,
+          "inputEnd": true,
+          "outputFrames": 258,
+          "outputEnd": true,
+          "outputSha256": "de7e3e980e9dbd74fbc8af6e0abaa5d02b99f4cee6f1c9c2c5f8ab6d357df58f"
+        }
+      ],
+      "emptySource": {
+        "inputFrames": 0,
+        "outputFrames": 1,
+        "outputSha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+      }
+    },
+    {
+      "profile": "nonzeroTone",
+      "rate": 48000,
+      "split": {
+        "inputFrames": 6151,
+        "outputFrames": 6151,
+        "outputSha256": "6b8fe4b54f338c756b7a438fda1a0737a61bde35de82a63764ea04f55ca9a0da"
+      },
+      "resetAfterEof": {
+        "inputFrames": 4096,
+        "outputFrames": 4097,
+        "outputSha256": "d9c64d7a778dba80c886ef670ddccae2e7bf0c165e1ce581927a203ee2b2ab53"
+      },
+      "resetBeforeEof": {
+        "inputFrames": 4103,
+        "outputFrames": 4103,
+        "outputSha256": "f9ffdf30abe284b3d98fb3758d6f4a8e1ce8c5b4d81125aed0e64c86c0fb69c3"
+      },
+      "partialBeforeReset": {
+        "outputFrames": 31,
+        "outputSha256": "8695262745568cf9b91ac4caa36ae94a96b06f53c4813c8f2a79831f8b7e55f1"
+      },
+      "quanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1761,
+          "outputEnd": false,
+          "outputSha256": "d5db0a23401d030b4cfbda5c728c9e8a80cf2809487a6f43346a0f2a0ebfbe9a"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "21807eee1354670f9e0de027db6058b6631bf3df4dca91948e21fc7a57a455e1"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "40d6e4da883ca4bb4a2b6799abcdce8b1ca74354ba83ce28df036640ae0e2bd1"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 294,
+          "outputEnd": true,
+          "outputSha256": "22eac6989bf43706f884f2e81261441702bc21354951c49ec6c3ef72f4cc8a23"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1761,
+          "outputEnd": false,
+          "outputSha256": "cf0cb14935a0df5ef42d0e5ab6ea252d2698c9c555c44cfb6d1110fa645118e9"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "88ca44ab0a4c5c4d179f8b3f0c50223cf84cb9025a0231b3e811e935758b1858"
+        },
+        {
+          "inputFrames": 1,
+          "inputEnd": true,
+          "outputFrames": 288,
+          "outputEnd": true,
+          "outputSha256": "ae308f951b724ef28923eceb858be755f3c9b0b44a58c1980cba370575cce193"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1761,
+          "outputEnd": false,
+          "outputSha256": "414feb66dddb09dd6be0d291e168d597d898c23065a08cd7ce8507232f574ef5"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1761,
+          "outputEnd": false,
+          "outputSha256": "88b11913126c8755fbb779760e082ebe96291ed73e18a6321e6a518792bbda91"
+        },
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "bcd1388b9cf567d486bf85360dc315fc00e4a6efbe0898c9f8c60e2bb6aba347"
+        },
+        {
+          "inputFrames": 7,
+          "inputEnd": true,
+          "outputFrames": 294,
+          "outputEnd": true,
+          "outputSha256": "0fe9b2f6690b4775b8c5912561b9baa08eb2bd731308eda80a4fb8069aab42b5"
+        }
+      ],
+      "lateDrain": {
+        "inputFrames": 4091,
+        "outputFrames": 4091,
+        "outputSha256": "51aa0a89c5faad5521c706bb165e1553624579eaae9eafaa5322e57c3c410dad"
+      },
+      "lateDrainQuanta": [
+        {
+          "inputFrames": 2048,
+          "inputEnd": false,
+          "outputFrames": 1761,
+          "outputEnd": false,
+          "outputSha256": "aaef98efc6521d7e283a4315a9847879535e66df1561692c31832ac3ecb7ccad"
+        },
+        {
+          "inputFrames": 2043,
+          "inputEnd": true,
+          "outputFrames": 2048,
+          "outputEnd": false,
+          "outputSha256": "bf0381aa179da12598a7e1d0bedfc2f36d8a441046a3cc27f5f058719574d3f7"
+        },
+        {
+          "inputFrames": 0,
+          "inputEnd": true,
+          "outputFrames": 282,
+          "outputEnd": true,
+          "outputSha256": "d25555b2f6dbf8dca1e884d6a23d98579e538e0ff59ea7d175838caad5981952"
+        }
+      ],
+      "emptySource": {
+        "inputFrames": 0,
+        "outputFrames": 1,
+        "outputSha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+      }
+    }
+  ],
+  "schema": "cumulus.modern-limiter-x64-pcm.v1"
+}

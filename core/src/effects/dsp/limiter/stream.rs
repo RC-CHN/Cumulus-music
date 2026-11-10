@@ -170,6 +170,23 @@ impl LimiterStream {
         &mut self,
         samples: &[f32],
         timestamp_ms: Option<u32>,
+        observe: impl FnMut(LimiterStreamQuantum),
+    ) -> Result<LimiterStreamWrite> {
+        self.push_interleaved_graph(samples, timestamp_ms, LimiterStage::process, observe)
+    }
+
+    /// Share the outer FIFO with a qualified graph whose upstream stages do
+    /// not alter frames or EOF. B0 still owns flow prediction and padding.
+    pub(crate) fn push_interleaved_graph(
+        &mut self,
+        samples: &[f32],
+        timestamp_ms: Option<u32>,
+        mut process: impl FnMut(
+            &mut LimiterStage,
+            &mut PlanarBlock,
+            u32,
+            bool,
+        ) -> Result<LimiterBlockFlow>,
         mut observe: impl FnMut(LimiterStreamQuantum),
     ) -> Result<LimiterStreamWrite> {
         // The official outer function checks this latch before timestamps,
@@ -219,7 +236,7 @@ impl LimiterStream {
                         .expect("checked complete input frame");
                 }
             }
-            let timing = self.stage.process(&mut self.block, frames as u32, end)?;
+            let timing = process(&mut self.stage, &mut self.block, frames as u32, end)?;
             for frame in 0..timing.output_frames as usize {
                 for channel in 0..channels {
                     self.output

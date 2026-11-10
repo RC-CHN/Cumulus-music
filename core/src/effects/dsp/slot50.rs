@@ -36,7 +36,7 @@ impl Slot50Tone {
             return Err(Error::InvalidInput("unsupported slot 50 tone format"));
         }
         let mut tone = Self(ParametricEq::new(format, false, true)?);
-        tone.shelves(Slot50Material::default())?;
+        tone.shelves(0.0, 0.0)?;
         for index in [1, 3, 4, 5, 6, 7, 8] {
             let (kind, frequency, q) = if index == 1 {
                 (ParametricKind::Peak, 1000.0, 1.0)
@@ -68,12 +68,19 @@ impl Slot50Tone {
     /// requested gains and reopen the component if either is nonzero.
     pub fn apply_material(&mut self, material: Slot50Material) -> Result<()> {
         self.master_bypass()?;
-        self.shelves(Slot50Material::default())?;
+        self.shelves(0.0, 0.0)?;
         if material != Slot50Material::default() {
-            self.shelves(material)?;
+            self.shelves(material.bass_db as f32, material.treble_db as f32)?;
             self.0.set_bypass(false)?;
         }
         Ok(())
+    }
+
+    /// Modern EF8CA0 dispatch has an independent on flag. Both neutral
+    /// shelves must still run when it explicitly enables the node.
+    pub(crate) fn apply_enabled_modern(&mut self, bass_db: f32, treble_db: f32) -> Result<()> {
+        self.shelves(bass_db, treble_db)?;
+        self.0.set_bypass(false)
     }
 
     /// Tone target of a master-off action. Keep the current coefficients,
@@ -94,16 +101,16 @@ impl Slot50Tone {
         self.0.process(block, valid_frames)
     }
 
-    fn shelves(&mut self, material: Slot50Material) -> Result<()> {
+    fn shelves(&mut self, bass_db: f32, treble_db: f32) -> Result<()> {
         for (index, kind, frequency, gain_db) in [
-            (0, ParametricKind::LowShelfQ, 120.0, material.bass_db),
-            (2, ParametricKind::HighShelfQ, 6000.0, material.treble_db),
+            (0, ParametricKind::LowShelfQ, 120.0, bass_db),
+            (2, ParametricKind::HighShelfQ, 6000.0, treble_db),
         ] {
             self.0.set_band(
                 index,
                 ParametricBand {
                     kind,
-                    gain_db: gain_db as f32,
+                    gain_db,
                     frequency,
                     q: 0.5,
                     enabled: true,

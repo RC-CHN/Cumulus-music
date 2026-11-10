@@ -3,6 +3,7 @@
 mod controls;
 mod equalization;
 mod limiter;
+mod modern_limiter;
 mod routing;
 use super::dsp::{Coefficients, ParametricBand, ParametricEq, ParametricKind, RotationStage};
 pub use super::dsp::{LimiterBlockFlow, LimiterFrameFlow};
@@ -15,6 +16,7 @@ pub use equalization::{EqualizationCall, bass_treble_calls, graphic_calls};
 pub use limiter::{
     LimiterBeginCall, MATERIAL_BEGIN_LIMITER, MaterialLimiterPlan, material_limiter_plan,
 };
+pub use modern_limiter::{ModernLimiterPlan, ModernLimiterRenderer};
 pub use routing::{Component, ComponentSection, MaterialRouting, MaterialSchema, route_sections};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
