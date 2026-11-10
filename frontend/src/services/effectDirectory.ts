@@ -10,6 +10,16 @@ export interface EffectCatalogueItem {
   trial_remaining_ms?: number;
   light_artwork?: string;
   dark_artwork?: string;
+  newly_added?: boolean;
+}
+
+export type EffectDirectorySection = 'selection' | 'more' | 'legacy_recommended' | 'legacy_all';
+
+export interface EffectDirectoryOverview {
+  cohortRevision: string;
+  layout: 'legacy' | 'modern';
+  groups: { key: EffectDirectorySection; items: EffectCatalogueItem[] }[];
+  partial: boolean;
 }
 
 export type EffectAccess = 'allowed' | 'trial' | 'unavailable' | 'unknown';
@@ -93,6 +103,7 @@ export interface EffectPeqView {
 
 export interface EffectDirectoryClient {
   effectCatalogue(epoch: string, kind: EffectCatalogueKind): Promise<EffectCatalogueItem[]>;
+  effectDirectoryOverview(epoch: string): Promise<EffectDirectoryOverview>;
   effectDetail(
     epoch: string,
     id: number,

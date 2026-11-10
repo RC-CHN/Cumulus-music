@@ -20,6 +20,8 @@ use tokio::sync::watch;
 const ACCOUNT: &str = "/api/w/nuser/account/get";
 const COOKIE: &str = "MUSIC_U=synthetic-presentation; Path=/; Secure";
 
+#[path = "pc_presentation/effect_directory.rs"]
+mod effect_directory;
 #[path = "pc_presentation/guest_search.rs"]
 mod guest_search;
 

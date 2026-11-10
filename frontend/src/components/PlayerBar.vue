@@ -41,6 +41,7 @@ import PlayerTrackActions from './PlayerTrackActions.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import type { PlayerPodcastResumeTarget } from '../services/playerPodcastResume';
 import type { AudiobookSkipContext } from '../services/audiobookSkip';
+import type { EffectCataloguePresentation } from '../services/pcPresentation';
 import type { HomeRecallGuide } from '../services/discoveryHome';
 const equalizerOpen = ref(false);
 const audioEffectsOpen = ref(false);
@@ -62,6 +63,7 @@ const props = withDefaults(
     vinylComments?: boolean;
     vinylCommentsOpen?: boolean;
     podcastResume?: boolean;
+    effectCatalogue?: EffectCataloguePresentation;
     recallGuide?: HomeRecallGuide;
   }>(),
   { togetherActive: false },
@@ -1107,6 +1109,7 @@ watch(
   </ModalTransition>
   <ModalTransition>
     <AudioEffectsPanel
+      :effect-catalogue="effectCatalogue"
       v-if="audioEffectsOpen"
       :account="account"
       :player="player"

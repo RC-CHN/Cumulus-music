@@ -278,3 +278,36 @@ test('current podcast resume presentation follows ordered signed events and clea
   assert.equal(host.podcastResume.value, false);
   host.dispose();
 });
+
+test('effect catalogue ignores unchanged or retired revisions and clears on account switch', async () => {
+  const pending = deferred<PcPresentationView>();
+  let push!: (view: PcPresentationView) => void;
+  const host = usePcPresentation(
+    {
+      onPcPresentationChanged: async (listener) => {
+        push = listener;
+        return () => {};
+      },
+      pcPresentation: (epoch) =>
+        epoch === '1'
+          ? pending.promise
+          : Promise.resolve({ ...appearance('9', '2'), effectCatalogueRevision: '9' }),
+    },
+    createSearchViewportMemory(),
+  );
+  host.connect(account);
+  const started = host.start();
+  await tick();
+  push({ ...appearance('5'), effectCatalogueRevision: '5', effectCatalogueNew: true });
+  const first = host.effectCatalogue.value;
+  assert.deepEqual(first, { revision: '5', layout: 'modern' });
+  push({ ...appearance('6'), effectCatalogueRevision: '5' });
+  assert.equal(host.effectCatalogue.value, first);
+  host.connect({ ...account, epoch: '2' });
+  assert.equal(host.effectCatalogue.value, undefined);
+  push({ ...appearance('8'), effectCatalogueRevision: '8', effectCatalogueNew: true });
+  pending.resolve({ ...appearance('7'), effectCatalogueRevision: '7', effectCatalogueNew: true });
+  await started;
+  assert.deepEqual(host.effectCatalogue.value, { revision: '9', layout: 'legacy' });
+  host.dispose();
+});

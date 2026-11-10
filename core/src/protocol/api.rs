@@ -597,8 +597,56 @@ impl PodcastBadgeClear {
 
 pub type PodcastBadgePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
+pub type EffectCataloguePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+
+#[derive(Clone, Copy)]
+pub enum EffectCatalogueRead {
+    LegacyRecommended,
+    LegacyAll,
+    HighlyRecommended,
+    Recommended,
+    More,
+}
+
+impl EffectCatalogueRead {
+    pub fn into_request(self) -> (&'static str, Value) {
+        use EffectCatalogueRead::*;
+        match self {
+            LegacyRecommended => ("/api/usertool/sound/mobile/promote", json!({})),
+            LegacyAll => ("/api/usertool/sound/mobile/all", json!({})),
+            HighlyRecommended | Recommended | More => {
+                let expose_type = match self {
+                    HighlyRecommended => 5,
+                    Recommended => 6,
+                    More => 7,
+                    _ => unreachable!(),
+                };
+                (
+                    "/api/usertool/sound/queryAllSound",
+                    json!({"exposeType":expose_type}),
+                )
+            }
+        }
+    }
+}
+
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
+
+    /// Fixed catalogue read. Native HTTP rechecks the account and current
+    /// presentation at the actual dispatch boundary after obtaining its gate.
+    fn request_effect_catalogue<'a>(
+        &'a self,
+        read: EffectCatalogueRead,
+        _revision: Option<&'a str>,
+        current: &'a EffectCataloguePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            current()?;
+            let (path, payload) = read.into_request();
+            self.call(path, payload, false, &[200]).await
+        })
+    }
 
     fn lyric_bounty_credential_revision(&self) -> Result<Option<String>> {
         Ok(None)

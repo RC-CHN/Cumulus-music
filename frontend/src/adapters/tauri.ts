@@ -157,6 +157,7 @@ export function createTauriClient(): CoreClient {
     searchOpenVoiceDirectory: (epoch, target) =>
       invoke('search_open_voice_directory', { epoch, target }),
     effectCatalogue: (epoch, kind) => invoke('effect_catalogue', { epoch, kind }),
+    effectDirectoryOverview: (epoch) => invoke('effect_directory_overview', { epoch }),
     effectDetail: (epoch, id) => invoke('effect_detail', { epoch, id }),
     effectPeqPending: (epoch) => invoke('effect_peq_pending', { epoch }),
     effectPeqStatus: (epoch, id) => invoke('effect_peq_status', { epoch, id }),

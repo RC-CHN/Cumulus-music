@@ -96,6 +96,7 @@ enum RequestBinding<'a> {
     },
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     PlaybackChorus(&'a PlaybackChorusPermission<'a>),
+    EffectCatalogue(&'a crate::protocol::api::EffectCataloguePermission<'a>),
     PodcastBadge {
         permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -705,6 +706,9 @@ impl MusicHttpClient {
         // Async gate serializes cookie rotation for one candidate/profile;
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
+        if let Some(RequestBinding::EffectCatalogue(current)) = binding {
+            current()?;
+        }
         if let Some(RequestBinding::PodcastProgress(allowed)) = binding
             && !allowed()?
         {
@@ -930,6 +934,17 @@ impl MusicHttpClient {
                 {
                     return Err(Error::CredentialChanged);
                 }
+                permission()?;
+            }
+            if let Some(RequestBinding::EffectCatalogue(permission)) = binding {
+                let current = self.credentials.request_credentials(&target)?;
+                if current.revision != snapshot.revision
+                    || current.device_id != snapshot.device_id
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                self.check_account_cookie_scope(&current, ["/api/w/nuser/account/get"])?;
                 permission()?;
             }
             if let Some(RequestBinding::PlaybackChorus(permission)) = binding {
@@ -1230,6 +1245,28 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn request_effect_catalogue<'a>(
+        &'a self,
+        read: crate::protocol::api::EffectCatalogueRead,
+        revision: Option<&'a str>,
+        current: &'a crate::protocol::api::EffectCataloguePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, payload) = read.into_request();
+            let response = self
+                .execute(
+                    path,
+                    payload,
+                    false,
+                    revision,
+                    Jsk::None,
+                    Some(RequestBinding::EffectCatalogue(current)),
+                )
+                .await?;
+            crate::protocol::api::validate_response(path, response, &[200])
+        })
+    }
+
     fn playback_source_credential_revision(&self) -> Result<Option<String>> {
         const PATH: &str = "/api/song/enhance/player/url/v1";
         let origin = self.credentials.origin();

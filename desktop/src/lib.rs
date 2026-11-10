@@ -276,6 +276,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 effect_activation::effect_peq_pause,
                 effect_activation::effect_peq_stop,
                 effects::effect_catalogue,
+                effects::effect_directory_overview,
                 effects::effect_detail,
                 effects::effect_device_brands,
                 effects::effect_device_models,

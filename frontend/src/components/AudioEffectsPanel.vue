@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { AccountView } from '../services/contracts';
+import type { EffectCataloguePresentation } from '../services/pcPresentation';
 import { equalizerTone, equalizerToneEnabled } from '../services/equalizer';
 import Icon from './Icon.vue';
 import EffectDirectory from './EffectDirectory.vue';
@@ -9,7 +10,11 @@ import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
 import LocalEqualizerMaster from './LocalEqualizerMaster.vue';
 
-const props = defineProps<{ account: AccountView; player: PlayerModel }>();
+const props = defineProps<{
+  account: AccountView;
+  player: PlayerModel;
+  effectCatalogue?: EffectCataloguePresentation;
+}>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const routes = [
   { key: 'catalogue', label: '音效' },
@@ -146,6 +151,7 @@ onUnmounted(() => {
   <dialog
     ref="dialog"
     class="audio-effects-panel"
+    :data-audio-effect-layout="effectCatalogue?.layout ?? 'legacy'"
     :aria-labelledby="title"
     @cancel.prevent="emit('close')"
   >
@@ -199,6 +205,7 @@ onUnmounted(() => {
           <EffectDirectory
             v-if="online"
             embedded
+            :effect-catalogue-revision="effectCatalogue?.revision"
             :account="account"
             :binding-status="view?.boundParametric"
             :parametric-processing="view?.parametricProcessing"
@@ -246,6 +253,10 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 18px 70px #0003;
+}
+.audio-effects-panel[data-audio-effect-layout='legacy'] {
+  width: min(768px, calc(100vw - 32px));
+  height: min(480px, calc(100dvh - 32px));
 }
 .audio-effects-panel[open] {
   display: flex;

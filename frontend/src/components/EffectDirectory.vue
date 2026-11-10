@@ -7,9 +7,11 @@ import { useEffectRegistrationChanges } from '../composables/useEffectRegistrati
 import type {
   EffectCatalogueItem,
   EffectCatalogueKind,
+  EffectDirectorySection,
   EffectAccess,
   PendingEffectRegistration,
 } from '../services/effectDirectory';
+import { presentationRevision } from '../services/searchViewport';
 import type { BoundParametricStatus, DeviceParametricView } from '../services/player';
 import Icon from './Icon.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
@@ -19,6 +21,7 @@ const props = defineProps<{
   account: AccountView;
   initialManagementOnly?: boolean;
   embedded?: boolean;
+  effectCatalogueRevision?: string;
   headphoneManagement?: boolean;
   bindingStatus?: BoundParametricStatus;
   deviceParametric?: DeviceParametricView;
@@ -44,12 +47,19 @@ const accessLabels: Record<EffectAccess, string> = {
 type Category = EffectCatalogueKind | 'devices';
 const kind = ref<Category>('highly_recommended');
 type OverviewGroup = {
-  key: 'selection' | 'more';
+  key: EffectDirectorySection;
   title: string;
   items: EffectCatalogueItem[];
 };
 const items = ref<EffectCatalogueItem[]>([]);
 const overview = ref<OverviewGroup[]>([]);
+const embeddedLayout = ref<'legacy' | 'modern'>();
+const sectionTitles: Record<EffectDirectorySection, string> = {
+  selection: '官方精选音效',
+  more: '更多音效',
+  legacy_recommended: '推荐音效',
+  legacy_all: '全部音效',
+};
 const groups = computed(() =>
   props.embedded ? overview.value : [{ key: 'category' as const, title: '', items: items.value }],
 );
@@ -101,6 +111,17 @@ const detailError = ref('');
 let listRequest = 0;
 let detailRequest = 0;
 let previousFocus: HTMLElement | null = null;
+let cohortOrder = presentationRevision(props.effectCatalogueRevision);
+watch(
+  () => props.effectCatalogueRevision,
+  (revision) => {
+    const next = presentationRevision(revision);
+    if (!props.embedded || next === undefined || (cohortOrder !== undefined && next <= cohortOrder))
+      return;
+    cohortOrder = next;
+    if (browsing.value) void load(kind.value);
+  },
+);
 
 function artworkFor(item: EffectCatalogueItem) {
   const url = appearance.value === 'dark' ? item.dark_artwork : item.light_artwork;
@@ -119,6 +140,7 @@ async function load(category: Category) {
   kind.value = category;
   items.value = [];
   overview.value = [];
+  embeddedLayout.value = undefined;
   partial.value = false;
   clearTrials();
   selected.value = undefined;
@@ -134,28 +156,18 @@ async function load(category: Category) {
   loading.value = true;
   try {
     if (props.embedded) {
-      const result = await Promise.allSettled([
-        core.effectCatalogue(epoch, 'highly_recommended'),
-        core.effectCatalogue(epoch, 'recommended'),
-        core.effectCatalogue(epoch, 'more'),
-      ]);
+      const result = await core.effectDirectoryOverview(epoch);
       if (!current()) return;
-      const rows = (group: PromiseSettledResult<EffectCatalogueItem[]>) =>
-        group.status === 'fulfilled' ? group.value : [];
-      const [high, recommended, more] = [rows(result[0]), rows(result[1]), rows(result[2])];
-      const failed = result.filter((group) => group.status === 'rejected');
-      if (failed.length === result.length) throw failed[0]!.reason;
-      // PC AudioNew only shows the merged selection with at least one
-      // priority item and two ordinary recommendations.
-      if (high.length > 0 && recommended.length > 1)
-        overview.value.push({
-          key: 'selection',
-          title: '官方精选音效',
-          items: [...high, ...recommended].slice(0, 7),
-        });
-      if (more.length) overview.value.push({ key: 'more', title: '更多音效', items: more });
+      const revision = presentationRevision(result.cohortRevision);
+      if (revision === undefined || (cohortOrder !== undefined && revision < cohortOrder)) return;
+      cohortOrder = revision;
+      embeddedLayout.value = result.layout;
+      overview.value = result.groups.map((group) => ({
+        ...group,
+        title: sectionTitles[group.key],
+      }));
       items.value = overview.value.flatMap((group) => group.items);
-      partial.value = failed.length > 0;
+      partial.value = result.partial;
     } else {
       const rows = await core.effectCatalogue(epoch, category);
       if (!current()) return;
@@ -284,6 +296,7 @@ onUnmounted(() => {
     ref="dialog"
     class="effect-directory"
     :class="{ 'effect-directory-embedded': embedded }"
+    :data-effect-layout="embeddedLayout"
     :aria-label="embedded ? undefined : headphoneManagement ? '耳机音效' : '音效目录'"
     @cancel.prevent="emit('close')"
   >
@@ -392,7 +405,10 @@ onUnmounted(() => {
               <p role="status">部分音效暂时无法读取。</p>
               <button type="button" @click="load(kind)">重试目录</button>
             </div>
-            <p v-if="!items.length && !partial" class="effect-directory-message">
+            <p
+              v-if="!items.length && !partial && embeddedLayout !== 'legacy'"
+              class="effect-directory-message"
+            >
               {{ embedded ? '暂无音效。' : '此分类暂无音效。' }}
             </p>
             <div v-for="group in groups" :key="group.key" :data-effect-group="group.key">
@@ -420,7 +436,7 @@ onUnmounted(() => {
                       alt=""
                       @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
                     />
-                    <Icon v-else name="music" />
+                    <Icon v-else-if="embeddedLayout !== 'legacy'" name="music" />
                     <strong>
                       {{ item.name || '未命名音效' }}
                       <span
@@ -431,8 +447,13 @@ onUnmounted(() => {
                         >{{ item.membership === 'svip' ? 'SVIP' : 'VIP'
                         }}{{ trialEffects.has(item.id) ? ' 限免' : '' }}</span
                       >
+                      <span v-if="item.newly_added" class="effect-card-membership" data-effect-new
+                        >新</span
+                      >
                     </strong>
-                    <span v-if="item.subtitle">{{ item.subtitle }}</span>
+                    <span v-if="item.subtitle && group.key !== 'legacy_all'">{{
+                      item.subtitle
+                    }}</span>
                   </button>
                 </li>
               </ul>
@@ -599,6 +620,61 @@ onUnmounted(() => {
 .effect-directory-grid-more .effect-directory-card {
   min-height: 78px;
   justify-content: center;
+}
+.effect-directory-grid-legacy_recommended,
+.effect-directory-grid-legacy_all {
+  max-width: 688px;
+  margin: 0 0 19px;
+}
+.effect-directory[data-effect-layout='legacy'] .effect-directory-section-title {
+  line-height: 22px;
+  margin-bottom: 9px;
+}
+.effect-directory-grid-legacy_recommended {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.effect-directory-grid-legacy_all {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card,
+.effect-directory-grid-legacy_all .effect-directory-card {
+  height: 94px;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  border-color: transparent;
+  padding: 12px clamp(9px, 3vw, 20px);
+  gap: 3px;
+  justify-content: center;
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card > strong {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 18px;
+}
+.effect-directory-grid-legacy_all .effect-directory-card > strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card[aria-pressed='true'],
+.effect-directory-grid-legacy_all .effect-directory-card[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+.effect-directory-grid-legacy_all .effect-directory-card {
+  height: 66px;
+}
+.effect-directory-grid-legacy_recommended .effect-directory-card > strong,
+.effect-directory-grid-legacy_recommended .effect-directory-card > span,
+.effect-directory-grid-legacy_all .effect-directory-card > strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 @media (max-width: 520px) {
   .effect-directory-grid-selection {

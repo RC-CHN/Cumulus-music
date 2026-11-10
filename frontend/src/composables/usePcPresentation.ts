@@ -1,6 +1,10 @@
 import { readonly, ref } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
-import type { PcPresentationClient, PcPresentationView } from '../services/pcPresentation.ts';
+import type {
+  EffectCataloguePresentation,
+  PcPresentationClient,
+  PcPresentationView,
+} from '../services/pcPresentation.ts';
 import { presentationRevision, type SearchViewportMemory } from '../services/searchViewport.ts';
 
 /** One shell subscription outlives search pages and their Back snapshots. */
@@ -14,6 +18,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
   let guestOrder: bigint | undefined;
   const guestSearchReady = ref(false);
   const podcastResume = ref(false);
+  const effectCatalogue = ref<EffectCataloguePresentation>();
   let signedOrder: bigint | undefined;
   const eligibleGuest = () => account?.status === 'unknown' || account?.status === 'signed_out';
   function observe(view: PcPresentationView) {
@@ -24,6 +29,18 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
       if (order !== undefined && (signedOrder === undefined || order > signedOrder)) {
         signedOrder = order;
         podcastResume.value = view.podcastResume === true;
+        const cohort = presentationRevision(view.effectCatalogueRevision);
+        const previous = presentationRevision(effectCatalogue.value?.revision);
+        if (
+          view.effectCatalogueRevision &&
+          cohort !== undefined &&
+          (previous === undefined || cohort > previous)
+        ) {
+          effectCatalogue.value = {
+            revision: view.effectCatalogueRevision,
+            layout: view.effectCatalogueNew ? 'modern' : 'legacy',
+          };
+        }
       }
     } else if (eligibleGuest()) {
       const order = presentationRevision(view.revision);
@@ -51,6 +68,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     guestOrder = undefined;
     signedOrder = undefined;
     podcastResume.value = false;
+    effectCatalogue.value = undefined;
     guestSearchReady.value = false;
     void snapshot();
   }
@@ -78,6 +96,7 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     guestSearchReady.value = false;
     listening = false;
     podcastResume.value = false;
+    effectCatalogue.value = undefined;
     unlisten?.();
     unlisten = undefined;
   }
@@ -87,5 +106,6 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     dispose,
     guestSearchReady: readonly(guestSearchReady),
     podcastResume: readonly(podcastResume),
+    effectCatalogue: readonly(effectCatalogue),
   };
 }

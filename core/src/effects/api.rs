@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    protocol::api::{Api, identifier},
+    protocol::api::{Api, EffectCataloguePermission, EffectCatalogueRead, identifier},
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, sync::Arc};
@@ -36,17 +36,37 @@ impl EffectsApi {
         )
     }
     pub async fn legacy_catalogue(&self, recommended: bool) -> Result<Vec<Sound>> {
-        sounds(
-            self.data(
-                if recommended {
-                    "/api/usertool/sound/mobile/promote"
-                } else {
-                    "/api/usertool/sound/mobile/all"
-                },
-                json!({}),
-            )
-            .await?,
-        )
+        let read = if recommended {
+            EffectCatalogueRead::LegacyRecommended
+        } else {
+            EffectCatalogueRead::LegacyAll
+        };
+        let (path, args) = read.into_request();
+        legacy_sounds(self.data(path, args).await?)
+    }
+
+    pub(super) async fn directory_catalogue(
+        &self,
+        read: EffectCatalogueRead,
+        revision: Option<&str>,
+        current: &EffectCataloguePermission<'_>,
+    ) -> Result<Vec<Sound>> {
+        let response = self
+            .api
+            .request_effect_catalogue(read, revision, current)
+            .await?;
+        let data = response
+            .get("data")
+            .cloned()
+            .ok_or(Error::Response("missing effect response data"))?;
+        if matches!(
+            read,
+            EffectCatalogueRead::LegacyRecommended | EffectCatalogueRead::LegacyAll
+        ) {
+            legacy_sounds(data)
+        } else {
+            sounds(data)
+        }
     }
     pub async fn device_brands(&self) -> Result<Vec<Value>> {
         array(
@@ -254,4 +274,10 @@ pub(super) fn sounds(value: Value) -> Result<Vec<Sound>> {
             Ok(item)
         })
         .collect()
+}
+
+fn legacy_sounds(value: Value) -> Result<Vec<Sound>> {
+    // M/85 maps every row in order. M/3091 only removes recommendations
+    // appearing in the first six, and does not deduplicate either response.
+    array(value)?.iter().map(Sound::from_official).collect()
 }
