@@ -18,6 +18,10 @@ type ReplyForCall = Box<dyn FnOnce(&WireCall) -> Result<HttpReply> + Send>;
 pub enum HttpResponse {
     Ready(Result<HttpReply>),
     Pending(oneshot::Receiver<Result<HttpReply>>),
+    #[allow(
+        dead_code,
+        reason = "some integration binaries use only sequential scripted replies"
+    )]
     ForCall(ReplyForCall),
 }
 impl From<Value> for HttpResponse {
