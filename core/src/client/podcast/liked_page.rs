@@ -6,14 +6,15 @@ use crate::{
     account::SessionToken,
     client::dto::AccountData,
     playback::engine::Cancellation,
-    podcast::{Episode, LikedVoicePage},
+    podcast::{Episode, LikedVoicePage, cache_generation_in},
     protocol::api::identifier,
+    storage::StateTransaction,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
     time::Duration,
 };
 use tokio::time::Instant;
@@ -168,6 +169,20 @@ impl Visit {
         }
     }
 
+    fn program(&self, target: &PodcastLikedPageTarget, id: &str) -> Result<&Episode> {
+        self.current(&target.visit, &target.revision)?;
+        let index = self.indices.get(id).ok_or(Error::QueueChanged)?;
+        Ok(&self.rows[*index])
+    }
+
+    fn playable_program(&self, target: &PodcastLikedPageTarget, id: &str) -> Result<&Episode> {
+        let row = self.program(target, id)?;
+        if row.display_status_withdrawn() || row.raw["grayDisplay"] == true {
+            return Err(Error::QueueChanged);
+        }
+        Ok(row)
+    }
+
     fn cursor(&self, continuation: &str) -> Result<&Cursor> {
         self.cursor
             .as_ref()
@@ -222,7 +237,77 @@ pub(in crate::client) struct LikedPagePlayback {
     pub authority: Cancellation,
 }
 
+/// Held only across a synchronous download insert, never a network await.
+/// The caller already holds the current AccountSession lock and the download
+/// directory/task locks, and must not re-enter the session while holding this.
+pub(in crate::client) struct LikedPageAdmissionLease<'a> {
+    _slot: MutexGuard<'a, Slot>,
+    generation: u64,
+}
+
+impl LikedPageAdmissionLease<'_> {
+    pub(in crate::client) fn verify_generation(
+        &self,
+        tx: &StateTransaction<'_>,
+        owner: &str,
+    ) -> Result<()> {
+        if cache_generation_in(tx, owner)? != self.generation {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
+}
+
 impl MusicClient {
+    pub(in crate::client) fn liked_page_download_id(
+        &self,
+        token: &SessionToken,
+        target: &PodcastLikedPageTarget,
+    ) -> Result<String> {
+        let id = identifier(&json!(target.voice_id))?;
+        self.with_liked_visit(token, |slot| {
+            let row = slot
+                .as_ref()
+                .ok_or(Error::QueueChanged)?
+                .playable_program(target, &id)?;
+            Ok(row.id.clone())
+        })
+    }
+
+    /// Called under the already checked account lock. Keep this separate from
+    /// with_liked_visit, which would attempt to lock the account a second time.
+    pub(in crate::client) fn lock_liked_page_admission(
+        &self,
+        token: &SessionToken,
+        target: &PodcastLikedPageTarget,
+        song_id: &str,
+    ) -> Result<LikedPageAdmissionLease<'_>> {
+        let id = identifier(&json!(target.voice_id))?;
+        let slot = self
+            .podcast_liked
+            .0
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        let (_, generation) = slot
+            .owner
+            .as_ref()
+            .filter(|(owner, _)| owner == token)
+            .ok_or(Error::QueueChanged)?;
+        let row = slot
+            .visit
+            .as_ref()
+            .ok_or(Error::QueueChanged)?
+            .playable_program(target, &id)?;
+        if row.song_id.as_deref().is_some_and(|known| known != song_id) {
+            return Err(Error::QueueChanged);
+        }
+        let generation = *generation;
+        Ok(LikedPageAdmissionLease {
+            _slot: slot,
+            generation,
+        })
+    }
+
     fn with_liked_visit<T>(
         &self,
         token: &SessionToken,
@@ -366,9 +451,7 @@ impl MusicClient {
         let id = identifier(&json!(target.voice_id))?;
         self.with_liked_visit(token, |slot| {
             let row = slot.as_ref().ok_or(Error::QueueChanged)?;
-            row.current(&target.visit, &target.revision)?;
-            let index = row.indices.get(&id).ok_or(Error::QueueChanged)?;
-            Ok(row.rows[*index].clone())
+            Ok(row.program(target, &id)?.clone())
         })
     }
 

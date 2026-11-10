@@ -8,7 +8,7 @@ use crate::{
     storage::{OperationLock, StateStore, StateTransaction},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, sync::Arc};
 const CACHE: &str = "podcast-lists-v1";
@@ -63,15 +63,22 @@ pub(super) fn invalidate(tx: &mut StateTransaction<'_>, owner: &str) -> Result<(
         ),
     )
 }
-fn generation(store: &StateStore, owner: &str) -> Result<u64> {
-    store
-        .get(owner, VERSION, "current")?
+fn parse_generation(value: Option<Value>) -> Result<u64> {
+    value
         .map(|v| {
             v.as_u64()
                 .ok_or(Error::State("invalid podcast cache version"))
         })
         .transpose()
         .map(|v| v.unwrap_or(0))
+}
+
+fn generation(store: &StateStore, owner: &str) -> Result<u64> {
+    parse_generation(store.get(owner, VERSION, "current")?)
+}
+
+pub(crate) fn cache_generation_in(tx: &StateTransaction<'_>, owner: &str) -> Result<u64> {
+    parse_generation(tx.get(owner, VERSION, "current")?)
 }
 impl PodcastLibrary {
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {

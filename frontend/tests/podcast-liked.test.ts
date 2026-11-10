@@ -351,14 +351,20 @@ test('the adapter transports only the typed liked visit and row request shape', 
   await client.podcastLikedPage(epoch, widerQuery);
   await client.podcastLikedCount(epoch);
   await client.podcastLikedPageProgram(epoch, widerTarget);
+  await client.downloadLikedPageVoicePrepare(epoch, widerTarget);
   assert.deepEqual(calls, [
     ['podcast_liked_page', { epoch, query }],
     ['podcast_liked_count', { epoch }],
     ['podcast_liked_page_program', { epoch, target }],
+    ['download_liked_page_voice_prepare', { epoch, target }],
   ]);
 });
 
 test('a direct adapter caller cannot consume a response for another epoch', async () => {
   const client = createPodcastLikedBridge(async <T>() => ({ epoch: 'other', value: 73 }) as T);
   await assert.rejects(client.podcastLikedCount(epoch), { code: 'stale' });
+  await assert.rejects(
+    client.downloadLikedPageVoicePrepare(epoch, { visit: 'v', revision: 'r', voiceId: '81' }),
+    { code: 'stale' },
+  );
 });

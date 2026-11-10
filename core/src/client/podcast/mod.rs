@@ -6,7 +6,7 @@ mod discovery;
 mod dto;
 mod home;
 pub(in crate::client) mod liked_menu;
-mod liked_page;
+pub(in crate::client) mod liked_page;
 mod liked_playback;
 mod program_menu;
 pub(in crate::client) mod purchased;

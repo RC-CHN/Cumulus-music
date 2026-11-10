@@ -114,7 +114,7 @@ impl MusicClient {
                     .await
             }
             DownloadCommand::ConfirmVoice(confirmation) => {
-                host.confirm_voice_download(context, confirmation).await
+                self.confirm_voice_download(context, confirmation).await
             }
             DownloadCommand::StartMv { id, resolution } => {
                 context.guard()?;

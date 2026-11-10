@@ -71,6 +71,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "podcast_liked_page",
             "podcast_liked_count",
             "podcast_liked_page_program",
+            "download_liked_page_voice_prepare",
             "collection_page",
             "history_page",
             "history_command",
@@ -192,6 +193,23 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         Err(
             json!({"code":"snapshot_changed","message":"列表已更新，请刷新后重试","retryable":true}),
         ),
+    );
+    let unlisted = json!({
+        "epoch":"1","target":{"visit":visit,"revision":revision,"voiceId":"81"}
+    });
+    assert_ipc_response(
+        &window,
+        request("download_liked_page_voice_prepare", unlisted.clone()),
+        Err(
+            json!({"code":"snapshot_changed","message":"列表已更新，请刷新后重试","retryable":true}),
+        ),
+    );
+    let mut substituted = unlisted;
+    substituted["voiceIds"] = json!(["999"]);
+    assert_ipc_response(
+        &window,
+        request("download_liked_page_voice_prepare", substituted),
+        Err(json!({"code":"invalid_input","message":"输入内容不符合要求","retryable":false})),
     );
     let card_receipt = "0123456789abcdef0123456789abcdef";
     let selection_receipt = "abcdef0123456789abcdef0123456789";
@@ -645,6 +663,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","query":{"kind":"open"}}),
         ),
         ("podcast_liked_count", json!({"epoch":"0"})),
+        (
+            "download_liked_page_voice_prepare",
+            json!({"epoch":"0","target":{"visit":"old","revision":"old","voiceId":"81"}}),
+        ),
         (
             "podcast_liked_page_program",
             json!({"epoch":"0","target":{"visit":"old","revision":"old","voiceId":"81"}}),

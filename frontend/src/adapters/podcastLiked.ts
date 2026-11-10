@@ -1,4 +1,5 @@
-import type { AccountData, CoreFailure } from '../services/contracts.ts';
+import type { CoreFailure } from '../services/contracts.ts';
+import type { DownloadClient } from '../services/downloads.ts';
 import type { PodcastLikedClient, PodcastLikedQuery } from '../services/podcast.ts';
 
 type Invoke = <T>(command: string, payload: Record<string, unknown>) => Promise<T>;
@@ -12,9 +13,15 @@ function likedQuery(query: PodcastLikedQuery): PodcastLikedQuery {
     : { kind, visit, revision };
 }
 
-export function createPodcastLikedBridge(invoke: Invoke): PodcastLikedClient {
-  async function read<T>(command: string, epoch: string, args: Record<string, unknown> = {}) {
-    const reply = await invoke<AccountData<T>>(command, { epoch, ...args });
+type LikedBridge = PodcastLikedClient & Pick<DownloadClient, 'downloadLikedPageVoicePrepare'>;
+
+export function createPodcastLikedBridge(invoke: Invoke): LikedBridge {
+  async function read<T extends { epoch: string }>(
+    command: string,
+    epoch: string,
+    args: Record<string, unknown> = {},
+  ) {
+    const reply = await invoke<T>(command, { epoch, ...args });
     if (reply.epoch !== epoch) {
       throw {
         code: 'stale',
@@ -31,5 +38,9 @@ export function createPodcastLikedBridge(invoke: Invoke): PodcastLikedClient {
     podcastLikedCount: (epoch) => read('podcast_liked_count', epoch),
     podcastLikedPageProgram: (epoch, { visit, revision, voiceId }) =>
       read('podcast_liked_page_program', epoch, { target: { visit, revision, voiceId } }),
+    downloadLikedPageVoicePrepare: (epoch, { visit, revision, voiceId }) =>
+      read('download_liked_page_voice_prepare', epoch, {
+        target: { visit, revision, voiceId },
+      }),
   };
 }

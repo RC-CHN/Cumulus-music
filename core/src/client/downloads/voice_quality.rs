@@ -1,20 +1,21 @@
 //! Ordinary episode quality selection (M/3085, M/71, M/754 and M/334).
 use super::{Context, DownloadFailure, DownloadResult, Host, MusicClient};
 use crate::client::{
-    dto::{PodcastLikedProgramTarget, PodcastPurchasedTarget},
+    dto::{PodcastLikedPageTarget, PodcastLikedProgramTarget, PodcastPurchasedTarget},
     podcast::{
         liked_menu::{liked_playable_program, lock_liked_download_voice},
+        liked_page::LikedPageAdmissionLease,
         purchased::{lock_purchased_download_voice, purchased_download_voice},
     },
 };
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    download::service::{DownloadOptions, OutputContainer},
+    download::service::{DownloadOptions, OutputContainer, ScopedTaskAdmission, ScopedTaskLease},
     membership::Quality,
     podcast::PodcastApi,
     protocol::api::{Api, identifier},
-    storage::OperationLock,
+    storage::{OperationLock, StateTransaction},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -80,10 +81,23 @@ struct Plan {
 }
 
 enum VoiceScope {
+    Legacy(LegacyVoiceScope),
+    LikedPage(PodcastLikedPageTarget),
+}
+impl VoiceScope {
+    fn id(&self, client: &MusicClient, token: &SessionToken) -> Result<String> {
+        match self {
+            Self::Legacy(source) => source.id(&client.session, token),
+            Self::LikedPage(target) => client.liked_page_download_id(token, target),
+        }
+    }
+}
+
+enum LegacyVoiceScope {
     Purchased(PodcastPurchasedTarget),
     Liked(PodcastLikedProgramTarget),
 }
-impl VoiceScope {
+impl LegacyVoiceScope {
     fn id(&self, session: &Arc<AccountSession>, token: &SessionToken) -> Result<String> {
         match self {
             Self::Purchased(source) => purchased_download_voice(session, token, source),
@@ -95,6 +109,28 @@ impl VoiceScope {
             Self::Purchased(source) => lock_purchased_download_voice(session, token, source),
             Self::Liked(source) => lock_liked_download_voice(session, token, source),
         }
+    }
+}
+
+struct LikedPageAdmission<'a> {
+    client: &'a MusicClient,
+    token: &'a SessionToken,
+    target: &'a PodcastLikedPageTarget,
+}
+
+impl ScopedTaskAdmission for LikedPageAdmission<'_> {
+    fn acquire(&self, song_id: &str) -> Result<Box<dyn ScopedTaskLease + '_>> {
+        Ok(Box::new(self.client.lock_liked_page_admission(
+            self.token,
+            self.target,
+            song_id,
+        )?))
+    }
+}
+
+impl ScopedTaskLease for LikedPageAdmissionLease<'_> {
+    fn verify(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
+        self.verify_generation(tx, owner)
     }
 }
 
@@ -208,8 +244,12 @@ impl MusicClient {
         epoch: &str,
         target: PodcastPurchasedTarget,
     ) -> Result<VoiceDownloadPreparation> {
-        self.prepare_voice_quality(epoch, Vec::new(), Some(VoiceScope::Purchased(target)))
-            .await
+        self.prepare_voice_quality(
+            epoch,
+            Vec::new(),
+            Some(VoiceScope::Legacy(LegacyVoiceScope::Purchased(target))),
+        )
+        .await
     }
 
     pub async fn download_liked_voice_prepare(
@@ -217,7 +257,20 @@ impl MusicClient {
         epoch: &str,
         target: PodcastLikedProgramTarget,
     ) -> Result<VoiceDownloadPreparation> {
-        self.prepare_voice_quality(epoch, Vec::new(), Some(VoiceScope::Liked(target)))
+        self.prepare_voice_quality(
+            epoch,
+            Vec::new(),
+            Some(VoiceScope::Legacy(LegacyVoiceScope::Liked(target))),
+        )
+        .await
+    }
+
+    pub async fn download_liked_page_voice_prepare(
+        &self,
+        epoch: &str,
+        target: PodcastLikedPageTarget,
+    ) -> Result<VoiceDownloadPreparation> {
+        self.prepare_voice_quality(epoch, Vec::new(), Some(VoiceScope::LikedPage(target)))
             .await
     }
 
@@ -233,7 +286,7 @@ impl MusicClient {
         }
         self.session.with_token(&token, |_| Ok(()))?;
         let voices = match &scope {
-            Some(source) => vec![source.id(&self.session, &token)?],
+            Some(source) => vec![source.id(self, &token)?],
             None => voice_ids(voices)?,
         };
         let api = self.session.native_api(&token)?;
@@ -267,7 +320,7 @@ impl MusicClient {
                     self.session.require_api(expected, &api)?;
                     check_attempt(host, attempt)?;
                     if let Some(source) = source {
-                        source.id(&self.session, expected)?;
+                        source.id(self, expected)?;
                     }
                     if rights.allowed.as_slice() != [id.as_str()] {
                         return Ok(None);
@@ -294,7 +347,7 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         if let Some(source) = &scope {
-            source.id(&self.session, &token)?;
+            source.id(self, &token)?;
         }
         if !presentation.choices.is_empty() {
             let receipt = uuid::Uuid::new_v4().simple().to_string();
@@ -323,16 +376,15 @@ impl MusicClient {
         }
         Ok(())
     }
-}
 
-impl Host {
     pub(super) async fn confirm_voice_download(
         &self,
         context: Context,
         confirmation: VoiceDownloadConfirmation,
     ) -> Result<DownloadResult> {
+        let host = &self.downloads.inner;
         let plan = {
-            let mut state = self.voice_quality.lock().map_err(|_| Error::LockPoisoned)?;
+            let mut state = host.voice_quality.lock().map_err(|_| Error::LockPoisoned)?;
             let plan = state
                 .plan
                 .as_ref()
@@ -344,7 +396,7 @@ impl Host {
                 .ok_or(Error::StaleResponse)?;
             context.session.require_api(&plan.token, &plan.api)?;
             if let Some(source) = &plan.scope {
-                source.id(&context.session, &plan.token)?;
+                source.id(self, &plan.token)?;
             }
             if !plan.qualities.contains(&confirmation.quality) {
                 return Err(Error::InvalidInput(
@@ -367,18 +419,32 @@ impl Host {
         for id in plan.voices {
             context.session.require_api(&plan.token, &plan.api)?;
             let voice = json!(id);
-            let task = if let Some(source) = &plan.scope {
-                context
-                    .service
-                    .create_scoped_voice_default(&voice, options.clone(), || {
-                        source.lock(&context.session, &plan.token)
-                    })
-                    .await
-            } else {
-                context
-                    .service
-                    .create_voice_default(&voice, options.clone())
-                    .await
+            let task = match &plan.scope {
+                Some(VoiceScope::LikedPage(target)) => {
+                    let source = LikedPageAdmission {
+                        client: self,
+                        token: &plan.token,
+                        target,
+                    };
+                    context
+                        .service
+                        .create_visit_scoped_voice_default(&voice, options.clone(), &source)
+                        .await
+                }
+                Some(VoiceScope::Legacy(source)) => {
+                    context
+                        .service
+                        .create_scoped_voice_default(&voice, options.clone(), || {
+                            source.lock(&context.session, &plan.token)
+                        })
+                        .await
+                }
+                None => {
+                    context
+                        .service
+                        .create_voice_default(&voice, options.clone())
+                        .await
+                }
             };
             match task {
                 Ok(task) => result.accepted.push(task.id),
@@ -391,7 +457,7 @@ impl Host {
                     message: "节目下载未能创建，请检查权限、格式选项和下载目录",
                 }),
             }
-            self.kick(&context)?;
+            host.kick(&context)?;
         }
         context.guard()?;
         Ok(result)

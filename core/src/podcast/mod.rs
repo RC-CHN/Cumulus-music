@@ -23,4 +23,5 @@ pub(crate) use mutations::FreshVinylSubscription;
 pub use mutations::{PodcastAction, PodcastMutation, PodcastService};
 pub use rights::{DownloadPermission, PlayPermission};
 pub use skip::{AudiobookIntervals, AudiobookSkip, is_audiobook};
+pub(crate) use snapshot::cache_generation_in;
 pub use snapshot::{PodcastLibrary, PodcastScope, PodcastSnapshot};

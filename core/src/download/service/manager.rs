@@ -8,7 +8,7 @@ use crate::{
         transfer::{MediaBackend, ReqwestMediaBackend, TransferManager},
     },
     protocol::api::identifier,
-    storage::{OperationLock, StateStore},
+    storage::{OperationLock, StateStore, StateTransaction},
 };
 use serde_json::Value;
 use std::{
@@ -38,11 +38,24 @@ pub(super) struct TaskDestination {
     pub(super) identity: files::Identity,
 }
 
+/// Commit-time source authority for a scoped task. Acquisition runs under
+/// the checked account lock and must not call AccountSession or perform I/O.
+pub(crate) trait ScopedTaskAdmission: Sync {
+    fn acquire(&self, song_id: &str) -> Result<Box<dyn ScopedTaskLease + '_>>;
+}
+
+pub(crate) trait ScopedTaskLease {
+    /// Called inside the task insert transaction, with the source held until
+    /// commit. Read only through this transaction, never the store itself.
+    fn verify(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()>;
+}
+
 #[derive(Default)]
 struct CreateFence<'a> {
     permission: Option<&'a dyn Fn() -> Result<()>>,
     catalog_unique: bool,
     cancelled: Option<&'a AtomicBool>,
+    scope: Option<&'a dyn ScopedTaskAdmission>,
 }
 
 impl CreateFence<'_> {
@@ -371,6 +384,27 @@ impl DownloadService {
         self.create_configured(song_id, options, origin, song, CreateFence::default())
     }
 
+    pub(super) fn create_scoped_voice_from(
+        &self,
+        song_id: &Value,
+        options: DownloadOptions,
+        voice_id: String,
+        song: Value,
+        scope: &dyn ScopedTaskAdmission,
+    ) -> Result<DownloadTask> {
+        let _directory = directory_gate::lock(&self.store, &self.owner)?;
+        self.create_configured(
+            song_id,
+            options,
+            DownloadOrigin::Voice { voice_id },
+            Some(song),
+            CreateFence {
+                scope: Some(scope),
+                ..Default::default()
+            },
+        )
+    }
+
     pub(crate) fn create_guarded_song(
         &self,
         song_id: &Value,
@@ -389,6 +423,7 @@ impl DownloadService {
                 permission: Some(permission),
                 catalog_unique: true,
                 cancelled: Some(cancelled),
+                ..Default::default()
             },
         )?;
         committed();
@@ -533,7 +568,14 @@ impl DownloadService {
             if owner != self.owner {
                 return Err(Error::StaleResponse);
             }
+            let lease = fence
+                .scope
+                .map(|scope| scope.acquire(&staged.task_mut().song_id))
+                .transpose()?;
             self.store.transaction(|tx| {
+                if let Some(lease) = &lease {
+                    lease.verify(tx, owner)?;
+                }
                 let task = staged.task_mut();
                 if fence.catalog_unique {
                     require_new_catalog_task(tx, owner, &task.song_id)?;

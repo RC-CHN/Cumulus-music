@@ -117,6 +117,26 @@ impl DownloadService {
         self.create_voice_default_from(item, options)
     }
 
+    pub(crate) async fn create_visit_scoped_voice_default(
+        &self,
+        id: &Value,
+        options: DownloadOptions,
+        scope: &dyn ScopedTaskAdmission,
+    ) -> Result<DownloadTask> {
+        options_valid(&options)?;
+        let item = self.voice_detail(id).await?;
+        if item.display_status_withdrawn() || item.raw["grayDisplay"] == true {
+            return Err(Error::QueueChanged);
+        }
+        self.create_scoped_voice_from(
+            &json!(item.media_id()?),
+            options,
+            item.id.clone(),
+            item.download_metadata()?,
+            scope,
+        )
+    }
+
     fn create_voice_default_from(
         &self,
         item: Episode,
