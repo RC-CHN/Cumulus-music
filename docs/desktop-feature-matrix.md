@@ -73,6 +73,15 @@ null 输出，无真实音源授权或写入；加密下载另有 Rust 证据，
 合成 PCM 和暂停静音。截图、哈希及后续旧房间回执防护的 Rust 检查分别
 归到实际测试的提交；不作为 Windows 或双账号验证。
 
+同一候选 `4861d330` 的[搜索批量下载](search-results-ui-contracts.txt)在 Linux
+WebKit 实际核对六条路径，共 60 个截图状态：直达、已有歌单、系统喜欢歌单、
+新旧任务混排、创建歌单、明确选择已购音质。测试检查合成 FLAC 帧、反向下载顺序、
+原来的暂停播放、旧任务原 ID 与 Range 偏移，以及未收到回执时只读核对。
+前端测试 1058 项通过；精确前端和原生探针哈希、逐态 PNG 和结果见
+`.build/ui-proof/phase252-search-download-paid-integration/receipt.json`。
+已购后新建的晚到/丢失回执、首轮只剩一首时原右击歌曲的判定、以及无已知长度
+重新授权的传输恢复另有封闭原生回归，不能当成 Windows、真实会员授权或写入证据。
+
 | 功能与官方来源 | 当前代码到桌面入口 | 已有证据与剩余边界 |
 | --- | --- | --- |
 | **协议和设备上下文**：报告 08–11，M/48、402、363、1368，Watchman/设备测量 | [签名、HTTP](../core/src/protocol/) → [身份](../core/src/identity/)、[Watchman](../core/src/watchman/) → [原生采集](../desktop/src/watchman/)和[启动配置](../desktop/src/identity.rs) | 冻结签名向量、配置缓存/取消/重开、Linux 原生采集和实际窗口 getter；实服有 PC 域受保护读取及隔离歌单 EAPI 往返。Windows 候选四条独立探针已有真实虚拟机只读观测；未接入产品默认签名，也未证明实体设备、完整官方引擎或全部风控分支等价。[请求契约](core-pc-request-context-contracts.txt) · [兼容映射](default-windows-compatibility.txt) · [原生诊断](windows-hardware-collector-plan.txt) |
