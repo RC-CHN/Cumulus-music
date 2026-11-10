@@ -1,4 +1,4 @@
-"""Optional same-run reuse for the signed Ubuntu WebView dependencies."""
+"""Bounded acquisition and optional same-run reuse for signed Ubuntu dependencies."""
 
 import argparse
 import hashlib
@@ -16,11 +16,21 @@ from linux_webview_apt_mirrors import AptDeadline, acquire, canonical_priority, 
 from linux_webview_probe_artifact import run_identity
 
 
-PACKAGES = (
+COMMON_PACKAGES = (
     'libwebkit2gtk-4.1-dev', 'libxdo-dev', 'libayatana-appindicator3-dev', 'librsvg2-dev',
     'patchelf', 'libmpv-dev', 'ffmpeg', 'xvfb', 'dbus-x11', 'python3-gi', 'gir1.2-gtk-3.0',
-    'libxtst6', 'openbox', 'x11-utils', 'iproute2', 'openssl',
+    'libxtst6', 'openbox', 'x11-utils', 'iproute2',
 )
+ACCESSIBILITY_PACKAGES = ('gir1.2-atspi-2.0', 'at-spi2-core')
+WEBVIEW_PACKAGES = (*COMMON_PACKAGES, 'openssl')
+NATIVE_PACKAGES = (*COMMON_PACKAGES, *ACCESSIBILITY_PACKAGES, 'pipewire', 'pipewire-pulse',
+                   'wireplumber', 'pulseaudio-utils', 'desktop-file-utils')
+PACKAGE_PROFILES = {
+    'webview': WEBVIEW_PACKAGES,
+    'local-webview': (*WEBVIEW_PACKAGES, *ACCESSIBILITY_PACKAGES),
+    'native': NATIVE_PACKAGES,
+    'package': (*NATIVE_PACKAGES, 'cmake', 'binutils'),
+}
 MAX_FILES = 1024
 MAX_BYTES = 512 * 1024 * 1024
 MAX_DEB = 128 * 1024 * 1024
@@ -191,7 +201,7 @@ def install(args):
         archives = workspace / 'archives'
         subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', archives], check=True)
         apt = ['sudo', 'apt-get', '-o', f'Dir::Cache::archives={archives}']
-        request = ['install', '-y', *PACKAGES]
+        request = ['install', '-y', *PACKAGE_PROFILES[args.profile]]
 
         def update(limit):
             # Do not derive authority from any artifact or an index update
@@ -232,6 +242,7 @@ def install(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', choices=PACKAGE_PROFILES, default='webview')
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--publish', type=Path)
     mode.add_argument('--reuse', type=Path)
