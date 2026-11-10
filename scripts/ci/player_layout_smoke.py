@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from motion_smoke import launch
 
@@ -56,8 +57,11 @@ def verify_fm_chorus(root, complete, screenshots):
     assert [path.stem for path in sorted(first.glob('ux_*.json'))] == list(names)
     assert complete['ok'] and complete['stageCount'] == len(names)
     assert complete['accountWrites'] == complete['realMusicRequests'] == 0
-    locale = json.loads((first / 'locale.json').read_text(encoding='utf-8'))
-    assert locale['numeric'] == 'C' and locale['messages'] != 'C' and locale['characters'] != 'C'
+    locale = None
+    # The probe records GTK startup locale only on Linux.
+    if sys.platform == 'linux':
+        locale = json.loads((first / 'locale.json').read_text(encoding='utf-8'))
+        assert locale['numeric'] == 'C' and locale['messages'] != 'C' and locale['characters'] != 'C'
     plays, entries, markers, paint = [], [], [], {}
     for index, (name, seconds) in enumerate(zip(names, (4, None, 13, 4, 4), strict=True)):
         row = json.loads((first / f'{name}.json').read_text(encoding='utf-8'))
