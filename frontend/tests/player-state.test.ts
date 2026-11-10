@@ -2258,6 +2258,55 @@ test('typed copyright skip notices expire separately and cannot replay across a 
   }
 });
 
+test('search menu queue feedback requires a live native mutation and renews the three-second slot', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const held = deferred<PlayerView>();
+  let result = Promise.resolve(state());
+  const f = fixture({ playerAction: async () => result });
+  const action = (revision: string) =>
+    ({
+      kind: 'search_next_play',
+      id: '101',
+      quality: 'standard',
+      expected_queue_revision: revision,
+    }) as const;
+  try {
+    await f.player.connect(account());
+    f.emit({ ...state('2'), queueRevision: '2' });
+    assert.equal(f.player.searchQueueAdded.value, false);
+
+    result = Promise.resolve({ ...state('3', '1', 'current'), queueRevision: '2' });
+    assert.equal((await f.player.searchQueueMenuAction(action('2'), () => true))?.added, false);
+    assert.equal(f.player.searchQueueAdded.value, false);
+
+    result = held.promise;
+    let live = true;
+    const request = f.player.searchQueueMenuAction(action('2'), () => live);
+    live = false;
+    held.resolve({ ...state('4', '1', 'current'), queueRevision: '3' });
+    assert.equal(await request, undefined);
+    assert.equal(f.player.searchQueueAdded.value, false);
+
+    result = Promise.resolve({ ...state('5', '1', 'current'), queueRevision: '4' });
+    assert.equal((await f.player.searchQueueMenuAction(action('3'), () => true))?.added, true);
+    t.mock.timers.tick(2500);
+    result = Promise.resolve({ ...state('6', '1', 'current'), queueRevision: '5' });
+    assert.equal((await f.player.searchQueueMenuAction(action('4'), () => true))?.added, true);
+    t.mock.timers.tick(2999);
+    assert.equal(f.player.searchQueueAdded.value, true);
+    t.mock.timers.tick(1);
+    assert.equal(f.player.searchQueueAdded.value, false);
+
+    result = Promise.resolve({ ...state('7', '1', 'current'), queueRevision: '6' });
+    await f.player.searchQueueMenuAction(action('5'), () => true);
+    assert.equal(f.player.searchQueueAdded.value, true);
+    await f.player.connect(account('2'));
+    assert.equal(f.player.searchQueueAdded.value, false);
+  } finally {
+    f.player.dispose();
+  }
+});
+
 test('the finished looping bottom bar uses the rendered EOF receipt without a legacy retry', async () => {
   const actions: PlayerAction[] = [];
   const finished: PlayerView = {

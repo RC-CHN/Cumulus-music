@@ -1782,18 +1782,27 @@
       click(one('.track-row[data-track-id="3"] .track-more'));
       await wait(()=>one('.song-action-menu'),'search song menu');
       click(button('下一首播放',one('.song-action-menu')));
-      await wait(()=>one('.track-action-feedback')?.textContent.trim()==='已设为下一首播放','queued search result');
+      await wait(()=>one('[data-search-queue-add-tip]')?.textContent.trim()==='已添加至播放列表','queued search result');
+      assert(!one('.track-action-feedback'),'single search Next uses the queue button rather than the old centered toast');
       const inserted=await queue(), active=await player();
       assert(inserted.tracks.map(row=>row.track.id).join(',')==='91,3,92','existing result moves without duplicate');
       assert(inserted.tracks.map(row=>row.entryId).join(',')===
         [before.tracks[0],before.tracks[2],before.tracks[1]].map(row=>row.entryId).join(','),'preserved entry identities');
       assert(active.playId===original.playId&&active.state==='playing','insertion leaves native playback running');
       await capture('search_result_queued_without_interrupting');
+      await wait(()=>!one('[data-search-queue-add-tip]'),'original queue tip dismisses');
       click(button('下一首',one('.playerbar')));
       const advanced=await playing('3');
       assert(advanced.entryId===before.tracks[2].entryId&&advanced.playId!==original.playId,'advanced to the reordered entry');
       await capture('search_next_uses_search_authorization');
-      await emit('complete',{ok:true,searchNextVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      click(one('.track-row[data-track-id="3"] .track-more'));
+      await wait(()=>one('.song-action-menu'),'menu for the current search song');
+      click(button('下一首播放',one('.song-action-menu')));
+      await wait(()=>one('.track-action-feedback')?.textContent.trim()==='这首歌已是当前歌曲','current song keeps its no-op feedback');
+      const unchanged=await player();
+      assert(!one('[data-search-queue-add-tip]')&&unchanged.playId===advanced.playId&&
+        unchanged.queueRevision===advanced.queueRevision,'current song does not acknowledge a queue mutation');
+      await emit('complete',{ok:true,searchNextVerified:true,searchNextNoopVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchPeopleCategoriesProof){

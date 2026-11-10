@@ -138,6 +138,13 @@ const showQueueMoreTip = useQueueMoreTip(
   () => props.account.epoch,
   () => props.account.status === 'authenticated' && !props.togetherActive,
 );
+const showSearchQueueAdded = computed(
+  () =>
+    ready.value &&
+    view.value?.epoch === props.account.epoch &&
+    !view.value.fm &&
+    props.player.searchQueueAdded.value,
+);
 const commentBadge = computed(() => formatPlaybackCommentCount(props.commentCount ?? 0));
 const commentDescription = useId();
 const equalizerDescription = useId();
@@ -951,8 +958,15 @@ watch(
           <Icon name="list" /><small>{{ view?.queueLen ?? 0 }}</small>
         </button>
         <Transition name="queue-more-tip">
-          <span v-if="showQueueMoreTip" class="queue-more-tip" data-queue-more-tip role="status">
-            列表播完已自动推荐，↓点击去设置
+          <span
+            v-if="showQueueMoreTip || showSearchQueueAdded"
+            class="queue-more-tip"
+            :class="{ 'queue-add-tip': !showQueueMoreTip }"
+            :data-queue-more-tip="showQueueMoreTip ? '' : undefined"
+            :data-search-queue-add-tip="showQueueMoreTip ? undefined : ''"
+            role="status"
+          >
+            {{ showQueueMoreTip ? '列表播完已自动推荐，↓点击去设置' : '已添加至播放列表' }}
           </span>
         </Transition>
       </div>

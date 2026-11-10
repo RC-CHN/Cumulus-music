@@ -796,6 +796,8 @@ def main():
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
         stages = 8 if args.voice_direct else 4 if args.people_categories or args.correction_original else 3 if args.card_matches else 2
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
+        if args.search_next:
+            assert complete['searchNextNoopVerified']
         if args.people_categories:
             assert complete['searchArtistMenuVerified']
         if args.card_matches:

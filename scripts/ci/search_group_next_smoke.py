@@ -25,6 +25,12 @@ EXTENDED_LABELS = (
 )
 
 
+def verify_add_tip(receipt):
+    tip = receipt['addTip']
+    assert tip['label'] == '已添加至播放列表' and abs(tip['gap'] - 8) <= 2
+    return tip
+
+
 def verify_extended(output, report):
     previous = None
     search_calls = None
@@ -52,12 +58,15 @@ def verify_extended(output, report):
             assert all(song in ('101', '103', '104', '105') and trial == 42 for song, trial in media)
             if index == 6:
                 assert player['state'] == 'playing' and player['position'] > .2
+                assert verify_add_tip(receipt)['enter'] == 300
                 previous = player
             else:
                 assert player['state'] == 'paused' and player['position'] >= previous['position']
                 assert all(player[field] == previous[field] for field in ('playId', 'entryId'))
             assert ids == (['103', '101', '104', '105'] if index == 11 else ['103', '101'])
         if index == 11:
+            tip = verify_add_tip(receipt)
+            assert tip['leave'] == 200 and 2600 <= tip['dwell'] <= 4500 and tip['reduced']
             assert player['queueRevision'] != previous['queueRevision']
             commands = receipt['actionTrace']
             assert len(commands) == 2 and all(c['outcome'] == 'confirmed' for c in commands)
@@ -69,7 +78,7 @@ def verify_extended(output, report):
                 assert [r['track_id'] for r in action['rows']] == chosen
             assert commands[0]['action']['expected_play_id'] is None
             assert commands[1]['action']['expected_play_id'] == previous['playId']
-    report.update(finalQueue=['103', '101', '104', '105'], startedAnchor='101',
+    report.update(finalQueue=['103', '101', '104', '105'], startedAnchor='101', queueAddTip=True,
                   screenshots=len(EXTENDED_LABELS))
 
 
@@ -108,6 +117,7 @@ def verify_play(output, report):
         assert media == [['101', 42]]
         assert player['track']['id'] == '101'
         if label == 'group_play_started':
+            verify_add_tip(receipt)
             assert player['state'] == 'playing' and player['position'] > .3
             assert all(player[field] != base[field] for field in
                        ('playId', 'entryId', 'queueRevision'))
@@ -121,6 +131,7 @@ def verify_play(output, report):
                 assert player['state'] == 'paused' and player['position'] == paused['position']
                 assert player['position'] >= started['position']
         else:
+            verify_add_tip(receipt)
             assert ids == ['701', '103', '104', '101']
             assert player['state'] == 'playing' and player['position'] > paused['position']
             assert player['queueRevision'] != started['queueRevision']
@@ -140,7 +151,7 @@ def verify_play(output, report):
                 assert action['expected_play_id'] == observed['playId']
                 assert action['expected_queue_revision'] == observed['queueRevision']
     report.update(finalQueue=['701', '103', '104', '101'], startedAnchor='101',
-                  resumedSameDecoder=True, screenshots=len(PLAY_LABELS))
+                  resumedSameDecoder=True, queueAddTip=True, screenshots=len(PLAY_LABELS))
 
 
 class TrustedClicks(TrustedDrag):
@@ -242,6 +253,7 @@ def run(args):
             assert ids == ['701', '103', '101', '702'] and queue['revision'] != base['queueRevision']
             first_revision = queue['revision']
         else:
+            verify_add_tip(receipt)
             assert ids == ['701', '104', '103', '101', '702'] and queue['revision'] != first_revision
             commands = receipt['actionTrace']
             assert [c['action']['kind'] for c in commands] == [
@@ -256,7 +268,7 @@ def run(args):
             assert commands[2]['action']['id'] == '104'
     report.update(actualWebView=True, trustedPointer=True, screenshots=len(LABELS),
                   finalQueue=['701', '104', '103', '101', '702'], physicalAudioOutputVerified=False,
-                  windowsVisualVerified=False)
+                  windowsVisualVerified=False, queueAddTip=True)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

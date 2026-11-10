@@ -38,6 +38,10 @@ function sameSelection(a: PlayerView | undefined, b: PlayerView | undefined) {
   );
 }
 
+type SearchQueueMenuAction = PlayerAction & {
+  kind: 'search_next_play' | 'search_group_next_play' | 'search_group_play';
+};
+
 export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => void = () => {}) {
   const view = shallowRef<PlayerView>();
   const queue = shallowRef<QueueView>();
@@ -56,6 +60,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const loadingStepCommand = shallowRef<{ key: string }>();
   const reported = shallowRef<CoreFailure>();
   const reportedRevision = ref(0);
+  const searchQueueAdded = ref(false);
+  let searchQueueAddedTimer: ReturnType<typeof setTimeout> | undefined;
+  function clearSearchQueueAdded() {
+    clearTimeout(searchQueueAddedTimer);
+    searchQueueAddedTimer = undefined;
+    searchQueueAdded.value = false;
+  }
   const ordinarySkipNotices = shallowRef<string[]>([]);
   const skipNoticeTimers = new Map<string, ReturnType<typeof setTimeout>>();
   function clearSkipNotices() {
@@ -266,6 +277,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     disconnect?.();
     disconnect = undefined;
     clearSkipNotices();
+    clearSearchQueueAdded();
     epoch = account.epoch;
     request++;
     failedOperation = undefined;
@@ -316,6 +328,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         } else {
           ended = true;
           clearSkipNotices();
+          clearSearchQueueAdded();
           ready.value = false;
           handle(event.error);
           if (event.error.code === 'stale') onSessionChanged();
@@ -410,6 +423,20 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       },
       (initial, current) => sameSelection(initial, current) || failedReload(initial, current),
     );
+  }
+  async function searchQueueMenuAction(input: SearchQueueMenuAction, live: () => boolean) {
+    const owner = connection;
+    const next = await action(input);
+    if (!next || owner !== connection || next.epoch !== epoch || !ready.value || !live()) return;
+    // The native action reply owns this revision; stream notifications,
+    // transport-only resumes, and returning the current row do not add a tip.
+    const added = !next.fm && next.queueRevision !== input.expected_queue_revision;
+    if (added) {
+      clearTimeout(searchQueueAddedTimer);
+      searchQueueAdded.value = true;
+      searchQueueAddedTimer = setTimeout(clearSearchQueueAdded, 3000);
+    }
+    return { added, next };
   }
   // Quota writes must never become the generic audio-error retry operation.
   // A closed trial dialog may leave a native operation running; its durable
@@ -1418,6 +1445,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   function dispose() {
     equalizerDraft.reset();
     clearSkipNotices();
+    clearSearchQueueAdded();
     connection++;
     request++;
     resetLyrics();
@@ -1466,6 +1494,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueCurrent,
     error,
     ordinarySkipNotices,
+    searchQueueAdded,
     errorCode,
     canRetry,
     queueError,
@@ -1481,6 +1510,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     loaded,
     connect,
     action,
+    searchQueueMenuAction,
     qualityTrial,
     configureLoudness,
     configureEqualizer,

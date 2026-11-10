@@ -643,18 +643,25 @@ async function select(key: string) {
       track_id: trackId,
     });
     try {
-      const next = await props.player.action({
-        kind: key === 'play' ? 'search_group_play' : 'search_group_next_play',
-        anchor: wire(group.action.anchor),
-        rows: group.action.rows.map(wire),
-        quality: view.qualityPreferences.quality,
-        expected_play_id: target.playId,
-        expected_queue_revision: target.revision,
-      });
-      if (attempt === sequence && next && group.live())
-        feedback(
-          key === 'play' || target.playId === null ? '已开始播放' : '已将所选歌曲设为下一首播放',
-        );
+      const result = await props.player.searchQueueMenuAction(
+        {
+          kind: key === 'play' ? 'search_group_play' : 'search_group_next_play',
+          anchor: wire(group.action.anchor),
+          rows: group.action.rows.map(wire),
+          quality: view.qualityPreferences.quality,
+          expected_play_id: target.playId,
+          expected_queue_revision: target.revision,
+        },
+        () => attempt === sequence && group.live(),
+      );
+      if (
+        result &&
+        !result.added &&
+        key === 'play' &&
+        view.state === 'paused' &&
+        ['playing', 'buffering'].includes(result.next.state)
+      )
+        feedback('已开始播放');
     } catch (issue) {
       if (attempt === sequence) feedback(failure(issue).message);
     }
@@ -686,10 +693,23 @@ async function select(key: string) {
     if (!view) return;
     const attempt = sequence;
     try {
+      if (!input.queueNext && input.nextOrigin === 'search') {
+        const result = await props.player.searchQueueMenuAction(
+          {
+            kind: 'search_next_play',
+            id: track.id,
+            quality: view.qualityPreferences.quality,
+            expected_queue_revision: view.queueRevision,
+          },
+          () => attempt === sequence && request.value === input,
+        );
+        if (result && !result.added && view.track?.id === track.id) feedback('这首歌已是当前歌曲');
+        return;
+      }
       const next = input.queueNext
         ? await input.queueNext()
         : await props.player.action({
-            kind: input.nextOrigin === 'search' ? 'search_next_play' : 'next_play',
+            kind: 'next_play',
             id: track.id,
             quality: view.qualityPreferences.quality,
             expected_queue_revision: view.queueRevision,

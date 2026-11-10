@@ -56,6 +56,19 @@
   };
   const ids = (queue) => queue.tracks.map(({ track }) => track.id).join(',');
   const bar = () => one('.playerbar');
+  const tip = () => one('[data-search-queue-add-tip]');
+  const tipAnimation = (name) => tip()?.getAnimations().find((animation) => animation.animationName === name);
+  function visibleTip() {
+    const node = tip(), queueButton = bar()?.querySelector('.queue-toggle');
+    if (!node || !queueButton || Number(getComputedStyle(node).opacity) < 0.99 ||
+      node.classList.contains('queue-more-tip-enter-active')) return;
+    const bubble = node.getBoundingClientRect(), anchor = queueButton.getBoundingClientRect();
+    const result = { label: node.textContent.trim(), gap: anchor.top - bubble.bottom };
+    assert(result.label === '已添加至播放列表' && Math.abs(result.gap - 8) <= 2 &&
+      node.parentElement === queueButton.parentElement, 'exact passive bubble above the queue control');
+    assert(!one('.track-action-feedback'), 'successful insertion does not also show the old centered toast');
+    return result;
+  }
   let step = 'setup', epoch, stageCount = 0, before, baseline;
   const actionTrace = [];
   const extended = window.__CUMULUS_SEARCH_GROUP_EXTENDED__ === true;
@@ -191,6 +204,7 @@
       'the actual group Play command rejected a blocked anchor');
       assert(ids(await queue()) === '701' && !one('.playback-message button'),
         'blocked Play leaves the paused queue intact and cannot retry stale selection');
+      assert(!tip(), 'blocked Play does not acknowledge an insertion');
 
       await input('open_new_play_anchor', title('101'), 3);
       await wait(groupMenuReady, 'Play on the clicked available song');
@@ -204,7 +218,7 @@
       assert(ids(startedQueue) === '701,103,101',
         'group is inserted without clearing and excludes the blocked non-anchor');
       playStarted = true;
-      await capture('group_play_started');
+      await capture('group_play_started', { addTip: await wait(visibleTip, 'group Play queue acknowledgement') });
 
       click(button('暂停', bar()));
       const paused = await wait(async () => {
@@ -229,7 +243,7 @@
       assert(ids(final) === '701,103,104,101' &&
         final.current === resumed.entryId && final.revision !== startedQueue.revision,
       'the current entry moves inside selected display order without replacing the decoder');
-      await capture('current_play_resumed');
+      await capture('current_play_resumed', { addTip: await wait(visibleTip, 'group Play changes the queue while resuming') });
       core.playerAction = original;
       await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
       return;
@@ -240,6 +254,8 @@
       await input('open_empty_anchor', title('101'), 3);
       await wait(groupMenuReady, 'group Next is enabled in the empty random queue');
       await input('empty_menu', next());
+      const enter = await wait(() => tipAnimation('queue-add-tip-in'), 'add bubble entrance');
+      const tipStarted = performance.now();
       const playing = await wait(async () => {
         const view = await state();
         return actionTrace[0]?.outcome === 'confirmed' && view.state === 'playing' &&
@@ -251,7 +267,18 @@
       assert(actionTrace[0].action.expected_play_id === null &&
         actionTrace[0].action.expected_queue_revision === empty.queueRevision,
       'empty command is bound to its exact native revision');
-      await capture('empty_started');
+      const emptyTip = await wait(visibleTip, 'empty Next shows its queue acknowledgement');
+      await capture('empty_started', { addTip: { ...emptyTip, enter: enter.effect.getTiming().duration } });
+      const leave = await wait(() => tipAnimation('queue-add-tip-out'), 'add bubble exits after its dwell');
+      const dwell = performance.now() - tipStarted;
+      const leaveDuration = leave.effect.getTiming().duration;
+      await wait(() => !tip(), 'closed add bubble is unmounted');
+
+      const motionKey = 'cumulus.motion.v1';
+      const oldMotion = localStorage.getItem(motionKey);
+      localStorage.setItem(motionKey, 'disabled');
+      dispatchEvent(new StorageEvent('storage', { key: motionKey, newValue: 'disabled', storageArea: localStorage }));
+      await wait(() => document.documentElement.dataset.motion === 'reduced', 'app reduced motion');
 
       click(button('暂停', bar()));
       before = await wait(async () => {
@@ -269,7 +296,12 @@
       await input('random_menu', next());
       await wait(async () => actionTrace[1]?.outcome === 'confirmed' &&
         ids(await queue()) === '103,101,104,105', 'the new group inserts in visible selected order');
-      await capture('random_inserted');
+      const reducedTip = await wait(visibleTip, 'random Next still shows the text in reduced motion');
+      assert(!tip().getAnimations().length, 'reduced-motion queue acknowledgement does not animate');
+      await capture('random_inserted', { addTip: { ...reducedTip, leave: leaveDuration, dwell, reduced: true } });
+      if (oldMotion === null) localStorage.removeItem(motionKey);
+      else localStorage.setItem(motionKey, oldMotion);
+      dispatchEvent(new StorageEvent('storage', { key: motionKey, newValue: oldMotion, storageArea: localStorage }));
       core.playerAction = original;
       await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
       return;
@@ -287,6 +319,7 @@
     await wait(() => document.body.innerText.includes('请从同组中可播放的歌曲打开菜单'),
       'blocked anchor has actionable feedback');
     assert(!one('.playback-message button'), 'a frozen selection has no retry button');
+    assert(!tip(), 'blocked Next does not show a queue acknowledgement');
 
     await input('open_playable_anchor', title('101'), 3);
     await wait(groupMenuReady, 'ready selected-group menu');
@@ -311,7 +344,7 @@
       ids(await queue()) === '701,104,103,101,702', 'unchanged single Next inserts only its anchor');
     assert(actionTrace.length === 3 && actionTrace[2].action.kind === 'search_next_play' &&
       actionTrace[2].action.id === '104', 'one single native Next command');
-    await capture('single_inserted');
+    await capture('single_inserted', { addTip: await wait(visibleTip, 'single search Next queue acknowledgement') });
     core.playerAction = original;
     await emit('complete', { ok: true, stageCount, realAccountWrites: 0, realMusicRequests: 0 });
   } catch (error) {
