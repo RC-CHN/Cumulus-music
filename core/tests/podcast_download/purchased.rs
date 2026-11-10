@@ -13,13 +13,15 @@ const RIGHTS: &str = "/api/dj/voices/download/check";
 const MUSICS: &str = "/api/dj/program/song/musics";
 
 fn radio() -> Value {
-    json!({"productType":0,"id":81,"name":"购买播单 81","programCount":20})
+    json!({"productType":0,"id":81,"name":"购买播单 81","programCount":20,"playCount":"145000"})
 }
 fn voice() -> Value {
     let mut item = program();
     item["productType"] = json!(1);
     item["buyed"] = json!(true);
     item["programFeeType"] = json!(10);
+    item["playCount"] = json!(999);
+    item["programCount"] = json!(99);
     item
 }
 fn paid(rows: Vec<Value>, more: bool) -> Reply {
@@ -89,7 +91,7 @@ async fn purchased_mixed_rows_keep_namespace_order_and_require_explicit_twenty_o
     assert_eq!(purchase.next_offset, Some(20));
     assert!(matches!(purchase.rows.as_slice(),
         [PodcastPurchasedRow::Radio(radio), PodcastPurchasedRow::Episode(voice)]
-        if radio.id == "81" && voice.id == "81" && voice.radio_id.as_deref() == Some("71")));
+        if radio.card.id == "81" && voice.id == "81" && voice.radio_id.as_deref() == Some("71")));
     assert!(first.cards.is_empty() && first.episodes.is_empty());
     assert_path(&f, &[BOUGHT, LIKED]);
     for kind in [PurchasedKind::Radio, PurchasedKind::Episode] {
@@ -100,6 +102,13 @@ async fn purchased_mixed_rows_keep_namespace_order_and_require_explicit_twenty_o
         assert_eq!(value["kind"], serde_json::to_value(kind).unwrap());
         assert_eq!(value["item"]["id"], "81");
         assert!(value["item"].get("mainSong").is_none());
+        if kind == PurchasedKind::Radio {
+            assert_eq!(value["item"]["programCount"], 20);
+            assert_eq!(value["item"]["playCount"], 145000);
+        } else {
+            assert!(value["item"].get("playCount").is_none());
+            assert!(value["item"].get("programCount").is_none());
+        }
     }
     assert!(matches!(
         client
@@ -127,7 +136,12 @@ async fn purchased_mixed_rows_keep_namespace_order_and_require_explicit_twenty_o
     assert_eq!(rows.next_offset, None);
     assert!(matches!(rows.rows.as_slice(),
         [PodcastPurchasedRow::Radio(radio), PodcastPurchasedRow::Episode(voice), PodcastPurchasedRow::Radio(legacy)]
-        if radio.id == "81" && voice.id == "81" && legacy.id == "86"));
+        if radio.card.id == "81" && voice.id == "81" && legacy.card.id == "86"));
+    assert!(
+        serde_json::to_value(&rows.rows[2]).unwrap()["item"]
+            .get("playCount")
+            .is_none()
+    );
     assert_path(&f, &[BOUGHT, LIKED, BOUGHT, BOUGHT]);
     let requests = f
         .api

@@ -6,12 +6,46 @@ use crate::{
     protocol::api::identifier,
     storage::OperationLock,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::Arc;
+
+fn play_count(value: &Value) -> Option<PodcastPurchasedPlayCount> {
+    // Only the bought radio's M21.Z playCount supplies this column. Keep
+    // numeric precision at the renderer boundary; M32.f also accepts an
+    // already compact, numeric Chinese-unit string from the server.
+    if let Some(number) = value
+        .as_u64()
+        .or_else(|| value.as_str()?.parse::<u64>().ok())
+    {
+        return (number < (1_u64 << 53)).then_some(PodcastPurchasedPlayCount::Number(number));
+    }
+    let compact = value.as_str().filter(|value| value.len() <= 40)?;
+    let units_start =
+        compact.find(|character: char| !character.is_ascii_digit() && character != '.')?;
+    let (digits, units) = compact.split_at(units_start);
+    let (whole, fraction) = digits
+        .split_once('.')
+        .map_or((digits, None), |(whole, fraction)| (whole, Some(fraction)));
+    let digits_only =
+        |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    if digits_only(whole)
+        && fraction.is_none_or(digits_only)
+        && units
+            .chars()
+            .all(|unit| matches!(unit, '十' | '百' | '千' | '万' | '亿'))
+    {
+        Some(PodcastPurchasedPlayCount::Compact(compact.into()))
+    } else {
+        None
+    }
+}
 
 pub(super) fn row(item: &PurchasedItem, liked: &[String]) -> PodcastPurchasedRow {
     match item {
-        PurchasedItem::Radio(radio) => PodcastPurchasedRow::Radio(view::card(radio)),
+        PurchasedItem::Radio(radio) => PodcastPurchasedRow::Radio(PodcastPurchasedRadio {
+            card: view::card(radio),
+            play_count: play_count(&radio.raw["playCount"]),
+        }),
         PurchasedItem::Episode(episode) => {
             let mut result = view::episode(episode, liked);
             result.unavailable |= episode.raw["displayStatus"]

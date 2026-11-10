@@ -78,9 +78,25 @@ pub struct PodcastPurchasedTarget {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(untagged)]
+pub enum PodcastPurchasedPlayCount {
+    Number(u64),
+    Compact(String),
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastPurchasedRadio {
+    #[serde(flatten)]
+    pub card: PodcastCard,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_count: Option<PodcastPurchasedPlayCount>,
+}
+
+#[derive(Clone, Serialize)]
 #[serde(tag = "kind", content = "item", rename_all = "snake_case")]
 pub enum PodcastPurchasedRow {
-    Radio(PodcastCard),
+    Radio(PodcastPurchasedRadio),
     Episode(EpisodeView),
 }
 

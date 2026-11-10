@@ -115,7 +115,7 @@ export interface PodcastMutation {
   acknowledged: boolean;
 }
 export type PodcastPurchasedRow =
-  | { kind: 'radio'; item: PodcastCard }
+  | { kind: 'radio'; item: PodcastCard & { playCount?: number | string } }
   | { kind: 'episode'; item: EpisodeView };
 export interface PodcastPurchasedTarget {
   kind: PodcastPurchasedRow['kind'];

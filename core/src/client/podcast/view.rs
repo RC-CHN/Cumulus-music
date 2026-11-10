@@ -101,7 +101,9 @@ pub(super) fn page(
                 .map(|item| super::purchased::row(item, &liked_ids))
                 .filter(|row| {
                     let (name, creator) = match row {
-                        PodcastPurchasedRow::Radio(radio) => (&radio.name, &radio.creator),
+                        PodcastPurchasedRow::Radio(radio) => {
+                            (&radio.card.name, &radio.card.creator)
+                        }
                         PodcastPurchasedRow::Episode(episode) => (&episode.name, &episode.creator),
                     };
                     format!("{name} {creator}")
