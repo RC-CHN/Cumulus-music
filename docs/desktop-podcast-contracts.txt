@@ -191,6 +191,9 @@ b同样保留失败：脚本填入目录后未等待Vue更新提交按钮；c补
   Linux 的 `scripts/ci/podcast_liked_withdrawn_smoke.py --binary <已构建的
   podcast_recent_ui_probe> --root <新的隔离目录>` 在 Xvfb/Openbox、`en_US.UTF-8`
   和仅本机网络下验证可见行、无动作提示、过滤后的真实播放、原实例和原队列保持。
+  本机 4 个实际状态、4 张截图及合成路由参数见 `.build/ui-proof/phase266-podcast-liked/`：
+  501 下架不读详情，502 确认不存在；503 补齐详情后入队，明确选择 504 只对其申请
+  播放权限和媒体 1504，继续播放 504 时点 502 仍保留原实例。Rust 两组共 58 项通过。
   合成节目和 libmpv null 输出仅证明本机流程；实服下架响应和 Windows 实窗不在本批证据内。
 
 布局追加修正：c的几何复核发现小窗口document.scrollHeight=665而body=540；节目行的

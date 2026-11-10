@@ -82,6 +82,7 @@ struct Library {
     progress_enabled: bool,
     program_menu: bool,
     recent_program_menu: bool,
+    liked_withdrawn: bool,
     purchased: Option<Arc<purchased_podcast_fixture::Fixture>>,
     recent_menu_count_held: AtomicBool,
     recent_menu_count_delivered: AtomicBool,
@@ -682,6 +683,20 @@ impl Api for Library {
             ) {
                 self.calls.lock().unwrap().push(json!([path, body]));
             }
+            if self.liked_withdrawn && path == "/api/content/my/liked/voice" {
+                assert!(!cache);
+                assert_eq!(body, json!({"limit":100,"likeTime":0}));
+                self.calls.lock().unwrap().push(json!([path, body]));
+                let mut withdrawn = voice(501);
+                withdrawn["displayStatus"] = json!("UNDER_SHELF");
+                let mut missing = voice(502);
+                missing.as_object_mut().unwrap().remove("mainSong");
+                let mut hydrated = voice(503);
+                hydrated.as_object_mut().unwrap().remove("mainSong");
+                return Ok(
+                    json!({"code":200,"data":{"data":[withdrawn,missing,hydrated,voice(504)],"hasMore":false}}),
+                );
+            }
             Ok(match path {
                 RECENT if self.recent_program_menu => {
                     if body == json!({}) {
@@ -745,6 +760,9 @@ impl Api for Library {
                 }
                 "/api/dj/program/detail" => {
                     let id = body["id"].as_str().unwrap().parse::<u64>().unwrap();
+                    if self.liked_withdrawn && id == 502 {
+                        return Ok(json!({"code":404}));
+                    }
                     assert!(matches!(id, 501 | 503 | 504 | 506));
                     json!({"code":200,"program":voice(id)})
                 }
@@ -800,6 +818,8 @@ fn main() {
     let program_menu = std::env::var("CUMULUS_PODCAST_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
     let recent_program_menu =
         std::env::var("CUMULUS_PODCAST_RECENT_PROGRAM_MENU_PROOF").as_deref() == Ok("1");
+    let liked_withdrawn =
+        std::env::var("CUMULUS_PODCAST_LIKED_WITHDRAWN_PROOF").as_deref() == Ok("1");
     let purchased_download_proof =
         std::env::var("CUMULUS_PODCAST_PURCHASED_PROOF").as_deref() == Ok("1");
     let purchased_playback_proof =
@@ -810,6 +830,7 @@ fn main() {
             + u8::from(recent_program_menu)
             + u8::from(purchased_download_proof)
             + u8::from(purchased_playback_proof)
+            + u8::from(liked_withdrawn)
             <= 1
     );
     let recommendations_enabled =
@@ -969,6 +990,7 @@ fn main() {
         progress_enabled,
         program_menu,
         recent_program_menu,
+        liked_withdrawn,
         purchased: purchased.clone(),
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
         scene_home,
@@ -1030,6 +1052,8 @@ fn main() {
                 include_str!("purchased_podcast_ui_probe.js").to_owned()
             } else if recent_program_menu {
                 include_str!("podcast_recent_program_menu_ui_probe.js").to_owned()
+            } else if liked_withdrawn {
+                include_str!("podcast_liked_withdrawn_ui_probe.js").to_owned()
             } else if program_menu {
                 include_str!("podcast_program_menu_ui_probe.js").to_owned()
             } else if badges_enabled {
@@ -1097,7 +1121,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
-            if progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof {
+            if progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof || liked_withdrawn {
                 fs::write(output.join("locale.json"), serde_json::to_vec(&json!({
                     "numeric":locale(libc::LC_NUMERIC),
                     "messages":locale(libc::LC_MESSAGES),
@@ -1265,7 +1289,7 @@ fn main() {
                 }
                 if let Some(scene) = &api.scene_home {
                     value["calls"] = json!(scene.calls());
-                } else if stage == "complete" || program_menu || recent_program_menu {
+                } else if stage == "complete" || program_menu || recent_program_menu || liked_withdrawn {
                     value["calls"] = json!(api.calls.lock().unwrap().clone());
                 }
                 if progress_enabled {
@@ -1278,7 +1302,7 @@ fn main() {
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" {0} else {1});
                     } else if capture_ack::acknowledge(&handle, &output, &stage, true).await
-                        && (progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof)
+                        && (progress_enabled || scene_enabled || badges_enabled || program_menu || recent_program_menu || purchased_proof || liked_withdrawn)
                     {
                         handle.get_webview_window("main").unwrap().eval(format!(
                             "window.__podcastProgressStage = {};",
