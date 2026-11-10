@@ -238,6 +238,12 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok((search_fixture::enabled()
+            && std::env::var_os("CUMULUS_SEARCH_GROUP_NEXT_PROOF").is_some())
+        .then(|| "synthetic-search-group-next".into()))
+    }
+
     fn lyric_bounty_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(self
             .lyric_bounty

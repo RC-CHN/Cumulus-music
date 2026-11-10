@@ -262,6 +262,7 @@ pub fn control(value: &Value) {
             "scroll_duplicates",
             "song_waterfall",
             "song_waterfall_error",
+            "song_waterfall_group_next",
             "voice_queue",
             "voice_next",
             "podcast_follow",
@@ -1721,6 +1722,13 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     let song = &mut row["baseInfo"]["simpleSongData"];
                     song["id"] = json!(i + 101);
                     song["name"] = json!(format!("合成连续单曲 {}", i + 101));
+                    if mode == "song_waterfall_group_next" {
+                        song["privilege"] = json!({
+                            "id":i+101,
+                            "st":if i==1 {-200}else{0},
+                            "pl":if i==1 {0}else{320000}
+                        });
+                    }
                     if i == 0 || i == 29 {
                         song["alia"] = json!(["默认合成别名", "前缀合成连续单曲别名"]);
                         song["tns"] = json!(["不显示的翻译合成连续单曲"]);
