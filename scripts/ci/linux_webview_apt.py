@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import time
 
+from linux_webview_apt_mirrors import AptDeadline, acquire, canonical_priority, deadline_command, supports_fallback
 from linux_webview_probe_artifact import run_identity
 
 
@@ -137,12 +138,47 @@ def stage(archive_dir, output, identity):
         return count, total
 
 
-def timed(label, args, env, **kwargs):
+def timed(label, args, env, limit=None, **kwargs):
     start = time.monotonic()
     try:
-        return subprocess.run(args, check=True, env=env, **kwargs)
+        command = deadline_command(args, limit) if limit is not None else args
+        return subprocess.run(command, check=True, env=env, **kwargs)
+    except subprocess.CalledProcessError as error:
+        # timeout returns 124, or 137 after forcibly terminating its group.
+        # An early unrelated SIGKILL is not an acquisition deadline.
+        if limit is not None and (error.returncode == 124 or (
+                error.returncode == 137 and time.monotonic() - start >= limit)):
+            raise AptDeadline(label, limit) from error
+        raise
     finally:
         print(f'APT {label}: {time.monotonic() - start:.3f}s', flush=True)
+
+
+def restore_for_plan(source, identity, apt, request, env, archives, workspace):
+    start = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix='verified-', dir=workspace) as private:
+        staging = Path(private)
+        plan_file = workspace / 'fresh-plan'
+        try:
+            # Noble otherwise defaults print-uris to MD5. APT must see an
+            # empty cache to emit every archive selected by the new indexes.
+            with plan_file.open('wb') as output:
+                timed('SHA256 plan', [*apt, '-o', 'Acquire::ForceHash=SHA256',
+                      '--print-uris', '--download-only', *request], env, stdout=output)
+            with plan_file.open('rb') as file:
+                plan = apt_plan(file.read(MAX_PLAN + 1))
+            accepted = admit(source, identity, plan, staging)
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            print(f'APT archive reuse omitted: {error}', flush=True)
+            accepted = []
+        if accepted:
+            # APT treats existing final cache entries as complete by size.
+            # Only independently verified private copies enter.
+            subprocess.run(['sudo', 'install', '-m', '0644', '-t', archives,
+                            '--', *accepted], check=True)
+        total = sum(path.stat().st_size for path in accepted)
+        print(f'APT archive reuse: {len(accepted)} signed matches, {total} bytes; '
+              f'{time.monotonic() - start:.3f}s including the plan; fetch all misses', flush=True)
 
 
 def install(args):
@@ -156,43 +192,38 @@ def install(args):
         subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', archives], check=True)
         apt = ['sudo', 'apt-get', '-o', f'Dir::Cache::archives={archives}']
         request = ['install', '-y', *PACKAGES]
-        try:
+
+        def update(limit):
             # Do not derive authority from any artifact or an index update
             # that silently used stale metadata after a transport failure.
-            timed('update', [*apt, '-o', 'APT::Update::Error-Mode=any', 'update'], env)
-            if args.publish:
-                timed('producer acquisition', [*apt, '--download-only', *request], env)
-                try:
-                    count, total = stage(archives, args.publish, identity)
-                    print(f'APT archive handoff: {count} files, {total} bytes', flush=True)
-                except (OSError, ValueError) as error:
-                    print(f'APT archive handoff omitted: {error}', flush=True)
-            elif args.reuse:
-                start = time.monotonic()
-                staging = workspace / 'verified'
-                staging.mkdir(mode=0o700)
-                plan_file = workspace / 'fresh-plan'
-                try:
-                    # Noble otherwise defaults print-uris to MD5. APT must
-                    # see an empty cache to emit every selected archive.
-                    with plan_file.open('wb') as output:
-                        timed('SHA256 plan', [*apt, '-o', 'Acquire::ForceHash=SHA256',
-                              '--print-uris', '--download-only', *request], env, stdout=output)
-                    with plan_file.open('rb') as file:
-                        plan = apt_plan(file.read(MAX_PLAN + 1))
-                    accepted = admit(args.reuse, identity, plan, staging)
-                except (OSError, ValueError, subprocess.CalledProcessError) as error:
-                    print(f'APT archive reuse omitted: {error}', flush=True)
-                    accepted = []
-                if accepted:
-                    # APT treats existing final cache entries as complete by
-                    # size. Only independently verified private copies enter.
-                    subprocess.run(['sudo', 'install', '-m', '0644', '-t', archives,
-                                    '--', *accepted], check=True)
-                total = sum(path.stat().st_size for path in accepted)
-                print(f'APT archive reuse: {len(accepted)} signed matches, {total} bytes; '
-                      f'{time.monotonic() - start:.3f}s including the plan; fetch all misses', flush=True)
-            timed('signed installation', [*apt, *request], env)
+            timed('update', [*apt, '-o', 'APT::Update::Error-Mode=any', 'update'], env, limit)
+
+        def prepare():
+            if args.reuse:
+                restore_for_plan(args.reuse, identity, apt, request, env, archives, workspace)
+
+        def download(limit):
+            timed('archive acquisition', [*apt, '--download-only', *request], env, limit)
+
+        def reset():
+            subprocess.run(['sudo', 'rm', '-rf', '--', archives], check=True)
+            subprocess.run(['sudo', 'install', '-d', '-m', '0755', '--', archives], check=True)
+
+        fallback = (lambda: canonical_priority(workspace)) if supports_fallback(env) else None
+        if fallback is None:
+            print('APT mirror watchdog: runner preset unsupported; normal APT acquisition', flush=True)
+        try:
+            with acquire(update, prepare, download, reset, fallback) as downloaded:
+                if args.publish:
+                    if not downloaded:
+                        download(None)
+                    try:
+                        count, total = stage(archives, args.publish, identity)
+                        print(f'APT archive handoff: {count} files, {total} bytes', flush=True)
+                    except (OSError, ValueError) as error:
+                        print(f'APT archive handoff omitted: {error}', flush=True)
+                # Don't put a network watchdog around any dpkg operation.
+                timed('signed installation', [*apt, *request], env)
         finally:
             # APT owns its cache/partial directories and the runner owns the
             # temporary parent. Remove only this dedicated root-owned cache.
