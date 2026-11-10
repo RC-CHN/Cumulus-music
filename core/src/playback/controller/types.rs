@@ -167,6 +167,14 @@ pub struct LocalBatchUpdate {
     pub(crate) index: crate::storage::OperationLock,
     pub(crate) start: bool,
 }
+/// Exact displayed history revision and an ordinary queue edit prepared natively.
+pub struct HistoryQueueUpdate {
+    pub(crate) expected: PlaybackFence,
+    pub(crate) queue: QueueSnapshot,
+    pub(crate) start: bool,
+    pub(crate) kind: crate::history::HistoryKind,
+    pub(crate) revision: String,
+}
 /// Install an owned cache selection while its index and durable stamp still match.
 pub struct OfflinePlaylistQueueUpdate {
     pub(crate) expected: PlaybackFence,
@@ -271,6 +279,7 @@ pub enum PlaybackCommand {
         first_source: std::sync::Arc<crate::playback::source::ResolvedSource>,
     },
     ApplyLocalBatch(LocalBatchUpdate),
+    ApplyHistoryAdd(HistoryQueueUpdate),
     ApplyOfflinePlaylistQueue(OfflinePlaylistQueueUpdate),
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.

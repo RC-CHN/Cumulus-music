@@ -23,6 +23,8 @@ use tokio::sync::Notify;
 struct Backend {
     calls: Mutex<Vec<String>>,
     chapter_reads: Mutex<Vec<Value>>,
+    voice_rights: Mutex<Vec<u64>>,
+    media_sources: Mutex<Vec<Value>>,
     deny: AtomicBool,
     hold: AtomicBool,
     resume_books: AtomicBool,
@@ -181,10 +183,12 @@ impl Api for Backend {
                         .as_u64()
                         .or_else(|| p["voiceId"].as_str()?.parse().ok())
                         .unwrap();
+                    self.voice_rights.lock().unwrap().push(id);
                     json!({"code":200,"data":{"voiceId":p["voiceId"],"songId":1000 + id,"canPlay":true}})
                 }
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> = serde_json::from_str(p["ids"].as_str().unwrap()).unwrap();
+                    self.media_sources.lock().unwrap().extend(ids.clone());
                     json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/synthetic.mp3?key=PRIVATE","md5":"abc","expi":120,"level":"standard"}]})
                 }
                 "/api/song/lyric/v1" => json!({"code":200,"nolyric":true}),
@@ -1099,4 +1103,221 @@ async fn listened_books_applies_saved_radio_order_without_reordering_the_active_
             .count(),
         1
     );
+}
+
+fn seed_history_batch(f: &Fixture, kind: HistoryKind, rows: &[(u64, u64)]) {
+    for &(id, at) in rows {
+        let raw = if kind == HistoryKind::Song {
+            song(&json!(id))
+        } else {
+            voice(id, &json!(8))
+        };
+        f.history
+            .record_for(
+                &f.session.token().unwrap(),
+                kind,
+                HistoryRecord::local(kind, raw, at).unwrap(),
+            )
+            .unwrap();
+    }
+}
+
+async fn history_add_request(
+    f: &Fixture,
+    kind: HistoryKind,
+    ids: &[&str],
+) -> (String, PlaySelection) {
+    let epoch = f.epoch();
+    let player = f.client.player_snapshot(&epoch).await.unwrap();
+    let revision = f
+        .client
+        .history_page(&epoch, kind, false)
+        .await
+        .unwrap()
+        .value
+        .revision;
+    let ticket = f
+        .client
+        .prepare_play_selection(&epoch, &player.queue_revision, player.play_id.as_deref())
+        .unwrap();
+    (
+        ticket,
+        PlaySelection::HistoryAdd {
+            history_kind: kind,
+            revision,
+            ids: ids.iter().map(|id| (*id).to_owned()).collect(),
+            quality: Quality::Standard,
+        },
+    )
+}
+
+async fn history_batch_ids(f: &Fixture) -> Vec<String> {
+    f.client
+        .player_queue(&f.epoch())
+        .await
+        .unwrap()
+        .tracks
+        .into_iter()
+        .map(|row| row.track.voice_id.unwrap_or(row.track.id))
+        .collect()
+}
+
+#[tokio::test]
+async fn history_add_to_empty_starts_the_first_displayed_episode() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    seed_history_batch(&f, HistoryKind::Voice, &[(5, 200), (6, 100)]);
+    let (ticket, selection) = history_add_request(&f, HistoryKind::Voice, &["5", "6"]).await;
+    let unprepared = serde_json::from_value(json!({
+        "kind":"history_add","history_kind":"voice","revision":"invalid",
+        "ids":["5","6"],"quality":"standard"
+    }))
+    .unwrap();
+    assert!(matches!(
+        f.client.play_selection(&epoch, unprepared).await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(f.api.calls.lock().unwrap().is_empty());
+    let state = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket, selection)
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(state.state).unwrap(), "playing");
+    assert_eq!(state.track.unwrap().voice_id.as_deref(), Some("5"));
+    assert_eq!(history_batch_ids(&f).await, ["5", "6"]);
+    let rights = f.api.voice_rights.lock().unwrap();
+    assert_eq!(rights.first(), Some(&5));
+    assert!(rights.iter().all(|id| matches!(id, 5 | 6)));
+    let media = f.api.media_sources.lock().unwrap();
+    assert_eq!(media.first(), Some(&json!("1005")));
+    // The ordinary native actor may prefetch the next queued episode.
+    assert!(media.iter().all(|id| id == "1005" || id == "1006"));
+}
+
+#[tokio::test]
+async fn history_add_moves_duplicates_after_current_without_touching_paused_transport() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    seed_history_batch(
+        &f,
+        HistoryKind::Song,
+        // Keep #2 newer than the ordinary playback recorder's current clock;
+        // the displayed subset must place it before the newly played #3.
+        &[
+            (1, 500),
+            (2, 9_000_000_000_000),
+            (3, 300),
+            (4, 200),
+            (5, 100),
+        ],
+    );
+    let mut start = f
+        .selection(
+            HistoryKind::Song,
+            vec!["1".into(), "3".into(), "4".into(), "5".into()],
+        )
+        .await;
+    if let PlaySelection::History { index, .. } = &mut start {
+        *index = 1;
+    }
+    f.client.play_selection(&epoch, start).await.unwrap();
+    f.client
+        .player_action(&epoch, PlayerAction::Seek { seconds: 12.0 })
+        .await
+        .unwrap();
+    let paused = f
+        .client
+        .player_action(&epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let (ticket, selection) = history_add_request(&f, HistoryKind::Song, &["2", "3", "5"]).await;
+    f.api.calls.lock().unwrap().clear();
+    let result = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket, selection)
+        .await
+        .unwrap();
+    assert_eq!(history_batch_ids(&f).await, ["1", "2", "3", "5", "4"]);
+    assert_eq!(result.entry_id, paused.entry_id);
+    assert_eq!(result.play_id, paused.play_id);
+    assert_eq!(result.state, paused.state);
+    assert_eq!(result.position, paused.position);
+    assert_eq!(result.track.unwrap().id, "3");
+    let calls = f.api.calls.lock().unwrap();
+    assert_eq!(
+        calls.as_slice(),
+        ["/api/v3/song/detail", "/api/song/enhance/privilege"]
+    );
+}
+
+#[tokio::test]
+async fn history_add_rejects_unordered_or_retired_selection_without_a_queue_change() {
+    for retire in ["order", "history", "control", "account"] {
+        let f = fixture(true);
+        let epoch = f.epoch();
+        seed_history_batch(&f, HistoryKind::Song, &[(1, 200), (2, 100)]);
+        let ids = if retire == "order" {
+            ["2", "1"]
+        } else {
+            ["1", "2"]
+        };
+        let (ticket, selection) = history_add_request(&f, HistoryKind::Song, &ids).await;
+        if retire == "order" {
+            assert!(matches!(
+                f.client
+                    .commit_prepared_selection(&epoch, &ticket, selection)
+                    .await,
+                Err(Error::InvalidInput(_))
+            ));
+            assert!(f.api.calls.lock().unwrap().is_empty());
+            continue;
+        }
+        f.api.hold.store(true, Ordering::SeqCst);
+        let client = f.client.clone();
+        let task = tokio::spawn(async move {
+            client
+                .commit_prepared_selection(&epoch, &ticket, selection)
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(5), f.api.started.notified())
+            .await
+            .unwrap();
+        match retire {
+            "history" => seed_history_batch(&f, HistoryKind::Song, &[(3, 300)]),
+            "control" => {
+                f.client
+                    .player_action(&f.epoch(), PlayerAction::Stop)
+                    .await
+                    .unwrap();
+            }
+            "account" => {
+                f.session
+                    .adopt(
+                        f.api.clone(),
+                        json!({"userId":10}),
+                        &f.session.token().unwrap(),
+                    )
+                    .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        f.api.release.notify_one();
+        assert!(matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), task)
+                .await
+                .unwrap()
+                .unwrap(),
+            Err(Error::QueueChanged | Error::StaleResponse)
+        ));
+        assert!(history_batch_ids(&f).await.is_empty());
+        assert!(
+            !f.api
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|p| p == "/api/song/enhance/player/url/v1")
+        );
+    }
 }

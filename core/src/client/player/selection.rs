@@ -137,6 +137,9 @@ impl MusicClient {
             PlaySelection::SearchVoiceMenu { .. } => Err(Error::InvalidInput(
                 "search voice menu playback requires a preparation ticket",
             )),
+            PlaySelection::HistoryAdd { .. } => Err(Error::InvalidInput(
+                "history batch add requires a preparation ticket",
+            )),
             PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
                 "history chapter playback requires a preparation ticket",
             )),
@@ -259,6 +262,27 @@ impl MusicClient {
         daily_origin: Option<super::super::daily_notification::PlaybackOrigin>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        if let PlaySelection::HistoryAdd {
+            history_kind,
+            revision,
+            ids,
+            quality,
+        } = &input
+        {
+            return self
+                .history_add(
+                    &token,
+                    super::super::history::Selection {
+                        kind: *history_kind,
+                        revision,
+                        ids,
+                        index: 0,
+                        quality: *quality,
+                    },
+                    prepared.as_ref().ok_or(Error::StaleResponse)?,
+                )
+                .await;
+        }
         let external_room = self.together_external_room(&token)?;
         let stage_room_replacement = external_room.is_some()
             && matches!(
@@ -1354,6 +1378,7 @@ impl MusicClient {
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
+                    | PlaySelection::HistoryAdd { .. }
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }

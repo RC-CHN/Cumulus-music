@@ -468,6 +468,13 @@ export type PlaySelection =
       quality: Quality;
     }
   | {
+      kind: 'history_add';
+      history_kind: 'song' | 'voice';
+      revision: string;
+      ids: string[];
+      quality: Quality;
+    }
+  | {
       kind: 'catalog';
       pages: import('./catalog').CatalogSelectionPage[];
       index: number;

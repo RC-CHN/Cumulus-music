@@ -8,7 +8,7 @@ import HistoryConfirm from './history/HistoryConfirm.vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import { usePodcastFollow } from '../composables/usePodcastFollow';
 import type { HistoryModel } from '../composables/useHistory';
-import type { AccountView } from '../services/contracts';
+import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import type { PodcastSearchFollow } from '../services/podcast';
 import {
@@ -29,6 +29,7 @@ const props = defineProps<{
   model: HistoryModel;
   account: AccountView;
   playable: boolean;
+  addSelection: (kind: 'song' | 'voice', revision: string, ids: string[]) => Promise<boolean>;
   currentId?: string;
   currentVoiceId?: string;
 }>();
@@ -60,6 +61,19 @@ const selectedForPlayback = computed(() =>
     ? selectedHistoryPlayback(kind.value, entries.value, selected.value)
     : [],
 );
+// The official selectedData comes from the displayed list, including selected
+// rows whose admission must still be checked in native code.
+const selectedForAdd = computed(() =>
+  listKind.value && page.value?.kind === kind.value
+    ? entries.value.filter((entry) => selected.value.has(entry.id)).map((entry) => entry.id)
+    : [],
+);
+const addNotice = ref('');
+const addError = ref('');
+watch([kind, keyword, () => props.account.epoch], () => {
+  addNotice.value = '';
+  addError.value = '';
+});
 const label = computed(() => historyTabs.find((t) => t.kind === kind.value)?.label ?? '记录');
 const activeOperations = computed(() => page.value?.operations.filter(historyPending) ?? []);
 const latest = computed(() => page.value?.operations.find((op) => !historyPending(op)));
@@ -207,6 +221,34 @@ function playSelected() {
     return;
   emit('play', snapshot.kind, snapshot.revision, selectedForPlayback.value, 0);
 }
+async function addSelected() {
+  const snapshot = page.value;
+  const ids = selectedForAdd.value;
+  if (
+    !snapshot ||
+    (snapshot.kind !== 'song' && snapshot.kind !== 'voice') ||
+    !props.playable ||
+    loading.value ||
+    busy.value ||
+    !ids.length
+  )
+    return;
+  const epoch = props.account.epoch;
+  const scope = keyword.value;
+  const current = () =>
+    epoch === props.account.epoch && snapshot.kind === kind.value && scope === keyword.value;
+  addNotice.value = '';
+  addError.value = '';
+  try {
+    if ((await props.addSelection(snapshot.kind, snapshot.revision, ids)) && current())
+      addNotice.value = '已添加到播放列表';
+  } catch (cause) {
+    if (!current()) return;
+    const issue = failure(cause);
+    if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
+    addError.value = issue.message;
+  }
+}
 function playChapter(entry: HistoryEntry) {
   const snapshot = page.value;
   if (
@@ -317,6 +359,15 @@ function keyboard(event: KeyboardEvent) {
       >
         <Icon name="play" />播放选中
       </button>
+      <button
+        v-if="listKind"
+        type="button"
+        class="secondary history-add-selected"
+        :disabled="!playable || loading || busy || !selectedForAdd.length"
+        @click="addSelected"
+      >
+        <Icon name="plus" />添加到播放列表
+      </button>
       <label class="history-search"
         ><Icon name="search" /><input
           v-model="keyword"
@@ -373,7 +424,14 @@ function keyboard(event: KeyboardEvent) {
     >
       重新读取收藏
     </button>
-    <div v-if="error || uncertain || activeOperations.length || latest" class="history-notices">
+    <div
+      v-if="addNotice || addError || error || uncertain || activeOperations.length || latest"
+      class="history-notices"
+    >
+      <p v-if="addNotice" class="history-outcome history-add-notice" role="status">
+        {{ addNotice }}
+      </p>
+      <p v-if="addError" class="catalog-error history-add-error" role="alert">{{ addError }}</p>
       <div v-if="error" class="catalog-error" role="alert">
         {{ error }}<span v-if="page"> · 保留上次读取的内容</span
         ><button class="text-button" :disabled="loading || busy" @click="model.refresh">

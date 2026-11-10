@@ -31,6 +31,34 @@ impl MusicClient {
         selection: Selection<'_>,
         attempt: u64,
     ) -> Result<(Vec<Value>, usize, Value)> {
+        self.history_selection_inner(token, selection, attempt, true)
+            .await
+    }
+
+    pub(in crate::client) async fn history_selection_for_queue(
+        &self,
+        token: &SessionToken,
+        selection: Selection<'_>,
+        attempt: u64,
+    ) -> Result<(Vec<Value>, Value)> {
+        if !matches!(selection.kind, HistoryKind::Song | HistoryKind::Voice) {
+            return Err(Error::InvalidInput(
+                "history batch requires songs or episodes",
+            ));
+        }
+        let (resources, _, source) = self
+            .history_selection_inner(token, selection, attempt, false)
+            .await?;
+        Ok((resources, source))
+    }
+
+    async fn history_selection_inner(
+        &self,
+        token: &SessionToken,
+        selection: Selection<'_>,
+        attempt: u64,
+        require_play_index: bool,
+    ) -> Result<(Vec<Value>, usize, Value)> {
         let Selection {
             kind,
             revision,
@@ -75,7 +103,8 @@ impl MusicClient {
         }
         let (resources, index, source) = match kind {
             HistoryKind::Song => (
-                self.history_songs(token, &chosen, quality, &guard).await?,
+                self.history_songs(token, &chosen, quality, &guard, !require_play_index)
+                    .await?,
                 index,
                 json!({"kind":"history","history_kind":"song","scene":"history"}),
             ),
@@ -134,7 +163,8 @@ impl MusicClient {
                         let source = json!({"kind":if kind==HistoryKind::Album{"album"}else{"playlist"},"id":row.id,
                             "scene":"history","history_resource":row.resource});
                         (
-                            self.history_songs(token, &records, quality, &guard).await?,
+                            self.history_songs(token, &records, quality, &guard, false)
+                                .await?,
                             0,
                             source,
                         )
@@ -179,7 +209,7 @@ impl MusicClient {
         if history.snapshot_for(token, kind)?.revision != revision {
             return Err(Error::QueueChanged);
         }
-        if resources.get(index).is_none_or(|r| r["missing"] == true) {
+        if require_play_index && resources.get(index).is_none_or(|r| r["missing"] == true) {
             return Err(Error::State("selected history resource is unavailable"));
         }
         Ok((resources, index, source))
@@ -191,7 +221,11 @@ impl MusicClient {
         rows: &[HistoryRecord],
         quality: Quality,
         guard: &(impl Fn() -> Result<()> + Sync),
+        check_download_rights: bool,
     ) -> Result<Vec<Value>> {
+        let offline = check_download_rights
+            .then(|| crate::download::offline::OfflineLibrary::new(self.session.clone()))
+            .transpose()?;
         let mut resources = Vec::with_capacity(rows.len());
         let mut online = Vec::new();
         for row in rows {
@@ -223,8 +257,25 @@ impl MusicClient {
                 {
                     guard()?;
                     if !download.is_empty() {
-                        resources.push(download.remove(0));
-                        continue;
+                        let publication = download.remove(0);
+                        let mut eligible = true;
+                        if let Some(offline) = &offline {
+                            eligible = if let Some(path) = publication["path"].as_str() {
+                                offline.check(token, path, false).await.is_ok_and(|check| {
+                                    check.access.can_play
+                                        && check.integrity_verified
+                                        && check.record.task_id == task
+                                        && check.record.song_id == row.id
+                                })
+                            } else {
+                                false
+                            };
+                            guard()?;
+                        }
+                        if eligible {
+                            resources.push(publication);
+                            continue;
+                        }
                     }
                 }
                 online.push((resources.len(), row.id.clone()));

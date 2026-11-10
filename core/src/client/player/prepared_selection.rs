@@ -5,7 +5,8 @@ use crate::{
     client::focus::{FocusSnapshot, Owner},
     playback::{
         controller::{
-            LocalBatchUpdate, PlaybackCommand, PlaybackFence, PlaybackSnapshot, QueueUpdate,
+            HistoryQueueUpdate, LocalBatchUpdate, PlaybackCommand, PlaybackFence, PlaybackSnapshot,
+            QueueUpdate,
         },
         engine::Cancellation,
     },
@@ -156,6 +157,26 @@ impl MusicClient {
         .await
     }
 
+    pub(super) async fn submit_prepared_history_queue_only(
+        &self,
+        token: &SessionToken,
+        prepared: &PreparedSelection,
+        update: HistoryQueueUpdate,
+        source: Cancellation,
+    ) -> Result<PlaybackSnapshot> {
+        if update.start {
+            return Err(Error::StaleResponse);
+        }
+        self.submit_prepared_queue_edit(
+            token,
+            prepared,
+            update.expected.clone(),
+            PlaybackCommand::ApplyHistoryAdd(update),
+            source,
+        )
+        .await
+    }
+
     async fn submit_prepared_queue_edit(
         &self,
         token: &SessionToken,
@@ -270,6 +291,7 @@ impl MusicClient {
                 | PlaySelection::SearchVoiceMenu { .. }
                 | PlaySelection::PodcastBrowseVoice { .. }
                 | PlaySelection::HistoryRadioChapter { .. }
+                | PlaySelection::HistoryAdd { .. }
                 | PlaySelection::Songs { .. }
         ) {
             return Err(Error::InvalidInput(

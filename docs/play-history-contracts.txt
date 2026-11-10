@@ -465,3 +465,37 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   没有历史写入。原有章节实窗另通过 4 态。证据为
   .build/gui-final/audit.json 和 .build/gui-chapter-regression/audit.json。
   未验证真实账号、物理声卡或 Windows WebView。
+
+最近播放歌曲／声音的批量「添加到播放列表」
+- 官方 Windows PC 3.1.42.205594：HistoryPlayBatchTrack.tsx:51–58、128–155 和
+  HistoryPlayBatchVoice.tsx:51–58、96–138 按当前合并列表顺序筛出选中行；第一条是
+  resource，完整子集是 selectedData，分别传 track／voice、Scene.history、
+  Action.addToPlayList。历史分类的其他四类没有此批量入口。Button 只在有选择时可按，
+  不打开收藏歌单选择器。Cumulus 沿用历史页面已显示的选择栏，保留当前筛选；按显示
+  顺序传原生历史行 ID，不将点击顺序、DOM 虚拟窗口或前端 Track 对象当成队列数据。
+- M3085:243–296、297–311、564–585 优先 selectedData。有队列时 play=false、
+  clear=false；空队列转 play。M308:3148–3152、3167–3208、3214–3249 按准入结果
+  使用当前 displayOrder 作为锚点。M1384:5241–5298（文件队列）／2604–2657（DB 队列）
+  从旧前后段删除同资源项，再在锚点之后按所选顺序插入，保留容量允许的旧前后缀；
+  M213:109–128 区分节目资源 ID 和解码歌曲 ID。M176:34–62 和 M1384:5267、
+  5366–5376、5695–5727 另处理随机播放；空队列随机选首个，已有队列给第一条插入项
+  安排随机下一首。现有「播放选中」仍保留 Cumulus 的 Replace 行为；官方批量 Header
+  的 Action.play 也会按插入路径开始选中曲目，后者差异留作独立修改。
+- 前端用单次 prepare/commit 播放票据，仅提交分类、历史快照版本、当前显示的有序 ID
+  和选用音质。原生读取当前账号／访客所有者的快照，拒绝其他类别、未知 ID、重复／
+  逆序 ID 和过期快照。元数据读取后再核对历史版本、原生队列／播放控制／音频焦点、
+  会话和脱离一起听的凭据；队列 actor 在所有者锁下复核历史版本并提交。已有队列只
+  修改列表；当前项即使位于所选子集中也保留原生 entry、解码器、进度和暂停状态。
+  有剩余队列但播放器已停止时不自动播放。空队列才走正常媒体授权和播放。
+- 歌曲复用 /api/v3/song/detail 与 /api/song/enhance/privilege，已有显式完成任务需通过
+  原生下载身份、OfflineLibrary 权限与完整性检查；未通过只能进入正常在线准入／授权。
+  本地/CUE 复用当前索引与历史指纹，节目可在缺媒体 ID 时读取 /api/dj/program/detail，
+  播放时才通过 /api/dj/play/url/check 与正常 URL 授权。加入已有队列不重新授权当前
+  音源；播放器原有的下一首预取仍可能读取媒体权限和 URL。不写服务端历史、歌单或
+  收藏。M59.j 另有全量官方 trackMap 发现和同音频版本替换；
+  这个增量只采用已关联的本机发布文件及普通在线结果，未模拟这两条发现/替代分支。
+  一起听／FM／智能模式仍由各自协调器处理；本入口不直接修改这些队列。没有实测账号
+  请求、Windows 实窗或物理声卡结论。
+- 可执行：core/tests/client_history.rs 的 history_add 定向测试；现有
+  scripts/ci/catalog_smoke.py --history 在歌曲、声音的原 WebView 阶段增加实际按钮、
+  选中项插入顺序和暂停状态断言，合成数据，检查阶段数保持不变。

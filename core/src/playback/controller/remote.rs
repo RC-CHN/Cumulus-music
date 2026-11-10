@@ -222,6 +222,40 @@ impl Actor {
         Ok(update.start.then(LoadOptions::default))
     }
 
+    pub(super) fn apply_history_add(
+        &mut self,
+        update: super::HistoryQueueUpdate,
+        reply: &Response,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<LoadOptions>> {
+        if self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || self.pending.is_some()
+            || self.quality_task.is_some()
+            || update.queue.fm_source.is_some()
+            || update.queue.intelligence.is_some()
+        {
+            return Err(Error::MutationBusy);
+        }
+        if self.queue.is_empty() != update.start
+            || (update.start && update.queue.selected().is_none())
+            || (!update.start && self.queue.selected() != update.queue.selected())
+        {
+            return Err(Error::QueueChanged);
+        }
+        if reply.is_closed() {
+            return Err(Error::StaleResponse);
+        }
+        authority.check()?;
+        crate::history::HistoryService::new(self.session.clone())?.with_matching_revision(
+            &self.token,
+            update.kind,
+            &update.revision,
+            || self.queue.install(update.queue),
+        )?;
+        Ok(update.start.then(LoadOptions::default))
+    }
+
     pub(super) async fn apply_local_batch(
         &mut self,
         update: super::LocalBatchUpdate,
