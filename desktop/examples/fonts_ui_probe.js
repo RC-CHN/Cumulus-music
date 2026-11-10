@@ -15,6 +15,13 @@
   let retry;
   const fixture = async(kind,payload={}) => {const id=++serial;await emit({kind,id,...payload});await wait(()=>id in window.__lyricAck,kind);const value=window.__lyricAck[id];delete window.__lyricAck[id];if(value.error)throw Error(value.error);return value.value??value;};
   const fontStats = () => fixture('font_catalog');
+  const expectNativeReads = async (before, count, label) => {
+    const after=await fontStats();
+    const nativeReads=(after.sources.native??0)-(before.sources.native??0);
+    assert(after.total-before.total===count && nativeReads===count,
+      `${label}: expected ${count} native reads; observed ${nativeReads} native, ${after.total-before.total} total`);
+    return after;
+  };
   const fontMode = async value => {
     await fixture('font_catalog',{mode:value});
     mode=value;
@@ -79,19 +86,30 @@
     await wait(()=>one('.track-row'),'main ready');epoch=(await invoke('account_snapshot')).epoch;
     await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['1','2'],index:0,quality:'standard'}});
     await sleep(250);await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+    const beforeSettings=await fontStats();
     click(one('[aria-label="打开设置"]'));await wait(()=>one('[aria-label="显示桌面歌词"]'),'settings');
+    // The interface and lyric catalogues share the native enumeration lock
+    // and fixture counter. Settle the settings read before the lyric proof.
+    await wait(()=>one('select[data-interface-font][aria-busy="false"]'),'interface font catalog settled');
+    const afterSettings=await expectNativeReads(beforeSettings,1,'interface font setting');
     const start=performance.now();nativeCatalog=await invoke('system_font_catalog',{epoch});const enumerationMs=performance.now()-start;
     assert(nativeCatalog.epoch===epoch && nativeCatalog.families.length>0,'native system fonts empty');
+    const afterDirect=await expectNativeReads(afterSettings,1,'explicit system font catalog');
     assert(await invoke('system_font_catalog',{epoch:'stale-account'}).then(()=>false,()=>true),'stale account font request');
+    const beforeDialog=await expectNativeReads(afterDirect,0,'stale account font request');
     if(window.__lyricProofReopen){
       assert((await settings()).preferences.current.appearance.font==='Cumulus Missing Font 19317','missing saved name lost on restart');
-      await open();assert(one('.font-fallback-note'),'missing font fallback notice after restart');await capture('restart_missing');await close();
+      await open();assert(one('.font-fallback-note'),'missing font fallback notice after restart');
+      await expectNativeReads(beforeDialog,1,'reopened lyric font picker');
+      await capture('restart_missing');await close();
       await wait(async()=>(await settings()).visible,'persisted lyric window');const view=await read();assert(view.fontFamilies[0]==='Cumulus Missing Font 19317','missing name not passed to renderer');
       const css=await lyric("return getComputedStyle(document.querySelector('.desktop-lyric-row')).fontFamily;");assert(css.includes('Cumulus Missing Font 19317') && css.includes('宋体') && css.includes('sans-serif'),'lyric CSS fallback chain');
       checks.push('missing font preserved across process restart','native lyric CSS fallback chain');
     } else {
-      theme('light');await open();assert(document.activeElement===one('[aria-label="搜索本机字体"]'),'search initial focus');await capture('native_light');
-      const count=(await fontStats()).total;assert(count===2,'initial and dialog native reads');await sleep(1000);assert((await fontStats()).total===count,'settings poll enumerates fonts');
+      theme('light');await open();assert(document.activeElement===one('[aria-label="搜索本机字体"]'),'search initial focus');
+      const afterDialog=await expectNativeReads(beforeDialog,1,'lyric font picker');
+      await capture('native_light');await sleep(1000);
+      await expectNativeReads(afterDialog,0,'settings poll must not enumerate fonts');
       await fixture('show');one('[aria-label="搜索本机字体"]').focus();await fixture('key',{key:'Tab'});assert(one('.font-dialog').contains(document.activeElement),'Tab escaped modal');
       await fixture('key',{key:'Escape'});await wait(()=>!one('.font-dialog'),'native Escape closes dialog');assert(document.activeElement===button('选择字体'),'Escape lost trigger focus');
       checks.push('native font enumeration and no polling','independent Tab and Escape with focus restoration');
