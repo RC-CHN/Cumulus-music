@@ -333,16 +333,14 @@ jobs:
       - name: Verify standalone WASAPI capture policy
         run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
 
-  native:
-    name: Native (${{ matrix.platform }})
+  windows-native-shard:
+    name: Windows Rust tests (${{ matrix.shard }})
     needs: frontend
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-2022
-            platform: windows-x64
-    runs-on: ${{ matrix.os }}
+        shard: [a, b]
+    runs-on: windows-2022
     timeout-minutes: 150
     defaults:
       run:
@@ -412,11 +410,25 @@ jobs:
         with:
           name: frontend-dist
           path: frontend/dist
-      - name: Run the full Windows Rust test suite
+      - name: Run this shard of the full Windows Rust test suite
         env:
           # Increase compilation concurrency only, leaving libtest unchanged.
           CARGO_BUILD_JOBS: '3'
-        run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER: python -m windows_native_shard
+          CUMULUS_NATIVE_SHARD: ${{ matrix.shard }}
+          CUMULUS_NATIVE_INVENTORY: ${{ runner.temp }}/cumulus-native-${{ matrix.shard }}.jsonl
+        run: |
+          PYTHONPATH="$(cygpath -w "$PWD/scripts/ci")"
+          export PYTHONPATH
+          cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+          test -s "$CUMULUS_NATIVE_INVENTORY"
+      - name: Export the executed Windows Cargo test inventory
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-native-${{ matrix.shard }}.jsonl
+          if-no-files-found: error
+          retention-days: 3
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
@@ -424,7 +436,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: diagnostics-windows-native-checks
+          name: diagnostics-windows-native-checks-${{ matrix.shard }}
           # Archive first: path-escaping fixtures deliberately contain colons,
           # which upload-artifact cannot accept as individual filenames.
           include-hidden-files: true
@@ -432,10 +444,10 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Remove workspace outputs before caching Windows test dependencies
-        if: steps.rust-cache.outputs.cache-hit != 'true'
+        if: matrix.shard == 'a' && steps.rust-cache.outputs.cache-hit != 'true'
         run: cargo clean --workspace --locked --offline
       - name: Cache Windows test dependencies
-        if: steps.rust-cache.outputs.cache-hit != 'true'
+        if: matrix.shard == 'a' && steps.rust-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
@@ -443,6 +455,26 @@ jobs:
             ~/.cargo/git
             .build/target
           key: ${{ steps.rust-cache.outputs.cache-primary-key }}
+
+  native:
+    name: Native (windows-x64)
+    needs: windows-native-shard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: windows-native-*-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-native-receipts
+          merge-multiple: true
+      - name: Require complete Windows Cargo coverage across the shards
+        run: >-
+          python3 scripts/ci/windows_native_shard.py --verify
+          "$RUNNER_TEMP/windows-native-receipts/cumulus-native-a.jsonl"
+          "$RUNNER_TEMP/windows-native-receipts/cumulus-native-b.jsonl"
 
   windows-release-runtime:
     name: Windows release media runtime
