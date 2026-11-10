@@ -9,6 +9,26 @@
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const play = () => document.querySelector('.playerbar .play-toggle');
   const guide = () => document.querySelector('[data-home-recall-guide]');
+  const timing = {
+    insertedAt: null, firstPollAt: null, captureRequestedAt: null, captureReturnedAt: null,
+    closingAt: null, removedAt: null,
+  };
+  // Use the DOM lifecycle before Home navigation. A busy WebView can wake
+  // the test's polling loop late, and screenshot IPC has its own latency.
+  const observe = () => {
+    const now = performance.now();
+    const bubble = guide();
+    if (bubble && timing.insertedAt === null) timing.insertedAt = now;
+    if (timing.insertedAt !== null && timing.closingAt === null &&
+        (!bubble || bubble.classList.contains('recall-play-guide-leave-active')))
+      timing.closingAt = now;
+    if (timing.insertedAt !== null && timing.removedAt === null && !bubble)
+      timing.removedAt = now;
+  };
+  const observer = new MutationObserver(observe);
+  observer.observe(document.body, {
+    childList: true, subtree: true, attributes: true, attributeFilter: ['class'],
+  });
   async function wait(predicate, label, timeout = 12000) {
     const start = performance.now();
     do {
@@ -29,8 +49,8 @@
       .find((button) => button.textContent.trim() === '首页' && !button.disabled), 'Home button available');
     home.focus({ preventScroll: true });
     home.click();
-    await wait(guide, 'prefill guide rendered');
-    const firstSeen = performance.now();
+    await wait(() => guide() && timing.insertedAt !== null, 'prefill guide rendered');
+    timing.firstPollAt = performance.now();
     await wait(() => {
       const section = document.querySelector('.discovery-home [data-home-section="playlists"]');
       const bubble = guide();
@@ -55,21 +75,24 @@
       Math.abs((guideRect.left + guideRect.right - playRect.left - playRect.right) / 2) < 2,
       'guide is painted above and centered on the actual Play button');
     assert(document.activeElement !== play() && document.activeElement !== guide(), 'guide stole focus');
+    timing.captureRequestedAt = performance.now();
     await emit('ux_recall_ready', { rows, ready, guide: guide().textContent.trim() });
+    timing.captureReturnedAt = performance.now();
     assert(guide()?.isConnected, 'visible guide capture missed its display window');
     // The first screenshot can take time; measure the production guide from
     // its own appearance rather than adding another delay after capture.
-    await sleep(Math.max(0, 900 - (performance.now() - firstSeen)));
+    await sleep(Math.max(0, 900 - (performance.now() - timing.insertedAt)));
     assert(guide()?.isConnected, 'guide closed too soon');
-    await wait(() => !guide(), 'guide closed automatically', 3500);
-    const visibleMs = performance.now() - firstSeen;
-    assert(visibleMs > 2700 && visibleMs < 3850, 'guide did not last approximately three seconds');
+    await wait(() => !guide() && timing.removedAt !== null, 'guide closed automatically', 3500);
+    const visibleMs = timing.removedAt - timing.insertedAt;
+    assert(visibleMs > 2700 && visibleMs < 3850,
+      `guide did not last approximately three seconds (${visibleMs.toFixed(1)} ms)`);
     await paint();
     const closed = await player();
     assert(closed.state === 'idle' && closed.queueRevision === ready.queueRevision &&
       closed.entryId === ready.entryId && closed.playId == null, 'closing prompt changed transport');
     assert(play()?.getAttribute('aria-label') === '播放' && !guide(), 'closed guide and idle footer rendered');
-    await emit('ux_recall_closed', { closed, visibleMs });
+    await emit('ux_recall_closed', { closed, visibleMs, timing });
 
     // In screenshot mode emit returns only after the host has written the
     // actual closed-state PNG. Never start Play while that frame is pending.
@@ -97,6 +120,9 @@
       visibility: document.visibilityState,
       footer: play() && { disabled: play().disabled, label: play().getAttribute('aria-label') },
       home: !!document.querySelector('.discovery-home'),
+      timing,
     });
+  } finally {
+    observer.disconnect();
   }
 })();
