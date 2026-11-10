@@ -235,6 +235,7 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--publish', type=Path)
     mode.add_argument('--reuse', type=Path)
+    mode.add_argument('--cold', action='store_true', help='install without a producer or shared cache')
     install(parser.parse_args())
 
 

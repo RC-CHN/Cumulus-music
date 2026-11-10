@@ -1421,8 +1421,7 @@ jobs:
       - *linux_webview_checkout
       - name: Linux native dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 openssl
+          python3 scripts/ci/linux_webview_apt.py --cold
           sudo locale-gen en_US.UTF-8
       - *linux_webview_python
       - *linux_webview_toolchain
