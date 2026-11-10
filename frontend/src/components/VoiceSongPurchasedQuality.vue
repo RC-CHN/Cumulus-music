@@ -66,20 +66,22 @@ function confirm() {
           :disabled="busy || guideBusy"
           @click="openGuide"
         >
-          <Icon name="help" aria-hidden="true" />
+          <Icon name="info" aria-hidden="true" />
         </button>
       </div>
-      <button
-        type="button"
-        class="icon-button"
-        aria-label="关闭音质选择"
-        :disabled="busy"
-        @click="emit('close')"
-      >
-        <Icon name="close" />
-      </button>
     </header>
-    <p v-if="guideError" class="muted" role="status">暂时无法打开音质说明，请重试。</p>
+    <button
+      type="button"
+      class="icon-button purchased-quality-close"
+      aria-label="关闭音质选择"
+      :disabled="busy"
+      @click="emit('close')"
+    >
+      <Icon name="close" />
+    </button>
+    <p v-if="guideError" class="muted purchased-quality-notice" role="status">
+      暂时无法打开音质说明，请重试。
+    </p>
     <form @submit.prevent="confirm">
       <fieldset class="purchased-quality-list" :disabled="busy" aria-label="下载音质">
         <label v-for="choice in choices" :key="choice" class="purchased-quality-row">
@@ -104,16 +106,58 @@ function confirm() {
 
 <style scoped>
 .purchased-quality-dialog {
-  width: min(416px, calc(100vw - 48px));
+  width: min(442px, calc(100vw - 48px));
+  border-radius: 12px;
+  padding: 0;
+}
+.purchased-quality-dialog header {
+  position: relative;
+  justify-content: center;
+  min-height: 28px;
+  margin: 38px 0 18px;
+  padding-inline: 44px;
 }
 .purchased-quality-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  min-width: 0;
+}
+.purchased-quality-heading h2 {
+  font-weight: 600;
+  line-height: 28px;
+  overflow-wrap: anywhere;
+}
+.purchased-quality-help {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 28px;
+  justify-content: flex-start;
+  margin-inline-end: -10px;
+  padding: 0;
 }
 .purchased-quality-help svg {
   width: 16px;
   height: 16px;
+}
+.purchased-quality-close {
+  position: absolute;
+  z-index: 3;
+  top: 20px;
+  inset-inline-end: 20px;
+  padding: 0;
+}
+.purchased-quality-close svg {
+  width: 24px;
+  height: 24px;
+}
+.purchased-quality-notice {
+  margin: 0 24px 12px;
+  text-align: center;
+}
+.purchased-quality-dialog form {
+  display: flex;
+  flex-direction: column;
 }
 .purchased-quality-list {
   max-height: min(216px, 50dvh);
@@ -124,13 +168,19 @@ function confirm() {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-height: 42px;
   position: relative;
   margin: 0;
-  padding: 0 12px;
+  /* The official 40px inset also leaves a 10px gap for its empty icon slot. */
+  padding-inline: clamp(20px, 10vw, 50px) clamp(12px, 5vw, 20px);
+  font-size: 16px;
+  line-height: 22px;
   cursor: pointer;
-  border-radius: 6px;
+}
+.purchased-quality-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .purchased-quality-row:hover {
   background: var(--surface-hover, var(--hover));
@@ -149,9 +199,40 @@ function confirm() {
   outline-offset: -2px;
 }
 .purchased-quality-row svg {
-  width: 16px;
-  height: 16px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   margin-inline-start: auto;
   color: var(--accent);
+}
+.purchased-quality-dialog footer {
+  margin: 20px 0 40px;
+  padding: 0 16px;
+}
+.purchased-quality-dialog .primary {
+  width: min(175px, 100%);
+  min-width: 0;
+  height: 40px;
+  padding: 0 8px;
+  font-size: 16px;
+}
+@media (max-height: 580px) {
+  .purchased-quality-dialog header {
+    margin-top: 28px;
+  }
+  .purchased-quality-close {
+    top: 12px;
+  }
+  .purchased-quality-dialog footer {
+    margin-bottom: 24px;
+  }
+}
+@media (max-width: 400px) {
+  .purchased-quality-dialog header {
+    padding-inline: 34px;
+  }
+  .purchased-quality-close {
+    inset-inline-end: 8px;
+  }
 }
 </style>
