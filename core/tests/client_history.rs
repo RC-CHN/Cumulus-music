@@ -202,6 +202,7 @@ struct Fixture {
     api: Arc<Backend>,
     session: Arc<AccountSession>,
     client: Arc<MusicClient>,
+    device: Arc<engine::Device>,
     history: HistoryService,
     store: Arc<cumulus_core::storage::StateStore>,
 }
@@ -217,13 +218,16 @@ fn fixture(authenticated: bool) -> Fixture {
             .unwrap();
     }
     let history = HistoryService::new(session.clone()).unwrap();
+    let device = Arc::new(engine::Device::default());
+    let audio_device = device.clone();
     let client = MusicClient::with_session(session.clone(), registry)
-        .with_audio_factory(|| Ok(engine::audio_engine(Arc::new(engine::Device::default()))));
+        .with_audio_factory(move || Ok(engine::audio_engine(audio_device.clone())));
     Fixture {
         _root: root,
         api,
         session,
         client: Arc::new(client),
+        device,
         history,
         store,
     }
@@ -1232,22 +1236,53 @@ async fn history_add_moves_duplicates_after_current_without_touching_paused_tran
         .await
         .unwrap();
     let (ticket, selection) = history_add_request(&f, HistoryKind::Song, &["2", "3", "5"]).await;
+    let transport = || {
+        let device = f.device.state.lock().unwrap();
+        (device.loads, device.stops, device.pauses.clone())
+    };
+    let before_transport = transport();
     f.api.calls.lock().unwrap().clear();
+    f.api.media_sources.lock().unwrap().clear();
     let result = f
         .client
         .commit_prepared_selection(&epoch, &ticket, selection)
         .await
         .unwrap();
     assert_eq!(history_batch_ids(&f).await, ["1", "2", "3", "5", "4"]);
+    assert_eq!(
+        transport(),
+        before_transport,
+        "queue edit touched the decoder"
+    );
     assert_eq!(result.entry_id, paused.entry_id);
     assert_eq!(result.play_id, paused.play_id);
     assert_eq!(result.state, paused.state);
     assert_eq!(result.position, paused.position);
     assert_eq!(result.track.unwrap().id, "3");
+    const SOURCE: &str = "/api/song/enhance/player/url/v1";
     let calls = f.api.calls.lock().unwrap();
+    let media = f.api.media_sources.lock().unwrap();
     assert_eq!(
-        calls.as_slice(),
+        calls
+            .iter()
+            .map(String::as_str)
+            .filter(|path| *path != SOURCE)
+            .collect::<Vec<_>>(),
         ["/api/v3/song/detail", "/api/song/enhance/privilege"]
+    );
+    // The active decoder stays on #3. The actor can still finish prefetching
+    // old next #4 or start prefetching new next #5 while the queue edit runs.
+    assert_eq!(
+        calls.iter().filter(|path| *path == SOURCE).count(),
+        media.len()
+    );
+    let prefetched_ids = media.iter().map(Value::as_str).collect::<Vec<_>>();
+    assert!(
+        matches!(
+            prefetched_ids.as_slice(),
+            [] | [Some("4" | "5")] | [Some("4"), Some("5")]
+        ),
+        "expected only old next #4 and new next #5 prefetches, got {media:?}; calls: {calls:?}"
     );
 }
 
