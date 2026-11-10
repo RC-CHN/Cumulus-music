@@ -135,31 +135,57 @@ async fn same_purchased_tier_readmits_original_task_and_verified_partial_media()
     };
     assert_eq!(result.accepted.len(), 2);
     assert_eq!(result.accepted[0], old.id);
-    tokio::time::timeout(Duration::from_secs(3), async {
+    let snapshot = || {
+        service
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|task| {
+                (
+                    task.song_id,
+                    task.status,
+                    task.phase,
+                    task.bytes,
+                    task.authorization_count,
+                    task.last_error,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    // This fixture checks the admission, resume and publication outcome, not
+    // how fast two background workers publish files on a loaded Windows runner.
+    let timeout = Duration::from_secs(if cfg!(windows) { 15 } else { 3 });
+    let finished = tokio::time::timeout(timeout, async {
         loop {
-            let tasks = service.list().unwrap();
+            let tasks = snapshot();
             assert!(
                 tasks
                     .iter()
-                    .all(|task| task.status != DownloadStatus::Error),
-                "synthetic batch did not finish: {:?}",
-                tasks
-                    .iter()
-                    .map(|task| (task.song_id.as_str(), &task.last_error))
-                    .collect::<Vec<_>>()
+                    .all(|(_, status, ..)| *status != DownloadStatus::Error),
+                "synthetic batch did not finish: {tasks:?}"
             );
             let done = tasks.len() == 2
                 && tasks
                     .iter()
-                    .all(|task| task.status == DownloadStatus::Complete);
+                    .all(|(_, status, ..)| *status == DownloadStatus::Complete);
             if done {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
     })
-    .await
-    .expect("both verified synthetic downloads finish");
+    .await;
+    assert!(
+        finished.is_ok(),
+        "both verified synthetic downloads must finish within {timeout:?}: rows={:?}, HTTP calls={}, media offsets={:?}",
+        snapshot(),
+        http.calls().len(),
+        media
+            .calls()
+            .iter()
+            .map(|call| call.offset)
+            .collect::<Vec<_>>()
+    );
     let resumed = service.get(&old.id).unwrap();
     assert_eq!(resumed.target, old.target);
     assert_eq!(resumed.created_ms, old.created_ms);
