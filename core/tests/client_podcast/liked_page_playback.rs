@@ -48,6 +48,15 @@ fn selection(page: &PodcastLikedPage, voice_id: &str, double_click: bool) -> Pla
     PlaySelection::PodcastLikedPageEpisode {
         target: target(page, voice_id),
         double_click,
+        toggle_current: false,
+    }
+}
+
+fn toggle_current(page: &PodcastLikedPage, voice_id: &str) -> PlaySelection {
+    PlaySelection::PodcastLikedPageEpisode {
+        target: target(page, voice_id),
+        double_click: false,
+        toggle_current: true,
     }
 }
 
@@ -190,6 +199,71 @@ async fn paged_liked_menu_and_double_click_use_only_the_loaded_prefix_and_prefer
         .unwrap();
     assert_eq!(appended.track.unwrap().voice_id.as_deref(), Some("506"));
     assert_eq!(queue(&client).await, ["501", "506", "504"]);
+}
+
+#[tokio::test]
+async fn paged_liked_index_toggles_only_the_exact_loaded_entry_without_hydrating() {
+    let (_root, api, _session, client) = fixture();
+    setup_pages(&api);
+    let page = open(&client).await;
+    incumbent(&client).await;
+    // 503 lacks mainSong in the list, but already has a verified native
+    // source after the menu started it. Pausing cannot read details again.
+    let played = select(&client, selection(&page, "503", false))
+        .await
+        .unwrap();
+    let native = client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(native.state, PlaybackStatus::Playing);
+    assert_eq!(native.play_id, played.play_id);
+    api.calls.lock().unwrap().clear();
+
+    let paused = select(&client, toggle_current(&page, "503")).await.unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.mode, PlaybackMode::Random);
+    assert_eq!(paused.play_id, native.play_id);
+    assert_eq!(paused.entry_id, native.entry_id);
+    assert_eq!(paused.queue_revision, native.queue_revision);
+    assert_eq!(paused.position, native.position);
+
+    let resumed = select(&client, toggle_current(&page, "503")).await.unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.play_id, native.play_id);
+    assert_eq!(queue(&client).await, ["900", "503"]);
+    assert!(matches!(
+        select(&client, toggle_current(&page, "504")).await,
+        Err(Error::QueueChanged)
+    ));
+    let unchanged = client.player_snapshot("1").await.unwrap();
+    assert_eq!(unchanged.play_id, native.play_id);
+    assert_eq!(unchanged.queue_revision, native.queue_revision);
+    assert_eq!(unchanged.state, PlaybackStatus::Playing);
+
+    client
+        .podcast_liked_page("1", PodcastLikedQuery::Open {})
+        .await
+        .unwrap();
+    assert!(matches!(
+        select(&client, toggle_current(&page, "503")).await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(
+        client.player_snapshot("1").await.unwrap().state,
+        PlaybackStatus::Playing
+    );
+    assert!(!api.calls.lock().unwrap().iter().any(|(path, body)| {
+        path == "/api/content/my/liked/voice"
+            || path == "/api/dj/program/detail"
+            || (path == "/api/dj/play/url/check"
+                && matches!(body["voiceId"].as_str(), Some("503" | "504")))
+    }));
 }
 
 #[tokio::test]

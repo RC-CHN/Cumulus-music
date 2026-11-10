@@ -71,11 +71,14 @@ fn compatible(before: &Episode, detail: &Episode) -> bool {
         && !detail.display_status_withdrawn()
 }
 
-fn same_online_voice(value: &Value, episode: &Episode) -> bool {
+fn same_online_voice(value: &Value, episode: &Episode, allow_unknown_song: bool) -> bool {
     identity::kind(value) == PlayerResourceKind::Voice
         && bound_episode(value).is_some_and(|(id, song, voice)| {
             id == episode.id
-                && episode.song_id.as_ref() == Some(&song)
+                && episode
+                    .song_id
+                    .as_ref()
+                    .map_or(allow_unknown_song, |expected| expected == &song)
                 && episode
                     .radio
                     .as_ref()
@@ -224,8 +227,12 @@ impl MusicClient {
         token: &SessionToken,
         target: ScopedProgram<'_>,
         menu: bool,
+        toggle_current: bool,
         prepared: &PreparedSelection,
     ) -> Result<(PlaybackCommand, Cancellation)> {
+        if toggle_current && !menu {
+            return Err(Error::InvalidInput("conflicting liked episode gestures"));
+        }
         let replace = matches!(target, ScopedProgram::PagedLiked(_))
             && !menu
             && self.replace_queue_on_double_click(token)?;
@@ -256,17 +263,31 @@ impl MusicClient {
         if before.fm || queue.intelligence.is_some() {
             return Err(Error::State("scoped episode requires ordinary playback"));
         }
-        let loaded = |episode: &Episode| {
+        let loaded = |episode: &Episode, allow_unknown_song| {
             before.play_id.is_some()
                 && matches!(
                     before.state,
                     PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
                 )
-                && before
-                    .selected
-                    .as_ref()
-                    .is_some_and(|entry| same_online_voice(&entry.resource, episode))
+                && before.selected.as_ref().is_some_and(|entry| {
+                    same_online_voice(&entry.resource, episode, allow_unknown_song)
+                })
         };
+        if toggle_current {
+            // The index Pause control is allowed to touch only the entry the
+            // prepared ticket still observes. A miss can never start audio.
+            if !loaded(&cached, true) {
+                return Err(Error::QueueChanged);
+            }
+            return Ok((
+                PlaybackCommand::TogglePodcastRank {
+                    expected: before.fence(),
+                    paused: !before.paused,
+                    mode: None,
+                },
+                guard,
+            ));
+        }
         let card_category = cached.raw["categoryId"].clone();
         let replacement_mode = |episode: &Episode, old_mode| {
             voice_replacement_mode(
@@ -292,7 +313,7 @@ impl MusicClient {
                 PlaybackCommand::Snapshot
             }
         };
-        if identifier(&cached.raw["mainSong"]["id"]).is_ok() && loaded(&cached) {
+        if identifier(&cached.raw["mainSong"]["id"]).is_ok() && loaded(&cached, false) {
             return Ok((current_command(&cached), guard));
         }
 
@@ -307,7 +328,7 @@ impl MusicClient {
         } else {
             cached
         };
-        if loaded(&detail) {
+        if loaded(&detail, false) {
             return Ok((current_command(&detail), guard));
         }
 

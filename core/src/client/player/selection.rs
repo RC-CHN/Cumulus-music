@@ -640,22 +640,27 @@ impl MusicClient {
             | PlaySelection::PodcastLikedEpisode { .. }
             | PlaySelection::PodcastLikedPageEpisode { .. }) => {
                 use super::podcast_purchased::ScopedProgram;
-                let (target, menu) = match &selected {
+                let (target, menu, toggle_current) = match &selected {
                     PlaySelection::PodcastPurchasedEpisode { target, menu } => {
-                        (ScopedProgram::Purchased(target), *menu)
+                        (ScopedProgram::Purchased(target), *menu, false)
                     }
                     PlaySelection::PodcastLikedEpisode { target } => {
-                        (ScopedProgram::Liked(target), true)
+                        (ScopedProgram::Liked(target), true, false)
                     }
                     PlaySelection::PodcastLikedPageEpisode {
                         target,
                         double_click,
-                    } => (ScopedProgram::PagedLiked(target), !double_click),
+                        toggle_current,
+                    } => (
+                        ScopedProgram::PagedLiked(target),
+                        !double_click,
+                        *toggle_current,
+                    ),
                     _ => unreachable!("scoped program selected"),
                 };
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
                 let (command, source_guard) = self
-                    .scoped_program_selection(&token, target, menu, prepared)
+                    .scoped_program_selection(&token, target, menu, toggle_current, prepared)
                     .await?;
                 let state = self
                     .submit_selection_with_source(

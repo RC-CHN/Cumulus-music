@@ -488,6 +488,8 @@ pub enum PlaySelection {
         target: crate::client::dto::PodcastLikedPageTarget,
         #[serde(default)]
         double_click: bool,
+        #[serde(default)]
+        toggle_current: bool,
     },
     SearchResultVoice {
         id: String,
