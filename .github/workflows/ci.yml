@@ -1831,7 +1831,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, playback-podcasts, playback-startup, library-search, account-shell, catalog-browse, catalog-community]
+        shard: [playback, playback-podcasts, playback-startup, library-search, account-auth, account-shell, catalog-browse, catalog-community]
     defaults:
       run:
         shell: bash
@@ -2078,8 +2078,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
-      - name: Verify account and platform shell
-        if: matrix.shard == 'account-shell'
+      - name: Verify account sessions, QR, device and SMS login
+        if: matrix.shard == 'account-auth'
         env:
           GDK_BACKEND: x11
           LIBGL_ALWAYS_SOFTWARE: '1'
@@ -2124,6 +2124,14 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-login-legacy-linux --legacy
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-send-failure-linux --send-failure
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-send-failure-legacy-linux --legacy --send-failure
+      - name: Verify account and platform shell
+        if: matrix.shard == 'account-shell'
+        env:
+          GDK_BACKEND: x11
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
+        run: |
           cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-legacy-linux --legacy
