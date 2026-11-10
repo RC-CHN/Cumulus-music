@@ -6,5 +6,5 @@ mod state;
 pub use directory::private_directory_builder;
 pub use operation_lock::OperationLock;
 pub(crate) use qr_candidate::QrCandidateStore;
-pub(crate) use state::PlaybackDownloadKind;
+pub(crate) use state::{LIKED_PREFIX_KEY, LIKED_PREFIX_KIND, PlaybackDownloadKind};
 pub use state::{StateRow, StateStore, StateTransaction};

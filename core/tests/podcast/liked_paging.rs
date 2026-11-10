@@ -501,3 +501,286 @@ async fn paged_liked_menu_drops_a_held_count_after_leaving_and_rejects_withdrawn
             .is_none()
     );
 }
+
+const PREFIX: &str = "podcast-liked-prefix-v1";
+const SAVED: &str = "prefix";
+
+fn reopen(
+    dir: &std::path::Path,
+    uid: u64,
+    replies: impl IntoIterator<Item = Reply>,
+) -> (Arc<ScriptApi>, Arc<AccountSession>, MusicClient) {
+    let api = Arc::new(ScriptApi::new(replies));
+    let registry = ProfileRegistry::open(dir, ApiOrigin::Pc).unwrap();
+    let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
+    session
+        .adopt(
+            api.clone(),
+            json!({"userId":uid}),
+            &session.token().unwrap(),
+        )
+        .unwrap();
+    let client = MusicClient::with_session(session.clone(), registry);
+    (api, session, client)
+}
+
+#[tokio::test]
+async fn durable_liked_pop_consumes_scoped_display_cache_and_rotates_active_receipts() {
+    let mut first = row(81, json!(950));
+    first["displayStatus"] = json!("UNDER_SHELF");
+    first["mainSong"] = json!({"id":10081,"url":"https://m.music.126.net/secret?token=private"});
+    first["coverUrl"] = json!("https://p1.music.126.net/public.jpg?token=art-secret");
+    first["dj"] = json!({"userId":5,"nickname":"Host","accessToken":"private-dj"});
+    first["listenerCount"] = json!("61");
+    let (dir, api, _, client) = setup([
+        response(vec![first, row(82, json!("900"))], true, Some(5)).into(),
+        json!({"code":200,"data":6}).into(),
+        response(vec![row(83, json!(800))], false, None).into(),
+    ]);
+    let open = page(&client, PodcastLikedQuery::Open {}).await;
+    let active = page(&client, next(&open)).await;
+    assert_eq!(client.podcast_liked_count("1").await.unwrap().value, 6);
+    let suspended = page(&client, suspend(&active)).await;
+    assert!(suspended.episodes.is_empty() && suspended.continuation.is_none());
+    assert!(json!(suspended).get("resume").is_none());
+
+    let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let store = registry.store();
+    let record = store.get("1", PREFIX, SAVED).unwrap().unwrap();
+    let serialized = record.to_string();
+    for hidden in [
+        active.visit.as_str(),
+        active.revision.as_str(),
+        active.continuation.as_deref().unwrap(),
+        "not-for-the-renderer",
+        "art-secret",
+        "private-dj",
+        "https://m.music.126.net",
+        "mainSong",
+    ] {
+        assert!(!serialized.contains(hidden), "{hidden}");
+    }
+    assert!(serialized.contains("https://p1.music.126.net/public.jpg"));
+    assert_eq!(record["count"], 6);
+    assert_eq!(record["cursor"], json!("900"));
+    assert!(
+        client
+            .podcast_state("1", false)
+            .await
+            .unwrap()
+            .value
+            .liked_ids
+            .is_none()
+    );
+
+    let new = page(&client, restore(&suspended)).await;
+    assert!(
+        store.get("1", PREFIX, SAVED).unwrap().is_none(),
+        "matching display cache was consumed"
+    );
+    assert_eq!(new.visit, active.visit);
+    assert_ne!(new.revision, active.revision);
+    assert_ne!(new.continuation, active.continuation);
+    assert_eq!(new.loaded_count, 2);
+    assert_eq!(new.count, Some(6));
+    assert_eq!(new.episodes[0].voice.creator, "Host");
+    assert_eq!(new.episodes[0].listener_count, Some(61));
+    assert_eq!(new.episodes[0].voice.withdrawn, Some(true));
+    assert_eq!(
+        new.episodes[0].voice.cover_url.as_deref(),
+        Some("https://p1.music.126.net/public.jpg?param=320y320")
+    );
+    assert!(matches!(
+        client.podcast_liked_page_program("1", &target(&active, "82")),
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(
+        client
+            .podcast_liked_page_program("1", &target(&new, "82"))
+            .unwrap()
+            .value
+            .id,
+        "82"
+    );
+    assert_eq!(
+        trace(&api),
+        [read(json!(0)), (COUNT.into(), json!({}))],
+        "POP performs no wire read"
+    );
+    assert_eq!(page(&client, next(&new)).await.episodes[0].voice.id, "83");
+    assert_eq!(
+        trace(&api),
+        [
+            read(json!(0)),
+            (COUNT.into(), json!({})),
+            read(json!("900"))
+        ]
+    );
+}
+
+#[tokio::test]
+async fn optional_liked_cache_failure_does_not_break_an_authorized_in_process_pop() {
+    for failure in [
+        "wrong-generation",
+        "wrong-episode",
+        "expired",
+        "clock-reversed",
+        "unwritable",
+    ] {
+        let (dir, api, _, client) =
+            setup([response(vec![row(81, json!(900))], false, None).into()]);
+        let open = page(&client, PodcastLikedQuery::Open {}).await;
+        let active = page(&client, next(&open)).await;
+        let suspended = page(&client, suspend(&active)).await;
+        let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+        let store = registry.store();
+        let mut record = store.get("1", PREFIX, SAVED).unwrap().unwrap();
+        let saved = record["savedAtMs"].as_u64().unwrap();
+        if failure == "unwritable" {
+            let db = rusqlite::Connection::open(dir.path().join("core.sqlite3")).unwrap();
+            db.execute_batch(
+                "CREATE TRIGGER forbid_cache_consumption BEFORE DELETE ON state
+                 WHEN OLD.kind='podcast-liked-prefix-v1'
+                 BEGIN SELECT RAISE(FAIL, 'synthetic local write failure'); END;",
+            )
+            .unwrap();
+        } else {
+            record["rows"][0]["name"] = json!("Wrong cached name");
+            match failure {
+                "wrong-generation" => record["generation"] = json!(9000),
+                "wrong-episode" => record["rows"][0]["id"] = json!("82"),
+                "expired" => record["savedAtMs"] = json!(saved - 3_600_000),
+                "clock-reversed" => record["savedAtMs"] = json!(saved + 3_600_000),
+                _ => unreachable!(),
+            }
+            store.put("1", PREFIX, SAVED, &record).unwrap();
+        }
+
+        let restored = page(&client, restore(&suspended)).await;
+        assert_eq!(restored.episodes[0].voice.id, "81", "{failure}");
+        assert_eq!(restored.episodes[0].voice.name, "Episode 81", "{failure}");
+        assert!(
+            store.get("1", PREFIX, SAVED).unwrap().is_some(),
+            "{failure}"
+        );
+        assert_eq!(trace(&api), [read(json!(0))], "{failure}");
+    }
+}
+
+#[tokio::test]
+async fn liked_checkpoints_never_authorize_a_route_in_another_native_instance() {
+    let (dir, _, _, client) = setup([response(vec![row(81, json!(900))], false, None).into()]);
+    let open = page(&client, PodcastLikedQuery::Open {}).await;
+    let active = page(&client, next(&open)).await;
+    let suspended = page(&client, suspend(&active)).await;
+    assert!(
+        serde_json::from_value::<PodcastLikedQuery>(
+            json!({"kind":"restore_saved","resume":"ignored"})
+        )
+        .is_err()
+    );
+    for owner in [1, 2] {
+        let (api, _, reopened) = reopen(
+            dir.path(),
+            owner,
+            [response(vec![row(91, json!(1000))], false, None).into()],
+        );
+        assert!(matches!(
+            reopened.podcast_liked_page("1", restore(&suspended)).await,
+            Err(Error::QueueChanged)
+        ));
+        let empty = page(&reopened, PodcastLikedQuery::Open {}).await;
+        assert_eq!(empty.loaded_count, 0);
+        assert!(empty.continuation.is_some());
+        assert!(api.calls().is_empty());
+        assert_eq!(
+            page(&reopened, next(&empty)).await.episodes[0].voice.id,
+            "91"
+        );
+        assert_eq!(trace(&api), [read(json!(0))]);
+    }
+}
+
+#[tokio::test]
+async fn liked_back_keeps_the_exact_display_when_a_row_exceeds_the_local_cache_bound() {
+    let title = "单".repeat(180);
+    let mut first = row(81, json!(900));
+    first["voiceName"] = json!(title);
+    let (dir, api, _, client) = setup([response(vec![first], false, None).into()]);
+    let open = page(&client, PodcastLikedQuery::Open {}).await;
+    let active = page(&client, next(&open)).await;
+    assert_eq!(active.episodes[0].voice.name, title);
+    let suspended = page(&client, suspend(&active)).await;
+    let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    assert!(registry.store().get("1", PREFIX, SAVED).unwrap().is_none());
+    assert_eq!(
+        page(&client, restore(&suspended)).await.episodes[0]
+            .voice
+            .name,
+        title
+    );
+    assert_eq!(trace(&api), [read(json!(0))]);
+}
+
+#[tokio::test]
+async fn liked_exit_saves_the_current_active_model_then_prunes_only_seven_day_prefixes() {
+    let (dir, api, _, client) = setup([response(vec![row(81, json!(900))], false, None).into()]);
+    let open = page(&client, PodcastLikedQuery::Open {}).await;
+    let active = page(&client, next(&open)).await;
+    let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let store = registry.store();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let day = 24 * 60 * 60 * 1000;
+    let expired = json!({"savedAtMs":now - 7 * day});
+    let recent = json!({"savedAtMs":now - day});
+    let future = json!({"savedAtMs":now + day});
+    store.put("1", PREFIX, SAVED, &expired).unwrap();
+    store.put("2", PREFIX, SAVED, &expired).unwrap();
+    store.put("3", PREFIX, SAVED, &recent).unwrap();
+    store.put("4", PREFIX, SAVED, &future).unwrap();
+    store.put("2", PREFIX, "unrelated-key", &expired).unwrap();
+    store.put("2", "unrelated-kind", SAVED, &expired).unwrap();
+
+    assert_eq!(client.finish_podcast_liked_checkpoints().unwrap(), 1);
+    let saved = store.get("1", PREFIX, SAVED).unwrap().unwrap();
+    assert!(saved["savedAtMs"].as_u64().unwrap() >= now);
+    assert_eq!(saved["rows"][0]["id"], "81");
+    assert!(store.get("2", PREFIX, SAVED).unwrap().is_none());
+    assert_eq!(store.get("3", PREFIX, SAVED).unwrap(), Some(recent));
+    assert_eq!(store.get("4", PREFIX, SAVED).unwrap(), Some(future));
+    assert_eq!(
+        store.get("2", PREFIX, "unrelated-key").unwrap(),
+        Some(expired.clone())
+    );
+    assert_eq!(
+        store.get("2", "unrelated-kind", SAVED).unwrap(),
+        Some(expired)
+    );
+    assert_eq!(
+        client
+            .podcast_liked_page_program("1", &target(&active, "81"))
+            .unwrap()
+            .value
+            .id,
+        "81"
+    );
+
+    let suspended = page(&client, suspend(&active)).await;
+    let mut saved = store.get("1", PREFIX, SAVED).unwrap().unwrap();
+    saved["savedAtMs"] = json!(now - day);
+    store.put("1", PREFIX, SAVED, &saved).unwrap();
+    assert_eq!(client.finish_podcast_liked_checkpoints().unwrap(), 0);
+    assert_eq!(
+        store.get("1", PREFIX, SAVED).unwrap(),
+        Some(saved),
+        "exit does not renew a departed route"
+    );
+    assert!(matches!(
+        client.podcast_liked_page_program("1", &target(&suspended, "81")),
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(trace(&api), [read(json!(0))]);
+}

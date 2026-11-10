@@ -1,5 +1,7 @@
 //! M3149/M3108: one liked-programme presentation visit, independent of full
 //! membership and mutation readback. The wire cursor never crosses IPC.
+mod checkpoint;
+
 use super::{EpisodeView, MusicClient, PodcastApi, PodcastLibrary, view};
 use crate::{
     Error, Result,
@@ -332,12 +334,54 @@ impl MusicClient {
         })
     }
 
+    /// Native clean exit only. Save an active loaded model before pruning
+    /// expired presentation rows; neither step exposes a restorable route.
+    pub fn finish_podcast_liked_checkpoints(&self) -> Result<usize> {
+        let store = self.session.persistent_store()?;
+        let save = self.session.token().and_then(|token| {
+            let Some(owner) = token.uid.as_deref() else {
+                return Ok(());
+            };
+            self.with_liked_visit(&token, |slot, generation| {
+                if let Some(row) = slot.as_ref().filter(|row| row.suspended_at.is_none()) {
+                    checkpoint::save(&store, owner, generation, row)?;
+                }
+                Ok(())
+            })
+        });
+        // Age cleanup is still safe if the optional active snapshot fails.
+        let prune = checkpoint::prune(&store);
+        save.and(prune)
+    }
+
+    fn restore_liked_presentation(
+        &self,
+        owner: &str,
+        generation: u64,
+        row: &Visit,
+    ) -> Result<Vec<PodcastLikedEpisode>> {
+        match self
+            .session
+            .persistent_store()
+            .and_then(|store| checkpoint::take(&store, owner, generation, row))
+        {
+            Ok(Some(persisted)) => Ok(persisted),
+            Err(Error::QueueChanged) => Err(Error::QueueChanged),
+            Ok(None) | Err(_) => {
+                // A failed or unavailable local cache is optional. Only the
+                // already validated same-process suspended model may back POP.
+                Ok(row.rows.iter().map(project_list_row).collect())
+            }
+        }
+    }
+
     pub async fn podcast_liked_page(
         &self,
         epoch: &str,
         query: PodcastLikedQuery,
     ) -> Result<AccountData<PodcastLikedPage>> {
         let token = self.podcast_token(epoch)?;
+        let owner = token.uid.as_deref().ok_or(Error::StaleResponse)?;
         let value = match query {
             PodcastLikedQuery::Open {} => self.with_liked_visit(&token, |slot, _| {
                 let visit = Visit::default();
@@ -346,16 +390,21 @@ impl MusicClient {
                 Ok(view)
             })?,
             PodcastLikedQuery::Suspend { visit, revision } => {
-                self.with_liked_visit(&token, |slot, _| {
+                self.with_liked_visit(&token, |slot, generation| {
                     let row = slot.as_mut().ok_or(Error::QueueChanged)?;
                     row.current(&visit, &revision)?;
                     row.suspended_at = Some(Instant::now());
                     row.playback.retire();
+                    // A storage failure must never keep a departed row active.
+                    let _ = self
+                        .session
+                        .persistent_store()
+                        .and_then(|store| checkpoint::save(&store, owner, generation, row));
                     Ok(row.view(Vec::new()))
                 })?
             }
             PodcastLikedQuery::Restore { visit, revision } => {
-                self.with_liked_visit(&token, |slot, _| {
+                self.with_liked_visit(&token, |slot, generation| {
                     let row = slot.as_mut().ok_or(Error::QueueChanged)?;
                     if row.id != visit
                         || row.revision != revision
@@ -363,11 +412,15 @@ impl MusicClient {
                     {
                         return Err(Error::QueueChanged);
                     }
+                    let presentation = self.restore_liked_presentation(owner, generation, row)?;
                     row.suspended_at = None;
                     row.revision = receipt();
+                    if let Some(cursor) = &mut row.cursor {
+                        cursor.continuation = receipt();
+                    }
                     row.load = Arc::default();
                     row.playback = LikedVisit::default();
-                    Ok(row.view(row.rows.iter().map(project_list_row).collect()))
+                    Ok(row.view(presentation))
                 })?
             }
             PodcastLikedQuery::Next {
@@ -410,17 +463,28 @@ impl MusicClient {
     /// authority. A renderer should ignore replies for an obsolete route.
     pub async fn podcast_liked_count(&self, epoch: &str) -> Result<AccountData<u64>> {
         let token = self.podcast_token(epoch)?;
-        let library = PodcastLibrary::new(self.session.clone())?;
-        let observed = library.with_generation_for(&token, Ok)?;
+        let (observed, view) = self.with_liked_visit(&token, |slot, generation| {
+            let view = slot
+                .as_ref()
+                .filter(|visit| visit.suspended_at.is_none())
+                .map(|visit| (visit.id.clone(), visit.revision.clone(), visit.pages));
+            Ok((generation, view))
+        })?;
         let value = self
             .session
             .run_for(&token, |api, _| async move {
                 PodcastApi::new(api).liked_count().await
             })
             .await?;
-        library.with_generation_for(&token, |current| {
+        self.with_liked_visit(&token, |slot, current| {
             if observed != current {
                 return Err(Error::StaleResponse);
+            }
+            if let (Some((id, revision, pages)), Some(visit)) = (view, slot.as_mut())
+                && visit.current(&id, &revision).is_ok()
+                && visit.pages == pages
+            {
+                visit.count = Some(value);
             }
             Ok(AccountData {
                 epoch: epoch.into(),

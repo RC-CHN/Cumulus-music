@@ -45,6 +45,9 @@ pub(crate) struct PlaybackDownloadRow {
     pub moving: bool,
 }
 
+pub(crate) const LIKED_PREFIX_KIND: &str = "podcast-liked-prefix-v1";
+pub(crate) const LIKED_PREFIX_KEY: &str = "prefix";
+
 pub struct StateStore {
     directory: Option<PathBuf>,
     // Fields drop in order: close SQLite and release the shared native lease
@@ -341,6 +344,21 @@ impl StateStore {
         .values(owner, kind)
     }
 
+    pub(crate) fn prune_liked_prefixes(&self, cutoff_ms: u64) -> Result<usize> {
+        let cutoff = i64::try_from(cutoff_ms)
+            .map_err(|_| Error::State("invalid liked page cleanup clock"))?;
+        self.transaction(|tx| {
+            Ok(tx.connection.execute(
+                "DELETE FROM state WHERE kind=? AND key=? AND
+                 CASE WHEN json_valid(value) THEN
+                     json_type(value, '$.savedAtMs') = 'integer' AND
+                     json_extract(value, '$.savedAtMs') BETWEEN 0 AND ?
+                 ELSE 0 END",
+                params![LIKED_PREFIX_KIND, LIKED_PREFIX_KEY, cutoff],
+            )?)
+        })
+    }
+
     pub fn clear_owner(&self, owner: &str) -> Result<()> {
         self.transaction(|tx| {
             tx.connection
@@ -543,6 +561,18 @@ impl StateTransaction<'_> {
             .query_row(
                 "SELECT value FROM state WHERE owner=? AND kind=? AND key=?",
                 params![owner, kind, key],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    pub(crate) fn liked_prefix_raw(&self, owner: &str, max_bytes: i64) -> Result<Option<String>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT value FROM state WHERE owner=? AND kind=? AND key=?
+                 AND length(CAST(value AS BLOB)) <= ?",
+                params![owner, LIKED_PREFIX_KIND, LIKED_PREFIX_KEY, max_bytes],
                 |row| row.get(0),
             )
             .optional()?)

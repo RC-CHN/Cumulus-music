@@ -846,6 +846,11 @@ pub fn run() {
                 renewal::stop(app);
                 pc_presentation::stop(app);
                 daily_notification::stop(app);
+                if let Some(client) = app.try_state::<cumulus_core::client::MusicClient>()
+                    && client.finish_podcast_liked_checkpoints().is_err()
+                {
+                    eprintln!("Cumulus could not maintain the liked programmes cache at exit.");
+                }
             }
             #[cfg(windows)]
             if matches!(event, tauri::RunEvent::Exit)
