@@ -158,11 +158,6 @@ impl MusicClient {
             .ok_or(Error::StaleResponse)?;
         let pages = self.search.queue_drops.clone();
         let chosen = pages.resolve_group_next(&token, &api, &credentials, &anchor, &rows)?;
-        let _room_gate = self
-            .together
-            .gate
-            .try_lock()
-            .map_err(|_| Error::MutationBusy)?;
         let room = self.together_detached_guard(&token);
         let auth = self.auth.pending_guard();
         auth()?;
@@ -239,9 +234,6 @@ impl MusicClient {
                 && pages.group_next_current(&chosen)
         });
         guard.check()?;
-        if next == queue {
-            return project(&before, &token);
-        }
         let expected = before.fence();
         let first_source = if let Some(focus) = focus {
             let preparing = {
@@ -261,6 +253,23 @@ impl MusicClient {
                 .prepare_scoped_search_song(&selected.resource, &token, &expected_api, &preparing)
                 .await?;
             preparing.check()?;
+            Some(first)
+        } else {
+            None
+        };
+        // Do not hold the Together mutation gate while authorizing an empty
+        // queue's source. A room transition may supersede that pending read.
+        let _room_gate = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        self.validate_queue_clear_room(&token, None)?;
+        guard.check()?;
+        if next == queue {
+            return project(&before, &token);
+        }
+        if let Some(focus) = focus {
             // Sync any durable queue edit before taking focus from other media.
             let latest = controller
                 .command(&token, PlaybackCommand::Snapshot)
@@ -280,10 +289,7 @@ impl MusicClient {
             guard = Cancellation::new(move || {
                 !guard.is_cancelled() && media_focus.check(lease, Owner::Audio).is_ok()
             });
-            Some(first)
-        } else {
-            None
-        };
+        }
         let value = controller
             .command_guarded(
                 &token,
