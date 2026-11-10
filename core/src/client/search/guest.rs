@@ -231,12 +231,14 @@ impl MusicClient {
                 match item {
                     SearchItem::Song {
                         queue_drop_receipt,
+                        group_next_right,
                         hint,
                         table_hint,
                         reasons,
                         ..
                     } => {
                         *queue_drop_receipt = None;
+                        *group_next_right = None;
                         *hint = None;
                         *table_hint = None;
                         reasons.clear();

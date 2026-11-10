@@ -352,9 +352,14 @@ export type MixedPlaylistQueueDropSource = {
   sourceChanged: () => void;
   current: () => boolean;
 };
+export interface SearchQueueRow {
+  receipt: string;
+  trackId: string;
+}
+type SearchQueueRowWire = { receipt: string; track_id: string };
 export type SearchQueueDropSource = {
   kind: 'search';
-  rows: { receipt: string; trackId: string }[];
+  rows: SearchQueueRow[];
   quality: Quality;
   current: () => boolean;
 };
@@ -739,6 +744,14 @@ export type PlayerAction =
       kind: 'next_play' | 'search_next_play';
       id: string;
       quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'search_group_next_play';
+      anchor: SearchQueueRowWire;
+      rows: SearchQueueRowWire[];
+      quality: Quality;
+      expected_play_id: string;
       expected_queue_revision: string;
     }
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }

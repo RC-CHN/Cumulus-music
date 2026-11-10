@@ -782,6 +782,13 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    SearchGroupNextPlay {
+        anchor: super::super::search::SearchDropRow,
+        rows: Vec<super::super::search::SearchDropRow>,
+        quality: Quality,
+        expected_play_id: String,
+        expected_queue_revision: String,
+    },
     Startup,
     Equalizer {
         expected_revision: String,

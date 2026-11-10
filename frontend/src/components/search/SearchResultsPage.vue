@@ -294,6 +294,43 @@ function oneRowPreview(section: SearchSection) {
 function showTrackMenu(request: TrackMenuRequest) {
   emit('more', { ...request, nextOrigin: 'search' });
 }
+function showSelectedTrackMenu(
+  section: SearchSection,
+  request: TrackMenuRequest,
+  anchorIndex: number,
+  rows: { track: TrackView; index: number }[],
+  selectionCurrent: () => boolean,
+) {
+  const owner = panel.value;
+  const snapshot = view.value;
+  const epoch = props.account.epoch;
+  const visit = props.searchId;
+  const current = () =>
+    props.account.status === 'authenticated' &&
+    props.account.epoch === epoch &&
+    props.searchId === visit &&
+    category.value === 'songs' &&
+    !loading.value &&
+    view.value === snapshot &&
+    panel.value === owner &&
+    !!owner?.isConnected &&
+    !owner.closest('[inert], .page-leave-active, .search-results-leave-active') &&
+    selectionCurrent();
+  if (!current()) return;
+  const items = section.items.filter((item) => item.kind === 'song');
+  const tickets = rows.map(({ track, index }) => {
+    const item = items[index];
+    if (item?.track !== track || !item.queueDropReceipt || !item.groupNextRight) return;
+    return { receipt: item.queueDropReceipt, trackId: track.id };
+  });
+  const anchor = tickets[rows.findIndex((row) => row.index === anchorIndex)];
+  const action =
+    anchor && tickets.every((ticket) => !!ticket) ? { anchor, rows: tickets } : undefined;
+  const allCopyrightBlocked = rows.every(
+    ({ index }) => items[index]?.groupNextRight === 'copyright_blocked',
+  );
+  emit('more', { ...request, searchGroupNext: { action, allCopyrightBlocked, live: current } });
+}
 function playComprehensiveAll(section: SearchSection) {
   const rows = comprehensivePlayAllTracks(section);
   const first = rows.findIndex((track) => !track.missing);
@@ -1121,6 +1158,8 @@ onBeforeUnmount(() => {
               :tracks="tracks(section)"
               :search-title-hints="category === 'songs' ? songTableHints(section) : undefined"
               :queue-drop-enabled="category === 'songs' && queueDropEnabled"
+              :selected-menu-enabled="category === 'songs' && playable"
+              :selection-label="category === 'songs' ? '单曲搜索结果' : undefined"
               :playlist-selection-scope="
                 category === 'songs'
                   ? JSON.stringify([account.epoch, searchId, keyword, offset, section.id])
@@ -1143,6 +1182,10 @@ onBeforeUnmount(() => {
               @toggle-pending="(target, anchor) => emit('togglePendingTrack', target, anchor)"
               @like="emit('like', $event)"
               @more="showTrackMenu"
+              @selected-more="
+                (request, anchor, rows, current) =>
+                  showSelectedTrackMenu(section, request, anchor, rows, current)
+              "
               @artist="emit('artist', $event)"
               @album="emit('album', $event)"
             />

@@ -135,3 +135,135 @@ impl MusicClient {
         project(&value, &token)
     }
 }
+
+impl MusicClient {
+    pub(super) async fn search_group_next_play(
+        &self,
+        epoch: &str,
+        anchor: crate::client::search::SearchDropRow,
+        rows: Vec<crate::client::search::SearchDropRow>,
+        quality: Quality,
+        expected_play_id: String,
+        expected_queue_revision: String,
+    ) -> Result<PlayerView> {
+        use super::queue_playlist::{
+            QUEUE_LIMIT, insert_collection_bound, queue_resource_for_track,
+        };
+        use crate::playback::{PlaybackMode, controller::PlaybackStatus};
+        use std::collections::HashSet;
+
+        let token = self.player_token(epoch)?;
+        let api = self.session.native_api(&token)?;
+        self.session
+            .with_verified_profile(&token, &api, |_, _| Ok(()))?;
+        let credentials = api
+            .search_privilege_credential_revision()?
+            .ok_or(Error::StaleResponse)?;
+        let pages = self.search.queue_drops.clone();
+        let chosen = pages.resolve_group_next(&token, &api, &credentials, &anchor, &rows)?;
+        let _room_gate = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        let room = self.together_detached_guard(&token);
+        let auth = self.auth.pending_guard();
+        auth()?;
+        let controller = self.player.controller().await?;
+        let (before, queue) = controller.queue_with_state(&token).await?;
+        if expected_queue_revision != before.queue_revision.to_string()
+            || before.play_id.as_deref() != Some(expected_play_id.as_str())
+        {
+            return Err(Error::QueueChanged);
+        }
+        // Scope this first lane to the official nonempty queue branch, with a
+        // current native decoder and an ordinary, visible, ordered queue.
+        if before.startup_pending
+            || before.fm
+            || queue.intelligence.is_some()
+            || queue.mode == PlaybackMode::Random
+            || queue.current.is_none()
+            || queue.items.iter().any(|item| !item.visible_in_queue())
+            || !matches!(
+                before.state,
+                PlaybackStatus::Playing | PlaybackStatus::Paused
+            )
+            || before.timeline.is_none()
+            || room.is_cancelled()
+            || self.queue_clear_context(&token)?.room_id.is_some()
+        {
+            return Err(Error::State("search next requires a stable ordinary queue"));
+        }
+        let present: HashSet<_> = queue
+            .items
+            .iter()
+            .filter_map(
+                |entry| match identity::collection_key(&entry.resource, false) {
+                    Some((PlayerResourceKind::Catalog, id)) => Some(id),
+                    _ => None,
+                },
+            )
+            .collect();
+        let additional = chosen
+            .tracks
+            .iter()
+            .filter(|track| !present.contains(track.id.as_str()))
+            .count();
+        if queue.items.len().saturating_add(additional) > QUEUE_LIMIT {
+            return Err(Error::State("playback queue is full"));
+        }
+        let source = search_track_source();
+        let resources = chosen
+            .tracks
+            .iter()
+            .map(|track| {
+                let mut resource = queue_resource_for_track(track, quality);
+                resource["trial_mode"] = source["trial_mode"].clone();
+                resource
+            })
+            .collect();
+        let next = insert_collection_bound(queue.clone(), resources, source, false, true, false);
+        let session = self.session.clone();
+        let selection = self.player.selection.clone();
+        let attempt = if next == queue {
+            selection.load(Ordering::Acquire)
+        } else {
+            selection.fetch_add(1, Ordering::AcqRel) + 1
+        };
+        let owner = token.clone();
+        let guard = Cancellation::new(move || {
+            selection.load(Ordering::Acquire) == attempt
+                && auth().is_ok()
+                && !room.is_cancelled()
+                && session
+                    .with_verified_profile(&owner, &api, |_, _| Ok(()))
+                    .is_ok()
+                && api
+                    .search_privilege_credential_revision()
+                    .ok()
+                    .flatten()
+                    .as_ref()
+                    == Some(&credentials)
+                && pages.group_next_current(&chosen)
+        });
+        guard.check()?;
+        if next == queue {
+            return project(&before, &token);
+        }
+        let expected = before.fence();
+        let value = controller
+            .command_guarded(
+                &token,
+                PlaybackCommand::InsertNext(QueueUpdate {
+                    expected: expected.clone(),
+                    queue: next,
+                    transport: None,
+                }),
+                expected,
+                guard,
+            )
+            .await?;
+        self.session.check_generation(&token)?;
+        project(&value, &token)
+    }
+}

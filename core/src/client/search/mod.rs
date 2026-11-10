@@ -11,8 +11,8 @@ pub use presentation::{
     SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
 };
 pub use privilege::SearchPrivilegePatch;
-mod queue_drop;
-pub use queue_drop::SearchDropRow;
+pub(super) mod queue_drop;
+pub use queue_drop::{SearchDropRow, SearchNextRight};
 mod reason;
 mod results;
 pub use reason::{ReasonTarget, SearchReasonPage};

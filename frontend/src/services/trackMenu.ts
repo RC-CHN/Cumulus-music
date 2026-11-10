@@ -1,5 +1,11 @@
 import type { TrackView } from './contracts';
-import type { PlayerView, QueueCatalogMenu, QueueOrigin, QueueVoiceMenu } from './player';
+import type {
+  PlayerView,
+  QueueCatalogMenu,
+  QueueOrigin,
+  QueueVoiceMenu,
+  SearchQueueRow,
+} from './player';
 import type { MenuItem } from './menu';
 import { podcastProgramPublicLink } from './podcast.ts';
 
@@ -26,6 +32,11 @@ export interface TrackMenuRequest {
   event: MouseEvent | KeyboardEvent;
   play: () => void;
   nextOrigin?: 'search';
+  searchGroupNext?: {
+    action: { anchor: SearchQueueRow; rows: SearchQueueRow[] } | undefined;
+    allCopyrightBlocked: boolean;
+    live: () => boolean;
+  };
   queueNext?: () => Promise<PlayerView | boolean | undefined>;
   playUnavailable?: boolean;
   mixedLocal?: boolean;

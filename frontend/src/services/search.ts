@@ -63,6 +63,7 @@ export type SearchItem =
       track: TrackView;
       excerpt: string[];
       queueDropReceipt?: string;
+      groupNextRight?: 'playable' | 'copyright_blocked';
       excerptTruncated?: boolean;
       mvId?: string;
       replacementMv?: boolean;

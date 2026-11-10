@@ -358,6 +358,9 @@ pub async fn player_action<R: tauri::Runtime>(
     {
         return Err(Error::InvalidInput("podcast program queue requires the main window").into());
     }
+    if matches!(&action, PlayerAction::SearchGroupNextPlay { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("search selection requires the main window").into());
+    }
     #[cfg(windows)]
     if matches!(&action, PlayerAction::Startup)
         && window.label() == "main"

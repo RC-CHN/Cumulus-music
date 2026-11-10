@@ -24,6 +24,7 @@ struct Backend {
     calls: Mutex<Vec<String>>,
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
+    search_menu_revision: AtomicU64,
     deny_url_id: AtomicU64,
     playlist_cloud_song_id: AtomicU64,
     unavailable_url_id: AtomicU64,
@@ -68,6 +69,11 @@ struct Backend {
     vinyl_comment_release: Notify,
 }
 impl Api for Backend {
+    fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        let revision = self.search_menu_revision.load(Ordering::SeqCst);
+        Ok((revision > 0).then(|| format!("synthetic-search-menu-{revision}")))
+    }
+
     fn lyric_bounty_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(Some("synthetic-lyric-bounty-revision".into()))
     }

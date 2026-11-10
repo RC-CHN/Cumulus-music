@@ -796,6 +796,25 @@ impl MusicClient {
                 .player_mode_for(epoch, mode, &expected_queue_revision, fm)
                 .await;
         }
+        if let PlayerAction::SearchGroupNextPlay {
+            anchor,
+            rows,
+            quality,
+            expected_play_id,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .search_group_next_play(
+                    epoch,
+                    anchor,
+                    rows,
+                    quality,
+                    expected_play_id,
+                    expected_queue_revision,
+                )
+                .await;
+        }
         let next_origin = if matches!(action, PlayerAction::SearchNextPlay { .. }) {
             next_play::NextPlayOrigin::Search
         } else {
@@ -1840,6 +1859,7 @@ impl MusicClient {
             }
             PlayerAction::NextPlay { .. }
             | PlayerAction::SearchNextPlay { .. }
+            | PlayerAction::SearchGroupNextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueMixedPlaylist { .. }
             | PlayerAction::QueueVoice { .. }

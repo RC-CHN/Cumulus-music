@@ -32,6 +32,21 @@ const client = useCore(),
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
 const queueRequest = shallowRef<QueueMenuRequest>();
+const searchGroupQueue = shallowRef<{ playId: string; revision: string }>();
+function currentSearchGroupQueue() {
+  const current = props.player.view.value;
+  const target = searchGroupQueue.value;
+  if (
+    target &&
+    current?.playId === target.playId &&
+    current.queueRevision === target.revision &&
+    (current.state === 'playing' || current.state === 'paused') &&
+    !current.fm &&
+    !current.intelligence &&
+    current.mode !== 'random'
+  )
+    return target;
+}
 const sharedVoice = shallowRef<{ program: PodcastProgramShare; live: () => boolean }>();
 const voiceShareRestore = ref(false);
 const shared = shallowRef<TrackView>(),
@@ -88,6 +103,32 @@ const items = computed<MenuItem[]>(() => {
         : []),
       { key: 'remove_local_member', label: '从歌单中移除', icon: 'trash' },
     ];
+  const searchGroup = input.searchGroupNext;
+  if (searchGroup) {
+    if (!searchGroup.live()) return [];
+    const target = currentSearchGroupQueue();
+    return [
+      {
+        key: 'next',
+        label: '下一首播放',
+        icon: 'next',
+        disabled:
+          !searchGroup.action ||
+          searchGroup.allCopyrightBlocked ||
+          !target ||
+          !props.player.ready.value ||
+          props.player.busy.value ||
+          props.player.queueBusy.value,
+        hint: searchGroup.allCopyrightBlocked
+          ? '所选歌曲均不可播放'
+          : !searchGroup.action
+            ? '所选歌曲中有未核实播放权限的条目'
+            : !target
+              ? '仅支持当前普通播放队列'
+              : undefined,
+      },
+    ];
+  }
   const selection = input.episode?.selection;
   const groupDownload = selection && input.episode?.downloadGroup;
   const available = !track.missing && !track.local;
@@ -174,7 +215,7 @@ watch(
   },
 );
 watch(
-  () => request.value?.episode?.live(),
+  () => request.value?.episode?.live() ?? request.value?.searchGroupNext?.live(),
   (live) => {
     if (live === false) close();
   },
@@ -184,6 +225,11 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
   clear();
   queueRequest.value = undefined;
   request.value = input;
+  const view = props.player.view.value;
+  searchGroupQueue.value =
+    input.searchGroupNext && view?.playId
+      ? { playId: view.playId, revision: view.queueRevision }
+      : undefined;
   playlist.value = source;
   const event = input.event;
   const scope = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
@@ -203,7 +249,12 @@ async function show(input: TrackMenuRequest, source?: PlaylistView) {
     event.type === 'contextmenu' &&
     (event.clientX !== 0 || event.clientY !== 0);
   await nextTick();
-  if (request.value !== input || (input.episode && !input.episode.live())) return;
+  if (
+    request.value !== input ||
+    (input.episode && !input.episode.live()) ||
+    (input.searchGroupNext && !input.searchGroupNext.live())
+  )
+    return;
   await menu.value?.showAt(
     pointer ? event.clientX : (box?.left ?? 8),
     pointer ? event.clientY : (box?.bottom ?? 8),
@@ -301,7 +352,8 @@ async function select(key: string) {
     !item ||
     item.disabled ||
     item.separator ||
-    (input.episode && !input.episode.live())
+    (input.episode && !input.episode.live()) ||
+    (input.searchGroupNext && !input.searchGroupNext.live())
   )
     return;
   const { track } = input;
@@ -328,6 +380,25 @@ async function select(key: string) {
     if (!view) return;
     const attempt = sequence;
     try {
+      const group = input.searchGroupNext;
+      if (group) {
+        const target = currentSearchGroupQueue();
+        if (!target || !group.action) return;
+        const wire = ({ receipt, trackId }: (typeof group.action.rows)[number]) => ({
+          receipt,
+          track_id: trackId,
+        });
+        const next = await props.player.action({
+          kind: 'search_group_next_play',
+          anchor: wire(group.action.anchor),
+          rows: group.action.rows.map(wire),
+          quality: view.qualityPreferences.quality,
+          expected_play_id: target.playId,
+          expected_queue_revision: target.revision,
+        });
+        if (attempt === sequence && next && group.live()) feedback('已将所选歌曲设为下一首播放');
+        return;
+      }
       const next = input.queueNext
         ? await input.queueNext()
         : await props.player.action({

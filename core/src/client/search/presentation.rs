@@ -302,6 +302,7 @@ mod tests {
                         track: mapping::track(&json!({"id":id,"name":"合成曲目","ar":[],"al":{}}))
                             .unwrap(),
                         queue_drop_receipt: None,
+                        group_next_right: None,
                         mv_id: Some("9".into()),
                         replacement_mv: false,
                         vip_badge: None,

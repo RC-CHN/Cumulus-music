@@ -40,6 +40,7 @@ const props = defineProps<{
   mixedQueueDrop?: boolean;
   mixedReorderScope?: object;
   playlistSelectionScope?: string;
+  selectedMenuEnabled?: boolean;
   selectionLabel?: string;
   locateIndex?: number;
   scrollScope?: string;
@@ -51,6 +52,12 @@ const emit = defineEmits<{
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   togglePending: [target: TrackPendingToggle, anchor: HTMLButtonElement];
   more: [request: TrackMenuRequest];
+  selectedMore: [
+    request: TrackMenuRequest,
+    anchor: number,
+    rows: { track: TrackView; index: number }[],
+    current: () => boolean,
+  ];
   artist: [id: string];
   album: [id: string];
   scrollEdge: [scope: string, scrolled: boolean, overflow: number];
@@ -131,6 +138,45 @@ function targetRow(event: MouseEvent) {
   const index = Number(element.getAttribute('aria-rowindex')) - 2;
   const track = props.tracks[index];
   if (track?.id === element.dataset.trackId) return { element, track, index };
+}
+function forwardMore(request: TrackMenuRequest) {
+  if (
+    !props.selectedMenuEnabled ||
+    !props.playlistSelectionScope ||
+    (request.event.type !== 'contextmenu' && request.event.type !== 'keydown')
+  ) {
+    emit('more', request);
+    return;
+  }
+  const id = request.track.id;
+  if (!selected.value.has(id)) {
+    selection.value = playlistRowRelease(id);
+    emit('more', request);
+    return;
+  }
+  if (selected.value.size <= 1) {
+    emit('more', request);
+    return;
+  }
+  const captured = selection.value;
+  const scope = props.playlistSelectionScope;
+  const index = displayedIndexes.value.get(id);
+  if (index === undefined || props.tracks[index] !== request.track) return;
+  const rows = [...captured.ids].flatMap((trackId) => {
+    const index = displayedIndexes.value.get(trackId);
+    return index === undefined ? [] : [{ track: props.tracks[index], index }];
+  });
+  if (rows.length !== captured.ids.size) return;
+  emit(
+    'selectedMore',
+    request,
+    index,
+    rows,
+    () =>
+      selection.value === captured &&
+      scope === props.playlistSelectionScope &&
+      rows.every(({ track, index }) => props.tracks[index] === track),
+  );
 }
 function queueDrag(event: PointerEvent) {
   if (!props.playlistSelectionScope || event.pointerType === 'touch') return;
@@ -408,7 +454,7 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
         @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @toggle-pending="(target, anchor) => emit('togglePending', target, anchor)"
         @like="emit('like', $event)"
-        @more="emit('more', $event)"
+        @more="forwardMore"
         @artist="emit('artist', $event)"
         @album="emit('album', $event)"
       />

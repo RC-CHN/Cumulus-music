@@ -19,6 +19,8 @@ pub enum SearchItem {
         track: TrackView,
         #[serde(rename = "queueDropReceipt", skip_serializing_if = "Option::is_none")]
         queue_drop_receipt: Option<String>,
+        #[serde(rename = "groupNextRight", skip_serializing_if = "Option::is_none")]
+        group_next_right: Option<super::SearchNextRight>,
         #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
         mv_id: Option<String>,
         #[serde(rename = "replacementMv", skip_serializing_if = "std::ops::Not::not")]
@@ -309,6 +311,9 @@ impl MusicClient {
                         correction_receipt,
                     )
                 };
+                let group_credentials = (query.category == SearchCategory::Songs)
+                    .then(|| api.search_privilege_credential_revision().ok().flatten())
+                    .flatten();
                 let credentials = if query.category == SearchCategory::All {
                     api.search_privilege_credential_revision().ok()
                 } else {
@@ -535,8 +540,23 @@ impl MusicClient {
                         .capture(token, &api, credentials, &mut view)?;
                 }
                 if view.query.category == SearchCategory::Songs {
+                    let group = group_credentials.filter(|before| {
+                        api.search_privilege_credential_revision()
+                            .ok()
+                            .flatten()
+                            .as_ref()
+                            == Some(before)
+                    });
+                    let group = if !self.login_pending()? {
+                        group.map(|credentials| {
+                            super::queue_drop::GroupAuthority::new(&view.query, &api, credentials)
+                        })
+                    } else {
+                        None
+                    };
+                    self.session.require_api(token, &api)?;
                     self.session.with_token(token, |_| {
-                        view.publish_drop_receipts(&self.search.queue_drops, token)
+                        view.publish_drop_receipts(&self.search.queue_drops, token, group)
                     })?;
                 }
                 Ok(view)
@@ -800,6 +820,7 @@ fn item(
             SearchItem::Song {
                 track,
                 queue_drop_receipt: None,
+                group_next_right: None,
                 mv_id,
                 replacement_mv: is_replacement,
                 vip_badge: None,
@@ -886,6 +907,7 @@ impl SearchResultView {
         &mut self,
         pages: &super::queue_drop::SearchDropPages,
         token: &crate::account::SessionToken,
+        group: Option<super::queue_drop::GroupAuthority>,
     ) -> Result<()> {
         let candidates = self
             .sections
@@ -895,12 +917,14 @@ impl SearchResultView {
                 SearchItem::Song {
                     track,
                     queue_drop_receipt: Some(_),
+                    group_next_right,
                     ..
-                } => Some(track.clone()),
+                } => Some((track.clone(), *group_next_right)),
                 _ => None,
             })
             .collect();
-        let receipt = pages.capture(token, candidates)?;
+        let has_group = group.is_some();
+        let receipt = pages.capture(token, candidates, group)?;
         for item in self
             .sections
             .iter_mut()
@@ -908,10 +932,14 @@ impl SearchResultView {
         {
             if let SearchItem::Song {
                 queue_drop_receipt: ticket @ Some(_),
+                group_next_right,
                 ..
             } = item
             {
                 *ticket = receipt.clone();
+                if !has_group {
+                    *group_next_right = None;
+                }
             }
         }
         Ok(())
@@ -1197,6 +1225,7 @@ pub(super) fn project(
                     && let SearchItem::Song {
                         track,
                         queue_drop_receipt,
+                        group_next_right,
                         table_hint,
                         ..
                     } = &mut item
@@ -1210,6 +1239,7 @@ pub(super) fn project(
                     {
                         // Only the song-tab projector may mark a row for issuance.
                         *queue_drop_receipt = Some(String::new());
+                        *group_next_right = super::SearchNextRight::from_song(base, &track.id);
                     }
                 }
                 section.items.push(item);
