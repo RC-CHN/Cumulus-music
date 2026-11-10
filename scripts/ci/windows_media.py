@@ -12,7 +12,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import uuid
 
+import windows_media_seed as seed
 from windows_media_recipe import (
     BUILD, HERE, PACKAGE, ROOT, build_package, configuration, download, output,
     patch_recipe, prepare, sha256, write_json,
@@ -68,13 +71,40 @@ def proof_binaries(profile):
     return target / 'cumulus_audio_filter.dll', target / 'examples/player_probe.exe'
 
 
-def install(msys, profile='debug'):
+def prepare_with_seed(msys):
+    prepare(msys)
+    plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
+    if key := seed.legacy_key(plan):
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
+            stream.write(f'legacy-cache-key={key}\n')
+
+
+def select_package(msys, cache, plan, lock, primary_match='', legacy_match=''):
+    if primary_match == plan['key'] and not legacy_match:
+        return verify_cache(cache, plan, lock), None
+    if not primary_match and legacy_match:
+        try:
+            return seed.verify_seed(cache, plan, legacy_match, lock, verify_cache), legacy_match
+        except (AssertionError, KeyError, OSError, TypeError, ValueError):
+            print('Rejected unauthenticated legacy media cache; building the current recipe', flush=True)
+    if not primary_match and not legacy_match and not os.environ.get('GITHUB_ACTIONS'):
+        # Local CLI reuse is current-key only; migration requires an exact CI
+        # cache match supplied by the pinned restore action.
+        if (cache / 'build.json').is_file():
+            return verify_cache(cache, plan, lock), None
+    if os.path.lexists(cache):
+        # Move only this runner's restore entry. Do not traverse or execute
+        # an unverified archive, including a Windows reparse point.
+        cache.rename(cache.with_name(f'rejected-cache-{uuid.uuid4().hex}'))
+    build_package(msys, cache, plan, lock)
+    return verify_cache(cache, plan, lock), None
+
+
+def install(msys, profile='debug', primary_match='', legacy_match=''):
     plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
     lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
     cache = BUILD / 'cache'
-    if not (cache / 'build.json').exists():
-        build_package(msys, cache, plan, lock)
-    package = verify_cache(cache, plan)
+    package, seeded_from = select_package(msys, cache, plan, lock, primary_match, legacy_match)
     package_path = output([msys / 'usr/bin/cygpath.exe', '-u', package]).strip()
     subprocess.run([str(msys / 'usr/bin/pacman.exe'), '-U', '--noconfirm', package_path], check=True)
     version = output([msys / 'usr/bin/pacman.exe', '-Q', PACKAGE]).strip().split(' ', 1)[1]
@@ -84,6 +114,8 @@ def install(msys, profile='debug'):
     missing = set(plan['configuration']) - set(current)
     assert not missing, f'FFmpeg configuration regressed: {sorted(missing)}'
     assert '--enable-ladspa' in current
+    if seeded_from:
+        assert current == seed.patched_configuration(plan['configuration']), 'seeded media configuration is not exact'
     filters = output([binary / 'ffmpeg.exe', '-hide_banner', '-filters'])
     assert re.search(r'\bladspa\s+', filters), 'installed FFmpeg cannot load LADSPA'
     # The real current plugin must load, not merely appear in a capability list.
@@ -118,8 +150,38 @@ def install(msys, profile='debug'):
     receipt = {'key': plan['key'], 'package': version, 'configuration': current,
                'libraries': libraries, 'filterLoaded': True, 'nativePcmVerified': True,
                'pluginSha256': sha256(plugin)}
+    if seeded_from:
+        receipt['seededFrom'] = seeded_from
     write_json(BUILD / 'installed.json', receipt)
     print(json.dumps(receipt), flush=True)
+
+
+def promote_seed(profile, legacy_match):
+    # The workflow calls this only after the current native PCM and the
+    # independent implicit libmpv lookup rejection have both succeeded.
+    installed = json.loads((BUILD / 'installed.json').read_text(encoding='utf-8'))
+    if not (legacy := installed.get('seededFrom')):
+        return
+    plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
+    lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
+    assert legacy == legacy_match and installed['key'] == plan['key'], 'stale media seed proof'
+    assert installed['filterLoaded'] is True and installed['nativePcmVerified'] is True
+    assert installed['configuration'] == seed.patched_configuration(plan['configuration'])
+    plugin, _ = proof_binaries(profile)
+    assert installed['pluginSha256'] == sha256(plugin), 'media seed did not verify the current DSP'
+    cache = BUILD / 'cache'
+    seed.verify_seed(cache, plan, legacy, lock, verify_cache)
+    source = cache / 'build.json'
+    receipt = json.loads(source.read_text(encoding='utf-8'))
+    with tempfile.NamedTemporaryFile(dir=BUILD, prefix='promote-cache-', delete=False) as file:
+        pending = Path(file.name)
+    try:
+        write_json(pending, {**receipt, 'key': plan['key'], 'seededFrom': legacy})
+        pending.replace(source)
+    finally:
+        pending.unlink(missing_ok=True)
+    verify_cache(cache, plan, lock)
+    print(f'Promoted verified exact media seed {legacy} to {plan["key"]}', flush=True)
 
 
 def check_built_cache(_msys):
@@ -151,11 +213,14 @@ def copy_provenance(destination, msys):
 if __name__ == '__main__':
     assert sys.platform == 'win32', 'the runtime is built and checked on Windows'
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'install', 'verify-cache'])
+    parser.add_argument('action', choices=['prepare', 'install', 'promote-seed', 'verify-cache'])
     parser.add_argument('--msys', type=Path, required=True)
     parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
     args = parser.parse_args()
+    legacy_match = os.environ.get('CUMULUS_MEDIA_LEGACY_MATCHED_KEY', '')
     if args.action == 'install':
-        install(args.msys.resolve(), args.profile)
+        install(args.msys.resolve(), args.profile, os.environ.get('CUMULUS_MEDIA_PRIMARY_MATCHED_KEY', ''), legacy_match)
+    elif args.action == 'promote-seed':
+        promote_seed(args.profile, legacy_match)
     else:
-        {'prepare': prepare, 'verify-cache': check_built_cache}[args.action](args.msys.resolve())
+        {'prepare': prepare_with_seed, 'verify-cache': check_built_cache}[args.action](args.msys.resolve())
