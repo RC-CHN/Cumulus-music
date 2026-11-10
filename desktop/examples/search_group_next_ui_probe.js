@@ -40,9 +40,13 @@
     const surface = node.closest('[role="menu"]');
     if (!surface) return [];
     const r = surface.getBoundingClientRect();
-    const color = getComputedStyle(surface).backgroundColor;
-    assert(/^rgb\(\d+, \d+, \d+\)$/.test(color), 'opaque menu padding can be sampled');
-    return [{ x: r.left + 4, y: r.top + r.height / 2, color }];
+    const style = getComputedStyle(surface);
+    const color = style.backgroundColor;
+    const x = r.left + r.width / 2;
+    const y = r.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop) / 2;
+    assert(/^rgb\(\d+, \d+, \d+\)$/.test(color) &&
+      document.elementFromPoint(x, y) === surface, 'opaque menu padding can be sampled');
+    return [{ x, y, color }];
   };
   const ids = (queue) => queue.tracks.map(({ track }) => track.id).join(',');
   const bar = () => one('.playerbar');
