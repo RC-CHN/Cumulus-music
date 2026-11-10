@@ -104,3 +104,15 @@ Windows 账号详情探针
   新探针用独立计时器约束两帧与动画轮询，超时记录阶段，仍需收到真实帧
   并验证全部原有断言；没有重试账号操作。人工扣帧验证不代表已确认
   原 Windows 超时的根因。
+
+目录页首屏位移：RC.2 准备提交
+- 42724382805 attempt 1 的 catalog-community 作业 129529350096 在目录
+  组第一个检查点前报 catalog page is clipped。用同轮 frontend-dist
+  产物 13722405105、已核对的 ZIP 摘要及 bce1ba21 原生宿主对照。
+- 测试保留 1px 几何阈值、列表有界和原有场景。仅在目录页自己的
+  入场/退场类和残余 transform 都消失后取样；不会等待错误几何变好。
+- Linux 实窗正常和受控延迟各通过 18 态。旧探针在延迟下读到 688/680px；
+  单独让目录实际越界 8px 后，新探针仍以同一阈值拒绝。报告和截图见
+  .build/ui-proof/phase241-catalog-transition/report.json。
+- 这是合成 Linux 定向验收；完整 CI 仍须核对同一个准备提交。Windows
+  未用 Linux 截图替代验证，也未更改应用动画。
