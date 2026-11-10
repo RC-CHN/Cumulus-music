@@ -192,6 +192,12 @@ pub struct QueueUpdate {
     pub queue: QueueSnapshot,
     pub transport: Option<QueueTransport>,
 }
+/// Authorized external Together list change without a transport selection.
+pub struct TogetherExternalQueueUpdate {
+    pub(crate) expected: PlaybackFence,
+    pub(crate) queue: QueueSnapshot,
+    pub(crate) room_id: String,
+}
 /// Native FM exit receipt. Both values are read together; the queue writer
 /// compares them with the current SQLite rows before consuming the backup.
 pub struct FmRestore {
@@ -243,6 +249,7 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    ApplyTogetherExternalQueue(TogetherExternalQueueUpdate),
     RecallPrefill(RecallPrefill),
     /// Explicit next-play insertion; only this durable edit starts a chorus read.
     InsertNext(QueueUpdate),

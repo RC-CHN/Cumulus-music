@@ -310,6 +310,11 @@ impl From<Error> for ClientError {
                     "歌单中没有可离线播放的曲目",
                     false,
                 ),
+                Error::TogetherSelectionUnsupported => (
+                    "together_selection_unsupported",
+                    "该资源暂不支持一起听，当前播放列表未变化",
+                    false,
+                ),
                 Error::AlbumDropSourceChanged => (
                     "album_drop_source_changed",
                     "专辑歌曲列表已更新，请刷新专辑后重新拖入",

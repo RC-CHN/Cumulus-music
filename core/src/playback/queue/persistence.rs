@@ -14,6 +14,7 @@ enum SideEffect<'a> {
     Recall(i64),
     NativeGuard(&'a dyn Fn() -> Result<()>),
     CachedPlaylist(&'a PlaylistQueueBinding, &'a Cancellation),
+    TogetherExternal(&'a str),
 }
 
 struct FmCommit<'a> {
@@ -23,6 +24,24 @@ struct FmCommit<'a> {
 }
 
 impl PlaybackQueue {
+    pub(crate) fn install_together_external(
+        &mut self,
+        candidate: QueueSnapshot,
+        room_id: &str,
+    ) -> Result<()> {
+        candidate.validate()?;
+        for item in &candidate.items {
+            super::super::PlaybackConstraint::from_resource(&item.resource)?;
+        }
+        self.commit_owned_with_side_effect(
+            candidate,
+            false,
+            None,
+            None,
+            SideEffect::TogetherExternal(room_id),
+        )
+    }
+
     pub(crate) fn install_offline_playlist(
         &mut self,
         candidate: QueueSnapshot,
@@ -416,6 +435,16 @@ impl PlaybackQueue {
                 }
                 if let SideEffect::CachedPlaylist(binding, authority) = side_effect {
                     check_cached_playlist(tx, &self.owner, binding, authority)?;
+                }
+                if let SideEffect::TogetherExternal(room_id) = side_effect {
+                    let value = tx.get(
+                        &self.owner,
+                        super::super::queue_more::ROOM_BINDING,
+                        "current",
+                    )?;
+                    if value.as_ref().and_then(|v| v["room_id"].as_str()) != Some(room_id) {
+                        return Err(Error::QueueChanged);
+                    }
                 }
                 Ok(stamp)
             });

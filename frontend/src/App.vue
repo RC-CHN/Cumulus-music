@@ -251,6 +251,7 @@ import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
 import TogetherRoomLossDialog from './components/TogetherRoomLossDialog.vue';
+import TogetherExternalSelection from './components/TogetherExternalSelection.vue';
 import RankingsPage from './components/RankingsPage.vue';
 import FmPage from './components/FmPage.vue';
 import SceneFmPage from './components/SceneFmPage.vue';
@@ -1800,6 +1801,35 @@ watch(
   },
 );
 const togetherRoomLoss = computed(() => together.view.value?.queueRoomLoss);
+const externalSelection = computed(() => together.view.value?.externalSelection);
+const togetherFiltered = ref(false);
+watch(
+  () => externalSelection.value?.id,
+  (id, _, onCleanup) => {
+    togetherFiltered.value = !!id && externalSelection.value?.blocked === false;
+    if (!togetherFiltered.value) return;
+    const timer = setTimeout(() => (togetherFiltered.value = false), 3_000);
+    onCleanup(() => clearTimeout(timer));
+  },
+);
+async function resolveTogetherExternalSelection(confirm: boolean) {
+  const notice = externalSelection.value;
+  if (!notice?.blocked || together.busy.value) return;
+  const owner = together.epoch.value;
+  await together.command({
+    kind: 'resolve_external_selection',
+    room_id: notice.roomId,
+    notice_id: notice.id,
+    confirm,
+  });
+  if (
+    confirm &&
+    owner === together.epoch.value &&
+    !externalSelection.value?.blocked &&
+    (together.error.value || together.view.value?.pending.some((op) => op.action === 'end'))
+  )
+    music.navigate({ kind: 'together' });
+}
 async function confirmTogetherRoomLoss() {
   const notice = togetherRoomLoss.value;
   if (!notice || together.busy.value) return;
@@ -7486,6 +7516,30 @@ onUnmounted(() => {
       :error="together.error.value"
       @confirm="confirmTogetherRoomLoss"
     />
+    <TogetherExternalSelection
+      v-else-if="externalSelection?.blocked"
+      :key="externalSelection.id"
+      :busy="together.busy.value"
+      :error="together.error.value"
+      @resolve="resolveTogetherExternalSelection"
+    />
   </ModalTransition>
+  <p v-if="togetherFiltered" class="together-filtered-notice" role="status">部分歌曲不支持一起听</p>
   <ContentTooltip :reset-key="account.epoch + navigationKey" />
 </template>
+
+<style scoped>
+.together-filtered-notice {
+  position: fixed;
+  z-index: 60;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-raised, var(--surface));
+  color: var(--text);
+  box-shadow: 0 4px 18px #0003;
+}
+</style>

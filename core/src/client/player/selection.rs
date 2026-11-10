@@ -1,6 +1,7 @@
 use super::super::recommendations::{
     RecommendationSource, daily_source, daily_subset, style_source,
 };
+use super::super::together::external;
 use super::{prepared_selection::PreparedSelection, queue_click::RetainedRow, *};
 use crate::playlist::MGC_TRIAL;
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
@@ -19,24 +20,50 @@ impl MusicClient {
         if index >= task_ids.len() {
             return Err(Error::InvalidInput("invalid download selection index"));
         }
+        if let Some(room) = self.together_external_room(&token)? {
+            let prepared = self
+                .stage_together_replacement(
+                    &token,
+                    self.together_external_authority(&token, Some(room)),
+                )
+                .await?;
+            let resources = self.download_resources(epoch, task_ids).await?;
+            let value = self
+                .submit_selection(
+                    &token,
+                    PlaybackCommand::Replace {
+                        resources,
+                        index,
+                        source: external::anchor(json!({"kind":"downloads"}), true),
+                    },
+                    prepared.observed,
+                    None,
+                    Some(&prepared),
+                )
+                .await?;
+            self.session.check_generation(&token)?;
+            return project(&value, &token);
+        }
         let lease = self
             .claim_media(&token, super::super::focus::Owner::Audio)
             .await?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let resources = self.download_resources(epoch, task_ids).await?;
-        let controller = self.player.controller().await?;
         if self.player.selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
         }
         self.focus.check(lease, super::super::focus::Owner::Audio)?;
-        let value = controller
-            .command(
+        let value = self
+            .submit_selection(
                 &token,
                 PlaybackCommand::Replace {
                     resources,
                     index,
-                    source: json!({"kind":"downloads"}),
+                    source: external::anchor(json!({"kind":"downloads"}), true),
                 },
+                attempt,
+                Some(lease),
+                None,
             )
             .await?;
         self.session.with_token(&token, |_| Ok(()))?;
@@ -126,6 +153,17 @@ impl MusicClient {
     ) -> Result<PlayerView> {
         use super::super::focus::Owner;
         let token = self.player_token(epoch)?;
+        let staged = if let Some(room) = self.together_external_room(&token)? {
+            Some(
+                self.stage_together_replacement(
+                    &token,
+                    self.together_external_authority(&token, Some(room)),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let observed = self.player.selection.load(Ordering::Acquire);
         let focus = self.focus.snapshot()?;
         // Resolve the whole snapshot before claiming audio. An empty or
@@ -135,6 +173,24 @@ impl MusicClient {
             .await?;
         if queue.guard.is_cancelled() {
             return Err(Error::QueueChanged);
+        }
+        if let Some(staged) = staged.as_ref() {
+            let state = self
+                .submit_selection_with_source(
+                    &token,
+                    PlaybackCommand::Replace {
+                        resources: queue.resources,
+                        index: queue.index,
+                        source: queue.source,
+                    },
+                    staged.observed,
+                    None,
+                    Some(staged),
+                    Some(queue.guard),
+                )
+                .await?;
+            self.session.check_generation(&token)?;
+            return project(&state, &token);
         }
         let (lease, attempt) = self.reserve_prepared_audio(&token, focus, || {
             let next = observed
@@ -203,6 +259,41 @@ impl MusicClient {
         daily_origin: Option<super::super::daily_notification::PlaybackOrigin>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        let external_room = self.together_external_room(&token)?;
+        let stage_room_replacement = external_room.is_some()
+            && matches!(
+                &input,
+                PlaySelection::Songs { .. }
+                    | PlaySelection::Playlist { .. }
+                    | PlaySelection::MixedPlaylist {
+                        double_click: false,
+                        ..
+                    }
+                    | PlaySelection::OfflinePlaylist {
+                        double_click: false,
+                        ..
+                    }
+                    | PlaySelection::Local { .. }
+                    | PlaySelection::Downloads { .. }
+                    | PlaySelection::Cloud { .. }
+                    | PlaySelection::Voice { .. }
+            );
+        let explicit_anchor = match &input {
+            PlaySelection::Playlist { start_id, .. }
+            | PlaySelection::Album { start_id, .. }
+            | PlaySelection::VerticalZonePlaylistDetail { start_id, .. }
+            | PlaySelection::Downloads { start_id, .. }
+            | PlaySelection::Local { start_id, .. }
+            | PlaySelection::Cloud { start_id, .. } => start_id.is_some(),
+            PlaySelection::MixedPlaylist { start, .. } => start.is_some(),
+            PlaySelection::OfflinePlaylist { start_id, .. } => start_id.is_some(),
+            PlaySelection::AlbumDetail { row, .. } => row.is_some(),
+            PlaySelection::Songs { .. }
+            | PlaySelection::SearchResults { .. }
+            | PlaySelection::SongRowDoubleClick { .. }
+            | PlaySelection::History { .. } => true,
+            _ => false,
+        };
         if let PlaySelection::SearchVoiceMenu { target } = &input {
             return self
                 .play_search_voice_menu(
@@ -437,6 +528,17 @@ impl MusicClient {
         } else {
             None
         };
+        let prepared = if stage_room_replacement && prepared.is_none() && preserve.is_none() {
+            Some(
+                self.stage_together_replacement(
+                    &token,
+                    self.together_external_authority(&token, external_room.clone()),
+                )
+                .await?,
+            )
+        } else {
+            prepared
+        };
         use super::super::focus::Owner;
         let (lease, attempt) = if let Some(prepared) = &prepared {
             (None, prepared.observed)
@@ -559,7 +661,7 @@ impl MusicClient {
                         PlaybackCommand::Replace {
                             resources,
                             index,
-                            source: json!({"kind":"downloads"}),
+                            source: external::anchor(json!({"kind":"downloads"}), explicit_anchor),
                         },
                         attempt,
                         lease,
@@ -849,7 +951,10 @@ impl MusicClient {
                         PlaybackCommand::Replace {
                             resources,
                             index,
-                            source: json!({"kind":"local","revision":revision}),
+                            source: external::anchor(
+                                json!({"kind":"local","revision":revision}),
+                                explicit_anchor,
+                            ),
                         },
                         attempt,
                         lease,
@@ -922,17 +1027,21 @@ impl MusicClient {
                     )
                     .await?
                 } else {
+                    let room = self.together_external_authority(&token, external_room.clone());
+                    let offline_guard = offline.guard;
                     self.submit_selection_with_source(
                         &token,
                         PlaybackCommand::Replace {
                             resources: offline.resources,
                             index: offline.index,
-                            source: offline.source,
+                            source: external::anchor(offline.source, explicit_anchor),
                         },
                         attempt,
                         lease,
                         prepared.as_ref(),
-                        Some(offline.guard),
+                        Some(Cancellation::new(move || {
+                            !offline_guard.is_cancelled() && !room.is_cancelled()
+                        })),
                     )
                     .await?
                 };
@@ -1006,17 +1115,21 @@ impl MusicClient {
                     )
                     .await?
                 } else {
+                    let room = self.together_external_authority(&token, external_room.clone());
+                    let mixed_guard = mixed.guard;
                     self.submit_selection_with_source(
                         &token,
                         PlaybackCommand::Replace {
                             resources: mixed.resources,
                             index: mixed.index,
-                            source: mixed.source,
+                            source: external::anchor(mixed.source, explicit_anchor),
                         },
                         attempt,
                         lease,
                         prepared.as_ref(),
-                        Some(mixed.guard),
+                        Some(Cancellation::new(move || {
+                            !mixed_guard.is_cancelled() && !room.is_cancelled()
+                        })),
                     )
                     .await?
                 };
@@ -1461,7 +1574,15 @@ impl MusicClient {
                 })
                 .await?;
             for (id, song) in chunk.iter().zip(songs.songs) {
-                let song = song.as_ref().map(mapping::song_metadata).transpose()?;
+                let song = song
+                    .as_ref()
+                    .map(|song| {
+                        mapping::song_metadata_with_privilege(
+                            song,
+                            id.as_str().and_then(|id| songs.privileges.get(id)),
+                        )
+                    })
+                    .transpose()?;
                 let mut resource = json!({"id":id,"level":quality.as_str(),"dt":song.as_ref().map(|s|&s["dt"]),"missing":song.is_none(),"song":song});
                 if let Some(trial) = source.get("trial_mode") {
                     resource["trial_mode"] = trial.clone();
@@ -1519,17 +1640,24 @@ impl MusicClient {
                 .await?
             }
         } else {
+            let room = self.together_external_authority(&token, external_room);
+            let source_guard = Cancellation::new(move || {
+                !room.is_cancelled()
+                    && source_guard
+                        .as_ref()
+                        .is_none_or(|source| !source.is_cancelled())
+            });
             self.submit_selection_with_source(
                 &token,
                 PlaybackCommand::Replace {
                     resources,
                     index,
-                    source,
+                    source: external::anchor(source, explicit_anchor),
                 },
                 attempt,
                 lease,
                 prepared.as_ref(),
-                source_guard,
+                Some(source_guard),
             )
             .await?
         };

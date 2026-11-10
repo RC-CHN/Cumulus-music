@@ -54,6 +54,7 @@ pub use types::{
     FmRestore, IntelligenceUpdate, LocalBatchUpdate, OfflinePlaylistQueueUpdate, PlaybackCommand,
     PlaybackFence, PlaybackSnapshot, PlaybackSpeedScope, PlaybackStatus, PrefetchSnapshot,
     QueueTransport, QueueUpdate, RecallPrefill, RemotePlayback, StartupRestore,
+    TogetherExternalQueueUpdate,
 };
 
 type Engine = Arc<Mutex<Box<dyn AudioEngine>>>;

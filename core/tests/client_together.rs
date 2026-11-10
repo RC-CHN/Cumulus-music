@@ -1,3 +1,5 @@
+#[path = "support/together_external_selection.rs"]
+mod external_selection_tests;
 #[path = "support/together_fixture.rs"]
 mod fixture;
 #[path = "support/together_incoming.rs"]

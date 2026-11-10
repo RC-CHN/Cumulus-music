@@ -576,6 +576,7 @@ impl MusicClient {
                     let resource = json!({
                         "id": track.id, "download_task_id": download.task_id,
                         OFFLINE_PLAYLIST_DOWNLOAD: download,
+                        "_together_catalog_download": true,
                         "song": super::mapping::projected_song_metadata(&track),
                         "dt": track.duration_ms, "level": quality,
                     });

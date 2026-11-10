@@ -8,6 +8,49 @@ use crate::{Error, Result};
 use std::sync::Arc;
 
 impl Actor {
+    pub(super) fn apply_together_external_queue(
+        &mut self,
+        value: super::TogetherExternalQueueUpdate,
+        reply: &Response,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<()> {
+        if self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || value.queue.fm_source.is_some()
+            || value.queue.intelligence.is_some()
+            || reply.is_closed()
+        {
+            return Err(Error::QueueChanged);
+        }
+        if self.pending.is_some() {
+            return Err(Error::MutationBusy);
+        }
+        let source = |row: &crate::playback::QueueEntry| {
+            let mut source = row.source.clone();
+            if let Some(value) = source.as_object_mut() {
+                value.remove(crate::playback::intelligence::TRANSIENT);
+            }
+            source
+        };
+        match (self.queue.selected(), value.queue.selected()) {
+            (None, None) => {}
+            (Some(before), Some(after))
+                if before.entry_id == after.entry_id
+                    && before.resource == after.resource
+                    && source(&before) == source(&after) => {}
+            _ => return Err(Error::QueueChanged),
+        }
+        authority.check()?;
+        self.session.with_token(&self.token, |_| {
+            self.queue
+                .install_together_external(value.queue, &value.room_id)
+        })?;
+        if let (Some(loaded), Some(item)) = (self.loaded.as_mut(), self.queue.selected()) {
+            loaded.item = item;
+        }
+        Ok(())
+    }
+
     pub(super) async fn update_zone_fm(
         &mut self,
         value: super::QueueUpdate,

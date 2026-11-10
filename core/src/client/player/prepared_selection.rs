@@ -25,6 +25,7 @@ pub(super) struct PreparedSelection {
     pub(super) observed: u64,
     generation: u64,
     issued: Instant,
+    room_authority: Option<Cancellation>,
 }
 
 impl PreparedSelection {
@@ -34,6 +35,10 @@ impl PreparedSelection {
             || current.account != self.token
             || current.fence() != self.fence
             || client.player.selection.load(Ordering::Acquire) != self.observed
+            || self
+                .room_authority
+                .as_ref()
+                .is_some_and(Cancellation::is_cancelled)
         {
             return Err(Error::StaleResponse);
         }
@@ -50,6 +55,43 @@ enum NativeFileAdmission {
 }
 
 impl MusicClient {
+    pub(super) async fn stage_together_replacement(
+        &self,
+        token: &SessionToken,
+        room_authority: Cancellation,
+    ) -> Result<PreparedSelection> {
+        let observed = self.player.selection.load(Ordering::Acquire);
+        let focus = self.focus.snapshot()?;
+        let actor = self.player.controller().await?;
+        let current = actor.command(token, PlaybackCommand::Snapshot).await?;
+        let _slot = self
+            .player
+            .prepared_selection
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        if self.player.selection.load(Ordering::Acquire) != observed {
+            return Err(Error::StaleResponse);
+        }
+        let generation = self
+            .player
+            .prepared_generation
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+                value.checked_add(1)
+            })
+            .map_err(|_| Error::State("playback preparation generation exhausted"))?
+            + 1;
+        Ok(PreparedSelection {
+            id: uuid::Uuid::new_v4().simple().to_string(),
+            token: token.clone(),
+            fence: current.fence(),
+            focus,
+            observed,
+            generation,
+            issued: Instant::now(),
+            room_authority: Some(room_authority),
+        })
+    }
+
     pub(super) fn pending_preparation_guard(
         &self,
         prepared: &PreparedSelection,
@@ -187,6 +229,7 @@ impl MusicClient {
             observed,
             generation: previous,
             issued: Instant::now(),
+            room_authority: None,
         };
         ticket.check(self, &controller.snapshot())?;
         ticket.generation = previous
@@ -449,6 +492,99 @@ impl MusicClient {
         prepared: Option<&PreparedSelection>,
         source_guard: Option<Cancellation>,
     ) -> Result<PlaybackSnapshot> {
+        if source_guard
+            .as_ref()
+            .is_some_and(Cancellation::is_cancelled)
+        {
+            return Err(Error::QueueChanged);
+        }
+        if let Some(prepared) = prepared {
+            if matches!(&command, PlaybackCommand::Replace { .. })
+                && self.together_external_room(token)?.is_some()
+            {
+                let actor = self.player.controller().await?;
+                let current = actor.command(token, PlaybackCommand::Snapshot).await?;
+                prepared.check(self, &current)?;
+            }
+        } else if self.player.selection.load(Ordering::Acquire) != attempt {
+            return Err(Error::StaleResponse);
+        }
+        let source_guard = if let Some(room) = prepared.and_then(|p| p.room_authority.clone()) {
+            Some(Cancellation::new(move || {
+                !room.is_cancelled()
+                    && source_guard
+                        .as_ref()
+                        .is_none_or(|source| !source.is_cancelled())
+            }))
+        } else {
+            source_guard
+        };
+        let (command, together) = self
+            .filter_together_external(
+                token,
+                command,
+                prepared.map(|p| &p.fence),
+                source_guard.as_ref(),
+            )
+            .await?;
+        let source_guard = if let Some(filtered) = &together {
+            let room = self.filtered_external_authority(filtered);
+            Some(Cancellation::new(move || {
+                !room.is_cancelled()
+                    && source_guard
+                        .as_ref()
+                        .is_none_or(|source| !source.is_cancelled())
+            }))
+        } else {
+            source_guard
+        };
+        let result = match (command, prepared, together.as_ref()) {
+            (
+                command @ PlaybackCommand::ApplyTogetherExternalQueue(_),
+                Some(prepared),
+                Some(room),
+            ) => {
+                self.submit_prepared_queue_edit(
+                    token,
+                    prepared,
+                    room.fence.clone(),
+                    command,
+                    source_guard.ok_or(Error::StaleResponse)?,
+                )
+                .await
+            }
+            (command, prepared, together) => {
+                self.submit_selection_authorized(
+                    token,
+                    command,
+                    attempt,
+                    lease,
+                    prepared,
+                    source_guard,
+                    together.map(|scope| &scope.fence),
+                )
+                .await
+            }
+        };
+        if result.is_ok()
+            && let Some(together) = together
+        {
+            let _ = self.finish_external_filter(together);
+        }
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn submit_selection_authorized(
+        &self,
+        token: &SessionToken,
+        command: PlaybackCommand,
+        attempt: u64,
+        lease: Option<u64>,
+        prepared: Option<&PreparedSelection>,
+        source_guard: Option<Cancellation>,
+        external_fence: Option<&crate::playback::controller::PlaybackFence>,
+    ) -> Result<PlaybackSnapshot> {
         let check_source = || {
             if source_guard
                 .as_ref()
@@ -466,11 +602,15 @@ impl MusicClient {
             }
             let lease = lease.ok_or(Error::StaleResponse)?;
             self.focus.check(lease, Owner::Audio)?;
-            if let Some(source) = source_guard {
+            if source_guard.is_some() || external_fence.is_some() {
                 // The last published view can still belong to the prior
                 // account. Bind and sync the actor before taking its fence.
                 let current = controller.command(token, PlaybackCommand::Snapshot).await?;
-                if source.is_cancelled() {
+                if source_guard
+                    .as_ref()
+                    .is_some_and(Cancellation::is_cancelled)
+                    || external_fence.is_some_and(|expected| current.fence() != *expected)
+                {
                     return Err(Error::QueueChanged);
                 }
                 if self.player.selection.load(Ordering::Acquire) != attempt {
@@ -485,7 +625,9 @@ impl MusicClient {
                         command,
                         current.fence(),
                         Cancellation::new(move || {
-                            !source.is_cancelled()
+                            source_guard
+                                .as_ref()
+                                .is_none_or(|source| !source.is_cancelled())
                                 && selection.load(Ordering::Acquire) == attempt
                                 && focus.check(lease, Owner::Audio).is_ok()
                         }),
@@ -497,6 +639,9 @@ impl MusicClient {
 
         // Sync an externally written queue before making any focus changes.
         let current = controller.command(token, PlaybackCommand::Snapshot).await?;
+        if external_fence.is_some_and(|expected| current.fence() != *expected) {
+            return Err(Error::QueueChanged);
+        }
         let (lease, reserved) = {
             let _slot = self
                 .player

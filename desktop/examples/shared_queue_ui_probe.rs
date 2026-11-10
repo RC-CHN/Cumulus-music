@@ -73,6 +73,7 @@ fn main() {
                 },
                 "shared_preview"|"shared_blocked"|"shared_exit"=>{},
                 "lifecycle_preview"|"lifecycle_auto"|"lifecycle_pending"|"lifecycle_recovered"=>{},
+                "external_partial"|"external_dismissed"|"external_ended"=>{},
                 "complete"|"failed"=>{},
                 _=>return,
             }
@@ -88,6 +89,6 @@ fn main() {
                 });
             }
         });Ok(())
-    }).on_page_load(|window,event|{if event.event()==PageLoadEvent::Finished{window.eval(if std::env::var_os("CUMULUS_LIFECYCLE_PROOF").is_some(){include_str!("together_lifecycle_ui_probe.js")}else{include_str!("shared_queue_ui_probe.js")}).unwrap();}})
+    }).on_page_load(|window,event|{if event.event()==PageLoadEvent::Finished{window.eval(if std::env::var_os("CUMULUS_LIFECYCLE_PROOF").is_some(){include_str!("together_lifecycle_ui_probe.js")}else if std::env::var_os("CUMULUS_EXTERNAL_SELECTION_PROOF").is_some(){include_str!("together_external_selection_ui_probe.js")}else{include_str!("shared_queue_ui_probe.js")}).unwrap();}})
         .run(tauri::generate_context!()).expect("production WebView with local fixtures");
 }

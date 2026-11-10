@@ -45,6 +45,7 @@ impl Actor {
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
                 | PlaybackCommand::ApplyLocalBatch(_)
                 | PlaybackCommand::ApplyOfflinePlaylistQueue(_)
+                | PlaybackCommand::ApplyTogetherExternalQueue(_)
                 | PlaybackCommand::RecallPrefill(_)
         ) && request.guard.is_none()
         {
@@ -107,6 +108,7 @@ impl Actor {
             request.command,
             PlaybackCommand::Snapshot
                 | PlaybackCommand::SyncQueue
+                | PlaybackCommand::ApplyTogetherExternalQueue(_)
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Speed(_)
                 | PlaybackCommand::SpeedFor { .. }
@@ -172,6 +174,12 @@ impl Actor {
             return;
         }
         if let PlaybackCommand::ApplyOfflinePlaylistQueue(value) = &request.command
+            && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
+        if let PlaybackCommand::ApplyTogetherExternalQueue(value) = &request.command
             && value.expected != self.snapshot().fence()
         {
             self.reply(request.reply, Err(Error::QueueChanged));
@@ -355,6 +363,10 @@ impl Actor {
                 let authority = &request.guard.as_ref().expect("guarded cached playlist").1;
                 self.apply_offline_playlist_queue(update, authority)
                     .map(|value| options = value)
+            }
+            PlaybackCommand::ApplyTogetherExternalQueue(value) => {
+                let authority = &request.guard.as_ref().expect("guarded together list").1;
+                self.apply_together_external_queue(value, &request.reply, authority)
             }
             PlaybackCommand::RetainCurrentQueueAndPlay(queue) => self
                 .retain_current_queue_and_play(queue)

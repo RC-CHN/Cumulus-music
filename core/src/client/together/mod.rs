@@ -1,5 +1,6 @@
 mod connection;
 mod dto;
+pub(super) mod external;
 mod incoming;
 mod lifecycle;
 mod progress;
@@ -59,6 +60,7 @@ pub(super) struct TogetherHost {
     error: Arc<Mutex<Option<String>>>,
     factory: Option<Arc<dyn crate::listen_together::transport::ImFactory>>,
     cleanup_uncertain: Arc<Mutex<bool>>,
+    external: Arc<Mutex<Option<external::Notice>>>,
 }
 #[derive(Clone)]
 pub(super) struct RoomDetachment(Weak<Mutex<Option<Runtime>>>);
@@ -393,6 +395,22 @@ impl MusicClient {
                 }
                 self.together_stop().await?;
                 self.together_restore_local(&token).await?;
+            }
+            TogetherCommand::ResolveExternalSelection {
+                room_id,
+                notice_id,
+                confirm,
+            } => {
+                self.consume_external_notice(&token, &room_id, &notice_id, confirm)
+                    .await?;
+                if confirm {
+                    let op = service.leave_for(&token, &room_id, now()).await?;
+                    if op.phase != TogetherPhase::Confirmed {
+                        return Err(Error::MutationUncertain);
+                    }
+                    self.together_stop().await?;
+                    self.together_restore_local(&token).await?;
+                }
             }
             TogetherCommand::ConfirmQueueRoomLoss { room_id, report_id } => {
                 service.check_queue_room_loss_for(&token, &room_id, &report_id)?;

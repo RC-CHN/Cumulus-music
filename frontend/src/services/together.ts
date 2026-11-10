@@ -49,6 +49,7 @@ export interface TogetherView {
   checkedAtMs: number | null;
   localRecovery: boolean;
   ending: boolean;
+  externalSelection?: { id: string; roomId: string; skipped: number; blocked: boolean };
   queueRoomLoss?: { roomId: string; reportId: string } | null;
   lifecycleNotice: string | null;
   sharedPhase: 'pending' | 'applied' | 'superseded' | 'failed' | null;
@@ -66,6 +67,7 @@ export type TogetherCommand =
   | { kind: 'attach' | 'publish' | 'end' | 'reconnect'; room_id: string }
   | { kind: 'select' | 'remove'; room_id: string; song_id: string }
   | { kind: 'confirm_queue_room_loss'; room_id: string; report_id: string }
+  | { kind: 'resolve_external_selection'; room_id: string; notice_id: string; confirm: boolean }
   | { kind: 'reconcile'; operation_id: string };
 export interface TogetherClient {
   onTogetherCloseError?(epoch: string, handler: (message: string) => void): Promise<() => void>;

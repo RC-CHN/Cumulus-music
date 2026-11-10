@@ -332,7 +332,12 @@ impl MusicClient {
                 {
                     return Err(Error::State("playlist drops do not support cloud songs"));
                 }
-                let song = song.as_ref().map(mapping::song_metadata).transpose()?;
+                let song = song
+                    .as_ref()
+                    .map(|song| {
+                        mapping::song_metadata_with_privilege(song, response.privileges.get(id))
+                    })
+                    .transpose()?;
                 if song.is_none() && !purpose.is_play() {
                     continue;
                 }

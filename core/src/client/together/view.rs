@@ -122,6 +122,11 @@ pub(super) async fn project(
         progress_ms: command.map(|c| c.progress),
         playing: command.is_some_and(|c| c.play_status == crate::listen_together::PlayState::Play),
         attached,
+        external_selection: if attached && state.end_notice.is_none() {
+            client.external_notice(token, state.room.as_ref().map(|room| room.room_id.as_str()))?
+        } else {
+            None
+        },
         realtime_ready: false,
         connection: client.together_connection(token)?,
         pending,
