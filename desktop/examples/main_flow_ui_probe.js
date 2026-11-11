@@ -51,7 +51,65 @@
     }, "settled paint " + name);
     await emit(name === "complete" ? name : "ux_" + name, extra);
   }
+  const coldQuery = tab => ({
+    tab, category: tab === "active" ? "all" : "song", keyword: "", sort: "completed",
+    descending: true, offset: 0, limit: 10,
+  });
+  const coldRow = id => one(`.downloads-page [data-download-task="${id}"]`);
+  const coldResume = id => {
+    const row = coldRow(id);
+    return row && button("继续下载 合成主流程歌曲", row);
+  };
+  async function openColdDownloads() {
+    await click(() => button("下载管理"), "open native download management");
+    await click(() => one("#download-tab-active"), "open active download tab");
+  }
+  async function reopenColdDownload(taskId) {
+    check(/^[0-9a-f]{32}$/.test(taskId), "audited cold task ID");
+    last = "cold_account_restore";
+    const account = await wait(async () => {
+      const native = await invoke("account_snapshot");
+      const entry = one(".account-button");
+      return native.status === "authenticated" && native.nickname === "合成主流程账号" &&
+        entry?.title === native.nickname && !entry.disabled && !one(".login-dialog[open]") && native;
+    }, "same saved account restored without scripted login");
+    const epoch = account.epoch;
+    await openColdDownloads();
+    await wait(async () => {
+      const result = await invoke("downloads", { epoch, query: coldQuery("active") });
+      const row = coldRow(taskId);
+      if (result.activeCount !== 1 || result.completedCount !== 0 ||
+          !result.tasks.some(task => task.id === taskId && task.status === "paused") ||
+          row?.querySelector(".download-progress-status")?.textContent.trim() !== "已暂停") {
+        return false;
+      }
+      // The production row shows its controls on hover or keyboard focus.
+      row.focus({ preventScroll: true });
+      const resume = coldResume(taskId);
+      return resume && !resume.disabled;
+    }, "the interrupted task is paused and can be explicitly continued");
+    await stage("download_cold_paused", { epoch, taskId, label: "已暂停" });
+    await click(() => coldResume(taskId), "continue the exact paused download");
+    const file = await wait(async () => {
+      const result = await invoke("downloads", { epoch, query: coldQuery("completed") });
+      return result.activeCount === 0 && result.completedCount === 1 &&
+        result.tasks.find(task => task.id === taskId && task.status === "complete" && !task.cleanupPending);
+    }, "explicit continue published the same task");
+    await click(() => one("#download-tab-song"), "completed downloads");
+    await wait(() => {
+      const row = coldRow(taskId);
+      if (!row?.querySelector('button[aria-label^="播放下载"]')) return false;
+      row.focus({ preventScroll: true });
+      return row;
+    }, "same task appears in the completed downloads table");
+    await stage("download_complete", { epoch, taskId, bytes: file.bytes });
+    await stage("complete", { ok: true, coldDownload: true, taskId });
+  }
   try {
+    if (window.__mainFlowColdTask) {
+      await reopenColdDownload(window.__mainFlowColdTask);
+      return;
+    }
     last = "guest";
     const guest = await wait(async () => {
       const view = await invoke("account_snapshot");
@@ -86,6 +144,31 @@
     }, "QR login adopted by the app");
     await stage("login_adopted", { epoch: account.epoch, previousEpoch: guest.epoch, status: account.status });
     const epoch = account.epoch;
+    if (window.__mainFlowColdDownload) {
+      const command = command => invoke("download_command", { epoch, command });
+      const configured = await command({ kind: "configure", root: window.__mainFlowDownloadPath,
+        path_type: 0, file_type: 0 });
+      check(configured.epoch === epoch && !configured.failed.length, "isolated download directory");
+      const started = await command({ kind: "start", song_ids: ["1"], options: {
+        quality: "standard", tags: false, cover: false, lyrics: false, container: "audio",
+      } });
+      check(started.epoch === epoch && started.accepted.length === 1 && !started.failed.length,
+        "one admitted synthetic download");
+      const [taskId] = started.accepted;
+      check(/^[0-9a-f]{32}$/.test(taskId), "native cold task ID");
+      await openColdDownloads();
+      await emit("wait_download_prefix");
+      await wait(async () => {
+        const result = await invoke("downloads", { epoch, query: coldQuery("active") });
+        return window.__mainFlowPrefixWaiting && coldRow(taskId)?.querySelector(".download-progress") &&
+          result.activeCount === 1 && result.completedCount === 0 &&
+          result.tasks.some(task => task.id === taskId && task.status === "downloading");
+      }, "live interrupted prefix and rendered active task");
+      // The controller captures this stage and kills only this probe process
+      // before acknowledging it. The renderer never sends Pause or Stop.
+      await stage("download_interrupted", { epoch, taskId });
+      return;
+    }
     if (window.__cumulusArtistProof) {
       const recall = window.__cumulusArtistProof === "recall";
       const panel = () => one(".artist-favor-dialog[open]");

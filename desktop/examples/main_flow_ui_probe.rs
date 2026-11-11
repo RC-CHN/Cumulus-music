@@ -104,6 +104,46 @@ fn paused(store: &StateStore, id: &Value) -> Result<Value> {
     Ok(json!({"id":id,"prefixBytes":fixture::media::PREFIX,"prefixVerified":true}))
 }
 
+fn cold_partial(store: &StateStore, media: &Path, id: &Value, status: &str) -> Result<Value> {
+    let (tasks, transfers, controls, ledger) = store.transaction(|tx| {
+        Ok((
+            tx.values(OWNER, TASKS)?,
+            tx.values(OWNER, "media_transfers_v1")?,
+            tx.values(OWNER, "download_controls_v1")?,
+            tx.values(OWNER, LEDGER)?,
+        ))
+    })?;
+    let id = id
+        .as_str()
+        .ok_or(Error::State("missing cold download task ID"))?;
+    let task = tasks
+        .get(id)
+        .ok_or(Error::State("missing cold download task"))?;
+    let transfer = transfers
+        .get(id)
+        .ok_or(Error::State("missing cold transfer"))?;
+    let part = Path::new(
+        transfer["part"]
+            .as_str()
+            .ok_or(Error::State("missing cold part path"))?,
+    );
+    if tasks.len() != 1
+        || transfers.len() != 1
+        || !controls.is_empty()
+        || !ledger.is_empty()
+        || task["status"] != status
+        || task["phase"] != "transfer"
+        || task["authorization_count"] != 1
+        || transfer["status"] != "running"
+        || !part.canonicalize()?.starts_with(media.canonicalize()?)
+        || fs::metadata(part)?.len() != fixture::media::PREFIX as u64
+        || fs::read(part)? != fixture::media::DATA[..fixture::media::PREFIX]
+    {
+        return Err(Error::State("cold download prefix or journal changed"));
+    }
+    Ok(json!({"id":id,"status":status,"prefixBytes":fixture::media::PREFIX,"prefixVerified":true}))
+}
+
 fn disposed(store: &StateStore, media: &Path, checkpoint: &Value) -> Result<Value> {
     let relative = checkpoint["relative"]
         .as_str()
@@ -202,14 +242,34 @@ fn main() {
     assert!(!(loading_step && ordinary_https));
     assert!(!(missing_download && (ordinary_https || loading_step)));
     assert!(!synthetic_route || missing_download);
+    let cold_download = std::env::var("CUMULUS_MAIN_FLOW_COLD_DOWNLOAD").as_deref() == Ok("1");
+    assert!(
+        !cold_download
+            || !(ordinary_https || loading_step || missing_download || artist_proof.is_some())
+    );
     let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
-    if reopen {
+    let cold_task = if reopen && cold_download {
+        let interrupted: Value = serde_json::from_slice(
+            &fs::read(root.join("first/ux_download_interrupted.json"))
+                .expect("audited interrupted prefix"),
+        )
+        .expect("interrupted download receipt");
+        let task = interrupted["audit"]["id"]
+            .as_str()
+            .expect("interrupted task ID");
+        assert_eq!(interrupted["audit"]["prefixVerified"], true);
+        assert_eq!(interrupted["audit"]["status"], "downloading");
+        Some(task.to_owned())
+    } else {
+        None
+    };
+    if reopen && !cold_download {
         let completed: Value = serde_json::from_slice(
             &fs::read(root.join("first/complete.json")).expect("previous proof completed"),
         )
         .expect("previous completion record");
         assert_eq!(completed["ok"], true);
-    } else {
+    } else if !reopen {
         fs::create_dir(&root).expect("proof root must not exist");
     }
     let root = root.canonicalize().expect("absolute proof root");
@@ -227,6 +287,7 @@ fn main() {
         fs::write(&playback_seed, PLAYBACK_FIXTURE).unwrap();
     }
     let path = serde_json::to_string(&downloads).unwrap();
+    let cold_task_js = serde_json::to_string(&cold_task).unwrap();
     let mut context = assets::context();
     let window_config = context.config().app.windows[0].clone();
     context.config_mut().app.windows[0].create = false;
@@ -241,7 +302,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             let store = Arc::new(StateStore::open(root.join("state"))?);
-            let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https, retry_https, eof_https, loading_step));
+            let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https, retry_https, eof_https, loading_step, cold_download && reopen));
             let route_reads = Arc::new(AtomicUsize::new(0));
             if synthetic_route {
                 use cumulus_core::network_diagnostics::DefaultRoute;
@@ -259,7 +320,7 @@ fn main() {
                 fixture.release_loading_seek();
             }
             let wire = Arc::new(if reopen {
-                wire::Wire::reopen(fixture.clone())
+                wire::Wire::reopen(fixture.clone(), cold_download)
             } else {
                 wire::Wire::new(fixture.clone())
             });
@@ -284,7 +345,9 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let Ok(mut value) = serde_json::from_str::<Value>(event.payload()) else { return };
                 let Some(stage) = value["stage"].as_str().map(str::to_owned) else { return };
-                if reopen && !["ux_reopened", "failed"].contains(&stage.as_str()) { return; }
+                let cold_reopen_stage = cold_download && reopen
+                    && ["ux_download_cold_paused", "ux_download_complete", "complete"].contains(&stage.as_str());
+                if reopen && !cold_reopen_stage && !["ux_reopened", "failed"].contains(&stage.as_str()) { return; }
                 if stage == "approve_login" {
                     if wire.approve().is_err() {
                         fs::write(out.join("failed.json"), br#"{"stage":"approve_login","ok":false}"#).unwrap();
@@ -343,7 +406,8 @@ fn main() {
                     return;
                 }
                 let ordinary_stage = ["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_search_loading_cover","ux_search_loading_rows","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str());
-                if !(ordinary_stage || retry_https && stage == "ux_https_failure" || eof_https && stage == "ux_https_before_eof"
+                let cold_first_stage = cold_download && !reopen && stage == "ux_download_interrupted";
+                if !(ordinary_stage || cold_first_stage || cold_reopen_stage || retry_https && stage == "ux_https_failure" || eof_https && stage == "ux_https_before_eof"
                     || missing_download && ["ux_download_missing", "ux_download_online"].contains(&stage.as_str())
                     || artist_proof.is_some() && stage.starts_with("ux_artist_") && stage.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) { return; }
                 let client = handle.state::<MusicClient>();
@@ -363,6 +427,14 @@ fn main() {
                         Ok(json!({"savedCurrentProfile":true}))
                     }),
                     "ux_download_paused" => paused(&store, &value["taskId"]),
+                    "ux_download_interrupted" => cold_partial(&store, &downloads, &value["taskId"], "downloading"),
+                    "ux_download_cold_paused" => {
+                        if value["taskId"].as_str() != cold_task.as_deref() {
+                            Err(Error::State("reopened wrong cold download task"))
+                        } else {
+                            cold_partial(&store, &downloads, &value["taskId"], "paused")
+                        }
+                    },
                     "ux_download_complete" => checkpoint(&store, &downloads, &checkpoint_seed),
                     "ux_download_disposed" => fs::read(out.join("ux_download_complete.json"))
                         .map_err(Error::from).and_then(|bytes| Ok(serde_json::from_slice::<Value>(&bytes)?))
@@ -396,7 +468,7 @@ fn main() {
                     let handshake = value["captureHandshake"].as_bool() == Some(true);
                     tauri::async_runtime::spawn(async move {
                         if capture_ack::acknowledge(&handle, &out, &stage, handshake).await
-                            && stage == "ux_reopened"
+                            && stage == "ux_reopened" && !cold_download
                         {
                             handle.exit(0);
                         }
@@ -415,7 +487,8 @@ fn main() {
                 if let Some(mode) = artist_proof {
                     webview.eval(format!("window.__cumulusArtistProof={};", json!(mode.name()))).unwrap();
                 }
-                let source = if reopen {
+                webview.eval(format!("window.__mainFlowColdDownload={cold_download};window.__mainFlowColdTask={cold_task_js};")).unwrap();
+                let source = if reopen && !cold_download {
                     include_str!("main_flow_reopen_probe.js")
                 } else {
                     include_str!("main_flow_ui_probe.js")

@@ -81,9 +81,10 @@ impl Service {
         retry_https: bool,
         eof_https: bool,
         loading_step: bool,
+        cold_resume: bool,
     ) -> Self {
         Self {
-            media: media::Media::new(store),
+            media: media::Media::new(store, cold_resume),
             ordinary_https,
             retry_https,
             eof_https,

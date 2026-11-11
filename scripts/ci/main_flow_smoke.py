@@ -3,7 +3,9 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import socket
+import sys
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -42,6 +44,95 @@ def cut_after_publish(control, stage, proof, native_pid):
             raise RuntimeError('network controller did not confirm cutoff')
 
 
+def start_reopened(binary, env, root, screenshots):
+    """New process and clean OS/WebView storage, same private native state."""
+    reopen_logs = root/'reopen-logs'
+    reopen_logs.mkdir()
+    reopen_env = {**env, 'CUMULUS_PROOF_REOPEN': '1'}
+    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
+                'APPDATA', 'LOCALAPPDATA'):
+        profile = root/'reopen-os-profile'/key
+        profile.mkdir(parents=True, mode=0o700)
+        reopen_env[key] = str(profile)
+    output = root/'run/reopen'
+    with (reopen_logs/'host.log').open('x', encoding='utf-8') as log:
+        code = launch(binary, reopen_env, log, output, screenshots)
+    failed = output/'failed.json'
+    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+    assert code == 0
+    return output
+
+
+def cold_download_interrupt(stage, proof, native_pid):
+    if stage.name != 'ux_download_interrupted.json':
+        return
+    assert proof['captureHandshake'] and proof['stage'] == 'ux_download_interrupted'
+    assert proof['authenticated'] and proof['epoch'] == proof['nativeEpoch']
+    assert proof['audit'] == {
+        'id': proof['taskId'], 'status': 'downloading', 'prefixBytes': 4096, 'prefixVerified': True,
+    }
+    assert proof['fixture']['mediaRequests'] == [[0, False]]
+    assert proof['fixture']['calls']['/api/song/enhance/download/url/v1'] == 1
+    if Path(f'/proc/{native_pid}/ns/net').readlink() != Path('/proc/self/ns/net').readlink():
+        raise RuntimeError('cold download probe is outside the isolated network namespace')
+    # No IPC pause or shutdown. Only the subprocess started for this fixture is killed.
+    os.kill(native_pid, signal.SIGKILL)
+
+
+def verify_cold_download(binary, env, root, first_status):
+    def receipt(output, name):
+        return json.loads((output / f'{name}.json').read_text(encoding='utf-8'))
+
+    assert first_status == -signal.SIGKILL, f'expected the audited synthetic interruption: {first_status}'
+    first = root/'run/first'
+    interrupted = receipt(first, 'ux_download_interrupted')
+    assert not (first/'complete.json').exists(), 'unexpected graceful first-process completion'
+    reopened = start_reopened(binary, env, root, screenshots=True)
+    paused = receipt(reopened, 'ux_download_cold_paused')
+    complete = receipt(reopened, 'ux_download_complete')
+    done = receipt(reopened, 'complete')
+    task = interrupted['taskId']
+    assert task == paused['taskId'] == complete['taskId'] == done['taskId']
+    assert paused['audit'] == {**interrupted['audit'], 'status': 'paused'}
+    assert paused['authenticated'] and paused['epoch'] == paused['nativeEpoch']
+    assert paused['label'] == '已暂停' and paused['captureHandshake']
+    assert paused['wire']['mode'] == 'reopen' and paused['wire']['authorized']
+    assert paused['wire']['tickets'] == paused['wire']['polls'] == 0
+    assert not paused['wire']['approved'] and paused['wire']['authenticatedIdentityReads'] >= 1
+    endpoint = '/api/song/enhance/download/url/v1'
+    assert paused['fixture']['calls'].get(endpoint, 0) == paused['fixture']['mediaTransfers'] == 0
+    assert paused['fixture']['mediaRequests'] == []
+    assert complete['fixture']['calls'][endpoint] == complete['fixture']['mediaTransfers'] == 1
+    assert complete['fixture']['mediaRequests'] == [[4096, False]]
+    assert done['ok'] and done['coldDownload'] and done['fixture']['mediaRequests'] == [[4096, False]]
+    assert done['fixture']['calls'][endpoint] == 1
+    audit = complete['audit']
+    assert audit['id'] == task and audit['file'] == audit['taskIntegrity'] == audit['ledgerIntegrity']
+    media = (root/'run/media').resolve(strict=True)
+    published = (media/audit['relative']).resolve(strict=True)
+    assert published.is_relative_to(media) and published.suffix == '.flac'
+    assert hashlib.sha256(published.read_bytes()).hexdigest() == audit['file']['sha256']
+    with closing(sqlite3.connect((root/'run/state/core.sqlite3').as_uri()+'?mode=ro', uri=True)) as state:
+        tasks = state.execute(
+            "SELECT owner,key,json_extract(value,'$.status'),json_extract(value,'$.authorization_count') "
+            "FROM state WHERE kind='download_tasks_v1'"
+        ).fetchall()
+    assert tasks == [('2', task, 'complete', 2)], 'unexpected persisted cold download task'
+    screenshots = {
+        'first': {path.stem for path in first.glob('ux_*.png')},
+        'reopen': {path.stem for path in reopened.glob('ux_*.png')},
+    }
+    assert screenshots['first'] == {'ux_guest', 'ux_qr_pending', 'ux_login_adopted', 'ux_download_interrupted'}
+    assert screenshots['reopen'] == {'ux_download_cold_paused', 'ux_download_complete'}
+    report = dict(ok=True, actualWebView=True, linuxX11=True, processLifetimes=2,
+                  interruption='SIGKILL', pausedBeforeExplicitContinue=True,
+                  providerAuthorizationsBeforeContinue=0, providerMediaOpensBeforeContinue=0,
+                  resumedAtBytes=4096, completedTask=task, publishedSha256=audit['file']['sha256'],
+                  screenshotCount=sum(map(len, screenshots.values())), realMusicRequests=0, realAccountWrites=0)
+    (root/'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(report))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -54,6 +145,8 @@ def main():
     special.add_argument('--https-eof-next', action='store_true', help=argparse.SUPPRESS)
     special.add_argument('--loading-step', action='store_true')
     special.add_argument('--missing-download', action='store_true')
+    special.add_argument('--cold-download', action='store_true',
+                         help='interrupt a real partial download and verify paused cold startup')
     parser.add_argument('--synthetic-offline-route', action='store_true',
                         help='simulate the native route observation without changing runner routes')
     parser.add_argument('--https-retry-with-play', action='store_true', help=argparse.SUPPRESS)
@@ -64,8 +157,14 @@ def main():
         parser.error('HTTPS playback scenarios require --ordinary-https')
     if args.https_retry_with_play and not args.https_retry_once:
         parser.error('--https-retry-with-play requires --https-retry-once')
-    if (args.loading_step or args.missing_download) and args.ordinary_https:
-        parser.error('--loading-step and --missing-download use the synthetic decoder gate')
+    if (args.loading_step or args.missing_download or args.cold_download) and args.ordinary_https:
+        parser.error('the selected scenario uses the sealed synthetic backend')
+    if args.cold_download:
+        if not sys.platform.startswith('linux') or not args.screenshots or not os.environ.get('DISPLAY'):
+            parser.error('--cold-download requires a Linux X11 proof desktop and --screenshots')
+        if ({name for _, name in socket.if_nameindex()} != {'lo'}
+                or len(Path('/proc/net/route').read_text(encoding='ascii').splitlines()) != 1):
+            parser.error('--cold-download requires a sealed loopback-only network namespace')
     if args.synthetic_offline_route and not args.missing_download:
         parser.error('--synthetic-offline-route requires --missing-download')
     if args.loopback_cut_control and (not args.ordinary_https or not args.screenshots
@@ -101,6 +200,8 @@ def main():
         env['CUMULUS_MAIN_FLOW_LOADING_STEP'] = '1'
     if args.missing_download:
         env['CUMULUS_MAIN_FLOW_MISSING_DOWNLOAD'] = '1'
+    if args.cold_download:
+        env['CUMULUS_MAIN_FLOW_COLD_DOWNLOAD'] = '1'
     if args.synthetic_offline_route:
         env['CUMULUS_MAIN_FLOW_SYNTHETIC_ROUTE'] = '1'
     if args.runtime:
@@ -111,12 +212,19 @@ def main():
         profile.mkdir(parents=True, mode=0o700)
         env[key] = str(profile)
     output = root/'run/first'
+    if args.loopback_cut_control:
+        def before_ack(*stage):
+            cut_after_publish(args.loopback_cut_control, *stage)
+    else:
+        before_ack = cold_download_interrupt if args.cold_download else None
+    binary = args.binary.resolve()
     with (root/'host.log').open('x', encoding='utf-8') as log:
-        code = launch(args.binary.resolve(), env, log, output, args.screenshots,
-                      before_ack=(lambda *stage: cut_after_publish(args.loopback_cut_control, *stage))
-                      if args.loopback_cut_control else None)
+        code = launch(binary, env, log, output, args.screenshots, before_ack=before_ack)
     failed = output/'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+    if args.cold_download:
+        verify_cold_download(binary, env, root, code)
+        return
     assert code == 0
     stages = {name: json.loads((output / ('complete.json' if name == 'complete' else
                                         f'ux_{name}.json')).read_text(encoding='utf-8'))
@@ -259,21 +367,7 @@ def main():
     assert sorted(row for row in playlist if row[1] != 'tracks') == [('2', kind, 'confirmed') for kind in ('create', 'delete', 'metadata')]
     assert not leftovers
     assert disposal_journal == [('2', proof['id'], 'delete', 'complete')]
-    # New process, same native state, entirely fresh OS/WebView storage.
-    reopen_logs = root/'reopen-logs'
-    reopen_logs.mkdir()
-    reopen_env = {**env, 'CUMULUS_PROOF_REOPEN': '1'}
-    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
-                'APPDATA', 'LOCALAPPDATA'):
-        profile = root/'reopen-os-profile'/key
-        profile.mkdir(parents=True, mode=0o700)
-        reopen_env[key] = str(profile)
-    reopened_output = root/'run/reopen'
-    with (reopen_logs/'host.log').open('x', encoding='utf-8') as log:
-        reopen_code = launch(args.binary.resolve(), reopen_env, log, reopened_output, args.screenshots)
-    failed = reopened_output/'failed.json'
-    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
-    assert reopen_code == 0
+    reopened_output = start_reopened(binary, env, root, args.screenshots)
     reopened = json.loads((reopened_output/'ux_reopened.json').read_text(encoding='utf-8'))
     assert reopened['ok'] and reopened['authenticated'] and reopened['status'] == 'authenticated'
     assert reopened['nativeEpoch'] == reopened['epoch']

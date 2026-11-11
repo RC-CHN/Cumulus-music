@@ -40,13 +40,13 @@ struct Progress {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Qr,
-    Reopen,
+    Reopen { cold_download: bool },
 }
 impl Mode {
     fn label(self) -> &'static str {
         match self {
             Self::Qr => "qr",
-            Self::Reopen => "reopen",
+            Self::Reopen { .. } => "reopen",
         }
     }
 }
@@ -70,8 +70,8 @@ impl Wire {
         Self::with_mode(service, Mode::Qr)
     }
 
-    pub fn reopen(service: Arc<Service>) -> Self {
-        Self::with_mode(service, Mode::Reopen)
+    pub fn reopen(service: Arc<Service>, cold_download: bool) -> Self {
+        Self::with_mode(service, Mode::Reopen { cold_download })
     }
 
     fn with_mode(service: Arc<Service>, mode: Mode) -> Self {
@@ -216,19 +216,28 @@ impl HttpBackend for Wire {
                 (Some(COOKIE), None) => true,
                 _ => return Err(Error::Response("unexpected synthetic session")),
             };
-            if self.mode == Mode::Reopen {
+            if let Mode::Reopen { cold_download } = self.mode {
                 if matches!(path.as_str(), TICKET | POLL) {
                     return Err(Error::State("synthetic reopen does not allow QR"));
                 }
-                if !matches!(
-                    path.as_str(),
-                    ACCOUNT
-                        | "/api/rtrs/abt/front/expinfo/list"
-                        | "/api/relay/setting/show"
-                        | "/api/song/like/get"
-                        | "/api/user/playlist"
-                        | "/api/v3/discovery/recommend/songs"
-                ) {
+                // Ordinary profile recovery remains read-only. The cold
+                // scenario can renew only its own frozen media representation.
+                let cold_authorization = cold_download
+                    && path == "/api/song/enhance/download/url/v1"
+                    && data["id"] == "1"
+                    && data["level"] == "standard"
+                    && data["immerseType"] == "c51";
+                if !cold_authorization
+                    && !matches!(
+                        path.as_str(),
+                        ACCOUNT
+                            | "/api/rtrs/abt/front/expinfo/list"
+                            | "/api/relay/setting/show"
+                            | "/api/song/like/get"
+                            | "/api/user/playlist"
+                            | "/api/v3/discovery/recommend/songs"
+                    )
+                {
                     return Err(Error::Response(
                         "synthetic reopen allows only bootstrap reads",
                     ));

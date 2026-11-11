@@ -24,13 +24,15 @@ const ETAG: &str = "\"synthetic-main-flow-flac\"";
 pub struct Media {
     store: Arc<StateStore>,
     waiting: Arc<AtomicBool>,
+    cold_resume: bool,
     offsets: Mutex<Vec<(usize, bool)>>,
 }
 impl Media {
-    pub fn new(store: Arc<StateStore>) -> Self {
+    pub fn new(store: Arc<StateStore>, cold_resume: bool) -> Self {
         Self {
             store,
             waiting: Default::default(),
+            cold_resume,
             offsets: Default::default(),
         }
     }
@@ -47,12 +49,15 @@ impl Media {
         // prefix, but deliberately clears the old response validator.
         let resumed = request.offset == PREFIX as u64 && request.if_range.is_none();
         let first = request.offset == 0 && request.if_range.is_none();
-        if request.url.as_str() != URL
-            || !matches!(
+        let valid_sequence = if self.cold_resume {
+            requests.is_empty() && resumed
+        } else {
+            matches!(
                 (requests.len(), first, resumed),
                 (0, true, false) | (1, false, true)
             )
-        {
+        };
+        if request.url.as_str() != URL || !valid_sequence {
             return Err(Error::State("unexpected synthetic media request"));
         }
         let offset = if first { 0 } else { PREFIX };
