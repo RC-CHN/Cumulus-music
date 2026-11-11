@@ -49,6 +49,7 @@
   const actions = { targets: [], changes: [], stale: [] };
   const startup = {};
   let epoch, baseline, initialCoverBox, nonce = 0, count = 0, last = 'startup';
+  let playbackMismatch;
   let restore = () => {};
   async function wait(test, label) {
     last = label;
@@ -130,7 +131,10 @@
     }
     await frame();
     const current = await playback();
-    assert(same(current, baseline), 'joined read must not move the paused native decoder or its queue');
+    if (!same(current, baseline)) {
+      playbackMismatch = { stage: name, baseline, current };
+      throw Error('joined read must not move the paused native decoder or its queue');
+    }
     const view = dom();
     if (!route) {
       initialCoverBox ??= view.coverBox;
@@ -293,21 +297,34 @@
       const card = sceneCard();
       return card ? button('播放随心听FM', card) : undefined;
     }, 'play sealed Scene FM program');
-    await wait(async () => {
+    const playing = await wait(async () => {
       const current = await playback();
-      return current.state === 'playing' && current.voice === '601' && current.position > .2;
+      return current.state === 'playing' && current.voice === '601' &&
+        current.playId && current.entryId === current.queue.current && current.position > .2 && current;
     }, 'real decoder advances before opening panel');
     startup.decoderVoice = '601';
     await click(() => button('暂停'), 'park the decoder');
-    let lastPosition;
+    // WebView reads 55 ms apart can both precede the next 200 ms native
+    // libmpv poll. Require the same decoder, queue and clock across polls.
+    let sample, stableSince, samples = 0;
     baseline = await wait(async () => {
       const current = await playback();
+      const now = performance.now();
       if (current.state !== 'paused' || current.voice !== '601' || current.seeking ||
-          current.error || !Number.isFinite(current.position)) return false;
-      const settled = lastPosition === current.position;
-      lastPosition = current.position;
-      return settled && current;
-    }, 'pause clock settles');
+          current.playId !== playing.playId || current.entryId !== playing.entryId ||
+          !same(current.queue, playing.queue) || current.error ||
+          !Number.isFinite(current.position) || current.position <= .2) {
+        sample = undefined;
+        samples = 0;
+        return false;
+      }
+      if (!same(sample, current)) {
+        sample = current;
+        stableSince = now;
+        samples = 0;
+      }
+      return ++samples >= 3 && now - stableSince >= 450 && current;
+    }, 'same paused decoder, queue and clock settle across native polls');
     assert(!panel() && (await nativeReads()).length === 0 && baseline.snapshotCount === 123456,
       'closed page has no triad requests and old playback count is distinguishable');
     await click(() => one('.player-cover'), 'open current paused episode');
@@ -369,7 +386,7 @@
       physicalAudioVerified: false, startup, ...(signedActions ? { actions } : {}) });
   } catch (error) {
     await emit('failed', { ok: false, last, error: String(error), reads, dom: dom(), stageCount: count,
-      startup, startupState: startupState(),
+      startup, startupState: startupState(), playbackMismatch,
       ...(signedActions ? { actions } : {}) });
   } finally {
     restore();
