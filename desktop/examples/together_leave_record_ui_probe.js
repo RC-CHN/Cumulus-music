@@ -134,6 +134,9 @@
       await capture(stage, {
         operationId: previous.operationId, gesture, modalOpen: false,
         activeOutsideModal: !document.activeElement?.closest('dialog[data-together-leave-record]'),
+        activeTag: document.activeElement?.tagName ?? null,
+        activeLabel: document.activeElement?.getAttribute('aria-label') ??
+          document.activeElement?.textContent.trim().slice(0, 60) ?? null,
       });
     }
 
@@ -161,10 +164,14 @@
     click(await openLeave());
     const pending = await wait(async () => {
       const value = await view();
-      return value.ending && value.pending.some((operation) => operation.action === 'end') && value;
+      const operation = value.pending.find((entry) => entry.action === 'end');
+      // Manual End records its own pending journal. The separate ending flag
+      // describes an unsolicited room-end notice, not a lost manual reply.
+      return operation?.phase === 'uncertain' && !operation.acknowledged && { value, operation };
     }, 'lost reply retained as unresolved end');
-    noRecord(pending);
-    await capture('leave_uncertain', { pending: true, modalOpen: false });
+    noRecord(pending.value);
+    await capture('leave_uncertain', { pending: true, pendingPhase: pending.operation.phase,
+      acknowledged: pending.operation.acknowledged, modalOpen: false });
     click(await wait(() => button('核对状态', roomPage()), 'manual read-only reconciliation'));
     noRecord(await wait(absent, 'read-only reconciliation confirms absence'));
     await capture('leave_recovered', { roomOpen: false, modalOpen: false });

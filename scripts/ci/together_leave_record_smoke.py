@@ -38,7 +38,9 @@ def audit(output, screenshots):
         assert data[name]['modalOpen'] is False, name
     assert data['leave_cancelled']['roomOpen'] is True
     assert all(data[name]['roomOpen'] is False for name in ('leave_waiting', 'leave_malformed', 'leave_recovered'))
-    assert data['leave_uncertain']['pending'] is True
+    uncertain = data['leave_uncertain']
+    assert uncertain['pending'] is True and uncertain['pendingPhase'] == 'uncertain'
+    assert uncertain['acknowledged'] is False
     operations = []
     for stage, close, gesture in (
         ('leave_direct', 'leave_dismissed', 'dialog_cancel'),
