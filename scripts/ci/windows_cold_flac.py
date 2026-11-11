@@ -1,4 +1,4 @@
-"""Run the opted-in cold FLAC Rust tests with the staged Windows media DLLs."""
+"""Run held-source native Rust tests with the staged Windows media DLLs."""
 import argparse
 import json
 import os
@@ -24,6 +24,8 @@ DECODER = f'{ENGINE}::limiter_segment::inprocess_flac'
 COLD = f'{DECODER}::cold_authority'
 STOP = f'{ENGINE}::mpv::pinned_stop::tests'
 IDENTITY = f'{DECODER}::windows_runtime::limiter_windows_cold_flac_runtime_identity'
+ROOTED_WAV_EQUALIZER = ('library::native_open::windows::tests::'
+                        'windows_rooted_actor_loads_held_wav_equalizer_after_filename_replacement')
 CASES = (
     IDENTITY,
     f'{COLD}::stereo::cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocation',
@@ -36,6 +38,7 @@ CASES = (
     f'{COLD}::production::limiter_cold_flac_production_controller_opt_in_and_stock_fallback',
     f'{STOP}::pinned_stop_native_rejection_and_stale_ack_both_destroy_the_sink',
     f'{STOP}::pinned_stop_revocation_while_opening_closes_the_unpublished_sink',
+    ROOTED_WAV_EQUALIZER,
 )
 
 

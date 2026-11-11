@@ -9,7 +9,11 @@ use crate::{
         TrustedFlacRuntime,
     },
 };
-use std::{fs::File, time::Duration};
+use std::{
+    fs::File,
+    io::{Read, Seek},
+    time::Duration,
+};
 
 const CONTROL_WAIT: Duration = Duration::from_secs(2);
 
@@ -50,6 +54,10 @@ impl MpvEngine {
         else {
             return Ok(None);
         };
+        #[cfg(windows)]
+        if local.pass.rooted_wave() {
+            return Ok(None);
+        }
         if self.entry != Some(entry)
             || self.equalizer.is_some()
             || self.parametric.is_some()
@@ -74,7 +82,7 @@ impl MpvEngine {
 
     pub(super) fn load_open_file(
         &mut self,
-        file: File,
+        file: impl Read + Seek + Send + 'static,
         format: &'static str,
         authority: Cancellation,
         start: f64,
@@ -96,9 +104,6 @@ impl MpvEngine {
     ) -> Result<LoadedMedia> {
         request.validate()?;
         cancel.check()?;
-        let MediaInput::NativeFile { path, fingerprint } = &request.source else {
-            return self.load_inner(request, cancel);
-        };
         if request.start != 0.0
             || request.end.is_some()
             || !settings.local_graph_requested()
@@ -107,15 +112,28 @@ impl MpvEngine {
         {
             return self.load_inner(request, cancel);
         }
-        let (file, format) = crate::library::native_open::checked_audio_file(path, fingerprint)?;
-        self.load_held_local_equalizer(
-            file,
-            format,
-            settings,
-            cancel.clone(),
-            cancel,
-            HeldOrigin::ExplicitFile,
-        )
+        match &request.source {
+            MediaInput::NativeFile { path, fingerprint } => {
+                let (file, format) =
+                    crate::library::native_open::checked_audio_file(path, fingerprint)?;
+                self.load_held_local_equalizer(
+                    file,
+                    format,
+                    settings,
+                    cancel.clone(),
+                    cancel,
+                    HeldOrigin::ExplicitFile,
+                )
+            }
+            #[cfg(windows)]
+            MediaInput::WindowsNativeFile(file) if self.local_wave && file.format() == "wav" => {
+                let plan = LocalEqualizerMaterialPlan::from_saved(settings);
+                let selection =
+                    NativeStereoSource::select_rooted_wave(file.clone(), cancel.clone(), plan)?;
+                self.load_selected_local_equalizer(selection, "wav", settings, cancel)
+            }
+            _ => self.load_inner(request, cancel),
+        }
     }
 
     pub(super) fn load_indexed_local_equalizer(
@@ -208,6 +226,16 @@ impl MpvEngine {
                 NativeStereoSource::select(file, authority, library, plan)?
             }
         };
+        self.load_selected_local_equalizer(selection, format, settings, cancel)
+    }
+
+    fn load_selected_local_equalizer(
+        &mut self,
+        selection: NativeStereoSelection,
+        format: &'static str,
+        settings: EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
         let source = match selection {
             NativeStereoSelection::Qualified(source) => source,
             NativeStereoSelection::Stock(held) => {

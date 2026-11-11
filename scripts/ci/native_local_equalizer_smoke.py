@@ -173,6 +173,9 @@ def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100):
     assert complete['fixtureOpens'] == 2 and native['ordinary_loads'] == 1 and not native['yields']
     load, = native['loads']
     seek, = native['seeks']
+    rooted_windows = sys.platform == 'win32' and source_kind == 'wav'
+    assert stock['native']['stock_rooted_windows'] == native['stock_rooted_windows'] == [rooted_windows]
+    assert load['rooted_windows'] is rooted_windows
     assert load['native_file'] and load['codec'] == 'pcm_f32le' and load['graph_entry'] == load['entry']
     assert seek['seconds'] == seek_target['accepted'] and seek['old_entry'] == load['entry']
     assert seek['graph_entry'] == seek['replacement'] != load['entry']

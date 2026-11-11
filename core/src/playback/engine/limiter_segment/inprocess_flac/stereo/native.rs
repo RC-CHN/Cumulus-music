@@ -28,7 +28,11 @@ pub(crate) enum NativeStereoStart {
 }
 
 pub(crate) struct NativeStereoSource(HeldSource<NativeStereoFile>);
-pub(crate) struct NativeStereoPass(HeldPass<NativeStereoFile>);
+pub(crate) struct NativeStereoPass {
+    inner: HeldPass<NativeStereoFile>,
+    #[cfg(windows)]
+    rooted_wave: bool,
+}
 
 impl NativeStereoSource {
     /// Consume the descriptor returned by the native path/fingerprint check.
@@ -80,9 +84,26 @@ impl NativeStereoSource {
         authority: Cancellation,
         plan: LocalEqualizerMaterialPlan,
     ) -> Result<NativeStereoSelection> {
-        Self::select_wave_graph(file, authority, |format| {
-            SourceGraph::new_local(format, plan)
-        })
+        let reader = NativeStereoFile::new(file, authority)?;
+        Self::select_wave_graph(reader, |format| SourceGraph::new_local(format, plan))
+    }
+
+    /// Consume only a previously admitted WAV. The reader owns the exact
+    /// rooted handle, including when the graph yields to the stock sink.
+    #[cfg(windows)]
+    pub(crate) fn select_rooted_wave(
+        file: std::sync::Arc<crate::library::WindowsOpenedAudio>,
+        authority: Cancellation,
+        plan: LocalEqualizerMaterialPlan,
+    ) -> Result<NativeStereoSelection> {
+        if file.format() != "wav" {
+            return Err(Error::InvalidInput("rooted equalizer source must be WAV"));
+        }
+        let reader = NativeStereoFile::from_descriptor(
+            NativeStereoDescriptor::Rooted(file.reader()),
+            authority,
+        )?;
+        Self::select_wave_graph(reader, |format| SourceGraph::new_local(format, plan))
     }
 
     #[cfg(test)]
@@ -91,17 +112,14 @@ impl NativeStereoSource {
         authority: Cancellation,
         plan: &crate::effects::material::ModernLimiterPlan,
     ) -> Result<NativeStereoSelection> {
-        Self::select_wave_graph(file, authority, |format| {
-            SourceGraph::new_modern_test(format, plan)
-        })
+        let reader = NativeStereoFile::new(file, authority)?;
+        Self::select_wave_graph(reader, |format| SourceGraph::new_modern_test(format, plan))
     }
 
     fn select_wave_graph(
-        file: File,
-        authority: Cancellation,
+        mut reader: NativeStereoFile,
         graph: impl FnOnce(crate::effects::dsp::Format) -> Result<SourceGraph>,
     ) -> Result<NativeStereoSelection> {
-        let mut reader = NativeStereoFile::new(file, authority)?;
         let layout = PcmWave::inspect(&mut reader)?;
         reader.wave_layout = Some(layout);
         Ok(
@@ -145,49 +163,86 @@ impl NativeStereoSource {
     /// A live pass remains bound to its source authority, not the request
     /// that successfully finished preparing it.
     pub(crate) fn start(self, first: u64, cancel: &Cancellation) -> Result<NativeStereoStart> {
+        #[cfg(windows)]
+        let rooted_wave = matches!(&self.0.reader.file, NativeStereoDescriptor::Rooted(_));
         Ok(match self.0.start(first, cancel)? {
-            Start::Ready(pass) => NativeStereoStart::Ready(Box::new(NativeStereoPass(*pass))),
+            Start::Ready(pass) => NativeStereoStart::Ready(Box::new(NativeStereoPass {
+                inner: *pass,
+                #[cfg(windows)]
+                rooted_wave,
+            })),
             Start::Stock(source) => NativeStereoStart::Stock(Box::new(Self(*source))),
         })
     }
 }
 
 impl NativeStereoPass {
+    #[cfg(windows)]
+    pub(crate) fn rooted_wave(&self) -> bool {
+        self.rooted_wave
+    }
+
     pub(crate) fn control(&self) -> StereoPcmControl {
-        self.0.control.clone()
+        self.inner.control.clone()
     }
 
     pub(crate) fn take_reader(&mut self) -> Result<StereoPcmReader> {
-        self.0.take_reader()
+        self.inner.take_reader()
     }
 
     pub(crate) fn discard_retired(mut self) -> Result<()> {
         // Retirement drops the old source. Its revoked authorization cannot
         // be used to open, seek, or pass a descriptor into the new sink.
-        self.0.join_retired().map(drop)
+        self.inner.join_retired().map(drop)
     }
     pub(crate) fn reclaim(self) -> Result<NativeStereoSource> {
-        self.0.reclaim().map(NativeStereoSource)
+        self.inner.reclaim().map(NativeStereoSource)
     }
 
     /// Queue an in-place full apply. The returned revision is only accepted;
     /// the owner must await and fence the actual worker acknowledgement.
     pub(crate) fn apply_material(&self, plan: LocalEqualizerMaterialPlan) -> Result<u64> {
-        self.0
+        self.inner
             .control
             .queue_graph_control(StereoGraphControl::ApplyLocal(plan))
     }
 
     pub(crate) fn disable_master(&self) -> Result<u64> {
-        self.0
+        self.inner
             .control
             .queue_graph_control(StereoGraphControl::DisableLocalMaster)
     }
 }
 
+enum NativeStereoDescriptor {
+    File(File),
+    #[cfg(windows)]
+    Rooted(crate::library::native_open::WindowsAudioReader),
+}
+
+impl Read for NativeStereoDescriptor {
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Self::File(file) => file.read(out),
+            #[cfg(windows)]
+            Self::Rooted(file) => file.read(out),
+        }
+    }
+}
+
+impl Seek for NativeStereoDescriptor {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        match self {
+            Self::File(file) => file.seek(position),
+            #[cfg(windows)]
+            Self::Rooted(file) => file.seek(position),
+        }
+    }
+}
+
 /// Own exactly one verified local handle, never a path or a cloned file.
 pub(crate) struct NativeStereoFile {
-    file: File,
+    file: NativeStereoDescriptor,
     authority: Cancellation,
     wave_layout: Option<PcmWave>,
 }
@@ -200,6 +255,10 @@ impl NativeStereoFile {
                 "native stereo source must be a regular file",
             ));
         }
+        Self::from_descriptor(NativeStereoDescriptor::File(file), authority)
+    }
+
+    fn from_descriptor(file: NativeStereoDescriptor, authority: Cancellation) -> Result<Self> {
         // A source predicate that was observed revoked cannot revive a held
         // descriptor, even if a later caller predicate becomes true again.
         let revoked = AtomicBool::new(false);
@@ -219,7 +278,9 @@ impl NativeStereoFile {
 
     /// Revalidate, rewind and move the original descriptor and its lifetime
     /// together into the stock pinned sink. No stock path reauthorizes it.
-    pub(crate) fn into_stock(mut self) -> Result<(File, Cancellation)> {
+    pub(crate) fn into_stock(
+        mut self,
+    ) -> Result<(impl Read + Seek + Send + 'static, Cancellation)> {
         self.authority.check()?;
         if let Some(layout) = self.wave_layout
             && PcmWave::inspect(&mut self)? != layout

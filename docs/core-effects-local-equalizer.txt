@@ -157,6 +157,12 @@ library entries without the native-open receipt, CUE/preview/room audio,
 unsupported FLAC, independently owned PEQ or missing/wrong SDK remain
 on their prior route. This adds no downloads, rights checks or mutations.
 
+The Windows explicit native-open WAV lane uses the same graph with the
+existing fixed-NTFS handle and its native playback authority. Its eligible
+full signed-16 stereo source geometry is 44.1/48 kHz. See
+ordinary-native-local-equalizer-proof.txt for the official local-route
+evidence, exact-file seek and stock handoff rules, and hosted proof scope.
+
 Search playback from an already published download
 --------------------------------------------------
 

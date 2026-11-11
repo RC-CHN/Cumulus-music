@@ -19,6 +19,7 @@ use std::{
 #[derive(Serialize)]
 pub struct Load {
     pub native_file: bool,
+    pub rooted_windows: bool,
     pub indexed_file: bool,
     pub start: f64,
     pub entry: i64,
@@ -53,6 +54,7 @@ pub struct Observations {
     pub ordinary_loads: usize,
     pub pinned_stops: Vec<&'static str>,
     pub stock_codecs: Vec<Option<String>>,
+    pub stock_rooted_windows: Vec<bool>,
     pub stock_entries: Vec<i64>,
     pub decoded_formats: BTreeMap<i64, [u32; 2]>,
     pub loads: Vec<Load>,
@@ -102,6 +104,19 @@ pub struct Recorded {
     pub record_rate: bool,
     pub observe_stops: bool,
 }
+
+fn rooted_windows_source(source: &MediaInput) -> bool {
+    #[cfg(windows)]
+    {
+        matches!(source, MediaInput::WindowsNativeFile(_))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = source;
+        false
+    }
+}
+
 impl AudioEngine for Recorded {
     fn reopen_retired_local_sink(&mut self, cancel: &Cancellation) -> Result<bool> {
         self.engine.reopen_retired_local_sink(cancel)
@@ -123,9 +138,11 @@ impl AudioEngine for Recorded {
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         self.evidence.lock().unwrap().ordinary_loads += 1;
+        let rooted_windows = rooted_windows_source(&request.source);
         let loaded = self.engine.load(request, cancel)?;
         let mut evidence = self.evidence.lock().unwrap();
         evidence.stock_codecs.push(loaded.codec.clone());
+        evidence.stock_rooted_windows.push(rooted_windows);
         evidence.stock_entries.push(loaded.entry_id);
         Ok(loaded)
     }
@@ -138,13 +155,16 @@ impl AudioEngine for Recorded {
         settings: EqualizerSettings,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
-        let native_file = matches!(&request.source, MediaInput::NativeFile { .. });
+        let rooted_windows = rooted_windows_source(&request.source);
+        let native_file =
+            rooted_windows || matches!(&request.source, MediaInput::NativeFile { .. });
         let start = request.start;
         let loaded = self
             .engine
             .load_with_local_equalizer(request, settings, cancel)?;
         self.evidence.lock().unwrap().loads.push(Load {
             native_file,
+            rooted_windows,
             indexed_file: false,
             start,
             entry: loaded.entry_id,
@@ -168,6 +188,7 @@ impl AudioEngine for Recorded {
             .load_indexed_flac_equalizer(receipt, selected, settings, cancel)?;
         self.evidence.lock().unwrap().loads.push(Load {
             native_file: false,
+            rooted_windows: false,
             indexed_file: true,
             start: 0.0,
             entry: loaded.entry_id,
@@ -358,6 +379,7 @@ mod tests {
         let mut observed = Observations::default();
         observed.loads.push(Load {
             native_file: true,
+            rooted_windows: false,
             indexed_file: false,
             start: 0.0,
             entry: 2,

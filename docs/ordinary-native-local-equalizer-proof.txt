@@ -229,6 +229,47 @@ Neither test installs a file association or measures a physical device.
 Windows WebView2 uses the same synthetic spatial scenario with the packaged
 mpv runtime; an actual run on the exact commit is required for a Windows claim.
 
+Windows rooted WAV admission
+---------------------------
+
+Official PC 3.1.42.205594 M/163:373–381 uses native source type 0 for an
+existing ordinary local file and adds start/duration only for CUE.
+M/308:2118–2141 sends that source to AudioPlayer.play; cloudmusic.dll
+103B83C–103B86F selects the native file branch and 1055EF0 sends ordinary
+decoded PCM to the effect SDK. M/3091:1278–1305 writes the old-schema
+EQ/BT/RVB/SE material and :1403–1429 changes one spatial value only when
+it differs, preserving the other. The native mapping, reset/hot/bypass
+ordering and original DSP vectors are in core-effects-local-equalizer.txt.
+This establishes the ordinary local route and material behavior; the
+following NTFS handle policy and exact WAV admission limits are Cumulus
+implementation choices, not recovered official file-opening internals.
+
+On Windows the shipping cold and warm native file entry already admits a
+fixed local NTFS file without following links, denies write sharing and holds
+the exact opened file for the authorized queue. Full stereo signed-16 WAV at
+44.1 or 48 kHz can now enter the existing GEQ/spatial graph when the ordinary
+player gates and saved controls allow it. Its PCM reader uses the original
+handle with its own logical cursor. Seek and any allowed pre-audible return
+to the stock demuxer reuse that reader and its revocable authority; neither
+opens the pathname. Rooted FLAC/MP3, trial/segmented sources, independent PEQ
+precedence and the modern catalogue effect authorization remain unchanged.
+
+The required Windows package-media shard runs --spatial-wav-only and
+--spatial-wav-48k-only against the existing exact-attempt WebView2 probe.
+They use the same typed core entry as the shipping warm relay and require
+the decoder request to be rooted on both the dry and processed opens. They
+keep the seven-state GUI, native seek/EOF and durable-setting assertions.
+The required package-runtime shard selects the exact
+windows_rooted_actor_loads_held_wav_equalizer_after_filename_replacement
+case with the existing core libtest binary and verified packaged libmpv.
+It replaces the pathname with a longer WAV before playback and requires
+observed graph processing, paused seek and native EOF on the original
+timeline. The separate manual Windows native open diagnostic also selects
+it via windows_rooted_actor_loads_held* and independently exercises packaged
+activation. No extra build or runner is needed for the new assertions.
+These proof changes still require execution on an exact Windows run. The
+required tests do not install a file association or measure physical output.
+
 With 48 kHz support, the Linux warm-open probe accepts a 48 kHz file and checks
 the original window, persisted source rate and private monitor PCM. It uses
 96 kHz for the out-of-scope case, which must leave the preceding queue intact.

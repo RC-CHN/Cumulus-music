@@ -1,4 +1,4 @@
-//! Fixed local NTFS handle from admission to metadata and stock playback.
+//! Fixed local NTFS handle from admission through playback.
 use super::{MAX_NATIVE_FILES, format_from_path, resource_from_metadata, safe_path, wav_metadata};
 use crate::{
     Error, Result,
@@ -110,7 +110,7 @@ impl WindowsOpenedAudio {
         self.format
     }
 
-    pub(crate) fn reader(self: Arc<Self>) -> impl Read + Seek + Send + 'static {
+    pub(crate) fn reader(self: Arc<Self>) -> WindowsAudioReader {
         WindowsAudioReader {
             media: self,
             position: 0,
@@ -118,7 +118,7 @@ impl WindowsOpenedAudio {
     }
 }
 
-struct WindowsAudioReader {
+pub(crate) struct WindowsAudioReader {
     media: Arc<WindowsOpenedAudio>,
     position: u64,
 }
@@ -165,8 +165,10 @@ mod tests {
     use super::*;
     use crate::{
         account::AccountSession,
+        effects::equalizer::{EqualizerSettings, EqualizerStatus},
         playback::{
-            controller::{PlaybackCommand, PlaybackController, PlaybackStatus},
+            PlaybackMode,
+            controller::{PlaybackCommand, PlaybackController, PlaybackSnapshot, PlaybackStatus},
             engine::{Cancellation, MpvConfig, MpvEngine},
             source::SourceResolver,
         },
@@ -237,6 +239,116 @@ mod tests {
             2.0,
         )
         .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "requires real Windows fixed local NTFS and trusted package libmpv; null output"]
+    async fn windows_rooted_actor_loads_held_wav_equalizer_after_filename_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("合成 音乐.wav");
+        fs::write(&source, wave(88_200, 256)).unwrap();
+        let mut batch = WindowsNativeOpenBatch::new();
+        batch.push(source.clone(), &Ffprobe::default()).unwrap();
+        let resources = batch.resources();
+        // A path reopen (including at seek) would read this longer file.
+        fs::rename(&source, dir.path().join("retained.wav")).unwrap();
+        fs::write(&source, wave(132_300, 1024)).unwrap();
+
+        let store = Arc::new(StateStore::open(dir.path().join("state")).unwrap());
+        let session = Arc::new(AccountSession::new(Arc::new(Offline), Some(store.clone())));
+        let resolver = Arc::new(SourceResolver::new(session.clone(), None));
+        let token = session.token().unwrap();
+        // No LADSPA library: only the held PCM graph can report processing.
+        let engine = MpvEngine::open(MpvConfig {
+            library: std::env::var_os("CUMULUS_LIMITER_PROBE_MPV").map(PathBuf::from),
+            null_output: true,
+        })
+        .unwrap()
+        .with_local_equalizer_pcm_wave();
+        let controller =
+            PlaybackController::start(session, store, resolver, Box::new(engine)).unwrap();
+        let idle = controller
+            .command(&token, PlaybackCommand::Mode(PlaybackMode::Sequential))
+            .await
+            .unwrap();
+        let configured = controller
+            .command(
+                &token,
+                PlaybackCommand::Equalizer {
+                    expected_revision: idle.equalizer.preferences.revision,
+                    settings: EqualizerSettings::new(true, [3.0; 10]).unwrap(),
+                    preset: None,
+                },
+            )
+            .await
+            .unwrap();
+        controller
+            .command_guarded(
+                &token,
+                PlaybackCommand::ReplaceWindowsNative(batch),
+                configured.fence(),
+                Cancellation::default(),
+            )
+            .await
+            .unwrap();
+        let playing = playback_until(&controller, "rooted WAV processing", |view| {
+            view.state == PlaybackStatus::Playing
+                && view.equalizer.status == EqualizerStatus::Processing
+                && view.position.is_some_and(|position| position > 0.1)
+        })
+        .await;
+        assert_eq!(playing.timeline.as_ref().unwrap().total, Some(2.0));
+        assert_eq!(playing.selected.as_ref().unwrap().resource, resources[0]);
+        let paused = controller
+            .command_guarded(
+                &token,
+                PlaybackCommand::Pause(true),
+                playing.fence(),
+                Cancellation::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(paused.state, PlaybackStatus::Paused);
+        controller
+            .command_guarded(
+                &token,
+                PlaybackCommand::Seek(1.0),
+                paused.fence(),
+                Cancellation::default(),
+            )
+            .await
+            .unwrap();
+        let sought = playback_until(&controller, "rooted WAV paused seek", |view| {
+            view.state == PlaybackStatus::Paused
+                && !view.native_seeking
+                && view.seek_revision > paused.seek_revision
+                && view
+                    .position
+                    .is_some_and(|position| (position - 1.0).abs() < 0.06)
+        })
+        .await;
+        assert_eq!(sought.play_id, playing.play_id);
+        assert_eq!(sought.selected, playing.selected);
+        controller
+            .command_guarded(
+                &token,
+                PlaybackCommand::Pause(false),
+                sought.fence(),
+                Cancellation::default(),
+            )
+            .await
+            .unwrap();
+        let ended = playback_until(&controller, "rooted WAV native EOF", |view| {
+            view.state == PlaybackStatus::Ended
+        })
+        .await;
+        assert_eq!(ended.play_id, playing.play_id);
+        assert_eq!(ended.selected, playing.selected);
+        assert!(
+            ended
+                .position
+                .is_some_and(|position| (position - 2.0).abs() < 0.02)
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -315,18 +427,34 @@ mod tests {
             )
             .await
             .unwrap();
-        let playing = tokio::time::timeout(Duration::from_secs(8), async {
+        let playing = playback_until(&controller, "actual MPV clock", |view| {
+            view.state == PlaybackStatus::Playing && view.position.is_some_and(|p| p > 0.1)
+        })
+        .await;
+        assert_eq!(playing.timeline.unwrap().total, Some(duration));
+        assert_eq!(playing.selected.unwrap().resource, resources[0]);
+    }
+
+    async fn playback_until(
+        controller: &PlaybackController,
+        label: &str,
+        predicate: impl Fn(&PlaybackSnapshot) -> bool,
+    ) -> PlaybackSnapshot {
+        tokio::time::timeout(Duration::from_secs(8), async {
             loop {
                 let view = controller.snapshot();
-                if view.state == PlaybackStatus::Playing && view.position.is_some_and(|p| p > 0.1) {
+                assert!(
+                    view.state != PlaybackStatus::Error,
+                    "{label}: {:?}",
+                    view.error
+                );
+                if predicate(&view) {
                     break view;
                 }
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
         })
         .await
-        .expect("actual MPV clock");
-        assert_eq!(playing.timeline.unwrap().total, Some(duration));
-        assert_eq!(playing.selected.unwrap().resource, resources[0]);
+        .unwrap_or_else(|_| panic!("timeout waiting for {label}"))
     }
 }

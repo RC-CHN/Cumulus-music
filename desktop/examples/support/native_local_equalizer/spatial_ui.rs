@@ -62,6 +62,17 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
                             )
                             .await?;
                     }
+                    #[cfg(windows)]
+                    if proof.fixture_source["kind"] == "wav" {
+                        client
+                            .play_windows_native_open_files_warm(
+                                &account.epoch,
+                                vec![proof.file.clone()],
+                                Cancellation::default(),
+                            )
+                            .await?;
+                        return Ok(());
+                    }
                     client
                         .play_native_open_files_warm(
                             &account.epoch,

@@ -19,6 +19,8 @@ use std::{
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
+pub(crate) use windows::WindowsAudioReader;
+#[cfg(windows)]
 pub use windows::{WindowsNativeOpenBatch, WindowsOpenedAudio};
 
 pub(crate) const MAX_NATIVE_FILES: usize = 8;

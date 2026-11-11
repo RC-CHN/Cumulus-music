@@ -507,6 +507,12 @@ impl Actor {
                     None
                 };
                 let indexed_flac = indexed.is_some();
+                let native_equalizer_source = match &load.source {
+                    MediaInput::NativeFile { .. } => true,
+                    #[cfg(windows)]
+                    MediaInput::WindowsNativeFile(file) => file.format() == "wav",
+                    _ => false,
+                };
                 let (media, local_equalizer) =
                     super::engine(engine.clone(), load_cancel.clone(), move |engine| {
                         let media = if let Some((file, expected)) = held_file {
@@ -534,7 +540,7 @@ impl Actor {
                                 &load_cancel,
                             )?
                         } else if let Some(settings) = local_equalizer
-                            && matches!(&load.source, MediaInput::NativeFile { .. })
+                            && native_equalizer_source
                             && snapshot.mode == TimelineMode::Full
                             && engine.supports_local_equalizer()
                         {

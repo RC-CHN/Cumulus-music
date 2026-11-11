@@ -165,6 +165,10 @@ class WindowsColdFlacTests(unittest.TestCase):
                 [harness, '--exact', case, '--include-ignored', '--nocapture', '--color', 'never']
                 for case in proof.CASES
             ])
+            rooted_wav, = [call for call in run.call_args_list
+                           if call.args[0][2] == proof.ROOTED_WAV_EQUALIZER]
+            self.assertEqual(rooted_wav.kwargs['env']['CUMULUS_LIMITER_PROBE_MPV'],
+                             str(rooted_wav.kwargs['cwd'] / proof.MPV))
             report = json.loads((outer / 'proof/report.json').read_text())
             self.assertEqual(report['coreTestBinary'], 'prebuilt')
             self.assertTrue(report['libflacPackaged'])
