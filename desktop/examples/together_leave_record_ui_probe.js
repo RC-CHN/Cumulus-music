@@ -48,6 +48,25 @@
     return rows.map((row) => row.join(''));
   }
   let step = 'account';
+  let lastDirect;
+  const directPlayback = {};
+  function observeDirect(native, room, incumbent) {
+    const error = room.syncError;
+    const blocked = !error ? null : error.startsWith('共享队列') ? 'shared'
+      : error.startsWith('远端播放') ? 'incoming' : error.startsWith('好友实时') ? 'connection' : 'other';
+    lastDirect = {
+      nativeState: native.state, nativePosition: native.position ?? null,
+      roomRole: room.room?.role ?? null, sharedPhase: room.sharedPhase,
+      connection: room.connection.state, attached: room.attached,
+      sameRoom: room.room?.id === 'test-room', roomPlaying: room.playing,
+      roomTarget: room.targetId === '91' ? '91' : null, roomProgressMs: room.progressMs ?? null,
+      samePlay: incumbent ? native.playId === incumbent.playId && native.entryId === incumbent.entryId &&
+        native.queueRevision === incumbent.queueRevision : null,
+      pending: room.pending.map(({ action, phase, acknowledged }) => ({ action, phase, acknowledged })),
+      blocked,
+    };
+    return lastDirect;
+  }
   try {
     await wait(() => one('.account-button')?.textContent.includes('本地验证账号') &&
       !one('.account-button').disabled, 'ready synthetic account');
@@ -94,7 +113,7 @@
       click(await openLeave());
       return wait(absent, 'confirmed room absence and completed local cleanup');
     }
-    async function verifyRecord(stage) {
+    async function verifyRecord(stage, extra = {}) {
       const opened = await wait(dialog, 'current confirmed leave record rendered');
       const receipt = (await view()).leaveRecord;
       check(receipt && receipt.thisListenCount === 3 && receipt.thisDuration === 35 &&
@@ -123,7 +142,7 @@
       check(!opened.querySelector('a[href]') && !opened.textContent.includes('private-record-link'),
         'no service-supplied share link is exposed');
       await capture(stage, {
-        receipt, labels: text('.record-stats dt'), values: text('.record-stats dd'),
+        ...extra, receipt, labels: text('.record-stats dt'), values: text('.record-stats dd'),
         total: text('.record-total')[0], avatars, focused: close.getAttribute('aria-label'),
         rect: [box.rect.width, box.rect.height], layout: [opened.offsetWidth, opened.offsetHeight],
         overflow: [opened.scrollHeight - opened.clientHeight, opened.scrollWidth - opened.clientWidth],
@@ -184,17 +203,41 @@
     await capture('leave_recovered', { roomOpen: false, modalOpen: false });
 
     await create('direct', true);
+    step = 'direct_incumbent';
+    const incumbent = await wait(async () => {
+      const [native, room] = await Promise.all([playback(), view()]);
+      const current = observeDirect(native, room);
+      if (!current.blocked && current.attached && current.sameRoom && current.roomRole === 'together_owner' &&
+          current.sharedPhase === 'applied' && current.connection === 'connected' &&
+          !current.pending.length && current.roomPlaying && current.roomTarget === '91' &&
+          native.playId && native.entryId && native.state === 'playing') {
+        directPlayback.incumbent = current;
+        return native;
+      }
+    }, 'playing incumbent in the current shared room');
+
     step = 'direct_pause';
     await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    const awaitPausedRoom = (position) => wait(async () => {
+      const [native, room] = await Promise.all([playback(), view()]);
+      const current = observeDirect(native, room, incumbent);
+      if (!current.blocked && current.attached && current.sameRoom && current.roomRole === 'together_owner' &&
+          current.sharedPhase === 'applied' && current.connection === 'connected' &&
+          !current.pending.length && !current.roomPlaying && current.roomTarget === '91' &&
+          current.samePlay && native.state === 'paused' && !native.nativeSeeking &&
+          (position == null || (native.position === position && current.roomProgressMs === position * 1000)))
+        return native;
+    }, position == null ? 'room pause published before seek' : 'paused room progress published at 12 seconds');
+    await awaitPausedRoom(null);
+    directPlayback.paused = lastDirect;
+
+    step = 'direct_seek';
     await invoke('player_action', { epoch, action: { kind: 'seek', seconds: 12 } });
-    const before = await wait(async () => {
-      const value = await playback();
-      return value.state === 'paused' && value.position === 12 && value;
-    }, 'settled paused track');
-    await wait(async () => !(await view()).playing, 'room pause published');
+    const before = await awaitPausedRoom(12);
+    directPlayback.sought = lastDirect;
     step = 'direct_record';
     await endAndWait();
-    const direct = await verifyRecord('leave_direct');
+    const direct = await verifyRecord('leave_direct', { directPlayback });
     const after = await playback();
     check(after.playId === before.playId && after.state === 'paused' && after.position === 12 &&
       (await queue()).join(',') === '91,92,93', 'record never changes incumbent native playback or queue');
@@ -220,6 +263,6 @@
     await closedReceipt('leave_queue_dismissed', cleared.receipt, 'close_button');
     await report('complete', { ok: true, epoch, stageCount: 9 });
   } catch (error) {
-    await report('failed', { step, error: error?.message ?? String(error) });
+    await report('failed', { step, error: error?.message ?? String(error), lastDirect, directPlayback });
   }
 })();

@@ -100,9 +100,28 @@ fn main() {
             }
             let mut receipt = value.clone();
             if leave_record_proof {
-                receipt["endRequests"] = json!(api.calls.lock().unwrap().iter()
+                let calls = api.calls.lock().unwrap();
+                receipt["endRequests"] = json!(calls.iter()
                     .filter(|(path, _)| path.ends_with("/end/v2"))
                     .map(|(_, payload)| payload.clone()).collect::<Vec<_>>());
+                if matches!(stage, "leave_direct" | "failed") {
+                    let start = calls.iter()
+                        .rposition(|(path, _)| path == "/api/listen/together/room/create")
+                        .unwrap_or(calls.len());
+                    receipt["roomPlayReports"] = json!(calls[start..].iter()
+                        .filter(|(path, _)| path == "/api/listen/together/play/command/report")
+                        .map(|(_, payload)| {
+                            let command: Value = serde_json::from_str(
+                                payload["commandInfo"].as_str().expect("sealed play command")
+                            ).expect("sealed play payload");
+                            json!({
+                                "type":command["commandType"],"state":command["playStatus"],
+                                "progress":command["progress"],
+                                "target": command["targetSongId"].as_str()
+                                    .filter(|id| matches!(*id, "91" | "92" | "93")),
+                            })
+                        }).collect::<Vec<_>>());
+                }
             }
             std::fs::write(root.join(format!("{stage}.json")),serde_json::to_vec_pretty(&receipt).unwrap()).unwrap();
             if (stage.starts_with("external_") || leave_record_proof && stage.starts_with("leave_"))

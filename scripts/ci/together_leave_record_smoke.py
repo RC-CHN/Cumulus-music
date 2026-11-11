@@ -41,6 +41,20 @@ def audit(output, screenshots):
     uncertain = data['leave_uncertain']
     assert uncertain['pending'] is True and uncertain['pendingPhase'] == 'uncertain'
     assert uncertain['acknowledged'] is False
+    direct = data['leave_direct']
+    incumbent, paused, sought = (direct['directPlayback'][stage] for stage in ('incumbent', 'paused', 'sought'))
+    for check in (incumbent, paused, sought):
+        assert check['sameRoom'] and check['attached'] and check['roomRole'] == 'together_owner'
+        assert check['connection'] == 'connected' and check['sharedPhase'] == 'applied'
+        assert check['roomTarget'] == '91' and not check['pending'] and check['blocked'] is None
+    assert incumbent['nativeState'] == 'playing' and incumbent['roomPlaying'] is True
+    assert all(row['nativeState'] == 'paused' and row['samePlay'] and row['roomPlaying'] is False
+               for row in (paused, sought))
+    assert sought['nativePosition'] == 12 and sought['roomProgressMs'] == 12_000
+    assert direct['roomPlayReports'] == [
+        {'type': 'PAUSE', 'state': 'PAUSE', 'progress': paused['roomProgressMs'], 'target': '91'},
+        {'type': 'PROGRESS', 'state': 'PAUSE', 'progress': 12_000, 'target': '91'},
+    ]
     operations = []
     for stage, close, gesture in (
         ('leave_direct', 'leave_dismissed', 'dialog_cancel'),
@@ -79,6 +93,7 @@ def audit(output, screenshots):
         'screenshots': len(STAGES) if screenshots else 0, 'confirmedEndRequests': 5,
         'replayedRecord': False, 'queueClearPolling': True, 'fixedPublicQr': True,
         'realPeerVerified': False, 'fixtureApiImAudio': True,
+        'pausedBeforeSeek': True, 'roomPlayReports': direct['roomPlayReports'],
     }
 
 
