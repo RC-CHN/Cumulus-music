@@ -125,6 +125,15 @@ def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100, in
         local_id = complete['indexedLocalId']
         assert len(local_id) == 64 and all(ch in '0123456789abcdef' for ch in local_id)
         assert all(row['indexedLocalId'] == local_id for row in stages)
+        navigation = complete['indexedNavigation']
+        assert navigation['label'] == '本地音乐' and navigation['current'] == 'page'
+        assert all(row['indexedNavigation'] == navigation for row in stages)
+        before, after = navigation['before'], navigation['after']
+        assert after['centerHit'] and after['hit'] is not None
+        assert before['documentScroll'] == after['documentScroll']
+        assert before['centerHit'] or before['scrollTop'] != after['scrollTop']
+        assert 0 <= after['scrollTop'] <= after['scrollMaximum'] + 1
+        assert after['viewportTop'] <= (after['nodeTop'] + after['nodeBottom']) / 2 < after['viewportBottom']
         assert not any(row['fixtureIndexedPathReplaced'] for row in stages[:4])
         assert all(row['fixtureIndexedPathReplaced'] for row in (*stages[4:], complete))
         path = root / 'held-original.wav'

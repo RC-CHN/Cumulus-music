@@ -18,6 +18,7 @@
   let last = 'account';
   let epoch;
   let localId;
+  let indexedNavigation;
   const indexedWave = window.__spatialIndexedWave === true;
   async function wait(read, label) {
     last = label;
@@ -68,26 +69,75 @@
     return a.playId === b.playId && a.entryId === b.entryId && a.queueRevision === b.queueRevision;
   }
   function snapshot() { return invoke('player_snapshot', { epoch }); }
+  function localNav() {
+    const buttons = [...document.querySelectorAll(
+      '.sidebar-scroll .sidebar-navigation[aria-label="我的"] button.nav-item'
+    )].filter((node) => node.querySelector('span')?.textContent.trim() === '本地音乐');
+    assert(buttons.length <= 1, 'exactly one Local Music sidebar route');
+    return buttons[0];
+  }
+  function navGeometry(node) {
+    const scroller = node.closest('.sidebar-scroll');
+    const bounds = node.getBoundingClientRect();
+    const viewport = scroller.getBoundingClientRect();
+    const x = bounds.left + bounds.width / 2;
+    const y = bounds.top + bounds.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return {
+      scrollTop: scroller.scrollTop,
+      scrollMaximum: scroller.scrollHeight - scroller.clientHeight,
+      documentScroll: [scrollX, scrollY],
+      nodeTop: bounds.top, nodeBottom: bounds.bottom,
+      viewportTop: viewport.top, viewportBottom: viewport.bottom,
+      centerHit: visible(node) && x >= viewport.left && x < viewport.right &&
+        y >= viewport.top && y < viewport.bottom,
+      hit: hit?.tagName ?? null,
+    };
+  }
+  async function enterIndexedLibrary() {
+    const route = await wait(localNav, 'mounted Local Music sidebar route');
+    indexedNavigation = { label: '本地音乐', before: navGeometry(route) };
+    if (!indexedNavigation.before.centerHit) {
+      const scroller = route.closest('.sidebar-scroll');
+      const node = route.getBoundingClientRect(), viewport = scroller.getBoundingClientRect();
+      scroller.scrollTo({
+        top: scroller.scrollTop + (node.top + node.bottom - viewport.top - viewport.bottom) / 2,
+        behavior: 'instant',
+      });
+    }
+    await wait(() => {
+      if (localNav() !== route) return;
+      indexedNavigation.after = navGeometry(route);
+      return indexedNavigation.after.centerHit;
+    }, 'visible Local Music navigation after sidebar reveal');
+    const { before, after } = indexedNavigation;
+    assert(before.documentScroll.every((position, i) => position === after.documentScroll[i]),
+      'sidebar reveal did not scroll the document');
+    assert(before.centerHit || before.scrollTop !== after.scrollTop, 'sidebar route really revealed');
+    click(route);
+    await wait(() => route.getAttribute('aria-current') === 'page' &&
+      one('.local-page h1')?.textContent.trim() === '本地音乐', 'actual Local Music route selected');
+    indexedNavigation.current = route.getAttribute('aria-current');
+  }
   async function openFile(ordinal) {
     await emit({ open: ordinal });
     const ack = await wait(() => window.__spatialOpenAck?.ordinal === ordinal &&
       window.__spatialOpenAck, 'local audio fixture ready ' + ordinal);
     assert(ack.ok, ack.error);
     if (indexedWave) {
-      if (ordinal === 1) {
-        const route = await wait(() => [...document.querySelectorAll('button')].find((node) =>
-          (node.textContent.trim() === '本地音乐' || node.getAttribute('aria-label') === '本地音乐') &&
-          visible(node)), 'visible Local Music navigation');
-        click(route);
-      }
+      if (ordinal === 1) await enterIndexedLibrary();
+      assert(localNav()?.getAttribute('aria-current') === 'page', 'current Local Music route');
       const row = await wait(() => {
-        const rows = [...document.querySelectorAll('.local-tracks tbody tr[data-local-id]')];
-        return rows.length === 1 && visible(rows[0].querySelector('.local-title')) && rows[0];
-      }, 'actual indexed WAV row');
+        const rows = [...document.querySelectorAll('.local-page .local-tracks tbody tr[data-local-id]')];
+        return rows.length === 1 && rows[0];
+      }, 'mounted actual indexed WAV row');
+      const play = row.querySelector('.local-title');
+      reveal(play);
+      await wait(() => visible(play), 'visible indexed WAV play button');
       assert(/^[0-9a-f]{64}$/.test(row.dataset.localId), 'native local file identity');
       assert(!localId || localId === row.dataset.localId, 'same indexed row selected again');
       localId = row.dataset.localId;
-      click(row.querySelector('.local-title'));
+      click(play);
     }
   }
   async function openEq() {
@@ -163,7 +213,7 @@
         .map(paintSample),
     } : {};
     await emit({ stage: name, epoch, player: view, ...capture, ...extra,
-      ...(indexedWave ? { indexedLocalId: localId } : {}), dom: {
+      ...(indexedWave ? { indexedLocalId: localId, indexedNavigation } : {}), dom: {
       state: bar()?.dataset.state, status: spatial()?.dataset.spatialStatus ?? null,
       sliders: dialog() ? sliderValues(sliders) : null,
       tone: dialog() ? sliderValues(tone) : null,
@@ -273,8 +323,9 @@
     await stage('ux_07_reset', reset);
     await emit({ stage: 'complete', ok: true, stageCount: 7, epoch,
       startedSpatial: playing.equalizer.spatial_status === 'processing',
-      ...(indexedWave ? { indexedLocalId: localId } : {}) });
+      ...(indexedWave ? { indexedLocalId: localId, indexedNavigation } : {}) });
   } catch (error) {
-    await emit({ stage: 'failed', ok: false, last, error: String(error), epoch });
+    await emit({ stage: 'failed', ok: false, last, error: String(error), epoch,
+      ...(indexedWave ? { indexedNavigation, indexedLocalId: localId } : {}) });
   }
 })();
