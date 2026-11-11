@@ -146,6 +146,9 @@ Linux（Xvfb 与原生 WM）和 Windows CI 都用 --foreground 启动额外用�
 restore_account 后零轮换，真实切出仍为零，切回后才发一次合成请求并核对同 UID。Linux 核对
 原生 Focused 序列，Windows 独立核对每一步的真实前台 HWND，不把 WebView2 子控件焦点当成
 激活事件。Windows 运行结果尚待托管 CI。
+Linux 实窗的四张截图及独立合成请求回执保存在
+`.build/ui-proof/phase276-jsk-native-refocus/`。恢复到期会话仍在前台时没有轮换，
+切出也没有轮换；同一账号真正切回只轮换一次，未访问真实服务。
 
 账号弹窗中的到期状态回读（2026-11-05）
 M/1368:2292–2308 每次检查从存储读最近时间，并以当前时钟对照24小时；旧UI投影只保留
