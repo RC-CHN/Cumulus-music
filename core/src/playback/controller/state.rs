@@ -301,6 +301,7 @@ impl Actor {
                     && self.equalizer.status
                         == crate::effects::equalizer::EqualizerStatus::Configured,
                 spatial_status: self.equalizer_spatial_status(),
+                spatial_master_available: self.spatial_master_available(),
                 ..self.equalizer
             },
             bound_parametric,

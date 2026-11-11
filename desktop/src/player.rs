@@ -340,6 +340,9 @@ pub async fn player_action<R: tauri::Runtime>(
     epoch: String,
     action: PlayerAction,
 ) -> Result<PlayerView, ClientError> {
+    if matches!(&action, PlayerAction::SpatialEqualizerMaster { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("spatial equalizer requires the main window").into());
+    }
     if matches!(
         &action,
         PlayerAction::StepMiniBar { .. }

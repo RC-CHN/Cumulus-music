@@ -45,6 +45,72 @@ impl Actor {
         }
     }
 
+    pub(super) fn spatial_master_available(&self) -> bool {
+        let settings = self.equalizer.preferences.settings;
+        let selected_geq_or_tone =
+            settings.enabled() || (settings.tone_enabled() && settings.tone() != (0, 0));
+        !selected_geq_or_tone
+            && settings.stereo_controls() != (0, 0)
+            && !self.equalizer.damaged
+            && !self.equalizer.source_bypassed
+            && matches!(
+                self.equalizer.status,
+                EqualizerStatus::Configured | EqualizerStatus::Processing
+            )
+            && self.state.active()
+            && self.pending.is_none()
+            && !self.native_seeking
+            && self.play_id.is_some()
+            && self.parametric.admits_local_equalizer()
+            && self
+                .loaded
+                .as_ref()
+                .is_some_and(|entry| entry.local_equalizer)
+    }
+
+    pub(super) async fn spatial_master_change(
+        &mut self,
+        play_id: &str,
+        expected_queue_revision: u64,
+        expected_revision: u64,
+        bypassed: bool,
+    ) -> Result<()> {
+        let preferences = self.equalizer.preferences;
+        if self.play_id.as_deref() != Some(play_id)
+            || self.queue.revision() != expected_queue_revision
+            || preferences.revision != expected_revision
+            || !self.spatial_master_available()
+        {
+            return Err(Error::StaleResponse);
+        }
+        let entry = self
+            .loaded
+            .as_ref()
+            .ok_or(Error::StaleResponse)?
+            .media
+            .entry_id;
+        let engine = self.engine.clone();
+        let guard = self.guard();
+        let check = guard.clone();
+        let exact_entry = tokio::task::spawn_blocking(move || {
+            let engine = engine.lock().map_err(|_| Error::LockPoisoned)?;
+            check.check()?;
+            Ok::<_, Error>(engine.local_equalizer_entry() == Some(entry))
+        })
+        .await
+        .map_err(|_| Error::State("audio worker failed"))??;
+        if !exact_entry {
+            return Err(Error::StaleResponse);
+        }
+        guard.check()?;
+        self.equalizer_change(
+            expected_revision,
+            preferences.settings.with_master_bypassed(bypassed),
+            preferences.preset,
+        )
+        .await
+    }
+
     pub(super) fn equalizer_read(&mut self) -> Result<()> {
         match self.session.with_local_owner(&self.token, |owner| {
             EqualizerPreferences::read(&self.store, owner)

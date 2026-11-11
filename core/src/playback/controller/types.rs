@@ -263,6 +263,12 @@ pub enum PlaybackCommand {
         settings: crate::effects::equalizer::EqualizerSettings,
         preset: Option<crate::effects::equalizer::EqualizerPreset>,
     },
+    SpatialEqualizerMaster {
+        play_id: String,
+        expected_queue_revision: u64,
+        expected_revision: u64,
+        bypassed: bool,
+    },
     SaveCustomEqualizer {
         expected_revision: u64,
     },

@@ -384,6 +384,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             saved_custom: value.equalizer.preferences.saved_custom.map(|s| *s.gains()),
             status: value.equalizer.status,
             spatial_status: value.equalizer.spatial_status,
+            spatial_master_available: value.equalizer.spatial_master_available,
             damaged: value.equalizer.damaged,
             source_bypassed: value.equalizer.source_bypassed,
         },
@@ -1726,6 +1727,7 @@ impl MusicClient {
         let local_effect = matches!(
             action,
             PlayerAction::Equalizer { .. }
+                | PlayerAction::SpatialEqualizerMaster { .. }
                 | PlayerAction::SaveCustomEqualizer { .. }
                 | PlayerAction::RetryEqualizer
                 | PlayerAction::RepairEqualizer
@@ -1793,6 +1795,7 @@ impl MusicClient {
                 | PlayerAction::SpeedFor { .. }
                 | PlayerAction::Mode { .. }
                 | PlayerAction::Equalizer { .. }
+                | PlayerAction::SpatialEqualizerMaster { .. }
                 | PlayerAction::SaveCustomEqualizer { .. }
                 | PlayerAction::RetryEqualizer
                 | PlayerAction::RepairEqualizer
@@ -2087,6 +2090,25 @@ impl MusicClient {
                     expected_revision: revision,
                     settings,
                     preset,
+                }
+            }
+            PlayerAction::SpatialEqualizerMaster {
+                play_id,
+                expected_queue_revision,
+                expected_revision,
+                bypassed,
+            } => {
+                let canonical_revision = |raw: &str| {
+                    raw.parse::<u64>()
+                        .ok()
+                        .filter(|revision| revision.to_string() == raw)
+                        .ok_or(Error::InvalidInput("invalid spatial master revision"))
+                };
+                PlaybackCommand::SpatialEqualizerMaster {
+                    play_id,
+                    expected_queue_revision: canonical_revision(&expected_queue_revision)?,
+                    expected_revision: canonical_revision(&expected_revision)?,
+                    bypassed,
                 }
             }
             PlayerAction::SaveCustomEqualizer { expected_revision } => {

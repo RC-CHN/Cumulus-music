@@ -158,6 +158,7 @@ pub struct EqualizerView {
     pub saved_custom: Option<[f32; 10]>,
     pub status: crate::effects::equalizer::EqualizerStatus,
     pub spatial_status: crate::effects::equalizer::EqualizerSpatialStatus,
+    pub spatial_master_available: bool,
     pub damaged: bool,
     pub source_bypassed: bool,
 }
@@ -927,6 +928,12 @@ pub enum PlayerAction {
         expected_revision: String,
         settings: crate::effects::equalizer::EqualizerSettings,
         preset: Option<crate::effects::equalizer::EqualizerPreset>,
+    },
+    SpatialEqualizerMaster {
+        play_id: String,
+        expected_queue_revision: String,
+        expected_revision: String,
+        bypassed: bool,
     },
     SaveCustomEqualizer {
         expected_revision: String,

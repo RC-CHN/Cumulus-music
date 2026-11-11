@@ -140,6 +140,10 @@ impl EqualizerSettings {
     pub(crate) fn master_bypassed(self) -> bool {
         self.master_bypassed
     }
+    pub(crate) fn with_master_bypassed(mut self, bypassed: bool) -> Self {
+        self.master_bypassed = bypassed;
+        self
+    }
     pub fn with_tone_enabled(mut self, enabled: bool) -> Self {
         self.tone_enabled = Some(enabled);
         self

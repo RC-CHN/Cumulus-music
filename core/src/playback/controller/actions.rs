@@ -118,6 +118,7 @@ impl Actor {
                 | PlaybackCommand::SpeedFor { .. }
                 | PlaybackCommand::SongSpeed { .. }
                 | PlaybackCommand::Equalizer { .. }
+                | PlaybackCommand::SpatialEqualizerMaster { .. }
                 | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
                 | PlaybackCommand::RepairEqualizer
@@ -228,6 +229,7 @@ impl Actor {
                 | PlaybackCommand::SpeedFor { .. }
                 | PlaybackCommand::SongSpeed { .. }
                 | PlaybackCommand::Equalizer { .. }
+                | PlaybackCommand::SpatialEqualizerMaster { .. }
                 | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
                 | PlaybackCommand::RepairEqualizer
@@ -316,6 +318,20 @@ impl Actor {
             } => {
                 self.equalizer_change(expected_revision, settings, preset)
                     .await
+            }
+            PlaybackCommand::SpatialEqualizerMaster {
+                play_id,
+                expected_queue_revision,
+                expected_revision,
+                bypassed,
+            } => {
+                self.spatial_master_change(
+                    &play_id,
+                    expected_queue_revision,
+                    expected_revision,
+                    bypassed,
+                )
+                .await
             }
             PlaybackCommand::SaveCustomEqualizer { expected_revision } => {
                 self.equalizer_save_custom(expected_revision)

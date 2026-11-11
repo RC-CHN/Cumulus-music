@@ -160,6 +160,8 @@ pub struct EqualizerSnapshot {
     pub preferences: EqualizerPreferences,
     pub status: EqualizerStatus,
     pub spatial_status: EqualizerSpatialStatus,
+    /// The current owned source admits the spatial-only common switch.
+    pub spatial_master_available: bool,
     pub damaged: bool,
     /// Acknowledged native source bypass; never part of persisted preferences.
     pub source_bypassed: bool,
