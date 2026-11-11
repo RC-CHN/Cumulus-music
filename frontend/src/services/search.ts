@@ -47,6 +47,11 @@ export interface SearchSongTableHint {
   aliasParts?: readonly SearchTextPart[];
   lyricParts?: readonly { text: string; highlight: boolean }[];
 }
+export interface SearchSongInlineCredits {
+  titleSuffix?: readonly SearchTextPart[];
+  artistSuffixes?: readonly (readonly SearchTextPart[] | null)[];
+  albumSuffix?: readonly SearchTextPart[];
+}
 export type SearchTrackHint =
   | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
   | { kind: 'alias'; text: string };
@@ -86,6 +91,7 @@ export type SearchItem =
       qualityBadge?: SearchQualityBadge;
       hint?: SearchTrackHint;
       tableHint?: SearchSongTableHint;
+      inlineCredits?: SearchSongInlineCredits;
       explicit?: boolean;
       originalRecording?: boolean;
       reasons?: SearchReasonTag[];

@@ -1826,6 +1826,7 @@ fn main() {
                 if search_voice_menu_fixture::enabled() { value["voiceMenuCalls"] = json!(search_voice_menu_fixture::calls()); }
                 if let Some(calls) = search_fixture::podcast_follow_calls() { value["podcastFollowCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::artist_gallery_calls() { value["artistGalleryCalls"] = json!(calls); }
+                if let Some(calls) = search_fixture::inline_credit_calls() { value["inlineCreditCalls"] = json!(calls); }
             }
             if search_mv_fixture::enabled() { value["searchMvCalls"]=json!(search_mv_fixture::calls()); }
             if search_mv_fixture::enabled() && !search_mv_fixture::fallback_enabled() {

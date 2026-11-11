@@ -33,6 +33,13 @@ static PODCAST_FOLLOW_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new()
 static ARTIST_GALLERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static ARTIST_GALLERY_FAILED: AtomicBool = AtomicBool::new(false);
 static ARTIST_GALLERY_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
+#[path = "search_fixture/inline_credits.rs"]
+mod inline_credits;
+
+pub fn inline_credit_calls() -> Option<Vec<Value>> {
+    (MODE.lock().unwrap().as_str() == "inline_credits").then(inline_credits::calls)
+}
+
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -278,6 +285,7 @@ pub fn control(value: &Value) {
             "preview",
             "lyrics",
             "lyrics_waterfall_boundary",
+            "inline_credits",
             "empty",
             "expired"
         ]
@@ -519,6 +527,12 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     }
     if enabled()
         && let Some(result) = podcast_response(path, args)
+    {
+        return Some(result);
+    }
+    if enabled()
+        && MODE.lock().unwrap().as_str() == "inline_credits"
+        && let Some(result) = inline_credits::response(path, args)
     {
         return Some(result);
     }

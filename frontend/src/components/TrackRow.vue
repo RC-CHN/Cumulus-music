@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { usePlaybackTriggerFocus } from '../composables/usePlaybackTriggerFocus';
 import SearchMatchText from './search/SearchMatchText.vue';
 import SearchSongTitleHint from './search/SearchSongTitleHint.vue';
-import type { SearchSongTableHint } from '../services/search';
+import type { SearchSongInlineCredits, SearchSongTableHint } from '../services/search';
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
@@ -17,6 +17,7 @@ const props = defineProps<{
   track: TrackView;
   matchKeyword?: string;
   searchTitleHint?: SearchSongTableHint;
+  searchInlineCredits?: SearchSongInlineCredits;
   originalRecording?: boolean;
   index: number;
   liked: boolean;
@@ -44,6 +45,10 @@ const cellRole = computed(() => (props.selection === undefined ? 'cell' : 'gridc
 const shownToggle = computed(() => props.pendingToggle ?? props.currentToggle);
 const root = ref<HTMLElement>();
 const track = props.track;
+const artistSuffixes = computed(() => {
+  const suffixes = props.searchInlineCredits?.artistSuffixes;
+  return suffixes?.length === props.track.artistRefs?.length ? suffixes : undefined;
+});
 const primaryDisabled = computed(
   () =>
     props.track.missing ||
@@ -139,6 +144,12 @@ function duration(ms: number) {
           <span class="track-row-title-text">
             <SearchMatchText v-if="matchKeyword" :text="track.name" :keyword="matchKeyword" />
             <template v-else>{{ track.name }}</template>
+            <span
+              v-if="searchInlineCredits?.titleSuffix?.length"
+              class="track-title-inline-credit"
+              data-search-inline-credit="title"
+              ><SearchMatchText :parts="searchInlineCredits.titleSuffix"
+            /></span>
           </span>
           <span v-if="track.fee === 1" class="vip-tag">VIP</span>
           <span v-if="originalRecording" class="search-original-tag">原唱</span>
@@ -151,12 +162,16 @@ function duration(ms: number) {
             ><span v-if="i"> / </span
             ><button
               v-if="artist.id"
+              :class="{ ellipsis: artistSuffixes?.[i] }"
               :data-result-action="`artist:${artist.id}`"
               @click.stop="emit('artist', artist.id)"
               @dblclick.stop
             >
               <SearchMatchText v-if="matchKeyword" :text="artist.name" :keyword="matchKeyword" />
               <template v-else>{{ artist.name }}</template>
+              <span v-if="artistSuffixes?.[i]" data-search-inline-credit="artist"
+                ><SearchMatchText :parts="artistSuffixes[i]"
+              /></span>
             </button>
             <span v-else>
               <SearchMatchText v-if="matchKeyword" :text="artist.name" :keyword="matchKeyword" />
@@ -191,10 +206,17 @@ function duration(ms: number) {
       >
         <SearchMatchText v-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
         <template v-else>{{ track.album }}</template>
+        <span v-if="searchInlineCredits?.albumSuffix?.length" data-search-inline-credit="album"
+          ><SearchMatchText :parts="searchInlineCredits.albumSuffix"
+        /></span>
       </button>
-      <SearchMatchText v-else-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
-      <template v-else>{{ track.album }}</template></span
-    >
+      <template v-else>
+        <SearchMatchText v-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
+        <template v-else>{{ track.album }}</template>
+        <span v-if="searchInlineCredits?.albumSuffix?.length" data-search-inline-credit="album"
+          ><SearchMatchText :parts="searchInlineCredits.albumSuffix"
+        /></span> </template
+    ></span>
     <span :role="cellRole"
       ><button
         class="icon-button like-button"

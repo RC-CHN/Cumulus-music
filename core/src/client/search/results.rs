@@ -1,5 +1,8 @@
 //! Whitelisted presentation models for recovered PC result pages.
-use super::track_hint::{self, SongTableHint, TrackHint};
+use super::{
+    inline_credits::{self, SearchSongInlineCredits},
+    track_hint::{self, SongTableHint, TrackHint},
+};
 use crate::{
     Error, Result,
     catalog::search::results::{self as api, reason},
@@ -78,7 +81,9 @@ pub enum SearchItem {
         #[serde(skip_serializing_if = "Option::is_none")]
         hint: Option<TrackHint>,
         #[serde(rename = "tableHint", skip_serializing_if = "Option::is_none")]
-        table_hint: Option<SongTableHint>,
+        table_hint: Option<Box<SongTableHint>>,
+        #[serde(rename = "inlineCredits", skip_serializing_if = "Option::is_none")]
+        inline_credits: Option<Box<SearchSongInlineCredits>>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         explicit: bool,
         #[serde(
@@ -1010,6 +1015,7 @@ fn item(
                 quality_badge: None,
                 hint,
                 table_hint: None,
+                inline_credits: None,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
                 original_recording: v["originCoverType"].as_f64() == Some(1.0),
@@ -1431,6 +1437,7 @@ pub(super) fn project(
         category: Some(query.category),
         items: vec![],
     };
+    let display_keyword = result.correction.as_deref().unwrap_or(&query.keyword);
     for resource in rows {
         if query.category == Mvs && resource["type"] != "mv" {
             result.unavailable_count += 1;
@@ -1482,6 +1489,18 @@ pub(super) fn project(
         }
         match projected {
             Ok(Some(mut item)) => {
+                if !uid.is_empty()
+                    && matches!(query.category, Songs | Lyrics)
+                    && let SearchItem::Song {
+                        track,
+                        inline_credits,
+                        ..
+                    } = &mut item
+                {
+                    *inline_credits =
+                        inline_credits::project(resource, base, track, display_keyword)
+                            .map(Box::new);
+                }
                 if query.category == Songs
                     && let SearchItem::Song {
                         track,
@@ -1499,7 +1518,8 @@ pub(super) fn project(
                     let public_song = super::song_share::Song::observe(base, track);
                     *song_public_link_available = public_song.is_some();
                     result.song_share_rows.push(public_song);
-                    *table_hint = track_hint::song_table(base, resource, &query.keyword);
+                    *table_hint =
+                        track_hint::song_table(base, resource, &query.keyword).map(Box::new);
                     if !track.missing
                         && !track.local
                         && track.voice_id.is_none()

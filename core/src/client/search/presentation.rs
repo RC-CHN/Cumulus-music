@@ -319,6 +319,7 @@ mod tests {
                             text: format!("合成别名{id}"),
                         }),
                         table_hint: None,
+                        inline_credits: None,
                         explicit: true,
                         original_recording: true,
                         reasons: vec![],

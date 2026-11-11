@@ -3,9 +3,11 @@ import { computed } from 'vue';
 import { splitSearchMatch, type SearchTextPart } from '../../services/searchMatch';
 const props = defineProps<
   | { text: string; keyword: string; parts?: never }
-  | { text: string; parts: readonly SearchTextPart[]; keyword?: never }
+  | { text?: string; parts: readonly SearchTextPart[]; keyword?: never }
 >();
-const parts = computed(() => props.parts ?? splitSearchMatch(props.text, props.keyword ?? ''));
+const parts = computed(
+  () => props.parts ?? splitSearchMatch(props.text ?? '', props.keyword ?? ''),
+);
 </script>
 
 <template>

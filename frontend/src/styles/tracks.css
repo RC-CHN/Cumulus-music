@@ -66,6 +66,9 @@
   min-width: 0;
   line-height: 1.6;
 }
+.track-title-inline-credit {
+  color: var(--muted);
+}
 .track-title small {
   font-size: 11px;
   color: var(--muted);

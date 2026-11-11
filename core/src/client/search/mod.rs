@@ -4,6 +4,7 @@ mod default_context;
 pub(crate) mod experiment;
 mod group_download;
 mod guest;
+mod inline_credits;
 pub use group_download::{
     SearchGroupDownloadCommand, SearchGroupDownloadDecision, SearchGroupDownloadReply,
     SearchGroupDownloadRow, SearchGroupDownloadTarget,

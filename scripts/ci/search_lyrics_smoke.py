@@ -16,6 +16,10 @@ GROUP_STAGES = (
     'lyric_group_next', 'lyric_group_play', 'lyric_group_continuation',
     'lyric_group_restored', 'lyric_group_single_outsider', 'lyric_group_tab_reset',
 )
+INLINE_STAGES = (
+    'inline_credits_songs', 'inline_credits_artist', 'inline_credits_songs_back',
+    'inline_credits_lyrics', 'inline_credits_album', 'inline_credits_lyrics_back',
+)
 COUNT_PATH = '/api/resource/commentInfo/list'
 LYRIC_PATH = '/api/search/resource/lyric'
 THREAD_PATH = '/api/v1/resource/comments/R_SO_4_3'
@@ -180,6 +184,73 @@ def verify_comments(root, screenshots):
     print(json.dumps(report, ensure_ascii=False))
 
 
+def verify_inline_credits(root, screenshots):
+    first = root / 'first'
+
+    def read(path):
+        return json.loads(path.read_text(encoding='utf-8'))
+
+    complete = read(first / 'complete.json')
+    assert complete['ok'] and complete['searchInlineCreditsVerified']
+    assert complete['stageCount'] == len(INLINE_STAGES)
+    names = [f'ux_{i:02}_{name}' for i, name in enumerate(INLINE_STAGES, 1)]
+    assert sorted(p.stem for p in first.glob('ux_*.json')) == names
+    assert sorted(p.stem for p in first.glob('ux_*.png')) == (names if screenshots else [])
+    rows = [read(first / (name + '.json')) for name in names]
+    assert [row['label'] for row in rows] == list(INLINE_STAGES)
+
+    def suffix(text):
+        return dict(text='（' + text + '）', marks=['合成'])
+
+    expected_rows = dict(
+        positive=dict(id='31401', title=suffix('合成译名'), artist=suffix('合成译艺人'),
+                      album=suffix('合成译专辑'), idlessArtistPlain=True),
+        negative=dict(id='31404', title=None, album=suffix('合成无链接译专辑'),
+                      idlessArtistPlain=True),
+    )
+    for index, category, focus in (
+        (0, 'songs', None), (2, 'songs', 'artist:31402'),
+        (3, 'lyrics', None), (5, 'lyrics', 'album'),
+    ):
+        row = rows[index]
+        assert row['category'] == category and row['rows'] == expected_rows
+        assert row['focusAction'] == focus
+        if category == 'songs':
+            assert row['excerpt'] is None and row['footer'] == dict(text='题合成词', marks=['合成'])
+        else:
+            assert row['footer'] is None and row['excerpt'] == dict(
+                text='合成歌词保持原文\n第二行', marks=[],
+            )
+    for index, category, kind, id, heading, action in (
+        (1, 'songs', 'artist', '31402', '主艺人', 'artist:31402'),
+        (4, 'lyrics', 'album', '31403', '主专辑', 'album'),
+    ):
+        row = rows[index]
+        assert row['category'] == category and row['sourceAction'] == action
+        assert row['destination'] == dict(kind=kind, id=id, heading=heading)
+    songs_path = '/api/search/song/list/page'
+    artist_path = '/api/artist/v3/detail'
+    album_path = '/api/album/v3/detail'
+    calls = complete['inlineCreditCalls']
+    paths = [call['path'] for call in calls]
+    assert paths.count(artist_path) == paths.count(album_path) == 1
+    assert paths.index(songs_path) < paths.index(artist_path) < paths.index(LYRIC_PATH) < paths.index(album_path)
+    assert all(call['args']['keyword'] == '合成' and call['args']['offset'] == 0
+               for call in calls if call['path'] in (songs_path, LYRIC_PATH))
+    assert rows[0]['inlineCreditCalls'] and all(call['path'] == songs_path
+                                               for call in rows[0]['inlineCreditCalls'])
+    assert all(call['path'] != album_path for call in rows[3]['inlineCreditCalls'])
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    report = dict(ok=True, actualWebView=True, nativeIpc=True, stageCount=len(rows),
+                  screenshots=len(rows) if screenshots else 0, expectedCredits=expected_rows,
+                  exactArtist='31402', exactAlbum='31403', restoredBothFocusTargets=True,
+                  plainLyricExcerpt=True, separateSongFooter=True, requests=calls,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                                      encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -190,6 +261,7 @@ def main():
     mode.add_argument('--waterfall', action='store_true')
     mode.add_argument('--comment-count', action='store_true')
     mode.add_argument('--group-play', action='store_true')
+    mode.add_argument('--inline-credits', action='store_true')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -210,7 +282,11 @@ def main():
     script_name = 'search_lyrics_waterfall_ui_probe.js' if args.waterfall else 'search_lyrics_ui_probe.js'
     source = Path(__file__).resolve().parents[2] / 'desktop/examples' / script_name
     script = root / 'search-lyrics.js'
-    if args.group_play:
+    if args.inline_credits:
+        body = ('window.__cumulusSearchInlineCreditsProof = true;\n'
+                + source.with_name('search_inline_credits_ui_probe.js').read_text(encoding='utf-8') + '\n'
+                + source.with_name('search_results_ui_probe.js').read_text(encoding='utf-8'))
+    elif args.group_play:
         env['CUMULUS_SEARCH_LYRIC_GROUP_PROOF'] = '1'
         body = ('window.__cumulusSearchLyricGroupProof = true;\n'
                 + source.with_name('search_lyric_group_ui_probe.js').read_text(encoding='utf-8') + '\n'
@@ -226,10 +302,13 @@ def main():
     env['CUMULUS_UX_SCRIPT'] = str(script)
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots,
-                      acknowledge_receipts=args.comment_count or args.group_play)
+                      acknowledge_receipts=args.comment_count or args.group_play or args.inline_credits)
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.inline_credits:
+        verify_inline_credits(root, args.screenshots)
+        return
     if args.group_play:
         verify_group(root, args.screenshots)
         return
