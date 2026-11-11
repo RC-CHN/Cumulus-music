@@ -238,6 +238,17 @@
         (status === 'off' || spatial()?.dataset.spatialStatus === status) && view;
     }, 'committed spatial controls: ' + status);
   }
+  function settledPaint(selector) {
+    const node = one(selector);
+    if (!node?.isConnected || node.closest('[inert]')) return false;
+    for (let current = node; current; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      if (style.opacity !== '1' || style.visibility !== 'visible' ||
+          current.getAnimations().some((animation) => animation.pending || animation.playState === 'running'))
+        return false;
+    }
+    return true;
+  }
   function paintSample(selector) {
     const node = one(selector);
     assert(node?.isConnected && !node.closest('[inert]'), 'connected capture padding');
@@ -261,6 +272,12 @@
   }
   async function stage(name, view, extra = {}) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const captureSelectors = dialog() ? ['.equalizer-dialog'] : ['.sidebar-caption', '.playerbar'];
+    // The shared switch returns to the standalone dialog before the screenshot;
+    // the native readback can settle before that dialog's entrance animation.
+    if (window.__spatialCapture) {
+      await wait(() => captureSelectors.every(settledPaint), name + ' settled capture surfaces');
+    }
     if (dialog()) {
       const r = dialog().getBoundingClientRect();
       assert(dialog().scrollWidth <= dialog().clientWidth + 1 &&
@@ -268,8 +285,7 @@
     }
     const capture = window.__spatialCapture ? {
       screenX, screenY, ratio: devicePixelRatio,
-      paintSamples: (dialog() ? ['.equalizer-dialog'] : ['.sidebar-caption', '.playerbar'])
-        .map(paintSample),
+      paintSamples: captureSelectors.map(paintSample),
     } : {};
     await emit({ stage: name, epoch, player: view, ...capture, ...extra,
       ...(indexedWave ? { indexedLocalId: localId, indexedNavigation } : {}), dom: {
