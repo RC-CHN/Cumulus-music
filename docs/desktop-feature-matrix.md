@@ -60,6 +60,11 @@ WebKitGTK 检查点及截图。私有 FileManager1 收到三次精确路径：�
 回到可见的原按钮。证据在 `.build/ui-proof/phase304-history-row-share-final/`；
 第三方渠道及本批 Windows 结果另列。
 
+[自然结束后续接同曲下载](desktop-minibar-skip.txt)在隔离 Linux WebKitGTK／libmpv
+通过八个场景和 20 张截图。有效的唯一 FLAC 使用固定文件句柄，保留原队列条目；
+等长改写保留结束曲，均无目标在线授权。证据在
+`.build/ui-proof/phase305-natural-eof-download/`，Windows 结果待 CI。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。

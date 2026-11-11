@@ -7,7 +7,7 @@ use super::{QueueSnapshot, intelligence::eligibility::online_candidate};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    download::offline::OfflineLibrary,
+    download::offline::{OfflineLibrary, PlaylistDownload},
     protocol::{api::identifier, wire::serialization::js_truthy},
 };
 use serde_json::Value;
@@ -61,6 +61,7 @@ pub struct OrdinaryCandidateRow {
     pub original_song_id: String,
     pub candidate: OrdinaryCandidate,
     pub(crate) no_download_publication: bool,
+    pub(crate) publication: Option<PlaylistDownload>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -141,9 +142,10 @@ pub(super) async fn inspect(
     let mut stopped_at_hole = false;
     let mut requests = Vec::new();
     let mut rows = Vec::with_capacity(inputs.len());
-    let mut checked_downloads = HashMap::new();
+    let mut checked_downloads: HashMap<String, download::Assessment> = HashMap::new();
     for (entry_id, id, song) in inputs {
         session.check_generation(token)?;
+        let mut publication = None;
         let candidate = if stopped_at_hole {
             OrdinaryCandidate::NotScanned
         } else if song.is_null() {
@@ -151,14 +153,17 @@ pub(super) async fn inspect(
             OrdinaryCandidate::Undetermined(Undetermined::CatalogMetadataMissing)
         } else {
             let download = if let Some(assessment) = checked_downloads.get(&id) {
-                *assessment
+                assessment.clone()
             } else {
                 let assessment = download::check(&offline, token, publications.get(&id)).await?;
-                checked_downloads.insert(id.clone(), assessment);
+                checked_downloads.insert(id.clone(), assessment.clone());
                 assessment
             };
             match download {
-                download::Assessment::Authorized => OrdinaryCandidate::AccountDownload,
+                download::Assessment::Authorized(exact) => {
+                    publication = Some(exact);
+                    OrdinaryCandidate::AccountDownload
+                }
                 download::Assessment::Unknown => {
                     OrdinaryCandidate::Undetermined(Undetermined::DownloadPublication)
                 }
@@ -176,6 +181,7 @@ pub(super) async fn inspect(
             no_download_publication: !publications.contains_key(&id),
             original_song_id: id,
             candidate,
+            publication,
         });
     }
 

@@ -1030,7 +1030,9 @@ impl AudioEngine for MpvEngine {
     }
 
     fn supports_pinned_search_download(&self) -> bool {
-        self.native.is_some()
+        self.native
+            .as_ref()
+            .is_some_and(Native::supports_pinned_stream)
     }
 
     fn load_pinned_audio(

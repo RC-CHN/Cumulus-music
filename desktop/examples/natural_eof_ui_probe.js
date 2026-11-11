@@ -67,11 +67,16 @@
     'order-loop-skip': ['t1', 'playing', 'order_loop', '2,3,1'],
     'random-skip': ['t1', 'playing', 'random', '1,3,2'],
     'random-control': ['c', 'ended', 'random', '1,2,3'],
+    't1-download': ['t1', 'playing', 'sequential', '1,2,3'],
+    't1-download-stale': ['t1', 'ended', 'sequential', '1,2,3'],
   }[caseName];
   const [expectedGroup, expectedState, expectedMode, expectedOrder] = scenario || [];
   const skip = expectedState === 'playing';
   const randomControl = caseName === 'random-control';
   const controlNext = caseName === 'control' || randomControl;
+  const download = caseName === 't1-download';
+  const staleDownload = caseName === 't1-download-stale';
+  const keepsOldPlayId = caseName === 'control' || staleDownload;
   const target = skip ? '3' : '1';
   const actions = [];
   const replies = [];
@@ -120,6 +125,7 @@
     const idsOf = (value) => value.tracks.map((item) => [item.track.id, item.entryId]);
     const endedKey = (view) =>
       JSON.stringify([epoch, view.endedMinibarReceipt, view.entryId, view.queueRevision]);
+    let heldClockStart;
     const stage = async (label, view, q) => {
       await twoFrames();
       assert(matching(view) && document.visibilityState === 'visible', 'visible native and DOM state for ' + label);
@@ -131,6 +137,11 @@
         dom: dom(), ids: idsOf(q), current: q.current, actions, replies,
         skipNotices: toast.visible, skipPointer: skipPointer(),
         screenX, screenY, ratio: devicePixelRatio, paintSamples,
+        ...((download || staleDownload) ? {
+          sourceQuality: view.actualQuality,
+          renderedSourceQuality: bar()?.dataset.quality ?? null,
+          ...(download && label === 'ux_02_after' ? { heldClockStart } : {}),
+        } : {}),
       });
       if (toast.visible.length && window.__CUMULUS_PROOF_ACK__ === label)
         assert(skipNotice.visible(), 'PNG capture completed while the toast was still fully visible');
@@ -180,11 +191,19 @@
     const after = await wait(async () => {
       const view = await player();
       if (view.error) throw new Error('unexpected playback error: ' + view.error);
-      return view.state === expectedState && view.track?.id === target && matching(view) &&
-        (skip ? view.position > .2 && view.timeline?.total === 30 && skipNotice.visible() : view.position === 8) &&
+      const expected = view.state === expectedState && view.track?.id === target && matching(view) &&
+        (skip ? view.position > .2 && view.timeline?.total === (download ? 8 : 30) &&
+          skipNotice.visible() : view.position === 8) &&
         (!randomControl || (view.playId === null &&
           /^[a-f0-9]{32}$/.test(view.endedMinibarReceipt) &&
-          dom().endedStepKey === endedKey(view))) && view;
+          dom().endedStepKey === endedKey(view)));
+      if (!expected) return false;
+      if (download) {
+        if (view.actualQuality !== 'lossless' || bar()?.dataset.quality !== 'lossless') return false;
+        heldClockStart ??= view.position;
+        if (view.position <= heldClockStart + .1) return false;
+      }
+      return view;
     }, 'cohort-specific state after natural native EOF');
     const afterQueue = await queue();
     assert(JSON.stringify(idsOf(afterQueue)) === JSON.stringify(ids) &&
@@ -196,7 +215,7 @@
     'real UI sent pause/resume only, no next, seek, or stop');
     assert(skip ? after.playId && after.playId !== before.playId :
       after.queueRevision === before.queueRevision &&
-        (caseName === 'control' ? after.playId === before.playId : after.playId === null),
+        (keepsOldPlayId ? after.playId === before.playId : after.playId === null),
     'native play identity and queue revision agree with the cohort outcome');
     await stage('ux_02_after', after, afterQueue);
     if (controlNext) {

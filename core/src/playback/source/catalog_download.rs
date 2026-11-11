@@ -8,12 +8,75 @@ use crate::{
         service::DownloadService,
     },
     library::matching::MatchHint,
-    playback::engine::{Cancellation, MediaInput},
+    playback::{
+        QueueEntry,
+        engine::{Cancellation, MediaInput},
+    },
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
 
 impl SourceResolver {
+    /// Strict natural continuation: verify/open only the exact publication
+    /// admitted by the original M59 scan. No online fallback is authorized.
+    pub(crate) async fn hold_ordinary_eof_download(
+        &self,
+        token: &SessionToken,
+        entry: QueueEntry,
+        expected: PlaylistDownload,
+        cancel: &Cancellation,
+    ) -> Result<(Arc<ResolvedSource>, HeldSearchFile)> {
+        let session = self.session.clone();
+        let account = token.clone();
+        let fence = cancel.clone();
+        let held = tokio::task::spawn_blocking(move || {
+            fence.check()?;
+            let song = crate::protocol::api::identifier(&entry.resource["id"])?;
+            let task = DownloadService::published_catalog_song(&session, &account, &song)?
+                .ok_or(Error::QueueChanged)?;
+            if task.id != expected.task_id {
+                return Err(Error::QueueChanged);
+            }
+            let publication = SearchPublication::bind_ordinary_eof(
+                session,
+                account,
+                &task,
+                &song,
+                expected,
+                entry.clone(),
+            )?;
+            let mut file = publication.open(&fence)?;
+            file.check_ordinary_eof_file(&entry)?;
+            let (gain, invalid) = if let Some(gain) = publication.gain() {
+                (gain.clone(), false)
+            } else {
+                match file.metadata_hint() {
+                    Ok(MatchHint::Song(value)) => (value["volumeDelta"].clone(), false),
+                    Ok(MatchHint::Absent) => (Value::Null, false),
+                    Ok(MatchHint::Invalid) | Err(_) => (Value::Null, true),
+                }
+            };
+            let info = loudness::with_gain(
+                json!({"kind":"local","resource_info":{"level":publication.quality()}}),
+                (gain, invalid),
+            );
+            fence.check()?;
+            Ok((
+                Arc::new(ResolvedSource {
+                    input: MediaInput::SearchPublication(publication),
+                    info,
+                    expires_at: None,
+                }),
+                file,
+            ))
+        })
+        .await
+        .map_err(|_| Error::State("ordinary EOF download worker stopped"))??;
+        self.session.check_generation(token)?;
+        cancel.check()?;
+        Ok(held)
+    }
+
     /// This queue entry can use only its exact sealed publication. Unlike
     /// ordinary search, any lookup, rights, format or decoder failure is terminal.
     pub(super) async fn offline_playlist_download(

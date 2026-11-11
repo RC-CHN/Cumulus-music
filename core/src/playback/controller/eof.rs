@@ -1,11 +1,15 @@
 //! M308 natural EOF, separately from manual transport, preload and decoder errors.
-use super::{Message, PlaybackFence, PlaybackStatus, load::LoadOptions, state::Actor};
+use super::{
+    Message, PlaybackFence, PlaybackStatus,
+    load::{LoadOptions, LoadSource, OrdinaryEofDownload},
+    state::Actor,
+};
 use crate::{
     Error, Result,
     account::SessionToken,
     playback::{
-        PlaybackMode, QueueSnapshot, Step, TimelineMode,
-        engine::Cancellation,
+        PlaybackMode, QueueEntry, QueueSnapshot, Step, TimelineMode,
+        engine::{Cancellation, MediaInput},
         preflight::OrdinaryQueueEnvironment,
         skip_policy::{self, OrdinarySkipDecision, OrdinarySkipTrigger},
     },
@@ -57,7 +61,15 @@ enum Outcome {
     KeepFinished,
     ControlKeepFinished,
     StopFinished,
-    PlayExisting { target: String, notify: bool },
+    PlayExisting {
+        target: String,
+        notify: bool,
+    },
+    PlayDownload {
+        entry: Box<QueueEntry>,
+        held: Box<OrdinaryEofDownload>,
+        skipped: Vec<String>,
+    },
 }
 
 pub(super) struct Ready {
@@ -119,8 +131,9 @@ impl Actor {
             || (queue.mode != PlaybackMode::Random
                 && !queue.items.iter().map(|row| &row.entry_id).eq(&queue.order))
             || queue.items.iter().any(|row| {
-                // No original replacement audio, video, or local handoff in
-                // this first branch. M59 reads existing native evidence only.
+                // This branch may discover an exact same-song native
+                // download, never an alternate track, video or explicit
+                // local/room resource in the supplied queue.
                 let backup = &row.resource["song"]["noCopyrightRcmd"];
                 (!backup.is_null() && backup["type"].as_i64() != Some(0))
                     || !row.resource["native_open_file"].is_null()
@@ -172,10 +185,59 @@ impl Actor {
                     .ordinary_queue_preflight(&ticket.token, &ticket.queue, ENVIRONMENT)
                     .await?;
                 ticket.authority.check()?;
-                // A mixed online/download queue needs the original local
-                // resolver sequence. Keep the known-denied row unselected.
                 if scan.rows.iter().any(|row| !row.no_download_publication) {
-                    return Ok(Outcome::KeepFinished);
+                    if ticket.queue.mode != PlaybackMode::Sequential {
+                        return Ok(Outcome::KeepFinished);
+                    }
+                    let OrdinarySkipDecision::PlayExisting {
+                        target,
+                        denial_count,
+                        ..
+                    } = skip_policy::after_initial_denial_with_download(
+                        &ticket.queue,
+                        &scan,
+                        TRIGGER,
+                        true,
+                    )?
+                    else {
+                        return Ok(Outcome::KeepFinished);
+                    };
+                    let current = ticket
+                        .queue
+                        .items
+                        .iter()
+                        .position(|row| Some(&row.entry_id) == ticket.queue.current.as_ref())
+                        .ok_or(Error::QueueChanged)?;
+                    let next = current + 1 + denial_count;
+                    let entry = ticket
+                        .queue
+                        .items
+                        .get(next)
+                        .filter(|row| row.entry_id == target)
+                        .ok_or(Error::QueueChanged)?;
+                    let Some(publication) =
+                        scan.rows[next].publication.clone().filter(|p| !p.encrypted)
+                    else {
+                        return Ok(Outcome::KeepFinished);
+                    };
+                    let skipped = scan.rows[current + 1..next]
+                        .iter()
+                        .map(|row| row.original_song_id.clone())
+                        .collect();
+                    let (source, file) = resolver
+                        .hold_ordinary_eof_download(
+                            &ticket.token,
+                            entry.clone(),
+                            publication,
+                            &ticket.authority,
+                        )
+                        .await?;
+                    ticket.authority.check()?;
+                    return Ok(Outcome::PlayDownload {
+                        entry: Box::new(entry.clone()),
+                        held: Box::new(OrdinaryEofDownload { source, file }),
+                        skipped,
+                    });
                 }
                 Ok(
                     match skip_policy::after_initial_denial(&ticket.queue, &scan, TRIGGER)? {
@@ -275,6 +337,52 @@ impl Actor {
                 self.begin(
                     LoadOptions {
                         paused: was_paused,
+                        ..Default::default()
+                    },
+                    Uuid::new_v4().simple().to_string(),
+                    None,
+                )
+                .await?;
+            }
+            Ok(Outcome::PlayDownload {
+                entry,
+                held,
+                skipped,
+            }) => {
+                let MediaInput::SearchPublication(publication) = &held.source.input else {
+                    return Ok(());
+                };
+                // An unavailable decoder or stale filesystem identity must
+                // leave the exact prior ended row untouched. A read-only
+                // capability check cannot stop a decoder on cancellation.
+                if !self
+                    .engine
+                    .try_lock()
+                    .is_ok_and(|engine| engine.supports_pinned_search_download())
+                    || held.file.check_ordinary_eof_file(&entry).is_err()
+                    || authority.is_cancelled()
+                {
+                    return Ok(());
+                }
+                if self
+                    .session
+                    .with_token(&token, |owner| {
+                        self.queue.select_ordinary_eof_download(
+                            owner,
+                            &entry,
+                            publication,
+                            &skipped,
+                        )
+                    })
+                    .is_err()
+                {
+                    return Ok(());
+                }
+                self.publish_ordinary_skip();
+                self.begin(
+                    LoadOptions {
+                        paused: was_paused,
+                        source: LoadSource::OrdinaryEofDownload(held),
                         ..Default::default()
                     },
                     Uuid::new_v4().simple().to_string(),

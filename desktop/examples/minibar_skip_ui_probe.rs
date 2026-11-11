@@ -81,16 +81,18 @@ impl Api for ProofApi {
                     assert_eq!(ids.len(), 1);
                     let id = identifier(&ids[0])?;
                     assert!(matches!(id.as_str(), "1" | "2" | "3"));
-                    self.trace
-                        .lock()
-                        .unwrap()
-                        .push(json!({"kind":"authorization","path":path,"id":id}));
                     let source = if let Some(case) = self.eof {
                         case.url(&id)
                     } else {
                         // Existing manual proof checks no row 2 URL call.
                         Some(MEDIA)
                     };
+                    let mut observation = json!({"kind":"authorization","path":path,"id":id});
+                    if self.eof.is_some_and(eof_fixture::Case::download) {
+                        observation["serviceCode"] =
+                            json!(if source.is_some() { 200 } else { 403 });
+                    }
+                    self.trace.lock().unwrap().push(observation);
                     match source {
                         Some(url) => {
                             json!({"code":200,"data":[{"id":ids[0],"url":url,"code":200,"md5":"fixture","level":"standard","expi":120}]})
@@ -116,6 +118,9 @@ fn song(id: u64, eof: Option<eof_fixture::Case>) -> Value {
     let (title, duration) = match eof {
         None => ("合成底栏歌曲", 30000),
         Some(_) if id == 1 => ("合成自然结束歌曲", eof_fixture::FIRST_SECONDS * 1000),
+        Some(case) if id == 3 && case.download() => {
+            ("合成自然结束歌曲", eof_fixture::DOWNLOAD_SECONDS * 1000)
+        }
         Some(_) => ("合成自然结束歌曲", eof_fixture::TARGET_SECONDS * 1000),
     };
     json!({"id":id,"song":{"id":id,"name":format!("{title} {id}"),"dt":duration,
@@ -158,6 +163,15 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let store = registry.store();
+    let download_case = eof.is_some_and(eof_fixture::Case::download);
+    let publication = download_case.then(|| {
+        tauri::async_runtime::block_on(eof_fixture::publish(
+            &root,
+            store.clone(),
+            eof == Some(eof_fixture::Case::DownloadStale),
+        ))
+        .expect("native sealed FLAC publication")
+    });
     let mut queue = PlaybackQueue::new(Some(store.clone()), "2").unwrap();
     queue
         .set_mode(eof.map_or(PlaybackMode::SingleLoop, eof_fixture::Case::mode))
@@ -209,6 +223,7 @@ fn main() {
                 media.clone(),
                 trace.clone(),
                 media_store.clone(),
+                download_case,
             )?))
         })
     } else {
@@ -278,6 +293,14 @@ fn main() {
                     let saved = store.get("2", "playback", "queue").unwrap().unwrap();
                     value["durableQueue"] = json!({
                         "mode": saved["mode"], "order": saved["order"], "current": saved["current"],
+                    });
+                }
+                if let Some(publication) = &publication {
+                    let saved = store.get("2", "playback", "queue").unwrap().unwrap();
+                    value["downloadPublication"] = publication.clone();
+                    value["durableQueue"] = json!({
+                        "mode":saved["mode"], "order":saved["order"], "current":saved["current"],
+                        "items":saved["items"],
                     });
                 }
                 fs::write(output.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();

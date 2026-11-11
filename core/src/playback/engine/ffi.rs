@@ -169,6 +169,20 @@ impl Native {
             })
         }
     }
+    pub fn supports_pinned_stream(&self) -> bool {
+        if self.streams.is_some() {
+            return true;
+        }
+        // SAFETY: Use the same optional libmpv C symbol and ABI as the
+        // registration path below. The lookup alone neither calls the
+        // symbol nor changes the current handle or its stream registry.
+        unsafe {
+            self._runtime
+                .get::<stream::Register>(b"mpv_stream_cb_add_ro\0")
+                .is_ok()
+        }
+    }
+
     pub fn prepare_pinned_stream(&mut self) -> Result<()> {
         if self.streams.is_none() {
             let mut registry = Box::new(stream::Registry::default());

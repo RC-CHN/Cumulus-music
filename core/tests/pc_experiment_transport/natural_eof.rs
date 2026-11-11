@@ -10,6 +10,12 @@ use cumulus_core::{
         dto::{PlayerAction, PlayerView},
         messages::PcMessageConnectivity,
     },
+    download::{
+        offline::{OfflineLibrary, PublishedDownload},
+        service::{DownloadDestination, DownloadOptions, DownloadService, DownloadStatus},
+    },
+    media::integrity::inspect_file,
+    membership::Quality,
     playback::{
         PlaybackMode, PlaybackQueue,
         controller::PlaybackStatus,
@@ -19,9 +25,14 @@ use cumulus_core::{
     storage::StateStore,
 };
 use serde_json::{Value, json};
-use std::{sync::Arc, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 
 const AUTH: &str = "/api/song/enhance/player/url/v1";
+const PUBLISHED_FLAC: &[u8] = include_bytes!("../fixtures/tag_audio/seed.flac");
 
 fn song(id: u64, playable: bool) -> Value {
     json!({"id":id,"song":{"id":id,"name":format!("合成 {id}"),"dt":120000,
@@ -45,6 +56,7 @@ struct Fixture {
     store: Arc<StateStore>,
     wire: Arc<ScriptHttp>,
     device: Arc<playback::Device>,
+    session: Arc<AccountSession>,
     epoch: String,
 }
 
@@ -111,7 +123,7 @@ impl Fixture {
         let epoch = session.token().unwrap().generation.to_string();
         let device = Arc::new(playback::Device::default());
         let factory = device.clone();
-        let client = MusicClient::with_session(session, registry)
+        let client = MusicClient::with_session(session.clone(), registry)
             .with_audio_factory(move || Ok(playback::audio_engine(factory.clone())));
         client
             .official_pc_ordinary_skip_assignment(&epoch)
@@ -138,6 +150,7 @@ impl Fixture {
                 store,
                 wire,
                 device,
+                session,
                 epoch,
             },
             before,
@@ -204,6 +217,128 @@ impl Fixture {
         assert_eq!(position["entry_id"].as_str(), entry);
         assert_eq!(position["state"], "ended");
         assert_eq!(position["seconds"].as_f64(), Some(120.0));
+    }
+
+    fn publish_flac(&self, id: u64, filename: &str) -> PathBuf {
+        let token = self.session.token().unwrap();
+        let path = self._root.path().join(filename);
+        let mut task = DownloadService::new(self.session.clone())
+            .unwrap()
+            .create(
+                &json!(id),
+                DownloadDestination::Path { path: path.clone() },
+                DownloadOptions::default(),
+            )
+            .unwrap();
+        std::fs::write(&path, PUBLISHED_FLAC).unwrap();
+        let integrity = inspect_file(&path).unwrap();
+        let song = json!({"id":id,"name":"合成本地音频","privilege":{"fee":0,"flag":0,"payed":0}});
+        let resource = json!({"id":id,"level":"lossless","fee":0,"flag":0,"payed":0});
+        let record = OfflineLibrary::new(self.session.clone())
+            .unwrap()
+            .register(
+                &token,
+                &PublishedDownload {
+                    task_id: task.id.clone(),
+                    song_id: id.to_string(),
+                    requested_quality: Quality::Lossless,
+                    target: path.clone(),
+                    song: song.clone(),
+                    resource: resource.clone(),
+                    encrypted: false,
+                    integrity: integrity.clone(),
+                },
+            )
+            .unwrap();
+        task.status = DownloadStatus::Complete;
+        task.target = Some(record.path);
+        task.output_integrity = Some(integrity);
+        task.song = Some(song);
+        task.resource = Some(resource);
+        self.store
+            .put(
+                "71",
+                "download_tasks_v1",
+                &task.id,
+                &serde_json::to_value(&task).unwrap(),
+            )
+            .unwrap();
+        path
+    }
+}
+
+#[tokio::test]
+async fn signed_eof_uses_exact_same_account_flac_after_known_denial_without_online_fallback() {
+    let (f, before) = Fixture::start(
+        vec![song(1, true), song(2, false), song(3, true)],
+        PlaybackMode::Sequential,
+        "t1",
+        [url(2, false).into()],
+    )
+    .await;
+    f.wire.wait(4).await;
+    f.publish_flac(3, "published.flac");
+    f.device
+        .pinned_search_supported
+        .store(true, Ordering::Release);
+    let queue = PlaybackQueue::new(Some(f.store.clone()), "71")
+        .unwrap()
+        .snapshot();
+    f.eof();
+    let after = f
+        .wait(|view| view.state == PlaybackStatus::Playing && view.play_id != before.play_id)
+        .await;
+    assert_eq!(after.track.unwrap().id, "3");
+    assert_eq!(f.loads(), 2);
+    assert_eq!(
+        f.device.state.lock().unwrap().last_pinned.as_ref(),
+        Some(&(false, PUBLISHED_FLAC.to_vec()))
+    );
+    let current = PlaybackQueue::new(Some(f.store.clone()), "71")
+        .unwrap()
+        .snapshot();
+    assert_eq!(current.items, queue.items);
+    assert_eq!(current.order, queue.order);
+    assert_eq!(current.current, Some(queue.items[2].entry_id.clone()));
+    f.assert_wire(&["1", "2"]);
+    f.poll.shutdown().await;
+}
+
+#[tokio::test]
+async fn signed_eof_keeps_finished_row_if_the_publication_is_corrupt_or_decoder_is_unsupported() {
+    for corrupt in [false, true] {
+        let (f, before) = Fixture::start(
+            vec![song(1, true), song(2, false), song(3, true)],
+            PlaybackMode::Sequential,
+            "t1",
+            [url(2, false).into()],
+        )
+        .await;
+        f.wire.wait(4).await;
+        let path = f.publish_flac(3, "published.flac");
+        f.device
+            .pinned_search_supported
+            .store(corrupt, Ordering::Release);
+        if corrupt {
+            std::fs::write(path, b"changed publication").unwrap();
+        }
+        let mut notices = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
+        f.eof();
+        f.wait(|view| view.state == PlaybackStatus::Ended).await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(180), notices.next())
+                .await
+                .is_err()
+        );
+        let after = f.view().await;
+        assert_eq!(after.state, PlaybackStatus::Ended);
+        assert_eq!(after.play_id, before.play_id);
+        assert_eq!(after.entry_id, before.entry_id);
+        assert_eq!(after.queue_revision, before.queue_revision);
+        assert_eq!(f.loads(), 1);
+        f.assert_durable_end(before.entry_id.as_deref());
+        f.assert_wire(&["1", "2"]);
+        f.poll.shutdown().await;
     }
 }
 

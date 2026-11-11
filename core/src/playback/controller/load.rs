@@ -4,6 +4,7 @@ use super::{
 };
 use crate::{
     Error, Result,
+    download::offline::HeldSearchFile,
     effects::equalizer::EqualizerStatus,
     playback::{
         QueueEntry, Timeline, TimelineMode,
@@ -21,6 +22,12 @@ pub(super) enum LoadSource {
     Retained(Arc<ResolvedSource>),
     RenewIfExpired(Arc<ResolvedSource>),
     FreshOnline,
+    OrdinaryEofDownload(Box<OrdinaryEofDownload>),
+}
+
+pub(super) struct OrdinaryEofDownload {
+    pub(super) source: Arc<ResolvedSource>,
+    pub(super) file: HeldSearchFile,
 }
 
 #[derive(Default)]
@@ -286,6 +293,7 @@ impl Actor {
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
                 let reopen_guard = cancel.clone();
+                let strict_offline = matches!(&options.source, LoadSource::OrdinaryEofDownload(_));
                 let (
                     streaming_revision,
                     pinned_search,
@@ -293,6 +301,9 @@ impl Actor {
                     native_publication_equalizer,
                     reopened_local_sink,
                 ) = super::engine(engine.clone(), cancel.clone(), move |engine| {
+                    if strict_offline && !engine.supports_pinned_search_download() {
+                        return Err(Error::State("ordinary EOF requires a pinned file decoder"));
+                    }
                     engine.stop()?;
                     let reopened =
                         reopen_local_sink && engine.reopen_retired_local_sink(&reopen_guard)?;
@@ -318,13 +329,22 @@ impl Actor {
                         "offline playlist download requires a pinned file decoder",
                     ));
                 }
-                let (download, initial_file) = if prefer_search_download && pinned_search {
-                    resolver
-                        .search_catalog_download(&item.resource, &token, &cancel)
-                        .await?
-                        .map_or((None, None), |(source, file)| (Some(source), Some(file)))
-                } else {
-                    (None, None)
+                let (download, initial_file, requested_source) = match options.source {
+                    LoadSource::OrdinaryEofDownload(held) => {
+                        let OrdinaryEofDownload { source, file } = *held;
+                        (Some(source), Some(file), LoadSource::CurrentPreference)
+                    }
+                    requested => {
+                        let (download, file) = if prefer_search_download && pinned_search {
+                            resolver
+                                .search_catalog_download(&item.resource, &token, &cancel)
+                                .await?
+                                .map_or((None, None), |(source, file)| (Some(source), Some(file)))
+                        } else {
+                            (None, None)
+                        };
+                        (download, file, requested)
+                    }
                 };
                 let StreamingSelection {
                     source,
@@ -337,7 +357,7 @@ impl Actor {
                         .resolve_streaming_source(&item.resource, &token, revision)
                         .await?
                 } else {
-                    let source = match options.source {
+                    let source = match requested_source {
                         LoadSource::RenewIfExpired(source)
                             if source.needs_renewal_for_reopen(resolver.now()) =>
                         {
@@ -354,6 +374,9 @@ impl Actor {
                             resolver
                                 .resolve_fresh_online(&item.resource, &token)
                                 .await?
+                        }
+                        LoadSource::OrdinaryEofDownload(_) => {
+                            return Err(Error::State("missing sealed ordinary EOF file"));
                         }
                     };
                     StreamingSelection::stock(source)

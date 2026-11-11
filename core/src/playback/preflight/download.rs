@@ -2,7 +2,10 @@
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    download::{offline::OfflineLibrary, service::DownloadService},
+    download::{
+        offline::{OfflineLibrary, PlaylistDownload, SearchPublication},
+        service::DownloadService,
+    },
     media::integrity::FileIntegrity,
 };
 use std::{
@@ -59,10 +62,10 @@ pub(super) async fn snapshot(
     .map_err(|_| Error::State("download preflight worker stopped"))?
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) enum Assessment {
     FallThrough,
-    Authorized,
+    Authorized(PlaylistDownload),
     Unknown,
 }
 
@@ -104,7 +107,7 @@ pub(super) async fn check(
     Ok(if !check.access.can_play {
         Assessment::FallThrough
     } else if check.integrity_verified {
-        Assessment::Authorized
+        Assessment::Authorized(SearchPublication::ordinary_queue_identity(record)?)
     } else {
         Assessment::Unknown
     })

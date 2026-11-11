@@ -234,6 +234,17 @@ pub(crate) fn after_initial_denial(
     scan: &OrdinaryQueuePreflight,
     trigger: OrdinarySkipTrigger,
 ) -> Result<OrdinarySkipDecision> {
+    after_initial_denial_with_download(queue, scan, trigger, false)
+}
+
+/// Only the strict EOF loader can turn an already authorized publication
+/// into a candidate. Existing directional callers stay online-only.
+pub(crate) fn after_initial_denial_with_download(
+    queue: &QueueSnapshot,
+    scan: &OrdinaryQueuePreflight,
+    trigger: OrdinarySkipTrigger,
+    allow_download: bool,
+) -> Result<OrdinarySkipDecision> {
     use OrdinaryCandidate::*;
     use OrdinarySkipDecision as Decision;
     let t = match Traversal::new(queue, trigger) {
@@ -296,7 +307,7 @@ pub(crate) fn after_initial_denial(
     for count in 0..queue.items.len().min(100) {
         let row = &scan.rows[t.transport[position]];
         match &row.candidate {
-            Online => {
+            Online | AccountDownload if allow_download || row.candidate == Online => {
                 return Ok(Decision::PlayExisting {
                     attempted,
                     target: row.entry_id.clone(),

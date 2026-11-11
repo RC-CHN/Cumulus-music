@@ -1,8 +1,9 @@
 """Verify natural EOF in the actual PlayerBar, Tauri, SQLite, and null libmpv."""
 import argparse
-from contextlib import contextmanager, nullcontext
+from contextlib import closing, contextmanager, nullcontext
 import ctypes
 from ctypes import wintypes
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,10 @@ from playback_power_smoke import windows_runtime
 from window_manager import launch
 
 
+ROOT = Path(__file__).resolve().parents[2]
+PUBLISHED_FLAC = ROOT / 'core/tests/fixtures/held_audio/search-playback-8s.flac'
+PUBLISHED_FLAC_DIGEST = '8bd8b67fc43432ae445548a57d59842ec82843a28343fc380c7c11197d949535'
+DOWNLOAD_CASES = ('t1-download', 't1-download-stale')
 CASES = {
     't1-skip': ('t1', '3', 'playing', 'sequential', ['1', '2', '3']),
     'control': ('c', '1', 'ended', 'sequential', ['1', '2', '3']),
@@ -23,6 +28,8 @@ CASES = {
     'order-loop-skip': ('t1', '3', 'playing', 'order_loop', ['2', '3', '1']),
     'random-skip': ('t1', '3', 'playing', 'random', ['1', '3', '2']),
     'random-control': ('c', '1', 'ended', 'random', ['1', '2', '3']),
+    't1-download': ('t1', '3', 'playing', 'sequential', ['1', '2', '3']),
+    't1-download-stale': ('t1', '1', 'ended', 'sequential', ['1', '2', '3']),
 }
 WIRE = '/api/song/enhance/player/url/v1'
 # The notice is centered inside the actual main window. Keep the pointer at
@@ -65,9 +72,65 @@ def parked_windows_cursor(cursor):
             cursor.move(original)
 
 
+def check_download(directory, connection, case, before, after, complete, saved):
+    """Tie playback back to the exact same-owner frozen fixture and durable queue."""
+    stale = case == 't1-download-stale'
+    frozen = PUBLISHED_FLAC.read_bytes()
+    assert len(frozen) == 38531 and hashlib.sha256(frozen).hexdigest() == PUBLISHED_FLAC_DIGEST
+    expected = bytearray(frozen)
+    if stale:
+        expected[-16] ^= 1
+    file = directory.parent / 'published-eof' / 'song-3.flac'
+    assert not file.parent.is_symlink() and file.is_file() and not file.is_symlink()
+    assert file.read_bytes() == expected
+
+    publication = before['downloadPublication']
+    task_id = publication['taskId']
+    assert isinstance(task_id, str) and task_id
+    assert publication == {
+        'owner': '2', 'songId': '3', 'taskId': task_id, 'bytes': len(frozen),
+        'sha256': PUBLISHED_FLAC_DIGEST, 'fileSha256': hashlib.sha256(expected).hexdigest(),
+        'stale': stale, 'intact': not stale, 'authorizationCount': 1,
+    }, publication
+    assert after['downloadPublication'] == complete['downloadPublication'] == publication
+    task_rows = connection.execute(
+        "SELECT owner, key, value FROM state WHERE kind='download_tasks_v1'"
+    ).fetchall()
+    assert len(task_rows) == 1 and task_rows[0][:2] == ('2', task_id), task_rows
+    task = json.loads(task_rows[0][2])
+    integrity = {'bytes': len(frozen), 'sha256': PUBLISHED_FLAC_DIGEST}
+    assert (task['id'], task['song_id'], task['status'], task['encrypted']) == (
+        task_id, '3', 'complete', False,
+    )
+    assert task['authorization_count'] == 1 and task['output_integrity'] == integrity
+    assert Path(task['target']).samefile(file), task['target']
+    offline_rows = connection.execute(
+        "SELECT owner, value FROM state WHERE kind='offline_music_v1'"
+    ).fetchall()
+    assert len(offline_rows) == 1 and offline_rows[0][0] == '2', offline_rows
+    offline = json.loads(offline_rows[0][1])
+    assert (offline['task_id'], offline['song_id'], offline['encrypted']) == (task_id, '3', False)
+    assert offline['integrity'] == integrity and Path(offline['path']).samefile(file)
+
+    initial, settled = before['durableQueue'], after['durableQueue']
+    keys = ('mode', 'order', 'current', 'items')
+    assert [entry['entry_id'] for entry in initial['items']] == [entry for _, entry in before['ids']]
+    assert initial == {
+        'mode': 'sequential', 'order': [entry for _, entry in before['ids']],
+        'current': before['current'], 'items': initial['items'],
+    }, initial
+    assert settled == {**initial, 'current': after['current']} == complete['durableQueue']
+    assert settled == {key: saved[key] for key in keys}
+    return {'exactFrozenPublication': not stale, 'sameSizeMutationRejected': stale,
+            'winnerAuthorizationRequests': 0, 'nativeHeldFlac': not stale,
+            'queueRowsAndOrderPreserved': True}
+
+
 def check(directory, case, capture, windows):
     group, target, state, mode, display = CASES[case]
     skip = state == 'playing'
+    publication = case in DOWNLOAD_CASES
+    target_duration = 8 if publication else 30
     before = read(directory / 'ux_01_before.json')
     after = read(directory / 'ux_02_after.json')
     stages = [before, after]
@@ -122,14 +185,18 @@ def check(directory, case, capture, windows):
     assert any(row['kind'] == 'count' and row['path'] == '/api/pl/count' for row in prefix), prefix
     assert all(row.get('path') != '/api/v3/song/detail' for row in trace), trace
     authorization = [row for row in trace if row['kind'] == 'authorization']
-    expected_ids = ['1', '2', '3'] if skip else ['1', '2']
-    assert authorization == [
+    expected_ids = ['1', '2', '3'] if skip and not publication else ['1', '2']
+    expected_authorization = [
         {'kind': 'authorization', 'path': WIRE, 'id': item} for item in expected_ids
-    ], trace
+    ]
+    if publication:
+        for row, code in zip(expected_authorization, (200, 403), strict=True):
+            row['serviceCode'] = code
+    assert authorization == expected_authorization, trace
     assert authorization[:2] == [row for row in prefix if row['kind'] == 'authorization'], prefix
     loads = [row for row in trace if row['kind'] == 'native_load']
     assert [(row['id'], row['duration']) for row in loads] == (
-        [('1', 8), ('3', 30)] if skip else [('1', 8)]
+        [('1', 8), ('3', target_duration)] if skip else [('1', 8)]
     ), trace
     old = loads[0]['entry']
     events = [row for row in trace if row['kind'] == 'native_eof']
@@ -146,11 +213,18 @@ def check(directory, case, capture, windows):
 
     stops = [row for row in trace if row['kind'] == 'native_stop']
     if skip:
-        assert .2 < current['position'] < 30 and current['duration'] == 30, current
+        assert .2 < current['position'] < target_duration and current['duration'] == target_duration, current
         assert current['playId'] and current['playId'] != previous['playId']
         assert current['queueRevision'] != previous['queueRevision'] and current['timelineMode'] == 'full'
-        assert loads[1]['entry'] != old and trace.index(events[0]) < trace.index(authorization[2])
-        assert trace.index(authorization[2]) < trace.index(loads[1]), trace
+        assert loads[1]['entry'] != old and trace.index(events[0]) < trace.index(loads[1]), trace
+        if publication:
+            assert (loads[1]['source'], loads[1]['codec'], loads[1]['verifiedFixtureBytes']) == (
+                'held_flac', 'flac', True,
+            ), trace
+            assert after['sourceQuality'] == after['renderedSourceQuality'] == 'lossless'
+            assert 0 < after['heldClockStart'] < current['position'] - .1, after
+        else:
+            assert trace.index(events[0]) < trace.index(authorization[2]) < trace.index(loads[1]), trace
         assert stops == [{'kind': 'native_stop', 'entry': old}], trace
         old_checkpoint(loads[1]['positionBeforeLoad'])
     else:
@@ -218,6 +292,9 @@ def check(directory, case, capture, windows):
                     assert row['trace'] == trace and row['durablePosition'] == after['durablePosition']
                     assert row['ids'] == after['ids'] and row['current'] == after['current']
                     old_checkpoint(row['durablePosition'])
+        elif publication:
+            assert current['playId'] == previous['playId'] and current['duration'] == 8
+            assert current['timelineMode'] == 'full' and not stops, trace
         else:
             assert current['playId'] is None and current['duration'] is None
             assert stops == [{'kind': 'native_stop', 'entry': old}]
@@ -256,17 +333,21 @@ def check(directory, case, capture, windows):
                 'current': entries[target],
             }, row['durableQueue']
     database = (directory.parent / 'state' / 'core.sqlite3').resolve(strict=True)
-    with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
+    with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
         persisted = connection.execute(
             "SELECT value FROM state WHERE owner='2' AND kind='playback' AND key='queue'"
         ).fetchone()
-    saved = json.loads(persisted[0])
+        saved = json.loads(persisted[0])
+        download = check_download(directory, connection, case, before, after, complete, saved) if publication else None
     assert saved['order'] == [entries[item] for item in final_transport], saved['order']
     assert saved['current'] == entries[target] and saved['mode'] == final_mode
-    return {'case': case, 'group': group, 'target': target, 'state': state,
-            'displayOrder': display, 'transportOrder': transport,
-            'finalMode': final_mode, 'finalTransportOrder': final_transport,
-            'stages': stages, 'notices': notices, 'locale': locale, 'screenshots': len(images)}
+    result = {'case': case, 'group': group, 'target': target, 'state': state,
+              'displayOrder': display, 'transportOrder': transport,
+              'finalMode': final_mode, 'finalTransportOrder': final_transport,
+              'stages': stages, 'notices': notices, 'locale': locale, 'screenshots': len(images)}
+    if download is not None:
+        result['downloadFallback'] = download
+    return result
 
 
 def main():

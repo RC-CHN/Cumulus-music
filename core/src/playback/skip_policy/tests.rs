@@ -44,6 +44,7 @@ fn facts(q: &QueueSnapshot) -> OrdinaryQueuePreflight {
                 OrdinaryCandidate::Online
             },
             no_download_publication: true,
+            publication: None,
         })
         .collect();
     let candidate_order = rows

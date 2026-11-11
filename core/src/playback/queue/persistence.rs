@@ -17,6 +17,11 @@ enum SideEffect<'a> {
     NativeGuard(&'a dyn Fn() -> Result<()>),
     CachedPlaylist(&'a PlaylistQueueBinding, &'a Cancellation),
     LikedPage(&'a LikedPageQueueFence),
+    OrdinaryEofDownload {
+        publication: &'a crate::download::offline::SearchPublication,
+        entry: &'a QueueEntry,
+        skipped: &'a [String],
+    },
     TogetherExternal(&'a str),
     HistoryPlayAll {
         kind: HistoryKind,
@@ -254,6 +259,98 @@ impl PlaybackQueue {
         Ok(())
     }
 
+    pub(crate) fn ordinary_eof_file_entry(entry: &QueueEntry, song: &str) -> Result<()> {
+        let resource = &entry.resource;
+        if !entry.visible_in_queue()
+            || matches!(
+                entry.source["kind"].as_str(),
+                Some("fm" | "scene_fm" | "listen_together")
+            )
+            || crate::protocol::api::identifier(&resource["id"])
+                .as_deref()
+                .ok()
+                != Some(song)
+            || crate::protocol::api::identifier(&resource["song"]["id"])
+                .as_deref()
+                .ok()
+                != Some(song)
+            || [
+                "local_id",
+                "path",
+                "download_task_id",
+                "download_ledger",
+                "cloud_song_id",
+                "voice_id",
+                "playback_constraint",
+                "native_open_file",
+                "shared_room",
+            ]
+            .into_iter()
+            .any(|field| !resource[field].is_null())
+        {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn verify_ordinary_eof_file_target(
+        tx: &StateTransaction<'_>,
+        owner: &str,
+        expected: &QueueEntry,
+        song: &str,
+    ) -> Result<()> {
+        let raw = tx.get(owner, "playback", "queue")?;
+        let queue = QueueSnapshot::load(raw.as_ref())?;
+        if queue.fm_source.is_some()
+            || queue.intelligence.is_some()
+            || queue.selected().as_ref() != Some(expected)
+            || tx
+                .get(owner, crate::playback::queue_more::ROOM_BINDING, "current")?
+                .is_some()
+        {
+            return Err(Error::QueueChanged);
+        }
+        Self::ordinary_eof_file_entry(expected, song)
+    }
+
+    /// Select the existing ordinary catalog row only if the exact offline
+    /// publication and the old durable queue still match in the same CAS.
+    pub(crate) fn select_ordinary_eof_download(
+        &mut self,
+        owner: &str,
+        entry: &QueueEntry,
+        publication: &crate::download::offline::SearchPublication,
+        skipped: &[String],
+    ) -> Result<()> {
+        if self.owner != owner
+            || self.state.mode != PlaybackMode::Sequential
+            || self.state.fm_source.is_some()
+            || self.state.intelligence.is_some()
+            || self
+                .state
+                .items
+                .iter()
+                .find(|item| item.entry_id == entry.entry_id)
+                != Some(entry)
+        {
+            return Err(Error::QueueChanged);
+        }
+        let mut candidate = self.snapshot();
+        candidate.current = Some(entry.entry_id.clone());
+        let release_fm = Self::releases_fm(&candidate, self.is_fm());
+        self.commit_owned_with_side_effect(
+            candidate,
+            release_fm,
+            None,
+            None,
+            SideEffect::OrdinaryEofDownload {
+                publication,
+                entry,
+                skipped,
+            },
+        )
+    }
+
     pub(crate) fn install_fm_restore(&mut self, input: &FmRestore) -> Result<FmRestoreOutcome> {
         let restore =
             crate::fm::player::source(&self.state)?.is_some() || self.state.items.is_empty();
@@ -470,6 +567,24 @@ impl PlaybackQueue {
                 }
                 if let SideEffect::LikedPage(visit) = side_effect {
                     visit.verify_generation(tx, &self.owner)?;
+                }
+                if let SideEffect::OrdinaryEofDownload {
+                    publication,
+                    entry,
+                    skipped,
+                } = side_effect
+                {
+                    if tx
+                        .get(
+                            &self.owner,
+                            crate::playback::queue_more::ROOM_BINDING,
+                            "current",
+                        )?
+                        .is_some()
+                    {
+                        return Err(Error::QueueChanged);
+                    }
+                    publication.verify_ordinary_eof_commit(tx, &self.owner, entry, skipped)?;
                 }
                 if let SideEffect::Fm(fm) = &side_effect {
                     if tx.get(&self.owner, "playback", FM_BACKUP_QUEUE)? != fm.expected.backup_queue

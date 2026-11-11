@@ -8,6 +8,7 @@ use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
     download::service::{DownloadOrigin, DownloadTask, TASKS},
+    library::identity::{FileFingerprint, fingerprint_metadata},
     media::integrity::FileIntegrity,
     media::ncm::{HeaderPolicy, NcmReader},
     membership::{MembershipManager, MembershipState, OfflineSource, offline_access},
@@ -15,7 +16,7 @@ use crate::{
         PlaybackQueue, QueueEntry,
         engine::{Cancellation, pinned_audio_format, pinned_ncm_format},
     },
-    storage::{OperationLock, StateStore},
+    storage::{OperationLock, PlaybackDownloadKind, StateStore, StateTransaction},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -88,6 +89,7 @@ pub struct SearchPublication {
     source_gain: Option<Value>,
     ledger_snapshot: Value,
     playlist_download: Option<PlaylistDownload>,
+    eof_target: Option<Box<QueueEntry>>,
 }
 
 pub(crate) struct HeldSearchFile {
@@ -96,6 +98,7 @@ pub(crate) struct HeldSearchFile {
     rights: Option<PlaybackWindow>,
     plain_flac: bool,
     playback_lease: Option<OperationLock>,
+    eof_fingerprint: Option<FileFingerprint>,
 }
 
 #[derive(Clone)]
@@ -121,7 +124,7 @@ impl SearchPublication {
         task: &DownloadTask,
         song: &str,
     ) -> Result<Arc<Self>> {
-        Self::bind_inner(session, token, task, song, None)
+        Self::bind_inner(session, token, task, song, None, None)
     }
 
     pub(crate) fn bind_playlist_download(
@@ -131,7 +134,35 @@ impl SearchPublication {
         song: &str,
         expected: PlaylistDownload,
     ) -> Result<Arc<Self>> {
-        Self::bind_inner(session, token, task, song, Some(expected))
+        Self::bind_inner(session, token, task, song, Some(expected), None)
+    }
+
+    pub(crate) fn ordinary_queue_identity(record: &OfflineRecord) -> Result<PlaylistDownload> {
+        Self::playlist_identity(record, &serde_json::to_value(record)?)
+    }
+
+    pub(crate) fn bind_ordinary_eof(
+        session: Arc<AccountSession>,
+        token: SessionToken,
+        task: &DownloadTask,
+        song: &str,
+        expected: PlaylistDownload,
+        entry: QueueEntry,
+    ) -> Result<Arc<Self>> {
+        if expected.encrypted || task.encrypted {
+            return Err(Error::State(
+                "ordinary EOF requires an unencrypted FLAC publication",
+            ));
+        }
+        PlaybackQueue::ordinary_eof_file_entry(&entry, song)?;
+        Self::bind_inner(
+            session,
+            token,
+            task,
+            song,
+            Some(expected),
+            Some(Box::new(entry)),
+        )
     }
 
     fn bind_inner(
@@ -140,6 +171,7 @@ impl SearchPublication {
         task: &DownloadTask,
         song: &str,
         playlist_download: Option<PlaylistDownload>,
+        eof_target: Option<Box<QueueEntry>>,
     ) -> Result<Arc<Self>> {
         let store = session.persistent_store()?;
         let target = task.playback_target()?.canonicalize()?;
@@ -195,6 +227,7 @@ impl SearchPublication {
                 .cloned(),
             ledger_snapshot,
             playlist_download,
+            eof_target,
         }))
     }
 
@@ -293,57 +326,97 @@ impl SearchPublication {
 
     fn revalidate_publication(&self, entry: Option<&QueueEntry>) -> Result<()> {
         self.session.with_token(&self.token, |owner| {
-            self.store.read_snapshot(|tx| {
-                let task: DownloadTask = serde_json::from_value(
-                    tx.get(owner, TASKS, &self.record.task_id)?
-                        .ok_or(Error::State("published search download is gone"))?,
-                )?;
-                if task.id != self.record.task_id
-                    || task.song_id != self.record.song_id
-                    || task.origin != DownloadOrigin::Song
-                    || task.playback_target()? != self.task_target
-                    || task.encrypted != self.record.encrypted
-                    || task.output_integrity.as_ref() != Some(&self.record.integrity)
-                    || tx.get(owner, KIND, &self.record.id)?.as_ref() != Some(&self.ledger_snapshot)
-                {
-                    return Err(Error::State("published search download changed"));
-                }
-                if let Some(expected) = &self.playlist_download {
-                    if task.file_operation.is_some()
-                        || tx
-                            .get(owner, crate::download::directory::gate::SETTINGS, "active")?
-                            .is_some()
-                    {
-                        return Err(Error::State("offline playlist download is moving"));
+            self.store
+                .read_snapshot(|tx| self.verify_publication_in(tx, owner, entry))
+        })
+    }
+
+    fn verify_publication_in(
+        &self,
+        tx: &StateTransaction<'_>,
+        owner: &str,
+        entry: Option<&QueueEntry>,
+    ) -> Result<()> {
+        let task: DownloadTask = serde_json::from_value(
+            tx.get(owner, TASKS, &self.record.task_id)?
+                .ok_or(Error::State("published search download is gone"))?,
+        )?;
+        if task.id != self.record.task_id
+            || task.song_id != self.record.song_id
+            || task.origin != DownloadOrigin::Song
+            || task.playback_target()? != self.task_target
+            || task.encrypted != self.record.encrypted
+            || task.output_integrity.as_ref() != Some(&self.record.integrity)
+            || tx.get(owner, KIND, &self.record.id)?.as_ref() != Some(&self.ledger_snapshot)
+        {
+            return Err(Error::State("published search download changed"));
+        }
+        if let Some(expected) = &self.playlist_download {
+            if task.file_operation.is_some()
+                || tx
+                    .get(owner, crate::download::directory::gate::SETTINGS, "active")?
+                    .is_some()
+            {
+                return Err(Error::State("offline playlist download is moving"));
+            }
+            if tx
+                .completed_song_publication(owner, &self.record.song_id)?
+                .is_none_or(|(id, _)| id != expected.task_id)
+            {
+                return Err(Error::State(
+                    "offline playlist publication is no longer unique",
+                ));
+            }
+            if let Some(entry) = entry {
+                if let Some(target) = &self.eof_target {
+                    if target.as_ref() != entry {
+                        return Err(Error::QueueChanged);
                     }
-                    if tx
-                        .completed_song_publication(owner, &self.record.song_id)?
-                        .is_none_or(|(id, _)| id != expected.task_id)
-                    {
-                        return Err(Error::State(
-                            "offline playlist publication is no longer unique",
-                        ));
-                    }
-                    if let Some(entry) = entry {
-                        PlaybackQueue::verify_offline_playlist_file_target(
-                            tx,
-                            owner,
-                            entry,
-                            &self.record.song_id,
-                            expected,
-                        )?;
-                    }
-                } else if let Some(entry) = entry {
-                    PlaybackQueue::verify_search_file_target(
+                    PlaybackQueue::verify_ordinary_eof_file_target(
                         tx,
                         owner,
                         entry,
                         &self.record.song_id,
                     )?;
+                } else {
+                    PlaybackQueue::verify_offline_playlist_file_target(
+                        tx,
+                        owner,
+                        entry,
+                        &self.record.song_id,
+                        expected,
+                    )?;
                 }
-                Ok(())
-            })
-        })
+            }
+        } else if let Some(entry) = entry {
+            PlaybackQueue::verify_search_file_target(tx, owner, entry, &self.record.song_id)?;
+        }
+        Ok(())
+    }
+
+    /// Called under the exact account and queue transaction before selection.
+    /// `entry` is still unselected, so verify its sealed capture separately.
+    pub(crate) fn verify_ordinary_eof_commit(
+        &self,
+        tx: &StateTransaction<'_>,
+        owner: &str,
+        entry: &QueueEntry,
+        skipped: &[String],
+    ) -> Result<()> {
+        if self.token.uid.as_deref() != Some(owner) || self.eof_target.as_deref() != Some(entry) {
+            return Err(Error::QueueChanged);
+        }
+        self.verify_publication_in(tx, owner, None)?;
+        for song in skipped {
+            if tx
+                .playback_download_rows(owner, song, PlaybackDownloadKind::Song)?
+                .iter()
+                .any(|row| row.status == "complete")
+            {
+                return Err(Error::QueueChanged);
+            }
+        }
+        Ok(())
     }
 
     fn playback_window(&self, entry: Option<&QueueEntry>) -> Result<Option<PlaybackWindow>> {
@@ -416,6 +489,16 @@ impl SearchPublication {
         } else {
             pinned_audio_format(&mut file)? == "flac"
         };
+        let eof_fingerprint = if self.eof_target.is_some() {
+            if !plain_flac {
+                return Err(Error::State(
+                    "ordinary EOF requires an unencrypted FLAC publication",
+                ));
+            }
+            Some(fingerprint_metadata(after)?)
+        } else {
+            None
+        };
         file.seek(SeekFrom::Start(0))?;
         self.revalidate_publication(None)?;
         let rights = self.rights()?;
@@ -426,11 +509,33 @@ impl SearchPublication {
             rights,
             plain_flac,
             playback_lease,
+            eof_fingerprint,
         })
     }
 }
 
 impl HeldSearchFile {
+    pub(crate) fn check_ordinary_eof_file(&self, entry: &QueueEntry) -> Result<()> {
+        let Some(fingerprint) = &self.eof_fingerprint else {
+            return Err(Error::QueueChanged);
+        };
+        if self.publication.eof_target.as_deref() != Some(entry)
+            || !self.plain_flac
+            || self.publication.record.path.canonicalize()? != self.publication.record.path
+            || fingerprint_metadata(self.file.metadata()?)? != *fingerprint
+        {
+            return Err(Error::QueueChanged);
+        }
+        let current = open_search_file(&self.publication.record.path)?;
+        if fingerprint_metadata(current.metadata()?)? != *fingerprint
+            || same_file::Handle::from_file(current)?
+                != same_file::Handle::from_file(self.file.try_clone()?)?
+        {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
+
     pub(crate) fn is_plain_flac(&self) -> bool {
         self.plain_flac
     }
@@ -449,6 +554,9 @@ impl HeldSearchFile {
         entry: &QueueEntry,
         cancel: &Cancellation,
     ) -> Result<(File, bool, Cancellation)> {
+        if self.eof_fingerprint.is_some() {
+            self.check_ordinary_eof_file(entry)?;
+        }
         let Self {
             publication,
             mut file,
