@@ -302,3 +302,9 @@ master_bypassed，都不能借此入口启动环绕。此限制不改变独立�
 native_local_equalizer_smoke.py 的已有纯环绕场景增加普通解码拒绝、旧播放 ID、
 队列／EQ 修订拒绝，以及共用开关跨三个页签的实际点击。原暂停、设置、同一
 原生时钟、精确 seek 和 EOF 断言仍保留。
+
+9ab1e558 在 Linux 用真实 WebView、libmpv 和合成 WAV 验证普通文件打开及
+「本地音乐」索引入口，各 7 张截图。两个路径都拒绝普通解码和旧作用域；经
+音效目录、耳机与均衡器页签切换时，原生修订 2→3→4，暂停的同一实例保持。
+复验：.build/ui-proof/phase331-directory-confirmation/final-9ab1e558/accepted-linux-receipt.json。
+Windows WebView2 和物理音频不由本次空输出验证覆盖。

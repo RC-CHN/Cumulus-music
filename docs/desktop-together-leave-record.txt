@@ -91,3 +91,9 @@ Rust 和前端单测另验证输入、账号代次、在途视图和消费顺序
 - 未验证 Windows WebView2、真实服务的本次结束统计、对端结束弹层、
   RTC、物理音频或真实双账号同步。二维码与本机记录不触发分享、
   邀请或新的账号写入。
+
+集成复验 9ab1e558：Linux 九态及九张截图通过。探针先等同一房间的 PAUSE
+回执，再发一次 12 秒定位；原生身份、队列和暂停状态不变，合成服务收到
+PAUSE 与 PROGRESS 两笔，之后的五个预期 End 和焦点检查保持。旧版并发探针
+在托管 CI 未观察到房间暂停，未把它误判为结束记录格式错误。复验记录：
+.build/ui-proof/phase331-directory-confirmation/final-9ab1e558/webview/together/report.json。

@@ -347,3 +347,5 @@ WebKit 实际核对六条路径，共 60 个截图状态：直达、已有歌单
 - [节目收录歌曲单曲下载](voice-song-download-contracts.txt)区分已喜欢、已有目的地和新建歌单，只有原生授权后才建立普通单曲任务。Linux 实窗验证五条路径，包括取消、写入失败和只读核对；两次实际传输的文件与合成音频逐字节相同，并从已完成列表实际离线播放其中一首。
 - 合并候选中的[混合歌单批量收藏](playlist-mixed-add-contracts.txt)按原列表顺序提交一次，丢失回执只读核对，保留目标本地行、其他来源勾选和当前暂停位置。Linux 实窗 6 态及单条路径回归另有报告；同一候选的播客和混合歌单 Rust 回归分别通过 47、32 项。
 - [账号切换引导](quick-login-offer-contracts.txt)和[设置直达个人资料编辑](account-profile-edit.txt)均经 Linux WebView 合成验证。前者在关闭快速登录时只引导到本账号设置；后者验证确认、保留草稿、放弃后返回和旧账号退场。两项均未访问或写入真实账号。
+- [设置页下载目录](download-directory-settings-contracts.txt)显示当前路径并直达系统选择器，预检与确认分别核对目录身份、账号和修订。Linux 实窗用合成选择结果跑通首次设置、同目录重选和取消；Rust 另核对真实合成 FLAC 迁移和同一路径替换。原生系统选择器和 Windows 运行仍按各平台证据验收。
+- [音效入口](effects-directory-desktop.txt)按官方分组显示，文件打开和本地库索引 WAV 的[纯环绕共用开关](desktop-equalizer-contracts.txt)可关闭和恢复当前图而不重载音源。[搜索框离线](search-results-ui-contracts.txt)会提示而不发联想请求；Linux 实窗已验证联网恢复及离线返回。一起听的[结束复验](desktop-together-leave-record.txt)确认先暂停、后定位，再走结束记录；未验证双账号实时同步。
