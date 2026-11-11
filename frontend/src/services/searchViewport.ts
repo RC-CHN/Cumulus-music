@@ -122,6 +122,9 @@ export function createSearchViewportMemory(capacity = 16) {
       }
       return value;
     },
+    forget(key: string, epoch: string) {
+      if (owner && owner === epoch) entries.delete(key);
+    },
     set(key: string, value: Snapshot, epoch: string) {
       if (!owner || owner !== epoch) return;
       entries.delete(key);

@@ -624,6 +624,289 @@ function songPage(q: SearchResultQuery, ids: string[], nextOffset: number, more 
   return response;
 }
 
+const rewriteSongs: SearchResultQuery = {
+  ...query,
+  keyword: '原词',
+  category: 'songs',
+  limit: 10,
+  channel: 'typing',
+};
+function rewrittenSongPage(
+  q: SearchResultQuery,
+  id: string,
+  correction: string | null = null,
+  next = q.offset + q.limit,
+  more = true,
+) {
+  const reply = songPage(q, [id], next, more);
+  reply.value.correction = correction;
+  const item = reply.value.sections[0]!.items[0]!;
+  assert.equal(item.kind, 'song');
+  item.queueDropReceipt = `${q.keyword}:${q.offset}`;
+  return reply;
+}
+const signedWaterfall = true;
+const openRewriteSongs = (model: ReturnType<typeof useSearchResults>, reuse = false) =>
+  model.open(rewriteSongs, reuse, 12, '原词', undefined, undefined, signedWaterfall);
+const visibleSongReceipts = (view?: SearchResultView) =>
+  view?.sections.flatMap((section) =>
+    section.items.flatMap((item) => (item.kind === 'song' ? [item.queueDropReceipt] : [])),
+  );
+
+test('signed song rewrites restart both the first page and a continuation with fresh receipts', async () => {
+  const calls: [string, number, number, SearchResultQuery['channel']][] = [];
+  const readC = deferred<AccountData<SearchResultView>>();
+  const startedC = deferred<void>();
+  const memory = createSearchViewportMemory();
+  const api: SearchResultsClient = {
+    searchResults: async (_epoch, q, defaultReceipt, correctionReceipt) => {
+      assert.equal(defaultReceipt, undefined);
+      assert.equal(correctionReceipt, undefined);
+      calls.push([q.keyword, q.offset, q.limit, q.channel]);
+      if (q.keyword === '原词') return rewrittenSongPage(q, '1', '纠正乙');
+      if (q.keyword === '纠正乙' && q.offset) {
+        // Even a redirecting reply whose raw cursor did not advance is not appended.
+        return rewrittenSongPage(q, '2', '纠正丙', q.offset);
+      }
+      if (q.keyword === '纠正丙' && !q.offset) {
+        startedC.resolve();
+        return readC.promise;
+      }
+      return rewrittenSongPage(q, q.offset ? '3' : '1');
+    },
+  };
+  const model = useSearchResults(api, () => assert.fail('no expiry'), memory);
+  model.connect(account);
+  await openRewriteSongs(model);
+  assert.equal(model.songRewrite.value, '纠正乙');
+  assert.deepEqual(visibleSongReceipts(model.view.value), ['纠正乙:0']);
+  model.savePosition({ top: 20, tracks: 300, focus: 'song-row:2:1' });
+  const replacing = model.more();
+  await startedC.promise;
+  assert.equal(model.view.value, undefined);
+  assert.equal(model.loading.value, true);
+  assert.deepEqual(model.position.value, { top: 0, tracks: 0 });
+  readC.resolve(rewrittenSongPage({ ...rewriteSongs, keyword: '纠正丙' }, '1'));
+  await replacing;
+  assert.equal(model.songRewrite.value, '纠正丙');
+  assert.deepEqual(visibleSongReceipts(model.view.value), ['纠正丙:0']);
+  await model.more();
+  assert.deepEqual(visibleSongReceipts(model.view.value), ['纠正丙:0', '纠正丙:10']);
+  assert.deepEqual(calls, [
+    ['原词', 0, 10, 'typing'],
+    ['纠正乙', 0, 10, 'typing'],
+    ['纠正乙', 10, 10, 'typing'],
+    ['纠正丙', 0, 10, 'typing'],
+    ['纠正丙', 10, 10, 'typing'],
+  ]);
+  model.dispose();
+  const back = useSearchResults(api, () => assert.fail('no expiry'), memory);
+  back.connect(account);
+  await openRewriteSongs(back, true);
+  assert.equal(calls.length, 5);
+  assert.equal(back.songRewrite.value, '纠正丙');
+  assert.equal(back.view.value?.query.keyword, '纠正丙');
+  assert.deepEqual(visibleSongReceipts(back.view.value), ['纠正丙:0', '纠正丙:10']);
+  back.dispose();
+});
+
+test('a failed replacement evicts the previous result and retries only the pending new head', async () => {
+  const calls: [string, number][] = [];
+  const memory = createSearchViewportMemory();
+  let failHead = true;
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        calls.push([q.keyword, q.offset]);
+        if (q.offset) return rewrittenSongPage(q, '2', '纠正词', q.offset, false);
+        if (q.keyword === '纠正词' && failHead) {
+          failHead = false;
+          throw { code: 'transport', message: '新搜索暂不可用' };
+        }
+        return rewrittenSongPage(q, '1');
+      },
+    },
+    () => assert.fail('no expiry'),
+    memory,
+  );
+  model.connect(account);
+  await openRewriteSongs(model);
+  await model.more();
+  assert.equal(model.view.value, undefined);
+  assert.equal(model.error.value, '新搜索暂不可用');
+  assert.equal(model.moreError.value, '');
+  assert.equal(model.songRewrite.value, '纠正词');
+  assert.equal(memory.get(memory.key(rewriteSongs, 12), account.epoch), undefined);
+  await model.more();
+  assert.deepEqual(calls, [
+    ['原词', 0],
+    ['原词', 10],
+    ['纠正词', 0],
+  ]);
+  await model.retrySongRewrite();
+  assert.deepEqual(calls.at(-1), ['纠正词', 0]);
+  assert.equal(model.error.value, '');
+  assert.deepEqual(visibleSongReceipts(model.view.value), ['纠正词:0']);
+  assert.equal(model.retrySongRewrite(), undefined);
+});
+
+test('a late rewritten head cannot take over a new account or its browsing memory', async () => {
+  const readOld = deferred<AccountData<SearchResultView>>();
+  const startedOld = deferred<void>();
+  const calls: [string, string, number][] = [];
+  const memory = createSearchViewportMemory();
+  const model = useSearchResults(
+    {
+      searchResults: async (epoch, q) => {
+        calls.push([epoch, q.keyword, q.offset]);
+        if (epoch === '2') return { ...rewrittenSongPage(q, '20'), epoch };
+        if (q.keyword === '原词') return rewrittenSongPage(q, '1', '旧账号纠正');
+        startedOld.resolve();
+        return readOld.promise;
+      },
+    },
+    () => assert.fail('late expiry'),
+    memory,
+  );
+  model.connect(account);
+  const old = openRewriteSongs(model);
+  await startedOld.promise;
+  model.connect({ ...account, epoch: '2' });
+  await openRewriteSongs(model);
+  readOld.resolve(rewrittenSongPage({ ...rewriteSongs, keyword: '旧账号纠正' }, '99', '不得继续'));
+  await old;
+  assert.deepEqual(calls, [
+    ['1', '原词', 0],
+    ['1', '旧账号纠正', 0],
+    ['2', '原词', 0],
+  ]);
+  assert.equal(model.songRewrite.value, null);
+  assert.equal(model.view.value?.sections[0]?.items[0]?.kind, 'song');
+  assert.deepEqual(visibleSongReceipts(model.view.value), ['原词:0']);
+  assert.equal(memory.get(memory.key(rewriteSongs, 12), '1'), undefined);
+  assert.deepEqual(visibleSongReceipts(memory.get(memory.key(rewriteSongs, 12), '2')?.view), [
+    '原词:0',
+  ]);
+});
+
+test('signed song rewrite loops and excessive chains stop before another automatic request', async () => {
+  for (const [targets, expected] of [
+    [
+      ['乙', '原词'],
+      ['原词', '乙'],
+    ],
+    [
+      ['乙', '丙', '丁', '戊'],
+      ['原词', '乙', '丙', '丁'],
+    ],
+  ] as const) {
+    const calls: string[] = [];
+    const model = useSearchResults(
+      {
+        searchResults: async (_epoch, q) => {
+          assert.equal(q.offset, 0);
+          const correction = targets[calls.length] ?? null;
+          calls.push(q.keyword);
+          return rewrittenSongPage(q, '1', correction);
+        },
+      },
+      () => assert.fail('no expiry'),
+    );
+    model.connect(account);
+    await openRewriteSongs(model);
+    await model.more();
+    assert.deepEqual(calls, expected);
+    assert.match(model.error.value, /纠错结果反复变化/);
+    assert.equal(model.view.value, undefined);
+    assert.equal(model.loading.value, false);
+    assert.equal(model.songRewrite.value, expected.at(-1));
+  }
+});
+
+test('a verified rewrite to the original is authoritative over the inherited term', async () => {
+  const calls: [string, number][] = [];
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        calls.push([q.keyword, q.offset]);
+        if (q.keyword === '综合继承词' && q.offset) return rewrittenSongPage(q, '2', '原词');
+        return rewrittenSongPage(q, '1');
+      },
+    },
+    () => assert.fail('no expiry'),
+  );
+  model.connect(account);
+  await model.open(
+    { ...rewriteSongs, keyword: '综合继承词' },
+    false,
+    12,
+    '原词',
+    undefined,
+    undefined,
+    signedWaterfall,
+  );
+  assert.equal(model.songRewrite.value, '综合继承词');
+  await model.more();
+  assert.deepEqual(calls, [
+    ['综合继承词', 0],
+    ['综合继承词', 10],
+    ['原词', 0],
+  ]);
+  assert.equal(model.songRewrite.value, null);
+  assert.deepEqual(visibleSongReceipts(model.view.value), ['原词:0']);
+});
+
+test('a mismatched echo never authorizes a rewrite or replacement', async () => {
+  const calls: [string, number][] = [];
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        calls.push([q.keyword, q.offset]);
+        return q.offset
+          ? rewrittenSongPage({ ...q, keyword: '别的请求' }, '2', '不应继续')
+          : rewrittenSongPage(q, '1');
+      },
+    },
+    () => assert.fail('no expiry'),
+  );
+  model.connect(account);
+  await openRewriteSongs(model);
+  await model.more();
+  assert.deepEqual(calls, [
+    ['原词', 0],
+    ['原词', 10],
+  ]);
+  assert.equal(model.moreError.value, '搜索结果已更新，请重试');
+  assert.equal(model.songRewriteReset.value, 0);
+  assert.deepEqual(visibleSongReceipts(model.view.value), ['原词:0']);
+});
+
+test('still-search, numbered pages and guest reads do not acquire signed waterfall rewriting', async () => {
+  const cases: [AccountView, SearchResultQuery, boolean, string | undefined][] = [
+    [account, { ...rewriteSongs, correct: false, channel: undefined }, false, 'original-receipt'],
+    [account, { ...rewriteSongs, offset: 30, limit: 30 }, false, undefined],
+    [{ ...account, status: 'signed_out' }, rewriteSongs, true, undefined],
+  ];
+  for (const [viewer, input, guest, receipt] of cases) {
+    const calls: [SearchResultQuery, string | undefined][] = [];
+    const model = useSearchResults(
+      {
+        searchResults: async (_epoch, q, _default, correction) => {
+          calls.push([q, correction]);
+          return rewrittenSongPage(q, '1', '未启用的重开');
+        },
+      },
+      () => assert.fail('no expiry'),
+    );
+    model.connect(viewer, guest);
+    await model.open(input, false, 12, '原词', undefined, receipt, signedWaterfall);
+    assert.deepEqual(calls, [[input, receipt]]);
+    assert.equal(model.songRewrite.value, undefined);
+    assert.equal(model.songRewriteReset.value, 0);
+    assert.deepEqual(visibleSongReceipts(model.view.value), [`原词:${input.offset}`]);
+  }
+});
+
 test('song waterfall retains its prefix and exact cursor through retry and numbered fallback', async () => {
   const calls: [number, number][] = [];
   let fail = true;

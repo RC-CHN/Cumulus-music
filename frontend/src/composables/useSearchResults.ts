@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue';
-import type { AccountView } from '../services/contracts.ts';
+import type { AccountData, AccountView } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { searchCardKey } from '../services/searchCards.ts';
 import {
@@ -21,6 +21,41 @@ import type {
 // Keep a song/lyric visit within the native playback selection and renderer limits.
 export const SEARCH_PLAYBACK_ROW_LIMIT = 500;
 const LYRIC_TEXT_LIMIT = 2 * 1024 * 1024;
+// The official changes query and reads offset zero. Bound automatic
+// redirects locally so oscillating or chained upstream terms stop visibly.
+const SONG_REWRITE_LIMIT = 3;
+type SongRewriteVisit = {
+  original: string;
+  seen: Set<string>;
+  redirects: number;
+  pending?: SearchResultQuery;
+};
+type SongRead = {
+  epoch: string;
+  live(): boolean;
+  advance(): void;
+};
+const firstPage = (query: SearchResultQuery, keyword = query.keyword): SearchResultQuery => ({
+  ...query,
+  keyword,
+  offset: 0,
+});
+const sameSongQuery = (a: SearchResultQuery, b: SearchResultQuery) =>
+  b.category === 'songs' &&
+  a.keyword === b.keyword &&
+  a.offset === b.offset &&
+  a.limit === b.limit &&
+  a.correct === b.correct &&
+  a.channel === b.channel;
+const invalidSongRewrite = () => ({
+  code: 'unavailable',
+  message: '纠错结果反复变化，请重试或仍然搜索原词',
+});
+const validRewrite = (keyword: string) =>
+  typeof keyword === 'string' &&
+  !!keyword.trim() &&
+  Array.from(keyword).length <= 256 &&
+  !/[\u0000-\u001f\u007f-\u009f]/u.test(keyword);
 const lyricSize = (item: SearchResultView['sections'][number]['items'][number]) =>
   item.kind === 'song' ? item.excerpt.reduce((size, line) => size + line.length + 1, 0) : 0;
 
@@ -32,6 +67,8 @@ export function useSearchResults(
   const view = shallowRef<SearchResultView>(),
     tabs = shallowRef<readonly SearchCategory[]>(),
     correctionReminder = shallowRef<SearchCorrectionReminder>(),
+    songRewrite = shallowRef<string | null>(),
+    songRewriteReset = ref(0),
     loading = ref(false),
     error = ref(''),
     loadingMore = ref(false),
@@ -41,6 +78,7 @@ export function useSearchResults(
   const presentationChange = ref(0);
   let activeKey = '';
   let activeCorrectionReceipt: string | undefined;
+  let songVisit: SongRewriteVisit | undefined;
   let generation = 0,
     account: AccountView | undefined;
   let privilegeSerial = 0;
@@ -222,6 +260,8 @@ export function useSearchResults(
     if (next.epoch !== account?.epoch || next.status !== account?.status) observed = undefined;
     account = next;
     activeCorrectionReceipt = undefined;
+    songVisit = undefined;
+    songRewrite.value = undefined;
     guest = guestReady && (next.status === 'unknown' || next.status === 'signed_out');
     memory.connect(next);
     view.value = undefined;
@@ -263,6 +303,118 @@ export function useSearchResults(
         account?.epoch ?? '',
       );
   }
+  function showSongTerm(visit: SongRewriteVisit, term: string) {
+    // null is authoritative original text; undefined means this lane is
+    // inactive, when the renderer can still use an inherited rewrite.
+    songRewrite.value = term.trim() === visit.original.trim() ? null : term;
+  }
+
+  function retireSongRows(visit: SongRewriteVisit, requested: SearchResultQuery, read: SongRead) {
+    if (visit.pending) return;
+    read.advance();
+    visit.pending = firstPage(requested);
+    memory.forget(activeKey, read.epoch);
+    view.value = undefined;
+    position.value = { top: 0, tracks: 0 };
+    moreError.value = '';
+    manualMore.value = false;
+    loading.value = true;
+    loadingMore.value = false;
+    songRewriteReset.value++;
+  }
+
+  async function settleSongRead(
+    visit: SongRewriteVisit,
+    read: SongRead,
+    requested: SearchResultQuery,
+    first: AccountData<SearchResultView>,
+  ): Promise<{ page: SearchResultView; replaced: boolean } | undefined> {
+    let query = requested,
+      reply = first;
+    let replaced = !!visit.pending;
+    while (read.live()) {
+      const page = reply.value;
+      if (reply.epoch !== read.epoch || !sameSongQuery(query, page.query))
+        throw { code: 'stale', message: '搜索结果已更新，请重试' };
+      const rewrite = page.correction;
+      if (rewrite === null || rewrite === query.keyword) {
+        visit.pending = undefined;
+        showSongTerm(visit, query.keyword);
+        return { page, replaced };
+      }
+      // M3001 can publish a rewrite on a continuation, before appending;
+      // M3095 clears Songs and loads the new term at offset zero. Discard
+      // the redirecting rows and their native receipts in either case.
+      retireSongRows(visit, query, read);
+      replaced = true;
+      if (
+        !validRewrite(rewrite) ||
+        visit.seen.has(rewrite.trim()) ||
+        visit.redirects >= SONG_REWRITE_LIMIT
+      )
+        throw invalidSongRewrite();
+      visit.seen.add(rewrite.trim());
+      visit.redirects++;
+      query = firstPage(query, rewrite);
+      visit.pending = query;
+      showSongTerm(visit, rewrite);
+      reply = await core.searchResults(read.epoch, query);
+    }
+  }
+
+  function retrySongRewrite(): Promise<void> | undefined {
+    const visit = songVisit;
+    const query = visit?.pending;
+    if (!visit || !query || !account || !canRead()) return;
+    if (loading.value) return Promise.resolve();
+    const epoch = account.epoch;
+    let current = ++generation;
+    const live = () => !closed && generation === current && account?.epoch === epoch;
+    loading.value = true;
+    error.value = '';
+    songRewriteReset.value++;
+    return (async () => {
+      try {
+        const result = await core.searchResults(epoch, query);
+        const next = await settleSongRead(
+          visit,
+          {
+            epoch,
+            live,
+            advance: () => {
+              current = ++generation;
+            },
+          },
+          query,
+          result,
+        );
+        if (next && live()) {
+          view.value = next.page;
+          save();
+        }
+      } catch (e) {
+        if (live()) reportReadError(e, true);
+      } finally {
+        if (live()) loading.value = false;
+      }
+    })();
+  }
+
+  function reportReadError(e: unknown, main: boolean) {
+    const issue = failure(e);
+    if (main) error.value = issue.message;
+    else {
+      moreError.value = issue.message;
+      save();
+    }
+    if (!guest && (issue.code === 'session_expired' || issue.code === 'profile_changed')) {
+      memory.clear();
+      tabs.value = undefined;
+      correctionReminder.value = undefined;
+      expired();
+    }
+  }
+
   async function open(
     query: SearchResultQuery,
     reuse = false,
@@ -270,13 +422,33 @@ export function useSearchResults(
     originalKeyword = query.keyword,
     defaultReceipt?: string,
     correctionReceipt?: string,
+    followSongRewrites = false,
   ) {
     if (!account || !canRead()) return;
-    const epoch = account.epoch,
-      current = ++generation;
+    const epoch = account.epoch;
+    let current = ++generation;
+    const live = () => !closed && current === generation && account?.epoch === epoch;
     activeKey = memory.key(query, session);
     activeCorrectionReceipt = query.correct ? undefined : correctionReceipt;
     const cached = reuse ? memory.get(activeKey, epoch) : undefined;
+    const song =
+      followSongRewrites &&
+      account.status === 'authenticated' &&
+      query.category === 'songs' &&
+      query.correct &&
+      query.offset === 0
+        ? {
+            original: originalKeyword,
+            seen: new Set([
+              query.keyword.trim(),
+              (cached?.view.query.keyword ?? query.keyword).trim(),
+            ]),
+            redirects: 0,
+          }
+        : undefined;
+    songVisit = song;
+    songRewrite.value = undefined;
+    if (song) showSongTerm(song, cached?.view.query.keyword ?? query.keyword);
     tabs.value = memory.getTabs(session, epoch);
     const updateReminder = (view?: SearchResultView) => {
       const reminder =
@@ -331,6 +503,25 @@ export function useSearchResults(
           : activeCorrectionReceipt
             ? await core.searchResults(epoch, query, undefined, activeCorrectionReceipt)
             : await core.searchResults(epoch, query);
+      if (song) {
+        const next = await settleSongRead(
+          song,
+          {
+            epoch,
+            live,
+            advance: () => {
+              current = ++generation;
+            },
+          },
+          query,
+          result,
+        );
+        if (next && live()) {
+          view.value = next.page;
+          save();
+        }
+        return;
+      }
       if (current === generation && account?.epoch === epoch && result.epoch === epoch) {
         const observation = memory.presentation(epoch);
         const projected = await projectPresentation(result.value, epoch, observation);
@@ -351,15 +542,7 @@ export function useSearchResults(
         if (latest && latest.revision !== observation?.revision) void refreshPresentation(latest);
       }
     } catch (e) {
-      if (current !== generation) return;
-      const issue = failure(e);
-      error.value = issue.message;
-      if (!guest && (issue.code === 'session_expired' || issue.code === 'profile_changed')) {
-        memory.clear();
-        tabs.value = undefined;
-        correctionReminder.value = undefined;
-        expired();
-      }
+      if (live()) reportReadError(e, true);
     } finally {
       if (current === generation) loading.value = false;
     }
@@ -367,8 +550,10 @@ export function useSearchResults(
   async function more() {
     const previous = view.value;
     if (!previous?.more || loading.value || loadingMore.value || !account || !canRead()) return;
-    const current = generation,
-      epoch = account.epoch;
+    let current = generation;
+    const epoch = account.epoch;
+    const live = () => !closed && current === generation && account?.epoch === epoch;
+    const song = songVisit;
     loadingMore.value = true;
     moreError.value = '';
     try {
@@ -377,14 +562,37 @@ export function useSearchResults(
       const nextQuery = {
         ...previous.query,
         keyword:
-          (previous.query.correct ? previous.correction : undefined) ?? previous.query.keyword,
+          song || !previous.query.correct
+            ? previous.query.keyword
+            : (previous.correction ?? previous.query.keyword),
         offset: previous.nextOffset,
       };
       const result = activeCorrectionReceipt
         ? await core.searchResults(epoch, nextQuery, undefined, activeCorrectionReceipt)
         : await core.searchResults(epoch, nextQuery);
-      if (current !== generation || account?.epoch !== epoch || result.epoch !== epoch) return;
-      const next = result.value;
+      if (!live() || (!song && result.epoch !== epoch)) return;
+      let next = result.value;
+      if (song) {
+        const settled = await settleSongRead(
+          song,
+          {
+            epoch,
+            live,
+            advance: () => {
+              current = ++generation;
+            },
+          },
+          nextQuery,
+          result,
+        );
+        if (!settled || !live()) return;
+        next = settled.page;
+        if (settled.replaced) {
+          view.value = next;
+          save();
+          return;
+        }
+      }
       if (next.nextOffset <= previous.nextOffset && next.more)
         throw { code: 'unavailable', message: '搜索结果未更新，请重试' };
       let added = 0;
@@ -476,18 +684,12 @@ export function useSearchResults(
       };
       save();
     } catch (e) {
-      if (current !== generation) return;
-      const issue = failure(e);
-      moreError.value = issue.message;
-      save();
-      if (!guest && (issue.code === 'session_expired' || issue.code === 'profile_changed')) {
-        memory.clear();
-        tabs.value = undefined;
-        correctionReminder.value = undefined;
-        expired();
-      }
+      if (live()) reportReadError(e, !!song?.pending);
     } finally {
-      if (current === generation) loadingMore.value = false;
+      if (current === generation) {
+        loadingMore.value = false;
+        if (song) loading.value = false;
+      }
     }
   }
   function dispose() {
@@ -500,6 +702,8 @@ export function useSearchResults(
     view.value = undefined;
     tabs.value = undefined;
     correctionReminder.value = undefined;
+    songVisit = undefined;
+    songRewrite.value = undefined;
     loading.value = false;
     loadingMore.value = false;
     manualMore.value = false;
@@ -508,6 +712,9 @@ export function useSearchResults(
     view,
     tabs,
     correctionReminder,
+    songRewrite,
+    songRewriteReset,
+    retrySongRewrite,
     loading,
     error,
     loadingMore,

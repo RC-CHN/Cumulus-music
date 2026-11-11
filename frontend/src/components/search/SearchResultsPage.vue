@@ -180,11 +180,11 @@ const podcastFollow = useSearchPodcastFollow(
 const nextPage = computed(() =>
   view.value?.more ? advanceSearchPage(props.pagination, view.value.nextOffset) : undefined,
 );
-const rewrite = computed(() =>
-  props.correct === false
-    ? undefined
-    : (view.value?.correction ?? (category.value !== 'all' ? props.rewrittenKeyword : undefined)),
-);
+const rewrite = computed(() => {
+  if (props.correct === false) return;
+  if (model.songRewrite.value !== undefined) return model.songRewrite.value ?? undefined;
+  return view.value?.correction ?? (category.value !== 'all' ? props.rewrittenKeyword : undefined);
+});
 const matchingReminder = computed(() => {
   const reminder = model.correctionReminder.value;
   return reminder && reminder.rewrite === rewrite.value ? reminder : undefined;
@@ -195,9 +195,11 @@ const requestKeyword = computed(() =>
     ? (props.rewrittenKeyword ?? props.keyword)
     : props.keyword,
 );
-const matchKeyword = computed(() =>
-  category.value === 'all' ? props.keyword : (rewrite.value ?? requestKeyword.value),
-);
+const matchKeyword = computed(() => {
+  if (category.value === 'all') return props.keyword;
+  if (model.songRewrite.value === null) return props.keyword;
+  return rewrite.value ?? requestKeyword.value;
+});
 const lyrics = computed(() => category.value === 'lyrics');
 const songWaterfall = computed(() => category.value === 'songs' && props.pagination === undefined);
 const playlistWaterfall = computed(
@@ -746,6 +748,7 @@ function tabKey(event: KeyboardEvent, index: number) {
   choose(categories[next]!.key, true);
 }
 let restoring = false,
+  restoringSongRewrite = false,
   loadGeneration = 0,
   frame = 0;
 let scrollDeadline: ReturnType<typeof setTimeout> | undefined;
@@ -999,7 +1002,28 @@ async function restore() {
   restoring = false;
   maybeMore();
 }
+watch(
+  model.songRewriteReset,
+  () => {
+    clearResourceLink();
+    songShare.reset();
+    restoring = true;
+    restoringSongRewrite = true;
+    loadGeneration++;
+    cancelAnimationFrame(frame);
+    clearTimeout(scrollDeadline);
+    frame = 0;
+    if (panel.value?.contains(document.activeElement)) panel.value.focus({ preventScroll: true });
+  },
+  { flush: 'sync' },
+);
+watch(loading, (busy) => {
+  if (busy || !restoringSongRewrite) return;
+  restoringSongRewrite = false;
+  void restore();
+});
 async function load(reuse = false) {
+  restoringSongRewrite = false;
   clearResourceLink();
   songShare.reset();
   restoring = true;
@@ -1023,6 +1047,7 @@ async function load(reuse = false) {
     props.keyword,
     props.defaultReceipt,
     props.correctionReceipt,
+    songWaterfall.value && props.account.status === 'authenticated' && !props.guestReady,
   );
   if (generation === loadGeneration) void restore();
 }
@@ -1030,7 +1055,7 @@ async function retry() {
   const owner = panel.value;
   const owned = document.activeElement === retryButton.value;
   if (owned) owner?.focus({ preventScroll: true });
-  const request = load();
+  const request = model.retrySongRewrite() ?? load();
   const generation = loadGeneration;
   await request;
   await nextTick();
@@ -1521,7 +1546,14 @@ onBeforeUnmount(() => {
               :selection-label="category === 'songs' ? '单曲搜索结果' : undefined"
               :playlist-selection-scope="
                 category === 'songs'
-                  ? JSON.stringify([account.epoch, searchId, keyword, offset, section.id])
+                  ? JSON.stringify([
+                      account.epoch,
+                      searchId,
+                      keyword,
+                      offset,
+                      section.id,
+                      model.songRewriteReset.value,
+                    ])
                   : undefined
               "
               :original-recordings="originalRecordings"
