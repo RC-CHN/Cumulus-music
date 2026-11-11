@@ -180,8 +180,6 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
     if (
       !current ||
       disposed ||
-      busy.value ||
-      loading.value ||
       current.epoch !== expected.epoch ||
       current.revision !== expected.revision
     )
@@ -192,6 +190,8 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
       dismissalNotice.value = true;
       dismissalTimer = setTimeout(clearDismissalNotice, 3000);
     }
+    // The recovered card closes locally even during a refresh. The command
+    // gate still serializes native work and never replays a skipped dismiss.
     await command({ kind: 'dismiss', revision: current.revision });
   }
   async function cancelUnknown() {

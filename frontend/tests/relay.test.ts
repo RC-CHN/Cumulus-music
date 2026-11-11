@@ -146,6 +146,35 @@ test('relay timeout is silent and an old account cannot close an identical repla
     model.dispose();
   }
 });
+test('closing during refresh hides only that offer without interrupting the read', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pending = deferred<ReturnType<typeof reply>>();
+  let reads = 0;
+  const model = useRelay(
+    backend({
+      relayView: async () => (++reads === 2 ? pending.promise : reply()),
+      relayCommand: async () => assert.fail('dismiss must not interrupt the active read'),
+    }),
+  );
+  try {
+    model.connect(account);
+    await model.read(true);
+    const offer = model.offer.value!;
+    const refresh = model.read(true);
+    assert.equal(model.loading.value, true);
+    await model.dismiss(offer, 'close');
+    assert.equal(model.offer.value, undefined);
+    assert.equal(model.dismissalNotice.value, true);
+    assert.equal(model.loading.value, true);
+    pending.resolve(reply());
+    await refresh;
+    assert.equal(model.offer.value, undefined);
+    assert.equal(model.loading.value, false);
+    assert.equal(reads, 2);
+  } finally {
+    model.dispose();
+  }
+});
 test('relay lost IPC acknowledgement inspects native history without repeating the pull', async () => {
   let calls = 0,
     requestId = '';
