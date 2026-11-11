@@ -1,5 +1,8 @@
 """Verify natural EOF in the actual PlayerBar, Tauri, SQLite, and null libmpv."""
 import argparse
+from contextlib import contextmanager, nullcontext
+import ctypes
+from ctypes import wintypes
 import json
 import os
 from pathlib import Path
@@ -22,6 +25,44 @@ CASES = {
     'random-control': ('c', '1', 'ended', 'random', ['1', '2', '3']),
 }
 WIRE = '/api/song/enhance/player/url/v1'
+# The notice is centered inside the actual main window. Keep the pointer at
+# the primary display's outer corner; the DOM witness also rejects hover.
+POINTER_PARK = (4, 4)
+
+
+class WindowsCursor:
+    def __init__(self):
+        user32 = ctypes.WinDLL('user32', use_last_error=True)
+        self.get = user32.GetCursorPos
+        self.get.argtypes = [ctypes.POINTER(wintypes.POINT)]
+        self.get.restype = wintypes.BOOL
+        self.set = user32.SetCursorPos
+        self.set.argtypes = [ctypes.c_int, ctypes.c_int]
+        self.set.restype = wintypes.BOOL
+
+    def position(self):
+        point = wintypes.POINT()
+        if not self.get(ctypes.byref(point)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return point.x, point.y
+
+    def move(self, position):
+        if not self.set(*position):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+
+@contextmanager
+def parked_windows_cursor(cursor):
+    original = cursor.position()
+    cursor.move(POINTER_PARK)
+    try:
+        if cursor.position() != POINTER_PARK:
+            raise RuntimeError('could not park the Windows proof cursor')
+        yield POINTER_PARK
+    finally:
+        # Don't overwrite movement that occurred after the proof parked it.
+        if cursor.position() == POINTER_PARK:
+            cursor.move(original)
 
 
 def check(directory, case, capture, windows):
@@ -40,6 +81,9 @@ def check(directory, case, capture, windows):
     complete = read(directory / 'complete.json')
     assert complete['ok'] and complete['case'] == case and complete['group'] == group
     assert complete['target'] == target and complete['stageCount'] == len(stages), complete
+    if windows and skip:
+        for checkpoint in (after, complete):
+            assert checkpoint['skipPointer'] == {'hovered': False, 'events': []}, checkpoint['skipPointer']
     notices = check_skip_notices(stages, complete, skip)
     assert before['ids'] == after['ids'] and [row[0] for row in before['ids']] == display
     entries = dict(before['ids'])
@@ -272,13 +316,17 @@ def main():
         if windows:
             env['TMP'] = env['TEMP']
         host = work / 'host.log'
-        with host.open('x', encoding='utf-8') as log:
-            launcher = launch_webview if windows else launch
-            status = launcher(binary, env, log, output, args.screenshots)
+        park = windows and CASES[case][2] == 'playing'
+        with (parked_windows_cursor(WindowsCursor()) if park else nullcontext()) as cursor:
+            with host.open('x', encoding='utf-8') as log:
+                launcher = launch_webview if windows else launch
+                status = launcher(binary, env, log, output, args.screenshots)
         failed = output / 'failed.json'
         assert not failed.exists(), read(failed) if failed.exists() else None
         assert status == 0 and 'panicked at' not in host.read_text(encoding='utf-8'), host
         cases[case] = check(output, case, args.screenshots, windows)
+        if cursor is not None:
+            cases[case]['parkedWindowsCursor'] = list(cursor)
     report = {'actualWebView': True, 'decoder': 'libmpv', 'audioOutput': 'null',
               'webViewRuntime': 'WebView2' if windows else 'WebKitGTK',
               'windowsMediaRuntime': windows_media, 'physicalAudioOutputVerified': False,

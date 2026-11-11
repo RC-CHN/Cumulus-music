@@ -76,6 +76,16 @@
   const actions = [];
   const replies = [];
   const skipNotice = window.__observeOrdinarySkipNotice();
+  const noticeSelector = '.ordinary-skip-layer .ordinary-skip-notice';
+  const hoverEvents = [];
+  function noteHover(event) {
+    if (event.isTrusted && event.target instanceof Element && event.target.matches(noticeSelector)
+        && hoverEvents.length < 16) {
+      hoverEvents.push({ type: event.type, x: event.clientX, y: event.clientY, at: performance.now() });
+    }
+  }
+  for (const type of ['mouseenter', 'mouseleave']) document.addEventListener(type, noteHover, true);
+  const skipPointer = () => ({ hovered: Boolean(one(noticeSelector + ':hover')), events: hoverEvents });
   let core;
   let original;
   try {
@@ -118,7 +128,8 @@
       assert(paintSamples.some((sample) => sample.color !== 'rgb(0, 0, 0)'), 'not an all-black frame');
       await emit(label, {
         actual: true, case: caseName, group, online: navigator.onLine, player: state(view),
-        dom: dom(), ids: idsOf(q), current: q.current, actions, replies, skipNotices: toast.visible,
+        dom: dom(), ids: idsOf(q), current: q.current, actions, replies,
+        skipNotices: toast.visible, skipPointer: skipPointer(),
         screenX, screenY, ratio: devicePixelRatio, paintSamples,
       });
       if (toast.visible.length && window.__CUMULUS_PROOF_ACK__ === label)
@@ -276,12 +287,14 @@
       }
     }
     const notices = await skipNotice.finish(skip);
-    await emit('complete', { ok: true, case: caseName, group, target, notices,
+    await emit('complete', { ok: true, case: caseName, group, target, notices, skipPointer: skipPointer(),
       stageCount: randomControl ? 5 : controlNext ? 3 : 2 });
   } catch (error) {
     await emit('failed', { ok: false, case: caseName, error: String(error),
-      state: bar()?.dataset.state, trackId: bar()?.dataset.trackId, online: navigator.onLine, actions, replies });
+      state: bar()?.dataset.state, trackId: bar()?.dataset.trackId, online: navigator.onLine,
+      actions, replies, skipPointer: skipPointer() });
   } finally {
+    for (const type of ['mouseenter', 'mouseleave']) document.removeEventListener(type, noteHover, true);
     skipNotice.stop();
     if (core && original) core.playerAction = original;
   }
