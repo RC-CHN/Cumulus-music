@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from linux_webview_apt import DIRECT_INDEX_OPTIONS, timed
 from linux_webview_apt_mirrors import (
-    DIRECT_MIRRORS, DOWNLOAD_DEADLINE, KEYRING, MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE,
+    DIRECT_DOWNLOAD_DEADLINE, DIRECT_MIRRORS, DOWNLOAD_DEADLINE, KEYRING, MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE,
     AptDeadline, Mirror, acquire, deadline_command, direct_sources, preflight, release_date,
     signed_noble_suites, verify_fresh_indexes,
 )
@@ -52,15 +52,15 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
         return args, events
 
     def test_download_deadline_revalidates_before_single_install(self):
-        args, events = self.fixture(fail_download=AptDeadline('download', DOWNLOAD_DEADLINE))
+        args, events = self.fixture(fail_download=AptDeadline('download', DIRECT_DOWNLOAD_DEADLINE))
         with acquire(*args, (CANONICAL, MIT)) as ready:
             self.assertEqual(ready, (MIT, True))
             events.append('normal install')
         self.assertEqual(events, [
             ('update', 'Canonical', UPDATE_DEADLINE),
-            ('fresh plan', 'Canonical'), ('download-only', 'Canonical', DOWNLOAD_DEADLINE),
+            ('fresh plan', 'Canonical'), ('download-only', 'Canonical', DIRECT_DOWNLOAD_DEADLINE),
             'discard archives', ('update', 'MIT', UPDATE_DEADLINE),
-            ('fresh plan', 'MIT'), ('download-only', 'MIT', DOWNLOAD_DEADLINE), 'normal install',
+            ('fresh plan', 'MIT'), ('download-only', 'MIT', DIRECT_DOWNLOAD_DEADLINE), 'normal install',
         ])
 
     def test_update_deadline_never_admits_old_plan(self):
@@ -92,7 +92,7 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
             raise AptDeadline('install fixture', 1)
         self.assertEqual(events, [('update', 'Canonical', UPDATE_DEADLINE),
                                   ('fresh plan', 'Canonical'),
-                                  ('download-only', 'Canonical', DOWNLOAD_DEADLINE)])
+                                  ('download-only', 'Canonical', DIRECT_DOWNLOAD_DEADLINE)])
 
     def test_final_deadline_stops_without_install_or_third_attempt(self):
         args, events = self.fixture()

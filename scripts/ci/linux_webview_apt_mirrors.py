@@ -18,6 +18,10 @@ SOURCES = Path('/etc/apt/sources.list.d/ubuntu.sources')
 KEYRING = '/usr/share/keyrings/ubuntu-archive-keyring.gpg'
 UPDATE_DEADLINE = 75
 DOWNLOAD_DEADLINE = 150
+# On run 43046670469, each signed direct route completed its index update,
+# but the 208–223 MB cold plans needed up to about seven minutes at the
+# observed archive rate. Keep a hard bound without cutting a moving fetch.
+DIRECT_DOWNLOAD_DEADLINE = 600
 KILL_GRACE = 5
 PROBE_TIMEOUT = 6
 MAX_RELEASE = 512 * 1024
@@ -231,7 +235,7 @@ def acquire(update, prepare, download, reset, routes):
         try:
             update(mirror, UPDATE_DEADLINE)
             prepare(mirror)
-            download(mirror, DOWNLOAD_DEADLINE)
+            download(mirror, DIRECT_DOWNLOAD_DEADLINE if mirror is not None else DOWNLOAD_DEADLINE)
         except AptDeadline as error:
             if index + 1 == len(routes):
                 raise
