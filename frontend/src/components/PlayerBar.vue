@@ -26,6 +26,7 @@ import { useCore } from '../services/core';
 import { useVolumeDiagnosis } from '../composables/useVolumeDiagnosis';
 import type { VolumeDiagnosisDismissal } from '../services/systemMasterVolume';
 import PlaybackSpeed from './PlaybackSpeed.vue';
+import { songSpeedMoreTarget } from '../services/songSpeedMore';
 import PlaybackQuality from './PlaybackQuality.vue';
 import PlaybackVolume from './PlaybackVolume.vue';
 import PlaybackMode from './PlaybackMode.vue';
@@ -222,6 +223,10 @@ const currentCatalog = computed<CurrentCatalogTrack | undefined>((previous) => {
     return previous;
   return current;
 });
+const speedControl = ref<InstanceType<typeof PlaybackSpeed>>();
+const speedMore = computed(() =>
+  songSpeedMoreTarget(view.value, props.account.epoch, ready.value, props.togetherActive),
+);
 const songShareTarget = computed(() =>
   currentSongShareTarget(view.value, props.account.epoch, props.togetherActive),
 );
@@ -892,7 +897,12 @@ watch(
     </div>
     <div class="player-tools">
       <PlaybackQuality :player="player" @member="emit('member')" />
-      <PlaybackSpeed :player="player" :together-active="togetherActive" />
+      <PlaybackSpeed
+        ref="speedControl"
+        :player="player"
+        :together-active="togetherActive"
+        :menu-only="!!speedMore"
+      />
       <div class="volume-diagnosis-anchor">
         <PlaybackVolume ref="volumeControl" :player="player" @diagnose="volumeDiagnosis.check" />
         <MenuTransition>
@@ -1014,10 +1024,12 @@ watch(
         :selection="currentCatalog"
         :entry-id="view?.entryId ?? undefined"
         :share-target="songShareTarget"
+        :song-speed="speedMore"
         :account-epoch="account.epoch"
         :effects-available="ready"
         @catalog="(resource) => emit('catalog', resource)"
         @effects="openAudioEffects"
+        @song-speed="(anchor) => speedControl?.showAt(anchor)"
         @login="emit('login')"
         @expired="emit('expired')"
       />

@@ -4,7 +4,9 @@ import type { PlayerModel } from '../composables/usePlayer';
 import ActionMenu from './ActionMenu.vue';
 import SongPlaybackSpeed from './SongPlaybackSpeed.vue';
 import { failure } from '../services/contracts';
-const props = defineProps<{ player: PlayerModel; togetherActive?: boolean }>();
+const props = defineProps<{ player: PlayerModel; togetherActive?: boolean; menuOnly?: boolean }>();
+const songPanel = ref<InstanceType<typeof SongPlaybackSpeed>>();
+defineExpose({ showAt: (anchor: HTMLElement) => songPanel.value?.showAt(anchor) });
 const song = computed(() => props.player.view.value?.speedScope !== 'voice');
 const official = computed(() => (song.value ? props.player.view.value?.songSpeed : undefined));
 const menu = ref<InstanceType<typeof ActionMenu>>();
@@ -62,7 +64,9 @@ async function choose(key: string) {
 <template>
   <SongPlaybackSpeed
     v-if="official?.enabled && !togetherActive && player.view.value?.entryId"
+    ref="songPanel"
     :player="player"
+    :menu-only="menuOnly"
     :observation="official"
     :entry-id="player.view.value.entryId"
   />

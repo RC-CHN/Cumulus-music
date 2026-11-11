@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { usePlayer } from '../src/composables/usePlayer.ts';
+import { songSpeedMoreBounds, songSpeedMoreTarget } from '../src/services/songSpeedMore.ts';
 import type { CoreClient, AccountView } from '../src/services/contracts.ts';
 import {
   currentCatalogTrack,
@@ -63,6 +64,61 @@ function state(revision = '1', epoch = '1', playId: string | null = null): Playe
     historyWarning: null,
   };
 }
+test('current-song More uses only the exact eligible native song speed observation', () => {
+  const track = { id: '18', name: 'song', artists: [], album: '', duration: 120 };
+  const current: PlayerView = {
+    ...state('2', '4', 'audible'),
+    track,
+    resourceKind: 'catalog',
+    speedScope: 'song',
+    songSpeed: {
+      enabled: true,
+      revision: '8',
+      customTenths: 10,
+      customSelected: false,
+      syncFailed: false,
+    },
+  };
+  const target = (view: PlayerView, epoch = '4', ready = true, together = false) =>
+    songSpeedMoreTarget(view, epoch, ready, together);
+  assert.deepEqual(target(current), { key: '["4","audible","audible","8"]', label: '播放倍速' });
+  assert.equal(target({ ...current, speed: 1.3 })?.label, '播放倍速：1.3X');
+  assert.equal(
+    target({ ...current, songSpeed: { ...current.songSpeed!, enabled: false } }),
+    undefined,
+  );
+  assert.equal(target({ ...current, songSpeed: undefined }), undefined);
+  assert.equal(target({ ...current, resourceKind: 'local' }), undefined);
+  assert.equal(
+    target({ ...current, speedScope: 'voice', track: { ...track, voiceId: '18' } }),
+    undefined,
+  );
+  assert.equal(target({ ...current, entryId: null }), undefined);
+  assert.equal(target(current, '3'), undefined);
+  assert.equal(target(current, '4', false), undefined);
+  assert.equal(target(current, '4', true, true), undefined);
+  assert.notEqual(target({ ...current, playId: 'next' })?.key, target(current)?.key);
+  assert.notEqual(
+    target({ ...current, songSpeed: { ...current.songSpeed!, revision: '9' } })?.key,
+    target(current)?.key,
+  );
+});
+
+test('song speed panel follows the More right edge and remains inside a small viewport', () => {
+  assert.deepEqual(songSpeedMoreBounds({ right: 1080, top: 690 }, 1120, 760), {
+    left: 862,
+    top: 444,
+    width: 218,
+    height: 246,
+  });
+  assert.deepEqual(songSpeedMoreBounds({ right: 180, top: 90 }, 200, 160), {
+    left: 8,
+    top: 8,
+    width: 184,
+    height: 82,
+  });
+});
+
 test('current-song controls target only the displayed catalogue song', () => {
   const track = {
     id: '18',

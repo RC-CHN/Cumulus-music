@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { CatalogResource } from '../services/catalog';
 import type { MenuItem } from '../services/menu';
+import type { SongSpeedMoreTarget } from '../services/songSpeedMore';
 import type { CurrentCatalogTrack, PlayerSongShareTarget } from '../services/player';
 import { useCore } from '../services/core';
 import { useSongShare } from '../composables/useSearchSongShare';
@@ -15,10 +16,12 @@ const props = defineProps<{
   shareTarget?: PlayerSongShareTarget;
   accountEpoch: string;
   effectsAvailable: boolean;
+  songSpeed?: SongSpeedMoreTarget;
 }>();
 const emit = defineEmits<{
   catalog: [resource: CatalogResource];
   effects: [];
+  songSpeed: [anchor: HTMLElement];
   login: [];
   expired: [];
 }>();
@@ -44,6 +47,7 @@ watch(sharing.feedback, (message, _, onCleanup) => {
   onCleanup(() => clearTimeout(timer));
 });
 let opened: string | undefined;
+let openedSpeed: string | undefined;
 const selection = computed(() =>
   props.selection?.epoch === props.accountEpoch ? props.selection : undefined,
 );
@@ -57,12 +61,23 @@ watch(
   key,
   () => {
     opened = undefined;
+    openedSpeed = undefined;
     sharing.reset();
     menu.value?.close(menu.value.containsFocus());
   },
   { flush: 'sync' },
 );
 
+watch(
+  () => props.songSpeed?.key,
+  (next) => {
+    if (!opened || next === openedSpeed) return;
+    opened = undefined;
+    openedSpeed = undefined;
+    menu.value?.close(menu.value.containsFocus());
+  },
+  { flush: 'sync' },
+);
 const firstArtist = computed(() => selection.value?.track.artistRefs?.[0]);
 const items = computed<MenuItem[]>(() => {
   const track = selection.value?.track;
@@ -70,6 +85,12 @@ const items = computed<MenuItem[]>(() => {
   return [
     ...(props.shareTarget
       ? [{ key: 'share', label: '分享', icon: 'share', disabled: sharing.busy.value }]
+      : []),
+    ...(props.songSpeed
+      ? [
+          { key: 'song-speed', label: props.songSpeed.label, icon: 'speed' },
+          { key: 'song-speed-divider', label: '', separator: true },
+        ]
       : []),
     {
       key: 'artist',
@@ -90,8 +111,15 @@ function select(action: string) {
   const target = selection.value;
   if (!target || key.value !== opened) return;
   const shown = opened;
+  const speed = openedSpeed;
   opened = undefined;
+  openedSpeed = undefined;
   const { track } = target;
+  if (action === 'song-speed') {
+    const anchor = menu.value?.triggerElement();
+    if (speed && speed === props.songSpeed?.key && anchor) emit('songSpeed', anchor);
+    return;
+  }
   if (action === 'share') {
     const bound = props.shareTarget;
     const anchor = menu.value?.triggerElement();
@@ -129,6 +157,7 @@ function select(action: string) {
     :items="items"
     @opened="
       opened = key;
+      openedSpeed = songSpeed?.key;
       sharing.clearFeedback();
     "
     @select="select"
