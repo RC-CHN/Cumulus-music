@@ -11,6 +11,22 @@ pub struct DirectorySettings {
     pub file_type: u8,
     pub revision: String,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectoryChoiceDecision {
+    Ready,
+    SameDirectory,
+    NotWritable,
+    InsufficientSpace,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryChoice {
+    pub target: PathBuf,
+    pub revision: Option<String>,
+    pub decision: DirectoryChoiceDecision,
+    pub move_existing: bool,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MigrationPhase {

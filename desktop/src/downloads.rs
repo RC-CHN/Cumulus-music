@@ -458,6 +458,9 @@ pub async fn download_command<R: tauri::Runtime>(
     epoch: String,
     command: DownloadCommand,
 ) -> Result<DownloadResult, ClientError> {
+    if matches!(command, DownloadCommand::ChangeDirectory { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("download directory changes require main window").into());
+    }
     if matches!(command, DownloadCommand::Preferences { .. }) && window.label() != "main" {
         return Err(Error::InvalidInput("download quality settings require main window").into());
     }
@@ -469,6 +472,21 @@ pub async fn download_command<R: tauri::Runtime>(
     }
     client
         .download_command(&epoch, command)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn download_directory_preview<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    root: String,
+) -> Result<DownloadDirectoryPreview, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download directory preview requires main window").into());
+    }
+    client
+        .download_directory_preview(&epoch, root)
         .await
         .map_err(Into::into)
 }

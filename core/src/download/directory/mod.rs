@@ -1,5 +1,6 @@
 //! Official M/3022 relative-path migration and M/3097 directory/space checks.
 //! Cooperative quiescing and durable reverse-order rollback replace app restart.
+mod choice;
 pub(in crate::download) mod gate;
 pub(in crate::download) mod paths;
 mod plan;
@@ -64,15 +65,29 @@ impl DownloadDirectory {
         path_type: u8,
         file_type: u8,
     ) -> Result<DirectorySettings> {
+        let token = self.files.token()?;
+        let _lock = gate::lock(&self.files.store, &self.files.owner)?;
+        self.configure_locked(root, path_type, file_type, true, &token)
+    }
+    fn configure_locked(
+        &self,
+        root: &Path,
+        path_type: u8,
+        file_type: u8,
+        create: bool,
+        token: &Option<SessionToken>,
+    ) -> Result<DirectorySettings> {
         if path_type > 2 || file_type > 2 {
             return Err(Error::InvalidInput("download layout must be 0..2"));
         }
-        let token = self.files.token()?;
-        let _lock = gate::lock(&self.files.store, &self.files.owner)?;
-        self.files.guarded(&token, || {
+        self.files.guarded(token, || {
             gate::require(&self.files.store, &self.files.owner, None)
         })?;
-        let root = paths::root(root, self.files.store.directory(), true)?;
+        let selected = root;
+        let root = paths::root(selected, self.files.store.directory(), create)?;
+        if !create && root != selected {
+            return Err(Error::StaleResponse);
+        }
         paths::writable(&root)?;
         let result = DirectorySettings {
             root,
@@ -80,7 +95,7 @@ impl DownloadDirectory {
             file_type,
             revision: new_id(),
         };
-        self.files.guarded(&token, || {
+        self.files.guarded(token, || {
             self.files.store.put(
                 &self.files.owner,
                 SETTINGS,
@@ -93,8 +108,17 @@ impl DownloadDirectory {
     pub fn start(&self, target: &Path, source: Option<&Path>) -> Result<MigrationView> {
         let token = self.files.token()?;
         let _directory = gate::lock(&self.files.store, &self.files.owner)?;
+        self.start_locked(target, source, true, &token)
+    }
+    fn start_locked(
+        &self,
+        target: &Path,
+        source: Option<&Path>,
+        create: bool,
+        token: &Option<SessionToken>,
+    ) -> Result<MigrationView> {
         let _files = OperationLock::acquire(self.files.store.directory(), "download-files", "all")?;
-        self.files.guarded(&token, || {
+        self.files.guarded(token, || {
             gate::require(&self.files.store, &self.files.owner, None)
         })?;
         let before = self.read_settings()?;
@@ -109,14 +133,18 @@ impl DownloadDirectory {
                 "source must match configured directory",
             ));
         }
-        let target = paths::root(target, self.files.store.directory(), true)?;
+        let selected = target;
+        let target = paths::root(selected, self.files.store.directory(), create)?;
+        if !create && target != selected {
+            return Err(Error::StaleResponse);
+        }
         if source.starts_with(&target) || target.starts_with(&source) {
             return Err(Error::InvalidInput(
                 "migration roots must be distinct and not nested",
             ));
         }
         paths::writable(&target)?;
-        let batch = self.files.guarded(&token, || {
+        let batch = self.files.guarded(token, || {
             self.files.store.transaction(|tx| {
                 let mut original = std::collections::BTreeMap::new();
                 for row in tx.rows(TASKS)? {
@@ -164,7 +192,7 @@ impl DownloadDirectory {
             })
         })?;
         self.event(DirectoryEvent::Intent, &batch)?;
-        self.guard(&batch, &token)?;
+        self.guard(&batch, token)?;
         Ok(batch.view)
     }
     pub fn get(&self, id: &str) -> Result<MigrationView> {

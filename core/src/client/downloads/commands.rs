@@ -513,6 +513,12 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                 .directory
                 .configure(std::path::Path::new(&root), path_type, file_type)?;
         }
+        DownloadCommand::ChangeDirectory { root, revision } => {
+            result.operation_id = context
+                .directory
+                .change_from_choice(std::path::Path::new(&root), revision.as_deref())?
+                .map(|operation| operation.id);
+        }
         DownloadCommand::Migrate { root } => {
             result.operation_id = Some(
                 context

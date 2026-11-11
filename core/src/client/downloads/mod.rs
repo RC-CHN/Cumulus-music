@@ -492,6 +492,26 @@ impl MusicClient {
     pub fn validate_download_epoch(&self, epoch: &str) -> Result<()> {
         self.downloads.inner.context(epoch).map(|_| ())
     }
+    pub async fn download_directory_preview(
+        &self,
+        epoch: &str,
+        root: String,
+    ) -> Result<DownloadDirectoryPreview> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            let choice = context
+                .directory
+                .preview_choice(std::path::Path::new(&root))?;
+            context.guard()?;
+            Ok(DownloadDirectoryPreview {
+                epoch: context.token.generation.to_string(),
+                choice,
+            })
+        })
+        .await
+        .map_err(|_| Error::State("directory preview worker stopped"))?
+    }
     pub(super) async fn configured_download_directory_available(
         &self,
         epoch: &str,

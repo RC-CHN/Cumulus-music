@@ -3,11 +3,12 @@ pub use super::collections::{CollectionPageView, CollectionView, FollowCard, Fol
 pub use super::community::topic::{CommunityTopic, CommunityTopicAction, CommunityTopicSlice};
 pub use super::downloads::{
     DownloadBatchCollectPlan, DownloadCategory, DownloadClearPlan, DownloadCollectCreation,
-    DownloadCollectCreationCommand, DownloadCollectPlan, DownloadCommand, DownloadFailure,
-    DownloadJobView, DownloadLikedDestination, DownloadQualityPreferences, DownloadQuery,
-    DownloadResult, DownloadShareAccess, DownloadSkip, DownloadSkipReason, DownloadSort,
-    DownloadTab, DownloadTaskView, DownloadsView, HistoryCollectPlan, LyricGroupCollectPlan,
-    SongDownloadState, TaskControl, VoiceDownloadConfirmation, VoiceDownloadPreparation,
+    DownloadCollectCreationCommand, DownloadCollectPlan, DownloadCommand, DownloadDirectoryPreview,
+    DownloadFailure, DownloadJobView, DownloadLikedDestination, DownloadQualityPreferences,
+    DownloadQuery, DownloadResult, DownloadShareAccess, DownloadSkip, DownloadSkipReason,
+    DownloadSort, DownloadTab, DownloadTaskView, DownloadsView, HistoryCollectPlan,
+    LyricGroupCollectPlan, SongDownloadState, TaskControl, VoiceDownloadConfirmation,
+    VoiceDownloadPreparation,
 };
 pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};

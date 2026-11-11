@@ -196,6 +196,11 @@ pub enum DownloadCommand {
         path_type: u8,
         file_type: u8,
     },
+    ChangeDirectory {
+        root: String,
+        #[serde(deserialize_with = "explicit_directory_revision")]
+        revision: Option<String>,
+    },
     Migrate {
         root: String,
     },
@@ -223,6 +228,17 @@ pub enum DownloadCommand {
     StopOperation {
         operation_id: String,
     },
+}
+fn explicit_directory_revision<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(deserializer)
+}
+#[derive(Serialize)]
+pub struct DownloadDirectoryPreview {
+    pub epoch: String,
+    #[serde(flatten)]
+    pub choice: crate::download::directory::DirectoryChoice,
 }
 #[derive(Serialize)]
 pub struct DownloadClearPlan {

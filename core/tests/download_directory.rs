@@ -2,6 +2,7 @@ mod support;
 use cumulus_core::{
     Error,
     account::AccountSession,
+    client::dto::DownloadCommand,
     download::{
         completed::{CompletedDownloads, FileAction, FileEvent, FileOptions},
         directory::*,
@@ -17,6 +18,121 @@ use cumulus_core::{
 use serde_json::json;
 use std::{fs, path::PathBuf, sync::Arc};
 const FLAC: &[u8] = include_bytes!("fixtures/tag_audio/seed.flac");
+
+#[tokio::test]
+async fn settings_choice_checks_existing_path_and_bytes_without_admitting_a_move() {
+    let f = Fixture::new();
+    let directory = f.directory();
+    let completed = f.completed("existing.flac").await;
+    let before = directory.settings().unwrap().unwrap();
+    let same = directory.preview_choice(&f.source).unwrap();
+    assert_eq!(same.decision, DirectoryChoiceDecision::SameDirectory);
+    let missing = directory.preview_choice(&f.target).unwrap();
+    assert_eq!(missing.decision, DirectoryChoiceDecision::NotWritable);
+    assert!(!f.target.exists());
+    fs::create_dir(&f.target).unwrap();
+    let old = f
+        .store
+        .get("1", "download_tasks_v1", &completed.id)
+        .unwrap()
+        .unwrap();
+    assert!(old["output_integrity"]["sha256"].is_string());
+    let mut oversized = old.clone();
+    oversized["output_integrity"]["bytes"] = json!(u64::MAX);
+    f.store
+        .put("1", "download_tasks_v1", &completed.id, &oversized)
+        .unwrap();
+    let full = directory.preview_choice(&f.target).unwrap();
+    assert_eq!(full.decision, DirectoryChoiceDecision::InsufficientSpace);
+    assert_eq!(full.revision.as_deref(), Some(before.revision.as_str()));
+    assert_eq!(directory.settings().unwrap(), Some(before));
+    assert!(directory.list().unwrap().is_empty());
+    assert!(fs::read_dir(&f.target).unwrap().next().is_none());
+    assert!(completed.target.unwrap().is_file());
+    f.store
+        .put("1", "download_tasks_v1", &completed.id, &old)
+        .unwrap();
+}
+
+#[tokio::test]
+async fn settings_choice_preserves_naming_and_rejects_a_stale_confirmation() {
+    let f = Fixture::new();
+    let directory = f.directory();
+    let completed = f.completed("ready.flac").await;
+    fs::create_dir(&f.target).unwrap();
+    let first = directory.preview_choice(&f.target).unwrap();
+    assert_eq!(first.decision, DirectoryChoiceDecision::Ready);
+    assert!(first.move_existing);
+    assert!(directory.active().unwrap().is_none());
+    directory.configure(&f.source, 1, 2).unwrap();
+    assert!(matches!(
+        directory.change_from_choice(&first.target, first.revision.as_deref()),
+        Err(Error::StaleResponse)
+    ));
+    assert!(directory.list().unwrap().is_empty());
+    let next = directory.preview_choice(&f.target).unwrap();
+    let operation = directory
+        .change_from_choice(&next.target, next.revision.as_deref())
+        .unwrap()
+        .unwrap();
+    assert_eq!(operation.phase, MigrationPhase::Quiescing);
+    let done = directory.resume(&operation.id).unwrap();
+    assert_eq!(done.phase, MigrationPhase::Complete);
+    let setting = directory.settings().unwrap().unwrap();
+    assert_eq!(
+        (setting.root, setting.path_type, setting.file_type),
+        (next.target, 1, 2)
+    );
+    assert!(!completed.target.unwrap().exists());
+    assert!(f.target.join("ready.flac").is_file());
+}
+
+#[test]
+fn first_settings_choice_requires_explicit_empty_revision_and_does_not_move_another_owner() {
+    let f = Fixture::new();
+    let other = DownloadDirectory::offline(f.store.clone(), "2").unwrap();
+    fs::create_dir(&f.target).unwrap();
+    let preview = other.preview_choice(&f.target).unwrap();
+    assert_eq!(preview.decision, DirectoryChoiceDecision::Ready);
+    assert!(!preview.move_existing);
+    assert_eq!(preview.revision, None);
+    let mut request = json!({"kind":"change_directory","root":preview.target});
+    assert!(serde_json::from_value::<DownloadCommand>(request.clone()).is_err());
+    request["revision"] = serde_json::Value::Null;
+    assert!(matches!(
+        serde_json::from_value::<DownloadCommand>(request),
+        Ok(DownloadCommand::ChangeDirectory { revision: None, .. })
+    ));
+    assert!(
+        other
+            .change_from_choice(&preview.target, None)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(other.settings().unwrap().unwrap().root, preview.target);
+    assert_eq!(f.directory().settings().unwrap().unwrap().root, f.source);
+}
+
+#[cfg(unix)]
+#[test]
+fn settings_confirmation_refuses_a_path_redirected_after_preview() {
+    let f = Fixture::new();
+    let directory = f.directory();
+    fs::create_dir(&f.target).unwrap();
+    let preview = directory.preview_choice(&f.target).unwrap();
+    assert_eq!(preview.decision, DirectoryChoiceDecision::Ready);
+    let different = f.root.path().join("replacement");
+    fs::create_dir(&different).unwrap();
+    fs::remove_dir(&f.target).unwrap();
+    std::os::unix::fs::symlink(&different, &f.target).unwrap();
+    assert!(matches!(
+        directory.change_from_choice(&preview.target, preview.revision.as_deref()),
+        Err(Error::StaleResponse)
+    ));
+    assert!(directory.list().unwrap().is_empty());
+    assert!(fs::read_dir(different).unwrap().next().is_none());
+}
+
 struct Fixture {
     root: tempfile::TempDir,
     source: PathBuf,
