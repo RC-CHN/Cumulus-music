@@ -5,7 +5,9 @@ import stat
 import tempfile
 import unittest
 
-from linux_package_probe_artifact import CORE, LOCAL_SHARDS, RECEIPT, SHARDS, restore, stage
+from linux_package_probe_artifact import (
+    CATALOG_SHARDS, CORE, LOCAL_SHARDS, RECEIPT, SHARDS, restore, stage,
+)
 
 
 @unittest.skipUnless(os.name == 'posix', 'Linux executable mode and links')
@@ -102,6 +104,29 @@ class LinuxPackageProbeArtifact(unittest.TestCase):
             self.assertEqual({file.name for file in output.iterdir()}, set(names))
             mini_digests.add(next(row['sha256'] for row in result['binaries'] if row['name'] == 'mini_ui_probe'))
         self.assertEqual(len(mini_digests), 1)
+
+    def test_catalog_shards_reuse_one_binary_and_reject_a_replaced_probe(self):
+        suite = 'catalog'
+        self.write_probes(CATALOG_SHARDS)
+        catalog = self.artifact.parent / 'catalog'
+        stage(catalog, self.examples, None, self.dist, self.identity, suite=suite)
+        digests = set()
+        for shard, names in CATALOG_SHARDS.items():
+            source = catalog / shard
+            output = self.output / shard
+            result = json.loads(restore(source, output, shard, self.dist, self.identity, suite=suite))
+            self.assertEqual(result['kind'], 'linux-catalog-probes-v1')
+            self.assertEqual({file.name for file in output.iterdir()}, set(names))
+            digests.add(next(row['sha256'] for row in result['binaries']
+                             if row['name'] == 'catalog_ui_probe'))
+        self.assertEqual(len(digests), 1)
+        source = catalog / 'catalog-community'
+        probe = source / 'comment_edit_ui_probe'
+        probe.write_bytes(probe.read_bytes() + b'changed')
+        replacement = self.output / 'replacement'
+        with self.assertRaisesRegex(ValueError, 'receipt mismatch'):
+            restore(source, replacement, 'catalog-community', self.dist, self.identity, suite=suite)
+        self.assertFalse(any(replacement.iterdir()))
 
 
 if __name__ == '__main__':

@@ -25,9 +25,14 @@ LOCAL_SHARDS = {
     'local-files-cloud': ('mini_ui_probe', 'local_ui_probe', 'local_batch_favorite_ui_probe'),
     'mini-player-lyrics': ('mini_ui_probe', 'desktop_lyrics_ui_probe'),
 }
+CATALOG_SHARDS = {
+    'catalog-browse': ('catalog_ui_probe', 'discovery_home_ui_probe'),
+    'catalog-community': ('catalog_ui_probe', 'comment_edit_ui_probe', 'community_ui_probe'),
+}
 SUITES = {
     'media': ('linux-packaged-media-probes-v1', SHARDS),
     'local-desktop': ('linux-local-desktop-probes-v1', LOCAL_SHARDS),
+    'catalog': ('linux-catalog-probes-v1', CATALOG_SHARDS),
 }
 
 

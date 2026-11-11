@@ -1541,15 +1541,19 @@ jobs:
       - *linux_webview_toolchain
       - *linux_webview_rust_downloads
       - *linux_webview_dist
-      - name: Build and bind the Linux local desktop test probes
+      - name: Build and bind the Linux local desktop and catalog test probes
         run: |
           test -f frontend/dist/index.html
           cargo build -p cumulus-desktop --features custom-protocol --locked \
             --example mini_ui_probe --example local_ui_probe --example local_batch_favorite_ui_probe \
-            --example desktop_lyrics_ui_probe
+            --example desktop_lyrics_ui_probe --example catalog_ui_probe --example discovery_home_ui_probe \
+            --example comment_edit_ui_probe --example community_ui_probe
           python3 scripts/ci/linux_package_probe_artifact.py stage --suite local-desktop \
             --examples .build/target/debug/examples --frontend-dist frontend/dist \
             --artifact "$RUNNER_TEMP/cumulus-linux-local-probes"
+          python3 scripts/ci/linux_package_probe_artifact.py stage --suite catalog \
+            --examples .build/target/debug/examples --frontend-dist frontend/dist \
+            --artifact "$RUNNER_TEMP/cumulus-linux-catalog-probes"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-local-probes-local-files-cloud-attempt-${{ github.run_attempt }}
@@ -1561,6 +1565,20 @@ jobs:
         with:
           name: linux-local-probes-mini-player-lyrics-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/cumulus-linux-local-probes/mini-player-lyrics/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-catalog-probes-catalog-browse-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-catalog-probes/catalog-browse/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-catalog-probes-catalog-community-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-catalog-probes/catalog-community/
           if-no-files-found: error
           retention-days: 3
           compression-level: 1
@@ -1887,7 +1905,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [playback, playback-podcasts, playback-startup, library-search, library-actions, account-auth, account-shell, catalog-browse, catalog-community]
+        shard: [playback, playback-podcasts, playback-startup, library-search, library-actions, account-auth, account-shell]
     defaults:
       run:
         shell: bash
@@ -2220,6 +2238,43 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
+      - *linux_webview_disk_after
+      - *linux_webview_failure_checkpoints
+      - *linux_webview_failure_checkpoints_upload
+      - *linux_webview_diagnostics
+      - *linux_webview_diagnostics_upload
+
+  linux-webview-catalog:
+    name: Linux WebView (${{ matrix.shard }})
+    # The shared UX producer supplies the signed APT cache; these checks use
+    # only their own catalog executables, built once beside the local probes.
+    needs: [frontend, linux-webview-probe, linux-local-probes]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [catalog-browse, catalog-community]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *linux_webview_checkout
+      - *linux_webview_probe_download
+      - *linux_webview_cached_dependencies
+      - *linux_webview_python
+      - *linux_webview_dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-catalog-probes-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cumulus-linux-catalog-probes
+      - name: Verify and install this catalog shard's same-attempt Linux probes
+        run: |
+          test ! -d .build/target
+          df -h .
+          python3 scripts/ci/linux_package_probe_artifact.py restore --suite catalog \
+            --shard '${{ matrix.shard }}' --examples .build/target/debug/examples \
+            --frontend-dist frontend/dist --artifact "$RUNNER_TEMP/cumulus-linux-catalog-probes"
       - name: Verify catalog browsing and playback
         if: matrix.shard == 'catalog-browse'
         env:
@@ -2228,7 +2283,6 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-rankings-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-linux
@@ -2252,7 +2306,6 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/album_queue_drop_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-album-queue-drop-linux --screenshots --trusted-pointer
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-linux --artist
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-mv-linux --artist-mv
-          cargo build -p cumulus-desktop --example discovery_home_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-home-linux
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/discovery_home_smoke.py --recall --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-recall-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-batch-linux --artist-batch
@@ -2268,8 +2321,6 @@ jobs:
           WEBKIT_FORCE_DMABUF_RENDERER: '1'
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
-          cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
-          cargo build -p cumulus-desktop --example comment_edit_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_edit_smoke.py --binary .build/target/debug/examples/comment_edit_ui_probe --root .build/ci-comment-edit-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/collection_context_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-context-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/follow_new_song_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-follow-new-song-linux --notifications
@@ -2277,7 +2328,6 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_card_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-card-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_read_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-comment-read-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_resource_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-comment-resource-linux
-          cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --publication --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-publication-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --own-profile --binary .build/target/debug/examples/community_ui_probe --root .build/ci-own-profile-linux
@@ -2426,7 +2476,7 @@ jobs:
     # Preserve the release gate's established context while requiring every runner.
     name: Linux WebView smoke
     if: always() && (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off')
-    needs: [linux-webview-shards, linux-webview-media, linux-webview-local, linux-installed-package]
+    needs: [linux-webview-shards, linux-webview-media, linux-webview-local, linux-webview-catalog, linux-installed-package]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -2435,11 +2485,13 @@ jobs:
           SHARDS: ${{ needs.linux-webview-shards.result }}
           MEDIA: ${{ needs.linux-webview-media.result }}
           LOCAL: ${{ needs.linux-webview-local.result }}
+          CATALOG: ${{ needs.linux-webview-catalog.result }}
           INSTALLED_PACKAGE: ${{ needs.linux-installed-package.result }}
         run: |
           test "$SHARDS" = success
           test "$MEDIA" = success
           test "$LOCAL" = success
+          test "$CATALOG" = success
           test "$INSTALLED_PACKAGE" = success
 
   linux-webview-ux-shards:
