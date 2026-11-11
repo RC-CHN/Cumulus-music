@@ -10,7 +10,8 @@ from windows_native_shard import SHARDS, owner, verify
 class WindowsNativeShardTest(unittest.TestCase):
     run_id = ["synthetic-sha", "123", "2"]
     suites = [("core", "deps/download_directory"), ("core", "deps/relay_publication"),
-              ("core", "deps/client_downloads"), ("desktop", "examples/catalog_ui_probe")]
+              ("core", "deps/client_downloads"), ("desktop", "examples/catalog_ui_probe"),
+              ("core", "deps/client_player")]
 
     def verify_fixture(self, edit=lambda rows: None):
         with TemporaryDirectory() as directory, patch.dict("os.environ", {
@@ -31,7 +32,7 @@ class WindowsNativeShardTest(unittest.TestCase):
     def test_missing_target_from_one_cargo_invocation_fails(self):
         for shard in (1, 2):
             with self.subTest(shard=SHARDS[shard]), self.assertRaisesRegex(ValueError, "inventories differ"):
-                self.verify_fixture(lambda rows: rows[shard].pop())
+                self.verify_fixture(lambda rows: rows[shard].pop(3))
 
     def test_missing_third_inventory_fails(self):
         with self.assertRaisesRegex(ValueError, "exactly one Windows Rust inventory per shard"):

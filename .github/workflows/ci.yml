@@ -1061,8 +1061,6 @@ jobs:
       - name: Windows WebView regression (search)
         if: runner.os == 'Windows' && matrix.shard == 'search'
         run: |
-          python scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-page-windows --runtime .build/package-stage/windows-x64/native
-          python scripts/ci/playlist_queue_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-queue-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_display_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-display-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_comments_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-comments-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_comments_smoke.py --composer --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-composer-windows --runtime .build/package-stage/windows-x64/native
@@ -1122,6 +1120,8 @@ jobs:
       - name: Windows WebView regression (search-account)
         if: runner.os == 'Windows' && matrix.shard == 'search-account'
         run: |
+          python scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-page-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_queue_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-queue-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-shortcuts-ui-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/qr_captcha_focus_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-qr-captcha-focus-windows --runtime .build/package-stage/windows-x64/native
@@ -2299,9 +2299,10 @@ jobs:
     name: Linux WebView (${{ matrix.shard }})
     # The shared UX producer supplies the signed APT cache; these checks use
     # only their own catalog executables, built once beside the local probes.
-    # Let the Windows GUI fan-out enter the hosted queue before these two
-    # Linux shards. Packaging is a scheduling dependency, not a test input.
-    needs: [frontend, linux-webview-probe, linux-local-probes, package-linux]
+    # Make Windows GUI fan-out eligible no later than these two Linux shards.
+    # The Windows producers only sequence runner eligibility; they are not
+    # test inputs and their result does not block Linux catalog diagnostics.
+    needs: [frontend, linux-webview-probe, linux-local-probes, windows-release-runtime, windows-webview-probes]
     if: >-
       !cancelled() &&
       (github.event_name != 'workflow_dispatch' || inputs.windows_native_file_output == 'off') &&

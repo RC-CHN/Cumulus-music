@@ -10,13 +10,14 @@ import sys
 
 
 SHARDS = ("a", "b", "c")
-# Hosted run 42771356552 timed all 416 targets. Balance the core suites that
-# took at least 20 seconds; hash the rest so new targets always get an owner.
+# Balance timed core suites across runner shards. Hash the rest so newly
+# discovered targets always get an owner. Run 43066560555 timed relay_publication
+# at 81.19s on b, which completed 7m50s after a.
 HEAVY = {
     "a": frozenset(("download_directory", "client_cloud", "completed_downloads",
-                    "cumulus_core", "client_relay_publication", "cloud_upload")),
-    "b": frozenset(("pc_experiment_transport", "relay_publication", "client_player",
-                    "client_fm", "effects_service", "client_podcast")),
+                    "cumulus_core", "client_relay_publication", "cloud_upload", "relay_publication")),
+    "b": frozenset(("pc_experiment_transport", "client_player", "client_fm",
+                    "effects_service", "client_podcast")),
     "c": frozenset(("client_downloads", "client_together", "history", "cloud_download",
                     "download_service", "playback_controller")),
 }
