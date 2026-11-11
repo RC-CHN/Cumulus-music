@@ -135,6 +135,41 @@ fn options() -> DownloadOptions {
         ..Default::default()
     }
 }
+
+#[tokio::test]
+async fn layout_client_never_applies_an_old_account_epoch_to_the_current_owner() {
+    let f = Fixture::new();
+    let change = |value| {
+        serde_json::from_value(json!({"field":"file_type","value":value,"expectedRevision":null}))
+            .unwrap()
+    };
+    let saved = f
+        .client
+        .change_download_layout("1", change(2))
+        .await
+        .unwrap();
+    let before = f.session.token().unwrap();
+    f.session
+        .adopt(f.api.clone(), json!({"userId":2}), &before)
+        .unwrap();
+    let epoch = f.session.token().unwrap().generation.to_string();
+    assert!(matches!(
+        f.client.download_layout("1").await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        f.client.change_download_layout("1", change(1)).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        f.client.download_layout(&epoch).await.unwrap(),
+        DownloadLayoutSettings::default()
+    );
+    let old_owner =
+        cumulus_core::download::directory::DownloadDirectory::offline(f.store.clone(), "1")
+            .unwrap();
+    assert_eq!(old_owner.layout().unwrap(), saved);
+}
 fn online_missing(view: &PlayerView) -> PlayerAction {
     PlayerAction::PlayMissingDownloadOnline {
         play_id: view.play_id.clone().unwrap(),

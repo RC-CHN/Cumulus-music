@@ -2,6 +2,7 @@
 //! Cooperative quiescing and durable reverse-order rollback replace app restart.
 mod choice;
 pub(in crate::download) mod gate;
+mod layout;
 pub(in crate::download) mod paths;
 mod plan;
 mod run;

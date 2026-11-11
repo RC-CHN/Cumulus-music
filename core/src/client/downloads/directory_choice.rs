@@ -1,4 +1,7 @@
-use super::{Context, DownloadDirectoryPreview, DownloadResult, Host, MusicClient};
+use super::{
+    Context, DownloadDirectoryPreview, DownloadLayoutChange, DownloadLayoutSettings,
+    DownloadResult, Host, MusicClient,
+};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -68,6 +71,34 @@ impl Choices {
 }
 
 impl MusicClient {
+    pub async fn download_layout(&self, epoch: &str) -> Result<DownloadLayoutSettings> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            let layout = context.directory.layout()?;
+            context.guard()?;
+            Ok(layout)
+        })
+        .await
+        .map_err(|_| Error::State("download layout worker stopped"))?
+    }
+
+    pub async fn change_download_layout(
+        &self,
+        epoch: &str,
+        change: DownloadLayoutChange,
+    ) -> Result<DownloadLayoutSettings> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            let layout = context.directory.change_layout(change)?;
+            context.guard()?;
+            Ok(layout)
+        })
+        .await
+        .map_err(|_| Error::State("download layout worker stopped"))?
+    }
+
     pub async fn download_directory_preview(
         &self,
         epoch: &str,

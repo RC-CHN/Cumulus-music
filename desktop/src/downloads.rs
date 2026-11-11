@@ -458,7 +458,11 @@ pub async fn download_command<R: tauri::Runtime>(
     epoch: String,
     command: DownloadCommand,
 ) -> Result<DownloadResult, ClientError> {
-    if matches!(command, DownloadCommand::ChangeDirectory { .. }) && window.label() != "main" {
+    if matches!(
+        command,
+        DownloadCommand::ChangeDirectory { .. } | DownloadCommand::ConfigureForDownload { .. }
+    ) && window.label() != "main"
+    {
         return Err(Error::InvalidInput("download directory changes require main window").into());
     }
     if matches!(command, DownloadCommand::Preferences { .. }) && window.label() != "main" {
@@ -475,6 +479,34 @@ pub async fn download_command<R: tauri::Runtime>(
         .await
         .map_err(Into::into)
 }
+#[tauri::command]
+pub async fn download_layout<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<DownloadLayoutSettings, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download layout requires main window").into());
+    }
+    client.download_layout(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn change_download_layout<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    change: DownloadLayoutChange,
+) -> Result<DownloadLayoutSettings, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download layout requires main window").into());
+    }
+    client
+        .change_download_layout(&epoch, change)
+        .await
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn download_directory_preview<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,

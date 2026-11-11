@@ -1,3 +1,4 @@
+pub use crate::download::directory::{DownloadLayoutChange, DownloadLayoutSettings};
 use crate::{
     client::dto::TrackView,
     download::{
@@ -195,6 +196,11 @@ pub enum DownloadCommand {
         root: String,
         path_type: u8,
         file_type: u8,
+    },
+    ConfigureForDownload {
+        root: String,
+        #[serde(deserialize_with = "explicit_directory_revision")]
+        revision: Option<String>,
     },
     ChangeDirectory {
         root: String,

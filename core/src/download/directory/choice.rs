@@ -4,10 +4,10 @@ use super::*;
 impl DownloadDirectory {
     pub fn preview_choice(&self, target: &Path) -> Result<DirectoryChoice> {
         let token = self.files.token()?;
-        let before = self.choice_settings(&token)?;
-        let choice = self.check_choice(target, before.as_ref(), &token, None)?;
+        let (before, layout) = self.choice_settings(&token)?;
+        let choice = self.check_choice(target, before.as_ref(), &layout, &token, None)?;
         // A concurrent settings change also retires the displayed decision.
-        if self.choice_settings(&token)? != before {
+        if self.choice_settings(&token)? != (before, layout) {
             return Err(Error::StaleResponse);
         }
         Ok(choice)
@@ -24,12 +24,17 @@ impl DownloadDirectory {
         }
         let token = self.files.token()?;
         let _directory = gate::lock(&self.files.store, &self.files.owner)?;
-        let before = self.choice_settings(&token)?;
-        if before.as_ref().map(|value| &value.revision) != selected.revision.as_ref() {
+        let (before, layout) = self.choice_settings(&token)?;
+        if layout.revision != selected.revision {
             return Err(Error::StaleResponse);
         }
-        let choice =
-            self.check_choice(&selected.target, before.as_ref(), &token, Some(expected))?;
+        let choice = self.check_choice(
+            &selected.target,
+            before.as_ref(),
+            &layout,
+            &token,
+            Some(expected),
+        )?;
         match choice.decision {
             SameDirectory => Err(Error::InvalidInput("choose a different download directory")),
             NotWritable => Err(Error::InvalidInput("download directory is not writable")),
@@ -38,16 +43,27 @@ impl DownloadDirectory {
                 .start_locked(&choice.target, None, Some(expected), &token)
                 .map(Some),
             Ready => {
-                self.configure_locked(&choice.target, 0, 1, Some(expected), &token)?;
+                self.configure_locked(
+                    &choice.target,
+                    layout.path_type,
+                    layout.file_type,
+                    Some(expected),
+                    &token,
+                )?;
                 Ok(None)
             }
         }
     }
 
-    fn choice_settings(&self, token: &Option<SessionToken>) -> Result<Option<DirectorySettings>> {
+    pub(super) fn choice_settings(
+        &self,
+        token: &Option<SessionToken>,
+    ) -> Result<(Option<DirectorySettings>, DownloadLayoutSettings)> {
         self.files.guarded(token, || {
             gate::require(&self.files.store, &self.files.owner, None)?;
-            self.read_settings()
+            let settings = self.read_settings()?;
+            let layout = self.read_layout(settings.as_ref())?;
+            Ok((settings, layout))
         })
     }
 
@@ -55,13 +71,14 @@ impl DownloadDirectory {
         &self,
         target: &Path,
         before: Option<&DirectorySettings>,
+        layout: &DownloadLayoutSettings,
         token: &Option<SessionToken>,
         expected: Option<&Identity>,
     ) -> Result<DirectoryChoice> {
         use DirectoryChoiceDecision::*;
         let result = |target, decision| DirectoryChoice {
             target,
-            revision: before.map(|value| value.revision.clone()),
+            revision: layout.revision.clone(),
             decision,
             move_existing: before.is_some(),
             owner: self.files.owner.clone(),

@@ -106,6 +106,172 @@ fn first_settings_choice_requires_explicit_empty_revision_and_does_not_move_anot
     assert_eq!(f.directory().settings().unwrap().unwrap().root, f.source);
 }
 
+fn layout_change(
+    field: DownloadLayoutField,
+    value: u8,
+    revision: Option<String>,
+) -> DownloadLayoutChange {
+    DownloadLayoutChange {
+        field,
+        value,
+        expected_revision: revision,
+    }
+}
+
+#[test]
+fn unconfigured_layout_is_account_scoped_and_both_root_entry_points_preserve_it() {
+    use DownloadLayoutField::*;
+    let f = Fixture::new();
+    let directory = DownloadDirectory::offline(f.store.clone(), "2").unwrap();
+    fs::create_dir(&f.target).unwrap();
+    let old = directory.preview_choice(&f.target).unwrap();
+    let untouched = directory.layout().unwrap();
+    assert_eq!(
+        (untouched.path_type, untouched.file_type, untouched.revision),
+        (0, 0, None)
+    );
+    assert_eq!(
+        directory
+            .change_layout(layout_change(FileType, 0, None))
+            .unwrap()
+            .revision,
+        None
+    );
+    assert!(matches!(
+        directory.change_layout(layout_change(FileType, 3, None)),
+        Err(Error::InvalidInput(_))
+    ));
+    let seed = directory
+        .change_layout(layout_change(FileType, 2, None))
+        .unwrap();
+    assert!(directory.settings().unwrap().is_none());
+    assert!(matches!(
+        directory.change_from_choice(&old),
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        directory.configure_for_download(&f.target, None),
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(directory.layout().unwrap(), seed);
+    let persisted = DownloadDirectory::offline(f.store.clone(), "2").unwrap();
+    assert_eq!(persisted.layout().unwrap(), seed);
+    assert_eq!(f.directory().layout().unwrap().file_type, 1);
+
+    let configured = persisted
+        .configure_for_download(&f.target, seed.revision.as_deref())
+        .unwrap();
+    assert_eq!((configured.path_type, configured.file_type), (0, 2));
+    assert_ne!(Some(configured.revision), seed.revision);
+
+    let another = DownloadDirectory::offline(f.store.clone(), "3").unwrap();
+    let chosen = another
+        .change_layout(layout_change(PathType, 2, None))
+        .unwrap();
+    let preview = another.preview_choice(&f.target).unwrap();
+    assert_eq!(preview.revision, chosen.revision);
+    assert!(another.change_from_choice(&preview).unwrap().is_none());
+    let settings = another.settings().unwrap().unwrap();
+    assert_eq!((settings.path_type, settings.file_type), (2, 0));
+    assert_ne!(Some(settings.revision), chosen.revision);
+    assert!(fs::read_dir(&f.target).unwrap().next().is_none());
+    assert_eq!(f.calls(), 0);
+}
+
+#[test]
+fn changed_layout_is_compare_and_swap_without_rewriting_the_root_or_queued_tasks() {
+    use DownloadLayoutField::*;
+    let f = Fixture::new();
+    let directory = f.directory();
+    let first = directory.layout().unwrap();
+    let old = f
+        .service
+        .create_default(&json!(123), Options::default())
+        .unwrap();
+    let saved = directory
+        .change_layout(layout_change(FileType, 2, first.revision.clone()))
+        .unwrap();
+    assert_eq!((saved.path_type, saved.file_type), (2, 2));
+    assert_ne!(saved.revision, first.revision);
+    assert!(matches!(
+        directory.change_layout(layout_change(PathType, 1, first.revision)),
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        directory
+            .change_layout(layout_change(FileType, 2, saved.revision.clone()))
+            .unwrap(),
+        saved
+    );
+    assert_eq!(directory.settings().unwrap().unwrap().root, f.source);
+    let new = f
+        .service
+        .create_default(&json!(124), Options::default())
+        .unwrap();
+    let read: DownloadTask = serde_json::from_value(
+        f.store
+            .get("1", "download_tasks_v1", &old.id)
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        read.destination,
+        Destination::Named {
+            path_type: 2,
+            file_type: 1,
+            ..
+        }
+    ));
+    assert!(matches!(
+        new.destination,
+        Destination::Named {
+            path_type: 2,
+            file_type: 2,
+            ..
+        }
+    ));
+    let migration = directory.start(&f.target, None).unwrap();
+    assert!(matches!(
+        directory.change_layout(layout_change(PathType, 0, saved.revision.clone())),
+        Err(Error::State(_))
+    ));
+    assert_eq!(
+        directory.resume(&migration.id).unwrap().phase,
+        MigrationPhase::Complete
+    );
+    let relocated = directory.layout().unwrap();
+    assert_eq!((relocated.path_type, relocated.file_type), (2, 2));
+    assert_ne!(relocated.revision, saved.revision);
+    assert_eq!(f.calls(), 0);
+}
+
+#[test]
+fn download_layout_requires_an_explicit_revision_and_a_single_field() {
+    assert!(
+        serde_json::from_value::<DownloadLayoutChange>(json!({"field":"file_type","value":1}))
+            .is_err()
+    );
+    assert!(
+        serde_json::from_value::<DownloadLayoutChange>(
+            json!({"field":"file_type","value":1,"expectedRevision":null,"pathType":2})
+        )
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<DownloadLayoutChange>(
+            json!({"field":"file_type","value":1,"expectedRevision":null})
+        )
+        .is_ok()
+    );
+    assert!(
+        serde_json::from_value::<DownloadCommand>(
+            json!({"kind":"configure_for_download","root":"unused"})
+        )
+        .is_err()
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn settings_confirmation_refuses_a_path_redirected_after_preview() {

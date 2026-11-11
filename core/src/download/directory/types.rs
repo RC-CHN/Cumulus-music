@@ -11,6 +11,27 @@ pub struct DirectorySettings {
     pub file_type: u8,
     pub revision: String,
 }
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadLayoutSettings {
+    pub path_type: u8,
+    pub file_type: u8,
+    pub revision: Option<String>,
+}
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadLayoutField {
+    PathType,
+    FileType,
+}
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadLayoutChange {
+    pub field: DownloadLayoutField,
+    pub value: u8,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    pub expected_revision: Option<String>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DirectoryChoiceDecision {

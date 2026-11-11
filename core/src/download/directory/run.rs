@@ -171,11 +171,20 @@ impl DownloadDirectory {
                 let settings = if cancelled {
                     batch.before.clone()
                 } else {
-                    let old = batch.before.as_ref();
+                    let (path_type, file_type) = if let Some(old) = &batch.before {
+                        (old.path_type, old.file_type)
+                    } else {
+                        let seed = super::layout::decode_seed(tx.get(
+                            &self.files.owner,
+                            SETTINGS,
+                            super::layout::LAYOUT_SEED,
+                        )?)?;
+                        (seed.path_type, seed.file_type)
+                    };
                     Some(DirectorySettings {
                         root: batch.view.target.clone(),
-                        path_type: old.map_or(0, |s| s.path_type),
-                        file_type: old.map_or(0, |s| s.file_type),
+                        path_type,
+                        file_type,
                         revision: new_id(),
                     })
                 };
