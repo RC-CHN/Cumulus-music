@@ -309,6 +309,7 @@ def verify_primary_marks(root, screenshots):
     fixed_calls = [
         call(all_path, **all_query, needCorrect=True, channel='typing'),
         call(songs_path, **songs_query, needCorrect=True, channel='typing'),
+        call(songs_path, keyword=effective, scene='normal', limit=10, offset=0, needCorrect=True, channel='typing'),
         call(LYRIC_PATH, keyword=effective, scene='normal', limit=10, offset=0),
         call(all_path, **all_query, needCorrect=False, channel='suggest'),
         call(songs_path, **songs_query, needCorrect=False, channel='suggest'),
@@ -317,10 +318,10 @@ def verify_primary_marks(root, screenshots):
     native = complete['primaryMarkCalls']
     artist_calls = [call(dynamic_path, id='31502'), call(artist_path, id='31502', top=50, e_r=False)]
     assert len(native) == len(fixed_calls) + len(artist_calls)
-    assert native[:2] == fixed_calls[:2] and native[4:] == fixed_calls[2:]
-    assert sorted(native[2:4], key=lambda item: item['path']) == artist_calls
-    assert rows[0]['primaryMarkCalls'] == native[:2]
-    for row, count in zip((rows[2], rows[3], rows[4], rows[5]), (4, 5, 7, 8), strict=True):
+    assert native[:3] == fixed_calls[:3] and native[5:] == fixed_calls[3:]
+    assert sorted(native[3:5], key=lambda item: item['path']) == artist_calls
+    assert rows[0]['primaryMarkCalls'] == native[:3]
+    for row, count in zip((rows[2], rows[3], rows[4], rows[5]), (5, 6, 8, 9), strict=True):
         assert row['primaryMarkCalls'] == native[:count]
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     report = dict(ok=True, actualWebView=True, nativeIpc=True, stageCount=len(rows),

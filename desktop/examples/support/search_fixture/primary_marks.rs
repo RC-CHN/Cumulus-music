@@ -51,16 +51,22 @@ pub(super) fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         SONGS
             if correct.is_some()
+                && (args["keyword"] == RAW
+                    || (correct == Some(true) && args["keyword"] == CORRECTED))
                 && *args
-                    == json!({"keyword":RAW,"scene":"normal","limit":10,"offset":0,
-                "needCorrect":correct,"channel":channel}) =>
+                    == json!({"keyword":args["keyword"],"scene":"normal","limit":10,
+                    "offset":0,"needCorrect":correct,"channel":channel}) =>
         {
             // A server may repeat a correction after the user opts out. Native
-            // must not mark using it in that visit.
-            json!({"code":200,"data":{"resources":[{"type":"song",
+            // must not mark using it in that visit. In the signed waterfall,
+            // only the new offset-zero page supplies the displayed resources.
+            let mut page = json!({"code":200,"data":{"resources":[{"type":"song",
                 "baseInfo":{"simpleSongData":song()},"extInfo":{"lyrics":{"txt":"前原词后",
-                    "range":[{"first":1,"second":3}]}}}],"totalCount":1,"hasMore":false,
-                "queryRewriteInfo":{"rewriteQuery":CORRECTED}}})
+                    "range":[{"first":1,"second":3}]}}}],"totalCount":1,"hasMore":false}});
+            if args["keyword"] == RAW {
+                page["data"]["queryRewriteInfo"] = json!({"rewriteQuery":CORRECTED});
+            }
+            page
         }
         LYRICS
             if matches!(args["keyword"].as_str(), Some(RAW | CORRECTED))

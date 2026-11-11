@@ -32,6 +32,60 @@ def signed_result_reads(complete, result_reads, expected_total):
     return comprehensive_reads(complete, assignment_arguments(repository), result_reads, expected_total)
 
 
+def verify_search_song_rewrite(root, screenshots):
+    first = root / 'first'
+    read = lambda path: json.loads(path.read_text(encoding='utf-8'))
+    complete = read(first / 'complete.json')
+    original, first_term, next_term = '合成改写原词', '合成改写乙', '合成改写丙'
+    labels = ['search_song_rewrite_' + stage for stage in ('first_head', 'retired', 'refused', 'retry', 'tail')]
+    stages = [f'ux_{index:02}_{label}' for index, label in enumerate(labels, 1)]
+    assert [path.stem for path in sorted(first.glob('ux_*.json'))] == stages
+    assert [path.stem for path in sorted(first.glob('ux_*.png'))] == (stages if screenshots else [])
+    assert complete['ok'] and complete['searchSongRewriteVerified'] and complete['queueUnchanged']
+    assert complete['stageCount'] == len(stages)
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    assert any(call['path'] == '/api/w/nuser/account/get' and call['sameAccountCredential'] and
+               call['signedPcContextVerified'] and call['responseCode'] == 200
+               for call in complete['signedSearch']['calls'])
+    calls = [
+        dict(path='/api/search/song/list/page',
+             args=dict(keyword=keyword, offset=offset, limit=10, scene='normal', needCorrect=True, channel='typing'),
+             cached=False, outcome=outcome)
+        for keyword, offset, outcome in (
+            (original, 0, 'rewrite-first'), (first_term, 0, 'first-head'),
+            (first_term, 10, 'rewrite-continuation'), (next_term, 0, 'refused-head'),
+            (next_term, 0, 'retried-head'), (next_term, 10, 'next-tail'),
+        )
+    ]
+    first_ids = [str(id) for id in range(31701, 31711)]
+    next_ids = ['31701', *[str(id) for id in range(31722, 31731)]]
+    tail_ids = [*next_ids, '31731']
+    rows = [read(first / f'{stage}.json') for stage in stages]
+    for row, label, count, term, ids in zip(
+        rows, labels, (2, 4, 4, 5, 6), (first_term, next_term, next_term, next_term, next_term),
+        (first_ids, [], [], next_ids, None), strict=True,
+    ):
+        assert row['label'] == label and row['searchSongRewriteCalls'] == calls[:count], row
+        assert (row['original'], row['effective'], row['stillSearch']) == (
+            original, term, f'仍然搜索“{original}”',
+        ), row
+        if ids is not None:
+            assert row['ids'] == ids, row
+    retired, retry, tail = rows[1], rows[3], rows[4]
+    assert retired['oldControlDetached'] and retired['oldControlBlurred']
+    assert retry['title'] == f'{next_term} 31701' and retry['newControl']
+    assert tail['loaded'] == len(tail_ids) and tail['ids'] and tail['ids'] == tail_ids[-len(tail['ids']):]
+    assert tail['queueUnchanged'] and complete['searchSongRewriteCalls'] == calls
+    observed = [f'{id}:{term} {id}' for term, ids in ((first_term, first_ids), (next_term, tail_ids)) for id in ids]
+    assert sorted(complete['renderedRows']) == sorted(observed), complete['renderedRows']
+    report = dict(ok=True, actualWebView=True, nativeIpc=True, stages=stages, calls=calls,
+                  oldControlDetached=True, redirectPayloadNeverRendered=True, queueUnchanged=True,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                                      encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
+
+
 def verify_search_song_share(first, complete):
     labels = SEARCH_NEXT_STAGES + SEARCH_SONG_SHARE_STAGES
     paths = sorted(first.glob('ux_*.json'))
@@ -374,6 +428,7 @@ def main():
     mode.add_argument('--people-categories', action='store_true')
     mode.add_argument('--search-next', action='store_true')
     mode.add_argument('--search-song-comment-count', action='store_true')
+    mode.add_argument('--song-rewrite', action='store_true')
     mode.add_argument('--song-waterfall', action='store_true')
     mode.add_argument('--voice-queue', action='store_true')
     mode.add_argument('--voice-next', action='store_true')
@@ -392,9 +447,15 @@ def main():
     parser.add_argument('--trusted-playlist-pointer', action='store_true',
                         help='also drag a resize handle using XTest under isolated Xvfb')
     args = parser.parse_args()
-    if (args.offline_route and sys.platform == 'linux' and
-            len(Path('/proc/net/route').read_text().splitlines()) != 1):
-        parser.error('--offline-route on Linux requires a sealed no-route network namespace')
+    if sys.platform == 'linux' and (args.offline_route or args.song_rewrite):
+        route_table = Path('/proc/net/route').read_text().splitlines()
+        if args.offline_route and len(route_table) != 1:
+            parser.error('--offline-route on Linux requires a sealed no-route network namespace')
+        if args.song_rewrite and sorted(line.split()[:3] for line in route_table[1:]) != [
+            ['cumulus-proof', '00000000', '00000000'],
+            ['cumulus-proof', '000200C0', '00000000'],
+        ]:
+            parser.error('--song-rewrite on Linux requires loopback_only.sh --synthetic-online')
     if args.trusted_playlist_pointer and (not args.playlist_creator or not os.environ.get('DISPLAY')):
         parser.error('--trusted-playlist-pointer requires --playlist-creator under isolated Xvfb')
     root = args.root.resolve()
@@ -430,6 +491,10 @@ def main():
         env['CUMULUS_SEARCH_SONG_COMMENT_PROOF'] = '1'
         prefix = ('window.__cumulusSearchSongCommentProof = true;\n'
                   + source.with_name('search_song_comment_ui_probe.js').read_text(encoding='utf-8') + '\n')
+    if args.song_rewrite:
+        env['CUMULUS_SEARCH_SONG_REWRITE_PROOF'] = '1'
+        prefix = ('window.__cumulusSearchSongRewriteProof = true;\n'
+                  + source.with_name('search_song_rewrite_ui_probe.js').read_text(encoding='utf-8') + '\n')
     if args.song_waterfall:
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
     if args.voice_author:
@@ -520,6 +585,9 @@ def main():
     assert code == 0, f'probe exited {code}'
     if args.search_song_comment_count:
         verify_search_song_comment(root, args.screenshots)
+        return
+    if args.song_rewrite:
+        verify_search_song_rewrite(root, args.screenshots)
         return
     if args.offline_route:
         verify_offline_route(root, args.screenshots)

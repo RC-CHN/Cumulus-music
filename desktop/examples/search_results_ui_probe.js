@@ -64,6 +64,15 @@
       await emit('complete',{ok:true,stageCount:count,...proof,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusSearchSongRewriteProof){
+      const proof=await window.__searchSongRewriteRun({
+        one,all,wait,button,click,fresh,choose,capture,assert,ready,emit,hold,
+        isHeld:()=>held,releaseHeld:()=>release(),
+      });
+      await emit('complete',{ok:true,searchSongRewriteVerified:true,stageCount:count,
+        ...proof,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchInlineCreditsProof){
       const proof=await window.__searchInlineCreditsRun({
         one,all,wait,button,click,key,fresh,choose,capture,fixture,sleep,assert,ready,

@@ -104,6 +104,8 @@ mod search_podcast_playback_fixture;
 mod search_privilege_fixture;
 #[path = "support/search_song_comment_fixture.rs"]
 mod search_song_comment_fixture;
+#[path = "support/search_song_rewrite_fixture.rs"]
+mod search_song_rewrite_fixture;
 #[path = "support/search_voice_menu_fixture.rs"]
 mod search_voice_menu_fixture;
 #[allow(dead_code)]
@@ -1000,6 +1002,9 @@ impl Api for Library {
             if let Some(result) = search_song_comment_fixture::response(path, &args, cached).await {
                 return result;
             }
+            if let Some(result) = search_song_rewrite_fixture::response(path, &args, cached) {
+                return result;
+            }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
             }
@@ -1828,6 +1833,7 @@ fn main() {
                 if let Some(calls) = search_fixture::artist_gallery_calls() { value["artistGalleryCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::inline_credit_calls() { value["inlineCreditCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::primary_mark_calls() { value["primaryMarkCalls"] = json!(calls); }
+                if search_song_rewrite_fixture::enabled() { value["searchSongRewriteCalls"] = json!(search_song_rewrite_fixture::calls()); }
             }
             if search_mv_fixture::enabled() { value["searchMvCalls"]=json!(search_mv_fixture::calls()); }
             if search_mv_fixture::enabled() && !search_mv_fixture::fallback_enabled() {
