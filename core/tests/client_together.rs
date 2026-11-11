@@ -4,6 +4,8 @@ mod external_selection_tests;
 mod fixture;
 #[path = "support/together_incoming.rs"]
 mod incoming_tests;
+#[path = "support/together_leave_record.rs"]
+mod leave_record_tests;
 #[path = "support/together_lifecycle_host.rs"]
 mod lifecycle_tests;
 #[path = "support/together_mini.rs"]

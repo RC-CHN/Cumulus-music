@@ -40,6 +40,7 @@ pub(super) struct Context {
     pub _im_cleanup: Option<crate::listen_together::transport::TransportCancellation>,
     pub im: Option<Arc<crate::listen_together::transport::ImTransport>>,
     pub cleanup_uncertain: Arc<Mutex<bool>>,
+    pub leave_records: leave_record::LeaveRecords,
 }
 fn key(s: &PlaybackSnapshot) -> (u64, Option<String>, Option<String>, PlaybackStatus) {
     (
@@ -360,6 +361,10 @@ impl Context {
                 if ended.phase != TogetherPhase::Confirmed {
                     return Err(Error::MutationUncertain);
                 }
+                // Playback clear has no direct Together IPC response. Keep its
+                // proven receipt in this host until local cleanup finishes.
+                self.leave_records
+                    .publish(&self.session, &self.token, &self.room_id, ended)?;
                 return Ok(true);
             }
             if !queue.items.is_empty() {

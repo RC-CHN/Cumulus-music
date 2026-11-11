@@ -25,6 +25,7 @@ pub(crate) struct RoomState {
     pub(crate) playlist: Option<Value>,
     pub(crate) play: Option<Value>,
     pub(crate) replacement_room: Option<String>,
+    pub(crate) peer_avatar_url: Option<String>,
 }
 #[derive(Default)]
 pub(crate) struct Backend {
@@ -34,6 +35,8 @@ pub(crate) struct Backend {
     pub(crate) deny_queue_http: AtomicBool,
     pub(super) drop_play: AtomicBool,
     pub(crate) drop_end: AtomicBool,
+    pub(crate) end_share_info: Mutex<Option<Value>>,
+    pub(crate) room_after_end: Mutex<Option<String>>,
     pub(crate) hold_end: AtomicBool,
     pub(crate) end_started: AtomicBool,
     pub(crate) end_release: tokio::sync::Notify,
@@ -62,7 +65,7 @@ fn observed_room(state: &RoomState) -> Value {
         value["roomUsers"]
             .as_array_mut()
             .unwrap()
-            .push(json!({"userId":2,"nickname":"Peer"}));
+            .push(json!({"userId":2,"nickname":"Peer","avatarUrl":state.peer_avatar_url}));
     }
     value
 }
@@ -201,7 +204,12 @@ impl Api for Backend {
                     if self.drop_end.swap(false, Ordering::SeqCst) {
                         return Err(Error::Transport("lost end acknowledgement".into()));
                     }
-                    json!({"code":200,"data":{"success":true}})
+                    if let Some(room) = self.room_after_end.lock().unwrap().take() {
+                        state.inside = true;
+                        state.replacement_room = Some(room);
+                    }
+                    let share_info = self.end_share_info.lock().unwrap().clone();
+                    json!({"code":200,"data":{"success":true,"shareInfo":share_info}})
                 }
                 "/api/listen/together/heartbeat" => json!({"code":200,"data":{"result":true}}),
                 "/api/middle/im/token/get" => {

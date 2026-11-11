@@ -2,6 +2,7 @@ mod connection;
 mod dto;
 pub(super) mod external;
 mod incoming;
+mod leave_record;
 mod lifecycle;
 mod progress;
 mod queue_policy;
@@ -61,6 +62,7 @@ pub(super) struct TogetherHost {
     factory: Option<Arc<dyn crate::listen_together::transport::ImFactory>>,
     cleanup_uncertain: Arc<Mutex<bool>>,
     external: Arc<Mutex<Option<external::Notice>>>,
+    leave_records: leave_record::LeaveRecords,
 }
 #[derive(Clone)]
 pub(super) struct RoomDetachment(Weak<Mutex<Option<Runtime>>>);
@@ -109,8 +111,12 @@ impl MusicClient {
         }
         self.together_binding(&token).map(|b| b.is_some())
     }
+    pub(super) fn together_retire_leave_record(&self, token: &SessionToken) -> Result<()> {
+        self.together.leave_records.retire_other_epoch(token)
+    }
     fn together_token(&self, epoch: &str) -> Result<SessionToken> {
         let token = self.session.token()?;
+        self.together_retire_leave_record(&token)?;
         if token.generation.to_string() != epoch {
             return Err(Error::StaleResponse);
         }
@@ -226,6 +232,7 @@ impl MusicClient {
         }
         let service = TogetherService::new(self.session.clone())?;
         let removing = matches!(&command, TogetherCommand::Remove { .. });
+        let dismissing_record = matches!(&command, TogetherCommand::DismissLeaveRecord { .. });
         if matches!(
             &command,
             TogetherCommand::Attach { .. }
@@ -395,6 +402,9 @@ impl MusicClient {
                 }
                 self.together_stop().await?;
                 self.together_restore_local(&token).await?;
+                self.together
+                    .leave_records
+                    .publish(&self.session, &token, &room_id, op)?;
             }
             TogetherCommand::ResolveExternalSelection {
                 room_id,
@@ -410,6 +420,9 @@ impl MusicClient {
                     }
                     self.together_stop().await?;
                     self.together_restore_local(&token).await?;
+                    self.together
+                        .leave_records
+                        .publish(&self.session, &token, &room_id, op)?;
                 }
             }
             TogetherCommand::ConfirmQueueRoomLoss { room_id, report_id } => {
@@ -427,8 +440,18 @@ impl MusicClient {
                     .resolve_queue_room_loss_for(&token, &room_id, &report_id, now())
                     .await;
                 cleanup?;
-                ending?;
+                let ending = ending?;
                 self.together_restore_local(&token).await?;
+                if let Some(op) = ending {
+                    self.together
+                        .leave_records
+                        .publish(&self.session, &token, &room_id, op)?;
+                }
+            }
+            TogetherCommand::DismissLeaveRecord { operation_id } => {
+                self.session.with_token(&token, |_| {
+                    self.together.leave_records.dismiss(&token, &operation_id)
+                })?;
             }
             TogetherCommand::RestoreLocal => {
                 let state = service.refresh_for(&token, now()).await?;
@@ -447,7 +470,7 @@ impl MusicClient {
             }
         }
         let state = service.state_for(&token)?;
-        view::project(self, &token, epoch, state, true).await
+        view::project(self, &token, epoch, state, !dismissing_record).await
     }
     async fn together_attach(
         &self,
@@ -518,6 +541,7 @@ impl MusicClient {
             .ok_or(Error::State(
                 "together room changed before message connection",
             ))?;
+        self.together.leave_records.room_observed(token)?;
         let (im, events) = if let Some(factory) = &self.together.factory {
             let (im, receiver) = crate::listen_together::transport::ImTransport::start(
                 factory.clone(),
@@ -543,6 +567,7 @@ impl MusicClient {
             _im_cleanup: im.as_ref().map(|im| im.cancel_on_drop()),
             im: im.clone(),
             cleanup_uncertain: self.together.cleanup_uncertain.clone(),
+            leave_records: self.together.leave_records.clone(),
         };
         let worker = tokio::spawn(context.run(receiver));
         *self

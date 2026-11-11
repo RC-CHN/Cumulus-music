@@ -89,6 +89,7 @@ async fn paired_queue_loss_closes_im_before_single_end_and_read_only_recovery() 
     assert_eq!(im.closed.load(Ordering::SeqCst), 0);
 
     im.hold_close.store(true, Ordering::SeqCst);
+    *api.end_share_info.lock().unwrap() = Some(leave_record_tests::summary());
     api.drop_end.store(true, Ordering::SeqCst);
     let (reply, ()) = tokio::join!(client.together_command("1", confirm()), async {
         tokio::time::timeout(Duration::from_secs(4), async {
@@ -127,7 +128,7 @@ async fn paired_queue_loss_closes_im_before_single_end_and_read_only_recovery() 
         .unwrap()
         .value;
     assert!(reconciled.room.is_none() && !reconciled.local_recovery && !reconciled.ending);
-    assert!(reconciled.pending.is_empty());
+    assert!(reconciled.pending.is_empty() && reconciled.leave_record.is_none());
     assert_eq!(end_count(&api), 1);
     assert_eq!(
         client
@@ -227,4 +228,48 @@ async fn queue_488_in_waiting_and_paired_auth_errors_do_not_open_room_loss() {
         assert_eq!(im.closed.load(Ordering::SeqCst), 0);
         client.close_together().await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn direct_paired_queue_loss_uses_the_end_receipt_not_the_rejected_report() {
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(Backend::default());
+    let (session, client) = world(root.path(), api.clone());
+    let im = Arc::new(im::Device::default());
+    let client = client.with_together_im_factory(Arc::new(im::Factory(im.clone())));
+    play(&client).await;
+    joined(&client, &api, &im).await;
+    trigger(&client, &api, 488).await;
+    let notice = wait(&client, |v| v.queue_room_loss.is_some()).await;
+    assert!(notice.leave_record.is_none());
+    let loss = notice.queue_room_loss.unwrap();
+    *api.end_share_info.lock().unwrap() = Some(leave_record_tests::summary());
+    let ended = client
+        .together_command(
+            "1",
+            TogetherCommand::ConfirmQueueRoomLoss {
+                room_id: loss.room_id,
+                report_id: loss.report_id.clone(),
+            },
+        )
+        .await
+        .unwrap()
+        .value;
+    assert!(ended.room.is_none() && !ended.attached && !ended.local_recovery);
+    let record = ended.leave_record.unwrap();
+    assert_ne!(record.operation_id, loss.report_id);
+    assert_eq!(
+        (record.total_listen_count, record.total_duration),
+        (21, 7390)
+    );
+    let op = TogetherService::new(session.clone())
+        .unwrap()
+        .operations_for(&session.token().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|op| op.id == record.operation_id)
+        .unwrap();
+    assert!(op.acknowledged && op.phase == TogetherPhase::Confirmed);
+    assert_eq!(end_count(&api), 1);
+    assert_eq!(im.closed.load(Ordering::SeqCst), 1);
 }

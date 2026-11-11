@@ -1,5 +1,15 @@
 use super::*;
-use crate::listen_together::model;
+use crate::listen_together::{
+    leave_record::{DirectLeaveRecord, LeaveSummary},
+    model,
+};
+
+enum WriteReply {
+    Room(CreatedRoom),
+    End(Option<LeaveSummary>),
+    Other,
+}
+
 impl TogetherService {
     pub async fn create_for(
         &self,
@@ -259,6 +269,7 @@ impl TogetherService {
             acknowledged: false,
             created_room: None,
             observed_room: None,
+            leave_record: None,
         };
         self.session
             .with_token(token, |owner| self.save(owner, &state, Some(&op)))?;
@@ -267,40 +278,58 @@ impl TogetherService {
             .run_for(token, |api, _| async {
                 let api = TogetherApi::new(api);
                 match &op.intent {
-                    WriteIntent::Create { refer } => api.create(refer).await.map(Some),
+                    WriteIntent::Create { refer } => api.create(refer).await.map(WriteReply::Room),
                     WriteIntent::Accept {
                         room_id,
                         inviter,
                         refer,
                     } => api.accept(room_id, inviter, refer).await.map(|room| {
-                        Some(CreatedRoom {
+                        WriteReply::Room(CreatedRoom {
                             room,
                             is_new: false,
                         })
                     }),
-                    WriteIntent::End { room_id, count, .. } => {
-                        api.end(room_id, *count).await.map(|()| None)
-                    }
+                    WriteIntent::End { room_id, count, .. } => api
+                        .end_with_record(room_id, *count)
+                        .await
+                        .map(WriteReply::End),
                     WriteIntent::Queue {
                         room_id, command, ..
-                    } => api.list_command(room_id, command).await.map(|()| None),
-                    WriteIntent::Play { room_id, command } => {
-                        api.play_command(room_id, command).await.map(|()| None)
-                    }
+                    } => api
+                        .list_command(room_id, command)
+                        .await
+                        .map(|()| WriteReply::Other),
+                    WriteIntent::Play { room_id, command } => api
+                        .play_command(room_id, command)
+                        .await
+                        .map(|()| WriteReply::Other),
                 }
             })
             .await;
         match result {
-            Ok(created) => {
+            Ok(reply) => {
                 op.acknowledged = true;
                 op.phase = TogetherPhase::Verifying;
-                if let Some(created) = created {
-                    op.observed_room = Some(created.room.room_id.clone());
-                    if created.is_new {
-                        op.created_room = Some(created.room);
-                    } else if matches!(op.intent, WriteIntent::Create { .. }) {
-                        op.phase = TogetherPhase::Rejected;
+                match reply {
+                    WriteReply::Room(created) => {
+                        op.observed_room = Some(created.room.room_id.clone());
+                        if created.is_new {
+                            op.created_room = Some(created.room);
+                        } else if matches!(op.intent, WriteIntent::Create { .. }) {
+                            op.phase = TogetherPhase::Rejected;
+                        }
                     }
+                    WriteReply::End(Some(summary)) => {
+                        if let Some(room) = op
+                            .intent
+                            .room_id()
+                            .and_then(|id| self.require_room(&state, id).ok())
+                        {
+                            op.leave_record =
+                                DirectLeaveRecord::from_ack(summary, room, state.role, &owner);
+                        }
+                    }
+                    WriteReply::End(None) | WriteReply::Other => {}
                 }
             }
             Err(error) => {

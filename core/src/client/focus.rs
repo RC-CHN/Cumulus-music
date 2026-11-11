@@ -87,6 +87,7 @@ impl MediaFocus {
 impl MusicClient {
     pub(super) async fn suspend_account_media(&self) -> Result<()> {
         let token = self.session.token()?;
+        self.together_retire_leave_record(&token)?;
         {
             let mut state = self.focus.state.lock().map_err(|_| Error::LockPoisoned)?;
             state.generation = state

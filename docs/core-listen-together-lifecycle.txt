@@ -114,3 +114,25 @@ TogetherView新增ending和lifecycleNotice。结束中禁用共享同步/选曲�
   确认及核对状态。使用合成 API/IM/音频设备，没有真实音乐请求或账号写入。
   原清空房间的 29 个 WebView 检查点也通过。截图与证据：
   `.build/ui-proof/phase246-together-queue-loss/`。
+
+直接结束回执：本次听歌记录（后续增量）
+- Windows 3.1.42.205594 M/75:588–612、658–711：房主与参与者的普通退出、支持范围外
+  资源的确认、失效房间的显式确认，以及 PLAYLIST_CLEAR（669，无额外确认）
+  通过同一回调处理；只有 success 与 shareInfo 同时存在才显示记录。
+  M/75:900–945 在 /api/listen/together/end/v2 返回 code 200、data.success === true
+  后重置房间模型，并在清理成员前传递 data。现有 roomId 和
+  shareInfo=JSON.stringify({thisListenCount:1}) 请求边界不变；不把队列长度当作计数。
+- 原版 ListenTogetherLeaveRecordModal:132–191、M/3043:104–126 显示
+  thisListenCount、thisDuration、totalListenCount、totalDuration。M/103.i:35–39
+  接受秒并取整，少于一分钟显示 1 分钟。本机仅投影这四个有界数字；
+  头像来自原来同房成员的已有公共图片，通过通用域名限制、HTTPS 转换和移除原
+  查询参数后投影。不会读取回执里的头像、距离、分享 URL 或任意附带字段。
+- 当前客户端只接收原房间进入过共享角色、当前账号的直接成功回执，并在已有房间
+  关闭核验和本机恢复后展示。显示收据仅留内存，绑定账号代次和原 End 操作 ID；
+  切换账号或观察新房间后清除，DismissLeaveRecord 只关闭匹配记录且不发请求。
+  退出日志不写入回执内容；成功后缺少或格式错误的统计不影响退出。回复丢失后，
+  只读对账可确认退出但不会生成记录。确认失效时已无原房间、不必再发 End，也无记录。
+- M/75:613–658 的对端 ROOM_EMPTY 弹层使用 IM 传来的 leaveData.shareInfo（不是
+  本机清理 End 的应答）；此来源没有接入本记录。等待房、silent、关窗退出、
+  心跳自动清理仅沿用现有清理；不显示这个直接回执弹层。不接入分享、邀请、统计补发，
+  不据此宣称真实双账号或 IM/RTC 验收通过。

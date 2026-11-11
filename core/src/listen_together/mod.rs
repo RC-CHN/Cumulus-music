@@ -2,6 +2,7 @@
 //! HTTP control and message reduction are separate from the IM/RTC adapter.
 //! No polling endpoint is represented as a replacement for that adapter.
 mod api;
+mod leave_record;
 mod message;
 mod model;
 pub mod native_im;

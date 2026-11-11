@@ -60,7 +60,7 @@ impl TogetherService {
         room: &str,
         report_id: &str,
         now: u64,
-    ) -> Result<()> {
+    ) -> Result<Option<TogetherOperation>> {
         let owner = self.owner(token)?;
         let _lock = self.lock(&owner)?;
         self.check_queue_room_loss_for(token, room, report_id)?;
@@ -77,7 +77,7 @@ impl TogetherService {
         if self.require_room(&state, room).is_err() {
             self.session
                 .with_token(token, |owner| self.save(owner, &state, None))?;
-            return Ok(());
+            return Ok(None);
         }
         state
             .end_notice
@@ -87,7 +87,7 @@ impl TogetherService {
             .end_sent = true;
         // The latch and Sending journal are committed together before the
         // request. A second host or lost reply cannot emit another End.
-        if self
+        let operation = self
             .send_with_state(
                 token,
                 WriteIntent::End {
@@ -98,13 +98,11 @@ impl TogetherService {
                 state,
                 now,
             )
-            .await?
-            .phase
-            != TogetherPhase::Confirmed
-        {
+            .await?;
+        if operation.phase != TogetherPhase::Confirmed {
             return Err(Error::MutationUncertain);
         }
-        Ok(())
+        Ok(Some(operation))
     }
 
     pub fn receive_end_for(&self, token: &SessionToken, room: &str, now: u64) -> Result<bool> {

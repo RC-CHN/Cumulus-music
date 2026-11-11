@@ -84,6 +84,7 @@ async fn peer_end_restores_preview_and_preferences_and_waits_for_sdk_cleanup_onc
     preferences(&client).await;
     joined(&client, &api, &im).await;
     preview(&client, &api, &im).await;
+    *api.end_share_info.lock().unwrap() = Some(leave_record_tests::summary());
     im.hold_close.store(true, Ordering::SeqCst);
     send(&im, 20003, json!({"roomId":"test-room"}));
     send(&im, 20003, json!({"roomId":"test-room"}));
@@ -92,6 +93,11 @@ async fn peer_end_restores_preview_and_preferences_and_waits_for_sdk_cleanup_onc
     assert_eq!(im.closed.load(Ordering::SeqCst), 0);
     im.hold_close.store(false, Ordering::SeqCst);
     restored(&client).await;
+    let ended = client.together_view("1", false).await.unwrap().value;
+    assert!(
+        ended.leave_record.is_none(),
+        "peer-end cleanup is not a direct record callback"
+    );
     assert_eq!(endings(&api), 1);
     assert_eq!(im.closed.load(Ordering::SeqCst), 1);
     let snapshot = client

@@ -61,7 +61,8 @@ pub(super) async fn project(
             )
         })
         .collect::<Result<_>>()?;
-    let pending = TogetherService::new(client.session.clone())?
+    let service = TogetherService::new(client.session.clone())?;
+    let pending = service
         .operations_for(token)?
         .into_iter()
         .filter(|op| op.phase.pending())
@@ -86,6 +87,29 @@ pub(super) async fn project(
         let queue = controller.queue(token).await?;
         selection::shared_selection(&client.session, token, client.registry.store(), &queue)?
             .current
+    } else {
+        None
+    };
+    let local_recovery = client.together_binding(token)?.is_some_and(|binding| {
+        state
+            .room
+            .as_ref()
+            .is_none_or(|r| r.room_id != binding.room_id)
+    });
+    let leave_record = if let Some(record) = client.together.leave_records.current(token)? {
+        if service.state_for(token)?.room.is_some() {
+            // An old view can finish after the direct end callback. Retire
+            // only this exact receipt and only on the latest room read.
+            client
+                .together
+                .leave_records
+                .retire_obsolete(token, &record.operation_id)?;
+            None
+        } else if state.room.is_none() && !attached && !local_recovery {
+            Some(record)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -157,12 +181,8 @@ pub(super) async fn project(
                     .map(|_| "远端播放指令尚未完成，请重新同步以核对并恢复".into())
             }),
         checked_at_ms: state.checked_at_ms,
-        local_recovery: client.together_binding(token)?.is_some_and(|binding| {
-            state
-                .room
-                .as_ref()
-                .is_none_or(|r| r.room_id != binding.room_id)
-        }),
+        local_recovery,
+        leave_record,
         ending: state.end_notice.is_some(),
         queue_room_loss: state.end_notice.as_ref().and_then(|notice| {
             notice

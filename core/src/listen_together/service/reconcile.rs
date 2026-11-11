@@ -42,6 +42,11 @@ impl TogetherService {
                 .or_else(|| op.created_room.as_ref().map(|r| r.room_id.as_str()));
             let same =
                 expected.is_some() && state.room.as_ref().map(|r| r.room_id.as_str()) == expected;
+            // Replacing the observed room during verification can settle an
+            // old End, but it cannot publish that old room's record.
+            if state.room.is_some() && !same {
+                op.leave_record = None;
+            }
             // A pending report must not permanently block future rooms after
             // its room expires or another participant ends it. This settles
             // responsibility, not whether the original write ever succeeded.
@@ -115,6 +120,7 @@ impl TogetherService {
                 return Ok(op);
             }
         }
+        op.leave_record = None;
         Ok(op)
     }
     fn close_pending(

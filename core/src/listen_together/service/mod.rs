@@ -76,6 +76,10 @@ pub struct TogetherOperation {
     /// Only a NEW_ROOM reply proves ownership by this creation attempt.
     pub created_room: Option<Room>,
     pub observed_room: Option<String>,
+    /// A direct acknowledgement may carry a display record. Recovery from
+    /// this operation's durable journal must never recreate the record.
+    #[serde(skip)]
+    pub(crate) leave_record: Option<super::leave_record::DirectLeaveRecord>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TogetherState {

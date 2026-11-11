@@ -1,4 +1,6 @@
-use super::{ListCommand, PlayCommand, Room, TogetherSnapshot, model::opaque};
+use super::{
+    ListCommand, PlayCommand, Room, TogetherSnapshot, leave_record::LeaveSummary, model::opaque,
+};
 use crate::{
     Error, Result,
     protocol::api::{Api, identifier},
@@ -97,12 +99,38 @@ impl TogetherApi {
         Ok(found)
     }
     pub async fn end(&self, room: &str, count: Option<u64>) -> Result<()> {
+        self.end_with_record(room, count).await.map(|_| ())
+    }
+    pub(super) async fn end_with_record(
+        &self,
+        room: &str,
+        count: Option<u64>,
+    ) -> Result<Option<LeaveSummary>> {
+        const END: &str = "/api/listen/together/end/v2";
         let mut payload = json!({"roomId":opaque(room)?});
         if let Some(count) = count {
             payload["shareInfo"] = json!(serde_json::to_string(&json!({"thisListenCount":count}))?);
         }
-        self.result("/api/listen/together/end/v2", payload, "success")
-            .await
+        let data = self.request(END, payload).await?;
+        match data["success"].as_bool() {
+            Some(true) => {
+                // The request binds the response; if a reply explicitly names
+                // a different room, keep the ack but discard its display data.
+                if data
+                    .get("roomId")
+                    .is_some_and(|id| id.as_str() != Some(room))
+                {
+                    return Ok(None);
+                }
+                Ok(LeaveSummary::from_official(&data["shareInfo"]))
+            }
+            Some(false) => Err(Error::service(
+                END,
+                json!(200),
+                json!({"data":{"success":false}}),
+            )),
+            None => Err(Error::Response("together acknowledgement missing")),
+        }
     }
     pub async fn snapshot(&self, room: &str) -> Result<TogetherSnapshot> {
         TogetherSnapshot::from_official(

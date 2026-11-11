@@ -143,8 +143,8 @@ pub use super::shortcut_preferences::{
     ShortcutEdit, ShortcutSettingsCommand, ShortcutSettingsView,
 };
 pub use super::together::{
-    TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView,
-    TogetherStatisticsView, TogetherView,
+    TogetherCommand, TogetherLeaveRecordView, TogetherMemberView, TogetherOperationView,
+    TogetherRoomView, TogetherStatisticsView, TogetherView,
 };
 pub use super::vertical_zone::fm_card::{ZoneFmCardGesture, ZoneFmCardResult};
 pub use super::vertical_zone::fm_preview::ZoneFmPreview;

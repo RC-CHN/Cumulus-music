@@ -111,6 +111,7 @@ async fn confirmed_waiting_and_joined_clears_end_once_and_restore_local_preferen
         let root = tempfile::tempdir().unwrap();
         let api = Arc::new(Backend::default());
         let (_, client) = world(root.path(), api.clone());
+        *api.end_share_info.lock().unwrap() = Some(leave_record_tests::summary());
         let device = Arc::new(im::Device::default());
         let client = client.with_together_im_factory(Arc::new(im::Factory(device.clone())));
         play(&client).await;
@@ -147,10 +148,14 @@ async fn confirmed_waiting_and_joined_clears_end_once_and_restore_local_preferen
         let cleared = clear(&client, &queue).await.unwrap();
         assert_eq!(cleared.state, PlaybackStatus::Idle);
         assert_eq!(cleared.queue_len, 0);
-        wait(&client, |v| {
+        let ended = wait(&client, |v| {
             v.room.is_none() && !v.attached && !v.local_recovery && v.lifecycle_notice.is_some()
         })
         .await;
+        assert_eq!(ended.leave_record.is_some(), peer);
+        if let Some(record) = ended.leave_record {
+            assert_eq!((record.this_listen_count, record.this_duration), (7, 3661));
+        }
         let after = client
             .subscribe_playback("1")
             .await

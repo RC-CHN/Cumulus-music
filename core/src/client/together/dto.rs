@@ -48,6 +48,18 @@ pub struct ExternalSelectionNotice {
     pub blocked: bool,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TogetherLeaveRecordView {
+    pub operation_id: String,
+    pub this_listen_count: u64,
+    pub this_duration: u64,
+    pub total_listen_count: u64,
+    pub total_duration: u64,
+    pub self_avatar_url: Option<String>,
+    pub peer_avatar_url: Option<String>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TogetherView {
@@ -69,6 +81,8 @@ pub struct TogetherView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_selection: Option<ExternalSelectionNotice>,
     pub lifecycle_notice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub leave_record: Option<TogetherLeaveRecordView>,
     pub shared_phase: Option<crate::listen_together::IncomingPhase>,
     pub common_access: Vec<TogetherAccessView>,
     pub native_target_id: Option<String>,
@@ -116,6 +130,9 @@ pub enum TogetherCommand {
         confirm: bool,
     },
     Reconcile {
+        operation_id: String,
+    },
+    DismissLeaveRecord {
         operation_id: String,
     },
     RestoreLocal,
