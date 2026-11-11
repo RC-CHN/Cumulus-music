@@ -651,6 +651,19 @@ Linux 目录探针共用构建
   缓存解决了冷编媒体的重复开销，当前整轮主要受发行编译和 runner
   排队影响。不能用测试目标减少的比例推算整轮耗时。
 
+并行编译 Windows 发行应用
+- Windows 应用在同轮前端产物可用后立即编译，和发行媒体运行库及四个
+  Release 媒体探针并行。Windows 打包等待两边交付，再用 Tauri bundle
+  生成 NSIS；打包 runner 无需恢复 Release 编译缓存或重编应用。Linux
+  发行构建不变，Windows 仍使用固定的 Rust、Node、锁文件和 Release 配置。
+- Windows 交接校验提交、运行和尝试、x64 可执行文件、前端文件清单、
+  打包配置、诊断模式以及编译时的固定 FLAC 摘要。打包前核对实际 DLL，
+  NSIS 成功后再次核对供便携版使用的程序。安装包、便携版和媒体回归
+  仍全部进入 CI gate，CD 仍只消费目标提交自身的成功产物。
+- 用同样的热缓存比较应用编译、NSIS 打包、runner 排队和最终门禁，
+  单独记录冷缓存和失败重跑。并行移动的是上一轮约 16 分钟的步骤；
+  该数值不是整轮节省时间，托管 Windows 仍需实际验证。
+
 Windows 原生测试目标选择试验（手动）
 - Actions 的 Windows native target selection pilot 不进入 CI gate，也不生成发行
   产物。选择同一 SHA 各运行一次 reference 和 selective；两组各有三个

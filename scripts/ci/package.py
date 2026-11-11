@@ -24,7 +24,7 @@ from native_receipts import verify_parametric, verify_pinned
 from release_guard import check_versions, git
 from windows_flac import (
     COMPILE_DIGEST_ENV as WINDOWS_FLAC_DIGEST_ENV,
-    FLAC, FLAC_ARCHIVE_SHA256, FLAC_IMPORTS, FLAC_LICENSE, FLAC_URL, decoder_receipt, stage_decoder,
+    FLAC, FLAC_ARCHIVE_SHA256, FLAC_DLL_SHA256, FLAC_IMPORTS, FLAC_LICENSE, FLAC_URL, decoder_receipt, stage_decoder,
 )
 from windows_media import copy_provenance
 from windows_package_probes import RELEASE_PROBE_BUILD, verify as verify_windows_package_probes
@@ -88,11 +88,57 @@ def windows_media(destination, msys):
     return sorted(name for name in copied if name.endswith(".dll")), decoder_receipt(destination, flac_imports)
 
 
+def package_config(stage, native, version, windows):
+    def resource(path):
+        # Both Windows jobs run Tauri from desktop/. Keep the overlay identical
+        # even if Actions checks out the jobs on different drives or paths.
+        return "../" + path.relative_to(ROOT).as_posix() if windows else str(path)
+
+    config = {"build": {"beforeBuildCommand": ""}, "bundle": {"active": True,
+        "resources": {resource(native): "" if windows else "native", resource(ROOT / "LICENSE"): "LICENSE", resource(ROOT / f"docs/releases/{version}.txt"): "README.txt"},
+        "shortDescription": "Community desktop music client",
+        "longDescription": "An independent Tauri and Rust community music client. See the included release notes for supported platforms and known limitations.",
+        "publisher": "Cumulus Music",
+        "licenseFile": resource(ROOT / "LICENSE"),
+        "copyright": "Cumulus Music contributors",
+        "category": "Music",
+        "linux": {"deb": {"depends": ["libmpv2", "ffmpeg", "libwebkit2gtk-4.1-0 (>= 2.42)", "libayatana-appindicator3-1"]}},
+        "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
+    path = stage / "bundle-config.json"
+    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    return path
+
+
+def app_build_env(windows, flac_digest):
+    env = {key: value for key, value in os.environ.items()
+           if key.upper() not in {LINUX_FLAC_DIGEST_ENV, WINDOWS_FLAC_DIGEST_ENV}}
+    env[WINDOWS_FLAC_DIGEST_ENV if windows else LINUX_FLAC_DIGEST_ENV] = flac_digest
+    return env
+
+
+def tauri(*args, env):
+    run(["node", ROOT / "frontend/node_modules/@tauri-apps/cli/tauri.js", *args],
+        cwd=ROOT / "desktop", env=env)
+
+
+def build_windows_app(stage, version):
+    # tauri-build copies resources next to the executable. The verified DLLs
+    # are staged by the bundle job; they are not compiled into the executable.
+    native = stage / "native"
+    native.mkdir(parents=True, exist_ok=False)
+    config = package_config(stage, native, version, windows=True)
+    tauri("build", "--ci", "--no-bundle", "--config", config, "--", "--locked",
+          env=app_build_env(True, FLAC_DLL_SHA256))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=["linux-x64", "windows-x64"], required=True)
     parser.add_argument("--windows-runtime", type=Path, help="use the verified same-attempt Windows runtime")
     parser.add_argument("--windows-package-probes", type=Path, help="use the verified same-attempt Windows release probes")
+    app = parser.add_mutually_exclusive_group()
+    app.add_argument("--prepare-windows-app", action="store_true", help="compile the app without bundling")
+    app.add_argument("--windows-app", type=Path, help="bundle the verified same-attempt Windows executable")
     args = parser.parse_args()
     os.chdir(ROOT)
     windows = args.platform == "windows-x64"
@@ -101,11 +147,19 @@ def main():
     assert args.windows_package_probes is None or (windows and args.windows_runtime), (
         "prebuilt Windows package probes require the same-attempt Windows runtime"
     )
+    assert not args.prepare_windows_app or (windows and not args.windows_runtime and not args.windows_package_probes)
+    assert args.windows_app is None or (windows and args.windows_runtime and args.windows_package_probes), (
+        "bundling a prebuilt Windows app requires the same-attempt runtime and package probes"
+    )
     version = check_versions()
     sha = git("rev-parse", "HEAD")
     assert not git("status", "--porcelain", "--untracked-files=normal"), "commit source changes before building release packages"
     target = Path(os.environ.get("CARGO_TARGET_DIR", ".build/target")).resolve()
     stage = ROOT / ".build/package-stage" / args.platform
+    if args.prepare_windows_app:
+        build_windows_app(stage, version)
+        assert git("rev-parse", "HEAD") == sha and not git("status", "--porcelain", "--untracked-files=normal")
+        return
     output = ROOT / ".build/packages" / args.platform
     # Never silently replace a package/proof directory from another invocation.
     stage.mkdir(parents=True, exist_ok=False)
@@ -135,23 +189,25 @@ def main():
             dlls, flac_decoder = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"]))
         else:
             dlls, flac_decoder = [], stage_linux_decoder(native, stage / "flac-source-build")
-    flac_digest_env = WINDOWS_FLAC_DIGEST_ENV if windows else LINUX_FLAC_DIGEST_ENV
-    build_env = {key: value for key, value in os.environ.items()
-                 if key.upper() not in {LINUX_FLAC_DIGEST_ENV, WINDOWS_FLAC_DIGEST_ENV}}
-    build_env[flac_digest_env] = flac_decoder["library"]["sha256"]
-    config = {"build": {"beforeBuildCommand": ""}, "bundle": {"active": True,
-        "resources": {str(native): "" if windows else "native", str(ROOT / "LICENSE"): "LICENSE", str(ROOT / f"docs/releases/{version}.txt"): "README.txt"},
-        "shortDescription": "Community desktop music client",
-        "longDescription": "An independent Tauri and Rust community music client. See the included release notes for supported platforms and known limitations.",
-        "publisher": "Cumulus Music",
-        "licenseFile": str(ROOT / "LICENSE"),
-        "copyright": "Cumulus Music contributors",
-        "category": "Music",
-        "linux": {"deb": {"depends": ["libmpv2", "ffmpeg", "libwebkit2gtk-4.1-0 (>= 2.42)", "libayatana-appindicator3-1"]}},
-        "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
-    config_path = stage / "bundle-config.json"
-    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-    run(["node", ROOT / "frontend/node_modules/@tauri-apps/cli/tauri.js", "build", "--ci", "--bundles", "nsis" if windows else "deb", "--config", config_path, "--", "--locked"], cwd=ROOT / "desktop", env=build_env)
+    flac_digest = flac_decoder["library"]["sha256"]
+    config = package_config(stage, native, version, windows)
+    build_env = app_build_env(windows, flac_digest)
+    if args.windows_app:
+        from windows_app_build import null_proof_enabled, verify as verify_windows_app
+
+        assert flac_digest == FLAC_DLL_SHA256, "runtime differs from the compiled Windows FLAC identity"
+        source = verify_windows_app(args.windows_app, identity, ROOT / "frontend/dist",
+                                    null_proof=null_proof_enabled(os.environ), config=config)
+        binary = target / "release" / "cumulus.exe"
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        with source.open("rb") as original, binary.open("xb") as staged:
+            shutil.copyfileobj(original, staged)
+        executable_sha = digest(source)
+        assert digest(binary) == executable_sha, "Windows executable changed during staging"
+        tauri("bundle", "--ci", "--bundles", "nsis", "--config", config, env=build_env)
+        assert digest(binary) == executable_sha, "bundler did not restore the verified portable executable"
+    else:
+        tauri("build", "--ci", "--bundles", "nsis" if windows else "deb", "--config", config, "--", "--locked", env=build_env)
 
     portable = stage / f"Cumulus-{version}-{args.platform}"
     portable.mkdir()
