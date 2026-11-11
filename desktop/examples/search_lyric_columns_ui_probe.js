@@ -65,6 +65,13 @@
     }
     assert(document.documentElement.scrollWidth<=innerWidth && pane().scrollWidth<=pane().clientWidth+1,
       'page does not overflow horizontally');
+    await wait(() => {
+      const more = one('[data-result-action="more"]', row());
+      if (!more || more.disabled) return false;
+      const box = more.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 && [box.left + box.width / 2, box.right - 3]
+        .every((x) => more.contains(document.elementFromPoint(x, box.top + box.height / 2)));
+    }, 'row More center and right edge are clear of the scrollbar');
     const queue = await invoke('player_queue',{epoch});
     assert(queue.epoch===baseline.epoch && queue.revision===baseline.revision &&
       queue.tracks.length===baseline.tracks.length && queue.current===baseline.current, 'geometry does not change native playback');

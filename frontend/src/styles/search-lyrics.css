@@ -1,5 +1,7 @@
 .search-lyrics-panel {
   overflow-anchor: none;
+  /* Keep the final row action clear of WebKit's wider overlay scrollbar hit area. */
+  padding-inline-end: 20px;
 }
 .search-lyric-window {
   position: relative;

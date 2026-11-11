@@ -87,15 +87,24 @@ window.__searchLyricCommentRun = async ({
     const anchor = more(index);
     anchor.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
     anchor.focus({ preventScroll: true });
-    let previous, since;
+    let previous, since, diagnostic;
     await wait(() => {
-      if (anchor !== more(index) || !live(anchor) || document.activeElement !== anchor) return false;
       const rect = anchor.getBoundingClientRect();
       const bounds = [rect.left, rect.top, rect.width, rect.height].join(',');
+      const centerHit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const describe = (node) => node && [node.tagName, node.id, node.getAttribute('class'), node.dataset?.resultAction];
+      const sameAnchor = anchor === more(index), liveAnchor = !!live(anchor);
+      const focused = document.activeElement === anchor, hitAnchor = anchor.contains(centerHit);
+      const inViewport = rect.top >= 0 && rect.bottom <= innerHeight;
+      diagnostic = { sameAnchor, liveAnchor, focused, hitAnchor, inViewport, bounds,
+        hit: describe(centerHit), active: describe(document.activeElement),
+        panelScroll: one('#search-result-panel')?.scrollTop, viewport: [innerWidth, innerHeight] };
+      if (!sameAnchor || !liveAnchor || !focused) return false;
       if (bounds !== previous) { previous = bounds; since = performance.now(); return false; }
-      return performance.now() - since >= 90 && rect.top >= 0 && rect.bottom <= innerHeight &&
-        anchor.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
-    }, 'stable hittable Lyric More ' + index);
+      return performance.now() - since >= 90 && inViewport && hitAnchor;
+    }, 'stable hittable Lyric More ' + index).catch((error) => {
+      throw Error(`${error.message}: ${JSON.stringify(diagnostic)}`);
+    });
     if (via === 'keyboard') {
       assert(!anchor.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true })),
         'Lyric row handles Shift+F10');
