@@ -338,7 +338,7 @@ Windows 下载排除独立读取各账号的离线、目标、下载根目录和
 Linux 保留原有 `O_NOFOLLOW | O_NONBLOCK`、设备号和 inode 校验、下载声明
 SQL 的比较规则，以及索引 WAV/FLAC 各自的准入条件。
 
-尚待实际 Windows x64 固定 NTFS 验收：`cargo test -p cumulus-core --locked
+Windows x64 固定 NTFS 验收命令：`cargo test -p cumulus-core --locked
 --lib windows_indexed_wave -- --ignored --test-threads=1` 检查旧索引、相同
 时间戳的路径替换、同句柄原始字节与迟到下载根路径；
 `windows_claim_paths_are_case_and_drive_prefix_alias_aware_without_matching_siblings`
@@ -348,11 +348,20 @@ SQL 的比较规则，以及索引 WAV/FLAC 各自的准入条件。
 复用同轮已验证的 libmpv/ffprobe 和现有 WebView2 探针，执行
 `native_local_equalizer_smoke.py --indexed-wav-only`，从实际「本地音乐」行
 触发，区别于已验的原生文件打开。失败归档包含
-`.build/ci-native-indexed-wav-windows`。两项都等 Windows CI 实际执行。
+`.build/ci-native-indexed-wav-windows`。
+托管 Windows CI 43114377545（bc1c70dcad148aad0d799d3e5d830c3cfec91d26）
+的 package-runtime 作业 130850356705 实际通过以上两个固定 NTFS 用例：
+`windows_indexed_wave_keeps_scan_identity_and_refuses_a_legacy_or_replaced_path` 和
+`windows_indexed_wave_does_not_adopt_a_late_download_root_alias`。同轮 package-media
+作业 130850356810 的 WebView2 探针用已验证 libmpv，从本地音乐行触发并返回
+`indexed_wav` 通过、真实音乐请求 0。作业号及日志摘要见
+`.build/ui-proof/ci-43114377545/accepted-windows-indexed-wav.json`。
+这是该提交的索引 WAV 与固定 NTFS 验收；同轮全量门槛因其他探针未通过，
+也没有验证物理音频输出或之后新增的空间音效入口。
 源码 15e69ddd 已在锁定 Rust 1.96.0 下交叉编译并链接 x86_64-pc-windows-gnu
 的 core libtest；归档记录为 `.build/ui-proof/phase326-windows-indexed-wave/`
 中的 windows-gnu-15e69ddd-RZRq6u。该 PE x86-64 文件未执行，不证明 NTFS、
-MSVC、WebView2、解码运行或物理音频；实际 Windows 仍由上面两条分片核验。
+MSVC、WebView2、解码运行或物理音频；实际 Windows 证据来自上面两条分片。
 
 普通 Rust 测试覆盖旧路径被替换后仍可消费原描述符、旧索引不能打开替换文件、
 CUE/改名 NCM 排除、另一账号迟到的下载声明，以及有效单声道 WAV 仍通过

@@ -70,8 +70,9 @@ WebKitGTK 检查点及截图。私有 FileManager1 收到三次精确路径：�
 前端另通过歌词组选曲九态和 X11 真实鼠标拖入原生播放队列十二态，见
 `.build/ui-proof/phase314-integrated/`。滚动条点击边界由宽窗和窄窗单独复验。
 [Windows 持有句柄的本地 WAV 音效](ordinary-native-local-equalizer-proof.txt)已接入
-现有播放与回退，GNU 交叉检查通过；实际 Windows WebView2、固定 NTFS 下替换
-同名路径后的定位及播完仍由对应源码的 Windows CI 验证。
+现有播放与回退。`bc1c70dc` 的托管 Windows CI 通过两项固定 NTFS 路径替换／
+迟到下载声明用例，以及 WebView2 从本地音乐行启动同一 WAV 解码的流程；该轮
+整套 CI 未通过，合成音频也不证明物理输出或后来新增的空间音效入口。
 
 ## 2026-11-09 集成验收
 
