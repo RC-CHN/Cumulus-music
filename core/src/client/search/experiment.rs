@@ -29,6 +29,7 @@ pub(crate) struct SearchHost {
     pub(super) podcast_playbacks: super::podcast_playback::SearchPodcastPlaybacks,
     pub(super) song_comment_pages: super::song_comment::SearchSongCommentPages,
     pub(in crate::client) lyric_groups: Arc<super::lyric_group::LyricGroupPlayback>,
+    pub(in crate::client) lyric_collection: Arc<super::lyric_collection::LyricCollection>,
     pub(super) song_shares: super::song_share::SearchSongShares,
     pub(super) voice_menu_pages: super::voice_menu::SearchVoiceMenuPages,
     pub(super) group_downloads: Arc<super::group_download::SearchGroupDownloads>,

@@ -3,6 +3,7 @@ mod batch;
 mod creation;
 mod history;
 mod liked;
+mod lyrics;
 use super::{Context, MusicClient, resource::catalogue_track_id};
 use crate::{
     Error, Result,
@@ -29,6 +30,7 @@ pub use creation::{DownloadCollectCreation, DownloadCollectCreationCommand};
 pub use history::HistoryCollectPlan;
 pub(in crate::client) use history::OfflineSources as HistoryDownloadSources;
 pub use liked::DownloadLikedDestination;
+pub use lyrics::LyricGroupCollectPlan;
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -97,6 +99,11 @@ enum Selection {
         songs: Vec<String>,
         offline: Option<Box<history::OfflineSources>>,
     },
+    Lyrics {
+        selection: Box<crate::client::search::lyric_collection::LyricCollectionSelection>,
+        authority: Arc<crate::client::search::lyric_collection::LyricCollection>,
+        login: Box<crate::protocol::api::PlaylistAddPermission<'static>>,
+    },
 }
 struct Source {
     session: Arc<AccountSession>,
@@ -114,6 +121,7 @@ impl Source {
             Selection::Single { songs, .. } => songs,
             Selection::Batch { batch, .. } => &batch.songs,
             Selection::History { songs, .. } => songs,
+            Selection::Lyrics { selection, .. } => &selection.songs,
         }
     }
 
@@ -121,8 +129,19 @@ impl Source {
         matches!(self.selection, Selection::Batch { .. })
     }
 
-    fn history(&self) -> bool {
-        matches!(self.selection, Selection::History { .. })
+    fn lyric_group(&self) -> bool {
+        matches!(self.selection, Selection::Lyrics { .. })
+    }
+
+    fn ordered_group(&self) -> bool {
+        matches!(
+            self.selection,
+            Selection::History { .. } | Selection::Lyrics { .. }
+        )
+    }
+
+    fn regular_targets(&self) -> bool {
+        self.is_batch() || self.lyric_group()
     }
 
     fn alternate_destination_songs(&self) -> Result<&[String]> {
@@ -164,6 +183,22 @@ impl Source {
                 }
                 if let Some(offline) = offline {
                     offline.require()?;
+                }
+            }
+            Selection::Lyrics {
+                selection,
+                authority,
+                login,
+            } => {
+                login()?;
+                if self
+                    .api
+                    .lyric_group_collection_credential_revision()?
+                    .as_deref()
+                    != Some(self.credentials.as_str())
+                    || !authority.current(selection)
+                {
+                    return Err(Error::StaleResponse);
                 }
             }
         }
@@ -380,7 +415,7 @@ impl MusicClient {
             Ok(visit.ticket)
         })?;
         let reply = self
-            .playlist_collect_page_scope(epoch, sort, page, source.is_batch())
+            .playlist_collect_page_scope(epoch, sort, page, source.regular_targets())
             .await?;
         source.require()?;
         with_visit(slot, &source, |visit| {
@@ -447,11 +482,16 @@ impl MusicClient {
             if let Some(previous) = service.operation_for(&source.token, &attempt.operation)? {
                 previous
             } else {
-                let attempted = if source.history() {
+                let attempted = if source.ordered_group() {
+                    let destination = if source.lyric_group() {
+                        HistoryCollectDestination::ExistingRegular(playlist)
+                    } else {
+                        HistoryCollectDestination::Existing(playlist)
+                    };
                     service
                         .guarded_collect_history(
                             &source.token,
-                            HistoryCollectDestination::Existing(playlist),
+                            destination,
                             source.songs(),
                             &attempt.operation,
                             &check,

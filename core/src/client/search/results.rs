@@ -12,6 +12,30 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
+// M15.Wn merges the hit and nested Song before M21's normalization.
+// An explicitly contradictory raw resource cannot grant an ordinary Song
+// destination; the plain Song path does not model hybrid source writes.
+pub(super) fn lyric_destination_song(
+    raw: &Value,
+    song: &Value,
+    track: &TrackView,
+    id: &str,
+) -> bool {
+    super::song_comment::observe_lyric(raw, track).as_deref() == Some(id)
+        && ![song, raw].iter().any(|source| {
+            ["t", "songType"].iter().any(|key| source[*key] == "1")
+                || [
+                    "path",
+                    "audio",
+                    "radio",
+                    "mainTrackId",
+                    "isOfflineDownOnline",
+                ]
+                .iter()
+                .any(|key| js_truthy(&source[*key]))
+        })
+}
+
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SearchItem {
@@ -22,11 +46,16 @@ pub enum SearchItem {
         #[serde(rename = "groupNextRight", skip_serializing_if = "Option::is_none")]
         group_next_right: Option<super::SearchNextRight>,
         #[serde(rename = "groupDownload", skip_serializing_if = "Option::is_none")]
-        group_download: Option<super::SearchGroupDownloadRow>,
+        group_download: Option<Box<super::SearchGroupDownloadRow>>,
         #[serde(rename = "songCommentMenu", skip_serializing_if = "Option::is_none")]
         song_comment_menu: Option<Box<super::SearchSongCommentMenu>>,
         #[serde(rename = "lyricGroupPlayback", skip_serializing_if = "Option::is_none")]
         lyric_group_playback: Option<Box<super::LyricGroupPlaybackRow>>,
+        #[serde(
+            rename = "lyricGroupCollectionReceipt",
+            skip_serializing_if = "Option::is_none"
+        )]
+        lyric_group_collection_receipt: Option<String>,
         #[serde(rename = "songShareReceipt", skip_serializing_if = "Option::is_none")]
         song_share_receipt: Option<Box<str>>,
         #[serde(
@@ -249,6 +278,10 @@ pub struct SearchResultView {
     #[serde(skip)]
     pub(super) lyric_group_rows: Vec<super::lyric_group::Observation>,
     #[serde(skip)]
+    pub(super) lyric_download_rows: Vec<super::group_download::lyrics::LyricDownloadObservation>,
+    #[serde(skip)]
+    pub(super) lyric_group_collection_rows: Vec<super::lyric_collection::Observation>,
+    #[serde(skip)]
     pub(super) song_share_rows: Vec<Option<super::song_share::Song>>,
 }
 impl MusicClient {
@@ -318,20 +351,50 @@ impl MusicClient {
         let value = self
             .session
             .run_for(token, |api, uid| async move {
-                let lyric_group_read = if query.category == SearchCategory::Lyrics {
-                    let revision = if self.login_pending()? {
-                        None
+                let (lyric_group_read, lyric_download_read, lyric_collection_read) =
+                    if query.category == SearchCategory::Lyrics {
+                        let active = !self.login_pending()?;
+                        (
+                            self.search.lyric_groups.begin(
+                                token,
+                                &api,
+                                &query,
+                                active
+                                    .then(|| {
+                                        api.lyric_group_playback_credential_revision()
+                                            .ok()
+                                            .flatten()
+                                    })
+                                    .flatten(),
+                            )?,
+                            self.search.group_downloads.begin_lyric_read(
+                                token,
+                                &api,
+                                &query,
+                                active
+                                    .then(|| {
+                                        api.lyric_group_download_credential_revision()
+                                            .ok()
+                                            .flatten()
+                                    })
+                                    .flatten(),
+                            )?,
+                            self.search.lyric_collection.begin(
+                                token,
+                                &api,
+                                &query,
+                                active
+                                    .then(|| {
+                                        api.lyric_group_collection_credential_revision()
+                                            .ok()
+                                            .flatten()
+                                    })
+                                    .flatten(),
+                            )?,
+                        )
                     } else {
-                        api.lyric_group_playback_credential_revision()
-                            .ok()
-                            .flatten()
+                        (None, None, None)
                     };
-                    self.search
-                        .lyric_groups
-                        .begin(token, &api, &query, revision)?
-                } else {
-                    None
-                };
                 let correction_revision = (query.category == SearchCategory::All && query.correct)
                     .then(|| api.search_default_context_revision().ok().flatten())
                     .flatten();
@@ -645,6 +708,16 @@ impl MusicClient {
                                     .lyric_groups
                                     .capture(token, &api, read, &mut view)?;
                             }
+                            if let Some(read) = lyric_download_read.filter(|_| !login_pending) {
+                                self.search
+                                    .group_downloads
+                                    .capture_lyrics(token, &api, read, &mut view)?;
+                            }
+                            if let Some(read) = lyric_collection_read.filter(|_| !login_pending) {
+                                self.search
+                                    .lyric_collection
+                                    .capture(token, &api, read, &mut view)?;
+                            }
                             return Ok(());
                         }
                         self.search
@@ -924,6 +997,7 @@ fn item(
                 group_download: None,
                 song_comment_menu: None,
                 lyric_group_playback: None,
+                lyric_group_collection_receipt: None,
                 song_share_receipt: None,
                 song_public_link_available: false,
                 mv_id,
@@ -1023,7 +1097,7 @@ impl SearchResultView {
             } => Some((
                 track.id.clone(),
                 group_download
-                    .as_ref()
+                    .as_deref()
                     .map(super::group_download::RowRights::from),
             )),
             _ => None,
@@ -1054,7 +1128,10 @@ impl SearchResultView {
                 ..
             } = item
             {
-                *group_download = page.as_ref().and_then(|page| page.row(&track.id));
+                *group_download = page
+                    .as_ref()
+                    .and_then(|page| page.row(&track.id))
+                    .map(Box::new);
             }
         }
         Ok(())
@@ -1123,6 +1200,8 @@ impl SearchResultView {
             preview_layout: None,
             song_comment_rows: vec![],
             lyric_group_rows: vec![],
+            lyric_download_rows: vec![],
+            lyric_group_collection_rows: vec![],
             song_share_rows: vec![],
         }
     }
@@ -1387,6 +1466,15 @@ pub(super) fn project(
             if let Some(observation) = super::lyric_group::observe(resource, track) {
                 result.lyric_group_rows.push(observation);
             }
+            if let Some(observation) = super::group_download::lyrics::observe(
+                resource,
+                track.map(|track| (track, section.items.len())),
+            ) {
+                result.lyric_download_rows.push(observation);
+            }
+            if let Some(observation) = super::lyric_collection::observe(resource, track) {
+                result.lyric_group_collection_rows.push(observation);
+            }
         }
         match projected {
             Ok(Some(mut item)) => {
@@ -1419,7 +1507,7 @@ pub(super) fn project(
                         *group_next_right = super::SearchNextRight::from_song(base, &track.id);
                         *group_download =
                             super::group_download::RowRights::observe(base, &track.id)
-                                .map(|rights| rights.row(String::new()));
+                                .map(|rights| Box::new(rights.row(String::new())));
                     }
                 } else if lyrics && let SearchItem::Song { track, .. } = &item {
                     result

@@ -655,6 +655,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 downloads::download_song_share_access,
                 downloads::download_collect_prepare,
                 downloads::history_collect_prepare,
+                downloads::lyric_group_collect_prepare,
                 downloads::download_batch_collect_prepare,
                 downloads::download_collect_destinations,
                 downloads::download_collect_existing,

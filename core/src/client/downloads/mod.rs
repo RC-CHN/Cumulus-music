@@ -26,7 +26,7 @@ use crate::{
 pub(in crate::client) use collect::HistoryDownloadSources;
 pub use collect::{
     DownloadBatchCollectPlan, DownloadCollectCreation, DownloadCollectCreationCommand,
-    DownloadCollectPlan, DownloadLikedDestination, HistoryCollectPlan,
+    DownloadCollectPlan, DownloadLikedDestination, HistoryCollectPlan, LyricGroupCollectPlan,
 };
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;

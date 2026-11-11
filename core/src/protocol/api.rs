@@ -828,6 +828,12 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// The dedicated Lyrics result and the fixed song download route must
+    /// belong to the same native account and credential revision.
+    fn lyric_group_download_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
     }
@@ -840,6 +846,12 @@ pub trait Api: Send + Sync + std::any::Any {
     /// Current native account across the downloaded-song picker and its write.
     fn download_collection_scope_revision(&self) -> Result<Option<String>> {
         Ok(None)
+    }
+
+    /// Account scope for a Lyrics group collection, including its native
+    /// result read and the ordinary guarded destination picker.
+    fn lyric_group_collection_credential_revision(&self) -> Result<Option<String>> {
+        self.download_collection_scope_revision()
     }
 
     /// Account scope shared by the local-batch picker, detail readback and add.

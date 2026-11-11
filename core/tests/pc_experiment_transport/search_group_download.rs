@@ -23,6 +23,8 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 #[path = "search_group_download/history.rs"]
 mod history;
+#[path = "search_group_download/lyrics.rs"]
+mod lyrics;
 #[path = "search_group_download/purchased_creation.rs"]
 mod purchased_creation;
 #[path = "search_group_download/purchased_resume.rs"]

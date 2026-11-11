@@ -2,6 +2,7 @@
 //! accepted here; a normal download uses its own verified PC cookie scope.
 mod destination;
 mod history;
+pub(super) mod lyrics;
 mod purchased;
 use super::{MusicClient, SearchResultQuery};
 use crate::catalog::search::results::SearchChannel;
@@ -106,6 +107,35 @@ impl SearchGroupDownloadRight {
     }
 }
 
+fn singleton_anchor_payment(privilege: &Value, id: &str) -> Option<bool> {
+    let rights = privilege.as_object()?;
+    if rights
+        .get("id")
+        .is_some_and(|value| !value.is_null() && identifier(value).ok().as_deref() != Some(id))
+    {
+        return None;
+    }
+    let raw = rights.get("st");
+    let normalized = rights.get("status");
+    if raw.zip(normalized).is_some_and(|(a, b)| a != b) {
+        return None;
+    }
+    let status = raw.or(normalized)?.as_i64()?;
+    // M21:258–264 resolves copyright before the fee gate. The positive
+    // download bitrate already belongs to the sole survivor (M27.e), so
+    // the independent clicked item needs no download bitrate of its own.
+    if status < 0 {
+        return Some(true);
+    }
+    match rights.get("fee")?.as_u64()? {
+        0 => Some(true),
+        _ => match rights.get("payed") {
+            None | Some(Value::Null) => Some(false),
+            Some(mask) => Some(mask.as_u64()? > 0),
+        },
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchGroupDownloadRow {
@@ -183,6 +213,13 @@ pub enum SearchGroupDownloadCommand {
         anchor: SearchGroupDownloadTarget,
         rows: Vec<SearchGroupDownloadTarget>,
     },
+    PrepareLyricsGroup {
+        anchor: SearchGroupDownloadTarget,
+        rows: Vec<SearchGroupDownloadTarget>,
+    },
+    PreviewLyricsAnchor {
+        anchor: SearchGroupDownloadTarget,
+    },
     PrepareHistory {
         target: HistorySelectionScope,
     },
@@ -259,6 +296,10 @@ pub enum SearchGroupDownloadDecision {
     rename_all_fields = "camelCase"
 )]
 pub enum SearchGroupDownloadReply {
+    LyricMenu {
+        epoch: String,
+        show: bool,
+    },
     Prepared {
         epoch: String,
         decision: SearchGroupDownloadDecision,
@@ -301,7 +342,7 @@ pub enum SearchGroupDownloadReply {
     Cancelled,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct QueryScope {
     keyword: String,
     correct: bool,
@@ -343,21 +384,26 @@ struct Observed {
 
 enum Source {
     Search(Vec<Arc<Page>>),
+    Lyrics(lyrics::Selection),
     History(Box<history::HistorySource>),
 }
 
 impl Observed {
+    fn lyric(&self) -> bool {
+        matches!(self.source, Source::Lyrics(_))
+    }
+
     fn history_revision(&self) -> Option<&str> {
         match &self.source {
             Source::History(source) => Some(&source.revision),
-            Source::Search(_) => None,
+            Source::Search(_) | Source::Lyrics(_) => None,
         }
     }
 
     fn selection_count(&self) -> usize {
         match &self.source {
             Source::History(source) => source.selection_count,
-            Source::Search(_) => self.rows.len(),
+            Source::Search(_) | Source::Lyrics(_) => self.rows.len(),
         }
     }
 
@@ -417,6 +463,7 @@ impl Drop for Lease {
 #[derive(Default)]
 struct State {
     pages: VecDeque<Arc<Page>>,
+    lyrics: Option<lyrics::Visit>,
     ticket: u64,
     plan: Option<Arc<Plan>>,
 }
@@ -550,14 +597,18 @@ impl SearchGroupDownloads {
     }
 
     fn current(&self, session: &Arc<AccountSession>, observed: &Observed) -> Result<()> {
-        let Source::Search(pages) = &observed.source else {
-            return observed.history_current(session);
-        };
         let state = self.0.lock().map_err(|_| Error::LockPoisoned)?;
-        if pages
-            .iter()
-            .all(|page| page.live() && state.pages.iter().any(|stored| Arc::ptr_eq(stored, page)))
-        {
+        let live = match &observed.source {
+            Source::Search(pages) => pages.iter().all(|page| {
+                page.live() && state.pages.iter().any(|stored| Arc::ptr_eq(stored, page))
+            }),
+            Source::Lyrics(selection) => selection.current(state.lyrics.as_ref()),
+            Source::History(_) => {
+                drop(state);
+                return observed.history_current(session);
+            }
+        };
+        if live {
             Ok(())
         } else {
             Err(Error::StaleResponse)
@@ -621,7 +672,12 @@ fn valid_receipt(receipt: &str) -> bool {
 
 fn authorization(session: &AccountSession, observed: &Observed) -> Result<()> {
     session.with_verified_profile(&observed.owner, &observed.api, |_, _| Ok(()))?;
-    if observed.api.song_card_download_scope_revision()?.as_deref() != Some(&observed.revision) {
+    let revision = if observed.lyric() {
+        observed.api.lyric_group_download_credential_revision()?
+    } else {
+        observed.api.song_card_download_scope_revision()?
+    };
+    if revision.as_deref() != Some(&observed.revision) {
         return Err(Error::StaleResponse);
     }
     Ok(())
@@ -652,6 +708,24 @@ impl MusicClient {
         match command {
             C::Prepare { anchor, rows } => {
                 self.prepare_search_group_download(epoch, token, anchor, rows)
+                    .await
+            }
+            C::PrepareLyricsGroup { anchor, rows } => {
+                let login = self.auth.pending_guard();
+                login()?;
+                let api = self.session.native_api(&token)?;
+                self.session
+                    .with_verified_profile(&token, &api, |_, _| Ok(()))?;
+                let revision = api
+                    .lyric_group_download_credential_revision()?
+                    .ok_or(Error::StaleResponse)?;
+                let (ticket, observed) =
+                    host.begin_lyric_selection(token, api, revision, anchor, rows)?;
+                self.prepare_observed_group_download(epoch, ticket, observed)
+                    .await
+            }
+            C::PreviewLyricsAnchor { anchor } => {
+                self.preview_lyric_download_anchor(epoch, token, anchor)
                     .await
             }
             C::PrepareHistory { target } => {
@@ -915,6 +989,7 @@ impl MusicClient {
                             .flat_map(|row| row.unresolved.iter().map(String::as_str)),
                     )
                     .chain(row.map(|_| candidate.anchor.as_str()))
+                    .chain(candidate.lyric().then_some(candidate.anchor.as_str()))
                     .collect();
                 let matched =
                     local
@@ -924,9 +999,10 @@ impl MusicClient {
                 let mut songs = Vec::new();
                 let mut existing = BTreeMap::new();
                 let history = candidate.history_revision().is_some();
+                let lyric = candidate.lyric();
                 let mut collection = match &candidate.source {
                     Source::History(source) => source.collection.clone(),
-                    Source::Search(_) => Vec::new(),
+                    Source::Search(_) | Source::Lyrics(_) => Vec::new(),
                 };
                 let mut offers = Vec::new();
                 let mut first_filter_count = 0;
@@ -936,6 +1012,19 @@ impl MusicClient {
                 let mut existing_quality = None;
                 let decision = session.with_token(&candidate.owner, |owner| {
                     store.read_snapshot(|tx| {
+                        if lyric
+                            && (matched.contains(candidate.anchor.as_str())
+                                || tx
+                                    .playback_download_rows(
+                                        owner,
+                                        &candidate.anchor,
+                                        PlaybackDownloadKind::Song,
+                                    )?
+                                    .iter()
+                                    .any(|task| task.status == "complete"))
+                        {
+                            return Ok(D::AnchorUnavailable);
+                        }
                         if let Some(row) = row {
                             let complete = |id| -> Result<bool> {
                                 Ok(tx
@@ -1006,10 +1095,12 @@ impl MusicClient {
                         if unverified_purchase {
                             return Ok(D::PurchasedSelectionUnavailable);
                         }
-                        if first_filter_count == 1
-                            && let Source::History(source) = &candidate.source
-                            && !source.singleton_anchor_supported
-                        {
+                        let singleton_anchor_supported = match &candidate.source {
+                            Source::History(source) => source.singleton_anchor_supported,
+                            Source::Lyrics(source) => source.singleton_anchor_supported,
+                            Source::Search(_) => true,
+                        };
+                        if first_filter_count == 1 && !singleton_anchor_supported {
                             return Ok(D::Unavailable);
                         }
                         if !offers.is_empty() {
@@ -1031,7 +1122,7 @@ impl MusicClient {
                             });
                         }
                         if songs.is_empty() {
-                            if history
+                            if (history || lyric)
                                 && first_filter_count == 0
                                 && already_available + copyright_blocked
                                     == candidate.selection_count()

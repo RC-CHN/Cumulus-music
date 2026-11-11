@@ -30,6 +30,33 @@ pub async fn history_collect_prepare<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LyricGroupCollectInput {
+    epoch: String,
+    anchor: String,
+    rows: Vec<String>,
+}
+
+#[tauri::command]
+pub fn lyric_group_collect_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    request: Request<'_>,
+) -> Result<AccountData<LyricGroupCollectPlan>, ClientError> {
+    require_collect_window(&window)?;
+    let invalid = || Error::InvalidInput("invalid lyric collection selection");
+    let input = match request.body() {
+        InvokeBody::Json(body) if body.is_object() => {
+            LyricGroupCollectInput::deserialize(body).map_err(|_| invalid())?
+        }
+        _ => return Err(invalid().into()),
+    };
+    client
+        .lyric_group_collect_prepare(&input.epoch, &input.anchor, &input.rows)
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub fn download_collect_prepare<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,

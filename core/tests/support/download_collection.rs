@@ -2,6 +2,8 @@
 mod creation;
 #[path = "download_collection/history.rs"]
 mod history;
+#[path = "download_collection/lyrics.rs"]
+mod lyrics;
 
 use super::Fixture;
 use cumulus_core::{
@@ -50,6 +52,7 @@ impl Api for Transport {
             assert!(!cache);
             self.reads.lock().unwrap().push(path.into());
             match path {
+                "/api/search/resource/lyric" => Ok(lyrics::response(&payload)),
                 LIST => {
                     assert_eq!(
                         payload,

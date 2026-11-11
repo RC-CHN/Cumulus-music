@@ -8,7 +8,7 @@ import type {
 } from './player';
 import type { MenuItem } from './menu';
 import { podcastProgramPublicLink } from './podcast.ts';
-import type { SongGroupDownloadPrepare } from './search';
+import type { SearchRowGroupDownloadPrepare, SongGroupDownloadPrepare } from './search';
 import type { SongRowCommentScope } from './songRowCommentMenu';
 
 export type TrackPlayGesture = 'double_click';
@@ -38,6 +38,14 @@ export interface SongGroupDownloadRequest {
   };
 }
 
+export interface LyricGroupCollectionRequest {
+  epoch: string;
+  anchor: string;
+  rows: string[];
+  tracks: TrackView[];
+  live: () => boolean;
+}
+
 export interface TrackMenuSelectionScope {
   multiple: boolean;
   live: () => boolean;
@@ -59,7 +67,8 @@ export interface TrackMenuRequest {
   songRowComment?: SongRowCommentScope;
   searchGroup?: {
     epoch: string;
-    download?: import('./search').SearchGroupDownloadSelection;
+    collection?: LyricGroupCollectionRequest;
+    download?: SearchRowGroupDownloadPrepare;
     allDownloadsBlocked: boolean;
     action:
       | { source: 'songs'; anchor: SearchQueueRow; rows: SearchQueueRow[] }

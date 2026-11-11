@@ -6,8 +6,8 @@ pub use super::downloads::{
     DownloadCollectCreationCommand, DownloadCollectPlan, DownloadCommand, DownloadFailure,
     DownloadJobView, DownloadLikedDestination, DownloadQualityPreferences, DownloadQuery,
     DownloadResult, DownloadShareAccess, DownloadSkip, DownloadSkipReason, DownloadSort,
-    DownloadTab, DownloadTaskView, DownloadsView, HistoryCollectPlan, SongDownloadState,
-    TaskControl, VoiceDownloadConfirmation, VoiceDownloadPreparation,
+    DownloadTab, DownloadTaskView, DownloadsView, HistoryCollectPlan, LyricGroupCollectPlan,
+    SongDownloadState, TaskControl, VoiceDownloadConfirmation, VoiceDownloadPreparation,
 };
 pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};

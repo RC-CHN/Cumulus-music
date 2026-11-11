@@ -167,7 +167,7 @@ impl MusicClient {
             Some(previous) => previous,
             None if reconcile => return Err(Error::StaleResponse),
             None => {
-                let outcome = if source.history() {
+                let outcome = if source.ordered_group() {
                     service
                         .guarded_collect_history(
                             &source.token,

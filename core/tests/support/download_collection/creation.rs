@@ -11,6 +11,7 @@ const NAME: &str = "合成下载收藏";
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Case {
     Success,
+    LyricSuccess,
     PreflightUnavailable,
     LostCreate,
     LateList,
@@ -64,6 +65,9 @@ impl Api for Native {
             self.reads.lock().unwrap().push(path.into());
             let writes = self.writes.lock().unwrap().len();
             match path {
+                "/api/search/resource/lyric" if self.case == Case::LyricSuccess => {
+                    Ok(lyrics::response(&payload))
+                }
                 OWNED => {
                     assert_eq!(
                         payload,
@@ -96,7 +100,11 @@ impl Api for Native {
                         row["creator"]["userId"] = json!(2);
                     }
                     row["trackIds"] = if self.show_added.load(Ordering::Acquire) {
-                        json!([{"id":"123","v":1}])
+                        if self.case == Case::LyricSuccess {
+                            json!([{"id":"33","v":1},{"id":"31","v":1}])
+                        } else {
+                            json!([{"id":"123","v":1}])
+                        }
                     } else {
                         json!([])
                     };
@@ -185,7 +193,12 @@ impl Api for Native {
                 dispatched.store(true, Ordering::Release);
                 return self.liked.apply(body);
             }
-            assert_eq!(body, json!({"pid":"91","trackIds":"[\"123\"]","op":"add"}));
+            let ids = if self.case == Case::LyricSuccess {
+                r#"["33","31"]"#
+            } else {
+                r#"["123"]"#
+            };
+            assert_eq!(body, json!({"pid":"91","trackIds":ids,"op":"add"}));
             if self.case == Case::CancelBeforeAdd {
                 self.entered.notify_one();
                 self.release.notified().await;
@@ -287,6 +300,62 @@ async fn explicit_create_journals_the_exact_new_destination_and_one_add() {
             .collect::<Vec<_>>(),
         [CREATE, WRITE]
     );
+}
+
+#[tokio::test]
+async fn lyric_collection_creates_one_private_playlist_and_adds_only_ordered_eligible_songs() {
+    let f = Fixture::new();
+    let api = Arc::new(Native::new(Case::LyricSuccess));
+    f.session
+        .adopt(
+            api.clone(),
+            json!({"userId":1}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    let epoch = f.client.account().unwrap().epoch;
+    let (receipt, can_create) = lyrics::prepare_ordered(&f, &epoch).await;
+    assert!(can_create);
+    assert!(api.writes.lock().unwrap().is_empty());
+
+    let first = f
+        .client
+        .download_collect_creation(&epoch, &receipt, create())
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(first.create.phase, PlaylistPhase::Confirmed);
+    assert_eq!(first.create.playlist_id.as_deref(), Some("91"));
+    assert!(!first.can_add);
+    let add = first.add.unwrap();
+    assert_eq!(add.phase, PlaylistPhase::Confirmed);
+    let playlist = add.observed.unwrap();
+    assert!(playlist.owned && playlist.private && !playlist.favorite);
+    assert_eq!(playlist.track_ids, ["33", "31"]);
+
+    let same = f
+        .client
+        .download_collect_creation(&epoch, &receipt, status(true))
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(same.create.operation_id, first.create.operation_id);
+    assert_eq!(same.add.unwrap().operation_id, add.operation_id);
+    assert_eq!(
+        *api.reads.lock().unwrap(),
+        ["/api/search/resource/lyric", OWNED, OWNED, DETAIL, DETAIL]
+    );
+    assert_eq!(
+        *api.writes.lock().unwrap(),
+        [
+            (CREATE, json!({"uid":"1","name":NAME,"privacy":10})),
+            (
+                WRITE,
+                json!({"pid":"91","trackIds":r#"["33","31"]"#,"op":"add"})
+            )
+        ]
+    );
+    assert!(f.store.values("1", "download_tasks_v1").unwrap().is_empty());
 }
 
 #[tokio::test]

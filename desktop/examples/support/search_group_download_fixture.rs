@@ -43,6 +43,10 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_PROOF").is_some()
 }
 
+pub fn lyrics() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_LYRICS_PROOF").is_some()
+}
+
 pub fn destination() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_GROUP_DOWNLOAD_DESTINATION_PROOF").is_some()
 }
@@ -178,7 +182,34 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         return None;
     }
     Some(match path {
-        "/api/song/like/get" => Ok(json!({"code":200,"ids":[if destination() {103} else {102}]})),
+        "/api/song/like/get" => {
+            Ok(json!({"code":200,"ids":[if lyrics() {104} else if destination() {103} else {102}]}))
+        }
+        "/api/search/resource/lyric" if lyrics() => {
+            TRACE
+                .lock()
+                .unwrap()
+                .push(json!({"kind":"lyrics","args":args,"cached":cached}));
+            if cached
+                || *args != json!({"keyword":"合成连续单曲","scene":"normal","limit":10,"offset":0})
+            {
+                Err(Error::InvalidInput("unexpected lyric download proof page"))
+            } else {
+                let resources = [101, 102, 103, 104, 103]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, id)| {
+                        let mut song = super::song(id);
+                        song["fee"] = json!(0);
+                        song["privilege"] = json!({"id":id,"fee":0,
+                        "st":if id==102 {-100}else{0},"pl":if id==102 {0}else{320000},
+                        "dl":if id==102 {0}else{320000}});
+                        json!({"song":song,"lyrics":format!("合成歌词下载命中第{}行",index+1)})
+                    })
+                    .collect::<Vec<_>>();
+                Ok(json!({"code":200,"data":{"totalCount":5,"resources":resources}}))
+            }
+        }
         LIST if destination() && args["uid"] == "2" => {
             TRACE
                 .lock()

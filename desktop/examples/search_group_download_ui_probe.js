@@ -21,6 +21,13 @@
   const row = (id) => one(`.search-song-panel .track-row[data-track-id="${id}"]`);
   const isLiked = (id) => !!row(id)?.querySelector('button[aria-label^="取消喜欢 "]');
   const title = (id) => row(id)?.querySelector('.track-row-title-text');
+  const lyricRow = (index) => one(`.search-lyric-result[data-lyric-index="${index}"] .track-row`);
+  const lyricTitle = (index) => lyricRow(index)?.querySelector('.track-row-title-text');
+  const lyricSelection = () => all('.search-lyric-result .track-row[aria-selected="true"]')
+    .map((node) => node.dataset.trackId).join(',');
+  const songMenu = () => all('[role="menu"][aria-label="歌曲操作"]').find(
+    (node) => node.getClientRects().length && !node.closest('[inert]') &&
+      getComputedStyle(node).opacity === '1' && !node.matches('.menu-enter-active,.menu-leave-active'));
   const download = () => all('[data-menu-key="download"]').find(
     (node) => node.getClientRects().length && !node.closest('[inert]'));
   const selection = () => all('.search-song-panel .track-row[aria-selected="true"]')
@@ -67,6 +74,20 @@
       { player, queue, actions, screenX, screenY, ratio: devicePixelRatio, paintSamples, old, ...extra });
   }
   async function input(label, node, mouseButton = 1, ctrl = false) {
+    stage = label;
+    if (node?.closest('.search-lyric-result')) {
+      const panel = one('#search-result-panel');
+      node.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'instant' });
+      let previous, since;
+      await wait(() => {
+        if (!node.isConnected) return false;
+        const r = node.getBoundingClientRect();
+        const bounds = [r.left,r.top,r.width,r.height,panel.scrollTop].join(',');
+        if (bounds !== previous) { previous = bounds; since = performance.now(); return false; }
+        return performance.now() - since >= 100 &&
+          node.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));
+      }, 'exact lyric pointer target after scrolling settles');
+    }
     assert(node?.isConnected && !node.disabled, 'actual enabled target');
     const r = node.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
     assert(node.contains(document.elementFromPoint(x,y)), 'pointer reaches intended control');
@@ -101,6 +122,7 @@
     const playlist = window.__groupDownloadConfigured.playlist;
     const liked = window.__groupDownloadConfigured.liked;
     const created = window.__groupDownloadConfigured.created;
+    const lyrics = window.__groupDownloadConfigured.lyrics;
     old = window.__groupDownloadConfigured.old;
     async function noNewTasks() {
       const view = await downloads('active');
@@ -130,9 +152,11 @@
     await wait(() => one('.search-results-page h1')?.textContent === '合成连续单曲' &&
       one('#search-result-panel')?.getAttribute('aria-busy') === 'false' &&
       !one('.page-enter-active,.page-leave-active'), 'initial search route');
-    click(one('[data-category="songs"]'));
-    await wait(() => title('103') && title('102') && title('101') &&
-      !one('.search-results-enter-active'), 'actual single song rows');
+    click(one(lyrics ? '[data-category="lyrics"]' : '[data-category="songs"]'));
+    await wait(() => (lyrics
+      ? [0,1,2,3,4].every(index => lyricTitle(index))
+      : title('103') && title('102') && title('101')) &&
+      !one('.search-results-enter-active'), 'actual search result rows');
 
     const provides = one('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides)
@@ -146,6 +170,51 @@
         throw Error('sealed start reply lost');
       return reply;
     };
+
+    if (lyrics) {
+      assert([0,1,2,3,4].map(index => lyricRow(index).dataset.trackId).join(',') === '101,102,103,104,103',
+        'exact official lyric hit and duplicate order');
+      await input('first',lyricTitle(2));
+      await wait(() => lyricSelection() === '103,103', 'duplicate lyric hits share selection');
+      await input('blocked',lyricTitle(1),1,true);
+      await wait(() => lyricSelection() === '102,103,103', 'blocked lyric hit retained');
+      await input('last',lyricTitle(0),1,true);
+      await wait(() => lyricSelection() === '101,102,103,103', 'third song selected in gesture order');
+      assert(actions.length === 0 && await noNewTasks(), 'selection alone has no download effects');
+      await input('anchor',lyricTitle(3),3,true);
+      await wait(() => songMenu() && download() && !download().disabled &&
+        actions.length === 1 && actions[0].command.kind === 'preview_lyrics_anchor',
+        'only the clicked, liked outsider previews the retained group download');
+      assert(lyricSelection() === '101,102,103,103' && await noNewTasks(),
+        'opening preserves selection and does not prepare or admit tasks');
+      await input('download',download());
+      await wait(() => button('核对下载') && actions.length === 3 &&
+        one('.track-action-feedback')?.textContent.includes('接纳结果未确认'), 'lost reply offers only readback');
+      assert(!one('dialog[open]'), 'the liked outside anchor skips the destination chooser');
+      await input('check',button('核对下载'));
+      const complete = await wait(async () => {
+        const view = await downloads('completed');
+        return actions.length === 4 && view.completedCount === 2 &&
+          one('.track-action-feedback')?.textContent.includes('已添加 2 首到下载列表，跳过 1 首') && view;
+      }, 'two actual native FLACs and one read-only confirmation');
+      assert(complete.tasks.map(task => task.track.id).sort().join(',') === '101,103', 'only survivors publish');
+      const completed = complete.tasks.map(({id, track}) => ({id, trackId:track.id}));
+      await capture('accepted', { completed });
+      await input('after_first',lyricTitle(3));
+      await wait(() => lyricSelection() === '104', 'replace prior selection');
+      await input('after_second',lyricTitle(1),1,true);
+      await wait(() => lyricSelection() === '102,104', 'group excludes the completed anchor');
+      await input('completed_anchor',lyricTitle(4),3,true);
+      await wait(() => songMenu() && !download() && actions.length === 5 &&
+        actions[4].reply.kind === 'lyric_menu' && actions[4].reply.show === false,
+        'finished clicked duplicate hides download for the retained group');
+      assert(songMenu().querySelector('[data-menu-key="play"]') && lyricSelection() === '102,104' &&
+        await noNewTasks(), 'hiding download leaves other menu actions and no additional task');
+      await capture('completed_hidden', { completed, selection: lyricSelection() });
+      core.searchGroupDownload = original;
+      await emit('complete',{ok:true,stageCount:step,realAccountWrites:0,realMusicRequests:0});
+      return;
+    }
 
     await input('first',title('103'));
     await wait(() => selection() === '103','first selected');

@@ -97,6 +97,7 @@ enum AddDestination<'a> {
 
 pub(crate) enum HistoryCollectDestination<'a> {
     Existing(&'a str),
+    ExistingRegular(&'a str),
     Created(&'a str),
     SystemLiked(&'a str),
 }
@@ -544,6 +545,12 @@ impl PlaylistService {
                         AddDestination::DownloadPicker {
                             playlist,
                             regular_only: false,
+                        }
+                    }
+                    HistoryCollectDestination::ExistingRegular(playlist) => {
+                        AddDestination::DownloadPicker {
+                            playlist,
+                            regular_only: true,
                         }
                     }
                     HistoryCollectDestination::Created(operation) => {

@@ -196,7 +196,7 @@ export interface DownloadCollectScope {
   receipt: string;
   canCreate: boolean;
   ownedOnly?: boolean;
-  origin?: 'history';
+  origin?: 'history' | 'search_lyrics';
 }
 export interface DownloadBatchCollectPlan {
   receipt: string;

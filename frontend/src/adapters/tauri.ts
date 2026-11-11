@@ -117,6 +117,8 @@ export function createTauriClient(): CoreClient {
         ...(defaultReceipt ? { defaultReceipt } : {}),
         ...(correctionReceipt ? { correctionReceipt } : {}),
       }),
+    lyricGroupCollectPrepare: (epoch, anchor, rows) =>
+      invoke('lyric_group_collect_prepare', { epoch, anchor, rows }),
     searchGroupDownload: (epoch, command) => invoke('search_group_download', { epoch, command }),
     searchSongRowCommentCount: (epoch, receipt) =>
       invoke('search_song_row_comment_count', { epoch, receipt }),

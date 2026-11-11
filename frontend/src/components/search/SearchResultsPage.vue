@@ -92,6 +92,7 @@ const props = defineProps<{
   queueDropEnabled: boolean;
   voiceQueueable: boolean;
   cardQueueFeedback: string;
+  lyricCollectionFeedback?: { message: string; failed?: boolean };
   playlistActionBusy: boolean;
   knownPlaylistIds?: ReadonlySet<string>;
   observedAlbumMembership: ReadonlyMap<string, boolean>;
@@ -409,22 +410,59 @@ function showTrackMenu(
     const selection = lyricSelection.value;
     const live = () => lyricSelection.value === selection && exactRow();
     if (selection.ids.size > 1) {
-      const indexes = lyricGroupIndexes(lyricIds.value, selection.ids, index);
-      const tickets = indexes?.map((ordinal) => lyricItems.value[ordinal]?.lyricGroupPlayback);
-      const anchor = item.lyricGroupPlayback;
-      const rows = tickets?.flatMap((ticket) => (ticket ? [ticket.receipt] : []));
+      const selectedAnchor = selection.ids.has(id);
+      const retainedByModifier = request.event.type === 'contextmenu' && !ordinary;
+      const indexes =
+        selectedAnchor || retainedByModifier
+          ? lyricGroupIndexes(lyricIds.value, selection.ids, index, 'destination')
+          : undefined;
+      const selected = indexes?.flatMap((ordinal) => {
+        const row = lyricItems.value[ordinal];
+        return row ? [row] : [];
+      });
+      const tickets = selected?.map((row) => row.lyricGroupPlayback);
+      const playAnchor = item.lyricGroupPlayback;
+      const playRows = tickets?.flatMap((ticket) => (ticket ? [ticket.receipt] : []));
+      const collectRows = selected?.flatMap((row) =>
+        row.lyricGroupCollectionReceipt ? [row.lyricGroupCollectionReceipt] : [],
+      );
+      const downloadRows = selected?.flatMap((row) =>
+        row.groupDownload ? [{ receipt: row.groupDownload.receipt, trackId: row.track.id }] : [],
+      );
       emit('more', {
         ...request,
         searchGroup: {
           epoch,
           action:
-            anchor && rows?.length === selection.ids.size
-              ? { source: 'lyrics', anchor: anchor.receipt, rows }
+            selectedAnchor && playAnchor && playRows?.length === selection.ids.size
+              ? { source: 'lyrics', anchor: playAnchor.receipt, rows: playRows }
               : undefined,
           allCopyrightBlocked:
             tickets?.length === selection.ids.size &&
             tickets.every((ticket) => ticket?.right === 'copyright_blocked'),
-          allDownloadsBlocked: false,
+          collection:
+            item.lyricGroupCollectionReceipt &&
+            selected &&
+            collectRows?.length === selection.ids.size
+              ? {
+                  epoch,
+                  anchor: item.lyricGroupCollectionReceipt,
+                  rows: collectRows,
+                  tracks: selected.map((row) => row.track),
+                  live,
+                }
+              : undefined,
+          download:
+            item.groupDownload && downloadRows?.length === selection.ids.size
+              ? {
+                  kind: 'prepare_lyrics_group',
+                  anchor: { receipt: item.groupDownload.receipt, trackId: id },
+                  rows: downloadRows,
+                }
+              : undefined,
+          allDownloadsBlocked:
+            selected?.length === selection.ids.size &&
+            selected.every((row) => row.groupDownload?.right === 'copyright_blocked'),
           live,
         },
       });
@@ -519,7 +557,7 @@ function showSelectedTrackMenu(
   const downloadAnchor = downloadRows[rows.findIndex((row) => row.index === anchorIndex)];
   const download =
     downloadAnchor && downloadRows.every((row) => !!row)
-      ? { anchor: downloadAnchor, rows: downloadRows }
+      ? { kind: 'prepare' as const, anchor: downloadAnchor, rows: downloadRows }
       : undefined;
   const allDownloadsBlocked = rows.every(
     ({ index }) => items[index]?.groupDownload?.right === 'copyright_blocked',
@@ -1172,6 +1210,15 @@ onBeforeUnmount(() => {
           <button ref="retryButton" type="button" class="secondary" @click="retry">重新加载</button>
         </div>
         <template v-else-if="view">
+          <p
+            v-if="lyrics && lyricCollectionFeedback"
+            class="search-result-notice"
+            :class="{ 'error-state': lyricCollectionFeedback.failed }"
+            data-search-lyric-collect-status
+            role="status"
+          >
+            {{ lyricCollectionFeedback.message }}
+          </p>
           <p v-if="podcastFollow.status.value" class="search-result-notice" role="status">
             {{ podcastFollow.status.value }}
           </p>

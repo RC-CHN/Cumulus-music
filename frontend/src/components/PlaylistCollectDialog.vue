@@ -347,10 +347,9 @@ async function reconcile() {
     class="playlist-dialog playlist-collect-dialog"
     aria-labelledby="collect-title"
     :aria-busy="busy"
-    :data-download-collect="
-      downloadCollection && downloadCollection.origin !== 'history' ? '' : undefined
-    "
+    :data-download-collect="downloadCollection && !downloadCollection.origin ? '' : undefined"
     :data-history-collect="downloadCollection?.origin === 'history' ? '' : undefined"
+    :data-lyric-group-collect="downloadCollection?.origin === 'search_lyrics' ? '' : undefined"
     @cancel.prevent="close"
   >
     <header>
@@ -387,6 +386,16 @@ async function reconcile() {
       所选播放记录共 {{ selectionSummary.total }} 项，将收藏 {{ tracks.length }} 首歌曲。<template
         v-if="selectionSummary.unsupported"
         >{{ selectionSummary.unsupported }} 项无法收藏，已略过。</template
+      >
+    </p>
+    <p
+      v-else-if="downloadCollection?.origin === 'search_lyrics' && selectionSummary"
+      class="collect-selection-summary"
+      role="status"
+    >
+      所选歌词结果共 {{ selectionSummary.total }} 首，将收藏 {{ tracks.length }} 首。<template
+        v-if="selectionSummary.unsupported"
+        >{{ selectionSummary.unsupported }} 首无法收藏，已略过。</template
       >
     </p>
     <p

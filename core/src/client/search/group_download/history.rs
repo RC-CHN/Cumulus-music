@@ -174,35 +174,6 @@ fn needs_privilege(song: &Value, id: &str) -> bool {
     p.is_null() || p.is_object() && ["fee", "st", "dl"].iter().any(|field| p[*field].is_null())
 }
 
-fn row_anchor_payment(song: &Value, id: &str) -> Option<bool> {
-    let rights = song["privilege"].as_object()?;
-    if rights
-        .get("id")
-        .is_some_and(|value| !value.is_null() && identifier(value).ok().as_deref() != Some(id))
-    {
-        return None;
-    }
-    let raw = rights.get("st");
-    let normalized = rights.get("status");
-    if raw.zip(normalized).is_some_and(|(a, b)| a != b) {
-        return None;
-    }
-    let status = raw.or(normalized)?.as_i64()?;
-    // M21:258–264 resolves copyright before the fee gate. The positive
-    // download bitrate already belongs to the sole survivor (M27.e), so
-    // the independent clicked item needs no download bitrate of its own.
-    if status < 0 {
-        return Some(true);
-    }
-    match rights.get("fee")?.as_u64()? {
-        0 => Some(true),
-        _ => match rights.get("payed") {
-            None | Some(Value::Null) => Some(false),
-            Some(mask) => Some(mask.as_u64()? > 0),
-        },
-    }
-}
-
 fn rejected(
     epoch: &str,
     selected: usize,
@@ -359,7 +330,11 @@ impl MusicClient {
             .map(|row| row.record.id.clone())
             .collect();
         if row_menu
-            && row_anchor_payment(&projection.anchor.resource, &projection.anchor.id).is_none()
+            && singleton_anchor_payment(
+                &projection.anchor.resource["privilege"],
+                &projection.anchor.id,
+            )
+            .is_none()
         {
             wanted.insert(projection.anchor.id.clone());
         }
@@ -422,7 +397,8 @@ impl MusicClient {
         // survivor's download bitrate. M23/M21 still route an unpaid positive
         // fee to checkout. A positive dl does not waive that anchor check.
         let singleton_anchor_supported = if row_menu {
-            row_anchor_payment(&projection.anchor.resource, &anchor) == Some(true)
+            singleton_anchor_payment(&projection.anchor.resource["privilege"], &anchor)
+                == Some(true)
         } else {
             observed_right(&projection.anchor.resource, &anchor).is_some()
                 && (anchor_privilege["fee"].as_i64() == Some(0)
@@ -460,21 +436,30 @@ impl MusicClient {
 
 #[cfg(test)]
 mod tests {
-    use super::row_anchor_payment;
+    use super::singleton_anchor_payment;
     use serde_json::json;
 
     #[test]
     fn original_row_anchor_payment_does_not_require_the_survivors_download_bitrate() {
         let mut clicked = json!({"privilege":{"id":71,"st":0,"fee":4,"payed":2,"dl":0}});
-        assert_eq!(row_anchor_payment(&clicked, "71"), Some(true));
+        assert_eq!(
+            singleton_anchor_payment(&clicked["privilege"], "71"),
+            Some(true)
+        );
         clicked["privilege"]["payed"] = json!(0);
-        assert_eq!(row_anchor_payment(&clicked, "71"), Some(false));
+        assert_eq!(
+            singleton_anchor_payment(&clicked["privilege"], "71"),
+            Some(false)
+        );
         clicked["privilege"]["payed"] = json!("malformed");
-        assert_eq!(row_anchor_payment(&clicked, "71"), None);
-        assert_eq!(row_anchor_payment(&clicked, "72"), None);
+        assert_eq!(singleton_anchor_payment(&clicked["privilege"], "71"), None);
+        assert_eq!(singleton_anchor_payment(&clicked["privilege"], "72"), None);
         clicked["privilege"]["st"] = json!(-100);
-        assert_eq!(row_anchor_payment(&clicked, "71"), Some(true));
+        assert_eq!(
+            singleton_anchor_payment(&clicked["privilege"], "71"),
+            Some(true)
+        );
         clicked["privilege"]["status"] = json!(0);
-        assert_eq!(row_anchor_payment(&clicked, "71"), None);
+        assert_eq!(singleton_anchor_payment(&clicked["privilege"], "71"), None);
     }
 }

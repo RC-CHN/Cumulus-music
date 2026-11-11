@@ -11,6 +11,7 @@ from vinyl_lyric_copy_smoke import require_xvfb
 from window_manager import launch
 
 DIRECT = ('first', 'blocked', 'last', 'anchor', 'download', 'check', 'accepted')
+LYRICS = (*DIRECT, 'after_first', 'after_second', 'completed_anchor', 'completed_hidden')
 PLAYLIST = ('first', 'blocked', 'last', 'collect_filtered', 'anchor', 'download', 'choose', 'reconcile', 'accepted')
 CREATED = ('first', 'blocked', 'last', 'collect_filtered', 'anchor', 'download', 'open_create',
            'private', 'create', 'creation_readback', 'add_created', 'accepted')
@@ -42,6 +43,7 @@ def run(args):
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700)
     resume = getattr(args, 'resume', False)
+    lyrics = getattr(args, 'lyrics', False)
     has_partial = args.mixed or resume
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_SEARCH_UI_PROOF='1',
@@ -53,6 +55,8 @@ def run(args):
         directory = root / 'os-profile' / name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
+    if lyrics:
+        env['CUMULUS_SEARCH_GROUP_DOWNLOAD_LYRICS_PROOF'] = '1'
     if args.playlist:
         env['CUMULUS_SEARCH_GROUP_DOWNLOAD_DESTINATION_PROOF'] = '1'
     if args.liked:
@@ -69,7 +73,7 @@ def run(args):
     output = root / 'first'
     labels = (PURCHASED_RESUME if resume else PURCHASED) if args.purchased else (
         CREATED if args.created else (*PLAYLIST[:-1], 'check', 'accepted') if args.mixed else
-        PLAYLIST if args.playlist else DIRECT
+        PLAYLIST if args.playlist else LYRICS if lyrics else DIRECT
     )
     with ExitStack() as stack:
         driver = TrustedClicks()
@@ -98,7 +102,7 @@ def run(args):
             assert selected['region'] == 'hires-tick' and selected['present'] and selected['ok']
             assert previous['region'] == 'sky-no-tick' and not previous['present'] and previous['ok']
     first, last = rows[0], rows[-1]
-    prefix = 2 if has_partial else 0
+    prefix = 2 if has_partial else int(lyrics)
     old = first.get('old')
     if args.mixed:
         assert old and old['bytes'] == 2048
@@ -112,17 +116,23 @@ def run(args):
             {'kind':'authorize','args':{'id':'103','level':'hires','immerseType':'c51'},'cached':False},
             {'kind':'media','id':'103','offset':0,'status':200,'contentRange':None},
         ]
+    elif lyrics:
+        assert old is None
+        assert first['searchGroupDownload'] == [dict(kind='lyrics', cached=False, args=dict(
+            keyword='合成连续单曲', scene='normal', limit=10, offset=0))]
+        assert all(row['searchGroupDownload'] == first['searchGroupDownload']
+                   for row in rows[:labels.index('download') + 1])
     else:
         assert old is None and first['searchGroupDownload'] == []
     assert all(row['queue'] == first['queue'] for row in rows)
     assert all(row['player']['position'] == first['player']['position'] for row in rows)
     ordered = (['104', '101', '103'] if resume else ['103', '101', '104']) if args.purchased else (
         ['104', '101', '103'] if args.playlist else ['103', '101'])
-    prepare = last['actions'][0]
-    assert prepare['command']['anchor']['trackId'] == '102'
+    prepare = last['actions'][int(lyrics)]
+    assert prepare['command']['anchor']['trackId'] == ('104' if lyrics else '102')
     assert prepare['reply']['eligibleCount'] == len(ordered) and prepare['reply']['omittedCount'] == 1
     receipt = prepare['reply']['receipt']
-    if not args.purchased:
+    if not args.purchased and not lyrics:
         assert all(step['command']['receipt'] == receipt for step in last['actions'][1:])
     trace = last['searchGroupDownload'][prefix:]
     if args.purchased:
@@ -220,6 +230,23 @@ def run(args):
             assert trace[1]['tracks'] == trace[3]['tracks'] == []
             assert trace[4]['tracks'] == [{'id': 103}, {'id': 101}]
             trace = trace[5:]
+    elif lyrics:
+        preview, prepare, start, check, hidden = last['actions']
+        assert [step['command']['kind'] for step in last['actions']] == [
+            'preview_lyrics_anchor', 'prepare_lyrics_group', 'start', 'status', 'preview_lyrics_anchor']
+        assert preview['command']['anchor'] == prepare['command']['anchor']
+        assert preview['reply'] == dict(kind='lyric_menu', epoch=first['player']['epoch'], show=True)
+        assert [row['trackId'] for row in prepare['command']['rows']] == ['103', '102', '101']
+        assert len({row['receipt'] for row in [prepare['command']['anchor'], *prepare['command']['rows']]}) == 4
+        assert prepare['reply']['decision'] == 'ready'
+        assert start['command']['receipt'] == check['command']['receipt'] == receipt
+        assert start['reply']['result']['accepted'] == check['reply']['result']['accepted']
+        assert rows[labels.index('anchor')]['actions'] == []
+        assert rows[labels.index('download')]['actions'] == [preview]
+        assert hidden['command']['anchor']['trackId'] == '103'
+        assert hidden['reply'] == dict(kind='lyric_menu', epoch=first['player']['epoch'], show=False)
+        assert last['selection'] == '102,104' and last['completed'] == rows[labels.index('accepted')]['completed']
+        assert last['searchGroupDownload'] == rows[labels.index('accepted')]['searchGroupDownload']
     elif not args.purchased:
         prepare, start, check = last['actions']
         assert [step['command']['kind'] for step in last['actions']] == ['prepare', 'start', 'status']
@@ -289,7 +316,7 @@ def run(args):
     reference = flac_frames(source)
     assert all(flac_frames(path) == reference for path in published)
     summary = {'ok': True, 'screenshots': len(labels), 'actualWebView': True,
-               'orderedTasks': ordered, 'anchor': '102', 'readOnlyLostReplyRecovery': not args.created,
+               'orderedTasks': ordered, 'anchor': '104' if lyrics else '102', 'readOnlyLostReplyRecovery': not args.created,
                'readOnlyDelayedCreateRecovery': args.created,
                'playlistAddCount': int(args.playlist), 'playlistCreateCount': int(args.created),
                'playlistAddedInOrder': ['103', '101'] if args.playlist else [],
@@ -297,6 +324,9 @@ def run(args):
                'exactFlacFrames': True, 'preservedPartialTask': has_partial,
                'purchasedMismatchKeptPaused': resume, 'purchasedResumeStatus': 206 if resume else None,
                'realAccountWrites': 0, 'realMusicRequests': 0}
+    if lyrics:
+        summary.update(lyricsGroupDownload=True, previewOnlyBeforeGesture=True,
+                       completedClickedAnchorHidden=True, duplicateHitDeduplicated=True)
     (root / 'report.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(summary))
 
@@ -310,6 +340,7 @@ if __name__ == '__main__':
     mode.add_argument('--liked', action='store_true')
     mode.add_argument('--purchased', action='store_true')
     mode.add_argument('--created', action='store_true')
+    mode.add_argument('--lyrics', action='store_true')
     parser.add_argument('--mixed', action='store_true')
     parser.add_argument('--resume', action='store_true', help='seed and resume a real same-tier partial task')
     parser.add_argument('--root', type=Path, required=True)

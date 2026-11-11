@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicU8;
 pub(super) struct Liked {
     pub(super) state: AtomicU8,
     changed_credentials: AtomicBool,
+    lyric_group: bool,
     pub(super) reads: Mutex<Vec<(String, Value)>>,
     pub(super) writes: Mutex<Vec<Value>>,
 }
@@ -21,6 +22,9 @@ impl Api for Liked {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             assert!(!cache);
+            if self.lyric_group && path == "/api/search/resource/lyric" {
+                return Ok(lyrics::response(&args));
+            }
             if path == LIST {
                 assert_eq!(
                     args,
@@ -63,7 +67,9 @@ impl Api for Liked {
             self.reads.lock().unwrap().push((path.into(), args.clone()));
             let state = self.state.load(Ordering::Acquire);
             let id = if state == 3 { "86" } else { "83" };
-            let tracks = if matches!(state, 1 | 2) {
+            let tracks = if matches!(state, 1 | 2) && self.lyric_group {
+                json!([{"id":33,"v":1},{"id":31,"v":1},{"id":17,"v":1}])
+            } else if matches!(state, 1 | 2) {
                 json!([{"id":123,"v":1},{"id":17,"v":1}])
             } else {
                 json!([{"id":17,"v":1}])
@@ -86,9 +92,12 @@ impl Api for Liked {
                 }
                 "/api/song/like/get" => {
                     assert_eq!(args, json!({"uid":"1"}));
-                    Ok(
-                        json!({"code":200,"ids":if state == 2 { json!([17,123]) } else { json!([17]) }}),
-                    )
+                    let ids = match (state, self.lyric_group) {
+                        (2, true) => json!([17, 33, 31]),
+                        (2, false) => json!([17, 123]),
+                        _ => json!([17]),
+                    };
+                    Ok(json!({"code":200,"ids":ids}))
                 }
                 _ => panic!("unknown system liked route"),
             }
@@ -254,6 +263,77 @@ async fn downloaded_collection_system_liked_preserves_pending_and_recovers_both_
             .count()
             >= 5
     );
+}
+
+#[tokio::test]
+async fn lyric_collection_system_liked_checks_both_reads_after_one_ordered_add() {
+    let f = Fixture::new();
+    let api = Arc::new(Liked {
+        lyric_group: true,
+        ..Default::default()
+    });
+    f.session
+        .adopt(
+            api.clone(),
+            json!({"userId":1}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    let epoch = f.client.account().unwrap().epoch;
+    let (receipt, _) = lyrics::prepare_ordered(&f, &epoch).await;
+    let destination = f
+        .client
+        .download_collect_liked_destination(&epoch, &receipt)
+        .await
+        .unwrap()
+        .value
+        .unwrap();
+    // "82" has the display name, but is not the verified system playlist.
+    assert!(
+        f.client
+            .download_collect_liked(&epoch, &receipt, "82", false)
+            .await
+            .is_err()
+    );
+    assert!(api.writes.lock().unwrap().is_empty());
+
+    let pending = f
+        .client
+        .download_collect_liked(&epoch, &receipt, &destination.receipt, false)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(pending.phase, PlaylistPhase::Uncertain);
+    let playlist_only = f
+        .client
+        .download_collect_liked(&epoch, &receipt, &destination.receipt, true)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(playlist_only.operation_id, pending.operation_id);
+    assert_eq!(playlist_only.phase, PlaylistPhase::Uncertain);
+    assert_eq!(playlist_only.verified_liked_track_ids, Some(vec![]));
+
+    api.state.store(2, Ordering::Release);
+    let confirmed = f
+        .client
+        .download_collect_liked(&epoch, &receipt, &destination.receipt, true)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(confirmed.operation_id, pending.operation_id);
+    assert_eq!(confirmed.phase, PlaylistPhase::Confirmed);
+    assert_eq!(confirmed.playlist_id.as_deref(), Some("83"));
+    assert_eq!(
+        confirmed.verified_liked_track_ids,
+        Some(vec!["33".into(), "31".into()])
+    );
+    assert_eq!(confirmed.observed.unwrap().track_ids, ["33", "31", "17"]);
+    assert_eq!(
+        *api.writes.lock().unwrap(),
+        [json!({"pid":"83","trackIds":r#"["33","31"]"#,"op":"add"})]
+    );
+    assert!(f.store.values("1", "download_tasks_v1").unwrap().is_empty());
 }
 
 #[tokio::test]

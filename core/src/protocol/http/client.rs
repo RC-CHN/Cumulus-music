@@ -2000,6 +2000,39 @@ impl Api for MusicHttpClient {
         Ok(Some(scoped.revision))
     }
 
+    fn lyric_group_download_credential_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        let revision = self
+            .song_card_download_scope_revision()?
+            .ok_or(Error::CredentialChanged)?;
+        let target = origin.request_url(WireRoute::Eapi, "/api/song/enhance/download/url/v1")?;
+        let scoped = self.credentials.request_credentials(&target)?;
+        if scoped.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &scoped,
+            [crate::protocol::api::SEARCH_LYRIC_RESULTS_PATH],
+        )?;
+        Ok(Some(revision))
+    }
+
+    fn lyric_group_collection_credential_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        if self.anonymous_store || origin != super::ApiOrigin::Pc {
+            return Err(Error::CredentialChanged);
+        }
+        let revision = self
+            .ordinary_playlist_collection_revision()?
+            .ok_or(Error::CredentialChanged)?;
+        self.require_playlist_write_target(
+            GuardedPlaylistAdd::PATH,
+            &revision,
+            [crate::protocol::api::SEARCH_LYRIC_RESULTS_PATH],
+        )?;
+        Ok(Some(revision))
+    }
+
     fn request_search_song_comment_information<'a>(
         &'a self,
         source: SearchSongCommentSource,

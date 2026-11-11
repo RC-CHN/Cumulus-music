@@ -306,6 +306,7 @@ mod tests {
                         group_download: None,
                         song_comment_menu: None,
                         lyric_group_playback: None,
+                        lyric_group_collection_receipt: None,
                         song_share_receipt: None,
                         song_public_link_available: false,
                         mv_id: Some("9".into()),
@@ -341,6 +342,8 @@ mod tests {
             hot_explanation: None,
             song_comment_rows: vec![],
             lyric_group_rows: vec![],
+            lyric_download_rows: vec![],
+            lyric_group_collection_rows: vec![],
             song_share_rows: vec![],
             preview_layout: None,
         }

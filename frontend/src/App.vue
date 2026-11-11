@@ -189,6 +189,7 @@ import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
 import type {
+  LyricGroupCollectionRequest,
   TrackCurrentToggle,
   QueueMenuAction,
   QueueMenuRequest,
@@ -197,6 +198,7 @@ import type {
   TrackPendingToggle,
   TrackPlayGesture,
 } from './services/trackMenu';
+import { lyricCollectionTracks } from './services/lyricGroupDestinations';
 import {
   currentCatalogTrack,
   currentPlaybackDownload,
@@ -3306,6 +3308,131 @@ async function openHistoryCollection(
     if (historyCollectPreparing.value === visit) historyCollectPreparing.value = undefined;
   }
 }
+type LyricCollectVisit = {
+  route: Page;
+  request: LyricGroupCollectionRequest;
+  opener: HTMLElement;
+};
+const lyricCollectPending = shallowRef<LyricCollectVisit>();
+const lyricCollectReturn = shallowRef<LyricCollectVisit>();
+const lyricCollectStatus = shallowRef<{
+  visit: LyricCollectVisit;
+  message: string;
+  failed?: boolean;
+}>();
+function lyricCollectionRoute(visit: LyricCollectVisit) {
+  return (
+    music.signedIn.value &&
+    music.account.value.epoch === visit.request.epoch &&
+    music.page.value === visit.route
+  );
+}
+function lyricCollectionCurrent(visit: LyricCollectVisit) {
+  return lyricCollectionRoute(visit) && visit.request.live();
+}
+const lyricCollectFeedback = computed(() => {
+  const status = lyricCollectStatus.value;
+  return status && lyricCollectionCurrent(status.visit) ? status : undefined;
+});
+watch(
+  [
+    () => !!lyricCollectPending.value && lyricCollectionCurrent(lyricCollectPending.value),
+    () => !!lyricCollectReturn.value && lyricCollectionCurrent(lyricCollectReturn.value),
+  ],
+  ([pending, active]) => {
+    if (!pending) lyricCollectPending.value = undefined;
+    if (
+      !active &&
+      lyricCollectReturn.value &&
+      playlistDialog.value?.kind === 'tracks' &&
+      playlistDialog.value.downloadCollection?.origin === 'search_lyrics'
+    )
+      playlistDialog.value = undefined;
+  },
+  { flush: 'sync' },
+);
+async function openLyricGroupCollection(request: LyricGroupCollectionRequest, opener: HTMLElement) {
+  const route = music.page.value;
+  const visit = { route, request, opener };
+  const anotherModal = () =>
+    !!(
+      playlistDialog.value ||
+      loginOpen.value ||
+      accountsOpen.value ||
+      downloadDialog.value ||
+      modalDepth.value ||
+      document.querySelector('dialog[open]')
+    );
+  if (
+    lyricCollectPending.value ||
+    route.kind !== 'search' ||
+    route.category !== 'lyrics' ||
+    !lyricCollectionCurrent(visit) ||
+    !opener.isConnected ||
+    anotherModal()
+  )
+    return;
+  opener.focus({ preventScroll: true });
+  const focus = document.activeElement;
+  let interrupted = false;
+  const stop = watch(
+    [playlistDialog, loginOpen, accountsOpen, downloadDialog, modalDepth],
+    () => {
+      if (anotherModal()) interrupted = true;
+    },
+    { flush: 'sync' },
+  );
+  lyricCollectPending.value = visit;
+  lyricCollectStatus.value = undefined;
+  const current = () =>
+    lyricCollectPending.value === visit &&
+    lyricCollectionCurrent(visit) &&
+    opener.isConnected &&
+    focus === document.activeElement &&
+    !interrupted &&
+    !anotherModal();
+  try {
+    const result = await core.lyricGroupCollectPrepare(request.epoch, request.anchor, request.rows);
+    const { receipt, canCreate, selectedCount } = result.value;
+    const discard = () => {
+      if (receipt) void core.downloadCollectCancel(result.epoch, receipt).catch(() => {});
+    };
+    if (result.epoch !== request.epoch || !current()) {
+      discard();
+      return;
+    }
+    const tracks = lyricCollectionTracks(result.value, request.tracks);
+    if (!tracks) {
+      discard();
+      lyricCollectStatus.value = { visit, message: '收藏范围已变化，请重新选择。', failed: true };
+      return;
+    }
+    if (!receipt) {
+      lyricCollectStatus.value = { visit, message: '所选歌词结果没有可收藏的歌曲。' };
+      return;
+    }
+    stop();
+    lyricCollectReturn.value = visit;
+    playlistDialog.value = {
+      kind: 'tracks',
+      tracks,
+      selectionSummary: {
+        total: selectedCount,
+        unsupported: selectedCount - tracks.length,
+        duplicates: 0,
+      },
+      downloadCollection: { epoch: request.epoch, receipt, canCreate, origin: 'search_lyrics' },
+    };
+  } catch (error) {
+    if (!current()) return;
+    const issue = failure(error);
+    if (['session_expired', 'profile_changed'].includes(issue.code)) void music.bootstrap(false);
+    else lyricCollectStatus.value = { visit, message: issue.message, failed: true };
+  } finally {
+    stop();
+    if (lyricCollectPending.value === visit) lyricCollectPending.value = undefined;
+  }
+}
 function playlistCollectionCompleted(created: boolean) {
   const visit = historyCollectReturn.value;
   if (
@@ -3315,6 +3442,16 @@ function playlistCollectionCompleted(created: boolean) {
     if (visit && historyCollectCurrent(visit))
       historyCollectStatus.value = {
         visit,
+        message: created ? '已收藏到新歌单。' : '已收藏到歌单。',
+      };
+  } else if (
+    playlistDialog.value?.kind === 'tracks' &&
+    playlistDialog.value.downloadCollection?.origin === 'search_lyrics'
+  ) {
+    const lyric = lyricCollectReturn.value;
+    if (lyric && lyricCollectionCurrent(lyric))
+      lyricCollectStatus.value = {
+        visit: lyric,
         message: created ? '已收藏到新歌单。' : '已收藏到歌单。',
       };
   } else if (created) downloads.notice.value = '已收藏到新歌单。';
@@ -3428,6 +3565,13 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
   }
 }
 function playlistCollectionFallback() {
+  const lyric = lyricCollectReturn.value;
+  if (lyric)
+    return lyricCollectionRoute(lyric)
+      ? document.querySelector<HTMLElement>(
+          '.search-results-page:not([inert]) [data-category="lyrics"][aria-selected="true"]',
+        )
+      : null;
   const visit = historyCollectReturn.value;
   if (visit) {
     if (visit.row && music.page.value === visit.route && music.account.value.epoch === visit.epoch)
@@ -3446,8 +3590,14 @@ function playlistCollectionFallback() {
     document.querySelector<HTMLElement>('[aria-label="播放队列"]')
   );
 }
+function playlistCollectionReturnFocus() {
+  const lyric = lyricCollectReturn.value;
+  if (lyric) return lyricCollectionCurrent(lyric) ? lyric.opener : null;
+  return historyCollectReturn.value?.opener ?? queueCollectionReturn.value ?? null;
+}
 function collectionLeft() {
   if (!playlistDialog.value) {
+    lyricCollectReturn.value = undefined;
     historyCollectReturn.value = undefined;
     queueCollectionReturn.value = undefined;
     queueCollectionOwner.value = '';
@@ -7117,6 +7267,7 @@ onUnmounted(() => {
                 :queue-drop-enabled="canDropSearchSong"
                 :voice-queueable="ordinaryVoiceQueueable"
                 :card-queue-feedback="searchCardQueueFeedback"
+                :lyric-collection-feedback="lyricCollectFeedback"
                 :playlist-action-busy="
                   playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
                 "
@@ -8448,6 +8599,7 @@ onUnmounted(() => {
         (track, ordinaryCatalog) =>
           (playlistDialog = { kind: 'tracks', tracks: [track], ordinaryCatalog })
       "
+      @collect-lyric-group="openLyricGroupCollection"
       @download="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
       @comments="(track) => openComments({ kind: 'track', id: track.id }, track.name)"
       @remove="(track, playlist) => (playlistDialog = { kind: 'remove', track, playlist })"
@@ -8459,11 +8611,13 @@ onUnmounted(() => {
     <ModalTransition
       :restore-focus="
         !playlistEditor &&
-        (historyCollectReturn
-          ? historyCollectReturn.route === page && historyCollectReturn.epoch === account.epoch
-          : !queueCollectionReturn || queueCollectionOwner === account.epoch)
+        (lyricCollectReturn
+          ? lyricCollectionRoute(lyricCollectReturn)
+          : historyCollectReturn
+            ? historyCollectReturn.route === page && historyCollectReturn.epoch === account.epoch
+            : !queueCollectionReturn || queueCollectionOwner === account.epoch)
       "
-      :return-focus="() => historyCollectReturn?.opener ?? queueCollectionReturn ?? null"
+      :return-focus="playlistCollectionReturnFocus"
       :fallback-focus="playlistCollectionFallback"
       @left="collectionLeft"
     >

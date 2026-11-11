@@ -84,5 +84,7 @@ test('playback group keeps gesture order and uses the clicked hit exactly once',
   assert.deepEqual(lyricGroupIndexes(displayed, selected, 2), [3, 2, 1]);
   assert.deepEqual(lyricGroupIndexes(displayed, selected, 0), [3, 0, 1]);
   assert.equal(lyricGroupIndexes(displayed, selected, 4), undefined);
+  assert.deepEqual(lyricGroupIndexes(displayed, selected, 4, 'destination'), [3, 0, 1]);
+  assert.deepEqual(lyricGroupIndexes(displayed, selected, 2, 'destination'), [3, 2, 1]);
   assert.equal(lyricGroupIndexes(['3', '5'], selected, 0), undefined);
 });

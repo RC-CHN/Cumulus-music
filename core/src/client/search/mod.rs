@@ -8,6 +8,7 @@ pub use group_download::{
     SearchGroupDownloadCommand, SearchGroupDownloadDecision, SearchGroupDownloadReply,
     SearchGroupDownloadRow, SearchGroupDownloadTarget,
 };
+pub(super) mod lyric_collection;
 pub(super) mod lyric_group;
 pub use lyric_group::{LyricGroupOperation, LyricGroupPlaybackRow};
 mod lyrics;

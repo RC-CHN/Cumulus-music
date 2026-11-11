@@ -108,12 +108,21 @@ impl Attempt {
 }
 
 pub(super) fn authorize_collection(observed: &Observed) -> Result<()> {
-    if (observed.history_revision().is_none()
-        && observed
+    let source_matches = if observed.lyric() {
+        observed
             .api
-            .song_card_collection_scope_revision()?
+            .lyric_group_collection_credential_revision()?
             .as_deref()
-            != Some(&observed.revision))
+            == Some(&observed.revision)
+    } else {
+        observed.history_revision().is_some()
+            || observed
+                .api
+                .song_card_collection_scope_revision()?
+                .as_deref()
+                == Some(&observed.revision)
+    };
+    if !source_matches
         || observed
             .api
             .download_collection_scope_revision()?

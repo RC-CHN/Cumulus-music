@@ -9,6 +9,7 @@ import {
   queueSongMenuItems,
   queueVoiceMenuItems,
   songLink,
+  type LyricGroupCollectionRequest,
   type QueueMenuAction,
   type QueueMenuRequest,
   type SongGroupDownloadRequest,
@@ -23,9 +24,11 @@ import SearchGroupDownloadPicker from './SearchGroupDownloadPicker.vue';
 import VoiceSongPurchasedQuality from './VoiceSongPurchasedQuality.vue';
 import type { SearchPurchasedQuality } from '../services/search';
 import { prepareSongRowComment } from '../services/songRowCommentMenu';
+import { prepareLyricDownloadVisibility } from '../services/lyricGroupDestinations';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{
   collect: [track: TrackView, ordinaryCatalog: boolean];
+  collectLyricGroup: [request: LyricGroupCollectionRequest, opener: HTMLElement];
   download: [track: TrackView];
   downloadSettings: [epoch: string];
   downloadLikes: [epoch: string, ids: string[]];
@@ -39,6 +42,7 @@ const client = useCore(),
 const request = shallowRef<TrackMenuRequest>(),
   playlist = shallowRef<PlaylistView>();
 const songRowCommentCount = ref<number | null>(null);
+const lyricDownloadVisible = ref(false);
 const queueRequest = shallowRef<QueueMenuRequest>();
 type SearchDownloadFeedback = {
   group: SongGroupDownloadRequest;
@@ -190,10 +194,17 @@ const items = computed<MenuItem[]>(() => {
         : !target
           ? '仅支持当前普通播放队列'
           : undefined;
+    const download = searchGroup.download;
+    const lyricDownload = download?.kind === 'prepare_lyrics_group';
+    const showDownload = !!download && (!lyricDownload || lyricDownloadVisible.value);
     return [
       { key: 'play', label: '播放', icon: 'play', disabled, hint },
       { key: 'next', label: '下一首播放', icon: 'next', disabled, hint },
-      ...(searchGroup.download
+      ...(searchGroup.collection || (lyricDownload && showDownload)
+        ? [{ key: 'lyric_group_destinations', label: '', separator: true }]
+        : []),
+      ...(searchGroup.collection ? [{ key: 'collect', label: '收藏', icon: 'star' }] : []),
+      ...(showDownload
         ? [
             {
               key: 'download',
@@ -282,6 +293,7 @@ const items = computed<MenuItem[]>(() => {
 function clear() {
   sequence++;
   songRowCommentCount.value = null;
+  lyricDownloadVisible.value = false;
   clearTimeout(timer);
   message.value = '';
   failed.value = false;
@@ -329,6 +341,24 @@ watch(
   },
 );
 onBeforeUnmount(close);
+async function prepareLyricDownloadMenu(signal: AbortSignal) {
+  const input = request.value;
+  const group = input?.searchGroup;
+  const download = group?.download;
+  if (!group || download?.kind !== 'prepare_lyrics_group') return false;
+  const attempt = sequence;
+  const live = () => sequence === attempt && request.value === input && group.live();
+  const show = await prepareLyricDownloadVisibility(
+    client,
+    group.epoch,
+    download.anchor,
+    live,
+    signal,
+  );
+  if (show === undefined || signal.aborted || !live()) return false;
+  lyricDownloadVisible.value = show;
+  return true;
+}
 async function prepareSongMenu(signal: AbortSignal) {
   const input = request.value;
   const scope = input?.songRowComment;
@@ -469,6 +499,9 @@ function canRestoreDownloadFocus() {
 function historyGroupDownload(group: SongGroupDownloadRequest | undefined) {
   return group?.prepare.kind === 'prepare_history' || group?.prepare.kind === 'prepare_history_row';
 }
+function retireUnsubmittedDownloadOnLeave(group: SongGroupDownloadRequest) {
+  return historyGroupDownload(group) || group.prepare.kind === 'prepare_lyrics_group';
+}
 function showHistoryDownload(input: SongGroupDownloadRequest, opener: HTMLElement) {
   if (
     !historyGroupDownload(input) ||
@@ -489,7 +522,9 @@ function showHistoryDownload(input: SongGroupDownloadRequest, opener: HTMLElemen
 function groupMembershipUnknown(group: SongGroupDownloadRequest) {
   return group.prepare.kind === 'prepare_history'
     ? '暂未核实所选歌曲的喜欢状态，未添加下载任务。'
-    : '暂未核实右击歌曲的喜欢状态，未添加下载任务。';
+    : group.prepare.kind === 'prepare_lyrics_group'
+      ? '暂未核实点中歌曲的喜欢状态，未添加下载任务。'
+      : '暂未核实右击歌曲的喜欢状态，未添加下载任务。';
 }
 function discardSongDownloadPlan(group: SongGroupDownloadRequest, receipt: string) {
   void client.searchGroupDownload(group.epoch, { kind: 'cancel', receipt }).catch(() => {});
@@ -544,7 +579,8 @@ async function startSongGroupDownload(group: SongGroupDownloadRequest) {
         return;
       case 'anchor_unavailable':
         feedback(
-          group.prepare.kind === 'prepare_history_row'
+          group.prepare.kind === 'prepare_history_row' ||
+            group.prepare.kind === 'prepare_lyrics_group'
             ? '点中的歌曲已下载或有匹配的本机文件，未添加下载任务。'
             : group.prepare.kind === 'prepare_history'
               ? '所选歌曲没有可添加的新下载任务。'
@@ -617,7 +653,8 @@ async function confirmSearchPurchase(quality: SearchPurchasedQuality) {
     });
     if (!live()) {
       if (
-        group.prepare.kind === 'prepare_history_row' &&
+        (group.prepare.kind === 'prepare_history_row' ||
+          group.prepare.kind === 'prepare_lyrics_group') &&
         (reply.kind === 'directory_required' ||
           ((reply.kind === 'quality_confirmed' || reply.kind === 'existing_quality_mismatch') &&
             reply.epoch === group.epoch &&
@@ -677,6 +714,10 @@ function askSearchDownloadDirectory(group: SongGroupDownloadRequest) {
 }
 function closeSearchDownloadPicker() {
   const history = historyGroupDownload(downloadPicker.value?.group);
+  const lyricOwner =
+    downloadPicker.value?.group.prepare.kind === 'prepare_lyrics_group'
+      ? downloadPicker.value.group.live
+      : undefined;
   const focusGuard = historyFocusGuard.value;
   downloadPicker.value = undefined;
   const target = returnFocus;
@@ -687,6 +728,7 @@ function closeSearchDownloadPicker() {
         target.isConnected &&
         returnFocus === target &&
         historyFocusGuard.value === focusGuard &&
+        lyricOwner?.() !== false &&
         canRestoreDownloadFocus() &&
         (history
           ? !document.querySelector('dialog[open]')
@@ -785,12 +827,17 @@ async function select(key: string) {
   )
     return;
   const group = input.searchGroup;
+  if (group && key === 'collect') {
+    if (group.collection?.live() && returnFocus?.isConnected)
+      emit('collectLyricGroup', group.collection, returnFocus);
+    return;
+  }
   if (group && key === 'download') {
     if (group.download)
       await startSongGroupDownload({
         epoch: group.epoch,
         live: group.live,
-        prepare: { kind: 'prepare', ...group.download },
+        prepare: group.download,
       });
     return;
   }
@@ -934,7 +981,13 @@ defineExpose({ show, showQueue, close, showHistoryDownload, songGroupDownloadAct
           : '歌曲操作'
     "
     :items="items"
-    :before-open="request?.songRowComment?.menu?.kind === 'eligible' ? prepareSongMenu : undefined"
+    :before-open="
+      request?.searchGroup?.download?.kind === 'prepare_lyrics_group'
+        ? prepareLyricDownloadMenu
+        : request?.songRowComment?.menu?.kind === 'eligible'
+          ? prepareSongMenu
+          : undefined
+    "
     @select="select"
   />
   <ModalTransition
@@ -971,7 +1024,7 @@ defineExpose({ show, showQueue, close, showHistoryDownload, songGroupDownloadAct
     :epoch="downloadPicker.group.epoch"
     :receipt="downloadPicker.receipt"
     :live="downloadPicker.group.live"
-    :cancel-unsubmitted-on-unmount="historyGroupDownload(downloadPicker.group)"
+    :cancel-unsubmitted-on-unmount="retireUnsubmittedDownloadOnLeave(downloadPicker.group)"
     @close="closeSearchDownloadPicker"
     @accepted="searchDownloadPicked"
     @directory="searchDownloadPickerDirectory"

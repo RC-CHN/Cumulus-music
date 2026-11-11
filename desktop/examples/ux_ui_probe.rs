@@ -255,8 +255,24 @@ fn playlist(id: u64) -> Value {
 }
 impl Api for Library {
     fn lyric_group_playback_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
-        Ok(search_lyric_group_fixture::enabled()
-            .then(|| search_lyric_group_fixture::CREDENTIAL_REVISION.into()))
+        Ok(if search_lyric_group_fixture::enabled() {
+            Some(search_lyric_group_fixture::CREDENTIAL_REVISION.into())
+        } else {
+            search_group_download_fixture::lyrics()
+                .then(|| search_group_download_fixture::REVISION.into())
+        })
+    }
+
+    fn lyric_group_collection_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok((search_group_download_fixture::lyrics()
+            && search_group_download_fixture::destination()
+            && std::env::var_os("CUMULUS_SEARCH_LYRIC_GROUP_COLLECT_PROOF").is_some())
+        .then(|| search_group_download_fixture::REVISION.into()))
+    }
+
+    fn lyric_group_download_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(search_group_download_fixture::lyrics()
+            .then(|| search_group_download_fixture::REVISION.into()))
     }
 
     fn song_card_download_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
@@ -1967,7 +1983,7 @@ fn main() {
                 tauri::async_runtime::spawn(async move {
                     let result=search_group_download_fixture::configure(&handle.state::<MusicClient>(), &root, session).await;
                     let ack=match result {
-                        Ok(old)=>json!({"ok":true,"playlist":search_group_download_fixture::destination(),"liked":search_group_download_fixture::liked(),"old":old,"created":search_group_download_fixture::created()}),
+                        Ok(old)=>json!({"ok":true,"playlist":search_group_download_fixture::destination(),"liked":search_group_download_fixture::liked(),"old":old,"created":search_group_download_fixture::created(),"lyrics":search_group_download_fixture::lyrics()}),
                         Err(error)=>json!({"ok":false,"error":error.to_string()}),
                     };
                     handle.get_webview_window("main").unwrap().eval(format!("window.__groupDownloadConfigured={ack};")).unwrap();

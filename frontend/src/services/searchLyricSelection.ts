@@ -112,14 +112,15 @@ export function lyricGroupIndexes(
   displayed: readonly string[],
   selected: ReadonlySet<string>,
   clicked: number,
+  scope: 'playback' | 'destination' = 'playback',
 ): number[] | undefined {
   const id = displayed[clicked];
-  if (!id || selected.size < 2 || !selected.has(id)) return;
+  if (!id || selected.size < 2 || (scope === 'playback' && !selected.has(id))) return;
   const first = new Map<string, number>();
   displayed.forEach((value, index) => {
     if (!first.has(value)) first.set(value, index);
   });
-  first.set(id, clicked);
+  if (selected.has(id)) first.set(id, clicked);
   const indexes: number[] = [];
   for (const value of selected) {
     const index = first.get(value);

@@ -208,7 +208,7 @@ impl MusicClient {
         if submit_add && add.is_none() {
             if confirmed.is_some() {
                 check()?;
-                let result = if source.history() {
+                let result = if source.ordered_group() {
                     service
                         .guarded_collect_history(
                             &source.token,

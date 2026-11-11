@@ -5,6 +5,7 @@ import type { EpisodeView, PodcastCard } from './podcast';
 import type { FollowUser } from './collections';
 import type { SearchTextPart } from './searchMatch';
 import type { SongRowCommentMenu } from './songRowCommentMenu';
+import type { LyricGroupCollectionPlan } from './lyricGroupDestinations';
 import type {
   HistoryRowShareChoice,
   HistoryRowShareOutcome,
@@ -72,6 +73,7 @@ export type SearchItem =
       songShareReceipt?: string;
       songCommentMenu?: SongRowCommentMenu;
       lyricGroupPlayback?: { receipt: string; right: 'playable' | 'copyright_blocked' };
+      lyricGroupCollectionReceipt?: string;
       songPublicLinkAvailable?: boolean;
       groupNextRight?: 'playable' | 'copyright_blocked';
       groupDownload?: { receipt: string; right: 'ordinary' | 'purchased' | 'copyright_blocked' };
@@ -286,12 +288,16 @@ export interface SearchGroupDownloadSelection {
 }
 export type SearchGroupDownloadSort = 'default' | 'recently';
 export type SearchPurchasedQuality = import('./voiceSongs').VoiceSongPurchasedQuality;
+export type SearchRowGroupDownloadPrepare = {
+  kind: 'prepare' | 'prepare_lyrics_group';
+} & SearchGroupDownloadSelection;
 export type SongGroupDownloadPrepare =
-  | ({ kind: 'prepare' } & SearchGroupDownloadSelection)
+  | SearchRowGroupDownloadPrepare
   | { kind: 'prepare_history'; target: import('./history').HistorySelectionScope }
   | { kind: 'prepare_history_row'; target: import('./history').HistorySongRowDownloadTarget };
 export type SearchGroupDownloadCommand =
   | SongGroupDownloadPrepare
+  | { kind: 'preview_lyrics_anchor'; anchor: SearchGroupDownloadTarget }
   | { kind: 'start' | 'status' | 'cancel' | 'reconcile'; receipt: string }
   | { kind: 'confirm_quality'; receipt: string; quality: SearchPurchasedQuality }
   | { kind: 'destinations'; receipt: string; sort: SearchGroupDownloadSort; page: number }
@@ -319,6 +325,7 @@ export interface SearchGroupDownloadCreation {
   add: SearchGroupDownloadPlaylistResult | null;
 }
 export type SearchGroupDownloadReply =
+  | { kind: 'lyric_menu'; epoch: string; show: boolean }
   | {
       kind: 'prepared';
       epoch: string;
@@ -381,6 +388,11 @@ export interface SearchSongShareClient {
   searchSongShareCancel(epoch: string, target: SearchSongShareTarget, offer: string): Promise<void>;
 }
 export interface SearchClient {
+  lyricGroupCollectPrepare(
+    epoch: string,
+    anchor: string,
+    rows: string[],
+  ): Promise<AccountData<LyricGroupCollectionPlan>>;
   searchGroupDownload(
     epoch: string,
     command: SearchGroupDownloadCommand,
