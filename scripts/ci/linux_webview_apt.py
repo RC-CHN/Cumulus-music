@@ -19,9 +19,11 @@ from linux_webview_apt_mirrors import (
 from linux_webview_probe_artifact import run_identity
 
 
+# Playback resolves the versioned libmpv at runtime; CI does not need its
+# headers, pkg-config file or unversioned linker symlink.
 COMMON_PACKAGES = (
     'libwebkit2gtk-4.1-dev', 'libxdo-dev', 'libayatana-appindicator3-dev', 'librsvg2-dev',
-    'patchelf', 'libmpv-dev', 'ffmpeg', 'xvfb', 'dbus-x11', 'python3-gi', 'gir1.2-gtk-3.0',
+    'patchelf', 'libmpv2', 'ffmpeg', 'xvfb', 'dbus-x11', 'python3-gi', 'gir1.2-gtk-3.0',
     'libxtst6', 'openbox', 'x11-utils', 'iproute2',
 )
 ACCESSIBILITY_PACKAGES = ('gir1.2-atspi-2.0', 'at-spi2-core')
