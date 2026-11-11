@@ -2,6 +2,8 @@ import type { AccountData, TrackView } from './contracts';
 import type { AlbumCard } from './catalog';
 import type { EpisodeView, PodcastCard, PodcastMutation } from './podcast';
 export type HistoryKind = 'song' | 'album' | 'playlist' | 'voice' | 'podcast' | 'audiobook';
+export type HistoryQueueKind = Extract<HistoryKind, 'song' | 'voice'>;
+export type HistoryQueueAction = { kind: 'add-all' } | { kind: 'play' | 'add'; ids: string[] };
 export type HistoryRadioKind = Extract<HistoryKind, 'podcast' | 'audiobook'>;
 export type HistoryRadioMenuAction = 'play' | 'next';
 export const historyTabs: { kind: HistoryKind; label: string }[] = [

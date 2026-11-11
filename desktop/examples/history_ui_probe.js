@@ -47,11 +47,20 @@
       const b=action.getBoundingClientRect(),cell=action.parentElement.getBoundingClientRect();
       assert(b.left>=cell.left-1&&b.right<=cell.right+1,'action outside cell');
     }}
-    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:rows.length,total:history.querySelector('.history-table')?.getAttribute('aria-rowcount'),pageBottom:page.bottom,mainBottom:main.bottom,footerBottom:note.bottom,scope:history.querySelector('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim(),dialog:!!one('dialog[open]'),...extra});await sleep(900);
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:rows.length,total:history.querySelector('.history-table')?.getAttribute('aria-rowcount'),pageBottom:page.bottom,mainBottom:main.bottom,footerBottom:note.bottom,scope:history.dataset.historyCategory,dialog:!!one('dialog[open]'),...extra});await sleep(900);
   }
   async function theme(value){click(one('[aria-label="外观主题"]'));await wait(()=>button(value),'theme menu');click(button(value));await wait(()=>document.documentElement.dataset.theme===(value==='深色'?'dark':'light'),'theme changed');}
   async function tab(label){click(all('[aria-label="播放记录类型"] button').find(n=>n.textContent.trim()===label));await wait(()=>ready()&&one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim()===label,'history tab '+label);await sleep(250);}
   async function removeFirst(){click(one('.history-actions [aria-label^="删除"]'));await wait(()=>one('dialog[open]'),'delete confirmation');click(button('确认'));await wait(()=>!one('dialog[open]')&&ready(),'delete settled');}
+  const headerTrigger=()=>one('[data-history-menu] button.menu-trigger');
+  const historyMenu=()=>one('[role="menu"][aria-label="更多播放记录操作"]:not([inert])');
+  async function headerItem(key){
+    const item=()=>historyMenu()?.querySelector(`[data-menu-key="${key}"]`);
+    await wait(()=>headerTrigger()&&!headerTrigger().disabled,'history header menu available');
+    click(headerTrigger());
+    await wait(()=>item()?.getClientRects().length,'history menu action '+key);
+    return item();
+  }
   try{
     await wait(()=>button('最近播放')&&one('.track-row'),'app initialized');await theme('浅色');
     click(button('最近播放'));await wait(()=>ready()&&one('.history-row[aria-rowindex]'),'history loaded');await capture('songs_light');
@@ -67,7 +76,9 @@
     await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small pending');await capture('lost_small');
     await emit('fixture',{mode:'offline'});click(button('核对多端记录'));await wait(()=>ready()&&one('.catalog-error'),'pending read error');await capture('lost_offline_small');
     await emit('resize',{width:1120,height:760});await wait(()=>innerWidth===1120,'restore size');
-    assert(button('清空记录').disabled,'pending mutation blocks new deletion');
+    assert((await headerItem('clear')).disabled,'pending mutation blocks new deletion');
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    await wait(()=>!historyMenu(),'history menu closed');
     await emit('fixture',{mode:'normal'});click(button('核对多端记录'));await wait(()=>button('保留当前状态')&&!button('保留当前状态').disabled,'readback');await capture('reconciled');
     click(button('保留当前状态'));await wait(()=>one('dialog[open]'),'accept confirmation');await capture('accept_confirmation');click(button('确认'));await wait(()=>!one('.history-recovery')&&!one('dialog[open]'),'accepted state');
     await emit('fixture',{mode:'rejected'});await removeFirst();await wait(()=>one('.history-outcome')?.textContent.includes('未完成'),'definite rejection');await capture('rejected');
@@ -114,6 +125,10 @@
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       await wait(()=>ready()&&refresh()&&one('.play-toggle')?.getAttribute('aria-label')==='播放'&&
         one('.now-copy button')?.title===incumbent.track.name,'old paused queue and latest history are visible');
+      click(await headerItem('batch'));
+      await wait(()=>ready()&&one('.history-page[data-history-view="batch"]')&&
+        !one('.history-play-selected')?.closest('[inert]')&&one('.history-play-selected'),
+        'history batch route entered');
       const play=one('.history-play-selected'),add=one('.history-add-selected');
       assert(play?.disabled&&add?.disabled,'no history selection');
       const initialCheck=id=>one(`input[aria-label="选择 合成记录 ${id}"]`);
@@ -165,6 +180,10 @@
         after.position===held.position,'selected history add preserves paused transport');
       await capture('selected_'+kind+'_playback',{batchTracks,playbackKind:player.resourceKind,
         addedTracks,addKeptPausedTransport:true});
+      click(button('退出批量操作'));
+      await wait(()=>ready()&&one('.history-page[data-history-view="browse"]:not([inert])')&&
+        one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim()===label,
+        'returned to the original history category');
     }
     await invoke('player_action',{epoch,action:{kind:'stop'}});
 

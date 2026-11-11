@@ -17,9 +17,14 @@ use std::{
 pub(in crate::client) struct Selection<'a> {
     pub kind: HistoryKind,
     pub revision: &'a str,
-    pub ids: &'a [String],
+    pub rows: SelectionRows<'a>,
     pub index: usize,
     pub quality: Quality,
+}
+
+pub(in crate::client) enum SelectionRows<'a> {
+    Ids(&'a [String]),
+    All,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,7 +84,7 @@ impl MusicClient {
         let Selection {
             kind,
             revision,
-            ids,
+            rows,
             index,
             quality,
         } = selection;
@@ -96,28 +101,43 @@ impl MusicClient {
         if snapshot.revision != revision {
             return Err(Error::QueueChanged);
         }
-        if ids.is_empty() || ids.len() > 50_300 || index >= ids.len() {
-            return Err(Error::InvalidInput("invalid history selection"));
-        }
-        let mut previous = None;
-        let positions = snapshot
-            .entries
-            .iter()
-            .enumerate()
-            .map(|(i, r)| (r.id.as_str(), i))
-            .collect::<BTreeMap<_, _>>();
-        let mut chosen = Vec::with_capacity(ids.len());
-        for id in ids {
-            let position = positions
-                .get(id.as_str())
-                .copied()
-                .ok_or(Error::QueueChanged)?;
-            if previous.is_some_and(|p| p >= position) {
-                return Err(Error::InvalidInput("history order changed or duplicated"));
+        let chosen = match rows {
+            SelectionRows::All => {
+                if mode != SelectionMode::BatchAdd || index != 0 || snapshot.entries.len() > 50_300
+                {
+                    return Err(Error::InvalidInput("invalid full history action"));
+                }
+                if snapshot.entries.is_empty() {
+                    return Err(Error::State("history selection has no playable resources"));
+                }
+                snapshot.entries
             }
-            previous = Some(position);
-            chosen.push(snapshot.entries[position].clone());
-        }
+            SelectionRows::Ids(ids) => {
+                if ids.is_empty() || ids.len() > 50_300 || index >= ids.len() {
+                    return Err(Error::InvalidInput("invalid history selection"));
+                }
+                let mut previous = None;
+                let positions = snapshot
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(i, r)| (r.id.as_str(), i))
+                    .collect::<BTreeMap<_, _>>();
+                let mut chosen = Vec::with_capacity(ids.len());
+                for id in ids {
+                    let position = positions
+                        .get(id.as_str())
+                        .copied()
+                        .ok_or(Error::QueueChanged)?;
+                    if previous.is_some_and(|p| p >= position) {
+                        return Err(Error::InvalidInput("history order changed or duplicated"));
+                    }
+                    previous = Some(position);
+                    chosen.push(snapshot.entries[position].clone());
+                }
+                chosen
+            }
+        };
         let (resources, index, source) = match kind {
             HistoryKind::Song => (
                 self.history_songs(

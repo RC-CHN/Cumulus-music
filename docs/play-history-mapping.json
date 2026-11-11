@@ -172,6 +172,33 @@
       ]
     },
     {
+      "feature": "Recent songs or voices header menu and Add All",
+      "official": [
+        "HistoryPlay.jsx:280–468, M3102:1598–1769",
+        "M622:2426–2483 (Add All, Batch, Clear)",
+        "M3085:215–219,243–252,290–311,431–456,564–585",
+        "M1384:5241–5298,5307,5366–5377"
+      ],
+      "rust": [
+        "core/src/client/history/selection.rs SelectionRows::All",
+        "core/src/client/player/history_batch.rs",
+        "core/src/playback/controller/remote.rs"
+      ],
+      "ui": [
+        "frontend/src/components/HistoryPage.vue header menu and independent batch route",
+        "frontend/src/App.vue scoped prepared selection"
+      ],
+      "tests": [
+        "core/tests/client_history.rs history_add_all_*",
+        "scripts/ci/history_header_smoke.py sealed synthetic catalog probe"
+      ],
+      "desktopEvidence": ".build/ui-proof/history-header-2026-11-11/audit.json: 10 actual Linux WebView states/screenshots, 300 ordered songs appended, 100-episode empty-queue selection, and read/write separation. Existing history page: 31 states.",
+      "boundaries": [
+        "Ordinary queue; exact native snapshot and authorization; unavailable source head never guesses another start",
+        "Existing clear confirmation retained; batch downloads and favorite actions are outside this increment"
+      ]
+    },
+    {
       "feature": "Batch Play or Add selected songs or voices within the current queue",
       "official": [
         "HistoryPlayBatchTrack.tsx:51–79,128–155",

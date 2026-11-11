@@ -161,6 +161,8 @@ import { useLikeRecovery } from './composables/useLikeRecovery';
 import { useHistory } from './composables/useHistory';
 import type {
   HistoryKind,
+  HistoryQueueAction,
+  HistoryQueueKind,
   HistoryRadioKind,
   HistoryRadioMenuAction,
   HistoryResource,
@@ -709,29 +711,36 @@ function playHistory(kind: HistoryKind, revision: string, ids: string[], index: 
   });
 }
 async function selectHistoryBatch(
-  kind: 'song' | 'voice',
+  kind: HistoryQueueKind,
   revision: string,
-  ids: string[],
-  action: 'play' | 'add',
+  action: HistoryQueueAction,
 ) {
   const route = music.page.value;
-  const current = () =>
+  const owner = music.account.value.epoch;
+  const routeCurrent = () =>
     route.kind === 'history' &&
+    route.scope === kind &&
+    (route.batch === true) === (action.kind !== 'add-all') &&
     music.page.value === route &&
-    recent.page.value?.kind === kind &&
-    recent.page.value.revision === revision;
+    music.account.value.epoch === owner;
+  const current = () =>
+    routeCurrent() && recent.page.value?.kind === kind && recent.page.value.revision === revision;
   if (!current()) return false;
   const result = await player.prepareSelectionForPage(async () => {
     if (!current()) throw { code: 'stale', message: '播放记录已更新' };
-    return {
-      kind: action === 'play' ? 'history_batch_play' : 'history_add',
+    const source = {
       history_kind: kind,
       revision,
-      ids,
-      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+      quality: player.view.value?.qualityPreferences.quality ?? ('standard' as const),
+    };
+    if (action.kind === 'add-all') return { kind: 'history_add_all', ...source };
+    return {
+      kind: action.kind === 'play' ? 'history_batch_play' : 'history_add',
+      ...source,
+      ids: action.ids,
     };
   });
-  return !!result && current();
+  return !!result && routeCurrent();
 }
 function playHistoryChapter(kind: 'podcast' | 'audiobook', revision: string, id: string) {
   const route = music.page.value;
@@ -5549,7 +5558,8 @@ watch(
         commentStartPosition(value.initialCommentId, value.initialSort),
       );
     if (value.kind === 'rankings') void rankings.enter(value.query, value.rankingState);
-    if (value.kind === 'history') void recent.open(value.scope);
+    if (value.kind === 'history' && (previous.kind !== 'history' || previous.scope !== value.scope))
+      void recent.open(value.scope);
     if (value.kind === 'settings' && !value.accountDetail) void settings.open();
   },
 );
@@ -6260,10 +6270,13 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'history'"
                 :model="recent"
                 :account="account"
+                :batch-mode="page.batch === true"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
                 @scope="music.replace({ kind: 'history', scope: $event })"
+                @batch="music.navigate({ kind: 'history', scope: $event, batch: true })"
+                @leave-batch="music.back()"
                 @play="playHistory"
                 :batch-selection="selectHistoryBatch"
                 :radio-selection="selectHistoryRadio"

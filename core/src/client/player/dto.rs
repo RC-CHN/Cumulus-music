@@ -392,6 +392,11 @@ pub enum PlaySelection {
         ids: Vec<String>,
         quality: Quality,
     },
+    HistoryAddAll {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        quality: Quality,
+    },
     HistoryBatchPlay {
         history_kind: crate::history::HistoryKind,
         revision: String,

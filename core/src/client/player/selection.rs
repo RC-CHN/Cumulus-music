@@ -140,9 +140,11 @@ impl MusicClient {
             PlaySelection::SearchVoiceMenu { .. } => Err(Error::InvalidInput(
                 "search voice menu playback requires a preparation ticket",
             )),
-            PlaySelection::HistoryAdd { .. } | PlaySelection::HistoryBatchPlay { .. } => Err(
-                Error::InvalidInput("history batch requires a preparation ticket"),
-            ),
+            PlaySelection::HistoryAdd { .. }
+            | PlaySelection::HistoryAddAll { .. }
+            | PlaySelection::HistoryBatchPlay { .. } => Err(Error::InvalidInput(
+                "history batch requires a preparation ticket",
+            )),
             PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
                 "history chapter playback requires a preparation ticket",
             )),
@@ -268,31 +270,52 @@ impl MusicClient {
         daily_origin: Option<super::super::daily_notification::PlaybackOrigin>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
-        if let PlaySelection::HistoryAdd {
-            history_kind,
-            revision,
-            ids,
-            quality,
-        }
-        | PlaySelection::HistoryBatchPlay {
-            history_kind,
-            revision,
-            ids,
-            quality,
-        } = &input
-        {
+        use super::super::history::{Selection, SelectionRows};
+        let history_batch = match &input {
+            PlaySelection::HistoryAdd {
+                history_kind,
+                revision,
+                ids,
+                quality,
+            }
+            | PlaySelection::HistoryBatchPlay {
+                history_kind,
+                revision,
+                ids,
+                quality,
+            } => Some((
+                Selection {
+                    kind: *history_kind,
+                    revision,
+                    rows: SelectionRows::Ids(ids),
+                    index: 0,
+                    quality: *quality,
+                },
+                matches!(input, PlaySelection::HistoryBatchPlay { .. }),
+            )),
+            PlaySelection::HistoryAddAll {
+                history_kind,
+                revision,
+                quality,
+            } => Some((
+                Selection {
+                    kind: *history_kind,
+                    revision,
+                    rows: SelectionRows::All,
+                    index: 0,
+                    quality: *quality,
+                },
+                false,
+            )),
+            _ => None,
+        };
+        if let Some((selection, play)) = history_batch {
             return self
                 .history_batch(
                     &token,
-                    super::super::history::Selection {
-                        kind: *history_kind,
-                        revision,
-                        ids,
-                        index: 0,
-                        quality: *quality,
-                    },
+                    selection,
                     prepared.as_ref().ok_or(Error::StaleResponse)?,
-                    matches!(input, PlaySelection::HistoryBatchPlay { .. }),
+                    play,
                 )
                 .await;
         }
@@ -828,10 +851,10 @@ impl MusicClient {
                 let (resources, index, source) = self
                     .history_selection(
                         &token,
-                        super::super::history::Selection {
+                        Selection {
                             kind: history_kind,
                             revision: &revision,
-                            ids: &ids,
+                            rows: SelectionRows::Ids(&ids),
                             index,
                             quality,
                         },
@@ -1502,6 +1525,7 @@ impl MusicClient {
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::HistoryAdd { .. }
+                    | PlaySelection::HistoryAddAll { .. }
                     | PlaySelection::HistoryBatchPlay { .. }
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::HistoryRadioChapter { .. }

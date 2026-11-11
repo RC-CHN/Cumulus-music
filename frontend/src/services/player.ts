@@ -494,6 +494,12 @@ export type PlaySelection =
       quality: Quality;
     }
   | {
+      kind: 'history_add_all';
+      history_kind: 'song' | 'voice';
+      revision: string;
+      quality: Quality;
+    }
+  | {
       kind: 'catalog';
       pages: import('./catalog').CatalogSelectionPage[];
       index: number;

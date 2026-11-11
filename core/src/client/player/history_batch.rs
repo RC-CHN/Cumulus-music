@@ -4,7 +4,7 @@ use super::{MusicClient, PlayerResourceKind, PlayerView, identity, mapping, proj
 use crate::{
     Error, Result,
     account::SessionToken,
-    client::history::Selection,
+    client::history::{Selection, SelectionRows},
     history::HistoryKind,
     playback::{
         PlaybackMode, QueueSnapshot,
@@ -41,6 +41,7 @@ impl MusicClient {
             return Err(Error::MutationBusy);
         }
         let kind = selection.kind;
+        let full_list = matches!(selection.rows, SelectionRows::All);
         let revision = selection.revision.to_owned();
         let (resources, source) = self
             .history_selection_for_queue(token, selection, prepared.observed, play)
@@ -50,11 +51,12 @@ impl MusicClient {
         pending.check()?;
         let was_empty = queue.items.is_empty();
         let start = was_empty || play;
-        // The official Add button dispatches a voice resource, while the
-        // Play button dispatches an audio resource. M3085 uses different
-        // resume keys; only Add has a verified first-program bookmark here.
+        // Selected Add carries the first selected voice as its resource.
+        // Header Add All has resource {}, and M3085 instead takes the first
+        // listData ID as its explicit start without a radio bookmark lookup.
         let shuffle_anchor = if was_empty
             && !play
+            && !full_list
             && queue.mode == PlaybackMode::Random
             && kind == HistoryKind::Voice
         {
@@ -74,6 +76,7 @@ impl MusicClient {
             resources,
             source,
             start,
+            full_list && was_empty,
             shuffle_anchor.as_ref().map(|binding| &binding.anchor),
             &mut rand::rng(),
         )?;
@@ -141,10 +144,15 @@ fn plan(
     mut resources: Vec<Value>,
     source: Value,
     start: bool,
+    start_at_list_head: bool,
     shuffle_anchor: Option<&ShuffleAnchor>,
     rng: &mut impl Rng,
 ) -> Result<QueueSnapshot> {
     use super::queue_playlist::{QUEUE_LIMIT, insert_collection_by_key};
+    let list_head = resources
+        .first()
+        .and_then(history_key)
+        .map(|(kind, id)| (kind, id.to_owned()));
     resources.retain(|row| {
         let Some((kind, _)) = history_key(row) else {
             return false;
@@ -176,6 +184,9 @@ fn plan(
     let first = selected
         .first()
         .ok_or(Error::State("history selection has no playable resources"))?;
+    if start_at_list_head && list_head.as_ref() != Some(first) {
+        return Err(Error::State("the first history resource is unavailable"));
+    }
     if !keeps_incumbent && let (Some(current), Some(key)) = (&incumbent, incumbent_key) {
         // A queue can contain preexisting duplicate occurrences. If the
         // current identity is in the batch, the one we move must be the
@@ -214,6 +225,8 @@ fn plan(
                     .iter()
                     .find(|row| anchor.matches(&row.resource))
                     .map(|row| row.entry_id.clone())
+            } else if start_at_list_head {
+                Some(first.to_owned())
             } else {
                 selected.choose(rng).and_then(entry_id).map(str::to_owned)
             }

@@ -23,6 +23,12 @@
   flex-wrap: wrap;
   gap: 10px;
 }
+.history-tools [data-history-menu] .menu-trigger {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
 .history-search {
   display: flex;
   align-items: center;
@@ -79,6 +85,9 @@
   padding: 0 10px;
   color: var(--text-secondary);
   border-radius: 8px;
+}
+.history-table-browse .history-row {
+  grid-template-columns: minmax(100px, 1fr) 126px 70px 76px;
 }
 .history-row:nth-child(even) {
   background: var(--surface-alt);
@@ -292,6 +301,9 @@
     grid-template-columns: 26px minmax(80px, 1fr) 100px 48px 68px;
     gap: 6px;
     padding-inline: 4px;
+  }
+  .history-table-browse .history-row {
+    grid-template-columns: minmax(80px, 1fr) 100px 48px 68px;
   }
   .history-name-cell {
     gap: 8px;

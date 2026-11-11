@@ -296,6 +296,7 @@ impl MusicClient {
                 | PlaySelection::HistoryRadioChapter { .. }
                 | PlaySelection::HistoryRadioMenu { .. }
                 | PlaySelection::HistoryAdd { .. }
+                | PlaySelection::HistoryAddAll { .. }
                 | PlaySelection::HistoryBatchPlay { .. }
                 | PlaySelection::Songs { .. }
         ) {

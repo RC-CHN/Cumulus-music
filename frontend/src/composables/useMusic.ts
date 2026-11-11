@@ -22,7 +22,8 @@ type Destination =
   | { kind: 'decoration' }
   | { kind: 'settings'; accountDetail?: AccountDetailKind }
   | { kind: 'listened_books' }
-  | { kind: 'history'; scope: import('../services/history').HistoryKind }
+  | { kind: 'history'; scope: import('../services/history').HistoryKind; batch?: false }
+  | { kind: 'history'; scope: import('../services/history').HistoryQueueKind; batch: true }
   | {
       kind: 'collections';
       scope: import('../services/collections').CollectionScope;

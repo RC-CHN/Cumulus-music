@@ -8,7 +8,7 @@ pub use listened_books::{ListenedBooksPage, ListenedBooksQuery};
 mod sync_observer;
 pub(super) use sync_observer::HistorySyncHost;
 mod selection;
-pub(in crate::client) use selection::Selection;
+pub(in crate::client) use selection::{Selection, SelectionRows};
 mod view;
 use super::{MusicClient, dto::AccountData};
 use crate::{

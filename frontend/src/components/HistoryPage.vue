@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, ref, shallowRef, watch } from 'vue';
+import ActionMenu from './ActionMenu.vue';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
@@ -23,20 +24,23 @@ import {
   type HistoryCommand,
   type HistoryEntry,
   type HistoryKind,
+  type HistoryQueueAction,
+  type HistoryQueueKind,
   type HistoryRadioKind,
   type HistoryRadioMenuAction,
   type HistoryResource,
 } from '../services/history';
 import { normalizeKeyword } from '../services/keyword';
+import type { MenuItem } from '../services/menu';
 const props = defineProps<{
   model: HistoryModel;
   account: AccountView;
   playable: boolean;
+  batchMode: boolean;
   batchSelection: (
-    kind: 'song' | 'voice',
+    kind: HistoryQueueKind,
     revision: string,
-    ids: string[],
-    action: 'play' | 'add',
+    action: HistoryQueueAction,
   ) => Promise<boolean>;
   radioSelection: (
     kind: HistoryRadioKind,
@@ -49,6 +53,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   scope: [kind: HistoryKind];
+  batch: [kind: HistoryQueueKind];
+  leaveBatch: [];
   play: [kind: HistoryKind, revision: string, ids: string[], index: number];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   open: [resource: HistoryResource];
@@ -70,6 +76,12 @@ const allSelected = computed(
   () => entries.value.length > 0 && entries.value.every((e) => selected.value.has(e.id)),
 );
 const listKind = computed(() => kind.value === 'song' || kind.value === 'voice');
+const selectRows = computed(() => !listKind.value || props.batchMode);
+const headerItems = computed<MenuItem[]>(() => [
+  { key: 'add-all', label: '添加全部至播放列表', icon: 'plus', disabled: !props.playable },
+  { key: 'batch', label: '批量操作', icon: 'list' },
+  { key: 'clear', label: '清空列表', disabled: !canMutate.value },
+]);
 const selectedBatch = computed(() =>
   page.value?.kind === kind.value
     ? selectedHistoryBatch(kind.value, entries.value, selected.value)
@@ -295,28 +307,31 @@ function play(entry?: HistoryEntry) {
     index,
   );
 }
-async function runSelected(action: 'play' | 'add') {
+async function runQueueAction(action: HistoryQueueAction) {
   const snapshot = page.value;
-  const ids = selectedBatch.value;
+  const all = action.kind === 'add-all';
   if (
     !snapshot ||
     (snapshot.kind !== 'song' && snapshot.kind !== 'voice') ||
+    props.batchMode === all ||
     !props.playable ||
     loading.value ||
     busy.value ||
-    !ids.length
+    !(all ? snapshot.entries.length : action.ids.length)
   )
     return;
   const epoch = props.account.epoch;
   const scope = keyword.value;
   const current = () =>
-    epoch === props.account.epoch && snapshot.kind === kind.value && scope === keyword.value;
+    epoch === props.account.epoch &&
+    snapshot.kind === kind.value &&
+    (all || scope === keyword.value);
   addNotice.value = '';
   batchError.value = '';
   try {
     if (
-      (await props.batchSelection(snapshot.kind, snapshot.revision, ids, action)) &&
-      action === 'add' &&
+      (await props.batchSelection(snapshot.kind, snapshot.revision, action)) &&
+      action.kind !== 'play' &&
       current()
     )
       addNotice.value = '已添加到播放列表';
@@ -326,6 +341,21 @@ async function runSelected(action: 'play' | 'add') {
     if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
     batchError.value = issue.message;
   }
+}
+function chooseHeader(key: string) {
+  const snapshot = page.value;
+  if (
+    !snapshot?.entries.length ||
+    snapshot.kind !== kind.value ||
+    (snapshot.kind !== 'song' && snapshot.kind !== 'voice') ||
+    props.batchMode ||
+    loading.value ||
+    busy.value
+  )
+    return;
+  if (key === 'add-all') void runQueueAction({ kind: 'add-all' });
+  else if (key === 'batch') emit('batch', snapshot.kind);
+  else if (key === 'clear') remove({ kind: 'clear' });
 }
 function playChapter(entry: HistoryEntry) {
   const snapshot = page.value;
@@ -392,15 +422,18 @@ function keyboard(event: KeyboardEvent) {
     ref="historyPage"
     class="history-page"
     aria-label="最近播放"
+    :data-history-category="label"
+    :data-history-view="batchMode ? 'batch' : 'browse'"
     :aria-busy="loading"
     @keydown="keyboard"
   >
     <header class="history-heading">
       <div>
-        <h1>最近播放</h1>
-        <p class="muted">找回听过的音乐和声音</p>
+        <h1>{{ batchMode ? '批量操作' : '最近播放' }}</h1>
+        <p class="muted">{{ batchMode ? `${label}播放记录` : '找回听过的音乐和声音' }}</p>
       </div>
       <button
+        v-if="!batchMode"
         class="icon-button"
         aria-label="刷新播放记录"
         :disabled="loading || busy"
@@ -408,8 +441,11 @@ function keyboard(event: KeyboardEvent) {
       >
         <Icon name="refresh" />
       </button>
+      <button v-else type="button" class="secondary" :disabled="busy" @click="emit('leaveBatch')">
+        <Icon name="back" />退出批量操作
+      </button>
     </header>
-    <nav class="catalog-tabs" aria-label="播放记录类型">
+    <nav v-if="!batchMode" class="catalog-tabs" aria-label="播放记录类型">
       <button
         v-for="tab in historyTabs"
         :key="tab.kind"
@@ -422,27 +458,35 @@ function keyboard(event: KeyboardEvent) {
     </nav>
     <div class="history-tools">
       <button
-        v-if="listKind"
+        v-if="listKind && !batchMode"
         class="primary"
         :disabled="!playable || loading || busy || !entries.some((e) => historyLabel(e).available)"
         @click="play()"
       >
         <Icon name="play" />播放全部
       </button>
+      <ActionMenu
+        v-if="listKind && !batchMode"
+        data-history-menu
+        label="更多播放记录操作"
+        :items="headerItems"
+        :disabled="loading || busy || !page?.entries.length"
+        @select="chooseHeader"
+      />
       <button
-        v-if="listKind"
+        v-if="batchMode"
         class="secondary history-play-selected"
         :disabled="!playable || loading || busy || !selectedBatch.length"
-        @click="runSelected('play')"
+        @click="runQueueAction({ kind: 'play', ids: selectedBatch })"
       >
         <Icon name="play" />播放选中
       </button>
       <button
-        v-if="listKind"
+        v-if="batchMode"
         type="button"
         class="secondary history-add-selected"
         :disabled="!playable || loading || busy || !selectedBatch.length"
-        @click="runSelected('add')"
+        @click="runQueueAction({ kind: 'add', ids: selectedBatch })"
       >
         <Icon name="plus" />添加到播放列表
       </button>
@@ -459,6 +503,7 @@ function keyboard(event: KeyboardEvent) {
           <Icon name="close" /></button
       ></label>
       <button
+        v-if="selectRows"
         class="secondary"
         :disabled="!canMutate || !selected.size"
         @click="remove({ kind: 'delete', ids: [...selected] })"
@@ -466,11 +511,12 @@ function keyboard(event: KeyboardEvent) {
         删除选中<span v-if="selected.size">（{{ selected.size }}）</span>
       </button>
       <button
+        v-if="!listKind"
         class="text-button"
         :disabled="!canMutate || !page?.entries.length"
         @click="remove({ kind: 'clear' })"
       >
-        清空记录
+        清空列表
       </button>
     </div>
     <div class="history-status">
@@ -550,13 +596,14 @@ function keyboard(event: KeyboardEvent) {
         <div
           v-if="entries.length"
           class="history-table"
+          :class="{ 'history-table-browse': !selectRows }"
           role="table"
           :aria-label="`${label}播放记录`"
           :aria-rowcount="entries.length + 1"
-          aria-colcount="5"
+          :aria-colcount="selectRows ? 5 : 4"
         >
           <div class="history-row history-table-heading" role="row">
-            <div role="columnheader">
+            <div v-if="selectRows" role="columnheader">
               <input
                 type="checkbox"
                 aria-label="选择筛选后的全部记录"
@@ -587,7 +634,7 @@ function keyboard(event: KeyboardEvent) {
                   @contextmenu="showRadioMenu(entry, $event)"
                   @keydown="radioMenuKeyboard(entry, $event)"
                 >
-                  <div role="cell" @dblclick.stop>
+                  <div v-if="selectRows" role="cell" @dblclick.stop>
                     <input
                       type="checkbox"
                       :aria-label="`选择 ${historyLabel(entry).name}`"

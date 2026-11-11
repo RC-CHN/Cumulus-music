@@ -151,9 +151,15 @@ fn main() {
         std::env::var("CUMULUS_HISTORY_RADIO_COLLECTION_PROOF").as_deref() == Ok("1");
     let history_radio_menu =
         std::env::var("CUMULUS_HISTORY_RADIO_MENU_PROOF").as_deref() == Ok("1");
+    let history_header = std::env::var("CUMULUS_HISTORY_HEADER_PROOF").as_deref() == Ok("1");
     assert!(!history_chapters || (histories && !is_live && !interactive && !collections));
     assert!(!history_collection || history_chapters);
     assert!(!history_radio_menu || history_collection);
+    assert!(
+        !history_header
+            || (histories && !is_live && !history_chapters && !interactive && !collections)
+    );
+    let history_capture = history_chapters || history_header;
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
     let relay_recovery = std::env::var("CUMULUS_RELAY_RECOVERY_PROOF").as_deref() == Ok("1");
@@ -386,11 +392,11 @@ fn main() {
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
                     value["relayCalls"]=serde_json::json!(*publication_fixture.relay_calls.lock().unwrap());
                 }
-                let paused_collection = history_collection && value["checkPausedPlayback"]==true;
-                if ((is_live || relays || interactive || history_chapters) && value["playing"]==true) || paused_collection {
+                let paused_history = (history_collection || history_header) && value["checkPausedPlayback"]==true;
+                if ((is_live || relays || interactive || history_capture) && value["playing"]==true) || paused_history {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some()
-                        || (paused_collection && !matches!(player.state, cumulus_core::playback::controller::PlaybackStatus::Paused)) {
+                        || (paused_history && !matches!(player.state, cumulus_core::playback::controller::PlaybackStatus::Paused)) {
                         let failure=serde_json::json!({"ok":false,"error":"native playback did not advance",
                             "stage":stage,"state":player.state,"position":player.position,
                             "queueLen":player.queue_len,"hasPlaybackError":player.error.is_some()});
@@ -404,7 +410,7 @@ fn main() {
                         value["nativeFollowSources"]=serde_json::json!(queue["items"].as_array().unwrap().iter().map(|item|&item["source"]).collect::<Vec<_>>());
                     }
                 }
-                if (is_live || relays || interactive || history_chapters) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
+                if (is_live || relays || interactive || history_capture) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
                 if relay_publication && stage=="complete" {
                     let token=publication_session.token().unwrap();
                     let settled=tokio::time::timeout(std::time::Duration::from_secs(5),async {
@@ -415,7 +421,7 @@ fn main() {
                     value["publicationPhases"]=serde_json::json!(publication.intents_for(&token).unwrap().into_iter().map(|r|r.phase).collect::<Vec<_>>());
                 }
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
-                if history_chapters && !capture_ack::acknowledge(
+                if history_capture && !capture_ack::acknowledge(
                     &handle,&output,&stage,value["captureHandshake"]==true).await {return;}
                 if (interactive || collection_context) && stage.starts_with("ux_") {
                     if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
@@ -440,7 +446,8 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            if history_chapters {
+            if history_capture {
+                assert!(!history_header || script.is_some(), "history header proof requires an external script");
                 let source=script.as_deref().unwrap_or(if history_collection {
                     include_str!("history_radio_collection_ui_probe.js")
                 } else { include_str!("history_radio_chapter_ui_probe.js") });

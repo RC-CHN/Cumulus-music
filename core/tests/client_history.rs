@@ -1168,6 +1168,139 @@ async fn history_batch_ids(f: &Fixture) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn history_add_all_uses_the_complete_fenced_list_and_keeps_a_paused_decoder() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let kind = HistoryKind::Song;
+    seed_history_batch(&f, kind, &[(1, 500), (2, 400), (3, 300), (4, 200)]);
+    let start = f.selection(kind, vec!["1".into(), "4".into()]).await;
+    f.client.play_selection(&epoch, start).await.unwrap();
+    f.client
+        .player_action(&epoch, PlayerAction::Seek { seconds: 12.0 })
+        .await
+        .unwrap();
+    let paused = f
+        .client
+        .player_action(&epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let ticket = || {
+        f.client
+            .prepare_play_selection(&epoch, &paused.queue_revision, paused.play_id.as_deref())
+            .unwrap()
+    };
+    let selection = |kind, revision| PlaySelection::HistoryAddAll {
+        history_kind: kind,
+        revision,
+        quality: Quality::Standard,
+    };
+    let current = f
+        .client
+        .history_page(&epoch, kind, false)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(
+        current
+            .entries
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["1", "2", "3", "4"]
+    );
+    f.api.calls.lock().unwrap().clear();
+    assert!(matches!(
+        f.client
+            .play_selection(&epoch, selection(kind, current.revision.clone()))
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(matches!(
+        f.client
+            .commit_prepared_selection(
+                &epoch,
+                &ticket(),
+                selection(HistoryKind::Podcast, current.revision.clone())
+            )
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(matches!(
+        f.client
+            .commit_prepared_selection(&epoch, &ticket(), selection(kind, "retired".into()))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(f.api.calls.lock().unwrap().is_empty());
+    assert_eq!(history_batch_ids(&f).await, ["1", "4"]);
+    let added = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket(), selection(kind, current.revision))
+        .await
+        .unwrap();
+    assert_eq!(history_batch_ids(&f).await, ["1", "2", "3", "4"]);
+    assert_eq!(added.state, paused.state);
+    assert_eq!(added.play_id, paused.play_id);
+    assert_eq!(added.entry_id, paused.entry_id);
+    assert_eq!(added.position, paused.position);
+    assert!(
+        f.api
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path == "/api/song/enhance/privilege")
+    );
+}
+
+#[tokio::test]
+async fn history_add_all_from_an_empty_queue_starts_the_first_native_voice() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let kind = HistoryKind::Voice;
+    seed_history_batch(&f, kind, &[(6, 200), (5, 300)]);
+    f.client
+        .player_action(
+            &epoch,
+            PlayerAction::Mode {
+                mode: cumulus_core::playback::PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let revision = f
+        .client
+        .history_page(&epoch, kind, false)
+        .await
+        .unwrap()
+        .value
+        .revision;
+    let before = f.client.player_snapshot(&epoch).await.unwrap();
+    let ticket = f
+        .client
+        .prepare_play_selection(&epoch, &before.queue_revision, None)
+        .unwrap();
+    let selection = serde_json::from_value(json!({
+        "kind":"history_add_all","history_kind":"voice","revision":revision,"quality":"standard"
+    }))
+    .unwrap();
+    let playing = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket, selection)
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(playing.state).unwrap(), "playing");
+    assert_eq!(playing.mode, cumulus_core::playback::PlaybackMode::Random);
+    assert_eq!(playing.track.unwrap().voice_id.as_deref(), Some("5"));
+    assert_eq!(history_batch_ids(&f).await, ["5", "6"]);
+    assert_eq!(f.api.voice_rights.lock().unwrap().first(), Some(&5));
+    assert_eq!(
+        f.api.media_sources.lock().unwrap().first(),
+        Some(&json!("1005"))
+    );
+}
+
+#[tokio::test]
 async fn history_radio_menu_binds_the_row_and_distinguishes_play_from_next() {
     let f = fixture(true);
     let epoch = f.epoch();
