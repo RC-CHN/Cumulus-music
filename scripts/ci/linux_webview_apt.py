@@ -13,7 +13,7 @@ import tempfile
 import time
 
 from linux_webview_apt_mirrors import (
-    AptDeadline, acquire, configured_source, deadline_command, direct_sources, preflight,
+    DIRECT_HTTPS_REFRESH, AptDeadline, acquire, configured_source, deadline_command, direct_sources, preflight,
     verify_fresh_indexes,
 )
 from linux_webview_probe_artifact import run_identity
@@ -260,7 +260,7 @@ def install(args):
             # Do not derive authority from any artifact or an index update
             # that silently used stale metadata after a transport failure.
             selected, lists = transaction(mirror)
-            refresh = ['-o', 'Acquire::https::No-Cache=true'] if mirror is not None else []
+            refresh = DIRECT_HTTPS_REFRESH if mirror is not None else ()
             timed('update', [*selected, *refresh, '-o', 'APT::Update::Error-Mode=any', 'update'], env, limit)
             if mirror is not None:
                 verify_fresh_indexes(mirror, lists)

@@ -11,7 +11,8 @@ from unittest.mock import patch
 from linux_webview_apt import DIRECT_INDEX_OPTIONS, timed
 from linux_webview_apt_mirrors import (
     DIRECT_DOWNLOAD_DEADLINE, DIRECT_MIRRORS, DIRECT_UPDATE_DEADLINE, DOWNLOAD_DEADLINE, KEYRING,
-    MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE, AptDeadline, AptIndexRegression, Mirror, acquire, deadline_command,
+    MAX_POCKET_AGE, MAX_RELEASE, PROBE_TIMEOUT, SUITES, UPDATE_DEADLINE, AptDeadline, AptIndexRegression,
+    Mirror, acquire, deadline_command,
     direct_sources, preflight, release_date,
     signed_noble_suites, verify_fresh_indexes,
 )
@@ -208,6 +209,68 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
         self.assertEqual([mirror.name for mirror in chosen], ['Canonical', 'Security'])
         with patch('linux_webview_apt_mirrors.probe_suite', return_value=(None, 0, 'deadline')):
             self.assertEqual(preflight(), (None,))
+
+    def test_preflight_and_authoritative_refresh_observe_the_same_apt_transport(self):
+        # Hosted 43102930045: curl saw a newer signed Security snapshot on
+        # one hostname, but both Apt mirror requests saw the prior version.
+        release = b'apt-mutable-pockets'
+        fresh_curl = b'other-http-client-mutable-pockets'
+        distant = b'lagging-mirror-pockets'
+        rolled_back = b'rolled-back-after-apt-preflight'
+        dates = {
+            release: NOW - timedelta(hours=4),
+            fresh_curl: NOW,
+            distant: NOW - timedelta(hours=8),
+            rolled_back: NOW - timedelta(hours=5),
+        }
+        comparable = (CANONICAL.uri, DIRECT_MIRRORS[2][1])
+
+        def fetch(command, **options):
+            if command[0] == 'curl':  # the old, mismatching implementation
+                uri = command[-1]
+                body = (fresh_curl if uri == f'{CANONICAL.uri}dists/noble-security/InRelease'
+                        else release if uri.startswith(comparable) else distant)
+                return subprocess.CompletedProcess(command, 0, body + b'\n200')
+            tool = '/usr/lib/apt/apt-helper'
+            self.assertIn(tool, command)
+            self.assertIn('Acquire::https::No-Cache=true', command)
+            self.assertIn('Acquire::https::AllowRedirect=false', command)
+            self.assertIn('Acquire::Retries=0', command)
+            self.assertIn(f'{PROBE_TIMEOUT}s', command)
+            self.assertIn(f'--fsize={MAX_RELEASE}:{MAX_RELEASE}', command)
+            self.assertEqual(command[-3], 'download-file')
+            self.assertEqual(options['timeout'], PROBE_TIMEOUT + 3)
+            uri, path = command[-2:]
+            Path(path).write_bytes(release if uri.startswith(comparable) else distant)
+            return subprocess.CompletedProcess(command, 0)
+
+        for genuine_regression in (False, True):
+            with self.subTest(genuine_regression=genuine_regression), tempfile.TemporaryDirectory() as work:
+                lists = Path(work)
+                args, events = self.fixture()
+
+                def update(mirror, limit):
+                    events.append(('update', mirror.name, limit))
+                    prefix = mirror.uri.split('://')[1].rstrip('/').replace('/', '_')
+                    for suite in SUITES:
+                        body = rolled_back if genuine_regression and suite == 'noble-security' else release
+                        (lists / f'{prefix}_dists_{suite}_InRelease').write_bytes(body)
+                    verify_fresh_indexes(mirror, lists)
+
+                with patch('linux_webview_apt_mirrors.subprocess.run', side_effect=fetch), patch(
+                        'linux_webview_apt_mirrors.release_date', side_effect=lambda data, *_: dates[data]):
+                    routes = preflight()
+                    self.assertEqual({route.uri for route in routes}, set(comparable))
+                    if genuine_regression:
+                        with self.assertRaises(AptIndexRegression), acquire(update, *args[1:], routes):
+                            self.fail('must not install with a real rollback after Apt preflight')
+                        self.assertEqual([event[0] for event in events if isinstance(event, tuple)],
+                                         ['update', 'update'])
+                    else:
+                        with acquire(update, *args[1:], routes) as ready:
+                            self.assertEqual(ready, (routes[0], True))
+                        self.assertEqual([event[0] for event in events if isinstance(event, tuple)],
+                                         ['update', 'fresh plan', 'download-only'])
 
     def test_release_checks_signature_fields_and_mutable_dates(self):
         def payload(suite, when, **kwargs):

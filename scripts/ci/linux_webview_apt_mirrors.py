@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import tempfile
 import time
 from urllib.parse import urlsplit
 
@@ -27,6 +28,8 @@ DIRECT_UPDATE_DEADLINE = 150
 DIRECT_DOWNLOAD_DEADLINE = 600
 KILL_GRACE = 5
 PROBE_TIMEOUT = 6
+PROBE_APT_HELPER = '/usr/lib/apt/apt-helper'
+DIRECT_HTTPS_REFRESH = ('-o', 'Acquire::https::No-Cache=true')
 MAX_RELEASE = 512 * 1024
 MAX_POCKET_AGE = timedelta(days=7)
 SUITES = ('noble', 'noble-updates', 'noble-backports', 'noble-security')
@@ -156,19 +159,32 @@ def probe_suite(uri, suite, now):
     """Select a transport only. APT independently downloads and verifies it."""
     start = time.monotonic()
     try:
-        result = subprocess.run([
-            'curl', '--disable', '--proto', '=https', '--silent', '--show-error',
-            '--header', 'Cache-Control: no-cache',
-            '--connect-timeout', '4', '--max-time', str(PROBE_TIMEOUT),
-            '--max-filesize', str(MAX_RELEASE), '--write-out', '\n%{http_code}',
-            f'{uri}dists/{suite}/InRelease',
-        ], capture_output=True, timeout=PROBE_TIMEOUT + 1, check=True)
-        body, _, status = result.stdout.rpartition(b'\n')
-        if status != b'200':
-            raise ValueError(f'HTTP {status.decode("ascii", errors="replace")[:3]}')
-        return release_date(body, suite, now), time.monotonic() - start, None
+        # Use the same HTTPS method, user agent, system proxy and cache
+        # revalidation as apt-get. curl can observe a different signed CDN
+        # snapshot at the same URL and incorrectly pin both Apt routes to it.
+        # This probe has no Apt state directory or installation operation.
+        with tempfile.TemporaryDirectory(prefix='cumulus-apt-inrelease-', dir='/tmp') as work:
+            path = Path(work) / 'InRelease'
+            subprocess.run([
+                'sudo', '-n', 'timeout', '--signal=TERM', '--kill-after=1s',
+                f'{PROBE_TIMEOUT}s', 'prlimit', f'--fsize={MAX_RELEASE}:{MAX_RELEASE}', '--',
+                PROBE_APT_HELPER, *DIRECT_HTTPS_REFRESH,
+                '-o', 'Acquire::https::AllowRedirect=false', '-o', 'Acquire::https::Timeout=4',
+                '-o', 'Acquire::Retries=0', 'download-file', f'{uri}dists/{suite}/InRelease', str(path),
+            ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=PROBE_TIMEOUT + 3, check=True)
+            if not stat.S_ISREG(path.lstat().st_mode):
+                raise ValueError('unexpected APT probe output type')
+            with path.open('rb') as file:
+                body = file.read(MAX_RELEASE + 1)
+            return release_date(body, suite, now), time.monotonic() - start, None
     except subprocess.CalledProcessError as error:
-        reason = 'bad archive signature' if error.cmd[0] == 'gpgv' else f'curl exit {error.returncode}'
+        if error.cmd[0] == 'gpgv':
+            reason = 'bad archive signature'
+        elif error.returncode in (124, 137):
+            reason = 'APT HTTPS probe deadline'
+        else:
+            reason = f'APT HTTPS probe exit {error.returncode}'
     except subprocess.TimeoutExpired:
         reason = 'read/signature deadline'
     except (OSError, ValueError) as error:
