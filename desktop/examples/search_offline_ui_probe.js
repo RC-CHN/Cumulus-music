@@ -8,6 +8,8 @@
   const heading = () => page()?.querySelector('h1')?.textContent.trim();
   const ready = () => one('#search-result-panel')?.getAttribute('aria-busy') === 'false';
   const input = () => one('[aria-label="搜索音乐"]');
+  const focusNotice = () => one('[data-search-offline-focus]');
+  const discovery = () => one('#search-discovery-panel');
   const trackScroll = () => one('#search-result-panel .track-scroll');
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
@@ -16,13 +18,17 @@
   });
   const assert = (value, message) => { if (!value) throw Error(message); };
   let last = 'startup', count = 0, browserOnline = false, held = false, delivered = false;
-  const requests = [];
+  const requests = [], discoveryReads = [];
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   const fetch = window.fetch;
   window.fetch = async function (url, options) {
     const query = String(url).endsWith('/search_results') ? JSON.parse(options.body).query : null;
     if (query) requests.push([query.category, query.keyword]);
+    if (String(url).endsWith('/search_discovery')) {
+      const { kind } = JSON.parse(options.body).query;
+      if (kind !== 'defaults') discoveryReads.push(kind);
+    }
     const response = await fetch.call(window, url, options);
     if (query?.keyword === old) {
       held = true;
@@ -63,15 +69,38 @@
   async function capture(label) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await sleep(260);
+    const toast = focusNotice(), toastRect = toast?.getBoundingClientRect();
     await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, {
       label, requests: [...requests], browserOnline, hasOffline: !!offline(), category: category() ?? null,
       diagnostics: !!one('.settings-network-diagnostics[open]'), trackScroll: trackScroll()?.scrollTop ?? null,
+      searchFocus: {
+        focused: document.activeElement === input(), selected: input()?.form.classList.contains('searchbox-selected'),
+        gradient: getComputedStyle(input().form).backgroundImage !== 'none', keyword: input().value,
+        notice: toast?.textContent.trim() ?? null, alert: toast?.getAttribute('role') ?? null,
+        centered: !!toastRect && Math.abs(toastRect.x + toastRect.width / 2 - innerWidth / 2) < 1 &&
+          Math.abs(toastRect.y + toastRect.height / 2 - innerHeight / 2) < 1,
+        noticeHeight: toastRect?.height ?? null, discovery: !!discovery(), discoveryReads: [...discoveryReads],
+      },
     });
   }
   try {
     Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => browserOnline });
     await wait(() => input() && !input().disabled && one('.track-row'), 'account and daily route ready');
     network(false);
+    await new Promise(requestAnimationFrame);
+    const beforeFocus = input().value;
+    input().focus({ preventScroll: true });
+    await wait(() => focusNotice()?.textContent.trim() === '网络异常，请检查网络连接' &&
+      !focusNotice().classList.contains('search-offline-focus-enter-active'), 'offline search focus warning');
+    assert(document.activeElement === input() && input().value === beforeFocus && !discovery() &&
+      !input().form.classList.contains('searchbox-selected') && !page() && !requests.length &&
+      !discoveryReads.length, 'offline focus preserves input, route and request counts');
+    await capture('offline_focus');
+    await wait(() => !focusNotice(), 'offline focus warning auto-dismisses');
+    assert(document.activeElement === input() && input().value === beforeFocus,
+      'dismissal leaves the search box focused');
+    await capture('offline_focus_expired');
+
     await submit(first);
     await wait(() => offline()?.textContent.includes('网络似乎有问题') && !page(), 'offline cold route');
     await capture('cold_offline');
@@ -86,6 +115,12 @@
     network(true);
     await result(first);
     await capture('first_online');
+    input().blur();
+    input().focus({ preventScroll: true });
+    await wait(() => document.activeElement === input() &&
+      input().form.classList.contains('searchbox-selected') && !focusNotice() && !discovery(),
+      'online focus restores selected style without discovery');
+    await capture('online_focus');
     one('[data-category="songs"]').click();
     await result(first, 'songs');
     await wait(() => !one('.search-results-enter-active,.search-results-leave-active'),

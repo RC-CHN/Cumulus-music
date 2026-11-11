@@ -11,8 +11,10 @@ import SearchTags from './SearchTags.vue';
 import SearchCharts from './SearchCharts.vue';
 import SearchSuggestions from './SearchSuggestions.vue';
 import SearchHistoryConfirm from './SearchHistoryConfirm.vue';
+import SearchOfflineFocusNotice from './SearchOfflineFocusNotice.vue';
 const props = defineProps<{
   account: AccountView;
+  online: boolean;
   pageKey: string;
   keyword?: string;
   displayKeyword?: string;
@@ -53,6 +55,8 @@ const host = ref<HTMLElement>(),
   input = ref<HTMLInputElement>(),
   panel = ref<HTMLElement>();
 const suggestionsPanel = ref<InstanceType<typeof SearchSuggestions>>();
+const offlineFocusNotice = ref<InstanceType<typeof SearchOfflineFocusNotice>>();
+const inputSelected = ref(false);
 watch(query, () => suggestionsPanel.value?.clearPointer(), { flush: 'sync' });
 const position = ref({ left: '0px', top: '0px', width: '779px', maxHeight: '622px' });
 const confirm = ref(false);
@@ -100,9 +104,12 @@ function focusInput() {
 }
 function onFocus() {
   model.setInputFocused(true);
+  inputSelected.value = props.online;
+  if (!props.online) offlineFocusNotice.value?.show();
 }
 function onBlur() {
   model.setInputFocused(false);
+  inputSelected.value = false;
 }
 function windowFocused() {
   model.setWindowFocused(document.visibilityState === 'visible');
@@ -316,7 +323,7 @@ onUnmounted(() => {
   <div ref="host" class="search-host" @keydown="key">
     <form
       class="searchbox"
-      :class="{ 'searchbox-open': open }"
+      :class="{ 'searchbox-open': open, 'searchbox-selected': inputSelected }"
       role="search"
       @submit.prevent="submit()"
     >
@@ -351,6 +358,7 @@ onUnmounted(() => {
         <Icon name="close" />
       </button>
     </form>
+    <SearchOfflineFocusNotice ref="offlineFocusNotice" />
     <Teleport to="body"
       ><MenuTransition>
         <div

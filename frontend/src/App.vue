@@ -7045,6 +7045,7 @@ onUnmounted(() => {
         ref="searchBox"
         :account="account"
         :guest-ready="guestSearchReady"
+        :online="searchOnline"
         :page-key="navigationKey"
         :keyword="page.kind === 'search' ? page.keyword : undefined"
         :display-keyword="page.kind === 'search' ? page.displayKeyword : undefined"

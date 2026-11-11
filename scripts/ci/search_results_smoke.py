@@ -362,8 +362,9 @@ def verify_offline_route(root, screenshots):
     first = root / 'first'
     read = lambda path: json.loads(path.read_text(encoding='utf-8'))
     stages = (
+        ('offline_focus', 0, None), ('offline_focus_expired', 0, None),
         ('cold_offline', 0, None), ('local_diagnostics', 0, None),
-        ('first_online', 1, 'all'), ('classified', 2, 'songs'),
+        ('first_online', 1, 'all'), ('online_focus', 1, 'all'), ('classified', 2, 'songs'),
         ('known_offline', 2, None), ('restored_category', 2, 'songs'),
         ('interrupted_offline', 3, None), ('new_online', 4, 'all'),
         ('reachable_error', 5, 'all'), ('explicit_retry', 6, 'all'),
@@ -378,9 +379,22 @@ def verify_offline_route(root, screenshots):
         path = first / f'ux_{index:02}_{label}.json'
         row = read(path)
         assert row['label'] == label and row['category'] == category
-        assert row['hasOffline'] == (category is None) and row['browserOnline'] == (category is not None)
+        focus_only_offline = label in ('offline_focus', 'offline_focus_expired')
+        assert row['hasOffline'] == (category is None and not focus_only_offline)
+        assert row['browserOnline'] == (category is not None)
         assert row['diagnostics'] == (label == 'local_diagnostics')
         assert row['offlineResultCalls'] == row['requests'] == expected[:count], (label, row)
+        if focus_only_offline or label == 'online_focus':
+            state = row['searchFocus']
+            assert state['focused'] and not state['discovery'] and state['discoveryReads'] == []
+            assert state['selected'] == (label == 'online_focus')
+            assert state['gradient'] == focus_only_offline
+            assert state['keyword'] == (expected[0][1] if label == 'online_focus' else '')
+            if label == 'offline_focus':
+                assert state['notice'] == '网络异常，请检查网络连接' and state['alert'] == 'alert'
+                assert state['centered'] and state['noticeHeight'] == 44
+            else:
+                assert state['notice'] is None
         if label == 'classified':
             classified_scroll = row['trackScroll']
             assert classified_scroll > 0
@@ -398,6 +412,7 @@ def verify_offline_route(root, screenshots):
         assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
                    for key in ('messages', 'characters')), locale
     report = dict(ok=True, actualWebView=True, nativeIpc=True, browserConnectivitySynthetic=True,
+                  offlineFocusWarningVerified=True,
                   localDiagnosticsVerified=True, restoredTrackScroll=classified_scroll,
                   networkNamespaceWithoutRoutes=sys.platform == 'linux',
                   stages=[label for label, _, _ in stages],

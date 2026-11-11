@@ -6,8 +6,12 @@
   width: 100%;
 }
 .searchbox-open,
-.searchbox:has(input:focus) {
+.searchbox-selected {
   background: var(--surface-raised);
+}
+.searchbox:not(.searchbox-selected):has(input:focus-visible) {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
 }
 .search-submit {
   display: flex;
