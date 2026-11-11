@@ -2179,6 +2179,10 @@ impl MusicClient {
         if let Some(lease) = lease {
             self.focus.check(lease, super::focus::Owner::Audio)?;
         }
+        let keep_song_observation = matches!(
+            &command,
+            PlaybackCommand::Pause(true) | PlaybackCommand::Seek(_)
+        );
         let state = if let Some(target) = native {
             controller
                 .command_guarded(
@@ -2212,6 +2216,14 @@ impl MusicClient {
             controller.command(&token, command).await?
         };
         self.session.check_generation(&token)?;
+        if keep_song_observation && let Some(intent) = control_intent {
+            self.player.song_purchase.retain_after_transport(
+                &self.player.selection,
+                &state,
+                &token,
+                intent,
+            );
+        }
         if !local_effect {
             self.together_signal(&token, together_action);
         }

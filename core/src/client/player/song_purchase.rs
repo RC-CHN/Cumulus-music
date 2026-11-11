@@ -237,6 +237,27 @@ impl Host {
             .cloned())
     }
 
+    /// A completed pause or seek can keep the verified catalogue row. Its
+    /// transport intent still cancels older work and expires any chooser.
+    pub(super) fn retain_after_transport(
+        &self,
+        generation: &AtomicU64,
+        state: &PlaybackSnapshot,
+        account: &SessionToken,
+        intent: u64,
+    ) {
+        if let Ok(mut slot) = self.0.lock()
+            && let Some(record) = slot.as_mut()
+            && &record.account == account
+            && record.selection.checked_add(1) == Some(intent)
+            && state.play_id.as_deref() == Some(record.play_id.as_str())
+            && ordinary_entry(state, account, &record.song_id) == Some(record.entry_id.as_str())
+            && generation.load(Ordering::Acquire) == intent
+        {
+            record.selection = intent;
+        }
+    }
+
     pub(super) fn retire(&self, record: &Observation) {
         if let Ok(mut slot) = self.0.lock()
             && slot.as_ref().is_some_and(|current| {

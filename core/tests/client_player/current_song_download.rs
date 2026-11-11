@@ -351,6 +351,51 @@ async fn current_song_requires_verified_ordinary_row_and_can_refresh_exact_next_
 }
 
 #[tokio::test]
+async fn pause_and_seek_reuse_song_evidence_but_expire_old_chooser() {
+    let (_dir, api, _, client, _) = fixture();
+    let wire = setup(&api);
+    let current = target(client.play_selection("1", songs("1")).await.unwrap());
+    let old_offer = purchase(&client, &current).await;
+    let paused = target(
+        client
+            .player_action("1", PlayerAction::Pause { paused: true })
+            .await
+            .unwrap(),
+    );
+    assert_eq!(paused.play_id, current.play_id);
+    assert_eq!(paused.entry_id, current.entry_id);
+    assert!(matches!(
+        action(
+            &client,
+            &paused,
+            C::Select {
+                offer: old_offer,
+                quality: Quality::HiRes,
+            },
+        )
+        .await,
+        Err(Error::StaleResponse)
+    ));
+    let paused_offer = purchase(&client, &paused).await;
+    let after_seek = target(
+        client
+            .player_action("1", PlayerAction::Seek { seconds: 7.0 })
+            .await
+            .unwrap(),
+    );
+    assert_eq!(after_seek.play_id, current.play_id);
+    assert_eq!(after_seek.entry_id, current.entry_id);
+    assert_ne!(purchase(&client, &after_seek).await, paused_offer);
+    assert_eq!(
+        *api.player_song_purchase.observed.lock().unwrap(),
+        [vec!["1"]]
+    );
+    assert!(
+        wire.calls(ADD).is_empty() && wire.calls(CREATE).is_empty() && wire.calls(AUTH).is_empty()
+    );
+}
+
+#[tokio::test]
 async fn current_purchased_liked_requires_same_choice_directory_and_single_admission() {
     let (_dir, api, session, client, _) = fixture();
     let wire = setup(&api);
