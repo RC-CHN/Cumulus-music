@@ -284,6 +284,7 @@ import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
 import TogetherRoomLossDialog from './components/TogetherRoomLossDialog.vue';
+import TogetherLeaveRecordDialog from './components/TogetherLeaveRecordDialog.vue';
 import TogetherExternalSelection from './components/TogetherExternalSelection.vue';
 import RankingsPage from './components/RankingsPage.vue';
 import FmPage from './components/FmPage.vue';
@@ -2213,6 +2214,16 @@ watch(
   },
 );
 const togetherRoomLoss = computed(() => together.view.value?.queueRoomLoss);
+const togetherLeaveRecord = computed(() =>
+  account.value.status === 'authenticated' && account.value.epoch === together.epoch.value
+    ? together.leaveRecord.value
+    : undefined,
+);
+function togetherPromptFallback() {
+  return page.value.kind === 'together'
+    ? document.querySelector<HTMLElement>('.together-heading h1')
+    : null;
+}
 const externalSelection = computed(() => together.view.value?.externalSelection);
 const togetherFiltered = ref(false);
 watch(
@@ -8777,7 +8788,7 @@ onUnmounted(() => {
       />
     </ModalTransition>
   </div>
-  <ModalTransition>
+  <ModalTransition :fallback-focus="togetherPromptFallback">
     <TogetherRoomLossDialog
       v-if="togetherRoomLoss"
       :key="togetherRoomLoss.reportId"
@@ -8791,6 +8802,12 @@ onUnmounted(() => {
       :busy="together.busy.value"
       :error="together.error.value"
       @resolve="resolveTogetherExternalSelection"
+    />
+    <TogetherLeaveRecordDialog
+      v-else-if="togetherLeaveRecord"
+      :key="togetherLeaveRecord.operationId"
+      :record="togetherLeaveRecord"
+      @close="together.dismissLeaveRecord"
     />
   </ModalTransition>
   <p v-if="togetherFiltered" class="together-filtered-notice" role="status">部分歌曲不支持一起听</p>

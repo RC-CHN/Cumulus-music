@@ -1,11 +1,13 @@
 import { ref, shallowRef } from 'vue';
 import { useCore } from '../services/core.ts';
 import { failure, type AccountView } from '../services/contracts.ts';
-import type {
-  TogetherClient,
-  TogetherCommand,
-  TogetherStatistics,
-  TogetherView,
+import {
+  confirmedTogetherLeaveRecord,
+  type TogetherClient,
+  type TogetherCommand,
+  type TogetherLeaveRecord,
+  type TogetherStatistics,
+  type TogetherView,
 } from '../services/together.ts';
 export function useTogether(
   core: TogetherClient = useCore(),
@@ -19,9 +21,23 @@ export function useTogether(
     error = ref(''),
     closeError = ref(''),
     notice = ref(''),
+    leaveRecord = shallowRef<TogetherLeaveRecord>(),
     statistics = shallowRef<TogetherStatistics>(),
     statisticsLoading = ref(false),
     statisticsError = ref(false);
+  // A command can dismiss before a read already in flight returns. Keep
+  // a bounded epoch-local set of retired receipts; no disk or account leak.
+  const retiredLeaveRecords = new Set<string>();
+  function retireLeaveRecord() {
+    const id = leaveRecord.value?.operationId;
+    if (!id) return;
+    retiredLeaveRecords.add(id);
+    if (retiredLeaveRecords.size > 16) {
+      const oldest = retiredLeaveRecords.values().next().value;
+      if (oldest !== undefined) retiredLeaveRecords.delete(oldest);
+    }
+    leaveRecord.value = undefined;
+  }
   let statisticsKey: string | null = null;
   let statisticsRequest = 0;
   let generation = 0,
@@ -94,7 +110,25 @@ export function useTogether(
   }
   function acceptView(value: TogetherView, refresh = false) {
     view.value = value;
+    const record = confirmedTogetherLeaveRecord(value);
+    if (leaveRecord.value && leaveRecord.value.operationId !== record?.operationId)
+      retireLeaveRecord();
+    if (record && !retiredLeaveRecords.has(record.operationId) && !leaveRecord.value)
+      leaveRecord.value = record;
     void readStatistics(refresh);
+  }
+  async function dismissLeaveRecord(operationId: string) {
+    const owner = epoch.value;
+    if (!owner || leaveRecord.value?.operationId !== operationId) return;
+    retireLeaveRecord();
+    // Native dismissal is local and exact. Its reply must never overwrite
+    // a newer view, clear a new room, or reopen this presentation.
+    try {
+      await core.togetherCommand(owner, {
+        kind: 'dismiss_leave_record',
+        operation_id: operationId,
+      });
+    } catch {}
   }
   function dispose() {
     unlisten?.();
@@ -105,6 +139,8 @@ export function useTogether(
     request++;
     epoch.value = '';
     view.value = undefined;
+    leaveRecord.value = undefined;
+    retiredLeaveRecords.clear();
     clearStatistics();
     loading.value = false;
     busy.value = false;
@@ -227,6 +263,8 @@ export function useTogether(
     error,
     closeError,
     notice,
+    leaveRecord,
+    dismissLeaveRecord,
     statistics,
     statisticsLoading,
     statisticsError,

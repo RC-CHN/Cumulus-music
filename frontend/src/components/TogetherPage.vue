@@ -106,7 +106,7 @@ async function exit() {
   <section class="together-page" aria-label="一起听">
     <header class="together-heading">
       <div>
-        <h1>一起听</h1>
+        <h1 tabindex="-1">一起听</h1>
         <p>让同一首歌，连接此刻的心情</p>
       </div>
       <button

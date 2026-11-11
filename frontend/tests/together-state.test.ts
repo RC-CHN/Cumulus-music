@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useTogether } from '../src/composables/useTogether.ts';
-import type { TogetherClient, TogetherView } from '../src/services/together.ts';
+import {
+  togetherRecordDuration,
+  type TogetherClient,
+  type TogetherLeaveRecord,
+  type TogetherView,
+} from '../src/services/together.ts';
 import type { AccountData } from '../src/services/contracts.ts';
 const account = (epoch = '1') => ({
   epoch,
@@ -265,4 +270,150 @@ test('relation statistics are read only for a visible pair and discard a late pr
   model.show(false);
   assert.equal(model.statistics.value, undefined);
   model.dispose();
+});
+
+function record(operationId = 'verified-end'): TogetherLeaveRecord {
+  return {
+    operationId,
+    thisListenCount: 3,
+    thisDuration: 35,
+    totalListenCount: 27,
+    totalDuration: 3665,
+    selfAvatarUrl: null,
+    peerAvatarUrl: null,
+  };
+}
+
+test('together record uses the official seconds-to-minutes rounding', () => {
+  assert.deepEqual([0, 59, 60, 119, 3599, 3600, 3665].map(togetherRecordDuration), [
+    '1分钟',
+    '1分钟',
+    '1分钟',
+    '1分钟',
+    '59分钟',
+    '1小时0分钟',
+    '1小时1分钟',
+  ]);
+});
+
+test('together displays only a native confirmed numeric record with no unresolved room', async () => {
+  const receipt = record();
+  let current: TogetherView = {
+    ...value(),
+    room: { id: 'active', role: 'together', members: [], relationKey: null },
+    leaveRecord: receipt,
+  };
+  const m = useTogether(client({ togetherView: async (epoch) => ({ epoch, value: current }) }));
+  m.connect(account());
+  await m.load();
+  assert.equal(m.leaveRecord.value, undefined, 'active room never shows a record');
+  current = {
+    ...value(),
+    pending: [{ id: 'uncertain', action: 'end', phase: 'uncertain', acknowledged: false }],
+    leaveRecord: receipt,
+  };
+  await m.load();
+  assert.equal(m.leaveRecord.value, undefined, 'unresolved exit never shows a record');
+  current = { ...value(), leaveRecord: { ...receipt, thisDuration: -1 } };
+  await m.load();
+  assert.equal(m.leaveRecord.value, undefined);
+  current = { ...value(), leaveRecord: { ...receipt, totalListenCount: 1.5 } };
+  await m.load();
+  assert.equal(m.leaveRecord.value, undefined);
+  current = value();
+  await m.load();
+  assert.equal(m.leaveRecord.value, undefined, 'absence never manufactures counts');
+  current = { ...value(), leaveRecord: receipt };
+  await m.load();
+  assert.deepEqual(
+    m.leaveRecord.value,
+    receipt,
+    'runtime playlist clear may arrive via native view',
+  );
+  current = { ...value(), leaveRecord: { ...receipt, totalDuration: 1 } };
+  await m.load();
+  assert.deepEqual(m.leaveRecord.value, receipt, 'published receipt is an immutable presentation');
+  m.dispose();
+});
+
+test('together record dismisses locally once and an older read cannot reopen it', async () => {
+  const receipt = record();
+  const older = held<AccountData<TogetherView>>();
+  const dismissal = held<AccountData<TogetherView>>();
+  const newRoom = { id: 'new', role: 'waiting' as const, members: [], relationKey: null };
+  let heldRead = false;
+  let created = false;
+  let dismissals = 0;
+  const m = useTogether(
+    client({
+      togetherView: async (epoch) =>
+        heldRead ? older.promise : { epoch, value: { ...value(), room: created ? newRoom : null } },
+      togetherCommand: async (epoch, command) => {
+        if (command.kind === 'end') return { epoch, value: { ...value(), leaveRecord: receipt } };
+        assert.deepEqual(command, {
+          kind: 'dismiss_leave_record',
+          operation_id: receipt.operationId,
+        });
+        dismissals++;
+        return dismissal.promise;
+      },
+    }),
+  );
+  m.connect(account());
+  await m.load();
+  await m.command({ kind: 'end', room_id: 'confirmed' });
+  assert.deepEqual(m.leaveRecord.value, receipt);
+  heldRead = true;
+  const read = m.load();
+  const close = m.dismissLeaveRecord(receipt.operationId);
+  assert.equal(m.leaveRecord.value, undefined);
+  await m.dismissLeaveRecord(receipt.operationId);
+  assert.equal(dismissals, 1);
+  older.resolve({ epoch: '1', value: { ...value(), leaveRecord: receipt } });
+  await read;
+  assert.equal(
+    m.leaveRecord.value,
+    undefined,
+    'already-pending poll is ignored for retired receipt',
+  );
+  heldRead = false;
+  created = true;
+  await m.load();
+  assert.deepEqual(m.view.value?.room, newRoom);
+  dismissal.resolve({ epoch: '1', value: { ...value(), leaveRecord: receipt } });
+  await close;
+  assert.equal(m.leaveRecord.value, undefined);
+  assert.deepEqual(m.view.value?.room, newRoom, 'late dismiss cannot overwrite a new room');
+  m.dispose();
+});
+
+test('new room and account switch discard ended room records and late end responses', async () => {
+  const receipt = record();
+  const late = held<AccountData<TogetherView>>();
+  let current: TogetherView = { ...value(), leaveRecord: receipt };
+  const m = useTogether(
+    client({
+      togetherView: async (epoch) => ({ epoch, value: epoch === '1' ? current : value() }),
+      togetherCommand: () => late.promise,
+    }),
+  );
+  m.connect(account());
+  await m.load();
+  assert.deepEqual(m.leaveRecord.value, receipt);
+  current = {
+    ...value(),
+    room: { id: 'new', role: 'together_owner', members: [], relationKey: null },
+  };
+  await m.load();
+  assert.equal(m.leaveRecord.value, undefined);
+  current = { ...value(), leaveRecord: receipt };
+  await m.load();
+  assert.equal(m.leaveRecord.value, undefined, 'a retired receipt cannot survive room replacement');
+  const end = m.command({ kind: 'end', room_id: 'new' });
+  m.connect(account('2'));
+  late.resolve({ epoch: '1', value: { ...value(), leaveRecord: record('late-end') } });
+  await end;
+  assert.equal(m.epoch.value, '2');
+  assert.equal(m.leaveRecord.value, undefined);
+  m.dispose();
 });
