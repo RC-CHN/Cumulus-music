@@ -8,6 +8,7 @@ pub(super) struct Server {
     pub(super) revision: AtomicU64,
     pub(super) mode: AtomicU64,
     pub(super) observed: Mutex<Vec<Vec<String>>>,
+    pub(super) privilege_override: Mutex<Option<Value>>,
 }
 
 impl Server {
@@ -39,6 +40,13 @@ impl Server {
                 })
             })
             .collect();
+        if let Some(overrides) = self.privilege_override.lock().unwrap().as_ref() {
+            for row in &mut rows {
+                row.as_object_mut()
+                    .unwrap()
+                    .extend(overrides.as_object().unwrap().clone());
+            }
+        }
         if mode == 2 {
             rows.push(rows[0].clone());
         } else if mode == 3 {

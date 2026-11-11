@@ -71,6 +71,34 @@ fn external(row: &Value) -> bool {
             .any(|key| row[key].as_i64() == Some(1) || row[key].as_str() == Some("1"))
 }
 
+fn download_not_blocked(value: &Value) -> bool {
+    value.is_null() || value.as_bool() == Some(false) || value.as_u64() == Some(0)
+}
+
+fn ordinary_download_right(song: &Value, privilege: &Value) -> bool {
+    // M/7:85–92 defines the six catalogue fee bits. M/27.e requires
+    // actual dl > 0, M/21.f tests fee && !payed, and M/35.h tests
+    // payed & 6 for the *separate* purchase chooser. A positive fee
+    // with a nonpurchase payed bit can therefore reach stock download.
+    let (Some(fee), Some(payed)) = (
+        privilege["fee"].as_u64().filter(|fee| *fee <= 0b11_1111),
+        privilege["payed"]
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok()),
+    ) else {
+        return false;
+    };
+    let nested = &song["privilege"];
+    payed & 6 == 0
+        && (fee == 0 || payed != 0)
+        && privilege["st"].as_i64().is_some_and(|status| status >= 0)
+        && privilege["dl"].as_u64().is_some_and(|level| level > 0)
+        && (nested["dl"].is_null() || nested["dl"].as_u64().is_some_and(|level| level > 0))
+        && [("fee", fee), ("payed", u64::from(payed))]
+            .into_iter()
+            .all(|(key, value)| nested[key].is_null() || nested[key].as_u64() == Some(value))
+}
+
 impl Candidate {
     pub(super) fn from_detail(
         id: &str,
@@ -82,6 +110,8 @@ impl Candidate {
         if detail.revision.is_empty()
             || !exact_id(&song["id"], id)
             || !exact_id(&privilege["id"], id)
+            || !download_not_blocked(&privilege["bd"])
+            || !download_not_blocked(&song["privilege"]["bd"])
             || [song, privilege, &song["privilege"]]
                 .into_iter()
                 .any(|row| {
@@ -100,15 +130,7 @@ impl Candidate {
         }
         let rights = if let Some(offer) = Offer::from_privilege(privilege) {
             Rights::Purchased(offer)
-        } else if privilege["payed"].as_u64() == Some(0)
-            && privilege["fee"].as_i64() == Some(0)
-            && privilege["st"].as_i64().is_some_and(|status| status >= 0)
-            && privilege["dl"].as_u64().is_some_and(|level| level > 0)
-            && !js_truthy(&privilege["bd"])
-            && ["payed", "fee"].into_iter().all(|key| {
-                song["privilege"][key].is_null() || song["privilege"][key].as_u64() == Some(0)
-            })
-        {
+        } else if ordinary_download_right(song, privilege) {
             Rights::Ordinary
         } else {
             return None;

@@ -632,3 +632,49 @@ async fn new_destination_only_chains_add_from_its_direct_created_id() {
         assert!(wire.calls(AUTH).is_empty());
     }
 }
+
+#[tokio::test]
+async fn signed_nonpurchase_catalogue_fee_uses_ordinary_but_unentitled_rows_cannot() {
+    let (_dir, api, _, client, _) = fixture();
+    let wire = setup(&api);
+    // M/7 fee bits and M/3085’s two independent native decisions. The
+    // authenticated synthetic account has no membership assignment snapshot.
+    for (row, expected) in [
+        (json!({"fee":1,"payed":1}), D::Ordinary),
+        (json!({"fee":2,"payed":1}), D::Ordinary),
+        (json!({"fee":4,"payed":1}), D::Ordinary),
+        (json!({"fee":8,"payed":1}), D::Ordinary),
+        (json!({"fee":16,"payed":1}), D::Ordinary),
+        (json!({"fee":32,"payed":1}), D::Ordinary),
+        (json!({"fee":63,"payed":9}), D::Ordinary),
+        (json!({"fee":0,"payed":1}), D::Ordinary),
+        (json!({"fee":1,"payed":0}), D::Unavailable),
+        (json!({"fee":8,"payed":null}), D::Unavailable),
+        (json!({"fee":64,"payed":1}), D::Unavailable),
+        (json!({"fee":1,"payed":"1"}), D::Unavailable),
+        (json!({"fee":1,"payed":1,"st":-200}), D::Unavailable),
+        (json!({"fee":1,"payed":1,"dl":0}), D::Unavailable),
+        (json!({"fee":1,"payed":1,"bd":1}), D::Unavailable),
+        (json!({"fee":1,"payed":1,"bd":""}), D::Unavailable),
+        (json!({"fee":8,"payed":3}), D::PurchasedQualityRequired),
+        (json!({"fee":1,"payed":4}), D::PurchasedQualityRequired),
+    ] {
+        *api.player_song_purchase.privilege_override.lock().unwrap() = Some(row.clone());
+        let current = target(client.play_selection("1", songs("1")).await.unwrap());
+        let R::Plan {
+            decision,
+            offer,
+            purchased_qualities,
+        } = action(&client, &current, C::Prepare).await.unwrap()
+        else {
+            panic!("expected native preparation for {row}");
+        };
+        assert_eq!(decision, expected, "{row}");
+        let chooser = expected == D::PurchasedQualityRequired;
+        assert_eq!(offer.is_some(), chooser, "{row}");
+        assert_eq!(!purchased_qualities.is_empty(), chooser, "{row}");
+    }
+    assert!(
+        wire.calls(ADD).is_empty() && wire.calls(CREATE).is_empty() && wire.calls(AUTH).is_empty()
+    );
+}
