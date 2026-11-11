@@ -239,7 +239,18 @@ async fn same_version_privilege_change_restricts_current_audio_and_all_blocked_s
 
 #[tokio::test]
 async fn pause_at_zero_survives_redundant_shared_read_but_changed_rights_stay_blocked() {
-    for changed_rights in [false, true] {
+    enum PriorPlay {
+        Applied,
+        IgnoredLocal,
+        IgnoredPeer,
+    }
+    use PriorPlay::*;
+    for (prior_play, changed_rights) in [
+        (Applied, false),
+        (Applied, true),
+        (IgnoredLocal, false),
+        (IgnoredPeer, false),
+    ] {
         let root = tempfile::tempdir().unwrap();
         let api = Arc::new(Backend::default());
         let (session, client) = world(root.path(), api.clone());
@@ -259,6 +270,37 @@ async fn pause_at_zero_survives_redundant_shared_read_but_changed_rights_stay_bl
                     .is_some_and(|r| r.phase == IncomingPhase::Applied && !r.ignore_play_command)
         })
         .await;
+        if !matches!(prior_play, Applied) {
+            let prior = service.state_for(&token).unwrap().shared.unwrap().id;
+            let version = service
+                .state_for(&token)
+                .unwrap()
+                .snapshot
+                .playlist
+                .unwrap()
+                .version;
+            if matches!(prior_play, IgnoredPeer) {
+                api.state.lock().unwrap().play =
+                    Some(command(17, "PROGRESS", "91", 17_000, "PLAY"));
+                // Equal-version LIST reads the latest cached list and command.
+                // The read updates that cache without applying native transport.
+                client.together_view("1", true).await.unwrap();
+            }
+            send(&im, 20001, json!({"roomId":"test-room","version":version}));
+            wait(&client, |_| {
+                service.state_for(&token).unwrap().shared.is_some_and(|r| {
+                    r.id != prior && r.ignore_play_command && r.phase == IncomingPhase::Applied
+                })
+            })
+            .await;
+            let ignored = service.state_for(&token).unwrap().shared.unwrap();
+            let play = ignored.snapshot.unwrap().play_command.unwrap();
+            match prior_play {
+                IgnoredLocal => assert_eq!(play.user_id.as_deref(), Some("1")),
+                IgnoredPeer => assert_eq!(play.user_id.as_deref(), Some("2")),
+                Applied => unreachable!(),
+            }
+        }
         let before = client.player_snapshot("1").await.unwrap();
         assert_eq!(before.state, PlaybackStatus::Playing);
         assert_eq!(before.position, Some(0.0));
@@ -296,7 +338,7 @@ async fn pause_at_zero_survives_redundant_shared_read_but_changed_rights_stay_bl
         assert_eq!(reports().len(), count);
         api.hold_privilege.store(false, Ordering::SeqCst);
         api.privilege_release.notify_one();
-        if changed_rights {
+        if changed_rights || matches!(prior_play, IgnoredPeer) {
             wait(&client, |v| {
                 v.shared_phase == Some(IncomingPhase::Superseded) && v.sync_error.is_some()
             })
@@ -322,6 +364,32 @@ async fn pause_at_zero_survives_redundant_shared_read_but_changed_rights_stay_bl
         assert_eq!(after.queue_revision, before.queue_revision);
         assert_eq!(after.position, Some(0.0));
         assert_eq!(after.state, PlaybackStatus::Paused);
+        if matches!(prior_play, IgnoredPeer) {
+            client
+                .together_command(
+                    "1",
+                    TogetherCommand::Publish {
+                        room_id: "test-room".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            wait(&client, |v| {
+                v.shared_phase == Some(IncomingPhase::Applied)
+                    && v.playing
+                    && v.pending.is_empty()
+                    && v.sync_error.is_none()
+            })
+            .await;
+            let recovered = client.player_snapshot("1").await.unwrap();
+            assert_eq!(recovered.state, PlaybackStatus::Playing);
+            assert_eq!(recovered.position, Some(17.0));
+            assert_eq!(
+                reports().len(),
+                count,
+                "read-only recovery must not echo peer transport"
+            );
+        }
         client.close_together().await.unwrap();
     }
 }

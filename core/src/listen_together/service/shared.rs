@@ -16,13 +16,21 @@ pub struct SharedReception {
 impl SharedReception {
     /// Identity, list/version, sequenced playback and common access must all
     /// match. An older persisted receipt without peer identity is not proof.
-    pub(crate) fn already_applied_as(&self, new: &Self) -> bool {
+    /// A list-only apply cannot attest to a newly applicable peer/unknown command.
+    pub(crate) fn already_applied_as(&self, new: &Self, owner: &str) -> bool {
         self.phase == IncomingPhase::Applied
             && self.room_id == new.room_id
             && self.peer_id.is_some()
             && self.peer_id == new.peer_id
-            && self.snapshot.is_some()
-            && self.snapshot == new.snapshot
+            && self.snapshot.as_ref().is_some_and(|old| {
+                Some(old) == new.snapshot.as_ref()
+                    && (!self.ignore_play_command
+                        || new.ignore_play_command
+                        || old
+                            .play_command
+                            .as_ref()
+                            .is_none_or(|command| command.user_id.as_deref() == Some(owner)))
+            })
             && self.privileges == new.privileges
     }
 }

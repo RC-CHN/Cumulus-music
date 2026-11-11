@@ -15,6 +15,11 @@ impl incoming::Receiver<'_> {
         version: Option<&[Version]>,
         ignore_play: bool,
     ) -> Result<Option<PlaybackSnapshot>> {
+        let owner = self
+            .token
+            .uid
+            .as_deref()
+            .ok_or(Error::State("no account"))?;
         let (before, queue) = self.controller.queue_with_state(self.token).await?;
         let service = TogetherService::new(self.session.clone())?;
         let previous = service.state_for(self.token)?;
@@ -35,7 +40,7 @@ impl incoming::Receiver<'_> {
             let identical = update.queue == queue
                 && prior
                     .as_ref()
-                    .is_some_and(|old| old.already_applied_as(&receipt));
+                    .is_some_and(|old| old.already_applied_as(&receipt, owner));
             let applied = self
                 .controller
                 .command(self.token, PlaybackCommand::UpdateQueue(update))
