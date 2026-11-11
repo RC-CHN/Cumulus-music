@@ -8,8 +8,10 @@ const props = defineProps<{
   disabled?: boolean;
   inHeader?: boolean;
   canToggle?: () => boolean;
+  spatialKey?: string;
+  spatialBusy?: boolean;
 }>();
-const emit = defineEmits<{ change: [] }>();
+const emit = defineEmits<{ change: []; spatialToggle: [renderedKey: string] }>();
 const { view, equalizerDraft } = props.player;
 const { settings, draft, pending, discarding, blocked, toggleMaster } = equalizerDraft;
 const shownSettings = computed(() =>
@@ -18,10 +20,16 @@ const shownSettings = computed(() =>
 const busy = computed(
   () =>
     props.disabled ||
+    props.spatialBusy ||
     (props.inHeader && !!(draft.value || pending.value || discarding.value || blocked.value)),
 );
-function change() {
+function change(event: MouseEvent) {
   if (busy.value || !shownSettings.value || props.canToggle?.() === false) return;
+  const renderedKey = (event.currentTarget as HTMLButtonElement).dataset.spatialMasterKey;
+  if (renderedKey !== undefined || props.spatialKey !== undefined) {
+    if (renderedKey && renderedKey === props.spatialKey) emit('spatialToggle', renderedKey);
+    return;
+  }
   emit('change');
   toggleMaster();
 }
@@ -34,6 +42,7 @@ function change() {
     :checked="!!shownSettings && !shownSettings.master_bypassed"
     :busy="busy"
     :keep-focus="inHeader"
+    :data-spatial-master-key="spatialKey"
     @toggle="change"
   >
     {{

@@ -9,6 +9,7 @@ import {
   equalizerMessage,
   equalizerCanRetry,
   equalizerLauncher,
+  spatialMasterTarget,
   effectLauncher,
 } from '../src/services/equalizer.ts';
 import type { EqualizerView } from '../src/services/player.ts';
@@ -259,4 +260,47 @@ test('saved spatial controls are bounded and only native local processing lights
     }).state,
     'off',
   );
+});
+
+test('spatial header targets the exact acknowledged source even while master is off', () => {
+  const equalizer: EqualizerView = {
+    ...view(),
+    spatial_status: 'bypassed',
+    settings: { ...view().settings, presence: 6, stereoizer: 8, master_bypassed: true },
+  };
+  const playback = {
+    epoch: '2',
+    playId: 'play-synthetic',
+    queueRevision: '9007199254740994',
+    equalizer,
+  };
+  assert.equal(
+    spatialMasterTarget(playback, '2'),
+    undefined,
+    'bypassed is not evidence of support',
+  );
+  equalizer.spatial_master_available = true;
+  assert.equal(spatialMasterTarget(playback, '3'), undefined);
+  assert.equal(spatialMasterTarget({ ...playback, playId: null }, '2'), undefined);
+  const target = spatialMasterTarget(playback, '2');
+  assert.deepEqual(target?.command, {
+    kind: 'spatial_equalizer_master',
+    play_id: 'play-synthetic',
+    expected_queue_revision: playback.queueRevision,
+    expected_revision: equalizer.revision,
+    bypassed: false,
+  });
+  const again = spatialMasterTarget(
+    {
+      ...playback,
+      equalizer: {
+        ...equalizer,
+        revision: '9007199254740995',
+        settings: { ...equalizer.settings, master_bypassed: false },
+      },
+    },
+    '2',
+  );
+  assert.notEqual(again?.key, target?.key);
+  assert.equal(again?.command.bypassed, true);
 });

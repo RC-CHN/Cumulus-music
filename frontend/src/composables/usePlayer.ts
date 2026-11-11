@@ -733,7 +733,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   async function configureEqualizer(
     input: Extract<
       PlayerAction,
-      { kind: 'equalizer' | 'save_custom_equalizer' | 'retry_equalizer' | 'repair_equalizer' }
+      {
+        kind:
+          | 'equalizer'
+          | 'spatial_equalizer_master'
+          | 'save_custom_equalizer'
+          | 'retry_equalizer'
+          | 'repair_equalizer';
+      }
     >,
   ) {
     const captured = epoch,

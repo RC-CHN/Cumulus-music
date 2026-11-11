@@ -4,6 +4,7 @@ import type {
   EqualizerSettings,
   EqualizerPreset,
   PlayerAction,
+  PlayerView,
   BoundParametricStatus,
 } from './player.ts';
 export { equalizerPresets };
@@ -34,6 +35,29 @@ export function equalizerTone(settings?: EqualizerSettings) {
 }
 export function equalizerSpatial(settings?: EqualizerSettings) {
   return { presence: settings?.presence ?? 0, stereoizer: settings?.stereoizer ?? 0 };
+}
+export interface SpatialMasterTarget {
+  key: string;
+  command: Extract<PlayerAction, { kind: 'spatial_equalizer_master' }>;
+}
+export function spatialMasterTarget(
+  view: Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision' | 'equalizer'> | undefined,
+  epoch: string,
+): SpatialMasterTarget | undefined {
+  if (!view?.playId || view.epoch !== epoch || view.equalizer.spatial_master_available !== true)
+    return;
+  const expected = view.equalizer.revision;
+  const bypassed = !view.equalizer.settings.master_bypassed;
+  return {
+    key: JSON.stringify([epoch, view.playId, view.queueRevision, expected, bypassed]),
+    command: {
+      kind: 'spatial_equalizer_master',
+      play_id: view.playId,
+      expected_queue_revision: view.queueRevision,
+      expected_revision: expected,
+      bypassed,
+    },
+  };
 }
 export function equalizerSpatialMessage(view: EqualizerView): string | undefined {
   const status = view.spatial_status;

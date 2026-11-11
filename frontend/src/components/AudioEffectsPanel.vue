@@ -4,9 +4,9 @@ import type { PlayerModel } from '../composables/usePlayer';
 import { useHeadphoneHeader } from '../composables/useHeadphoneHeader';
 import { useCore } from '../services/core';
 import { headphoneTuningLabel } from '../services/effectDirectory';
-import type { AccountView } from '../services/contracts';
+import { failure, type AccountView } from '../services/contracts';
 import type { EffectCataloguePresentation } from '../services/pcPresentation';
-import { equalizerTone, equalizerToneEnabled } from '../services/equalizer';
+import { equalizerTone, equalizerToneEnabled, spatialMasterTarget } from '../services/equalizer';
 import Icon from './Icon.vue';
 import EffectDirectory from './EffectDirectory.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
@@ -47,6 +47,40 @@ const tablist = ref<HTMLElement>();
 const activeRoute = computed(() => routes.find((route) => route.key === active.value)!);
 const tabId = (key: Tab) => `${title}-tab-${key}`;
 const panelId = (key: Tab) => `${title}-panel-${key}`;
+const spatialTarget = computed(() =>
+  spatialMasterTarget(ready.value ? view.value : undefined, props.account.epoch),
+);
+const spatialPending = ref(false);
+const spatialError = ref('');
+const sourceKey = computed(() =>
+  JSON.stringify([props.account.epoch, view.value?.playId, view.value?.queueRevision]),
+);
+watch(sourceKey, () => {
+  spatialError.value = '';
+});
+async function toggleSpatialMaster(renderedKey: string) {
+  const target = spatialTarget.value;
+  if (spatialPending.value || !target || target.key !== renderedKey) return;
+  const source = sourceKey.value;
+  spatialPending.value = true;
+  spatialError.value = '';
+  try {
+    const next = await props.player.configureEqualizer(target.command);
+    if (sourceKey.value !== source) return;
+    if (
+      next.epoch !== props.account.epoch ||
+      next.playId !== target.command.play_id ||
+      next.queueRevision !== target.command.expected_queue_revision ||
+      next.equalizer.revision === target.command.expected_revision ||
+      !!next.equalizer.settings.master_bypassed !== target.command.bypassed
+    )
+      throw new Error('无法确认环绕开关的当前状态。');
+  } catch (issue) {
+    if (sourceKey.value === source) spatialError.value = failure(issue).message;
+  } finally {
+    spatialPending.value = false;
+  }
+}
 const selectedLocalEqualizer = computed(() => {
   const current = view.value;
   const eq = current?.equalizer;
@@ -63,6 +97,7 @@ const selectedLocalEqualizer = computed(() => {
   // An explicitly enabled flat GEQ is still a selection; saved gains alone are not.
   const { bass_db, treble_db } = equalizerTone(eq.settings);
   if (
+    spatialTarget.value ||
     eq.settings.enabled ||
     (equalizerToneEnabled(eq.settings) && (bass_db !== 0 || treble_db !== 0))
   )
@@ -231,12 +266,16 @@ onUnmounted(() => {
         class="audio-effects-master"
         :player="player"
         :can-toggle="canToggleLocalMaster"
+        :spatial-key="spatialTarget?.key"
+        :spatial-busy="spatialPending"
         in-header
+        @spatial-toggle="toggleSpatialMaster"
       />
     </div>
     <p v-if="showHeadphoneMaster && headphoneError" class="audio-effects-master-issue" role="alert">
       {{ headphoneError }}
     </p>
+    <p v-if="spatialError" class="audio-effects-master-issue" role="alert">{{ spatialError }}</p>
     <p v-if="localMasterIssue" class="audio-effects-master-issue" role="status">
       均衡器设置尚未确认。
       <button type="button" @click="activate('equalizer')">查看均衡器</button>

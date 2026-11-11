@@ -277,6 +277,7 @@ export interface EqualizerView {
   saved_custom?: number[] | null;
   status: 'pending' | 'unavailable' | 'configured' | 'processing' | 'failed';
   spatial_status?: EqualizerSpatialStatus;
+  spatial_master_available?: boolean;
   damaged: boolean;
   source_bypassed?: boolean;
 }
@@ -907,6 +908,13 @@ export type PlayerAction =
       expected_revision: string;
       settings: EqualizerSettings;
       preset?: EqualizerPreset;
+    }
+  | {
+      kind: 'spatial_equalizer_master';
+      play_id: string;
+      expected_queue_revision: string;
+      expected_revision: string;
+      bypassed: boolean;
     }
   | { kind: 'save_custom_equalizer'; expected_revision: string }
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
