@@ -35,9 +35,14 @@ static ARTIST_GALLERY_FAILED: AtomicBool = AtomicBool::new(false);
 static ARTIST_GALLERY_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 #[path = "search_fixture/inline_credits.rs"]
 mod inline_credits;
+#[path = "search_fixture/primary_marks.rs"]
+mod primary_marks;
 
 pub fn inline_credit_calls() -> Option<Vec<Value>> {
     (MODE.lock().unwrap().as_str() == "inline_credits").then(inline_credits::calls)
+}
+pub fn primary_mark_calls() -> Option<Vec<Value>> {
+    (MODE.lock().unwrap().as_str() == "primary_marks").then(primary_marks::calls)
 }
 
 pub fn enabled() -> bool {
@@ -286,6 +291,7 @@ pub fn control(value: &Value) {
             "lyrics",
             "lyrics_waterfall_boundary",
             "inline_credits",
+            "primary_marks",
             "empty",
             "expired"
         ]
@@ -533,6 +539,12 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if enabled()
         && MODE.lock().unwrap().as_str() == "inline_credits"
         && let Some(result) = inline_credits::response(path, args)
+    {
+        return Some(result);
+    }
+    if enabled()
+        && MODE.lock().unwrap().as_str() == "primary_marks"
+        && let Some(result) = primary_marks::response(path, args)
     {
         return Some(result);
     }

@@ -1,6 +1,7 @@
 //! Whitelisted presentation models for recovered PC result pages.
 use super::{
     inline_credits::{self, SearchSongInlineCredits},
+    primary_matches::{PreparedPrimaryMatches, SearchSongPrimaryMatches},
     track_hint::{self, SongTableHint, TrackHint},
 };
 use crate::{
@@ -84,6 +85,8 @@ pub enum SearchItem {
         table_hint: Option<Box<SongTableHint>>,
         #[serde(rename = "inlineCredits", skip_serializing_if = "Option::is_none")]
         inline_credits: Option<Box<SearchSongInlineCredits>>,
+        #[serde(rename = "primaryMatches", skip_serializing_if = "Option::is_none")]
+        primary_matches: Option<Box<SearchSongPrimaryMatches>>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         explicit: bool,
         #[serde(
@@ -1016,6 +1019,7 @@ fn item(
                 hint,
                 table_hint: None,
                 inline_credits: None,
+                primary_matches: None,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
                 original_recording: v["originCoverType"].as_f64() == Some(1.0),
@@ -1438,6 +1442,8 @@ pub(super) fn project(
         items: vec![],
     };
     let display_keyword = result.correction.as_deref().unwrap_or(&query.keyword);
+    let primary_matcher = (!uid.is_empty() && matches!(query.category, Songs | Lyrics))
+        .then(|| PreparedPrimaryMatches::new(display_keyword));
     for resource in rows {
         if query.category == Mvs && resource["type"] != "mv" {
             result.unavailable_count += 1;
@@ -1489,14 +1495,15 @@ pub(super) fn project(
         }
         match projected {
             Ok(Some(mut item)) => {
-                if !uid.is_empty()
-                    && matches!(query.category, Songs | Lyrics)
+                if let Some(matcher) = &primary_matcher
                     && let SearchItem::Song {
                         track,
                         inline_credits,
+                        primary_matches,
                         ..
                     } = &mut item
                 {
+                    *primary_matches = Some(Box::new(matcher.project(track)));
                     *inline_credits =
                         inline_credits::project(resource, base, track, display_keyword)
                             .map(Box::new);

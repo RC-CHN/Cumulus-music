@@ -52,6 +52,12 @@ export interface SearchSongInlineCredits {
   artistSuffixes?: readonly (readonly SearchTextPart[] | null)[];
   albumSuffix?: readonly SearchTextPart[];
 }
+/** When present, omitted parts mean plain text; an empty array means no displayed text. */
+export interface SearchSongPrimaryMatches {
+  titleParts?: readonly SearchTextPart[];
+  artistParts?: readonly (readonly SearchTextPart[] | null)[];
+  albumParts?: readonly SearchTextPart[];
+}
 export type SearchTrackHint =
   | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
   | { kind: 'alias'; text: string };
@@ -92,6 +98,7 @@ export type SearchItem =
       hint?: SearchTrackHint;
       tableHint?: SearchSongTableHint;
       inlineCredits?: SearchSongInlineCredits;
+      primaryMatches?: SearchSongPrimaryMatches;
       explicit?: boolean;
       originalRecording?: boolean;
       reasons?: SearchReasonTag[];

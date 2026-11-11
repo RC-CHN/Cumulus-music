@@ -54,14 +54,45 @@ pub struct SearchSuggestionPart {
     pub marked: bool,
 }
 
+impl From<suggestion_marks::Part<'_>> for SearchSuggestionPart {
+    fn from(part: suggestion_marks::Part<'_>) -> Self {
+        Self {
+            text: part.text.into(),
+            marked: part.marked,
+        }
+    }
+}
+
 pub(crate) fn song_table_alias_parts(aliases: &[&str], query: &str) -> Vec<SearchSuggestionPart> {
     suggestion_marks::first_alias(aliases, query)
         .into_iter()
-        .map(|part| SearchSuggestionPart {
-            text: part.text.into(),
-            marked: part.marked,
-        })
+        .map(SearchSuggestionPart::from)
         .collect()
+}
+
+/// Prepared M123.d marking for an already observed display label. It uses
+/// the same normalization as M87.b on search suggestions, not M123.f's
+/// alias selection and second normalization.
+pub(crate) struct SearchLabelMatcher(suggestion_marks::SuggestionMatcher);
+
+impl SearchLabelMatcher {
+    pub(crate) fn new(keyword: &str) -> Self {
+        Self(suggestion_marks::SuggestionMatcher::new(keyword))
+    }
+
+    /// None means render the original label plainly. Some(empty) is a
+    /// deliberate empty display after the official trim. The matcher caps
+    /// marks itself; cap the optional duplicate text in the result DTO too.
+    pub(crate) fn changed_parts(&self, label: &str) -> Option<Vec<SearchSuggestionPart>> {
+        const MAX_PROJECTED_BYTES: usize = 1024;
+        let parts = self.0.parts(label);
+        if matches!(parts.as_slice(), [part] if !part.marked && part.text == label)
+            || parts.iter().map(|part| part.text.len()).sum::<usize>() > MAX_PROJECTED_BYTES
+        {
+            return None;
+        }
+        Some(parts.into_iter().map(SearchSuggestionPart::from).collect())
+    }
 }
 
 pub(crate) struct DefaultWord {

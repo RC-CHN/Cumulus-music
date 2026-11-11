@@ -20,6 +20,10 @@ INLINE_STAGES = (
     'inline_credits_songs', 'inline_credits_artist', 'inline_credits_songs_back',
     'inline_credits_lyrics', 'inline_credits_album', 'inline_credits_lyrics_back',
 )
+PRIMARY_MARK_STAGES = (
+    'primary_marks_songs_corrected', 'primary_marks_artist', 'primary_marks_songs_back',
+    'primary_marks_lyrics_effective', 'primary_marks_songs_original', 'primary_marks_lyrics_original',
+)
 COUNT_PATH = '/api/resource/commentInfo/list'
 LYRIC_PATH = '/api/search/resource/lyric'
 THREAD_PATH = '/api/v1/resource/comments/R_SO_4_3'
@@ -251,6 +255,85 @@ def verify_inline_credits(root, screenshots):
     print(json.dumps(report, ensure_ascii=False))
 
 
+def verify_primary_marks(root, screenshots):
+    first = root / 'first'
+
+    def read(path):
+        return json.loads(path.read_text(encoding='utf-8'))
+
+    complete = read(first / 'complete.json')
+    assert complete['ok'] and complete['searchPrimaryMarksVerified'] and complete['comprehensiveRetained']
+    assert complete['stageCount'] == len(PRIMARY_MARK_STAGES)
+    names = [f'ux_{i:02}_{name}' for i, name in enumerate(PRIMARY_MARK_STAGES, 1)]
+    assert sorted(p.stem for p in first.glob('ux_*.json')) == names
+    assert sorted(p.stem for p in first.glob('ux_*.png')) == (names if screenshots else [])
+    rows = [read(first / (name + '.json')) for name in names]
+    assert [row['label'] for row in rows] == list(PRIMARY_MARK_STAGES)
+
+    raw, effective = '原词', 'Ａ＋Ｂ 樂隊'
+    artist_name = '樂隊 乐队 + A+B 原词'
+    artist_action = 'artist:31502'
+    assert {key: rows[1][key] for key in ('sourceAction', 'id', 'heading')} == dict(
+        sourceAction=artist_action, id='31502', heading=artist_name,
+    )
+
+    def text(value, *marks):
+        return dict(text=value, marks=list(marks))
+
+    for index, category, rewritten, focus in (
+        (0, 'songs', True, None), (2, 'songs', True, artist_action), (3, 'lyrics', True, None),
+        (4, 'songs', False, None), (5, 'lyrics', False, None),
+    ):
+        row = rows[index]
+        assert (row['category'], row['keyword'], row['focusAction'], row['id']) == (
+            category, effective if rewritten else raw, focus, '31501',
+        )
+        assert row['exactMarks'] == dict(
+            title=text('Ａ＋Ｂ AB A+B 夜场 原词 错误词', *(['A+B'] if rewritten else [raw])),
+            artist=text(artist_name, *(['乐队', 'A+B'] if rewritten else [raw])),
+            idlessArtist=text('无链接 樂隊 乐队 + A+B 原词'),
+            album=text('<img> 乐队 / A+B 原词', *(['乐队', 'A+B'] if rewritten else [raw])),
+        )
+        assert row['noAlbumLink'] is row['literalMarkup'] is True
+        assert row['footer'] == (text('前原词后', raw) if category == 'songs' else None)
+        assert row['excerpt'] == (text('Ａ＋Ｂ 乐队 A+B 原词\n第二行 <img>') if category == 'lyrics' else None)
+
+    def call(path, **args):
+        return dict(path=path, args=args)
+
+    all_path, songs_path = '/api/search/pc/complex/page', '/api/search/song/list/page'
+    artist_path, dynamic_path = '/api/artist/v3/detail', '/api/artist/detail/dynamic'
+    base_query = dict(keyword=raw, scene='normal')
+    all_query = dict(**base_query, cursor='{"page":0,"ignoreBlocks":[],"traceId":""}', bizQueryInfo='')
+    songs_query = dict(**base_query, limit=10, offset=0)
+    fixed_calls = [
+        call(all_path, **all_query, needCorrect=True, channel='typing'),
+        call(songs_path, **songs_query, needCorrect=True, channel='typing'),
+        call(LYRIC_PATH, keyword=effective, scene='normal', limit=10, offset=0),
+        call(all_path, **all_query, needCorrect=False, channel='suggest'),
+        call(songs_path, **songs_query, needCorrect=False, channel='suggest'),
+        call(LYRIC_PATH, **songs_query),
+    ]
+    native = complete['primaryMarkCalls']
+    artist_calls = [call(dynamic_path, id='31502'), call(artist_path, id='31502', top=50, e_r=False)]
+    assert len(native) == len(fixed_calls) + len(artist_calls)
+    assert native[:2] == fixed_calls[:2] and native[4:] == fixed_calls[2:]
+    assert sorted(native[2:4], key=lambda item: item['path']) == artist_calls
+    assert rows[0]['primaryMarkCalls'] == native[:2]
+    for row, count in zip((rows[2], rows[3], rows[4], rows[5]), (4, 5, 7, 8), strict=True):
+        assert row['primaryMarkCalls'] == native[:count]
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    report = dict(ok=True, actualWebView=True, nativeIpc=True, stageCount=len(rows),
+                  screenshots=len(rows) if screenshots else 0, correctedAndRaw=True,
+                  fullWidthQuery=True, traditionalQueryOnly=True, literalPunctuation=True,
+                  linkedArtist='31502', restoredArtistFocus=True, idlessAlbumPlainText=True,
+                  separateSongFooter=True, plainLyricExcerpt=True, requests=native,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                                      encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -262,6 +345,7 @@ def main():
     mode.add_argument('--comment-count', action='store_true')
     mode.add_argument('--group-play', action='store_true')
     mode.add_argument('--inline-credits', action='store_true')
+    mode.add_argument('--primary-marks', action='store_true')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -282,7 +366,11 @@ def main():
     script_name = 'search_lyrics_waterfall_ui_probe.js' if args.waterfall else 'search_lyrics_ui_probe.js'
     source = Path(__file__).resolve().parents[2] / 'desktop/examples' / script_name
     script = root / 'search-lyrics.js'
-    if args.inline_credits:
+    if args.primary_marks:
+        body = ('window.__cumulusSearchPrimaryMarksProof = true;\n'
+                + source.with_name('search_primary_marks_ui_probe.js').read_text(encoding='utf-8') + '\n'
+                + source.with_name('search_results_ui_probe.js').read_text(encoding='utf-8'))
+    elif args.inline_credits:
         body = ('window.__cumulusSearchInlineCreditsProof = true;\n'
                 + source.with_name('search_inline_credits_ui_probe.js').read_text(encoding='utf-8') + '\n'
                 + source.with_name('search_results_ui_probe.js').read_text(encoding='utf-8'))
@@ -302,10 +390,14 @@ def main():
     env['CUMULUS_UX_SCRIPT'] = str(script)
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots,
-                      acknowledge_receipts=args.comment_count or args.group_play or args.inline_credits)
+                      acknowledge_receipts=(args.comment_count or args.group_play or args.inline_credits
+                                            or args.primary_marks))
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.primary_marks:
+        verify_primary_marks(root, args.screenshots)
+        return
     if args.inline_credits:
         verify_inline_credits(root, args.screenshots)
         return

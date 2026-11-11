@@ -15,6 +15,7 @@ pub use lyric_group::{LyricGroupOperation, LyricGroupPlaybackRow, LyricQueueDrop
 mod lyrics;
 pub(super) mod podcast_playback;
 mod presentation;
+mod primary_matches;
 mod privilege;
 pub use presentation::{
     SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,

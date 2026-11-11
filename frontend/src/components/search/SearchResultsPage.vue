@@ -226,6 +226,8 @@ const songTableHints = (section: SearchSection) =>
   section.items.flatMap((item) => (item.kind === 'song' ? [item.tableHint] : []));
 const songInlineCredits = (section: SearchSection) =>
   section.items.flatMap((item) => (item.kind === 'song' ? [item.inlineCredits] : []));
+const songPrimaryMatches = (section: SearchSection) =>
+  section.items.flatMap((item) => (item.kind === 'song' ? [item.primaryMatches] : []));
 function startQueueDrop(
   event: PointerEvent,
   section: SearchSection,
@@ -1412,6 +1414,7 @@ onBeforeUnmount(() => {
                     :track="item.track"
                     :match-keyword="matchKeyword"
                     :search-inline-credits="item.inlineCredits"
+                    :search-primary-matches="item.primaryMatches"
                     :index="index"
                     :aria-rowindex="index * 2 + 2"
                     :tabindex="lyricSelectionEnabled ? -1 : undefined"
@@ -1510,6 +1513,9 @@ onBeforeUnmount(() => {
               :tracks="tracks(section)"
               :search-title-hints="category === 'songs' ? songTableHints(section) : undefined"
               :search-inline-credits="category === 'songs' ? songInlineCredits(section) : undefined"
+              :search-primary-matches="
+                category === 'songs' ? songPrimaryMatches(section) : undefined
+              "
               :queue-drop-enabled="category === 'songs' && queueDropEnabled"
               :selected-menu-enabled="category === 'songs' && playable"
               :selection-label="category === 'songs' ? '单曲搜索结果' : undefined"

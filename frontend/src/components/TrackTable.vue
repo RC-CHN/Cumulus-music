@@ -19,13 +19,18 @@ import { expandedRows, rowBoundary, rowExtent, rowTop } from '../services/virtua
 import type { TrackView } from '../services/contracts';
 import type { AlbumTrackOrder } from '../services/albumDurationSort';
 import type { PlaylistDurationOrder } from '../services/playlistDuration';
-import type { SearchSongInlineCredits, SearchSongTableHint } from '../services/search';
+import type {
+  SearchSongInlineCredits,
+  SearchSongPrimaryMatches,
+  SearchSongTableHint,
+} from '../services/search';
 import TrackRow from './TrackRow.vue';
 const props = defineProps<{
   tracks: TrackView[];
   matchKeyword?: string;
   searchTitleHints?: readonly (SearchSongTableHint | undefined)[];
   searchInlineCredits?: readonly (SearchSongInlineCredits | undefined)[];
+  searchPrimaryMatches?: readonly (SearchSongPrimaryMatches | undefined)[];
   albumOrder?: AlbumTrackOrder;
   durationOrder?: PlaylistDurationOrder;
   originalRecordings?: ReadonlySet<string>;
@@ -459,6 +464,7 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
           matchKeyword,
           searchTitleHints?.[start + index],
           searchInlineCredits?.[start + index],
+          searchPrimaryMatches?.[start + index],
           originalRecordings?.has(track.id),
           locateIndex !== undefined,
           !!playlistSelectionScope,
@@ -472,6 +478,7 @@ defineExpose({ locate, restoreScroll, focusAfterReorder });
         :match-keyword="matchKeyword"
         :search-title-hint="searchTitleHints?.[start + index]"
         :search-inline-credits="searchInlineCredits?.[start + index]"
+        :search-primary-matches="searchPrimaryMatches?.[start + index]"
         :style="
           searchTitleHints?.[start + index] ? { height: `${rowSize(start + index)}px` } : undefined
         "

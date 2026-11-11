@@ -57,6 +57,13 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchPrimaryMarksProof){
+      const proof=await window.__searchPrimaryMarksRun({
+        one,wait,button,click,fresh,choose,capture,fixture,assert,ready,
+      });
+      await emit('complete',{ok:true,stageCount:count,...proof,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchInlineCreditsProof){
       const proof=await window.__searchInlineCreditsRun({
         one,all,wait,button,click,key,fresh,choose,capture,fixture,sleep,assert,ready,

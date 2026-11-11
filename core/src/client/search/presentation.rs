@@ -320,6 +320,7 @@ mod tests {
                         }),
                         table_hint: None,
                         inline_credits: None,
+                        primary_matches: None,
                         explicit: true,
                         original_recording: true,
                         reasons: vec![],

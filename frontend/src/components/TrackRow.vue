@@ -3,7 +3,11 @@ import { computed, ref } from 'vue';
 import { usePlaybackTriggerFocus } from '../composables/usePlaybackTriggerFocus';
 import SearchMatchText from './search/SearchMatchText.vue';
 import SearchSongTitleHint from './search/SearchSongTitleHint.vue';
-import type { SearchSongInlineCredits, SearchSongTableHint } from '../services/search';
+import type {
+  SearchSongInlineCredits,
+  SearchSongPrimaryMatches,
+  SearchSongTableHint,
+} from '../services/search';
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
@@ -18,6 +22,7 @@ const props = defineProps<{
   matchKeyword?: string;
   searchTitleHint?: SearchSongTableHint;
   searchInlineCredits?: SearchSongInlineCredits;
+  searchPrimaryMatches?: SearchSongPrimaryMatches;
   originalRecording?: boolean;
   index: number;
   liked: boolean;
@@ -49,6 +54,13 @@ const artistSuffixes = computed(() => {
   const suffixes = props.searchInlineCredits?.artistSuffixes;
   return suffixes?.length === props.track.artistRefs?.length ? suffixes : undefined;
 });
+const artistPrimaryParts = computed(() => {
+  const parts = props.searchPrimaryMatches?.artistParts;
+  return parts?.length === props.track.artistRefs?.length ? parts : undefined;
+});
+const legacyMatchKeyword = computed(() =>
+  props.searchPrimaryMatches ? undefined : props.matchKeyword,
+);
 const primaryDisabled = computed(
   () =>
     props.track.missing ||
@@ -142,7 +154,14 @@ function duration(ms: number) {
           :data-tooltip="track.name"
         >
           <span class="track-row-title-text">
-            <SearchMatchText v-if="matchKeyword" :text="track.name" :keyword="matchKeyword" />
+            <span v-if="searchPrimaryMatches" data-search-primary-match="title">
+              <SearchMatchText
+                v-if="searchPrimaryMatches.titleParts"
+                :parts="searchPrimaryMatches.titleParts"
+              />
+              <template v-else>{{ track.name }}</template>
+            </span>
+            <SearchMatchText v-else-if="matchKeyword" :text="track.name" :keyword="matchKeyword" />
             <template v-else>{{ track.name }}</template>
             <span
               v-if="searchInlineCredits?.titleSuffix?.length"
@@ -167,23 +186,35 @@ function duration(ms: number) {
               @click.stop="emit('artist', artist.id)"
               @dblclick.stop
             >
-              <SearchMatchText v-if="matchKeyword" :text="artist.name" :keyword="matchKeyword" />
+              <span v-if="searchPrimaryMatches" data-search-primary-match="artist">
+                <SearchMatchText v-if="artistPrimaryParts?.[i]" :parts="artistPrimaryParts[i]" />
+                <template v-else>{{ artist.name }}</template>
+              </span>
+              <SearchMatchText
+                v-else-if="matchKeyword"
+                :text="artist.name"
+                :keyword="matchKeyword"
+              />
               <template v-else>{{ artist.name }}</template>
               <span v-if="artistSuffixes?.[i]" data-search-inline-credit="artist"
                 ><SearchMatchText :parts="artistSuffixes[i]"
               /></span>
             </button>
-            <span v-else>
-              <SearchMatchText v-if="matchKeyword" :text="artist.name" :keyword="matchKeyword" />
+            <span v-else :data-search-primary-match="searchPrimaryMatches ? 'artist' : undefined">
+              <SearchMatchText
+                v-if="legacyMatchKeyword"
+                :text="artist.name"
+                :keyword="legacyMatchKeyword"
+              />
               <template v-else>{{ artist.name }}</template>
             </span></template
           ></small
         >
         <small v-else class="ellipsis" :data-tooltip="track.artists.join(' / ')">
           <SearchMatchText
-            v-if="matchKeyword && track.artists.length"
+            v-if="legacyMatchKeyword && track.artists.length"
             :text="track.artists.join(' / ')"
-            :keyword="matchKeyword"
+            :keyword="legacyMatchKeyword"
           />
           <template v-else>{{
             track.artists.join(' / ') || (track.local ? '本地文件' : '未知歌手')
@@ -204,14 +235,28 @@ function duration(ms: number) {
         @click.stop="emit('album', track.albumId)"
         @dblclick.stop
       >
-        <SearchMatchText v-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
+        <span v-if="searchPrimaryMatches" data-search-primary-match="album">
+          <SearchMatchText
+            v-if="searchPrimaryMatches.albumParts"
+            :parts="searchPrimaryMatches.albumParts"
+          />
+          <template v-else>{{ track.album }}</template>
+        </span>
+        <SearchMatchText v-else-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
         <template v-else>{{ track.album }}</template>
         <span v-if="searchInlineCredits?.albumSuffix?.length" data-search-inline-credit="album"
           ><SearchMatchText :parts="searchInlineCredits.albumSuffix"
         /></span>
       </button>
       <template v-else>
-        <SearchMatchText v-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
+        <span v-if="searchPrimaryMatches" data-search-primary-match="album">
+          <SearchMatchText
+            v-if="searchPrimaryMatches.albumParts"
+            :parts="searchPrimaryMatches.albumParts"
+          />
+          <template v-else>{{ track.album }}</template>
+        </span>
+        <SearchMatchText v-else-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
         <template v-else>{{ track.album }}</template>
         <span v-if="searchInlineCredits?.albumSuffix?.length" data-search-inline-credit="album"
           ><SearchMatchText :parts="searchInlineCredits.albumSuffix"
