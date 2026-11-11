@@ -151,7 +151,9 @@ class WindowsColdFlacTests(unittest.TestCase):
 
             def staged(package, msys, working, *, require_package_flac):
                 self.assertTrue(require_package_flac)
-                return working, 'package-stage', {}, []
+                runtime = working / 'runtime'
+                runtime.mkdir()
+                return runtime, 'package-stage', {}, []
 
             with patch.object(proof, 'stage_runtime', side_effect=staged), \
                     patch.object(proof, 'test_executable') as cargo, \
@@ -161,6 +163,13 @@ class WindowsColdFlacTests(unittest.TestCase):
                 proof.verify(outer / 'proof', outer, outer, core_test_binary=harness,
                              require_package_flac=True)
             cargo.assert_not_called()
+            indexed_runs = [call for call in run.call_args_list if call.args[0][2] in proof.INDEXED_WAV]
+            self.assertEqual(len(indexed_runs), 2)
+            for call in indexed_runs:
+                environment = call.kwargs['env']
+                self.assertEqual(Path(environment['TEMP']),
+                                 call.kwargs['cwd'].parent / 'indexed-wav-fixtures')
+                self.assertEqual(environment['TEMP'], environment['TMP'])
             self.assertEqual([call.args[0] for call in run.call_args_list], [
                 [harness, '--exact', case, '--include-ignored', '--nocapture', '--color', 'never']
                 for case in proof.CASES

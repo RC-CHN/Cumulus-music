@@ -342,9 +342,13 @@ SQL 的比较规则，以及索引 WAV/FLAC 各自的准入条件。
 --lib windows_indexed_wave -- --ignored --test-threads=1` 检查旧索引、相同
 时间戳的路径替换、同句柄原始字节与迟到下载根路径；
 `windows_claim_paths_are_case_and_drive_prefix_alias_aware_without_matching_siblings`
-核对 Windows 路径比较。现有 `native_local_equalizer_smoke.py --indexed-wav-only`
-也接受 Windows 宿主；用已验证的同轮 libmpv/ffprobe 及 WebView2，从真实
-「本地音乐」行触发，区别于已验的原生文件打开。
+核对 Windows 路径比较。CI 的 Windows WebView package-runtime 用同轮已构建
+的 core libtest 逐个执行两个固定 NTFS 用例，日志和报告进入现有
+`windows-cold-flac-native` 附件；不再次编译或跑整套测试。package-media
+复用同轮已验证的 libmpv/ffprobe 和现有 WebView2 探针，执行
+`native_local_equalizer_smoke.py --indexed-wav-only`，从实际「本地音乐」行
+触发，区别于已验的原生文件打开。失败归档包含
+`.build/ci-native-indexed-wav-windows`。两项都等 Windows CI 实际执行。
 
 普通 Rust 测试覆盖旧路径被替换后仍可消费原描述符、旧索引不能打开替换文件、
 CUE/改名 NCM 排除、另一账号迟到的下载声明，以及有效单声道 WAV 仍通过

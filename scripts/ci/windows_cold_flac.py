@@ -26,6 +26,13 @@ STOP = f'{ENGINE}::mpv::pinned_stop::tests'
 IDENTITY = f'{DECODER}::windows_runtime::limiter_windows_cold_flac_runtime_identity'
 ROOTED_WAV_EQUALIZER = ('library::native_open::windows::tests::'
                         'windows_rooted_actor_loads_held_wav_equalizer_after_filename_replacement')
+INDEXED_WAV = tuple(
+    f'library::index::held_audio::windows_tests::{case}'
+    for case in (
+        'windows_indexed_wave_keeps_scan_identity_and_refuses_a_legacy_or_replaced_path',
+        'windows_indexed_wave_does_not_adopt_a_late_download_root_alias',
+    )
+)
 CASES = (
     IDENTITY,
     f'{COLD}::stereo::cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocation',
@@ -39,6 +46,7 @@ CASES = (
     f'{STOP}::pinned_stop_native_rejection_and_stale_ack_both_destroy_the_sink',
     f'{STOP}::pinned_stop_revocation_while_opening_closes_the_unpublished_sink',
     ROOTED_WAV_EQUALIZER,
+    *INDEXED_WAV,
 )
 
 
@@ -158,10 +166,18 @@ def verify(root, package, msys, native_audio_probe=None, *, require_package_flac
                 CUMULUS_FLAC_PROBE_LIBRARY=str(runtime / FLAC),
                 CUMULUS_LIMITER_PROBE_MPV=str(runtime / MPV),
             )
+            # Exercise the actual fixed NTFS guard on this runner's local
+            # checkout volume. The tests do not skip if it is unsupported.
+            indexed_scratch = Path(directory) / 'indexed-wav-fixtures'
+            indexed_scratch.mkdir()
+            indexed_env = {key: value for key, value in env.items()
+                           if key.upper() not in ('TEMP', 'TMP')}
+            indexed_env.update(TEMP=str(indexed_scratch), TMP=str(indexed_scratch))
             for case in CASES:
                 result = subprocess.run(
                     [test, '--exact', case, '--include-ignored', '--nocapture', '--color', 'never'],
-                    cwd=runtime, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    cwd=runtime, env=indexed_env if case in INDEXED_WAV else env,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     encoding='utf-8', errors='replace', check=False, timeout=45,
                 )
                 log.write(result.stdout)
