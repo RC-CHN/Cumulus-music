@@ -54,7 +54,14 @@ def main():
     assert states['delete_partial_light']['phase'] == 'partial'
     assert states['delete_unknown_dark']['phase'] == states['delete_reopened_dark']['phase'] == 'uncertain'
     assert states['delete_remaining_light']['selection'] == '已选 1 首歌曲'
-    assert states['batch_restored_dark']['normalScroll'] == states['batch_restored_dark']['savedScroll'] > 0
+    returned, restored = (states['batch_returned_dark'], states['batch_restored_dark'])
+    expected_second = [str(song) for song in range(1205, 1005, -1)]
+    for state in (returned, restored):
+        assert state['normalReady'] == 'true' and state['normalLoading'] == 'false'
+        assert state['keyword'] == '合成' and state['normalPage'] == '2 / 3 · 403 首'
+        assert state['normalIds'] == expected_second
+    assert restored['savedIds'] == restored['normalIds']
+    assert restored['normalScroll'] == restored['savedScroll'] > 0
     assert not states['account_replaced_light']['batch']
     fixture = complete['syntheticCloud']
     assert fixture['realRequests'] == 0 and fixture['writes'] == [['1001', '1002'], ['1002']]
