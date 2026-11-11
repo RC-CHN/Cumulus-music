@@ -5,6 +5,7 @@ mod chorus;
 mod comment_count;
 mod dto;
 mod history_batch;
+mod history_radio_menu;
 mod identity;
 mod intelligence;
 mod local_batch;

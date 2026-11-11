@@ -146,6 +146,9 @@ impl MusicClient {
             PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
                 "history chapter playback requires a preparation ticket",
             )),
+            PlaySelection::HistoryRadioMenu { .. } => Err(Error::InvalidInput(
+                "history radio menu requires a preparation ticket",
+            )),
             input => self.play_selection_inner(epoch, input, None).await,
         }
     }
@@ -715,18 +718,53 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
-            PlaySelection::SearchPodcastRow {
-                id,
-                receipt,
-                gesture,
-            } => {
-                use super::search_podcast::SearchPodcastRowPlan;
+            input @ (PlaySelection::SearchPodcastRow { .. }
+            | PlaySelection::HistoryRadioMenu { .. }) => {
+                use super::search_podcast::PodcastRowPlan;
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
-                let (plan, source_guard) = self
-                    .search_podcast_row_selection(&token, &receipt, &id, gesture, prepared)
-                    .await?;
+                let is_history_menu = matches!(input, PlaySelection::HistoryRadioMenu { .. });
+                let (plan, source_guard) = match input {
+                    PlaySelection::SearchPodcastRow {
+                        id,
+                        receipt,
+                        gesture,
+                    } => {
+                        self.search_podcast_row_selection(&token, &receipt, &id, gesture, prepared)
+                            .await?
+                    }
+                    PlaySelection::HistoryRadioMenu {
+                        history_kind,
+                        revision,
+                        id,
+                        action,
+                    } => {
+                        self.history_radio_menu_selection(
+                            &token,
+                            history_kind,
+                            &revision,
+                            &id,
+                            action,
+                            prepared,
+                        )
+                        .await?
+                    }
+                    _ => unreachable!("scoped radio row"),
+                };
+                let _room_gate = if is_history_menu {
+                    // Do not race a room join or recovery between preparation
+                    // and the ordinary queue commit.
+                    let gate = self
+                        .together
+                        .gate
+                        .try_lock()
+                        .map_err(|_| Error::MutationBusy)?;
+                    self.validate_queue_clear_room(&token, None)?;
+                    Some(gate)
+                } else {
+                    None
+                };
                 let state = match plan {
-                    SearchPodcastRowPlan::Play(command) => {
+                    PodcastRowPlan::Play(command) => {
                         self.submit_selection_with_source(
                             &token,
                             command,
@@ -737,7 +775,7 @@ impl MusicClient {
                         )
                         .await?
                     }
-                    SearchPodcastRowPlan::QueueOnly(update) => {
+                    PodcastRowPlan::QueueOnly(update) => {
                         self.submit_prepared_queue_only(&token, prepared, update, source_guard)
                             .await?
                     }
@@ -1467,6 +1505,7 @@ impl MusicClient {
                     | PlaySelection::HistoryBatchPlay { .. }
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::HistoryRadioChapter { .. }
+                    | PlaySelection::HistoryRadioMenu { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::MixedPlaylist { .. }
                     | PlaySelection::SortedPlaylist { .. }

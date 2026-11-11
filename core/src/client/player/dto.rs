@@ -124,6 +124,12 @@ pub enum SearchPodcastRowGesture {
     Menu,
     Next,
 }
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryRadioMenuAction {
+    Play,
+    Next,
+}
 
 /// Public resource identity only; queue source metadata never crosses IPC.
 #[derive(Clone, Serialize)]
@@ -366,6 +372,12 @@ pub enum PlaySelection {
         history_kind: crate::history::HistoryKind,
         revision: String,
         id: String,
+    },
+    HistoryRadioMenu {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        id: String,
+        action: HistoryRadioMenuAction,
     },
     History {
         history_kind: crate::history::HistoryKind,

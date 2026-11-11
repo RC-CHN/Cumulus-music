@@ -3,6 +3,7 @@ import type { AlbumCard } from './catalog';
 import type { EpisodeView, PodcastCard, PodcastMutation } from './podcast';
 export type HistoryKind = 'song' | 'album' | 'playlist' | 'voice' | 'podcast' | 'audiobook';
 export type HistoryRadioKind = Extract<HistoryKind, 'podcast' | 'audiobook'>;
+export type HistoryRadioMenuAction = 'play' | 'next';
 export const historyTabs: { kind: HistoryKind; label: string }[] = [
   { kind: 'song', label: '歌曲' },
   { kind: 'podcast', label: '播客' },

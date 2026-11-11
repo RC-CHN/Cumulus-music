@@ -294,6 +294,7 @@ impl MusicClient {
                 | PlaySelection::PodcastLikedEpisode { .. }
                 | PlaySelection::PodcastLikedPageEpisode { .. }
                 | PlaySelection::HistoryRadioChapter { .. }
+                | PlaySelection::HistoryRadioMenu { .. }
                 | PlaySelection::HistoryAdd { .. }
                 | PlaySelection::HistoryBatchPlay { .. }
                 | PlaySelection::Songs { .. }

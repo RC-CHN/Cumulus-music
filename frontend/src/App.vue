@@ -159,7 +159,12 @@ import LikeRecoveryDialog from './components/LikeRecoveryDialog.vue';
 import LikeRecoveryNotice from './components/LikeRecoveryNotice.vue';
 import { useLikeRecovery } from './composables/useLikeRecovery';
 import { useHistory } from './composables/useHistory';
-import type { HistoryKind, HistoryResource } from './services/history';
+import type {
+  HistoryKind,
+  HistoryRadioKind,
+  HistoryRadioMenuAction,
+  HistoryResource,
+} from './services/history';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
 import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './services/catalog';
 import DailyNotificationCard from './components/DailyNotificationCard.vue';
@@ -740,6 +745,26 @@ function playHistoryChapter(kind: 'podcast' | 'audiobook', revision: string, id:
     if (music.page.value !== route || recent.page.value?.chapterRevision !== revision)
       throw { code: 'stale', message: '播放记录已更新', retryable: false };
     return { kind: 'history_radio_chapter', history_kind: kind, revision, id };
+  });
+}
+async function selectHistoryRadio(
+  kind: HistoryRadioKind,
+  revision: string,
+  id: string,
+  action: HistoryRadioMenuAction,
+) {
+  const route = music.page.value;
+  const current = () =>
+    route.kind === 'history' &&
+    route.scope === kind &&
+    music.page.value === route &&
+    recent.page.value?.kind === kind &&
+    recent.page.value.revision === revision &&
+    signedIn.value;
+  if (!current()) return;
+  await player.prepareSelectionForPage(async () => {
+    if (!current()) throw { code: 'stale', message: '播放记录已更新', retryable: false };
+    return { kind: 'history_radio_menu', history_kind: kind, revision, id, action };
   });
 }
 function openHistory(resource: HistoryResource) {
@@ -6241,6 +6266,7 @@ onUnmounted(() => {
                 @scope="music.replace({ kind: 'history', scope: $event })"
                 @play="playHistory"
                 :batch-selection="selectHistoryBatch"
+                :radio-selection="selectHistoryRadio"
                 @chapter="playHistoryChapter"
                 @open="openHistory"
                 @login="loginOpen = true"

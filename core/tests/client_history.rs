@@ -1167,6 +1167,136 @@ async fn history_batch_ids(f: &Fixture) -> Vec<String> {
         .collect()
 }
 
+#[tokio::test]
+async fn history_radio_menu_binds_the_row_and_distinguishes_play_from_next() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    seed_history_batch(&f, HistoryKind::Song, &[(1, 300), (2, 200)]);
+    f.history
+        .record_for(
+            &f.session.token().unwrap(),
+            HistoryKind::Podcast,
+            HistoryRecord::local(HistoryKind::Podcast, radio(&json!("8")), 300).unwrap(),
+        )
+        .unwrap();
+    let mut withdrawn = radio(&json!("10"));
+    withdrawn["underShelf"] = json!(true);
+    f.history
+        .record_for(
+            &f.session.token().unwrap(),
+            HistoryKind::Podcast,
+            HistoryRecord::local(HistoryKind::Podcast, withdrawn, 200).unwrap(),
+        )
+        .unwrap();
+    let revision = f
+        .client
+        .history_page(&epoch, HistoryKind::Podcast, false)
+        .await
+        .unwrap()
+        .value
+        .revision;
+    let start = f
+        .selection(HistoryKind::Song, vec!["1".into(), "2".into()])
+        .await;
+    f.client.play_selection(&epoch, start).await.unwrap();
+    let paused = f
+        .client
+        .player_action(&epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let input = |id: &str, action| PlaySelection::HistoryRadioMenu {
+        history_kind: HistoryKind::Podcast,
+        revision: revision.clone(),
+        id: id.into(),
+        action,
+    };
+    let ticket = |state: &PlayerView| {
+        f.client
+            .prepare_play_selection(&epoch, &state.queue_revision, state.play_id.as_deref())
+            .unwrap()
+    };
+    assert!(matches!(
+        f.client
+            .play_selection(&epoch, input("8", HistoryRadioMenuAction::Next))
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(matches!(
+        f.client
+            .commit_prepared_selection(
+                &epoch,
+                &ticket(&paused),
+                input("9", HistoryRadioMenuAction::Next),
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        f.client
+            .commit_prepared_selection(
+                &epoch,
+                &ticket(&paused),
+                input("10", HistoryRadioMenuAction::Play),
+            )
+            .await,
+        Err(Error::State("history radio is unavailable"))
+    ));
+    assert_eq!(history_batch_ids(&f).await, ["1", "2"]);
+    assert!(
+        !f.api
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path == "/api/v6/dj/program/byradio")
+    );
+    let next = f
+        .client
+        .commit_prepared_selection(
+            &epoch,
+            &ticket(&paused),
+            input("8", HistoryRadioMenuAction::Next),
+        )
+        .await
+        .unwrap();
+    assert_eq!(next.state, paused.state);
+    assert_eq!(next.play_id, paused.play_id);
+    assert_eq!(next.position, paused.position);
+    assert_eq!(history_batch_ids(&f).await, ["1", "5", "6", "2"]);
+    let play = f
+        .client
+        .commit_prepared_selection(
+            &epoch,
+            &ticket(&next),
+            input("8", HistoryRadioMenuAction::Play),
+        )
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(play.state).unwrap(), "playing");
+    assert_eq!(play.track.as_ref().unwrap().voice_id.as_deref(), Some("5"));
+    assert_eq!(history_batch_ids(&f).await, ["5", "6"]);
+    f.history
+        .record_for(
+            &f.session.token().unwrap(),
+            HistoryKind::Podcast,
+            HistoryRecord::local(HistoryKind::Podcast, radio(&json!("8")), 400).unwrap(),
+        )
+        .unwrap();
+    let chapter_reads = f.api.chapter_reads.lock().unwrap().len();
+    assert!(matches!(
+        f.client
+            .commit_prepared_selection(
+                &epoch,
+                &ticket(&play),
+                input("8", HistoryRadioMenuAction::Next),
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(f.api.chapter_reads.lock().unwrap().len(), chapter_reads);
+    assert_eq!(history_batch_ids(&f).await, ["5", "6"]);
+}
+
 async fn history_play_request(
     f: &Fixture,
     kind: HistoryKind,

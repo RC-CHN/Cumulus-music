@@ -18,6 +18,11 @@ RC.2 后的独立候选已在真实 Linux WebView 验证 [普通播客下载音�
 有 79 项 Rust 回归，验证本地复位到暂停后才由显式继续触发音源和范围请求。
 这些是不同的合成候选，不能替代 Windows 或正式发行验收。
 
+[最近播放的播客和有声书「更多」](play-history-contracts.txt)通过 15 个 Linux 实窗
+状态和 15 张截图，另有原收藏流程 8 态回归。下一首保留暂停进度，播放替换队列并实际
+解码；复制经过系统剪贴板读回，确认删除只移除历史，收藏保持不变。证据在
+`.build/ui-proof/history-radio-menu-2026-11-11/`。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。

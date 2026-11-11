@@ -149,8 +149,11 @@ fn main() {
         std::env::var("CUMULUS_HISTORY_RADIO_CHAPTER_PROOF").as_deref() == Ok("1");
     let history_collection =
         std::env::var("CUMULUS_HISTORY_RADIO_COLLECTION_PROOF").as_deref() == Ok("1");
+    let history_radio_menu =
+        std::env::var("CUMULUS_HISTORY_RADIO_MENU_PROOF").as_deref() == Ok("1");
     assert!(!history_chapters || (histories && !is_live && !interactive && !collections));
     assert!(!history_collection || history_chapters);
+    assert!(!history_radio_menu || history_collection);
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
     let relay_recovery = std::env::var("CUMULUS_RELAY_RECOVERY_PROOF").as_deref() == Ok("1");
@@ -187,7 +190,8 @@ fn main() {
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let comment_fixture=Arc::new(comment_read_fixture::Library::default());
         let follow_new_song_fixture=Arc::new(follow_new_song_fixture::Library::new(collection_fixture.clone(),follow_offline_head));
-        let history_fixture=Arc::new(if history_collection { history_fixture::Library::with_collections() }
+        let history_fixture=Arc::new(if history_radio_menu { history_fixture::Library::with_radio_menu() }
+            else if history_collection { history_fixture::Library::with_collections() }
             else if history_chapters { history_fixture::Library::with_chapters() }
             else { history_fixture::Library::default() });
         let settings_fixture=Arc::new(settings_fixture::Library::default());
@@ -290,6 +294,18 @@ fn main() {
             }
             if stage=="fixture" && collections && !is_live {collection_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && histories && !is_live {history_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
+            if stage=="history-radio-clipboard" && history_radio_menu {
+                use tauri_plugin_clipboard_manager::ClipboardExt;
+                let handle=handle.clone();
+                let expected=value["expected"].as_str().unwrap().to_owned();
+                let attempt=value["attempt"].as_u64().unwrap();
+                tauri::async_runtime::spawn(async move {
+                    let matches=handle.clipboard().read_text().is_ok_and(|text|text==expected);
+                    let result=serde_json::json!({"attempt":attempt,"matches":matches});
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__historyRadioClipboard={result};")).unwrap();
+                });
+                return;
+            }
             if stage=="fixture" && settings && !is_live {settings_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && relays && !is_live {relay_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="album_url_reads" && album_queue_drop && !is_live {

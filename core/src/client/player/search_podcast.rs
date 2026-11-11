@@ -76,9 +76,16 @@ impl MusicClient {
     }
 }
 
-pub(super) enum SearchPodcastRowPlan {
+pub(super) enum PodcastRowPlan {
     Play(PlaybackCommand),
     QueueOnly(crate::playback::controller::QueueUpdate),
+}
+
+pub(super) struct PodcastRowTarget {
+    pub(super) radio: crate::podcast::Radio,
+    pub(super) api: std::sync::Arc<dyn crate::protocol::api::Api>,
+    pub(super) guard: Cancellation,
+    pub(super) source: serde_json::Value,
 }
 
 impl MusicClient {
@@ -89,13 +96,7 @@ impl MusicClient {
         id: &str,
         gesture: super::SearchPodcastRowGesture,
         prepared: &super::prepared_selection::PreparedSelection,
-    ) -> Result<(SearchPodcastRowPlan, Cancellation)> {
-        use super::SearchPodcastRowGesture;
-        use crate::playback::{
-            PlaybackMode,
-            controller::{PlaybackStatus, QueueTransport, QueueUpdate},
-        };
-
+    ) -> Result<(PodcastRowPlan, Cancellation)> {
         if self.login_pending()? {
             return Err(Error::StaleResponse);
         }
@@ -112,25 +113,56 @@ impl MusicClient {
         let guard = Cancellation::new(move || {
             !observed.is_cancelled() && !room.is_cancelled() && pending().is_ok()
         });
+        let source =
+            json!({"kind":"search_podcast_row","id":radio.id,"scene":"unknown","pldScene":"audio"});
+        let target = PodcastRowTarget {
+            radio,
+            api,
+            guard,
+            source,
+        };
+        self.prepare_podcast_row_selection(token, target, gesture, prepared)
+            .await
+    }
+
+    /// Shared M622 audio PlayAll/nextPlay transport, after the caller resolves
+    /// a trusted radio and binds its particular list authority.
+    pub(super) async fn prepare_podcast_row_selection(
+        &self,
+        token: &SessionToken,
+        target: PodcastRowTarget,
+        gesture: super::SearchPodcastRowGesture,
+        prepared: &super::prepared_selection::PreparedSelection,
+    ) -> Result<(PodcastRowPlan, Cancellation)> {
+        use super::SearchPodcastRowGesture;
+        use crate::playback::{
+            PlaybackMode,
+            controller::{PlaybackStatus, QueueTransport, QueueUpdate},
+        };
+        let PodcastRowTarget {
+            radio,
+            api,
+            guard,
+            source,
+        } = target;
+        let id = radio.id.as_str();
         guard.check()?;
         let controller = self.player.controller().await?;
         let (before, queue) = controller.queue_with_state(token).await?;
         prepared.check(self, &before)?;
         if before.fm || queue.intelligence.is_some() {
-            return Err(Error::State("search podcast requires an ordinary queue"));
+            return Err(Error::State("podcast row requires an ordinary queue"));
         }
         if gesture == SearchPodcastRowGesture::Index
             && let Some(command) = same_radio_transport(&before, token, id)
         {
-            return Ok((SearchPodcastRowPlan::Play(command), guard));
+            return Ok((PodcastRowPlan::Play(command), guard));
         }
         let preparing = {
             let prepared = self.pending_preparation_guard(prepared, controller.clone());
             let authority = guard.clone();
             Cancellation::new(move || !authority.is_cancelled() && !prepared.is_cancelled())
         };
-        let source =
-            json!({"kind":"search_podcast_row","id":radio.id,"scene":"unknown","pldScene":"audio"});
         let next = gesture == SearchPodcastRowGesture::Next;
         if next {
             if matches!(
@@ -138,7 +170,7 @@ impl MusicClient {
                 PlaybackStatus::Preparing | PlaybackStatus::Loading
             ) || (!queue.items.is_empty() && queue.current.is_none())
             {
-                return Err(Error::State("search podcast queue is not settled"));
+                return Err(Error::State("podcast queue is not settled"));
             }
             if !queue.items.is_empty() {
                 let plan = self
@@ -154,7 +186,7 @@ impl MusicClient {
                 // without acquiring audio focus or preparing a new decoder.
                 let queue = search_podcast_next_queue(queue, plan.resources, source);
                 return Ok((
-                    SearchPodcastRowPlan::QueueOnly(QueueUpdate {
+                    PodcastRowPlan::QueueOnly(QueueUpdate {
                         expected: before.fence(),
                         queue,
                         transport: None,
@@ -248,7 +280,7 @@ impl MusicClient {
                 .ok_or(Error::QueueChanged)?;
             *order = old.entry_id.clone();
             return Ok((
-                SearchPodcastRowPlan::Play(PlaybackCommand::RetainCurrentQueueAndPlay(queue)),
+                PodcastRowPlan::Play(PlaybackCommand::RetainCurrentQueueAndPlay(queue)),
                 guard,
             ));
         }
@@ -304,12 +336,12 @@ impl MusicClient {
             transport: transport.map(|(_, transport)| transport),
         };
         let plan = match first_source {
-            Some(first_source) => SearchPodcastRowPlan::Play(PlaybackCommand::PlayPodcastBrowse {
+            Some(first_source) => PodcastRowPlan::Play(PlaybackCommand::PlayPodcastBrowse {
                 update,
                 first_source,
                 liked_visit: None,
             }),
-            None => SearchPodcastRowPlan::QueueOnly(update),
+            None => PodcastRowPlan::QueueOnly(update),
         };
         Ok((plan, guard))
     }

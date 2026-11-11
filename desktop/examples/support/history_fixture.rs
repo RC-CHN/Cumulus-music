@@ -17,6 +17,7 @@ pub struct Library {
     mode: AtomicU8,
     chapters: bool,
     collections: bool,
+    menu: bool,
     chapter_calls: Mutex<Vec<Value>>,
     collected: Mutex<BTreeSet<String>>,
     removed: Mutex<BTreeMap<String, BTreeSet<String>>>,
@@ -34,6 +35,13 @@ impl Library {
         Self {
             collections: true,
             ..Self::with_chapters()
+        }
+    }
+
+    pub fn with_radio_menu() -> Self {
+        Self {
+            menu: true,
+            ..Self::with_collections()
         }
     }
 
@@ -62,10 +70,12 @@ impl Library {
         const MEMBERSHIP: &str = "/api/djradio/get/subed";
         const SUBSCRIBE: &str = "/api/djradio/sub";
         const UNSUBSCRIBE: &str = "/api/djradio/unsub";
+        const LIKED: &str = "/api/content/my/liked/voice";
         if !(matches!(
             path,
             PODCAST | BOOK | PROGRAMS | AROUND | RADIO | DETAIL | RESUME | RIGHTS | SOURCE
-        ) || self.collections && matches!(path, MEMBERSHIP | SUBSCRIBE | UNSUBSCRIBE))
+        ) || self.collections && matches!(path, MEMBERSHIP | SUBSCRIBE | UNSUBSCRIBE)
+            || self.menu && path == LIKED)
         {
             return None;
         }
@@ -103,6 +113,9 @@ impl Library {
                 return Err(bad());
             }
             Ok(match path {
+                LIKED if self.menu && args == &json!({"limit":100,"likeTime":0}) => {
+                    json!({"code":200,"data":{"data":[],"hasMore":false}})
+                }
                 MEMBERSHIP if args == &json!({"targetUserId":"2","limit":1000}) => {
                     let ids = self.collected.lock().unwrap();
                     json!({"code":200,"hasMore":false,"count":ids.len(),
@@ -118,10 +131,20 @@ impl Library {
                     }
                     let mut ids = self.collected.lock().unwrap();
                     match path {
-                        RADIO => json!({"code":200,"data":{
-                            "id":id,"name":"合成历史收藏","creator":{"userId":7},
-                            "subed":ids.contains(id)
-                        }}),
+                        RADIO => {
+                            let name = if self.menu {
+                                if id == "81" {
+                                    "合成历史播客"
+                                } else {
+                                    "合成历史有声书"
+                                }
+                            } else {
+                                "合成历史收藏"
+                            };
+                            json!({"code":200,"data":{"id":id,"name":name,"creator":{"userId":7},
+                                "subed":ids.contains(id),"categoryId":if id=="81"{3}else{10001},
+                                "programCount":2}})
+                        }
                         SUBSCRIBE if ids.insert(id.to_owned()) => json!({"code":200}),
                         UNSUBSCRIBE if id == "81" && ids.remove(id) => {
                             return Err(Error::Transport(
@@ -133,10 +156,12 @@ impl Library {
                 }
                 PODCAST if args == &json!({"filterVoiceBook":true}) => {
                     self.reads.fetch_add(1, Ordering::SeqCst);
-                    json!({"code":200,"data":{"list":[
-                        row(81,"合成历史播客",Some(812),"播客第二集","DJ_RADIO"),
-                        row(83,"合成仅文本播客",None,"只有标题的单集","DJ_RADIO")
-                    ]}})
+                    let mut rows = vec![
+                        row(81, "合成历史播客", Some(812), "播客第二集", "DJ_RADIO"),
+                        row(83, "合成仅文本播客", None, "只有标题的单集", "DJ_RADIO"),
+                    ];
+                    self.filter_menu_removed("DJ_RADIO", &mut rows);
+                    json!({"code":200,"data":{"list":rows}})
                 }
                 BOOK if args == &json!({}) => {
                     self.reads.fetch_add(1, Ordering::SeqCst);
@@ -156,6 +181,7 @@ impl Library {
                             "VOICE_BOOK",
                         ));
                     }
+                    self.filter_menu_removed("VOICE_BOOK", &mut rows);
                     json!({"code":200,"data":{"data":{
                         "todayRecords":rows,
                         "yesterdayRecords":[],"theDayBeforeYesterdayRecords":[],"earlierRecords":[]
@@ -165,7 +191,14 @@ impl Library {
                     let radio = number(&args["radioId"])
                         .filter(|id| matches!(id, 81 | 82) || (self.collections && *id == 84))
                         .ok_or_else(bad)?;
-                    if args != &json!({"radioId":radio.to_string(),"limit":250,"offset":0}) {
+                    let ascending = args["asc"].as_bool();
+                    let detail_request = self.menu
+                        && ascending.is_some()
+                        && args
+                            == &json!({"radioId":radio.to_string(),"limit":200,"offset":0,"asc":ascending});
+                    if !detail_request
+                        && args != &json!({"radioId":radio.to_string(),"limit":250,"offset":0})
+                    {
                         return Err(bad());
                     }
                     let names = match radio {
@@ -173,18 +206,27 @@ impl Library {
                         82 => ["有声书第一章", "有声书第二章"],
                         _ => ["独立播放第一章", "独立播放第二章"],
                     };
-                    json!({"code":200,"data":{"programs":[program(radio,radio*10+1,names[0]),
-                        program(radio,radio*10+2,names[1])],"count":2,"more":false}})
+                    let mut programs = [
+                        program(radio, radio * 10 + 1, names[0]),
+                        program(radio, radio * 10 + 2, names[1]),
+                    ];
+                    if ascending == Some(false) {
+                        programs.reverse();
+                    }
+                    json!({"code":200,"data":{"programs":programs,"count":2,"more":false,"asc":ascending}})
                 }
                 DETAIL
                     if matches!(args["id"].as_str(), Some("812" | "822"))
+                        || self.menu && matches!(args["id"].as_str(), Some("811" | "821"))
                         || (self.collections && args["id"] == "842") =>
                 {
                     let id = number(&args["id"]).unwrap();
                     let radio = id / 10;
-                    let name = match radio {
-                        81 => "播客第二集",
-                        82 => "有声书第二章",
+                    let name = match (radio, id % 10) {
+                        (81, 1) => "播客第一集",
+                        (81, _) => "播客第二集",
+                        (82, 1) => "有声书第一章",
+                        (82, _) => "有声书第二章",
                         _ => "独立播放第二章",
                     };
                     json!({"code":200,"program":program(radio,id,name)})
@@ -197,6 +239,7 @@ impl Library {
                 }
                 RIGHTS
                     if matches!(args["voiceId"].as_str(), Some("812" | "822"))
+                        || self.menu && matches!(args["voiceId"].as_str(), Some("811" | "821"))
                         || (self.collections && args["voiceId"] == "842") =>
                 {
                     let id = number(&args["voiceId"]).unwrap();
@@ -207,6 +250,7 @@ impl Library {
                         serde_json::from_str(args["ids"].as_str().ok_or_else(bad)?)?;
                     if ids.len() != 1
                         || !(matches!(ids[0].as_str(), "1812" | "1822")
+                            || self.menu && matches!(ids[0].as_str(), "1811" | "1821")
                             || (self.collections && ids[0] == "1842"))
                     {
                         return Err(bad());
@@ -219,6 +263,14 @@ impl Library {
             })
         })();
         Some(result)
+    }
+
+    fn filter_menu_removed(&self, kind: &str, rows: &mut Vec<Value>) {
+        if self.menu
+            && let Some(ids) = self.removed.lock().unwrap().get(kind)
+        {
+            rows.retain(|row| !ids.contains(&row["data"]["id"].to_string()));
+        }
     }
 
     pub fn mode(&self, value: &str) {
@@ -267,6 +319,12 @@ impl Api for Library {
             let mode = self.mode.load(Ordering::SeqCst);
             if path.starts_with("/api/play-record/") {
                 if path.ends_with("/delete") || path.ends_with("/clear") {
+                    if self.menu {
+                        self.chapter_calls
+                            .lock()
+                            .unwrap()
+                            .push(json!({"path":path,"args":args,"cached":cache}));
+                    }
                     self.writes.fetch_add(1, Ordering::SeqCst);
                     if mode == 3 {
                         return Ok(json!({"code":403}));

@@ -461,6 +461,13 @@ export type PlaySelection =
       id: string;
     }
   | {
+      kind: 'history_radio_menu';
+      history_kind: import('./history').HistoryRadioKind;
+      revision: string;
+      id: string;
+      action: import('./history').HistoryRadioMenuAction;
+    }
+  | {
       kind: 'podcast_subscription_recommendation';
       id: string;
       receipt: string;

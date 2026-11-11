@@ -142,6 +142,36 @@
       ]
     },
     {
+      "feature": "History podcast and audiobook row More menu",
+      "official": [
+        "HistoryDjRadio.tsx:60–79 and HistoryAudiobook.tsx:57–78 (Scene.history and audio/audioBook)",
+        "AudioTitleCellWithPlayRecord.tsx:262–298,330–362",
+        "M622:806–875,932–995; M3085 audio link, PlayAll, Next, Share, Copy and Remove from list",
+        "M404 radio list and checkpoint; M1384:854–960 history removal"
+      ],
+      "rust": [
+        "core/src/client/player/history_radio_menu.rs",
+        "core/src/client/player/search_podcast.rs shared PlayAll and Next preparation",
+        "core/src/client/history/radio_collection.rs",
+        "core/src/history/mutation.rs"
+      ],
+      "ui": [
+        "frontend/src/components/HistoryPage.vue",
+        "frontend/src/components/history/HistoryRadioMenu.vue",
+        "frontend/src/components/TrackShareDialog.vue"
+      ],
+      "tests": [
+        "core/tests/client_history.rs history_radio_menu_binds_the_row_and_distinguishes_play_from_next",
+        "scripts/ci/history_radio_collection_smoke.py --menu (sealed Linux catalog_ui_probe)"
+      ],
+      "desktopEvidence": ".build/ui-proof/history-radio-menu-2026-11-11/audit.json: 15 actual Linux WebView states and PNGs, 2 native clipboard readbacks, one synthetic subscription and one separately confirmed synthetic history removal; existing collection regression 8 states",
+      "boundaries": [
+        "Public share link and native clipboard; no social publication or attribution",
+        "Existing Cumulus single-row removal confirmation retained",
+        "Ordinary native queue only; no real account writes, Windows WebView or physical audio output proof"
+      ]
+    },
+    {
       "feature": "Batch Play or Add selected songs or voices within the current queue",
       "official": [
         "HistoryPlayBatchTrack.tsx:51–79,128–155",

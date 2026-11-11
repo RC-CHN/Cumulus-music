@@ -454,7 +454,7 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   因后者换用 AudioTitleCellWithPlayRecord。该组件 :65–76、262–286、330–354
   从账号 subscribedAudioIdsMap 取状态，隐藏自己创建或列指定 hideFavBtn 的操作，
   将「收藏／取消收藏」按播单 ID 交给 Action.favorite／Action.remove。章节仍是
-  独立播放目标；本批只接行内收藏按钮，尚未移植同一行的「更多」。
+  独立播放目标；同一行的「更多」见下节。
 - M3085:699–706、1417–1424 匿名操作打开登录；收藏无确认，取消收藏须先确认
   「确定不再收藏该播单？」／「不再收藏」(:1397–1404、1505、1521–1528)。
   M3160:1688–1722／M15:3510–3525 的账号订阅表读取
@@ -479,6 +479,45 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   没有历史写入。原有章节实窗另通过 4 态。证据为
   .build/gui-final/audit.json 和 .build/gui-chapter-regression/audit.json。
   未验证真实账号、物理声卡或 Windows WebView。
+
+最近播放的播客和有声书「更多」
+- HistoryDjRadio.tsx:60–79、HistoryAudiobook.tsx:57–78 传入 Scene.history、
+  historyRecordType DJ_RADIO／VOICE_BOOK 和 pldScene audio／audioBook。
+  AudioTitleCellWithPlayRecord.tsx:262–298、330–362 在标题的收藏按钮旁提供
+  Action.menu（ResourceType.audio）。M622:806–875、932–995 的菜单顺序为
+  「查看播客」「播放」「下一首播放」、分隔线、「收藏...」「分享...」
+  「复制链接」「从列表中删除」。收藏只向未收藏且非自己的播单展示；
+  无法确认收藏状态或账号身份时，Cumulus 暂不展示该项。取消收藏仍在行内。
+  按标题单元和 TableExtra 的恢复样式，使用 48px 封面、8px 圆角、16px 标题、
+  10px 操作间距。鼠标移入、行获得焦点或菜单打开时显示按钮；常驻尺寸不随
+  按钮显隐改变。保留键盘入口，并尊重系统减少动态效果设置。
+- 原生 history_radio_menu 播放选择只收分类、历史快照版本、行 ID、动作和播放
+  准备票据。Core 从当前账号快照读取播单，校验登录、凭据、队列和脱离一起听状态，
+  在提交前复核历史快照；不会采用网页传入的节目、断点、媒体 ID 或授权地址。
+  失效、不匹配的行拒绝播放或改队列。仍有 FM、心动或一起听会话时沿用各自的
+  原生协调入口，历史菜单不会替代其队列。未登录时仍可查看或复制公开链接，
+  节目播放需要当前账号原生授权。
+- M3085 的 PlayAll 清队列再播，Next 有普通队列时在当前项后插入，空队列才转
+  播放。沿用 M404 播单分页 /api/v6/dj/program/byradio
+  {radioId, offset, limit:250, asc?}，只有保存过顺序才发 asc。普通播单 PlayAll
+  采用顺序模式；本机章节断点和可续播资格可决定首播项。有现行队列的 Next
+  保留正在使用的 entry、解码器、位置和暂停状态。需要启动节目时原生读取
+  /api/dj/program/detail {id}、/api/dj/play/url/check {voiceId}，再按返回的媒体
+  ID 读取 /api/song/enhance/player/url/v1；没有可播授权时不提交新队列。
+- M3085:1018–1036 的查看走现有播单详情；分享（:1310–1380）保留匿名登录提示。
+  M3085:1578–1600 的复制和官方公开播单链接在此使用本机剪贴板和
+  https://music.163.com/djradio?id=<播单ID>。分享只展示并复制该链接，不使用
+  官方分享渠道或个人跟踪参数。M3085:2892–2915 的删除从当前列表拿单行，
+  M1384:854–960 按 DJ_RADIO／VOICE_BOOK 清理本机及已开同步的历史；
+  Cumulus 复用既有单行删除确认和原生恢复日志，确认前不删除。删除与收藏、当前
+  队列及文件保持独立。支持标题按钮、行右键、菜单键和 Shift+F10。
+- 实测：core/tests/client_history.rs 与 client_podcast.rs 共 75 项通过；历史测试
+  的严格 Clippy 通过。隔离 Linux WebView 的 history_radio_collection_smoke.py
+  --menu 通过 15 个状态和 15 张截图，另有原收藏流程 8 态回归。报告见
+  .build/ui-proof/history-radio-menu-2026-11-11/audit.json。核对了两个分类的
+  行样式、详情、菜单焦点、两次系统剪贴板读回、暂停队列精确插入和换队列后
+  实际解码。取消删除无写入，确认只写一条合成 DJ_RADIO 记录，原收藏保留。
+  没有访问真实账号；Windows WebView 和物理音频输出未在此专项验证。
 
 最近播放歌曲／声音的批量「添加到播放列表」
 - 官方 Windows PC 3.1.42.205594：HistoryPlayBatchTrack.tsx:51–58、128–155 和

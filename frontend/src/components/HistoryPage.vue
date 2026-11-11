@@ -5,6 +5,7 @@ import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
 import HistoryConfirm from './history/HistoryConfirm.vue';
+import HistoryRadioMenu, { type HistoryRadioMenuTarget } from './history/HistoryRadioMenu.vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import { usePodcastFollow } from '../composables/usePodcastFollow';
 import type { HistoryModel } from '../composables/useHistory';
@@ -22,6 +23,8 @@ import {
   type HistoryCommand,
   type HistoryEntry,
   type HistoryKind,
+  type HistoryRadioKind,
+  type HistoryRadioMenuAction,
   type HistoryResource,
 } from '../services/history';
 import { normalizeKeyword } from '../services/keyword';
@@ -35,6 +38,12 @@ const props = defineProps<{
     ids: string[],
     action: 'play' | 'add',
   ) => Promise<boolean>;
+  radioSelection: (
+    kind: HistoryRadioKind,
+    revision: string,
+    id: string,
+    action: HistoryRadioMenuAction,
+  ) => Promise<void>;
   currentId?: string;
   currentVoiceId?: string;
 }>();
@@ -147,16 +156,95 @@ watch([collectionScope, () => props.account.epoch], () => (uncollect.value = und
 function collectionLabel(state: PodcastSearchFollow) {
   return state.kind === 'reconcile' ? '核对收藏' : state.subscribed ? '取消收藏' : '收藏';
 }
-function collect(id: string, state: PodcastSearchFollow, event: MouseEvent) {
+function collect(id: string, state: PodcastSearchFollow, opener: HTMLElement) {
   if (loading.value || busy.value || state.busy || !collectionScope()) return;
   if (props.account.status !== 'authenticated') {
     emit('login');
     return;
   }
   if (state.kind === 'toggle' && state.subscribed) {
-    uncollectOpener = event.currentTarget as HTMLElement;
+    uncollectOpener = opener;
     uncollect.value = { id, scope: collectionScope(), epoch: props.account.epoch, state };
   } else void collection.activate(id, state);
+}
+const radioMenu = ref<InstanceType<typeof HistoryRadioMenu>>();
+function radioMenuLive(target: HistoryRadioMenuTarget) {
+  return (
+    target.epoch === props.account.epoch &&
+    target.keyword === keyword.value &&
+    target.kind === kind.value &&
+    page.value?.kind === target.kind &&
+    page.value.revision === target.revision &&
+    shown.value.some(({ entry }) => entry.id === target.id)
+  );
+}
+function rowCollection(id: string) {
+  return shown.value.find((row) => row.entry.id === id)?.follow;
+}
+function canCollectFromMenu(target: HistoryRadioMenuTarget) {
+  const follow = rowCollection(target.id);
+  return !!follow && follow.kind === 'toggle' && !follow.subscribed && !follow.busy;
+}
+function showRadioMenu(entry: HistoryEntry, event: MouseEvent | KeyboardEvent) {
+  const snapshot = page.value;
+  if (
+    !snapshot ||
+    !radioKind.value ||
+    snapshot.kind !== radioKind.value ||
+    entry.resource.kind !== radioKind.value ||
+    !(event.currentTarget instanceof HTMLElement)
+  )
+    return;
+  const anchor = event.currentTarget
+    .closest('.history-row')
+    ?.querySelector<HTMLElement>('.history-radio-more');
+  if (!anchor) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void radioMenu.value?.show(
+    {
+      kind: radioKind.value,
+      revision: snapshot.revision,
+      id: entry.id,
+      name: entry.resource.radio.name,
+      unavailable: entry.resource.radio.unavailable,
+      epoch: props.account.epoch,
+      keyword: keyword.value,
+      anchor,
+    },
+    event instanceof MouseEvent && event.type === 'contextmenu'
+      ? { x: event.clientX, y: event.clientY }
+      : undefined,
+  );
+}
+function radioMenuKeyboard(entry: HistoryEntry, event: KeyboardEvent) {
+  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+    showRadioMenu(entry, event);
+}
+async function selectRadioMenu(
+  action: 'open' | 'play' | 'next' | 'collect' | 'remove',
+  target: HistoryRadioMenuTarget,
+) {
+  if (!radioMenuLive(target)) return;
+  const entry = entries.value.find((row) => row.id === target.id);
+  if (!entry) return;
+  if (action === 'open') emit('open', entry.resource);
+  else if (action === 'remove') remove({ kind: 'delete', ids: [entry.id] });
+  else if (action === 'collect') {
+    const follow = rowCollection(entry.id);
+    if (follow?.kind === 'toggle' && !follow.subscribed) collect(entry.id, follow, target.anchor);
+  } else {
+    if (!props.playable || loading.value || busy.value || target.unavailable) return;
+    batchError.value = '';
+    try {
+      await props.radioSelection(target.kind, target.revision, target.id, action);
+    } catch (cause) {
+      if (!radioMenuLive(target)) return;
+      const issue = failure(cause);
+      if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
+      batchError.value = issue.message;
+    }
+  }
 }
 function confirmUncollect() {
   const saved = uncollect.value;
@@ -488,10 +576,16 @@ function keyboard(event: KeyboardEvent) {
                   v-for="({ entry, follow }, offset) in shown"
                   :key="entry.id"
                   class="history-row"
-                  :class="{ 'is-playing': playing(entry), 'is-selected': selected.has(entry.id) }"
+                  :class="{
+                    'is-playing': playing(entry),
+                    'is-selected': selected.has(entry.id),
+                    'is-radio': entry.resource.kind === radioKind,
+                  }"
                   role="row"
                   :aria-rowindex="start + offset + 2"
                   @dblclick="play(entry)"
+                  @contextmenu="showRadioMenu(entry, $event)"
+                  @keydown="radioMenuKeyboard(entry, $event)"
                 >
                   <div role="cell" @dblclick.stop>
                     <input
@@ -551,28 +645,46 @@ function keyboard(event: KeyboardEvent) {
                         }}<span v-if="!historyLabel(entry).available"> · 暂不可播放</span>
                       </p>
                     </div>
-                    <button
-                      v-if="follow"
-                      class="icon-button history-radio-collect"
-                      type="button"
-                      :data-history-radio-collect="entry.id"
-                      :title="collectionLabel(follow)"
-                      :aria-label="`${collectionLabel(follow)} ${historyLabel(entry).name}`"
-                      :aria-pressed="follow.kind === 'toggle' ? follow.subscribed : undefined"
-                      :aria-disabled="loading || busy || follow.busy"
-                      @click.stop="collect(entry.id, follow, $event)"
+                    <div
+                      v-if="entry.resource.kind === radioKind"
+                      class="history-radio-row-controls"
                       @dblclick.stop
                     >
-                      <Icon
-                        :name="
-                          follow.kind === 'reconcile'
-                            ? 'refresh'
-                            : follow.subscribed
-                              ? 'check'
-                              : 'collect'
-                        "
-                      />
-                    </button>
+                      <button
+                        v-if="follow"
+                        class="icon-button history-radio-collect"
+                        type="button"
+                        :data-history-radio-collect="entry.id"
+                        :title="collectionLabel(follow)"
+                        :aria-label="`${collectionLabel(follow)} ${historyLabel(entry).name}`"
+                        :aria-pressed="follow.kind === 'toggle' ? follow.subscribed : undefined"
+                        :aria-disabled="loading || busy || follow.busy"
+                        @click.stop="collect(entry.id, follow, $event.currentTarget as HTMLElement)"
+                      >
+                        <Icon
+                          :name="
+                            follow.kind === 'reconcile'
+                              ? 'refresh'
+                              : follow.subscribed
+                                ? 'check'
+                                : 'collect'
+                          "
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        class="icon-button history-radio-more"
+                        :data-history-radio-more="entry.id"
+                        :aria-label="`更多：${historyLabel(entry).name}`"
+                        title="更多"
+                        aria-haspopup="menu"
+                        aria-expanded="false"
+                        @click.stop="showRadioMenu(entry, $event)"
+                        @keydown.down.prevent="showRadioMenu(entry, $event)"
+                      >
+                        <Icon name="more" />
+                      </button>
+                    </div>
                   </div>
                   <div class="history-time" role="cell" :title="historyTime(entry.playedAt).full">
                     <span>{{ historyTime(entry.playedAt).short }}</span
@@ -616,6 +728,17 @@ function keyboard(event: KeyboardEvent) {
         </p>
       </div>
     </BoundedPanelTransition>
+    <HistoryRadioMenu
+      ref="radioMenu"
+      :signed-in="account.status === 'authenticated'"
+      :can-play="playable && !loading && !busy"
+      :can-remove="canMutate"
+      :can-collect="canCollectFromMenu"
+      :live="radioMenuLive"
+      :fallback-focus="collectionFallback"
+      @choose="selectRadioMenu"
+      @login="emit('login')"
+    />
     <Teleport to="body">
       <ModalTransition :return-focus="() => uncollectOpener" :fallback-focus="collectionFallback">
         <VoicePodcastUncollectDialog
