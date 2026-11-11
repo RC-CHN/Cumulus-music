@@ -71,8 +71,31 @@ struct Backend {
     vinyl_comment_started: Notify,
     vinyl_comment_release: Notify,
     player_song_share: player_song_share::Server,
+    player_song_purchase: player_song_purchase::Server,
 }
 impl Api for Backend {
+    fn player_song_purchase_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self.player_song_purchase.revision())
+    }
+
+    fn request_player_song_purchase_details<'a>(
+        &'a self,
+        ids: &'a [String],
+    ) -> ApiFuture<'a, (Value, Option<String>)> {
+        Box::pin(async move {
+            let rows: Vec<_> = ids.iter().map(|id| json!({"id":id,"v":0})).collect();
+            let reply = self
+                .call(
+                    "/api/v3/song/detail",
+                    json!({"c":serde_json::to_string(&rows)?}),
+                    false,
+                    &[200],
+                )
+                .await?;
+            Ok(self.player_song_purchase.annotate(ids, reply))
+        })
+    }
+
     fn player_song_share_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(self.player_song_share.revision())
     }
@@ -503,6 +526,9 @@ mod artist_search_cover;
 
 #[path = "client_player/player_song_share.rs"]
 mod player_song_share;
+
+#[path = "client_player/player_song_purchase.rs"]
+mod player_song_purchase;
 
 #[path = "client_player/prepared_selection.rs"]
 mod prepared_selection;

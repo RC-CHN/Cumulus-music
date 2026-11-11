@@ -1775,19 +1775,45 @@ impl MusicClient {
                 return project(&state, &token);
             }
         }
+        let selected_purchase_id = (token.uid.is_some()
+            && zone_detail.is_none()
+            && zone_playlist.is_none()
+            && zone_detail_trial.is_none()
+            && external_room.is_none())
+        .then(|| ids.get(index).and_then(Value::as_str))
+        .flatten();
+        let mut purchase = None;
         let mut resources = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(100) {
             if self.player.selection.load(Ordering::Acquire) != attempt {
                 return Err(Error::StaleResponse);
             }
-            let songs = self
+            let selected_in_chunk = selected_purchase_id
+                .filter(|selected| chunk.iter().any(|id| id.as_str() == Some(*selected)));
+            let (songs, observed) = self
                 .session
-                .run_for(&token, |api, _| async {
-                    CatalogApi::new(api)
-                        .songs_with_trial(chunk, 100, zone_detail_trial)
-                        .await
+                .run_for(&token, |api, _| async move {
+                    let catalogue = CatalogApi::new(api.clone());
+                    if let Some(id) = selected_in_chunk {
+                        let (songs, detail) =
+                            catalogue.songs_for_current_purchase(chunk, id).await?;
+                        let observed = detail.and_then(|detail| {
+                            song_purchase::Candidate::from_detail(id, api, detail)
+                        });
+                        Ok((songs, observed))
+                    } else {
+                        Ok((
+                            catalogue
+                                .songs_with_trial(chunk, 100, zone_detail_trial)
+                                .await?,
+                            None,
+                        ))
+                    }
                 })
                 .await?;
+            if observed.is_some() {
+                purchase = observed;
+            }
             for (id, song) in chunk.iter().zip(songs.songs) {
                 if search_menu_play
                     && let Some(snapshot) = preserve.as_ref()
@@ -1903,6 +1929,15 @@ impl MusicClient {
             .await?
         };
         self.session.with_token(&token, |_| Ok(()))?;
+        if let Some(purchase) = purchase {
+            self.player.song_purchase.observe(
+                &self.player.selection,
+                &state,
+                &token,
+                attempt,
+                purchase,
+            );
+        }
         project(&state, &token)
     }
 }

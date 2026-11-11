@@ -11,13 +11,14 @@ use crate::{
             Api, ApiFuture, COMMENT_INFORMATION_PATH, CopyrightNotificationRead,
             DailyNotificationRead, GuardedPlaylistAdd, GuardedPlaylistCreate,
             GuardedPlaylistRemove, GuardedSongLike, LyricBountyPermission, MESSAGE_COUNT_PATH,
-            MESSAGE_READ_ALL_PATH, MessageReadAllPermission, PlaybackChorusPermission,
-            PlaybackChorusRead, PlayerPodcastResumeRead, PlayerPodcastResumeWrite,
-            PlaylistAddPermission, SearchSongCommentSource, SongCardLikedRead, SongLikePermission,
-            SystemLikedRead, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
-            VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
-            VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
-            VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
+            MESSAGE_READ_ALL_PATH, MessageReadAllPermission, PLAYER_SONG_PURCHASE_DETAIL_PATH,
+            PlaybackChorusPermission, PlaybackChorusRead, PlayerPodcastResumeRead,
+            PlayerPodcastResumeWrite, PlaylistAddPermission, SearchSongCommentSource,
+            SongCardLikedRead, SongLikePermission, SystemLikedRead, VinylCommentRead,
+            VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
+            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
+            VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead,
+            VinylWikiReadPermission, player_song_purchase_detail_payload,
         },
         context::RequestContext,
         wire::eapi,
@@ -2249,6 +2250,66 @@ impl Api for MusicHttpClient {
             ],
         )?;
         Ok(Some(revision))
+    }
+
+    fn player_song_purchase_credential_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        if origin != super::ApiOrigin::Pc || self.anonymous_store {
+            return Ok(None);
+        }
+        let Some(revision) = self.song_card_download_scope_revision()? else {
+            return Ok(None);
+        };
+        let target = origin.request_url(WireRoute::Eapi, PLAYER_SONG_PURCHASE_DETAIL_PATH)?;
+        let detail = self.credentials.request_credentials(&target)?;
+        if detail.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &detail,
+            [
+                "/api/w/nuser/account/get",
+                "/api/song/enhance/download/url/v1",
+            ],
+        )?;
+        Ok(Some(revision))
+    }
+
+    fn request_player_song_purchase_details<'a>(
+        &'a self,
+        ids: &'a [String],
+    ) -> ApiFuture<'a, (Value, Option<String>)> {
+        Box::pin(async move {
+            let path = PLAYER_SONG_PURCHASE_DETAIL_PATH;
+            let payload = player_song_purchase_detail_payload(ids)?;
+            let route = select_route_with_policy(
+                self.credentials.origin(),
+                path,
+                &payload,
+                self.options.routing,
+            )?;
+            // The optional capability neither changes the route nor adds a
+            // request. An exact revision is enforced inside execute's gate.
+            let revision = if route == WireRoute::Eapi {
+                self.player_song_purchase_credential_revision()
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            let response = self
+                .execute(path, payload, false, revision.as_deref(), Jsk::None, None)
+                .await?;
+            let response = crate::protocol::api::validate_response(path, response, &[200])?;
+            let revision = revision.filter(|revision| {
+                self.player_song_purchase_credential_revision()
+                    .ok()
+                    .flatten()
+                    .as_deref()
+                    == Some(revision.as_str())
+            });
+            Ok((response, revision))
+        })
     }
 
     fn song_card_playlist_scope_revision(&self) -> Result<Option<String>> {

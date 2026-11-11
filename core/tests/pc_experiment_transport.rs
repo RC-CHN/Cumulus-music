@@ -13,6 +13,8 @@ mod pc_presentation;
 mod playback;
 #[path = "pc_experiment_transport/player_podcast_resume.rs"]
 mod player_podcast_resume;
+#[path = "pc_experiment_transport/player_song_purchase.rs"]
+mod player_song_purchase;
 #[path = "pc_experiment_transport/search_footer.rs"]
 mod search_footer;
 #[path = "pc_experiment_transport/search_group_download.rs"]

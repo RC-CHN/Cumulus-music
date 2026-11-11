@@ -18,6 +18,18 @@ pub type MessageReadAllPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + '
 pub(crate) const COMMENT_INFORMATION_PATH: &str = "/api/resource/commentInfo/list";
 pub(crate) const SEARCH_SONG_RESULTS_PATH: &str = "/api/search/song/list/page";
 pub(crate) const SEARCH_LYRIC_RESULTS_PATH: &str = "/api/search/resource/lyric";
+pub(crate) const PLAYER_SONG_PURCHASE_DETAIL_PATH: &str = "/api/v3/song/detail";
+
+pub(crate) fn player_song_purchase_detail_payload(ids: &[String]) -> Result<Value> {
+    if ids.is_empty() || ids.len() > 100 {
+        return Err(Error::InvalidInput("invalid player song detail batch"));
+    }
+    let rows = ids
+        .iter()
+        .map(|id| identifier(&json!(id)).map(|id| json!({"id": id, "v": 0})))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(json!({"c": serde_json::to_string(&rows)?}))
+}
 
 /// Native source of an observed search row. It never comes from IPC.
 #[derive(Clone, Copy)]
@@ -743,6 +755,26 @@ impl NativeEffectRegistration {
 
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
+
+    /// Existing ordinary song hydration, with an optional native witness for
+    /// the exact PC credential scope that produced this response. Generic
+    /// transports still hydrate playback but do not vouch for a purchase.
+    fn request_player_song_purchase_details<'a>(
+        &'a self,
+        ids: &'a [String],
+    ) -> ApiFuture<'a, (Value, Option<String>)> {
+        Box::pin(async move {
+            let payload = player_song_purchase_detail_payload(ids)?;
+            let response = self
+                .call(PLAYER_SONG_PURCHASE_DETAIL_PATH, payload, false, &[200])
+                .await?;
+            Ok((response, None))
+        })
+    }
+
+    fn player_song_purchase_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
 
     /// Account-side revision for the ordinary catalogue, available even when
     /// the profile has not enabled the signed PC experiment transport.

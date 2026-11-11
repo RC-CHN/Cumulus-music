@@ -14,7 +14,8 @@ pub use cloud::CloudFileReveal;
 pub use history::{HistorySongFileReveal, HistoryVoiceFileReveal};
 pub use player::LyricBountyIntent;
 pub use player::{
-    QueueCatalogFileReveal, QueueDownloadFileReveal, QueueLocalFileReveal, QueueVoiceFileReveal,
+    CurrentSongPurchase, QueueCatalogFileReveal, QueueDownloadFileReveal, QueueLocalFileReveal,
+    QueueVoiceFileReveal,
 };
 mod cold_offline;
 pub use cold_offline::{ColdOfflinePageView, ColdOfflinePlayerView};

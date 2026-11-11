@@ -47,6 +47,22 @@ pub struct SongBatch {
     pub missing: Vec<String>,
 }
 
+/// One exact raw row from the same scoped response used to hydrate playback.
+/// No permission to act on a player selection is implied by this observation.
+pub(crate) struct PlayerPurchaseDetail {
+    pub(crate) revision: String,
+    pub(crate) song: Value,
+    pub(crate) privilege: Value,
+}
+
+fn exact_detail<'a>(rows: &'a [Value], id: &str) -> Option<&'a Value> {
+    let mut matches = rows
+        .iter()
+        .filter(|row| identifier(&row["id"]).ok().as_deref() == Some(id));
+    let row = matches.next()?;
+    matches.next().is_none().then_some(row)
+}
+
 #[derive(Clone)]
 pub struct CatalogApi {
     pub(super) api: Arc<dyn Api>,
@@ -87,6 +103,26 @@ impl CatalogApi {
         batch_size: usize,
         trial_mode: Option<i32>,
     ) -> Result<SongBatch> {
+        self.songs_inner(ids, batch_size, trial_mode, None)
+            .await
+            .map(|(songs, _)| songs)
+    }
+
+    pub(crate) async fn songs_for_current_purchase(
+        &self,
+        ids: &[Value],
+        selected: &str,
+    ) -> Result<(SongBatch, Option<PlayerPurchaseDetail>)> {
+        self.songs_inner(ids, 100, None, Some(selected)).await
+    }
+
+    async fn songs_inner(
+        &self,
+        ids: &[Value],
+        batch_size: usize,
+        trial_mode: Option<i32>,
+        selected: Option<&str>,
+    ) -> Result<(SongBatch, Option<PlayerPurchaseDetail>)> {
         if !(1..=500).contains(&batch_size) {
             return Err(Error::InvalidInput("invalid song batch size"));
         }
@@ -95,19 +131,41 @@ impl CatalogApi {
         let unique: Vec<_> = ids.iter().filter(|id| seen.insert((*id).clone())).collect();
         let mut songs = BTreeMap::new();
         let mut privileges = BTreeMap::new();
+        let mut observation = None;
         for chunk in unique.chunks(batch_size) {
-            let c: Vec<_> = chunk.iter().map(|id| json!({"id":id,"v":0})).collect();
-            let mut payload = json!({"c":serde_json::to_string(&c)?});
-            if let Some(trial) = trial_mode {
-                payload["trialMode"] = json!(trial);
-            }
-            let response = self
-                .api
-                .call("/api/v3/song/detail", payload, false, &[200])
-                .await?;
+            let selected =
+                selected.filter(|selected| chunk.iter().any(|id| id.as_str() == *selected));
+            let (response, revision) = if selected.is_some() {
+                let ids = chunk.iter().map(|id| (*id).clone()).collect::<Vec<_>>();
+                self.api.request_player_song_purchase_details(&ids).await?
+            } else {
+                let c: Vec<_> = chunk.iter().map(|id| json!({"id":id,"v":0})).collect();
+                let mut payload = json!({"c":serde_json::to_string(&c)?});
+                if let Some(trial) = trial_mode {
+                    payload["trialMode"] = json!(trial);
+                }
+                (
+                    self.api
+                        .call("/api/v3/song/detail", payload, false, &[200])
+                        .await?,
+                    None,
+                )
+            };
             let rows = response["songs"]
                 .as_array()
                 .ok_or(Error::Response("missing song list"))?;
+            if let Some((selected, revision)) = selected.zip(revision)
+                && let Some(song) = exact_detail(rows, selected)
+                && let Some(privilege) = response["privileges"]
+                    .as_array()
+                    .and_then(|rows| exact_detail(rows, selected))
+            {
+                observation = Some(PlayerPurchaseDetail {
+                    revision,
+                    song: song.clone(),
+                    privilege: privilege.clone(),
+                });
+            }
             for song in rows {
                 songs.insert(identifier(&song["id"])?, song.clone());
             }
@@ -120,15 +178,18 @@ impl CatalogApi {
                 }
             }
         }
-        Ok(SongBatch {
-            missing: unique
-                .into_iter()
-                .filter(|id| !songs.contains_key(*id))
-                .cloned()
-                .collect(),
-            songs: ids.iter().map(|id| songs.get(id).cloned()).collect(),
-            privileges,
-        })
+        Ok((
+            SongBatch {
+                missing: unique
+                    .into_iter()
+                    .filter(|id| !songs.contains_key(*id))
+                    .cloned()
+                    .collect(),
+                songs: ids.iter().map(|id| songs.get(id).cloned()).collect(),
+                privileges,
+            },
+            observation,
+        ))
     }
 
     pub async fn search(&self, keyword: &str, options: SearchOptions) -> Result<Value> {

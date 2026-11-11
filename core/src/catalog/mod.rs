@@ -12,6 +12,7 @@ pub(crate) mod same_recording;
 pub mod search;
 pub mod vertical_zone;
 pub use album::{AlbumDetailSource, AlbumDetails, AlbumReadState};
+pub(crate) use api::PlayerPurchaseDetail;
 pub use api::{
     CatalogApi, DailyRecommendationEndpoint, DailyRecommendationReply, PlayOptions, SearchOptions,
     SongBatch,

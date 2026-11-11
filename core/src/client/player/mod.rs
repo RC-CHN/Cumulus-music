@@ -52,6 +52,7 @@ mod search_artist;
 mod search_podcast;
 mod search_voice_menu;
 mod selection;
+mod song_purchase;
 mod song_share;
 mod source_control;
 mod startup;
@@ -118,6 +119,7 @@ pub use quality::{
 };
 pub use queue_click::{QueueClickPreferencesCommand, QueueClickPreferencesView};
 pub use reports::LyricReportView;
+pub use song_purchase::CurrentSongPurchase;
 pub use song_share::PlayerSongShareTarget;
 pub(super) use song_share::mark_metadata as mark_current_song_share_metadata;
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
@@ -160,6 +162,7 @@ pub(super) struct PlayerHost {
     queue_more_memberships: queue_more_playlist::MembershipCache,
     queue_catalog_reveal: queue_catalog_reveal::Host,
     song_share: song_share::Host,
+    song_purchase: song_purchase::Host,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     pub(super) factory: EngineFactory,
@@ -204,6 +207,7 @@ impl PlayerHost {
             queue_more_memberships: Default::default(),
             queue_catalog_reveal: Default::default(),
             song_share: Default::default(),
+            song_purchase: Default::default(),
             session,
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),
