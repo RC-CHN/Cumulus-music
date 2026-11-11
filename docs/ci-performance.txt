@@ -637,3 +637,31 @@ Linux 目录探针共用构建
 - Linux 五个 WebView 检查步骤原本分别发起 2、8、3、8、9 次 Cargo
   构建，现各一次构建相同探针，让 Cargo 并行编译、链接独立目标。
   合成实窗命令、顺序、锁文件和门禁都保留；整体耗时等托管结果。
+
+Windows 原生测试目标选择试验（手动）
+- Actions 的 Windows native target selection pilot 不进入 CI gate，也不生成发行
+  产物。选择同一 SHA 各运行一次 reference 和 selective；两组各有三个
+  Windows 2022 runner。reference 每个 runner 仍用 `cargo test --all-targets`
+  构建完整目标，selective 则只构建所属的测试目标；两组使用同一分配，
+  执行时均不增加 libtest 过滤参数。原有必需 CI 和发布流程保持原样。
+- 主线 42998288630 的 Windows 原生三个回执与当前 Cargo 元数据逐项相符：
+  416 个目标，其中 144 个示例标为 `test: false`，但 `--all-targets` 仍
+  编译并运行其测试程序。固定版本 Cargo 1.96 的小型对照也确认显式选择可
+  保留这些程序。三个库同组，两个包的同名目标同组；目前显式选择为
+  147／135／134 个，参考组仍各编译 416 个。
+- 每个 runner 记录 Cargo 测试程序构建事件、特性、配置，以及运行器实际
+  调用、参数与退出状态。汇总按同一提交、运行和尝试重新核对 Cargo 元
+  数据，要求每个目标成功执行一次，且三组使用相同前端、工具链和媒体
+  配方。两个报告还要匹配实际测试目标的特性和配置。这里核对的是
+  Cargo 测试程序及其退出状态；未改变原生 harness 自身的忽略规则。
+- 下载两个 `windows-native-pilot-report-*` 制品，将其中 JSON 文件分别
+  命名为 reference.json 和 selective.json，再运行：
+  `python3 scripts/ci/windows_native_selectors_pilot.py compare reference.json selective.json`。
+  compileMs 从 Cargo 启动计到其 build-finished 消息；testMs 是剩余时间
+  （含运行器开销）；totalMs 是整个 Cargo 调用。对照显示每阶段三组中的
+  最慢值，阶段的最慢组可能不同。另用 Actions 查看作业起止与排队时间；
+  上述三个指标不含媒体安装、前端、排队或完整 CI。
+- 试验只恢复依赖缓存。对照需要相同的 Rust 缓存命中键和媒体配方；
+  媒体是冷编、迁移旧缓存还是命中精确键要从作业日志另查。比较同一
+  提交的多组、相近缓存条件的样本后再判断是否调整必需 CI。没有已
+  执行的托管试验耗时，不将目标数直接换算成时间节省。

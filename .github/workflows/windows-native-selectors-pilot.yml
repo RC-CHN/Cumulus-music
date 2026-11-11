@@ -1,0 +1,165 @@
+name: Windows native target selection pilot
+
+# This manual experiment does not contribute to CI gate or Release.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Reference full build or selective target compile
+        type: choice
+        options: [reference, selective]
+        default: reference
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-native-selectors-pilot-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_BUILD_JOBS: '2'
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  frontend:
+    name: Pilot frontend assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native-pilot-dist-attempt-${{ github.run_attempt }}
+          path: frontend/dist/
+          if-no-files-found: error
+          retention-days: 3
+
+  windows:
+    name: Windows ${{ inputs.mode }} pilot (${{ matrix.shard }})
+    needs: frontend
+    runs-on: windows-2022
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [a, b, c]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify and seed the pinned MSYS2 installer cache
+        timeout-minutes: 5
+        run: python scripts/ci/windows_msys2_bootstrap.py
+      - name: Windows media dependencies
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          cache: false
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
+            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ladspa-sdk
+      - name: Install pinned toolchain
+        run: rustup show
+      - name: Restore Windows test dependencies without saving
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        id: rust-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target
+          key: rust-windows-2022-test-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-${{ hashFiles('**/Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            rust-windows-2022-test-deps-v2-${{ hashFiles('.cargo/config.toml', 'rust-toolchain.toml') }}-
+            rust-Windows-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-Windows-v1-
+      - name: Remove workspace outputs from any restored dependency cache
+        if: steps.rust-cache.outputs.cache-matched-key != ''
+        run: cargo clean --workspace --locked --offline
+      - name: Build and verify Windows media runtime
+        uses: ./.github/actions/windows-media
+        env:
+          CUMULUS_MEDIA_BUILD_JOBS: '4'
+        with:
+          msys-root: ${{ steps.msys2.outputs.msys2-location }}
+          save-cache: 'false'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-native-pilot-dist-attempt-${{ github.run_attempt }}
+          path: frontend/dist
+      - name: Measure Cargo compilation and execute assigned harnesses
+        env:
+          CARGO_BUILD_JOBS: '3'
+          CUMULUS_NATIVE_PILOT_CACHE_KEY: ${{ steps.rust-cache.outputs.cache-matched-key }}
+          PILOT_MODE: ${{ inputs.mode }}
+          PILOT_SHARD: ${{ matrix.shard }}
+        run: |
+          PYTHONPATH="$(cygpath -w "$PWD/scripts/ci")"
+          export PYTHONPATH
+          python scripts/ci/windows_native_selectors_pilot.py run "$PILOT_MODE" "$PILOT_SHARD" "$RUNNER_TEMP/windows-native-pilot-$PILOT_SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native-pilot-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-native-pilot-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 3
+
+  verify:
+    name: Verify the complete Windows pilot inventory
+    needs: windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: rustup show
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: windows-native-pilot-shard-*-attempt-${{ github.run_attempt }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/windows-native-pilot-receipts
+      - name: Require successful execution of every same-attempt Cargo target
+        env:
+          PILOT_MODE: ${{ inputs.mode }}
+        run: >-
+          python scripts/ci/windows_native_selectors_pilot.py verify "$PILOT_MODE" "$RUNNER_TEMP/windows-native-pilot.json"
+          "$RUNNER_TEMP/windows-native-pilot-receipts/windows-native-pilot-a.json"
+          "$RUNNER_TEMP/windows-native-pilot-receipts/windows-native-pilot-b.json"
+          "$RUNNER_TEMP/windows-native-pilot-receipts/windows-native-pilot-c.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native-pilot-report-${{ inputs.mode }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-native-pilot.json
+          if-no-files-found: error
+          retention-days: 7
