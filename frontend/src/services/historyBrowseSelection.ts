@@ -37,3 +37,17 @@ export function historyBrowseMenuIds(
 ): string[] {
   return selection.ids.length > 1 && selection.ids.includes(clickedId) ? [...selection.ids] : [];
 }
+import type { HistoryQueueKind } from './history';
+
+/** M556 disables the clicked song, or a group only if every selected song is blocked. */
+export function historyBrowseSongMenuBlocked(
+  kind: HistoryQueueKind,
+  clickedId: string,
+  selectedIds: readonly string[],
+  blockedIds: ReadonlySet<string>,
+): boolean {
+  if (kind !== 'song') return false;
+  return selectedIds.length
+    ? selectedIds.every((id) => blockedIds.has(id))
+    : blockedIds.has(clickedId);
+}

@@ -3,6 +3,8 @@
 mod engine;
 #[path = "client_history/row_next.rs"]
 mod row_next;
+#[path = "client_history/row_play.rs"]
+mod row_play;
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},

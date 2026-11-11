@@ -1,4 +1,4 @@
-"""Verify Recently Played row Next through the sealed desktop WebView."""
+"""Verify Recently Played row Play and Next through the sealed desktop WebView."""
 
 import argparse
 import hashlib
@@ -17,10 +17,42 @@ ROOT = Path(__file__).resolve().parents[2]
 STAGES = (
     'song_context', 'song_inserted', 'voice_inserted', 'voice_random_step',
     'empty_song_clicked', 'empty_voice_clicked',
+    'play_blocked', 'play_rejected', 'play_song', 'play_resume_ready', 'play_resumed',
+    'play_voice',
 )
 SEED = ['voice:5', 'voice:6', 'voice:7']
 SONGS = ['voice:5', 'voice:6', 'song:3', 'song:1', 'voice:7']
 VOICES = ['voice:5', 'voice:6', 'voice:4', 'voice:2', 'song:3', 'song:1', 'voice:7']
+PLAY_SEED = ['voice:11', 'voice:12', 'voice:13']
+PLAY_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:1', 'voice:13']
+RESUMED_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:13']
+PLAY_VOICES = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:4', 'voice:2', 'voice:13']
+
+
+def kept_queue_entries(before, after):
+    tracks = after['nativeQueue']['tracks']
+    entries = dict(zip(projected(tracks), (row['entryId'] for row in tracks), strict=True))
+    previous = before['nativeQueue']['tracks']
+    assert all(entries[identity] == row['entryId']
+               for identity, row in zip(projected(previous), previous, strict=True))
+
+
+def native_play(row, prior, *, song, voice=None, resume=False):
+    player, before = row['nativePlayer'], prior['nativePlayer']
+    assert player['epoch'] == before['epoch'] and player['mode'] == before['mode'] == 'sequential'
+    assert (player['state'], player['track']['id'], player['track'].get('voiceId')) == (
+        'playing', song, voice,
+    )
+    assert row['focusRestored']
+    clock = row['clock']
+    assert clock['last'] - clock['first'] > .2 and player['position'] >= clock['last']
+    if resume:
+        assert (player['playId'], player['entryId']) == (before['playId'], before['entryId'])
+        assert clock['first'] >= before['position'] - .05
+    else:
+        assert player['playId'] != before['playId'] and player['entryId'] != before['entryId']
+    assert row['nativeQueue']['revision'] != prior['nativeQueue']['revision']
+    kept_queue_entries(prior, row)
 
 
 def audit(output, screenshots, runtime=None):
@@ -38,7 +70,8 @@ def audit(output, screenshots, runtime=None):
         assert image.startswith(b'\x89PNG\r\n\x1a\n') and len(image) > 1000
         hashes[photo.name] = hashlib.sha256(image).hexdigest()
 
-    context, song, voice, random_step, empty_song, empty_voice = rows
+    (context, song, voice, random_step, empty_song, empty_voice,
+     blocked, rejected, song_play, paused, resumed, voice_play) = rows
     assert (context['nativeHistorySize'], context['menuKey']) == (300, 'next')
     assert 0 < context['visibleRows'] < context['nativeHistorySize']
     for row, selection, clicked, gesture in (
@@ -51,7 +84,9 @@ def audit(output, screenshots, runtime=None):
         assert (row['selected'], row['clicked'], row['gesture']) == (selection, clicked, gesture)
 
     for row, ids in zip(rows, (SEED, SONGS, VOICES, VOICES, ['song:4', 'song:2'],
-                               ['voice:3', 'voice:1']), strict=True):
+                               ['voice:3', 'voice:1'], PLAY_SEED, PLAY_SEED, PLAY_SONGS, PLAY_SONGS,
+                               RESUMED_SONGS,
+                               PLAY_VOICES), strict=True):
         player, queue = row['nativePlayer'], row['nativeQueue']
         assert player['epoch'] == queue['epoch'] and player['entryId'] == queue['current']
         assert player['queueRevision'] == queue['revision'] and not player['error']
@@ -89,10 +124,39 @@ def audit(output, screenshots, runtime=None):
         assert (start['state'], start['mode'], start['track']['id'], start['track'].get('voiceId')) == (
             'playing', mode, song_id, voice_id,
         )
+    assert (blocked['clicked'], blocked['selected'], blocked['playDisabled'], blocked['nextDisabled']) == (
+        '8', ['8'], True, True,
+    )
+    assert blocked['copyrightHint'] == ['暂无版权', '暂无版权']
+    assert (rejected['clicked'], rejected['selected'], rejected['focusRestored']) == (
+        '8', ['3', '8'], True,
+    )
+    assert rejected['error'] and rejected['error'] != '播放记录或播放状态已更新，请重新打开菜单。'
+    assert blocked['nativeQueue'] == rejected['nativeQueue']
+    assert all(blocked['nativePlayer'][key] == rejected['nativePlayer'][key] for key in (
+        'epoch', 'playId', 'entryId', 'state', 'position', 'track',
+    ))
+    before_play = blocked['nativePlayer']
+    assert (before_play['state'], before_play['track']['id'], before_play['track']['voiceId']) == (
+        'paused', '1012', '12',
+    )
+    assert (song_play['clicked'], song_play['selected']) == ('1', ['3', '8', '1'])
+    native_play(song_play, rejected, song='1')
+    assert (paused['clicked'], paused['selected']) == ('1', ['9', '1'])
+    held = paused['nativePlayer']
+    assert (held['state'], held['track']['id']) == ('paused', '1') and held['position'] > 3.5
+    assert all(held[key] == song_play['nativePlayer'][key] for key in ('epoch', 'playId', 'entryId'))
+    assert (resumed['clicked'], resumed['selected']) == ('1', ['9', '1'])
+    native_play(resumed, paused, song='1', resume=True)
+    assert (voice_play['clicked'], voice_play['selected']) == ('2', ['4', '2'])
+    native_play(voice_play, resumed, song='1002', voice='2')
     report = dict(ok=True, actualWebView='WebView2' if runtime else 'WebKitGTK',
                   stages=len(STAGES), screenshots=hashes, nativeNullPlayback=True,
                   preservedPausedClock=True, randomTraversalEpisode='4',
-                  emptySongStarted='2', emptyVoiceStarted='1', syntheticHistoryWrites=0,
+                  emptySongStarted='2', emptyVoiceStarted='1',
+                  playSongStarted='1', playVoiceStarted='2', playResumedSameDecoder=True,
+                  playRetainedUnrelatedEntries=True, copyrightBlockedSelection=True,
+                  syntheticHistoryWrites=0,
                   realMusicRequests=0, realAccountWrites=0)
     if runtime:
         report.update(runtime=runtime, network='synthetic-transports-only')

@@ -1,4 +1,4 @@
-// Real Recently Played row Next gestures with synthetic resources and libmpv null output.
+// Real Recently Played row Play/Next gestures with synthetic resources and libmpv null output.
 (async () => {
   const one = (selector, root = document) => root?.querySelector(selector);
   const all = (selector, root = document) => [...(root?.querySelectorAll(selector) ?? [])];
@@ -16,7 +16,10 @@
   const row = id => one(`[data-history-row-id="${id}"]`, page());
   const more = id => one(`[data-history-row-more="${id}"]`, page());
   const panel = () => one('[role="menu"][aria-label="播放记录操作"]:not([inert])');
-  const nextItem = () => one('[data-menu-key="next"]', panel() ?? null);
+  const menuItem = key => one(`[data-menu-key="${key}"]`, panel() ?? null);
+  const nextItem = () => menuItem('next');
+  const playItem = () => menuItem('play');
+  const disabled = node => node?.matches(':disabled,[aria-disabled="true"]');
   const selectedRows = () => all('[data-history-row-id][aria-selected="true"]', page())
     .map(node => node.dataset.historyRowId);
   const nextNotice = () => text(one('.history-row-next-notice', page()));
@@ -82,9 +85,10 @@
       }));
     }
   }
-  async function openMenu(clicked, gesture, selection) {
+  async function openMenu(clicked, gesture, selection, key = 'next', enabled = true) {
     const opener = more(clicked);
     assert(ready(opener), 'enabled history row More ' + clicked);
+    opener.scrollIntoView({ block: 'nearest' });
     if (gesture === 'contextmenu') {
       const target = row(clicked);
       const bounds = target.getBoundingClientRect();
@@ -98,10 +102,20 @@
         bubbles: true, cancelable: true, shiftKey: true, key: 'F10',
       })), 'history handled Shift+F10');
     } else click(opener);
-    await wait(() => ready(panel()) && ready(nextItem()) &&
-      opener.getAttribute('aria-expanded') === 'true', 'visible Next action for row ' + clicked);
+    await wait(() => {
+      const item = menuItem(key);
+      return ready(panel()) && item?.getClientRects().length && disabled(item) === !enabled &&
+        opener.getAttribute('aria-expanded') === 'true';
+    }, 'visible ' + key + ' action for row ' + clicked);
     assert(same(selectedRows().sort(), [...selection].sort()), 'menu preserves the explicit group');
-    assert(text(nextItem()) === '下一首播放', 'official history row Next label');
+    assert(text(menuItem(key)) === (key === 'play' ? '播放' : '下一首播放'),
+      'official history row action label');
+    if (key === 'play') {
+      const items = all('[data-menu-key]', panel());
+      assert(items[0] === playItem() && items[1] === nextItem(), 'Play precedes Next in the row menu');
+      if (enabled)
+        await wait(() => document.activeElement === playItem(), 'Play receives first keyboard focus');
+    }
     const bounds = panel().getBoundingClientRect();
     assert(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth + 1 &&
       bounds.bottom <= innerHeight + 1, 'history row menu stays inside the WebView');
@@ -164,31 +178,13 @@
     'empty Next decoded the clicked row, not the first selected row');
     await capture(name, expected, { clicked, selected: ids, gesture: 'button', empty }, false);
   }
-  try {
-    epoch = await wait(async () => {
-      const account = await invoke('account_snapshot');
-      return account.status === 'authenticated' && account.epoch;
-    }, 'synthetic account ready');
-    click(await wait(() => all('.sidebar button').find(node => ready(node) && text(node) === '最近播放'),
-      'recently played sidebar'));
-    const voice = await enter('voice', '声音', ['1', '2', '3', '4']);
-    await action({ kind: 'mode', mode: 'sequential' });
-    await invoke('play_selection', { epoch, selection: {
-      kind: 'history', history_kind: 'voice', revision: voice.revision,
-      ids: ['5', '6', '7'], index: 1, quality: 'standard',
-    } });
-    const seedIds = ['voice:5', 'voice:6', 'voice:7'];
-    const incumbent = await wait(async () => {
-      const shown = await observe();
-      return shown && same(shown.ids, seedIds) && shown.state.track?.voiceId === '6' &&
-        shown.state.state === 'playing' && shown.state.position > .25 && shown.state;
-    }, 'incumbent episode is decoding to native null output');
+  async function pauseAt(incumbent, minimum = .25) {
     await action({ kind: 'pause', paused: true });
     let previous, stableAt;
-    held = await wait(async () => {
+    return wait(async () => {
       const shown = await observe();
       if (!shown || shown.state.state !== 'paused' || shown.state.playId !== incumbent.playId ||
-          shown.state.entryId !== incumbent.entryId || shown.state.position <= .25) return;
+          shown.state.entryId !== incumbent.entryId || shown.state.position <= minimum) return;
       const current = decoder(shown.state);
       if (!same(current, previous)) {
         previous = current;
@@ -196,7 +192,125 @@
         return;
       }
       return performance.now() - stableAt >= 400 && current;
-    }, 'incumbent native clock is exactly paused');
+    }, 'current native clock is exactly paused');
+  }
+  const seedIds = ['voice:5', 'voice:6', 'voice:7'];
+  const playSeedIds = ['voice:11', 'voice:12', 'voice:13'];
+  async function seedPausedVoice(queueIds = seedIds) {
+    const voice = await enter('voice', '声音', ['1', '2', '3', '4']);
+    await action({ kind: 'mode', mode: 'sequential' });
+    const ids = queueIds.map(id => id.split(':')[1]);
+    step = 'seed native history voices ' + ids.join(',');
+    await invoke('play_selection', { epoch, selection: {
+      kind: 'history', history_kind: 'voice', revision: voice.revision,
+      ids, index: 1, quality: 'standard',
+    } });
+    const incumbent = await wait(async () => {
+      const shown = await observe();
+      return shown && same(shown.ids, queueIds) && shown.state.track?.voiceId === ids[1] &&
+        shown.state.state === 'playing' && shown.state.position > .25 && shown.state;
+    }, 'incumbent episode is decoding to native null output');
+    held = await pauseAt(incumbent);
+  }
+  function activatePlay(clicked) {
+    click(playItem());
+    assert(document.activeElement === more(clicked), 'Play returns focus to the clicked row');
+  }
+  function playerIdentity(state) {
+    return [state.epoch, state.playId, state.entryId];
+  }
+  async function played(ids, media, voice, before, resume = false) {
+    let first;
+    return wait(async () => {
+      const shown = await observe();
+      if (!shown || panel() || !same(shown.ids, ids) || shown.state.state !== 'playing' ||
+          shown.state.track?.id !== media || (shown.state.track?.voiceId ?? null) !== voice ||
+          !Number.isFinite(shown.state.position)) return;
+      const identity = playerIdentity(shown.state);
+      assert(identity.every(Boolean), 'Play has a bound native identity');
+      assert(resume ? same(identity, playerIdentity(before.state)) :
+        shown.state.playId !== before.state.playId && shown.state.entryId !== before.state.entryId,
+      'Play resumed or loaded the expected native decoder');
+      if (resume)
+        assert(shown.state.position >= before.state.position - .05, 'Play rewound the paused clock');
+      if (!first) first = { identity, clock: shown.state.position };
+      assert(same(first.identity, identity), 'one decoder owns both Play clock samples');
+      if (shown.state.position > .25 && shown.state.position - first.clock > .2)
+        return { first: first.clock, last: shown.state.position };
+    }, 'same native decoder advanced the clicked Play row');
+  }
+  async function playRows() {
+    await seedPausedVoice(playSeedIds);
+    await enter('song', '歌曲', ['1', '3', '8']);
+    select(['8']);
+    await openMenu('8', 'button', ['8'], 'play', false);
+    assert(disabled(nextItem()), 'all blocked selection disables both playback actions');
+    playItem().click();
+    const blocked = await capture('play_blocked', playSeedIds, {
+      clicked: '8', selected: ['8'], playDisabled: disabled(playItem()), nextDisabled: disabled(nextItem()),
+      copyrightHint: [playItem().title, nextItem().title],
+    });
+    panel().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(() => !panel(), 'dismiss copyright-disabled Play menu');
+
+    const rejectedIds = ['3', '8'];
+    select(rejectedIds);
+    await openMenu('8', 'contextmenu', rejectedIds, 'play');
+    activatePlay('8');
+    const error = await wait(() => {
+      const alert = one('.history-row-menu-error', page());
+      return !panel() && ready(alert) && text(alert);
+    }, 'mixed selection with blocked clicked row is rejected');
+    const rejected = await capture('play_rejected', playSeedIds, {
+      clicked: '8', selected: rejectedIds, error, focusRestored: true,
+    });
+    assert(rejected.current.revision === blocked.current.revision,
+      'blocked clicked Play left the native queue revision unchanged');
+
+    const songIds = ['3', '8', '1'];
+    select(songIds);
+    await openMenu('1', 'keyboard', songIds, 'play');
+    const songQueue = ['voice:11', 'voice:12', 'song:3', 'song:1', 'voice:13'];
+    activatePlay('1');
+    const songClock = await played(songQueue, '1', null, rejected);
+    const song = await capture('play_song', songQueue, {
+      clicked: '1', selected: songIds, clock: songClock, focusRestored: true,
+    }, false);
+
+    await action({ kind: 'seek', seconds: 4.25 });
+    held = await pauseAt(song.state, 3.5);
+    await enter('song', '歌曲', ['1', '9']);
+    const resumeIds = ['9', '1'];
+    select(resumeIds);
+    await openMenu('1', 'button', resumeIds, 'play');
+    const paused = await capture('play_resume_ready', songQueue, { clicked: '1', selected: resumeIds });
+    activatePlay('1');
+    const resumeQueue = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:13'];
+    const resumedClock = await played(resumeQueue, '1', null, paused, true);
+    const resumed = await capture('play_resumed', resumeQueue, {
+      clicked: '1', selected: resumeIds, clock: resumedClock, focusRestored: true,
+    }, false);
+
+    await enter('voice', '声音', ['2', '4']);
+    const voiceIds = ['4', '2'];
+    select(voiceIds);
+    await openMenu('2', 'contextmenu', voiceIds, 'play');
+    const voiceQueue = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1',
+      'voice:4', 'voice:2', 'voice:13'];
+    activatePlay('2');
+    const voiceClock = await played(voiceQueue, '1002', '2', resumed);
+    await capture('play_voice', voiceQueue, {
+      clicked: '2', selected: voiceIds, clock: voiceClock, focusRestored: true,
+    }, false);
+  }
+  try {
+    epoch = await wait(async () => {
+      const account = await invoke('account_snapshot');
+      return account.status === 'authenticated' && account.epoch;
+    }, 'synthetic account ready');
+    click(await wait(() => all('.sidebar button').find(node => ready(node) && text(node) === '最近播放'),
+      'recently played sidebar'));
+    await seedPausedVoice();
 
     const songs = await enter('song', '歌曲', ['1', '2', '3', '4']);
     const visibleRows = all('.history-window .history-row', page()).length;
@@ -242,13 +356,14 @@
 
     await emptyNext('song', '歌曲', ['4', '2'], '2', 'random', 'empty_song_clicked');
     await emptyNext('voice', '声音', ['3', '1'], '1', 'sequential', 'empty_voice_clicked');
+    await playRows();
     await emit('complete', { ok: true, stages });
   } catch (error) {
     await emit('failed', {
       ok: false, step, error: String(error?.message ?? error), stages,
       menu: panel()?.textContent, category: page()?.dataset.historyCategory,
       selection: selectedRows(), notice: nextNotice(),
-      rowError: text(one('.history-row-next-error', page())),
+      rowError: text(one('.history-row-menu-error,.history-row-next-error', page())),
     });
   }
 })();

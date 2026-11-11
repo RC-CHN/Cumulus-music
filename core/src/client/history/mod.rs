@@ -5,6 +5,7 @@ pub use song_collection::HistoryCollectTarget;
 mod dto;
 mod radio_chapter;
 mod radio_collection;
+mod row_menu;
 pub(super) use radio_chapter::RadioChaptersHost;
 mod listened_books;
 pub(super) use listened_books::ListenedBooksHost;

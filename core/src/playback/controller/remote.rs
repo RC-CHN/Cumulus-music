@@ -1,5 +1,5 @@
 use super::{
-    PlaybackStatus, RemotePlayback, Response,
+    HistoryRowQueueAction, PlaybackStatus, RemotePlayback, Response,
     load::{LoadOptions, LoadSource},
     state::Actor,
 };
@@ -240,15 +240,15 @@ impl Actor {
         {
             return Err(Error::MutationBusy);
         }
-        if update.row_next
+        if let Some(action) = update.row_menu
             && (update.play_all
-                || update.start != update.was_empty
+                || update.start != (action == HistoryRowQueueAction::Play || update.was_empty)
                 || !matches!(
                     update.kind,
                     crate::history::HistoryKind::Song | crate::history::HistoryKind::Voice
                 ))
         {
-            return Err(Error::InvalidInput("invalid history row next update"));
+            return Err(Error::InvalidInput("invalid history row menu update"));
         }
         if self.queue.is_empty() != update.was_empty
             || (!update.start && (update.was_empty || update.play_all))
@@ -261,11 +261,15 @@ impl Actor {
             return Err(Error::StaleResponse);
         }
         authority.check()?;
+        let row_play = update.row_menu == Some(HistoryRowQueueAction::Play);
         let retained = if update.start && !update.play_all && self.state.active() {
             self.loaded.as_ref().and_then(|loaded| {
                 let mut selected = update.queue.selected()?;
                 if self.queue.selected().as_ref() != Some(&loaded.item)
                     || selected.entry_id != loaded.item.entry_id
+                    || row_play
+                        && (!self.independent_transport(&loaded.item)
+                            || !self.independent_transport(&selected))
                 {
                     return None;
                 }
@@ -277,10 +281,23 @@ impl Actor {
                     }
                     value
                 };
-                if unstamp(selected.resource.clone()) != unstamp(loaded.item.resource.clone()) {
+                let same_resource =
+                    unstamp(selected.resource.clone()) == unstamp(loaded.item.resource.clone());
+                if !same_resource
+                    && (!row_play || !self.same_history_row_online_binding(loaded, &selected))
+                {
                     return None;
                 }
-                selected.resource = loaded.item.resource.clone();
+                let fresh = std::mem::replace(&mut selected.resource, loaded.item.resource.clone());
+                if !same_resource {
+                    // M308 updates current presentation on the same decoder.
+                    // Keep its exact authorized source and quality selection.
+                    for field in ["song", "dt"] {
+                        if let Some(value) = fresh.get(field) {
+                            selected.resource[field] = value.clone();
+                        }
+                    }
+                }
                 Some(selected)
             })
         } else {
@@ -306,7 +323,7 @@ impl Actor {
                 if !update.start
                     || update.kind != crate::history::HistoryKind::Voice
                     || (!update.play_all
-                        && !update.row_next
+                        && update.row_menu.is_none()
                         && update.queue.mode != crate::playback::PlaybackMode::Random)
                     || !update
                         .queue
@@ -330,6 +347,16 @@ impl Actor {
                 self.queue.install(update.queue)
             }
         };
+        if row_play {
+            // Cancellation before the native commit is a refusal. Once the
+            // queue is installed, the actor's account/generation guard owns
+            // transport resume; a retired caller must not report a refusal
+            // after the queue has already changed.
+            if reply.is_closed() {
+                return Err(Error::StaleResponse);
+            }
+            authority.check()?;
+        }
         if update.play_all {
             session.with_local_owner(&self.token, publish)?;
         } else {
@@ -351,6 +378,58 @@ impl Actor {
             history_shuffle_anchor: update.shuffle_anchor,
             ..LoadOptions::default()
         }))
+    }
+
+    fn same_history_row_online_binding(
+        &self,
+        loaded: &super::state::Loaded,
+        selected: &crate::playback::QueueEntry,
+    ) -> bool {
+        use crate::playback::engine::MediaInput;
+        let before = &loaded.item.resource;
+        let after = &selected.resource;
+        let online = |resource: &serde_json::Value| {
+            super::quality::online_resource(resource)
+                && [
+                    "cloud_song_id",
+                    "download_task_id",
+                    "download_ledger",
+                    "native_open_file",
+                ]
+                .iter()
+                .all(|field| resource[*field].is_null())
+        };
+        if !online(before)
+            || !online(after)
+            || !matches!(loaded.source.input, MediaInput::Url(_))
+            || !self
+                .resolver
+                .same_online_binding(before, after, &self.token)
+        {
+            return false;
+        }
+        if before["voice_id"].is_null() {
+            // A changed restriction must be authorized again; stale
+            // metadata alone does not force a new decoder.
+            return after["privilege"]["pl"].as_i64().is_some_and(|pl| pl > 0)
+                || before["privilege"] == after["privilege"];
+        }
+        let old_voice = &before["voice"];
+        let new_voice = &after["voice"];
+        let old_radio = &old_voice["audio"];
+        let new_radio = &new_voice["audio"];
+        !old_radio["id"].is_null()
+            && old_radio["id"] == new_radio["id"]
+            && old_radio["feeInfo"] == new_radio["feeInfo"]
+            && [
+                "feeInfo",
+                "displayStatus",
+                "disPlayStatus",
+                "grayDisplay",
+                "underShelf",
+            ]
+            .iter()
+            .all(|field| old_voice[*field] == new_voice[*field])
     }
 
     pub(super) async fn apply_local_batch(

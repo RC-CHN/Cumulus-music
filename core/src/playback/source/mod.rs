@@ -321,6 +321,12 @@ impl SourceResolver {
             trial,
         })
     }
+    pub(crate) fn same_online_binding(&self, a: &Value, b: &Value, token: &SessionToken) -> bool {
+        self.key(a, token)
+            .ok()
+            .zip(self.key(b, token).ok())
+            .is_some_and(|(left, right)| left == right)
+    }
     pub fn cached_until(&self, resource: &Value, token: &SessionToken) -> Result<Option<Duration>> {
         let key = self.key(resource, token)?;
         Ok(self

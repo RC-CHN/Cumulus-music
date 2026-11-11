@@ -51,7 +51,6 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use tokio::sync::{mpsc, oneshot, watch};
-pub(crate) use types::HistoryShuffleAnchor;
 use types::Reply;
 pub use types::{
     FmRestore, HistoryQueueUpdate, IntelligenceUpdate, LocalBatchUpdate,
@@ -59,6 +58,7 @@ pub use types::{
     PlaybackSpeedScope, PlaybackStatus, PrefetchSnapshot, QueueTransport, QueueUpdate,
     RecallPrefill, RemotePlayback, StartupRestore, TogetherExternalQueueUpdate,
 };
+pub(crate) use types::{HistoryRowQueueAction, HistoryShuffleAnchor};
 
 type Engine = Arc<Mutex<Box<dyn AudioEngine>>>;
 type Response = oneshot::Sender<Result<Reply>>;

@@ -340,23 +340,23 @@
         "core/tests/pc_experiment_transport/history_shuffle.rs exact voice checkpoint",
         "scripts/ci/history_header_smoke.py actual WebView playback and queue replacement"
       ],
-      "desktopEvidence": ".build/ui-proof/phase296-history-play-all-final/audit.json: 11 WebKitGTK checkpoints and PNGs; zero filtered rows still replace an incumbent two-song queue with all 100 ordered voices and start native null playback; Windows CI pending",
+      "desktopEvidence": ".build/ui-proof/phase296-history-play-all-final/audit.json: 11 WebKitGTK checkpoints and PNGs; Windows WebView2 catalog job 130560272190 passed the same 11 stages; zero filtered rows still replace an incumbent two-song queue with all 100 ordered voices and start native null playback",
       "boundaries": [
         "No same-name or MV fallback, no privilege-only replacement without matching song metadata",
         "Native file, download and service media authorization still apply; room stays isolated"
       ]
     },
     {
-      "feature": "Play next from a recent song or voice row context menu",
+      "feature": "Play and play next from a recent song or voice row context menu",
       "official": [
-        "M405:225–247; M19:72–84; M106:211–224,291–299; M195:399–410; M556:116–142",
-        "M3102:865–1014; VoiceTitleCell.tsx:371–451; M3085:243–311,431–481,564–584; M1384:5241–5375"
+        "M405:225–247; M19:72–84; M106:211–224,291–299; M195:399–410; M556:82–142; M35:33–42",
+        "M3102:865–1014; VoiceTitleCell.tsx:371–451; M3085:243–311,431–481,532–584; M1384:5241–5375; M308:1620–1633,1671–1685"
       ],
       "rust": [
-        "core/src/client/history/selection/row_next.rs native membership and gesture order",
+        "core/src/client/history/row_menu.rs native membership, gesture order and copyright projection",
         "core/src/client/history/selection/alternatives.rs declared recording replacement",
         "core/src/client/player/history_batch.rs queue placement and clicked start",
-        "core/src/playback/controller/remote.rs fenced native queue installation"
+        "core/src/playback/controller/remote.rs fenced queue installation and retained decoder"
       ],
       "ui": [
         "frontend/src/components/HistoryPage.vue song and voice row context menu",
@@ -365,9 +365,10 @@
       ],
       "tests": [
         "core/tests/client_history/row_next.rs ordinary and Random insertion, clicked voice start, denial and stale receipts",
+        "core/tests/client_history/row_play.rs clicked song in an existing queue, same loaded program and copyright denial",
         "scripts/ci/history_row_next_smoke.py and desktop/examples/history_row_next_ui_probe.js"
       ],
-      "desktopEvidence": ".build/ui-proof/phase297-history-row-next/audit.json: 6 WebKitGTK states and PNGs, exact paused native clock, a true Random next episode, and clicked song/voice playback from empty queues; Windows pending",
+      "desktopEvidence": ".build/ui-proof/phase298-history-row-play-final/audit.json: 12 WebKitGTK states and PNGs, copyright gating and refusal, exact paused clock, Random Next, clicked starts, retained queue entries, and same native decoder resume; Windows pending",
       "boundaries": [
         "The other song and voice menu actions have separate contracts and are not added here",
         "No modifier right-click outside the selected group, FM, intelligence or room-specific insertion parity in this path"

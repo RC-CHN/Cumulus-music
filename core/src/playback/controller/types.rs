@@ -175,15 +175,19 @@ pub struct HistoryQueueUpdate {
     pub(crate) queue: QueueSnapshot,
     pub(crate) start: bool,
     pub(crate) play_all: bool,
-    /// Row Next may carry the explicitly clicked voice's resume checkpoint
-    /// even when the empty ordinary queue is not in Random mode.
-    pub(crate) row_next: bool,
+    /// Context actions use the clicked row rather than a toolbar list head.
+    pub(crate) row_menu: Option<HistoryRowQueueAction>,
     /// Exact account-local ordinary backup observed when replacing an FM queue.
     pub(crate) fm_backup_queue: Option<Value>,
     pub(crate) was_empty: bool,
     pub(crate) kind: crate::history::HistoryKind,
     pub(crate) revision: String,
     pub(crate) shuffle_anchor: Option<HistoryShuffleAnchor>,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HistoryRowQueueAction {
+    Next,
+    Play,
 }
 /// The pre-add setting observation and local departure receipt are native-only.
 pub(crate) struct HistoryShuffleAnchor {

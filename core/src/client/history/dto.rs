@@ -37,6 +37,9 @@ pub struct HistoryEntry {
     pub play_progress: Option<f64>,
     pub listened: Option<bool>,
     pub resource: HistoryResource,
+    /// Snapshot-only M556 menu availability, separate from admission on click.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub song_menu_copyright_blocked: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chapter: Option<HistoryRadioChapterView>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]

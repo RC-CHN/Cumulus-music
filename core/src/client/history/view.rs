@@ -70,6 +70,9 @@ pub(super) fn entry(
         }
     };
     Ok(HistoryEntry {
+        song_menu_copyright_blocked: (kind == HistoryKind::Song)
+            .then(|| super::row_menu::song_copyright_blocked(&record))
+            .flatten(),
         id: record.id,
         played_at: record.played_at,
         device,

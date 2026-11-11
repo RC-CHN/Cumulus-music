@@ -144,7 +144,8 @@ impl MusicClient {
             | PlaySelection::HistoryAddAll { .. }
             | PlaySelection::HistoryPlayAll { .. }
             | PlaySelection::HistoryBatchPlay { .. }
-            | PlaySelection::HistoryRowNext { .. } => Err(Error::InvalidInput(
+            | PlaySelection::HistoryRowNext { .. }
+            | PlaySelection::HistoryRowPlay { .. } => Err(Error::InvalidInput(
                 "history batch requires a preparation ticket",
             )),
             PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
@@ -320,18 +321,25 @@ impl MusicClient {
                 clicked_id,
                 selected_ids,
                 quality,
+            }
+            | PlaySelection::HistoryRowPlay {
+                history_kind,
+                revision,
+                clicked_id,
+                selected_ids,
+                quality,
             } => Some((
                 Selection {
                     kind: *history_kind,
                     revision,
-                    rows: SelectionRows::RowNext {
+                    rows: SelectionRows::RowMenu {
                         clicked: clicked_id,
                         selected: selected_ids,
                     },
                     index: 0,
                     quality: *quality,
                 },
-                false,
+                matches!(input, PlaySelection::HistoryRowPlay { .. }),
             )),
             _ => None,
         };
@@ -1555,6 +1563,7 @@ impl MusicClient {
                     | PlaySelection::HistoryPlayAll { .. }
                     | PlaySelection::HistoryBatchPlay { .. }
                     | PlaySelection::HistoryRowNext { .. }
+                    | PlaySelection::HistoryRowPlay { .. }
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::HistoryRadioMenu { .. }

@@ -500,7 +500,7 @@ export type PlaySelection =
       quality: Quality;
     }
   | {
-      kind: 'history_row_next';
+      kind: 'history_row_play' | 'history_row_next';
       history_kind: import('./history').HistoryQueueKind;
       revision: string;
       clicked_id: string;

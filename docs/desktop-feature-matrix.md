@@ -27,9 +27,10 @@ RC.2 后的独立候选已在真实 Linux WebView 验证 [普通播客下载音�
 只改变显示。隔离 Linux WebView 通过 10 态及截图、原整页通过 31 态回归，验证了队列与
 历史清空互不影响；证据在 `.build/ui-proof/history-header-2026-11-11/`。
 
-[最近播放歌曲／声音行的「下一首播放」](play-history-contracts.txt)通过 6 个隔离 Linux
-实窗检查点。多选按手势顺序插入，保留原生暂停时钟；随机下一项和空队列点中项均实际
-解码。证据在 `.build/ui-proof/phase297-history-row-next/`；Windows 和其他菜单项仍待各自验证。
+[最近播放歌曲／声音行的「播放」「下一首播放」](play-history-contracts.txt)通过 12 个
+隔离 Linux 实窗检查点。核对版权禁用、手势选区插入、保留原队列及暂停位置、同一解码器
+恢复、随机下一项与点中项的真实解码。证据在 `.build/ui-proof/phase298-history-row-play-final/`；
+最新 Windows 行菜单和其他菜单项仍待各自验证。
 
 ## 2026-11-09 集成验收
 

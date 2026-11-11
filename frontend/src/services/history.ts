@@ -7,7 +7,8 @@ export type HistoryQueueAction =
   | { kind: 'add-all' }
   | { kind: 'play-all' }
   | { kind: 'play' | 'add'; ids: string[] };
-export interface HistoryRowNextTarget {
+export type HistoryRowQueueAction = 'play' | 'next';
+export interface HistoryRowQueueTarget {
   kind: HistoryQueueKind;
   revision: string;
   clickedId: string;
@@ -15,7 +16,7 @@ export interface HistoryRowNextTarget {
   epoch: string;
   routeIdentity: object;
 }
-export type HistoryRowNextOutcome = 'queued' | 'playing';
+export type HistoryRowQueueOutcome = 'queued' | 'playing';
 export interface HistorySelectionScope {
   revision: string;
   ids: string[];
@@ -61,6 +62,7 @@ export interface HistoryEntry {
   playProgress: number | null;
   listened: boolean | null;
   resource: HistoryResource;
+  songMenuCopyrightBlocked?: boolean;
   canCollectRadio?: boolean;
   chapter?: {
     name: string;

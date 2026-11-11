@@ -11,7 +11,7 @@ use crate::{
     history::HistoryKind,
     playback::{
         PlaybackMode, QueueSnapshot,
-        controller::{HistoryQueueUpdate, PlaybackCommand, PlaybackStatus},
+        controller::{HistoryQueueUpdate, HistoryRowQueueAction, PlaybackCommand, PlaybackStatus},
         engine::Cancellation,
     },
     podcast::progress::latest::ShuffleAnchor,
@@ -36,7 +36,11 @@ impl MusicClient {
         prepared.check(self, &before)?;
         let kind = selection.kind;
         let full_list = matches!(selection.rows, SelectionRows::All);
-        let row_next = matches!(selection.rows, SelectionRows::RowNext { .. });
+        let row_menu = matches!(selection.rows, SelectionRows::RowMenu { .. }).then_some(if play {
+            HistoryRowQueueAction::Play
+        } else {
+            HistoryRowQueueAction::Next
+        });
         let play_all = full_list && play;
         if !play_all && (before.fm || queue.intelligence.is_some()) {
             return Err(Error::State("history batch requires an ordinary queue"));
@@ -47,9 +51,10 @@ impl MusicClient {
         ) {
             return Err(Error::MutationBusy);
         }
-        if row_next
+        if row_menu.is_some()
             && (queue.items.iter().any(|entry| !entry.visible_in_queue())
-                || queue.mode == PlaybackMode::Random
+                || row_menu == Some(HistoryRowQueueAction::Next)
+                    && queue.mode == PlaybackMode::Random
                     && !queue.items.is_empty()
                     && queue.current.is_none())
         {
@@ -80,12 +85,13 @@ impl MusicClient {
         // listData ID as its explicit start without a radio bookmark lookup.
         // Header Play All suppresses the default list-head playId, but its
         // real first voice resource can still supply a same-episode bookmark.
+        // M3085 always uses the clicked episode for an immediate row start.
         let shuffle_anchor = if kind == HistoryKind::Voice
             && (play_all
-                || was_empty
-                    && (row_next || !play && !full_list && queue.mode == PlaybackMode::Random))
+                || row_menu.is_some() && start
+                || was_empty && !play && !full_list && queue.mode == PlaybackMode::Random)
         {
-            match resources.get(if row_next { index } else { 0 }) {
+            match resources.get(if row_menu.is_some() { index } else { 0 }) {
                 Some(first) => {
                     self.history_shuffle_anchor(token, first, &pending, &room)
                         .await?
@@ -107,8 +113,8 @@ impl MusicClient {
                 &mut rand::rng(),
             )?
         } else {
-            let anchor = if row_next {
-                BatchAnchor::RowNext {
+            let anchor = if row_menu.is_some() {
+                BatchAnchor::RowMenu {
                     index,
                     require_admitted: kind == HistoryKind::Song,
                 }
@@ -126,7 +132,7 @@ impl MusicClient {
             queue,
             start,
             play_all,
-            row_next,
+            row_menu,
             fm_backup_queue,
             was_empty,
             kind,
@@ -203,7 +209,7 @@ enum BatchAnchor<'a> {
     Automatic,
     ListHead,
     VoiceBookmark(&'a ShuffleAnchor),
-    RowNext {
+    RowMenu {
         index: usize,
         require_admitted: bool,
     },
@@ -222,7 +228,7 @@ fn plan(
         .first()
         .and_then(history_key)
         .map(|(kind, id)| (kind, id.to_owned()));
-    let explicit = if let BatchAnchor::RowNext {
+    let explicit = if let BatchAnchor::RowMenu {
         index,
         require_admitted,
     } = anchor
@@ -315,7 +321,7 @@ fn plan(
                 .map(|row| row.entry_id.clone())
                 .ok_or(Error::QueueChanged),
             BatchAnchor::ListHead => Ok(first.to_owned()),
-            BatchAnchor::RowNext { .. } => explicit_start(),
+            BatchAnchor::RowMenu { .. } => explicit_start(),
             BatchAnchor::Automatic => selected
                 .choose(rng)
                 .and_then(entry_id)
@@ -327,7 +333,7 @@ fn plan(
     } else {
         start
             .then(|| {
-                if matches!(anchor, BatchAnchor::RowNext { .. }) {
+                if matches!(anchor, BatchAnchor::RowMenu { .. }) {
                     explicit_start()
                 } else {
                     Ok(first.to_owned())

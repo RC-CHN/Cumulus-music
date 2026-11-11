@@ -26,7 +26,7 @@ fn row_next_empty_queue_starts_clicked_song_or_voice_even_in_random() {
                 vec![first, clicked],
                 json!({"kind":"history"}),
                 true,
-                BatchAnchor::RowNext {
+                BatchAnchor::RowMenu {
                     index: 1,
                     require_admitted,
                 },
@@ -68,7 +68,7 @@ fn row_next_queue_only_keeps_current_and_forces_first_admitted_random_successor(
         vec![song("99", 0), song("30", 320000), song("20", 320000)],
         json!({"kind":"history"}),
         false,
-        BatchAnchor::RowNext {
+        BatchAnchor::RowMenu {
             index: 2,
             require_admitted: true,
         },
@@ -97,7 +97,7 @@ fn row_next_rejects_an_unplayable_clicked_song_instead_of_promoting_the_group() 
         vec![song("30", 320000), song("20", 0)],
         json!({"kind":"history"}),
         false,
-        BatchAnchor::RowNext {
+        BatchAnchor::RowMenu {
             index: 1,
             require_admitted: true,
         },

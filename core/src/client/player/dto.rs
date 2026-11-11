@@ -415,6 +415,13 @@ pub enum PlaySelection {
         selected_ids: Vec<String>,
         quality: Quality,
     },
+    HistoryRowPlay {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        clicked_id: String,
+        selected_ids: Vec<String>,
+        quality: Quality,
+    },
     Catalog {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         index: usize,

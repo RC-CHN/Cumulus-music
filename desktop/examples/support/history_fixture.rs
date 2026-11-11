@@ -18,6 +18,7 @@ pub struct Library {
     chapters: bool,
     collections: bool,
     menu: bool,
+    pub row_queue_menu: bool,
     chapter_calls: Mutex<Vec<Value>>,
     collected: Mutex<BTreeSet<String>>,
     removed: Mutex<BTreeMap<String, BTreeSet<String>>>,
@@ -456,7 +457,21 @@ impl Api for Library {
                     json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":true}})
                 });
             }
-            self.base.request(path, args, cache).await
+            let mut reply = self.base.request(path, args, cache).await?;
+            if self.row_queue_menu && path == "/api/song/enhance/privilege" {
+                let rows = reply["data"]
+                    .as_array_mut()
+                    .ok_or(Error::Response("missing history fixture privileges"))?;
+                for row in rows
+                    .iter_mut()
+                    .filter(|row| row["id"] == "8" || row["id"] == 8)
+                {
+                    row["st"] = json!(-100);
+                    row["status"] = json!(-100);
+                    row["pl"] = json!(0);
+                }
+            }
+            Ok(reply)
         })
     }
 }

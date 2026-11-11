@@ -16,7 +16,7 @@ async fn row_next(f: &Fixture, kind: HistoryKind, clicked: &str, ids: &[&str]) -
     }
 }
 
-async fn ticket(f: &Fixture) -> String {
+pub(super) async fn ticket(f: &Fixture) -> String {
     let epoch = f.epoch();
     let player = f.client.player_snapshot(&epoch).await.unwrap();
     f.client
@@ -24,7 +24,10 @@ async fn ticket(f: &Fixture) -> String {
         .unwrap()
 }
 
-async fn commit(f: &Fixture, selection: PlaySelection) -> cumulus_core::Result<PlayerView> {
+pub(super) async fn commit(
+    f: &Fixture,
+    selection: PlaySelection,
+) -> cumulus_core::Result<PlayerView> {
     f.client
         .commit_prepared_selection(&f.epoch(), &ticket(f).await, selection)
         .await

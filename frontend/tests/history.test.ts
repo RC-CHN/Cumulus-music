@@ -13,6 +13,7 @@ import {
 } from '../src/services/history.ts';
 import {
   historyBrowseMenuIds,
+  historyBrowseSongMenuBlocked,
   selectHistoryBrowseRow,
   type HistoryBrowseSelection,
 } from '../src/services/historyBrowseSelection.ts';
@@ -345,4 +346,19 @@ test('history browse range uses visible order and can subtract without reorderin
   assert.deepEqual(historyBrowseMenuIds(selection, 'first'), ['first', 'second']);
   assert.deepEqual(historyBrowseMenuIds(selection, 'fourth'), []);
   assert.equal(selectHistoryBrowseRow(selection, rows, 'filtered-out', 'toggle'), selection);
+});
+
+test('history song menu disables definite copyright blocks but leaves mixed and unknown groups actionable', () => {
+  const blocked = new Set(['blocked', 'also-blocked']);
+  assert.equal(historyBrowseSongMenuBlocked('song', 'blocked', [], blocked), true);
+  assert.equal(historyBrowseSongMenuBlocked('song', 'unknown', [], blocked), false);
+  assert.equal(
+    historyBrowseSongMenuBlocked('song', 'blocked', ['also-blocked', 'blocked'], blocked),
+    true,
+  );
+  assert.equal(
+    historyBrowseSongMenuBlocked('song', 'blocked', ['blocked', 'unknown'], blocked),
+    false,
+  );
+  assert.equal(historyBrowseSongMenuBlocked('voice', 'blocked', [], blocked), false);
 });

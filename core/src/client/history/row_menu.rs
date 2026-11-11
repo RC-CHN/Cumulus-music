@@ -15,7 +15,7 @@ pub(super) fn project(
         || selected.len() == 1
         || selected.len() > 50_300
     {
-        return Err(Error::InvalidInput("invalid history row next selection"));
+        return Err(Error::InvalidInput("invalid history row menu selection"));
     }
     let mut available: HashMap<_, _> = snapshot
         .entries
@@ -32,40 +32,50 @@ pub(super) fn project(
             .iter()
             .position(|id| id == clicked)
             .ok_or(Error::InvalidInput(
-                "history row next anchor is outside selection",
+                "history row menu anchor is outside selection",
             ))?;
         let mut seen = HashSet::with_capacity(selected.len());
         let rows = selected
             .iter()
             .map(|id| {
                 if !seen.insert(id) {
-                    return Err(Error::InvalidInput("duplicate history row next selection"));
+                    return Err(Error::InvalidInput("duplicate history row menu selection"));
                 }
                 available.remove(id).ok_or(Error::QueueChanged)
             })
             .collect::<Result<Vec<_>>>()?;
         (rows, anchor)
     };
-    // M556:134–139 uses the displayed rights for menu enablement; it
+    // M556:96–100,134–139 uses the displayed rights for menu enablement; it
     // disables the group only when every chosen track is copyright-down.
-    if snapshot.kind == HistoryKind::Song && rows.iter().all(copyright_down) {
+    if snapshot.kind == HistoryKind::Song
+        && rows
+            .iter()
+            .all(|row| song_copyright_blocked(row) == Some(true))
+    {
         return Err(Error::State(
-            "history row next selection is copyright blocked",
+            "history row menu selection is copyright blocked",
         ));
     }
     Ok((rows, anchor))
 }
 
-fn copyright_down(row: &HistoryRecord) -> bool {
+pub(super) fn song_copyright_blocked(row: &HistoryRecord) -> Option<bool> {
     if row.resource["local_id"].is_string() {
-        return false;
+        return None;
+    }
+    let program = &row.resource["programId"];
+    if program.as_u64().is_some_and(|id| id != 0)
+        || program.as_str().is_some_and(|id| !id.is_empty())
+    {
+        return None;
     }
     let rights = &row.resource["privilege"];
     let status = rights.get("status").unwrap_or(&rights["st"]);
     status
         .as_i64()
         .or_else(|| status.as_str()?.parse().ok())
-        .is_some_and(|status| status < 0)
+        .map(|status| status < 0)
 }
 
 #[cfg(test)]
@@ -95,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn next_uses_only_clicked_or_the_gesture_order_and_keeps_the_anchor() {
+    fn row_menu_uses_only_clicked_or_the_gesture_order_and_keeps_the_anchor() {
         let (rows, anchor) = project(snapshot(), "10", &[]).unwrap();
         assert_eq!(rows[0].id, "10");
         assert_eq!(anchor, 0);
@@ -112,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn next_rejects_unknown_duplicate_or_unbound_ids() {
+    fn row_menu_rejects_unknown_duplicate_or_unbound_ids() {
         assert!(matches!(
             project(snapshot(), "10", &["10".into(), "99".into()]),
             Err(Error::QueueChanged)

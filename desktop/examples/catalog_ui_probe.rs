@@ -248,6 +248,7 @@ fn main() {
             else if history_collection { history_fixture::Library::with_collections() }
             else if history_chapters { history_fixture::Library::with_chapters() }
             else { history_fixture::Library::default() };
+        history_fixture.row_queue_menu=history_row_next;
         if history_download {history_fixture.downloads=Some(Arc::new(history_download_fixture::Fixture::default()));}
         if history_song_collect {history_fixture.song_collect=Some(history_song_collect_fixture::Fixture::default());}
         if history_song_download {history_fixture.song_download=Some(Arc::new(history_song_download_fixture::Fixture::default()));}

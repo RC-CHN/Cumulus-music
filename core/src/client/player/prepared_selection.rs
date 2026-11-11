@@ -300,6 +300,7 @@ impl MusicClient {
                 | PlaySelection::HistoryPlayAll { .. }
                 | PlaySelection::HistoryBatchPlay { .. }
                 | PlaySelection::HistoryRowNext { .. }
+                | PlaySelection::HistoryRowPlay { .. }
                 | PlaySelection::Songs { .. }
         ) {
             return Err(Error::InvalidInput(

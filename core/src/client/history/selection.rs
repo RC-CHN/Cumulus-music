@@ -1,5 +1,4 @@
 mod alternatives;
-mod row_next;
 
 use super::super::MusicClient;
 use crate::{
@@ -28,7 +27,7 @@ pub(in crate::client) struct Selection<'a> {
 pub(in crate::client) enum SelectionRows<'a> {
     Ids(&'a [String]),
     All,
-    RowNext {
+    RowMenu {
         clicked: &'a str,
         selected: &'a [String],
     },
@@ -40,7 +39,7 @@ enum SelectionMode {
     BatchAdd,
     BatchPlay,
     PlayAll,
-    RowNext,
+    RowMenu,
 }
 
 impl MusicClient {
@@ -71,12 +70,7 @@ impl MusicClient {
         let mode = match (play, &selection.rows) {
             (true, SelectionRows::All) => SelectionMode::PlayAll,
             (true, SelectionRows::Ids(_)) => SelectionMode::BatchPlay,
-            (false, SelectionRows::RowNext { .. }) => SelectionMode::RowNext,
-            (true, SelectionRows::RowNext { .. }) => {
-                return Err(Error::InvalidInput(
-                    "history row next cannot replace playback",
-                ));
-            }
+            (_, SelectionRows::RowMenu { .. }) => SelectionMode::RowMenu,
             (false, _) => SelectionMode::BatchAdd,
         };
         self.history_selection_inner(token, selection, attempt, mode)
@@ -148,11 +142,11 @@ impl MusicClient {
                 }
                 (chosen, index)
             }
-            SelectionRows::RowNext { clicked, selected } => {
-                if mode != SelectionMode::RowNext || index != 0 {
-                    return Err(Error::InvalidInput("invalid history row next action"));
+            SelectionRows::RowMenu { clicked, selected } => {
+                if mode != SelectionMode::RowMenu || index != 0 {
+                    return Err(Error::InvalidInput("invalid history row menu action"));
                 }
-                row_next::project(snapshot, clicked, selected)?
+                super::row_menu::project(snapshot, clicked, selected)?
             }
         };
         let (resources, index, source) = match kind {
@@ -320,7 +314,7 @@ impl MusicClient {
                 match resource {
                     Ok(resource) => resources.push(resource),
                     Err(error)
-                        if matches!(mode, SelectionMode::PlayAll | SelectionMode::RowNext)
+                        if matches!(mode, SelectionMode::PlayAll | SelectionMode::RowMenu)
                             && unavailable_local_row(&error) =>
                     {
                         resources.push(json!({"missing":true}));
@@ -383,7 +377,7 @@ impl MusicClient {
                 .map(|p| Ok((identifier(&p["id"])?, p)))
                 .collect::<Result<BTreeMap<_, _>>>()?;
             for ((slot, id), song) in chunk.iter().zip(songs.songs) {
-                let alternate = matches!(mode, SelectionMode::PlayAll | SelectionMode::RowNext)
+                let alternate = matches!(mode, SelectionMode::PlayAll | SelectionMode::RowMenu)
                     .then(|| alternatives::declared(id, song.as_ref(), privileges.get(id)))
                     .flatten();
                 let song = song

@@ -167,8 +167,9 @@ import type {
   HistoryRadioKind,
   HistoryRadioMenuAction,
   HistoryResource,
-  HistoryRowNextOutcome,
-  HistoryRowNextTarget,
+  HistoryRowQueueAction,
+  HistoryRowQueueOutcome,
+  HistoryRowQueueTarget,
   HistorySelectionScope,
 } from './services/history';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
@@ -714,7 +715,7 @@ function playHistory(kind: HistoryKind, revision: string, ids: string[], index: 
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
-const historyRowNextReady = computed(() => {
+const historyRowQueueReady = computed(() => {
   const view = player.view.value;
   return (
     player.ready.value &&
@@ -726,10 +727,11 @@ const historyRowNextReady = computed(() => {
     !together.view.value?.attached
   );
 });
-async function nextHistoryRow(
-  target: HistoryRowNextTarget,
+async function selectHistoryRowQueue(
+  action: HistoryRowQueueAction,
+  target: HistoryRowQueueTarget,
   live: () => boolean,
-): Promise<HistoryRowNextOutcome | undefined> {
+): Promise<HistoryRowQueueOutcome | undefined> {
   const route = music.page.value;
   const owner = target.epoch;
   const before = player.view.value;
@@ -743,12 +745,12 @@ async function nextHistoryRow(
     music.account.value.epoch === owner &&
     recent.page.value?.kind === target.kind &&
     recent.page.value.revision === target.revision;
-  if (!before || !historyRowNextReady.value || !current()) return;
+  if (!before || !historyRowQueueReady.value || !current()) return;
   const next = await player.prepareSelectionForPage(async (epoch) => {
     if (!current() || epoch !== owner || recent.loading.value || recent.busy.value)
       throw { code: 'stale', message: '播放记录已更新', retryable: false };
     return {
-      kind: 'history_row_next',
+      kind: action === 'play' ? 'history_row_play' : 'history_row_next',
       history_kind: target.kind,
       revision: target.revision,
       clicked_id: target.clickedId,
@@ -756,8 +758,14 @@ async function nextHistoryRow(
       quality: before.qualityPreferences.quality,
     };
   });
-  if (!next || !current() || next.queueRevision === before.queueRevision) return;
-  return before.queueLen === 0 && next.playId ? 'playing' : 'queued';
+  if (!next || !current()) return;
+  const started =
+    !!next.playId &&
+    (next.state === 'playing' || next.state === 'buffering') &&
+    (next.playId !== before.playId || next.state !== before.state);
+  if (action === 'play') return started ? 'playing' : undefined;
+  if (next.queueRevision === before.queueRevision) return;
+  return before.queueLen === 0 ? (started ? 'playing' : undefined) : 'queued';
 }
 async function selectHistoryBatch(
   kind: HistoryQueueKind,
@@ -6584,8 +6592,8 @@ onUnmounted(() => {
                 :downloading-songs="trackActions?.songGroupDownloadActive"
                 :collect-feedback="historyCollectFeedback"
                 :playable="player.ready.value && !player.busy.value"
-                :row-next-ready="historyRowNextReady"
-                :row-next-selection="nextHistoryRow"
+                :row-queue-ready="historyRowQueueReady"
+                :row-queue-selection="selectHistoryRowQueue"
                 :route-identity="page"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
