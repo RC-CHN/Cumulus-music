@@ -510,11 +510,14 @@ def main():
     if args.filtered_pagination:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['searchFilteredPaginationVerified'] and complete['stageCount'] == 6
+        assert complete['ok'] and complete['searchFilteredPaginationVerified'] and complete['stageCount'] == 10
         assert complete['searchCategoryEmptyVerified']
+        assert complete['emptyCategories'] == [
+            'all', 'artists', 'users', 'mvs', 'songs', 'lyrics', 'podcasts', 'playlists', 'albums', 'voices',
+        ]
         assert complete['filteredMvReads'] == [[0, 13], [13, 13], [26, 13]]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (10 if args.screenshots else 0)
         print(json.dumps(dict(complete, actualWebView=True)))
         return
     if args.suggestion_focus:

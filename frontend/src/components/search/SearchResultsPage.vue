@@ -198,6 +198,10 @@ const limit = computed(() =>
 );
 const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, category.value));
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
+const emptyCategoryLabel = computed(() => {
+  if (category.value === 'all' || (props.guestReady && !gridWaterfall.value)) return;
+  return category.value === 'podcasts' && !props.guestReady ? '播单' : selected.value.title;
+});
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
 const songTableHints = (section: SearchSection) =>
@@ -1010,12 +1014,16 @@ onBeforeUnmount(() => {
             <p v-if="explanation.emptyTitle">{{ explanation.emptyTitle }}</p>
             <p v-else-if="view.more">这一页暂无可展示的结果</p>
             <p v-else-if="view.unavailableCount">暂无可展示的结果</p>
-            <p v-else-if="gridWaterfall" class="search-empty-category">
+            <p v-else-if="emptyCategoryLabel" class="search-empty-category">
               咱搜不到关于“<span class="search-empty-keyword">{{ matchKeyword }}</span
-              >”的任何{{ selected.title }}呀！
+              >”的任何{{ emptyCategoryLabel }}呀！
             </p>
+            <p v-else-if="!guestReady">咱搜不到任何信息呀！</p>
             <p v-else>没有找到相关{{ selected.title === '综合' ? '内容' : selected.title }}</p>
-            <small>{{ view.more ? '可继续查看后续结果' : '试试其他关键词，或切换分类' }}</small>
+            <small v-if="view.more">可继续查看后续结果</small>
+            <small v-else-if="guestReady || view.unavailableCount"
+              >试试其他关键词，或切换分类</small
+            >
           </div>
           <section
             v-for="section in view.sections"

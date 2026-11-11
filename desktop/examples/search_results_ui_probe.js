@@ -401,16 +401,26 @@
       await fixture('empty');
       const emptyWord='合成空结果'.repeat(8);
       await fresh(emptyWord);
-      for(const [category,label] of [['artists','歌手'],['users','用户'],['mvs','MV']]){
+      const emptyPanel=()=>panel().querySelector('.empty-state');
+      assert(emptyPanel()?.querySelector('p')?.textContent.trim()==='咱搜不到任何信息呀！'&&
+        !emptyPanel().querySelector('small')&&!more(),'comprehensive terminal empty uses the fall default');
+      await capture('empty_category_all');
+      const emptyCategories=[['artists','歌手'],['users','用户'],['mvs','MV'],['songs','单曲'],
+        ['lyrics','歌词'],['podcasts','播单'],['playlists','歌单'],['albums','专辑'],['voices','声音']];
+      for(const [category,label] of emptyCategories){
         await choose(category);
-        const keyword=panel().querySelector('.search-empty-keyword');
-        assert(keyword?.textContent===emptyWord&&keyword.parentElement.textContent.includes('的任何'+label+'呀！'),
-          'terminal empty result identifies the effective query and category');
-        assert(keyword.clientWidth<=200&&keyword.scrollWidth>keyword.clientWidth&&!more(),
-          'long query is visually bounded and an exhausted search cannot continue');
-        await capture('empty_category_'+category);
+        const keyword=emptyPanel()?.querySelector('.search-empty-keyword');
+        assert(keyword?.textContent===emptyWord&&keyword.parentElement.textContent.trim()===
+          `咱搜不到关于“${emptyWord}”的任何${label}呀！`,
+          'terminal empty result identifies the effective query and category: '+category);
+        assert(keyword.clientWidth<=200&&keyword.scrollWidth>keyword.clientWidth&&!more()&&
+          !emptyPanel().querySelector('small'),
+          'long query is visually bounded and an exhausted search cannot continue: '+category);
+        if(!['playlists','albums','voices'].includes(category))await capture('empty_category_'+category);
       }
-      await emit('complete',{ok:true,searchFilteredPaginationVerified:true,searchCategoryEmptyVerified:true,stageCount:count,filteredMvReads:filteredMvReads.slice(0,3),realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchFilteredPaginationVerified:true,searchCategoryEmptyVerified:true,
+        emptyCategories:['all',...emptyCategories.map(([category])=>category)],stageCount:count,
+        filteredMvReads:filteredMvReads.slice(0,3),realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchSuggestionFocusProof){
