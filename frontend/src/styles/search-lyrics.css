@@ -13,8 +13,20 @@
 .search-lyric-result.lyric-striped {
   background: var(--surface-alt);
 }
+.search-lyric-result.lyric-selected {
+  background: var(--surface-hover);
+  box-shadow: inset 2px 0 var(--accent);
+}
 .search-lyric-result .track-row.striped {
   background: transparent;
+}
+.search-lyric-result .track-row[aria-selected='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+.search-lyric-result .track-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .search-lyric-result .track-row:hover {
   background: var(--surface-hover);

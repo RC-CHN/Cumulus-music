@@ -802,6 +802,40 @@ impl MusicClient {
                 .player_mode_for(epoch, mode, &expected_queue_revision, fm)
                 .await;
         }
+        if let PlayerAction::SearchLyricGroupPlayback {
+            operation,
+            anchor,
+            rows,
+            quality,
+            expected_play_id,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() || policy != NativeTransportPolicy::Ordinary {
+                return Err(Error::InvalidInput(
+                    "lyric search group used as native media command",
+                ));
+            }
+            return self
+                .search_group_playback(
+                    epoch,
+                    next_play::SearchGroupRequest {
+                        action: match operation {
+                            super::search::LyricGroupOperation::Play => {
+                                next_play::SearchGroupAction::Play
+                            }
+                            super::search::LyricGroupOperation::Next => {
+                                next_play::SearchGroupAction::Next
+                            }
+                        },
+                        selection: next_play::SearchGroupRows::Lyrics { anchor, rows },
+                        quality,
+                        expected_play_id,
+                        expected_queue_revision,
+                    },
+                )
+                .await;
+        }
         let search_group_play = matches!(action, PlayerAction::SearchGroupPlay { .. });
         if let PlayerAction::SearchGroupNextPlay {
             anchor,
@@ -832,8 +866,7 @@ impl MusicClient {
                         } else {
                             next_play::SearchGroupAction::Next
                         },
-                        anchor,
-                        rows,
+                        selection: next_play::SearchGroupRows::Songs { anchor, rows },
                         quality,
                         expected_play_id,
                         expected_queue_revision,
@@ -1968,6 +2001,7 @@ impl MusicClient {
             | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::SearchGroupNextPlay { .. }
             | PlayerAction::SearchGroupPlay { .. }
+            | PlayerAction::SearchLyricGroupPlayback { .. }
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueSortedPlaylist { .. }
             | PlayerAction::QueueOfflinePlaylist { .. }

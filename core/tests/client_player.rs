@@ -244,6 +244,7 @@ impl Api for Backend {
                            "topComments":[row(10)],"total":3,"more":first,"moreHot":true})
                 }
                 "/api/search/song/list/page" => search_queue_drop::response(&payload),
+                "/api/search/resource/lyric" => search_lyric_group::response(&payload),
                 "/api/w/nuser/account/get" => json!({"code":200,"profile":{"userId":9}}),
                 "/api/rtrs/abt/front/expinfo/list" => {
                     assert_eq!(payload, json!({"expNames":"StandardAudio_VIPLogo_PCV2"}));
@@ -505,6 +506,8 @@ mod vinyl_similar;
 #[path = "client_player/vinyl_composer.rs"]
 mod vinyl_composer;
 
+#[path = "client_player/search_lyric_group.rs"]
+mod search_lyric_group;
 #[path = "client_player/search_queue_drop.rs"]
 mod search_queue_drop;
 

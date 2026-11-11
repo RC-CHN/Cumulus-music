@@ -143,10 +143,20 @@ pub(super) enum SearchGroupAction {
     Next,
 }
 
+pub(super) enum SearchGroupRows {
+    Songs {
+        anchor: crate::client::search::SearchDropRow,
+        rows: Vec<crate::client::search::SearchDropRow>,
+    },
+    Lyrics {
+        anchor: String,
+        rows: Vec<String>,
+    },
+}
+
 pub(super) struct SearchGroupRequest {
     pub action: SearchGroupAction,
-    pub anchor: crate::client::search::SearchDropRow,
-    pub rows: Vec<crate::client::search::SearchDropRow>,
+    pub selection: SearchGroupRows,
     pub quality: Quality,
     pub expected_play_id: Option<String>,
     pub expected_queue_revision: String,
@@ -161,8 +171,7 @@ impl MusicClient {
         use super::{super::focus::Owner, queue_playlist::queue_resource_for_track};
         let SearchGroupRequest {
             action,
-            anchor,
-            rows,
+            selection,
             quality,
             expected_play_id,
             expected_queue_revision,
@@ -172,11 +181,47 @@ impl MusicClient {
         let api = self.session.native_api(&token)?;
         self.session
             .with_verified_profile(&token, &api, |_, _| Ok(()))?;
-        let credentials = api
-            .search_privilege_credential_revision()?
-            .ok_or(Error::StaleResponse)?;
-        let pages = self.search.queue_drops.clone();
-        let chosen = pages.resolve_group_next(&token, &api, &credentials, &anchor, &rows)?;
+        let authority_api = api.clone();
+        let (anchor_id, tracks, authority) = match selection {
+            SearchGroupRows::Songs { anchor, rows } => {
+                let credentials = api
+                    .search_privilege_credential_revision()?
+                    .ok_or(Error::StaleResponse)?;
+                let pages = self.search.queue_drops.clone();
+                let mut chosen =
+                    pages.resolve_group_next(&token, &api, &credentials, &anchor, &rows)?;
+                let tracks = std::mem::take(&mut chosen.tracks);
+                let authority = Cancellation::new(move || {
+                    authority_api
+                        .search_privilege_credential_revision()
+                        .ok()
+                        .flatten()
+                        .as_ref()
+                        == Some(&credentials)
+                        && pages.group_next_current(&chosen)
+                });
+                (anchor.track_id, tracks, authority)
+            }
+            SearchGroupRows::Lyrics { anchor, rows } => {
+                let credentials = api
+                    .lyric_group_playback_credential_revision()?
+                    .ok_or(Error::StaleResponse)?;
+                let pages = self.search.lyric_groups.clone();
+                let mut chosen = pages.resolve(&token, &api, &credentials, &anchor, &rows)?;
+                let anchor_id = std::mem::take(&mut chosen.anchor_id);
+                let tracks = std::mem::take(&mut chosen.tracks);
+                let authority = Cancellation::new(move || {
+                    authority_api
+                        .lyric_group_playback_credential_revision()
+                        .ok()
+                        .flatten()
+                        .as_ref()
+                        == Some(&credentials)
+                        && pages.current(&chosen)
+                });
+                (anchor_id, tracks, authority)
+            }
+        };
         let room = self.together_detached_guard(&token);
         let auth = self.auth.pending_guard();
         auth()?;
@@ -217,11 +262,10 @@ impl MusicClient {
             && before
                 .selected
                 .as_ref()
-                .is_some_and(|entry| identity::online_song(&entry.resource, &anchor.track_id));
+                .is_some_and(|entry| identity::online_song(&entry.resource, &anchor_id));
         let focus = start.then(|| self.focus.snapshot()).transpose()?;
         let source = search_track_source();
-        let resources = chosen
-            .tracks
+        let resources = tracks
             .iter()
             .map(|track| {
                 let mut resource = queue_resource_for_track(track, quality);
@@ -233,7 +277,7 @@ impl MusicClient {
             queue.clone(),
             resources,
             source,
-            start.then_some(anchor.track_id.as_str()),
+            start.then_some(anchor_id.as_str()),
             &mut rand::rng(),
         )?;
         let session = self.session.clone();
@@ -252,13 +296,7 @@ impl MusicClient {
                 && session
                     .with_verified_profile(&owner, &api, |_, _| Ok(()))
                     .is_ok()
-                && api
-                    .search_privilege_credential_revision()
-                    .ok()
-                    .flatten()
-                    .as_ref()
-                    == Some(&credentials)
-                && pages.group_next_current(&chosen)
+                && !authority.is_cancelled()
         });
         guard.check()?;
         let expected = before.fence();

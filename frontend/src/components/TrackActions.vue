@@ -797,22 +797,34 @@ async function select(key: string) {
   if (group && (key === 'play' || key === 'next')) {
     const view = props.player.view.value;
     const target = currentSearchGroupQueue();
-    if (!view || !target || !group.action) return;
+    const action = group.action;
+    if (!view || !target || !action) return;
     const attempt = sequence;
-    const wire = ({ receipt, trackId }: (typeof group.action.rows)[number]) => ({
+    const wire = ({ receipt, trackId }: { receipt: string; trackId: string }) => ({
       receipt,
       track_id: trackId,
     });
+    const expected = {
+      quality: view.qualityPreferences.quality,
+      expected_play_id: target.playId,
+      expected_queue_revision: target.revision,
+    };
     try {
       const result = await props.player.searchQueueMenuAction(
-        {
-          kind: key === 'play' ? 'search_group_play' : 'search_group_next_play',
-          anchor: wire(group.action.anchor),
-          rows: group.action.rows.map(wire),
-          quality: view.qualityPreferences.quality,
-          expected_play_id: target.playId,
-          expected_queue_revision: target.revision,
-        },
+        action.source === 'lyrics'
+          ? {
+              kind: 'search_lyric_group_playback',
+              operation: key,
+              anchor: action.anchor,
+              rows: action.rows,
+              ...expected,
+            }
+          : {
+              kind: key === 'play' ? 'search_group_play' : 'search_group_next_play',
+              anchor: wire(action.anchor),
+              rows: action.rows.map(wire),
+              ...expected,
+            },
         () => attempt === sequence && group.live(),
       );
       if (

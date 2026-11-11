@@ -11,9 +11,83 @@ COMMENT_STAGES = (
     'lyric_comment_thread', 'lyric_comment_zero', 'lyric_comment_transport',
     'lyric_comment_type_hidden', 'lyric_comment_stale', 'lyric_comment_reopened',
 )
+GROUP_STAGES = (
+    'lyric_group_initial', 'lyric_group_selected', 'lyric_group_blocked',
+    'lyric_group_next', 'lyric_group_play', 'lyric_group_continuation',
+    'lyric_group_restored', 'lyric_group_single_outsider', 'lyric_group_tab_reset',
+)
 COUNT_PATH = '/api/resource/commentInfo/list'
 LYRIC_PATH = '/api/search/resource/lyric'
 THREAD_PATH = '/api/v1/resource/comments/R_SO_4_3'
+
+
+def verify_group(root, screenshots):
+    first = root / 'first'
+    read = lambda p: json.loads(p.read_text(encoding='utf-8'))
+    complete = read(first / 'complete.json')
+    names = [f'ux_{i:02}_{label}' for i, label in enumerate(GROUP_STAGES, 1)]
+    assert complete['ok'] and complete['searchLyricGroupVerified'] and complete['stageCount'] == len(names)
+    assert [p.stem for p in sorted(first.glob('ux_*.json'))] == names
+    assert [p.stem for p in sorted(first.glob('ux_*.png'))] == (names if screenshots else [])
+    rows = [read(first / f'{name}.json') for name in names]
+    assert [row['label'] for row in rows] == list(GROUP_STAGES)
+    for index in (1, 2, 3, 4, 6):
+        assert rows[index]['selectedOrdinals'] == [0, 1, 2, 3]
+    assert rows[1]['modifiedOutsiderGroupDisabled'] is True
+    assert rows[7]['selectedOrdinals'] == [4] and len(rows[8]['selectedOrdinals']) <= 1
+
+    def identity(row, ids, state=None, track=None):
+        snapshot, queue = row['nativePlayer'], row['nativeQueue']
+        assert queue['epoch'] == snapshot['epoch'] and queue['revision'] == snapshot['queueRevision']
+        assert queue['current'] == snapshot['entryId']
+        assert [entry['track']['id'] for entry in queue['tracks']] == ids
+        assert len({entry['entryId'] for entry in queue['tracks']}) == len(ids)
+        if state is not None:
+            assert snapshot['state'] == state
+        if track is not None:
+            assert snapshot['track']['id'] == track
+        return snapshot['epoch'], snapshot['playId'], snapshot['entryId']
+
+    baseline = identity(rows[0], ['91', '92'], 'paused', '91')
+    for row in rows[1:3]:
+        assert identity(row, ['91', '92'], 'paused', '91') == baseline
+        assert row['nativeQueue']['revision'] == rows[0]['nativeQueue']['revision']
+    final_ids = ['91', '103', '101', '92']
+    assert identity(rows[3], final_ids, 'paused', '91') == baseline
+    assert identity(rows[4], final_ids, 'playing', '101') != baseline
+    assert rows[4]['nativePlayer']['position'] > .1
+    assert complete['finalQueue'] == final_ids
+    operations = complete['operations']
+    assert len(operations) == 3
+    wanted = [
+        dict(id='103', ordinal=2, right='playable'),
+        dict(id='102', ordinal=1, right='copyright_blocked'),
+        dict(id='101', ordinal=3, right='playable'),
+    ]
+    for index, operation in enumerate(operations[-2:]):
+        assert operation == dict(operation=('next', 'play')[index], anchor=wanted[2], rows=wanted,
+                                 hasPlayId=True, queueRevision=rows[(0, 3)[index]]['nativeQueue']['revision'])
+    blocked_rows = [*wanted[:2], dict(wanted[2], ordinal=0)]
+    assert operations[0] == dict(operation='next', anchor=wanted[1], rows=blocked_rows,
+                                 hasPlayId=True, queueRevision=rows[0]['nativeQueue']['revision'])
+    assert all(row['searchLyricGroupFixture']['rowCounts'] == [] for row in rows[:7])
+    fixture = complete['searchLyricGroupFixture']
+    assert fixture['rowCounts'] == [dict(source='Lyrics', args=dict(resourceType=4, resourceIds='["104"]'))]
+    assert [record['args']['offset'] for record in fixture['lyrics']][:2] == [0, 10]
+    assert all(record['path'] == LYRIC_PATH and not record['cached'] and
+               record['args']['keyword'] == '合成歌词组选曲' for record in fixture['lyrics'])
+    media = fixture['media']
+    assert any(record['id'] == 101 and record['trialMode'] == 42 for record in media)
+    assert all(record['id'] in (91, 92) or (record['id'] in (101, *range(103, 113)) and
+               record['trialMode'] == 42) for record in media)
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    report = dict(ok=True, actualWebView=True, nativeIpc=True, stageCount=len(rows),
+                  exactClickedDuplicate=operations[-1]['anchor'], nativeQueue=final_ids,
+                  selectedInGestureOrder=True, retainedThroughContinuation=True,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                                     encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
 
 
 def verify_comments(root, screenshots):
@@ -115,6 +189,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--waterfall', action='store_true')
     mode.add_argument('--comment-count', action='store_true')
+    mode.add_argument('--group-play', action='store_true')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -135,7 +210,12 @@ def main():
     script_name = 'search_lyrics_waterfall_ui_probe.js' if args.waterfall else 'search_lyrics_ui_probe.js'
     source = Path(__file__).resolve().parents[2] / 'desktop/examples' / script_name
     script = root / 'search-lyrics.js'
-    if args.comment_count:
+    if args.group_play:
+        env['CUMULUS_SEARCH_LYRIC_GROUP_PROOF'] = '1'
+        body = ('window.__cumulusSearchLyricGroupProof = true;\n'
+                + source.with_name('search_lyric_group_ui_probe.js').read_text(encoding='utf-8') + '\n'
+                + source.with_name('search_results_ui_probe.js').read_text(encoding='utf-8'))
+    elif args.comment_count:
         env['CUMULUS_SEARCH_LYRIC_COMMENT_PROOF'] = '1'
         body = ('window.__cumulusSearchLyricCommentProof = true;\n'
                 + source.with_name('search_lyric_comment_ui_probe.js').read_text(encoding='utf-8') + '\n'
@@ -146,10 +226,13 @@ def main():
     env['CUMULUS_UX_SCRIPT'] = str(script)
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots,
-                      acknowledge_receipts=args.comment_count)
+                      acknowledge_receipts=args.comment_count or args.group_play)
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.group_play:
+        verify_group(root, args.screenshots)
+        return
     if args.comment_count:
         verify_comments(root, args.screenshots)
         return

@@ -787,6 +787,16 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","action":{"kind":"play"}}),
         ),
         (
+            "player_action",
+            json!({"epoch":"0","action":{
+                "kind":"search_lyric_group_playback",
+                "operation":"next",
+                "anchor":"11111111111111111111111111111111",
+                "rows":["22222222222222222222222222222222","11111111111111111111111111111111"],
+                "quality":"standard","expected_play_id":null,"expected_queue_revision":"0"
+            }}),
+        ),
+        (
             "play_selection",
             json!({"epoch":"0","selection":{"kind":"songs","ids":["1"],"index":0,"quality":"lossless"}}),
         ),

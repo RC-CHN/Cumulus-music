@@ -57,6 +57,14 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchLyricGroupProof){
+      const proof=await window.__searchLyricGroupRun({
+        one,all,wait,button,click,key,fresh,choose,capture,fixture,sleep,assert,ready,
+      });
+      await emit('complete',{ok:true,searchLyricGroupVerified:true,stageCount:count,
+        ...proof,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchVoiceLinksProof){
       await window.__searchVoiceLinksRun({one,wait,click,key,fresh,choose,capture,emit,fixture,assert,theme});
       await emit('complete',{ok:true,voiceLinksVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});

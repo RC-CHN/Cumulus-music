@@ -25,8 +25,10 @@ pub enum SearchItem {
         group_download: Option<super::SearchGroupDownloadRow>,
         #[serde(rename = "songCommentMenu", skip_serializing_if = "Option::is_none")]
         song_comment_menu: Option<Box<super::SearchSongCommentMenu>>,
+        #[serde(rename = "lyricGroupPlayback", skip_serializing_if = "Option::is_none")]
+        lyric_group_playback: Option<Box<super::LyricGroupPlaybackRow>>,
         #[serde(rename = "songShareReceipt", skip_serializing_if = "Option::is_none")]
-        song_share_receipt: Option<String>,
+        song_share_receipt: Option<Box<str>>,
         #[serde(
             rename = "songPublicLinkAvailable",
             skip_serializing_if = "std::ops::Not::not"
@@ -245,6 +247,8 @@ pub struct SearchResultView {
     #[serde(skip)]
     pub(super) song_comment_rows: Vec<Option<String>>,
     #[serde(skip)]
+    pub(super) lyric_group_rows: Vec<super::lyric_group::Observation>,
+    #[serde(skip)]
     pub(super) song_share_rows: Vec<Option<super::song_share::Song>>,
 }
 impl MusicClient {
@@ -314,6 +318,20 @@ impl MusicClient {
         let value = self
             .session
             .run_for(token, |api, uid| async move {
+                let lyric_group_read = if query.category == SearchCategory::Lyrics {
+                    let revision = if self.login_pending()? {
+                        None
+                    } else {
+                        api.lyric_group_playback_credential_revision()
+                            .ok()
+                            .flatten()
+                    };
+                    self.search
+                        .lyric_groups
+                        .begin(token, &api, &query, revision)?
+                } else {
+                    None
+                };
                 let correction_revision = (query.category == SearchCategory::All && query.correct)
                     .then(|| api.search_default_context_revision().ok().flatten())
                     .flatten();
@@ -622,6 +640,11 @@ impl MusicClient {
                             &mut view,
                         )?;
                         if !songs {
+                            if let Some(read) = lyric_group_read.filter(|_| !login_pending) {
+                                self.search
+                                    .lyric_groups
+                                    .capture(token, &api, read, &mut view)?;
+                            }
                             return Ok(());
                         }
                         self.search
@@ -900,6 +923,7 @@ fn item(
                 group_next_right: None,
                 group_download: None,
                 song_comment_menu: None,
+                lyric_group_playback: None,
                 song_share_receipt: None,
                 song_public_link_available: false,
                 mv_id,
@@ -1098,6 +1122,7 @@ impl SearchResultView {
             hot_explanation: None,
             preview_layout: None,
             song_comment_rows: vec![],
+            lyric_group_rows: vec![],
             song_share_rows: vec![],
         }
     }
@@ -1354,6 +1379,15 @@ pub(super) fn project(
             Voices => voice_table_item(base),
             _ => item(kind, base, uid, lyric, None, false),
         };
+        if lyrics {
+            let track = match &projected {
+                Ok(Some(SearchItem::Song { track, .. })) => Some(track),
+                _ => None,
+            };
+            if let Some(observation) = super::lyric_group::observe(resource, track) {
+                result.lyric_group_rows.push(observation);
+            }
+        }
         match projected {
             Ok(Some(mut item)) => {
                 if query.category == Songs

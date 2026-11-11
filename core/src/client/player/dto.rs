@@ -902,6 +902,15 @@ pub enum PlayerAction {
         expected_play_id: Option<String>,
         expected_queue_revision: String,
     },
+    SearchLyricGroupPlayback {
+        operation: super::super::search::LyricGroupOperation,
+        anchor: String,
+        rows: Vec<String>,
+        quality: Quality,
+        #[serde(deserialize_with = "Deserialize::deserialize")]
+        expected_play_id: Option<String>,
+        expected_queue_revision: String,
+    },
     Startup,
     Equalizer {
         expected_revision: String,

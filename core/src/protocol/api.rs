@@ -1252,6 +1252,13 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Credential revision for the exact native Lyrics result, account and
+    /// media source scopes. Synthetic native transports may share their
+    /// search revision; the PC HTTP transport checks each URL's Cookie jar.
+    fn lyric_group_playback_credential_revision(&self) -> Result<Option<String>> {
+        self.search_privilege_credential_revision()
+    }
+
     /// Recheck a song observed in a dedicated song or lyric search result.
     /// Native HTTP implementations also fence the queued request at dispatch.
     fn request_search_song_comment_information<'a>(

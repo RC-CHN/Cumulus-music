@@ -94,6 +94,8 @@ mod search_fixture;
 mod search_group_download_fixture;
 #[path = "support/search_lyric_comment_fixture.rs"]
 mod search_lyric_comment_fixture;
+#[path = "support/search_lyric_group_fixture.rs"]
+mod search_lyric_group_fixture;
 #[path = "support/search_mv_fixture.rs"]
 mod search_mv_fixture;
 #[path = "support/search_podcast_playback_fixture.rs"]
@@ -252,6 +254,11 @@ fn playlist(id: u64) -> Value {
     playlist
 }
 impl Api for Library {
+    fn lyric_group_playback_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(search_lyric_group_fixture::enabled()
+            .then(|| search_lyric_group_fixture::CREDENTIAL_REVISION.into()))
+    }
+
     fn song_card_download_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(search_group_download_fixture::enabled()
             .then(|| "synthetic-search-group-download".into()))
@@ -286,7 +293,9 @@ impl Api for Library {
             if self.search_privilege_credential_revision()?.as_deref() != revision {
                 return Err(cumulus_core::Error::CredentialChanged);
             }
-            if search_lyric_comment_fixture::enabled() {
+            if search_lyric_group_fixture::enabled() {
+                search_lyric_group_fixture::record_menu_count(source, &payload)
+            } else if search_lyric_comment_fixture::enabled() {
                 search_lyric_comment_fixture::scoped_count(source, &payload).await
             } else {
                 self.call(search_lyric_comment_fixture::COUNT, payload, false, &[200])
@@ -966,6 +975,9 @@ impl Api for Library {
             if let Some(result) = search_voice_menu_fixture::response(path, &args, cached).await {
                 return result;
             }
+            if let Some(result) = search_lyric_group_fixture::response(path, &args, cached) {
+                return result;
+            }
             if let Some(result) = search_lyric_comment_fixture::response(path, &args, cached) {
                 return result;
             }
@@ -1236,6 +1248,7 @@ impl Api for Library {
                         return value;
                     }
                     let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
+                    search_lyric_group_fixture::record_media(&ids, &args)?;
                     search_fixture::group_next_media_call(&ids, &args["trialMode"])?;
                     card_source_fixture::record_authorization(&ids);
                     let mut row = json!({"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120});
@@ -2194,6 +2207,7 @@ fn main() {
             if playlist_song_comment_fixture::enabled() { value["playlistSongCommentFixture"] = playlist_song_comment_fixture::report(); }
             if search_song_comment_fixture::enabled() { value["searchSongCommentFixture"] = search_song_comment_fixture::report(); }
             if search_lyric_comment_fixture::enabled() { value["searchLyricCommentFixture"] = search_lyric_comment_fixture::receipt(); }
+            if search_lyric_group_fixture::enabled() { value["searchLyricGroupFixture"] = search_lyric_group_fixture::receipt(); }
             if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
             if download_liked_fixture::enabled() { value["syntheticDownloadLiked"] = download_liked_fixture::report(&proof_store); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
@@ -2233,14 +2247,14 @@ fn main() {
                     // Queue proof stages await this actor barrier before the
                     // script releases an intentionally held clear/edit. A watch
                     // snapshot may still describe the previous queue revision.
-                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() || zone_fm_preview_fixture::enabled() {
+                    let player = if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || quality_cards_proof || search_podcast_playback_proof || queue_ui_proof || queue_click_proof || search_footer_ui_proof || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() || search_lyric_group_fixture::enabled() || zone_fm_preview_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
                     };
                     if let Ok(snapshot)=player {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() {
+                        if chorus_queue_fixture::enabled() || fm_chorus_fixture::enabled() || daily_notification_proof || audio_effect_tabs_proof || std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() || search_song_comment_fixture::enabled() || search_lyric_comment_fixture::enabled() || search_lyric_group_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                         if profile_play_record_fixture::play_card_enabled() {

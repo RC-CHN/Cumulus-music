@@ -61,7 +61,10 @@ export interface TrackMenuRequest {
     epoch: string;
     download?: import('./search').SearchGroupDownloadSelection;
     allDownloadsBlocked: boolean;
-    action: { anchor: SearchQueueRow; rows: SearchQueueRow[] } | undefined;
+    action:
+      | { source: 'songs'; anchor: SearchQueueRow; rows: SearchQueueRow[] }
+      | { source: 'lyrics'; anchor: string; rows: string[] }
+      | undefined;
     allCopyrightBlocked: boolean;
     live: () => boolean;
   };

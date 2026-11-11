@@ -39,7 +39,11 @@ function sameSelection(a: PlayerView | undefined, b: PlayerView | undefined) {
 }
 
 type SearchQueueMenuAction = PlayerAction & {
-  kind: 'search_next_play' | 'search_group_next_play' | 'search_group_play';
+  kind:
+    | 'search_next_play'
+    | 'search_group_next_play'
+    | 'search_group_play'
+    | 'search_lyric_group_playback';
 };
 
 export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => void = () => {}) {
@@ -395,7 +399,11 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (input.kind === 'refresh_for') return run(invoke, invoke, true);
     // A search menu selection is bound to one result and queue snapshot.
     // Reopening the menu is a new intent; the player must not retry the old one.
-    if (input.kind === 'search_group_next_play' || input.kind === 'search_group_play')
+    if (
+      input.kind === 'search_group_next_play' ||
+      input.kind === 'search_group_play' ||
+      input.kind === 'search_lyric_group_playback'
+    )
       return run(invoke, null, true);
     if (input.kind !== 'quality_for') return run(invoke);
     const origin = view.value;

@@ -203,7 +203,7 @@ impl SearchSongShares {
             }
             let receipt = nonce();
             rows.insert(receipt.clone(), Arc::new(row));
-            *song_share_receipt = Some(receipt);
+            *song_share_receipt = Some(receipt.into_boxed_str());
         }
         if !rows.is_empty() {
             let mut state = self.0.lock().map_err(|_| Error::LockPoisoned)?;

@@ -837,6 +837,15 @@ export type PlayerAction =
       expected_play_id: string | null;
       expected_queue_revision: string;
     }
+  | {
+      kind: 'search_lyric_group_playback';
+      operation: 'play' | 'next';
+      anchor: string;
+      rows: string[];
+      quality: Quality;
+      expected_play_id: string | null;
+      expected_queue_revision: string;
+    }
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }
   | { kind: 'retry_loudness' | 'repair_loudness' }
   | { kind: 'repair_quality' }

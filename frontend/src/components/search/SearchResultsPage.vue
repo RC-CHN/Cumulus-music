@@ -34,6 +34,12 @@ import {
   type SearchSection,
 } from '../../services/search';
 import { useLyricWindow } from '../../composables/useLyricWindow';
+import { useSearchLyricSelection } from '../../composables/useSearchLyricSelection';
+import {
+  lyricGroupIndexes,
+  lyricResultKey,
+  lyricSelectionOnly,
+} from '../../services/searchLyricSelection';
 import { SEARCH_PLAYBACK_ROW_LIMIT, useSearchResults } from '../../composables/useSearchResults';
 import { useSearchPodcastFollow } from '../../composables/useSearchPodcastFollow';
 import { useSearchSongShare } from '../../composables/useSearchSongShare';
@@ -380,25 +386,51 @@ function showTrackMenu(
     const anchor =
       request.event.currentTarget instanceof HTMLElement ? request.event.currentTarget : undefined;
     const row = anchor?.closest<HTMLElement>('.search-lyric-result');
-    const key = `lyric:${lyricKey(index, item.track.id)}`;
-    songRowComment = {
-      source: 'search',
-      epoch,
-      menu: item.songCommentMenu,
-      live: () =>
-        section?.category === 'lyrics' &&
-        snapshot?.sections.includes(section) === true &&
-        item.track === request.track &&
-        lyricItems.value[index] === item &&
-        lyricWindow.rendered.value.includes(index) &&
-        !!anchor?.isConnected &&
-        row?.dataset.resultKey === key &&
-        row.contains(anchor) &&
-        !!owner?.contains(row) &&
-        !row.closest('[inert]') &&
-        loadGeneration === generation &&
-        current(),
-    };
+    const key = lyricResultKey(index, item.track.id);
+    const exactRow = () =>
+      section?.category === 'lyrics' &&
+      snapshot?.sections.includes(section) === true &&
+      item.track === request.track &&
+      lyricItems.value[index] === item &&
+      lyricWindow.rendered.value.includes(index) &&
+      !!anchor?.isConnected &&
+      row?.dataset.resultKey === key &&
+      row.contains(anchor) &&
+      !!owner?.contains(row) &&
+      !row.closest('[inert]') &&
+      loadGeneration === generation &&
+      current();
+    if (!exactRow()) return;
+    const id = item.track.id;
+    const ordinary =
+      request.event.type === 'keydown' || (!request.event.ctrlKey && !request.event.shiftKey);
+    if (ordinary && !lyricSelection.value.ids.has(id))
+      lyricSelection.value = lyricSelectionOnly(lyricSelection.value, { index, id });
+    const selection = lyricSelection.value;
+    const live = () => lyricSelection.value === selection && exactRow();
+    if (selection.ids.size > 1) {
+      const indexes = lyricGroupIndexes(lyricIds.value, selection.ids, index);
+      const tickets = indexes?.map((ordinal) => lyricItems.value[ordinal]?.lyricGroupPlayback);
+      const anchor = item.lyricGroupPlayback;
+      const rows = tickets?.flatMap((ticket) => (ticket ? [ticket.receipt] : []));
+      emit('more', {
+        ...request,
+        searchGroup: {
+          epoch,
+          action:
+            anchor && rows?.length === selection.ids.size
+              ? { source: 'lyrics', anchor: anchor.receipt, rows }
+              : undefined,
+          allCopyrightBlocked:
+            tickets?.length === selection.ids.size &&
+            tickets.every((ticket) => ticket?.right === 'copyright_blocked'),
+          allDownloadsBlocked: false,
+          live,
+        },
+      });
+      return;
+    }
+    songRowComment = { source: 'search', epoch, menu: item.songCommentMenu, live };
   }
   emit('more', {
     ...request,
@@ -473,7 +505,9 @@ function showSelectedTrackMenu(
   });
   const anchor = tickets[rows.findIndex((row) => row.index === anchorIndex)];
   const action =
-    anchor && tickets.every((ticket) => !!ticket) ? { anchor, rows: tickets } : undefined;
+    anchor && tickets.every((ticket) => !!ticket)
+      ? { source: 'songs' as const, anchor, rows: tickets }
+      : undefined;
   const allCopyrightBlocked = rows.every(
     ({ index }) => items[index]?.groupNextRight === 'copyright_blocked',
   );
@@ -549,6 +583,10 @@ const lyricBody = ref<HTMLElement>();
 const lyricItems = computed(() =>
   lyrics.value ? (view.value?.sections[0]?.items.filter((item) => item.kind === 'song') ?? []) : [],
 );
+const lyricIds = computed(() => lyricItems.value.map((item) => item.track.id));
+const lyricSelectionEnabled = computed(
+  () => lyrics.value && props.account.status === 'authenticated',
+);
 const lyricKey = (index: number, id: string) => `${index}:${id}`;
 const lyricWindow = useLyricWindow(panel, lyricBody, () =>
   lyricItems.value.map((item, index) =>
@@ -562,6 +600,21 @@ const renderedLyrics = computed(() =>
     const item = lyricItems.value[index];
     return item ? [{ item, index, key: lyricKey(index, item.track.id) }] : [];
   }),
+);
+const {
+  selection: lyricSelection,
+  mouseDown: lyricMouseDown,
+  mouseUp: lyricMouseUp,
+  clearBackground: clearLyricBackground,
+  tableFocus: lyricTableFocus,
+  selectionKey: lyricSelectionKey,
+} = useSearchLyricSelection(
+  lyricSelectionEnabled,
+  () => [props.account.status, props.account.epoch, props.searchId, props.keyword, category.value],
+  lyricIds,
+  panel,
+  lyricBody,
+  lyricWindow.focus,
 );
 function lyricFocus(event: FocusEvent) {
   const row = (event.target as Element | null)?.closest<HTMLElement>('[data-lyric-index]');
@@ -1110,6 +1163,7 @@ onBeforeUnmount(() => {
           'search-podcast-panel': category === 'podcasts',
         }"
         tabindex="0"
+        @mousedown="clearLyricBackground"
         @scroll.capture.passive="scroll"
       >
         <div v-if="loading" class="empty-state" role="status">正在搜索…</div>
@@ -1220,8 +1274,9 @@ onBeforeUnmount(() => {
             <div
               v-else-if="category === 'lyrics'"
               class="search-lyric-list"
-              role="table"
+              :role="lyricSelectionEnabled ? 'grid' : 'table'"
               aria-label="歌词搜索结果"
+              :aria-multiselectable="lyricSelectionEnabled ? true : undefined"
               :aria-rowcount="lyricItems.length * 2 + 1"
             >
               <div class="track-columns track-header" role="row">
@@ -1233,25 +1288,38 @@ onBeforeUnmount(() => {
                 :ref="(element) => (lyricBody = (element as HTMLElement | null) ?? undefined)"
                 class="search-lyric-window"
                 role="presentation"
+                :tabindex="lyricSelectionEnabled ? 0 : undefined"
                 :style="{ height: `${lyricWindow.height.value}px` }"
+                @focus.self="lyricTableFocus"
                 @focusin="lyricFocus"
                 @focusout="lyricBlur"
+                @mousedown="lyricMouseDown"
+                @mouseup="lyricMouseUp"
+                @keydown="lyricSelectionKey"
               >
                 <div
                   v-for="{ item, index, key } in renderedLyrics"
                   :key="key"
                   class="search-lyric-result"
-                  :class="{ 'lyric-striped': index % 2 }"
+                  :class="{
+                    'lyric-striped': index % 2,
+                    'lyric-selected':
+                      lyricSelectionEnabled && lyricSelection.ids.has(item.track.id),
+                  }"
                   :data-lyric-index="index"
                   :style="{ top: `${lyricWindow.offsets.value[index]}px` }"
                   role="rowgroup"
-                  :data-result-key="`lyric:${key}`"
+                  :data-result-key="lyricResultKey(index, item.track.id)"
                 >
                   <TrackRow
                     :track="item.track"
                     :match-keyword="matchKeyword"
                     :index="index"
                     :aria-rowindex="index * 2 + 2"
+                    :tabindex="lyricSelectionEnabled ? -1 : undefined"
+                    :selection="
+                      lyricSelectionEnabled ? lyricSelection.ids.has(item.track.id) : undefined
+                    "
                     :liked="liked.has(item.track.id)"
                     :busy="busyLikes.has(item.track.id)"
                     :current-id="currentId"
@@ -1280,7 +1348,7 @@ onBeforeUnmount(() => {
                     @album="emit('album', $event)"
                   />
                   <div role="row" :aria-rowindex="index * 2 + 3">
-                    <div role="cell" aria-colspan="5">
+                    <div :role="lyricSelectionEnabled ? 'gridcell' : 'cell'" aria-colspan="5">
                       <SearchLyricExtra
                         :lines="item.excerpt"
                         :truncated="item.excerptTruncated"

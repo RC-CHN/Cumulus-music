@@ -1980,6 +1980,26 @@ impl Api for MusicHttpClient {
         Ok(Some(self.credentials.login_credentials()?.revision))
     }
 
+    fn lyric_group_playback_credential_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        if self.anonymous_store || origin != super::ApiOrigin::Pc {
+            return Err(Error::CredentialChanged);
+        }
+        let target = origin.request_url(
+            WireRoute::Eapi,
+            crate::protocol::api::SEARCH_LYRIC_RESULTS_PATH,
+        )?;
+        let scoped = self.credentials.request_credentials(&target)?;
+        self.check_account_cookie_scope(
+            &scoped,
+            [
+                "/api/w/nuser/account/get",
+                "/api/song/enhance/player/url/v1",
+            ],
+        )?;
+        Ok(Some(scoped.revision))
+    }
+
     fn request_search_song_comment_information<'a>(
         &'a self,
         source: SearchSongCommentSource,
