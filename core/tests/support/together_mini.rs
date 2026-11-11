@@ -134,6 +134,79 @@ async fn mini_room_modes_use_the_attached_cycle_and_exit_revokes_old_controls() 
 }
 
 #[tokio::test]
+async fn mini_mode_waits_for_a_short_room_read_then_dispatches_once() {
+    use std::{
+        future::{Future, poll_fn},
+        task::Poll,
+    };
+
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(Backend::default());
+    let (_, client) = world(root.path(), api.clone());
+    play(&client).await;
+    client
+        .together_command("1", TogetherCommand::Create)
+        .await
+        .unwrap();
+    wait(&client, |v| {
+        v.attached && v.pending.is_empty() && v.tracks.len() == 3
+    })
+    .await;
+    let shown = client.mini_snapshot().unwrap();
+    assert_eq!(shown.view.mode_family, Some(ModeFamily::Together));
+    assert_eq!(shown.view.mode, Some(PlaybackMode::OrderLoop));
+    let single_loop_writes = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, body)| {
+                path == "/api/listen/together/sync/list/command/report"
+                    && serde_json::from_str::<Value>(body["playlistParam"].as_str().unwrap())
+                        .unwrap()["playMode"]
+                        == "SINGLE_LOOP"
+            })
+            .count()
+    };
+    assert_eq!(single_loop_writes(), 0);
+
+    api.hold_status.store(true, Ordering::SeqCst);
+    let read = client.together_view("1", true);
+    tokio::pin!(read);
+    tokio::select! {
+        () = api.status_started.notified() => {}
+        result = &mut read => panic!("room read did not hold the gate: {}", result.is_ok()),
+        () = tokio::time::sleep(Duration::from_secs(4)) => panic!("room read did not start"),
+    }
+
+    let apply = client.mini_mode(&shown, PlaybackMode::SingleLoop);
+    tokio::pin!(apply);
+    poll_fn(|cx| {
+        assert!(
+            apply.as_mut().poll(cx).is_pending(),
+            "the first request must wait while the room read holds the gate"
+        );
+        Poll::Ready(())
+    })
+    .await;
+    assert_eq!(single_loop_writes(), 0);
+    api.hold_status.store(false, Ordering::SeqCst);
+    api.status_release.notify_one();
+    assert!(read.await.unwrap().value.attached);
+
+    let result = apply.await.unwrap();
+    assert_eq!(result.mode, PlaybackMode::SingleLoop);
+    assert_eq!(result.epoch, shown.view.epoch);
+    assert_eq!(result.play_id, shown.view.selection.audio_play_id);
+    wait(&client, |v| {
+        v.pending.is_empty() && single_loop_writes() > 0
+    })
+    .await;
+    assert_eq!(single_loop_writes(), 1);
+    client.close_together().await.unwrap();
+}
+
+#[tokio::test]
 async fn an_empty_outbox_can_still_hold_the_room_gate_and_reject_a_mini_mode_without_writing() {
     let root = tempfile::tempdir().unwrap();
     let api = Arc::new(Backend::default());
@@ -158,18 +231,23 @@ async fn an_empty_outbox_can_still_hold_the_room_gate_and_reject_a_mini_mode_wit
     );
     let shown = client.mini_snapshot().unwrap();
     assert_eq!(shown.view.mode_family, Some(ModeFamily::Together));
-    let rejected = client
-        .mini_action(
+    let writes = incoming_tests::writes(&api);
+    let rejected = tokio::time::timeout(
+        Duration::from_secs(2),
+        client.mini_action(
             &shown,
             MiniAction::Mode {
-                mode: PlaybackMode::Sequential,
+                mode: PlaybackMode::SingleLoop,
             },
-        )
-        .await;
+        ),
+    )
+    .await
+    .expect("mode must return while the room gate is still held");
     assert!(
         matches!(rejected, Err(Error::MutationBusy)),
-        "busy gate must reject before mode policy: {rejected:?}"
+        "prolonged gate hold must reject without dispatch: {rejected:?}"
     );
+    assert_eq!(incoming_tests::writes(&api), writes);
     let after = client.mini_snapshot().unwrap();
     assert!(shown.same_controls(&after));
     assert_eq!(shown.view.mode, after.view.mode);

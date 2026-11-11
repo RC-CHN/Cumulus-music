@@ -11,15 +11,68 @@
   const facts = `const r=n=>{const v=n.getBoundingClientRect();return {x:v.x,y:v.y,right:v.right,bottom:v.bottom,width:v.width,height:v.height}};
     return { width:innerWidth,height:innerHeight,screenX,screenY,ratio:devicePixelRatio,visible:document.visibilityState==='visible',focused:document.hasFocus(),paintSamples:[{x:3,y:3,color:getComputedStyle(document.querySelector('.mini-shell')).backgroundColor}],theme:document.documentElement.dataset.theme,body:document.body.textContent,
       overflow:document.documentElement.scrollWidth>innerWidth,buttons:[...document.querySelectorAll('button')].map(n=>({label:n.getAttribute('aria-label')||n.textContent.trim(),...r(n)})),
-      mode:document.querySelector('[data-mini-mode]')?.dataset.mode,modeFamily:document.querySelector('[data-mini-mode]')?.dataset.family,modeHit:(()=>{const n=document.querySelector('[data-mini-mode]'),b=n.getBoundingClientRect(),hit=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);return n===hit||n.contains(hit)})(),modeError:document.querySelector('.mini-message[role="alert"]')?.textContent??null,rows:document.querySelectorAll('.mini-queue-rows li').length,background:getComputedStyle(document.querySelector('.mini-shell')).backgroundColor };`;
+      mode:document.querySelector('[data-mini-mode]')?.dataset.mode,modeFamily:document.querySelector('[data-mini-mode]')?.dataset.family,modeHit:(()=>{const n=document.querySelector('[data-mini-mode]'),b=n.getBoundingClientRect(),hit=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);return n===hit||n.contains(hit)})(),modeError:document.querySelector('.mini-mode-feedback[role="alert"]:not([inert]),.mini-message[role="alert"]:not([inert])')?.textContent??null,rows:document.querySelectorAll('.mini-queue-rows li').length,background:getComputedStyle(document.querySelector('.mini-shell')).backgroundColor };`;
   const capture = async name => { await sleep(550); const data=await mini(facts); assert(!data.overflow, 'mini horizontal overflow');assert(data.modeHit,'mini mode hit'); assert(data.buttons.every(b=>b.x>=0 && b.right<=data.width+1 && b.width>0), 'mini horizontal controls'); await emit({kind:'snapshot',stage:`ux_${String(++stageCount).padStart(2,'0')}_${name}`,...data}); await sleep(1300); };
   // A return/close destroys this WebView; acknowledge the fixture before
   // scheduling the click, then let callers verify the actual native transition.
   const clickMini = label => mini(`const b=[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===${JSON.stringify(label)});if(!b||b.disabled)throw Error('mini button unavailable: '+${JSON.stringify(label)});b.focus({preventScroll:true});${['返回主窗口','关闭窗口'].includes(label) ? 'setTimeout(()=>b.click(),100)' : 'b.click()'};return true;`);
   const read = () => mini(`return await window.__TAURI_INTERNALS__.invoke('mini_read',{generation:location.hash.slice(6)});`);
   const labels={order_loop:'列表循环',single_loop:'单曲循环',random:'随机播放',sequential:'顺序播放'};
-  const modeSettled=async(mode,family)=>{await wait(async()=>{const current=await read();return current.media.mode===mode&&current.media.modeFamily===family&&await mini(`const b=document.querySelector('[data-mini-mode]');return b.dataset.mode===${JSON.stringify(mode)}&&b.dataset.family===${JSON.stringify(family)}&&b.closest('.mini-shell').dataset.controlTicket===${JSON.stringify(current.ticket)}&&!b.disabled;`);},'mini mode '+mode+'/'+family);};
-  const cycle=async(mode,family,label)=>{const before=await read();await clickMini(labels[before.media.mode]);await modeSettled(mode,family);const after=await read();assert(!after.media.playing&&Math.abs(after.media.position-10)<.2,'mode retains paused progress');assert(!(await mini(facts)).modeError,'mode has no hidden error');await capture(label);};
+  let lastModeAttempt = null;
+  const modeProbe = (expected, clickFrom = null) => mini(`
+    const { ticket, media } = await window.__TAURI_INTERNALS__.invoke('mini_read', { generation: location.hash.slice(6) });
+    const b = document.querySelector('[data-mini-mode]');
+    const rendered = b ? { ticket: b.closest('.mini-shell').dataset.controlTicket, mode: b.dataset.mode,
+      family: b.dataset.family, target: b.dataset.target, busy: b.getAttribute('aria-busy'), disabled: b.disabled,
+      label: b.getAttribute('aria-label') } : null;
+    const issue = document.querySelector('.mini-mode-feedback[role="alert"]:not([inert]) > span')?.textContent ?? null;
+    const observed = { ticket, mode: media.mode, family: media.modeFamily, queueRevision: media.queueRevision,
+      epoch: media.epoch, playId: media.selection.audioPlayId, playing: media.playing, position: media.position };
+    const expected = ${JSON.stringify(expected)}, clickFrom = ${JSON.stringify(clickFrom)};
+    const settled = !!rendered && ticket === rendered.ticket && !rendered.disabled && rendered.busy === 'false'
+      && observed.mode === expected.mode && observed.family === expected.family
+      && rendered.mode === expected.mode && rendered.family === expected.family && rendered.target === expected.mode
+      && rendered.label === expected.label;
+    let clicked = false;
+    if (clickFrom && settled && observed.epoch === clickFrom.epoch && observed.playId === clickFrom.playId && !issue) {
+      b.focus({preventScroll:true});
+      b.click();
+      clicked = true;
+    }
+    return { observed, rendered, issue, settled, clicked };
+  `);
+  const modeSettled = (mode, family) => wait(async () => {
+    const state = await modeProbe({mode, family, label: labels[mode]});
+    lastModeAttempt = {mode, family, state};
+    return state.settled;
+  }, 'mini mode ' + mode + '/' + family);
+  const cycle = async (mode, family, label) => {
+    const {media: before} = await read();
+    const source = {mode: before.mode, family, label: labels[before.mode]};
+    const target = {mode, family, label: labels[mode]};
+    const clickFrom = {epoch: before.epoch, playId: before.selection.audioPlayId};
+    let clickState = null, settled;
+    // Read the native ticket and check the rendered button in the same
+    // callback. Only click once; the original deadline also covers readiness.
+    await wait(async () => {
+      const state = clickState ? await modeProbe(target) : await modeProbe(source, clickFrom);
+      lastModeAttempt = {source, target, clickState, state};
+      if (!clickState) {
+        if (state.clicked) clickState = state;
+        return false;
+      }
+      if (state.issue && state.rendered?.busy === 'false') {
+        throw Error('mini mode ' + mode + '/' + family + ' rejected: ' + state.issue);
+      }
+      if (!state.settled) return false;
+      settled = state.observed;
+      return true;
+    }, 'mini mode ' + mode + '/' + family);
+    assert(settled.epoch === clickFrom.epoch && settled.playId === clickFrom.playId,
+      'mode retains the active playback');
+    assert(!settled.playing && Math.abs(settled.position - 10) < .2, 'mode retains paused progress');
+    await capture(label);
+  };
   const open = async () => { await invoke('mini_enter'); await wait(async()=>!(await fixture('windows')).main,'main hidden after mini ready'); await wait(async()=>(await read()).media.item,'mini populated'); };
   try {
     await wait(()=>document.querySelector('.track-row'),'main startup');
@@ -169,5 +222,5 @@
     await capture('account_isolated');
     await clickMini('返回主窗口');
     await emit({kind:'complete',stage:'complete',ok:true,stageCount,realMusicRequests:0,timeoutVerified:true,staleControlRejected:true,ipcIsolation:true,reloadFallback:true,sharedAudio:true,closePolicy:true,accountIsolation:true,ordinaryModeCycle:true,togetherModeCycle:true,roomModeTicketsRejected:true,twoAccountRealtimeVerified:false,volumeControlsVerified:true,volumePopupToggleVerified:true,ordinaryVolumeMuteVerified:true});
-  } catch(e) { await emit({kind:'failed',stage:'failed',message:String(e)+'\n'+String(e?.stack||''),body:document.body.textContent,stageCount}); }
+  } catch(e) { await emit({kind:'failed',stage:'failed',message:String(e)+'\n'+String(e?.stack||''),body:document.body.textContent,stageCount,modeAttempt:lastModeAttempt}); }
 })();

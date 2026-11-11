@@ -43,6 +43,9 @@ pub(crate) struct Backend {
     pub(crate) hold_statistics: AtomicBool,
     pub(crate) statistics_started: tokio::sync::Notify,
     pub(crate) statistics_release: tokio::sync::Notify,
+    pub(super) hold_status: AtomicBool,
+    pub(super) status_started: tokio::sync::Notify,
+    pub(super) status_release: tokio::sync::Notify,
     pub(super) hold_privilege: AtomicBool,
     pub(super) privilege_started: tokio::sync::Notify,
     pub(super) privilege_release: tokio::sync::Notify,
@@ -73,6 +76,11 @@ impl Api for Backend {
             if path == "/api/listen/together/end/v2" && self.hold_end.load(Ordering::SeqCst) {
                 self.end_started.store(true, Ordering::SeqCst);
                 self.end_release.notified().await;
+            }
+            if path == "/api/listen/together/status/get" && self.hold_status.load(Ordering::SeqCst)
+            {
+                self.status_started.notify_one();
+                self.status_release.notified().await;
             }
             if path == "/api/listen/together/privilege/get"
                 && self.hold_privilege.load(Ordering::SeqCst)

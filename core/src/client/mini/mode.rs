@@ -2,6 +2,11 @@ use super::*;
 use crate::client::dto::{PlayerAction, PlayerView};
 use crate::client::focus::FocusSnapshot;
 use crate::playback::controller::PlaybackFence;
+use std::time::Duration;
+
+// A background room tick can briefly own the same gate. Keep the UI
+// responsive if a real room request holds it longer, without sending a write.
+const ROOM_MODE_GATE_WAIT: Duration = Duration::from_millis(250);
 
 /// Includes an empty FM queue, which has no system media/transport target.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,11 +62,11 @@ impl MusicClient {
         displayed: &MiniSnapshot,
         mode: PlaybackMode,
     ) -> Result<MiniPlaybackReceipt> {
-        let _room = self
-            .together
-            .gate
-            .try_lock()
+        let _room = tokio::time::timeout(ROOM_MODE_GATE_WAIT, self.together.gate.lock())
+            .await
             .map_err(|_| Error::MutationBusy)?;
+        // Keep the originally displayed controls; any intervening room,
+        // account or queue change invalidates them instead of retargeting.
         displayed.check(self)?;
         let family = displayed
             .view
