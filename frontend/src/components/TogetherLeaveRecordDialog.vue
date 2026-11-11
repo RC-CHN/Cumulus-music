@@ -158,11 +158,13 @@ onMounted(() => dialog.value?.showModal());
 .record-stats dt {
   padding: 1px 0;
   font-size: 16px;
+  line-height: 20px;
 }
 .record-stats dd {
   min-height: 46px;
   margin: 0;
   font-size: 14px;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 .record-stats dd strong {
@@ -178,6 +180,7 @@ onMounted(() => dialog.value?.showModal());
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 16px;
+  line-height: 20px;
   text-align: center;
   overflow-wrap: anywhere;
 }
