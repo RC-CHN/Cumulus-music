@@ -18,6 +18,9 @@ SOURCES = Path('/etc/apt/sources.list.d/ubuntu.sources')
 KEYRING = '/usr/share/keyrings/ubuntu-archive-keyring.gpg'
 UPDATE_DEADLINE = 75
 DOWNLOAD_DEADLINE = 150
+# On run 43054815733, the signed direct MIT update reached 15 MB of Noble
+# universe data in about 57s and was still acquiring Packages at 75s.
+DIRECT_UPDATE_DEADLINE = 150
 # On run 43046670469, each signed direct route completed its index update,
 # but the 208–223 MB cold plans needed up to about seven minutes at the
 # observed archive rate. Keep a hard bound without cutting a moving fetch.
@@ -233,7 +236,7 @@ def acquire(update, prepare, download, reset, routes):
         name = mirror.name if mirror is not None else 'stock'
         print(f'APT acquisition via {name}', flush=True)
         try:
-            update(mirror, UPDATE_DEADLINE)
+            update(mirror, DIRECT_UPDATE_DEADLINE if mirror is not None else UPDATE_DEADLINE)
             prepare(mirror)
             download(mirror, DIRECT_DOWNLOAD_DEADLINE if mirror is not None else DOWNLOAD_DEADLINE)
         except AptDeadline as error:

@@ -10,8 +10,9 @@ from unittest.mock import patch
 
 from linux_webview_apt import DIRECT_INDEX_OPTIONS, timed
 from linux_webview_apt_mirrors import (
-    DIRECT_DOWNLOAD_DEADLINE, DIRECT_MIRRORS, DOWNLOAD_DEADLINE, KEYRING, MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE,
-    AptDeadline, Mirror, acquire, deadline_command, direct_sources, preflight, release_date,
+    DIRECT_DOWNLOAD_DEADLINE, DIRECT_MIRRORS, DIRECT_UPDATE_DEADLINE, DOWNLOAD_DEADLINE, KEYRING,
+    MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE, AptDeadline, Mirror, acquire, deadline_command,
+    direct_sources, preflight, release_date,
     signed_noble_suites, verify_fresh_indexes,
 )
 
@@ -57,18 +58,20 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
             self.assertEqual(ready, (MIT, True))
             events.append('normal install')
         self.assertEqual(events, [
-            ('update', 'Canonical', UPDATE_DEADLINE),
+            ('update', 'Canonical', DIRECT_UPDATE_DEADLINE),
             ('fresh plan', 'Canonical'), ('download-only', 'Canonical', DIRECT_DOWNLOAD_DEADLINE),
-            'discard archives', ('update', 'MIT', UPDATE_DEADLINE),
+            'discard archives', ('update', 'MIT', DIRECT_UPDATE_DEADLINE),
             ('fresh plan', 'MIT'), ('download-only', 'MIT', DIRECT_DOWNLOAD_DEADLINE), 'normal install',
         ])
 
     def test_update_deadline_never_admits_old_plan(self):
-        args, events = self.fixture(fail_update=AptDeadline('update', UPDATE_DEADLINE))
+        args, events = self.fixture(fail_update=AptDeadline('update', DIRECT_UPDATE_DEADLINE))
         with acquire(*args, (CANONICAL, MIT)) as ready:
             self.assertEqual(ready, (MIT, True))
-        self.assertEqual(events[:4], [('update', 'Canonical', UPDATE_DEADLINE), 'discard archives',
-                                      ('update', 'MIT', UPDATE_DEADLINE), ('fresh plan', 'MIT')])
+        self.assertEqual(events[:4], [
+            ('update', 'Canonical', DIRECT_UPDATE_DEADLINE), 'discard archives',
+            ('update', 'MIT', DIRECT_UPDATE_DEADLINE), ('fresh plan', 'MIT'),
+        ])
 
     def test_unknown_image_has_stock_behavior_and_no_ready_mirrors_try_stock_once(self):
         for routes, limit, downloaded in ((None, None, False), ((None,), UPDATE_DEADLINE, True)):
@@ -85,12 +88,12 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
         args, events = self.fixture(fail_update=subprocess.CalledProcessError(100, 'apt-get'))
         with self.assertRaises(subprocess.CalledProcessError), acquire(*args, (CANONICAL, MIT)):
             self.fail('cannot install after an authoritative update error')
-        self.assertEqual(events, [('update', 'Canonical', UPDATE_DEADLINE)])
+        self.assertEqual(events, [('update', 'Canonical', DIRECT_UPDATE_DEADLINE)])
 
         args, events = self.fixture()
         with self.assertRaises(AptDeadline), acquire(*args, (CANONICAL, MIT)):
             raise AptDeadline('install fixture', 1)
-        self.assertEqual(events, [('update', 'Canonical', UPDATE_DEADLINE),
+        self.assertEqual(events, [('update', 'Canonical', DIRECT_UPDATE_DEADLINE),
                                   ('fresh plan', 'Canonical'),
                                   ('download-only', 'Canonical', DIRECT_DOWNLOAD_DEADLINE)])
 
@@ -103,8 +106,8 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
 
         with self.assertRaises(AptDeadline), acquire(update, *args[1:], (CANONICAL, MIT)):
             self.fail('cannot install after the last timeout')
-        self.assertEqual(events, [('Canonical', UPDATE_DEADLINE), 'discard archives',
-                                  ('MIT', UPDATE_DEADLINE)])
+        self.assertEqual(events, [('Canonical', DIRECT_UPDATE_DEADLINE), 'discard archives',
+                                  ('MIT', DIRECT_UPDATE_DEADLINE)])
 
     def test_direct_variant_replaces_only_ubuntu_uris_without_touching_other_sources(self):
         with tempfile.TemporaryDirectory() as work:
