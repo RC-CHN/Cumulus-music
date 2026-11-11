@@ -27,12 +27,37 @@ pub struct HistoryRowMenuTarget {
 pub struct HistoryRowMenuInfo {
     pub comment: Option<HistoryRowComment>,
     pub copy_link: Option<String>,
+    pub can_share: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub song_download: Option<HistorySongDownloadMenu>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub song_file: Option<HistorySongFileMenu>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_file: Option<HistoryVoiceFileMenu>,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HistoryRowSharePreparation {
+    Ready { receipt: String },
+    LoginRequired,
+    Unavailable,
+    AlbumRequired,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryRowShareChoice {
+    Copy,
+    WechatQr,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HistoryRowShareOutcome {
+    Copy { url: String },
+    WechatQr { modules: Vec<Vec<bool>> },
+    Unavailable,
+    AlbumRequired,
 }
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

@@ -384,11 +384,17 @@ fn main() {
                 });
                 return;
             }
+            if stage=="history-row-share-observe" && history_row_next {
+                history_fixture.row_menu.begin_share_observation();
+                handle.get_webview_window("main").unwrap()
+                    .eval("window.__historyRowShareObservation=true;").unwrap();
+                return;
+            }
             if stage=="history-row-clipboard" && history_row_next {
                 use tauri_plugin_clipboard_manager::ClipboardExt;
                 let handle=handle.clone();
                 let expected=value["expected"].as_str().unwrap().to_owned();
-                assert!(matches!(expected.as_str(), "https://music.163.com/song?id=10" | "https://music.163.com/dj?id=10"));
+                assert!(matches!(expected.as_str(), "https://music.163.com/song?id=10" | "https://music.163.com/dj?id=10" | "Cumulus synthetic history share clipboard marker"));
                 let attempt=value["attempt"].as_u64().unwrap();
                 tauri::async_runtime::spawn(async move {
                     let matches=handle.clipboard().read_text().is_ok_and(|text|text==expected);
@@ -470,6 +476,7 @@ fn main() {
             let history_song_collect_report=history_fixture.song_collect.as_ref().map(|fixture|fixture.report());
             let history_song_download_report=history_fixture.song_download.as_ref().map(|fixture|fixture.report(&follow_store));
             let history_row_menu_calls=(history_row_next || history_voice_row_download || history_song_row_collect || history_song_row_download).then(||history_fixture.row_menu.report());
+            let history_row_share_calls=history_row_next.then(||history_fixture.row_menu.share_report());
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let history_reads=history_fixture.reads.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
@@ -493,6 +500,7 @@ fn main() {
                 if let Some(report)=history_song_collect_report {value["historySongCollectCalls"]=report;}
                 if let Some(report)=history_song_download_report {value["historySongDownload"]=report;}
                 if let Some(report)=history_row_menu_calls {value["historyRowMenuCalls"]=report;}
+                if let Some(report)=history_row_share_calls {value["historyRowShareCalls"]=report;}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);value["syntheticHistoryReads"]=serde_json::json!(history_reads);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
                 if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}

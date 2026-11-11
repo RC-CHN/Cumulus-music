@@ -31,7 +31,7 @@ ROW_STAGES = (
     'row_local_reveal_offer', 'row_local_revealed', 'row_mapped_reveal_offer', 'row_mapped_revealed',
 )
 STALE_STAGES = ('row_stale_offer', 'row_stale_rejected')
-CATALOG_REVEAL = ['play', 'next', 'comments', 'collect', 'copy', 'reveal', 'remove']
+CATALOG_REVEAL = ['play', 'next', 'comments', 'collect', 'share', 'copy', 'reveal', 'remove']
 GROUPED_REVEAL = ['play', 'next', 'collect', 'reveal', 'remove']
 PRIVATE_ROW_BUS = 'CUMULUS_HISTORY_SONG_ROW_PRIVATE_BUS'
 SEED = ROOT / 'core/tests/fixtures/tag_audio/seed.mp3'
@@ -154,7 +154,7 @@ def audit_row(root, output, screenshots):
         ((blocked,), '6', ['1', '5'], 'ctrl-context', group_keys),
         ((first, cancelled, reopened, group), '5', ['3', '1', '2'], 'ctrl-context', group_keys),
         ((single,), '4', ['4'], 'button',
-         ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove']),
+         ['play', 'next', 'comments', 'collect', 'download', 'share', 'copy', 'remove']),
         ((finished,), '2', ['2'], 'keyboard', CATALOG_REVEAL),
         ((ambiguous,), '1', ['1'], 'button', ['play', 'next', 'comments', 'collect', 'remove']),
         ((download_offer, download_returned), '2', ['3', '2'], 'keyboard', GROUPED_REVEAL),

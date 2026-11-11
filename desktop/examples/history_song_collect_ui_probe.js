@@ -134,7 +134,7 @@
       'row Collect action shown for ' + clicked);
     const keys = rowKeys();
     const expected = ids.length === 1 ?
-      ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove'] :
+      ['play', 'next', 'comments', 'collect', 'download', 'share', 'copy', 'remove'] :
       ['play', 'next', 'collect', 'download', ...(gesture === 'ctrl-context' ? [] : ['remove'])];
     assert(text(rowItem('collect')) === '收藏' && same(keys, expected),
       'official song action order and group scope');

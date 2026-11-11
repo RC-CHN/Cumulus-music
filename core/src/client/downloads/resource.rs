@@ -2,7 +2,7 @@
 use super::{Context, DownloadShareAccess, MusicClient};
 use crate::{
     Error, Result,
-    catalog::CatalogApi,
+    catalog::{CatalogApi, song_share_allowed},
     client::dto::AccountData,
     download::service::{DownloadOrigin, DownloadStatus, DownloadTask},
     protocol::api::identifier,
@@ -94,25 +94,7 @@ impl MusicClient {
         }
         context.guard()?;
         let rows = response.map_err(|_| Error::Response("song sharing check timed out"))??;
-        let [row] = rows.as_slice() else {
-            return Err(Error::Response(
-                "song sharing privilege is missing or ambiguous",
-            ));
-        };
-        if identifier(&row["id"])? != id {
-            return Err(Error::Response(
-                "song sharing privilege belongs to another track",
-            ));
-        }
-        // M21 maps sp to sharePriv. M3085 treats absent sp in a present
-        // privilege as no share rights, not a missing privilege response.
-        let shares = match row.get("sp") {
-            None | Some(serde_json::Value::Null) => 0,
-            Some(value) => value
-                .as_i64()
-                .ok_or(Error::Response("invalid song sharing privilege"))?,
-        };
-        let value = if shares > 0 {
+        let value = if song_share_allowed(&rows, &id)? {
             DownloadShareAccess::Allowed
         } else if album_required {
             DownloadShareAccess::AlbumRequired

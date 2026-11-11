@@ -56,6 +56,62 @@ pub async fn history_row_menu_info<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn history_row_share_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: HistoryRowMenuTarget,
+) -> Result<AccountData<HistoryRowSharePreparation>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("history sharing is main-window only").into(),
+        );
+    }
+    client
+        .history_row_share_prepare(&epoch, target)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn history_row_share_choose<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: HistoryRowMenuTarget,
+    receipt: String,
+    choice: HistoryRowShareChoice,
+) -> Result<AccountData<HistoryRowShareOutcome>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("history sharing is main-window only").into(),
+        );
+    }
+    client
+        .history_row_share_choose(&epoch, target, &receipt, choice)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn history_row_share_cancel<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: HistoryRowMenuTarget,
+    receipt: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("history sharing is main-window only").into(),
+        );
+    }
+    client
+        .history_row_share_cancel(&epoch, target, &receipt)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn history_row_voice_reveal<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

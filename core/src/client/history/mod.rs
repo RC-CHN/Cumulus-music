@@ -9,6 +9,8 @@ mod radio_chapter;
 mod radio_collection;
 pub(super) mod row_menu;
 mod row_menu_info;
+mod share;
+pub(super) use share::HistoryRowShareHost;
 mod song_file_menu;
 pub use song_file_menu::HistorySongFileReveal;
 pub(super) mod voice_file_menu;

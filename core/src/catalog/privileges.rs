@@ -3,6 +3,28 @@ use crate::{Error, Result, protocol::api::identifier};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
 
+/// M21 maps sp to sharePriv; M3085 requires a positive value. A present
+/// privilege with absent sp is denial, distinct from a missing privilege row.
+pub(crate) fn song_share_allowed(rows: &[Value], id: &str) -> Result<bool> {
+    let [row] = rows else {
+        return Err(Error::Response(
+            "song sharing privilege is missing or ambiguous",
+        ));
+    };
+    if identifier(&row["id"])? != id {
+        return Err(Error::Response(
+            "song sharing privilege belongs to another track",
+        ));
+    }
+    match row.get("sp") {
+        None | Some(Value::Null) => Ok(false),
+        Some(value) => value
+            .as_i64()
+            .map(|value| value > 0)
+            .ok_or(Error::Response("invalid song sharing privilege")),
+    }
+}
+
 /// M/21 B: last value wins, but the original/reply order and duplicates survive.
 pub(crate) fn merge_song_privileges(songs: &[Value], privileges: &[Value]) -> Result<Vec<Value>> {
     let by_id = privileges

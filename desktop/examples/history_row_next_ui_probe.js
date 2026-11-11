@@ -355,10 +355,11 @@
   const commentsPage = () => one('.comments-page:not(.comments-embedded):not(.page-leave-active)');
   const commentHeader = () => one('.comment-resource-header', commentsPage());
   const deleteDialog = () => one('dialog[open][aria-labelledby="history-confirm-title"]:not([inert])');
+  const shareDialog = mode => one(`dialog[open][data-history-share-dialog${mode ? `="${mode}"` : ''}]`);
   const copyNotice = () => text(one('.history-row-menu-notice[role="status"]', page()));
   const back = () => one('button[aria-label="返回上一页"]');
-  const singleActions = ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove'];
-  const voiceActions = ['play', 'next', 'comments', 'download', 'copy', 'remove'];
+  const singleActions = ['play', 'next', 'comments', 'collect', 'download', 'share', 'copy', 'remove'];
+  const voiceActions = ['play', 'next', 'comments', 'download', 'share', 'copy', 'remove'];
   async function openActions(kind, ids, clicked, gesture, expected) {
     const title = kind === 'song' ? '歌曲' : '声音';
     const source = await enter(kind, title, ids);
@@ -391,19 +392,126 @@
     await wait(() => !commentsPage() && document.activeElement === more(clicked),
       'comment Back returns to the same clicked history row');
   }
-  async function copyPublic(kind, clicked, selected, queueIds) {
-    click(menuItem('copy'));
-    await wait(() => !panel() && copyNotice() === '复制成功' &&
-      document.activeElement === more(clicked), 'copy acknowledgement and same row focus');
+  async function readNativeClipboard(expected) {
     const attempt = ++clipboardAttempt;
-    const expected = 'https://music.163.com/' + (kind === 'song' ? 'song' : 'dj') + '?id=' + clicked;
     await emit('history-row-clipboard', { attempt, expected });
     const native = await wait(() => window.__historyRowClipboard?.attempt === attempt &&
       window.__historyRowClipboard, 'native system clipboard readback ' + expected);
     assert(native.matches, 'native clipboard contains exact public link without tracking');
+    return native.matches;
+  }
+  async function copyPublic(kind, clicked, selected, queueIds) {
+    click(menuItem('copy'));
+    await wait(() => !panel() && !shareDialog() && copyNotice() === '复制成功' &&
+      document.activeElement === more(clicked), 'direct copy acknowledgement and same row focus');
+    const expected = 'https://music.163.com/' + (kind === 'song' ? 'song' : 'dj') + '?id=' + clicked;
+    const nativeClipboard = await readNativeClipboard(expected);
     await capture('actions_' + kind + '_copied', queueIds, {
-      clicked, selected, clipboard: expected, nativeClipboard: native.matches,
+      clicked, selected, clipboard: expected, nativeClipboard,
       focusRestored: true, notice: copyNotice(),
+    });
+  }
+  async function openShare(kind, selected, queueIds, stage) {
+    const clicked = '10';
+    await openActions(kind, selected, clicked, 'keyboard', kind === 'song' ? singleActions : voiceActions);
+    assert(text(menuItem('share')) === (kind === 'song' ? '分享' : '分享...'), 'history share label');
+    click(menuItem('share'));
+    const chooser = await wait(() => {
+      const current = shareDialog('chooser');
+      if (!panel() && ready(current) && document.activeElement === one('header button', current))
+        return current;
+    }, 'local history share chooser and initial close focus');
+    const title = text(one('h2', chooser));
+    const focus = document.activeElement.getAttribute('aria-label');
+    const options = all('[data-history-share-channel]', chooser);
+    const choices = options.map(text);
+    assert(title === '分享到' && focus === '关闭分享' &&
+      same(choices, ['微信好友', '复制链接']) && options.every(ready), 'two enabled local share channels in order');
+    assert(same(selectedRows(), selected), 'share chooser preserves the explicit selection');
+    await capture(stage, queueIds, { clicked, selected, title, choices, focus });
+    return chooser;
+  }
+  async function shareFocusRestored(clicked) {
+    await wait(() => {
+      const opener = more(clicked);
+      const scroll = one('.history-scroll', page());
+      if (panel() || shareDialog() || document.activeElement !== opener || !ready(opener) || !scroll) return;
+      const box = opener.getBoundingClientRect(), viewport = scroll.getBoundingClientRect();
+      return box.top >= viewport.top - 1 && box.bottom <= viewport.bottom + 1;
+    }, 'share closes and restores a visible clicked row focus');
+  }
+  function readQrModules(svg) {
+    const [x, y, width, height] = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    const size = width - 8;
+    const d = one('path', svg)?.getAttribute('d') ?? '';
+    assert(x === 0 && y === 0 && width === height && Number.isInteger(size) && size >= 21 &&
+      size <= 177 && (size - 21) % 4 === 0 && d, 'rendered QR SVG has a module grid and quiet zone');
+    const matrix = Array.from({ length: size }, () => Array(size).fill('0'));
+    // MemberQrImage draws each dark module as `M<column> <row>h1v1h-1z`.
+    // Require the matched shapes to cover the exact rendered path.
+    const shapes = [...d.matchAll(/M(\d+) (\d+)h1v1h-1z/g)];
+    assert(shapes.map(match => match[0]).join(' ') === d, 'only unit squares in rendered QR path');
+    for (const [, column, row] of shapes) {
+      const c = Number(column) - 4, r = Number(row) - 4;
+      assert(matrix[r]?.[c] === '0', 'QR quiet zone stays clear and modules do not repeat');
+      matrix[r][c] = '1';
+    }
+    return matrix.map(row => row.join(''));
+  }
+  async function shareRows(queueIds) {
+    const clicked = '10', song = [clicked], voice = ['9', clicked];
+    const first = await openShare('song', song, queueIds, 'share_song_chooser');
+    assert(!first.dispatchEvent(new Event('cancel', { cancelable: true })), 'native dialog Cancel is handled');
+    await shareFocusRestored(clicked);
+    await capture('share_song_cancelled', queueIds, {
+      clicked, selected: song, focusRestored: true, closeGesture: 'dialog_cancel',
+    });
+
+    const second = await openShare('song', song, queueIds, 'share_song_second_chooser');
+    click(one('[data-history-share-channel="copy"]', second));
+    const error = await wait(() => text(one('.history-row-menu-error', page())) === '当前资源暂不支持分享。' &&
+      '当前资源暂不支持分享。', 'late Song share rights denial');
+    await shareFocusRestored(clicked);
+    assert(!copyNotice(), 'denied share has no copy success feedback');
+    const nativeClipboardUnchanged = await readNativeClipboard('https://music.163.com/dj?id=10');
+    await capture('share_song_late_denied', queueIds, {
+      clicked, selected: song, error, focusRestored: true, nativeClipboardUnchanged,
+    });
+
+    const clipboardMarker = 'Cumulus synthetic history share clipboard marker';
+    await invoke('copy_text', { text: clipboardMarker });
+    const nativeClipboardMarker = await readNativeClipboard(clipboardMarker);
+    const allowed = await openShare('song', song, queueIds, 'share_song_copy_chooser');
+    click(one('[data-history-share-channel="copy"]', allowed));
+    await wait(() => copyNotice() === '复制成功', 'authorized Song share acknowledges copied link');
+    await shareFocusRestored(clicked);
+    const clipboard = 'https://music.163.com/song?id=' + clicked;
+    const nativeClipboard = await readNativeClipboard(clipboard);
+    await capture('share_song_copied', queueIds, {
+      clicked, selected: song, clipboard, nativeClipboard, clipboardMarker, nativeClipboardMarker,
+      focusRestored: true, notice: copyNotice(),
+    });
+
+    const chooser = await openShare('voice', voice, queueIds, 'share_voice_chooser');
+    click(one('[data-history-share-channel="wechat_qr"]', chooser));
+    const qr = await wait(() => {
+      const current = shareDialog('wechat_qr');
+      const svg = one('svg[data-history-share-qr]', current);
+      if (!shareDialog('chooser') && ready(current) && ready(svg) &&
+          document.activeElement === one('header button', current)) return { current, svg };
+    }, 'clicked Voice opens its local WeChat QR and moves focus');
+    const title = text(one('h2', qr.current)), hint = text(one('p', qr.current));
+    const focus = document.activeElement.getAttribute('aria-label');
+    const qrWidth = Number(qr.svg.getAttribute('width'));
+    assert(title === '分享到微信' && hint === '打开微信, 扫一扫' && qrWidth === 180 &&
+      focus === '关闭微信分享二维码' && same(selectedRows(), voice), 'Voice QR content and selection');
+    await capture('share_voice_qr', queueIds, {
+      clicked, selected: voice, title, hint, focus, qrWidth, qrModules: readQrModules(qr.svg),
+    });
+    click(one('header button', qr.current));
+    await shareFocusRestored(clicked);
+    await capture('share_voice_closed', queueIds, {
+      clicked, selected: voice, focusRestored: true, closeGesture: 'close_button',
     });
   }
   async function confirmDelete() {
@@ -418,6 +526,8 @@
   async function rowActions(incumbent) {
     held = await pauseAt(incumbent.state);
     const queueIds = incumbent.ids;
+    await emit('history-row-share-observe');
+    await wait(() => window.__historyRowShareObservation, 'synthetic native share observation started');
     const song = await openActions('song', ['10'], '10', 'keyboard', singleActions);
     const songLabel = text(menuItem('comments'));
     assert(songLabel === '查看评论(36)', 'song menu projects the clicked count');
@@ -443,6 +553,7 @@
     await routeComments('voice', '10', voice, voiceLabel, '合成历史声音评论', queueIds);
     await openActions('voice', voiceIds, '10', 'button', voiceActions);
     await copyPublic('voice', '10', voiceIds, queueIds);
+    await shareRows(queueIds);
 
     const remove = ['10', '7'];
     const groupActions = ['play', 'next', 'collect', 'download', 'remove'];
@@ -544,6 +655,7 @@
       focused: document.activeElement?.getAttribute('aria-label') ??
         text(document.activeElement)?.slice(0, 80),
       confirm: text(one('h2', deleteDialog())),
+      share: shareDialog()?.dataset.historyShareDialog,
       comment: commentHeader() && {
         kind: commentHeader().dataset.resourceKind,
         id: commentHeader().dataset.resourceId,

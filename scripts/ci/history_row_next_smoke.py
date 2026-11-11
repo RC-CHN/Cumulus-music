@@ -16,6 +16,11 @@ from playback_power_smoke import windows_runtime
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SHARE_STAGES = (
+    'share_song_chooser', 'share_song_cancelled', 'share_song_second_chooser',
+    'share_song_late_denied', 'share_song_copy_chooser', 'share_song_copied',
+    'share_voice_chooser', 'share_voice_qr', 'share_voice_closed',
+)
 STAGES = (
     'song_context', 'song_inserted', 'voice_inserted', 'voice_random_step',
     'empty_song_clicked', 'empty_voice_clicked',
@@ -23,7 +28,7 @@ STAGES = (
     'play_voice',
     'actions_song_menu', 'actions_song_comment', 'actions_song_copied',
     'actions_song_count_fallback', 'actions_voice_menu', 'actions_voice_comment',
-    'actions_voice_copied', 'actions_delete_confirm', 'actions_delete_cancelled',
+    'actions_voice_copied', *SHARE_STAGES, 'actions_delete_confirm', 'actions_delete_cancelled',
     'actions_delete_confirmed',
 )
 SEED = ['voice:5', 'voice:6', 'voice:7']
@@ -33,8 +38,8 @@ PLAY_SEED = ['voice:11', 'voice:12', 'voice:13']
 PLAY_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:1', 'voice:13']
 RESUMED_SONGS = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:13']
 PLAY_VOICES = ['voice:11', 'voice:12', 'song:3', 'song:9', 'song:1', 'voice:4', 'voice:2', 'voice:13']
-SINGLE_ACTIONS = ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove']
-VOICE_ACTIONS = ['play', 'next', 'comments', 'download', 'copy', 'remove']
+SINGLE_ACTIONS = ['play', 'next', 'comments', 'collect', 'download', 'share', 'copy', 'remove']
+VOICE_ACTIONS = ['play', 'next', 'comments', 'download', 'share', 'copy', 'remove']
 DELETE_CALL = dict(path='/api/play-record/batch/delete', cached=False, args={
     'type': 'SONG', 'resourceIds': '["10","7"]', 'lastResourceId': '300',
     'lastPlayTime': 1793179700000,
@@ -123,12 +128,97 @@ def audit_row_actions(actions, incumbent, complete):
         assert [call for call in row['historyRowMenuCalls'] if '/delete' in call['path']] == expected
 
 
+def share_qr_payload(matrix):
+    """Read an undamaged Version 2/3 byte-mode QR from the rendered SVG modules."""
+    size = len(matrix)
+    assert size in (25, 29) and all(len(row) == size and set(row) <= {'0', '1'} for row in matrix)
+    module = lambda x, y: int(matrix[y][x])
+    # Both format copies must carry the same valid BCH-encoded level and mask.
+    corner = ([(8, y) for y in range(6)] + [(8, 7), (8, 8), (7, 8)]
+              + [(x, 8) for x in reversed(range(6))])
+    opposite = [(size - 1 - i, 8) for i in range(8)] + [(8, size - 15 + i) for i in range(8, 15)]
+    bits_at = lambda positions: sum(module(x, y) << i for i, (x, y) in enumerate(positions))
+    fmt = bits_at(corner)
+    assert fmt == bits_at(opposite)
+    data = (fmt ^ 0x5412) >> 10
+    rem = data
+    for _ in range(10):
+        rem = (rem << 1) ^ ((rem >> 9) * 0x537)
+    assert fmt == (((data << 10) | rem) ^ 0x5412)
+    mask = data & 7
+    level = data >> 3
+    # ISO QR codeword layouts for the levels that can contain this exact URL.
+    layout = {25: {1: (44, 1, 34)}, 29: {0: (70, 1, 44), 1: (70, 1, 55), 3: (70, 2, 17)}}
+    assert level in layout[size]
+    total, blocks, width = layout[size][level]
+
+    def function(x, y):
+        return (x == 6 or y == 6 or (x < 9 and (y < 9 or y >= size - 8))
+                or (x >= size - 8 and y < 9)
+                or (size - 9 <= x <= size - 5 and size - 9 <= y <= size - 5))
+
+    def masked(x, y):
+        product = x * y
+        return ((x + y) % 2, y % 2, x % 3, (x + y) % 3, (x // 3 + y // 2) % 2,
+                product % 2 + product % 3, (product % 2 + product % 3) % 2,
+                ((x + y) % 2 + product % 3) % 2)[mask] == 0
+
+    bits = []
+    right, upward = size - 1, True
+    while right > 0:
+        if right == 6:
+            right = 5
+        for y in (reversed(range(size)) if upward else range(size)):
+            for x in (right, right - 1):
+                if not function(x, y):
+                    bits.append(str(module(x, y) ^ masked(x, y)))
+        right -= 2
+        upward = not upward
+    assert len(bits) == total * 8 + 7 and bits[-7:] == ['0'] * 7
+    codewords = [int(''.join(bits[i:i + 8]), 2) for i in range(0, total * 8, 8)]
+    payload = ''.join(f'{value:08b}' for block in range(blocks)
+                      for value in codewords[block:width * blocks:blocks])
+    assert payload[:4] == '0100'
+    length = int(payload[4:12], 2)
+    end = 12 + length * 8
+    assert 0 < length and end + 4 <= len(payload) and payload[end:end + 4] == '0000'
+    return bytes(int(payload[i:i + 8], 2) for i in range(12, end, 8)).decode('ascii')
+
+
+def audit_row_share(share, by_name, complete):
+    chooser, cancelled, second, denied, copy, copied, voice, qr, closed = share
+    for row, ids in ((chooser, ['10']), (second, ['10']), (copy, ['10']), (voice, ['9', '10'])):
+        assert (row['clicked'], row['selected'], row['title'], row['choices'], row['focus']) == (
+            '10', ids, '分享到', ['微信好友', '复制链接'], '关闭分享',
+        )
+    for row, ids in ((cancelled, ['10']), (denied, ['10']), (copied, ['10']), (closed, ['9', '10'])):
+        assert (row['clicked'], row['selected'], row['focusRestored']) == ('10', ids, True)
+    assert cancelled['closeGesture'] == 'dialog_cancel' and closed['closeGesture'] == 'close_button'
+    assert denied['error'] == '当前资源暂不支持分享。' and denied['nativeClipboardUnchanged']
+    assert copied['clipboardMarker'] == 'Cumulus synthetic history share clipboard marker'
+    assert copied['nativeClipboardMarker'] is True and copied['nativeClipboard'] is True
+    assert (copied['clipboard'], copied['notice']) == ('https://music.163.com/song?id=10', '复制成功')
+    assert (qr['clicked'], qr['selected'], qr['title'], qr['hint'], qr['focus'], qr['qrWidth']) == (
+        '10', ['9', '10'], '分享到微信', '打开微信, 扫一扫', '关闭微信分享二维码', 180,
+    )
+    assert share_qr_payload(qr['qrModules']) == 'https://music.163.com/dj?id=10'
+
+    exact = [dict(path='/api/song/enhance/privilege', args={'ids': '["10"]'}, cached=False,
+                  sharePrivilege=sp) for sp in (1, 1, 0, 1, 1)]
+    reads = dict(zip(SHARE_STAGES, (1, 1, 2, 3, 4, 5, 5, 5, 5), strict=True))
+    for name, row in by_name.items():
+        count = reads.get(name, len(exact) if name.startswith('actions_delete_') else 0)
+        assert row['historyRowShareCalls'] == exact[:count], (name, row['historyRowShareCalls'])
+    assert complete['historyRowShareCalls'] == exact
+
+
 def audit(output, screenshots, runtime=None):
     complete = read(output / 'complete.json')
     assert complete['ok'] and complete['stages'] == list(STAGES)
     names = [f'ux_{index:02d}_{stage}' for index, stage in enumerate(STAGES, 1)]
     assert [path.stem for path in sorted(output.glob('ux_*.json'))] == names
     rows = [read(output / f'{name}.json') for name in names]
+    by_name = dict(zip(STAGES, rows, strict=True))
     assert all(row['syntheticHistoryWrites'] == 0 for row in rows[:-1])
     assert rows[-1]['syntheticHistoryWrites'] == complete['syntheticHistoryWrites'] == 1
     previous_calls = []
@@ -145,7 +235,8 @@ def audit(output, screenshots, runtime=None):
         hashes[photo.name] = hashlib.sha256(image).hexdigest()
 
     (context, song, voice, random_step, empty_song, empty_voice,
-     blocked, rejected, song_play, paused, resumed, voice_play, *actions) = rows
+     blocked, rejected, song_play, paused, resumed, voice_play, *after_play) = rows
+    actions = [row for name, row in by_name.items() if name.startswith('actions_')]
     assert (context['nativeHistorySize'], context['menuKey']) == (300, 'next')
     assert 0 < context['visibleRows'] < context['nativeHistorySize']
     for row, selection, clicked, gesture in (
@@ -159,7 +250,7 @@ def audit(output, screenshots, runtime=None):
 
     expected_ids = (SEED, SONGS, VOICES, VOICES, ['song:4', 'song:2'],
                     ['voice:3', 'voice:1'], PLAY_SEED, PLAY_SEED, PLAY_SONGS, PLAY_SONGS,
-                    RESUMED_SONGS, PLAY_VOICES) + (PLAY_VOICES,) * len(actions)
+                    RESUMED_SONGS, PLAY_VOICES) + (PLAY_VOICES,) * len(after_play)
     for row, ids in zip(rows, expected_ids, strict=True):
         player, queue = row['nativePlayer'], row['nativeQueue']
         assert player['epoch'] == queue['epoch'] and player['entryId'] == queue['current']
@@ -226,6 +317,14 @@ def audit(output, screenshots, runtime=None):
     assert (voice_play['clicked'], voice_play['selected']) == ('2', ['4', '2'])
     native_play(voice_play, resumed, song='1002', voice='2')
     audit_row_actions(actions, voice_play, complete)
+    share = [by_name[name] for name in SHARE_STAGES]
+    baseline = actions[0]['nativePlayer']
+    for row in share:
+        assert row['nativeQueue'] == voice_play['nativeQueue']
+        assert all(row['nativePlayer'][key] == baseline[key] for key in (
+            'epoch', 'playId', 'entryId', 'state', 'position', 'track',
+        ))
+    audit_row_share(share, by_name, complete)
     database = output.parent / 'state/core.sqlite3'
     with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as connection:
         journal = connection.execute(
@@ -242,7 +341,11 @@ def audit(output, screenshots, runtime=None):
                   playSongStarted='1', playVoiceStarted='2', playResumedSameDecoder=True,
                   playRetainedUnrelatedEntries=True, copyrightBlockedSelection=True,
                   commentCounts={'song': 36, 'voice': 47}, commentCountFallback=True,
-                  nativeClipboardChecks=2, cancelledDeletionWrites=0,
+                  nativeClipboardChecks=5, directNativeClipboardChecks=2, cancelledDeletionWrites=0,
+                  shareSongPrivilegeReads=5, shareSongCancelDidNotRecheck=True,
+                  shareSongLateDenialPreservedClipboard=True, shareSongNativeClipboardCopy=True,
+                  shareVoicePrivilegeReads=0,
+                  shareVoiceQrDecoded='https://music.163.com/dj?id=10',
                   deletedSongIds=['10', '7'], syntheticHistoryWrites=1, confirmedDeletionJournal=True,
                   realMusicRequests=0, realAccountWrites=0)
     if runtime:

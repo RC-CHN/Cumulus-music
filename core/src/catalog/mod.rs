@@ -17,7 +17,7 @@ pub use api::{
     SongBatch,
 };
 pub use artist::{ArtistApi, ArtistPageRequest};
-pub(crate) use privileges::merge_song_privileges;
+pub(crate) use privileges::{merge_song_privileges, song_share_allowed};
 pub(crate) use same_recording::same_recording_details;
 
 /// Official M/21 R chooses id || albumId before converting to decimal text.

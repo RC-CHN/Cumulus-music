@@ -72,7 +72,7 @@ def audit_row(output, screenshots, runtime):
     complete, rows, hashes = captures(output, screenshots, ROW_STAGES)
     assert complete['row']
     singleton, cancelled, denied, group, first, fallback, second = rows
-    single_menu = ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove']
+    single_menu = ['play', 'next', 'comments', 'collect', 'download', 'share', 'copy', 'remove']
     for case, clicked, selection, gesture, keys in (
         ((singleton, cancelled), '2', ['2'], 'keyboard', single_menu),
         ((denied,), '3', ['3'], 'button', single_menu),

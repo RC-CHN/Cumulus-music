@@ -4,7 +4,7 @@ use super::{
     HistoryRowMenuTarget, HistorySongDownloadMenu, HistorySongFileMenu, HistoryVoiceFileMenu,
     MusicClient,
     file_menu::Candidate,
-    row_menu, song_download,
+    row_menu, share, song_download,
     song_file_menu::SongFileTarget,
     voice_file_menu::{self, VoiceFileObservation},
 };
@@ -26,7 +26,7 @@ struct MenuProjection {
     clicked_song: Option<SongFileTarget>,
 }
 
-fn public_id(kind: HistoryKind, row: &HistoryRecord) -> Option<String> {
+pub(super) fn public_id(kind: HistoryKind, row: &HistoryRecord) -> Option<String> {
     use song_download::HistorySongDownloadSource::{Catalog, DownloadTask};
     let raw = &row.resource;
     match kind {
@@ -91,6 +91,7 @@ fn project(snapshot: &HistorySnapshot, target: &HistoryRowMenuTarget) -> Result<
         info: HistoryRowMenuInfo {
             comment: None,
             copy_link: None,
+            can_share: share::project(snapshot.kind, clicked, has_group).is_some(),
             song_download,
             song_file: None,
             voice_file: None,

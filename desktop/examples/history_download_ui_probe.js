@@ -95,8 +95,8 @@
     click(await wait(() => ready(trigger()) && trigger(), 'selection enables voice download'));
     await wait(() => text(q('h2', modal() ?? null)) === '选择下载音质' && modal(), 'official quality chooser opens');
   }
-  const offered = ['play', 'next', 'comments', 'download', 'copy', 'remove'];
-  const located = ['play', 'next', 'comments', 'copy', 'reveal', 'remove'];
+  const offered = ['play', 'next', 'comments', 'download', 'share', 'copy', 'remove'];
+  const located = ['play', 'next', 'comments', 'share', 'copy', 'reveal', 'remove'];
   const inVoiceHistory = () => page()?.dataset.historyCategory === '声音' &&
     page()?.dataset.historyView === 'browse' && page()?.getAttribute('aria-busy') === 'false' &&
     !page()?.closest('.page-enter-active,.page-leave-active') &&

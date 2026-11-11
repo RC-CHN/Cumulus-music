@@ -14,7 +14,8 @@ pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrash
 pub use super::history::{
     HistoryCollectTarget, HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage,
     HistoryPlaylistCard, HistoryRadioCollection, HistoryResource, HistoryRowComment,
-    HistoryRowCommentResource, HistoryRowMenuInfo, HistoryRowMenuTarget, HistorySelectionScope,
+    HistoryRowCommentResource, HistoryRowMenuInfo, HistoryRowMenuTarget, HistoryRowShareChoice,
+    HistoryRowShareOutcome, HistoryRowSharePreparation, HistorySelectionScope,
     HistorySongDownloadMenu, HistorySongFileMenu, HistoryVoiceFileMenu, ListenedBooksPage,
     ListenedBooksQuery,
 };

@@ -54,6 +54,12 @@ WebKitGTK 检查点及截图。私有 FileManager1 收到三次精确路径：�
 及唯一账号映射；歧义不显示入口，等长篡改不触发第四次派发。证据在
 `.build/ui-proof/phase303-history-song-row-reveal/`。Windows Explorer 未实测。
 
+[最近播放歌曲／声音行的分享](history-row-share-contracts.txt)在 31 个 Linux WebKitGTK
+检查点中与播放、独立复制和删除一并验收。歌曲取消不重查、二次拒绝不写剪贴板、获准
+才写公开链接；声音只分享点中节目，实窗截图的微信二维码经 ZXing 独立解码。焦点
+回到可见的原按钮。证据在 `.build/ui-proof/phase304-history-row-share-final/`；
+第三方渠道及本批 Windows 结果另列。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。

@@ -31,15 +31,39 @@ export interface HistoryRowMenuInfo {
     count: number | null;
   } | null;
   copyLink: string | null;
+  canShare?: boolean;
   songDownload?: { kind: 'download' | 'copyright_blocked' | 'unavailable' };
   songFile?: { kind: 'reveal'; receipt: string };
   voiceFile?: { kind: 'download' } | { kind: 'reveal'; receipt: string } | { kind: 'unavailable' };
 }
+export type HistoryRowShareChoice = 'copy' | 'wechat_qr';
+export type HistoryRowSharePreparation =
+  | { kind: 'ready'; receipt: string }
+  | { kind: 'login_required' | 'unavailable' | 'album_required' };
+export type HistoryRowShareOutcome =
+  | { kind: 'copy'; url: string }
+  | { kind: 'wechat_qr'; modules: boolean[][] }
+  | { kind: 'unavailable' | 'album_required' };
 export interface HistoryRowMenuClient {
+  historyRowSharePrepare(
+    epoch: string,
+    target: HistoryRowMenuTarget,
+  ): Promise<AccountData<HistoryRowSharePreparation>>;
+  historyRowShareChoose(
+    epoch: string,
+    target: HistoryRowMenuTarget,
+    receipt: string,
+    choice: HistoryRowShareChoice,
+  ): Promise<AccountData<HistoryRowShareOutcome>>;
   historyRowMenuInfo(
     epoch: string,
     target: HistoryRowMenuTarget,
   ): Promise<AccountData<HistoryRowMenuInfo>>;
+  historyRowShareCancel(
+    epoch: string,
+    target: HistoryRowMenuTarget,
+    receipt: string,
+  ): Promise<void>;
   downloadHistoryRowVoicePrepare(
     epoch: string,
     target: HistoryRowMenuTarget,

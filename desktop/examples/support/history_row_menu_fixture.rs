@@ -1,4 +1,4 @@
-//! Closed synthetic comment and deletion receipts for the history row menu.
+//! Closed synthetic comment, deletion and share receipts for the history row menu.
 use cumulus_core::{Error, Result};
 use serde_json::{Value, json};
 use std::sync::Mutex;
@@ -6,11 +6,28 @@ use std::sync::Mutex;
 #[derive(Default)]
 pub struct Fixture {
     calls: Mutex<Vec<Value>>,
+    share_calls: Mutex<Option<Vec<Value>>>,
 }
 
 impl Fixture {
     pub fn report(&self) -> Value {
         json!(*self.calls.lock().unwrap())
+    }
+
+    pub fn begin_share_observation(&self) {
+        let mut calls = self.share_calls.lock().unwrap();
+        assert!(calls.is_none(), "history share proof starts once");
+        *calls = Some(Vec::new());
+    }
+
+    pub fn share_report(&self) -> Value {
+        json!(
+            self.share_calls
+                .lock()
+                .unwrap()
+                .as_deref()
+                .unwrap_or_default()
+        )
     }
 
     pub fn authorize_delete(&self, path: &str, args: &Value, cached: bool) -> Result<()> {
@@ -26,7 +43,63 @@ impl Fixture {
         Ok(())
     }
 
+    fn is_browse_privilege_batch(&self, args: &Value, cached: bool) -> bool {
+        // HistoryApi enriches all rows on a Song page with the same endpoint.
+        // Only the exact browse payloads belong to the base catalogue fixture.
+        let Some(ids) = args["ids"].as_str().filter(|ids| ids.len() > 1_000) else {
+            return false;
+        };
+        if cached || args.as_object().is_none_or(|args| args.len() != 1) {
+            return false;
+        }
+        let Ok(ids) = serde_json::from_str::<Vec<String>>(ids) else {
+            return false;
+        };
+        let deleted = match ids.len() {
+            300 => false,
+            298 => {
+                if !self
+                    .calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|call| call["path"] == "/api/play-record/batch/delete")
+                {
+                    return false;
+                }
+                true
+            }
+            _ => return false,
+        };
+        ids.into_iter().eq((1..=300)
+            .filter(|id| !deleted || !matches!(*id, 7 | 10))
+            .map(|id| id.to_string()))
+    }
+
     pub fn response(&self, path: &str, args: &Value, cached: bool) -> Option<Result<Value>> {
+        if path == "/api/song/enhance/privilege"
+            && let Some(calls) = self.share_calls.lock().unwrap().as_mut()
+        {
+            if self.is_browse_privilege_batch(args, cached) {
+                return None;
+            }
+            let mut request = json!({"path":path,"args":args,"cached":cached});
+            let right = if !cached && *args == json!({"ids":"[\"10\"]"}) {
+                [1, 1, 0, 1, 1].get(calls.len()).copied()
+            } else {
+                None
+            };
+            if let Some(right) = right {
+                request["sharePrivilege"] = json!(right);
+            }
+            calls.push(request);
+            return Some(right.map_or(
+                Err(Error::Response(
+                    "unexpected synthetic history share privilege",
+                )),
+                |sp| Ok(json!({"code":200,"data":[{"id":"10","st":0,"sp":sp}]})),
+            ));
+        }
         if path == "/api/resource/commentInfo/list" {
             self.record(path, args, cached);
             return Some(Self::count(args, cached));

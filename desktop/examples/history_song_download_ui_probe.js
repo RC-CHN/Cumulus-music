@@ -152,7 +152,7 @@
     'clicked unliked anchor opens owned playlist picker');
     assert(!quality(), 'ordinary row downloads have no quality chooser');
   }
-  const catalogReveal = ['play', 'next', 'comments', 'collect', 'copy', 'reveal', 'remove'];
+  const catalogReveal = ['play', 'next', 'comments', 'collect', 'share', 'copy', 'reveal', 'remove'];
   const groupedReveal = ['play', 'next', 'collect', 'reveal', 'remove'];
   const history = async () => (await invoke('history_page', { epoch, kind: 'song', refresh: false })).value;
   async function seedFileRows() {
@@ -254,7 +254,7 @@
     await rowCapture('row_published', second);
 
     const single = await openSongRow(['4'], '4', 'button',
-      ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove']);
+      ['play', 'next', 'comments', 'collect', 'download', 'share', 'copy', 'remove']);
     let chooserMounted = false;
     const watchChooser = new MutationObserver(records => {
       const chooser = 'dialog[data-search-group-download-picker],dialog[data-search-group-purchased]';

@@ -97,8 +97,8 @@ def audit_row(root, output, screenshots, runtime):
     assert complete['row']
     assert all(state['syntheticHistoryWrites'] == 0 for state in [*states.values(), complete])
     offered, choice, cancelled, group, published, existing, reveal, returned, denied, closed = states.values()
-    original_menu = ['play', 'next', 'comments', 'download', 'copy', 'remove']
-    finished_menu = ['play', 'next', 'comments', 'copy', 'reveal', 'remove']
+    original_menu = ['play', 'next', 'comments', 'download', 'share', 'copy', 'remove']
+    finished_menu = ['play', 'next', 'comments', 'share', 'copy', 'reveal', 'remove']
     for states_in_case, clicked, selected, keys in (
         ((offered, choice, cancelled), '1', ['1'], original_menu),
         ((group, published), '1', ['2', '1'], original_menu),

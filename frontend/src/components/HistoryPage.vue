@@ -40,6 +40,7 @@ import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
 import HistoryConfirm from './history/HistoryConfirm.vue';
+import HistoryRowShareDialog from './history/HistoryRowShareDialog.vue';
 import HistoryRadioMenu, { type HistoryRadioMenuTarget } from './history/HistoryRadioMenu.vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import { usePodcastFollow } from '../composables/usePodcastFollow';
@@ -68,6 +69,7 @@ import {
   type HistoryRowQueueOutcome,
   type HistoryRowQueueTarget,
   type HistoryRowMenuInfo,
+  type HistoryRowShareChoice,
   type HistorySelectionScope,
 } from '../services/history';
 import {
@@ -247,6 +249,28 @@ const rowTarget = shallowRef<BrowseMenuTarget>();
 const rowMenuInfo = shallowRef<{ target: BrowseMenuTarget; value: HistoryRowMenuInfo }>();
 const rowMenuNotice = ref('');
 const rowMenuError = ref('');
+const rowShare = shallowRef<
+  | { stage: 'chooser'; target: BrowseMenuTarget; receipt: string }
+  | { stage: 'qr'; target: BrowseMenuTarget; modules: boolean[][] }
+>();
+let rowShareOpener: HTMLElement | null = null;
+function keepShareFocusVisible() {
+  void nextTick(() => {
+    const opener = rowShareOpener;
+    if (opener?.isConnected && document.activeElement === opener)
+      opener.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  });
+}
+let rowShareAttempt = 0;
+function retireRowShare(target: BrowseMenuTarget, receipt: string) {
+  void core.historyRowShareCancel(target.epoch, rowMenuScope(target), receipt).catch(() => {});
+}
+function cancelRowShare() {
+  const current = rowShare.value;
+  rowShareAttempt += 1;
+  rowShare.value = undefined;
+  if (current?.stage === 'chooser') retireRowShare(current.target, current.receipt);
+}
 const rowDownloadPreparing = shallowRef<BrowseMenuTarget>();
 const rowQueueReady = computed(() => props.rowQueueReady && !loading.value && !busy.value);
 function sameBrowseScope(target: BrowseMenuTarget) {
@@ -343,6 +367,9 @@ const rowMenuItems = computed<MenuItem[]>(() => {
       : voiceFile?.kind === 'download'
         ? [{ key: 'download', label: '下载', icon: 'download' }]
         : []),
+    ...(info?.canShare
+      ? [{ key: 'share', label: target.kind === 'song' ? '分享' : '分享...', icon: 'share' }]
+      : []),
     ...(info?.copyLink ? [{ key: 'copy', label: '复制链接', icon: 'copy' }] : []),
     ...(songFile?.kind === 'reveal' || voiceFile?.kind === 'reveal'
       ? [{ key: 'reveal', label: '打开文件所在目录', icon: 'folder' }]
@@ -361,6 +388,7 @@ const rowMenuItems = computed<MenuItem[]>(() => {
   ];
 });
 function closeRowMenu() {
+  cancelRowShare();
   rowMenu.value?.close();
   rowTarget.value = undefined;
   rowMenuInfo.value = undefined;
@@ -485,6 +513,74 @@ function rowMenuScope(target: BrowseMenuTarget): HistoryRowMenuTarget {
     selected_ids: [...target.tableGroup],
   };
 }
+function shareUnavailable(kind: 'unavailable' | 'album_required') {
+  rowMenuError.value =
+    kind === 'album_required' ? '这首歌曲需要购买数字专辑后才能分享。' : '当前资源暂不支持分享。';
+  keepShareFocusVisible();
+}
+function shareFailed(cause: unknown) {
+  const issue = failure(cause);
+  if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
+  else
+    rowMenuError.value = ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code)
+      ? '播放记录已更新，请重新打开菜单。'
+      : issue.message;
+  keepShareFocusVisible();
+}
+async function prepareRowShare(target: BrowseMenuTarget) {
+  if (loading.value || busy.value) return;
+  rowShareOpener = target.anchor;
+  const attempt = ++rowShareAttempt;
+  const live = () => rowShareAttempt === attempt && rowTargetLive(target);
+  try {
+    const { epoch, value } = await core.historyRowSharePrepare(target.epoch, rowMenuScope(target));
+    if (epoch !== target.epoch) return;
+    if (!live()) {
+      if (value.kind === 'ready') retireRowShare(target, value.receipt);
+      return;
+    }
+    if (value.kind === 'ready') {
+      rowShare.value = { stage: 'chooser', target, receipt: value.receipt };
+    } else if (value.kind === 'login_required') emit('login');
+    else shareUnavailable(value.kind);
+  } catch (cause) {
+    if (live()) shareFailed(cause);
+  }
+}
+async function chooseRowShare(choice: HistoryRowShareChoice) {
+  const current = rowShare.value;
+  if (current?.stage !== 'chooser' || !rowTargetLive(current.target)) return;
+  const { target, receipt } = current;
+  const attempt = ++rowShareAttempt;
+  const live = () => rowShareAttempt === attempt && rowTargetLive(target);
+  rowShare.value = undefined;
+  await nextTick();
+  if (!live()) return;
+  try {
+    const { epoch, value } = await core.historyRowShareChoose(
+      target.epoch,
+      rowMenuScope(target),
+      receipt,
+      choice,
+    );
+    if (!live() || epoch !== target.epoch) return;
+    if (value.kind === 'wechat_qr' && choice === 'wechat_qr') {
+      rowShare.value = { stage: 'qr', target, modules: value.modules };
+    } else if (value.kind === 'copy' && choice === 'copy') {
+      try {
+        await core.copyText(value.url);
+        if (live()) rowMenuNotice.value = '复制成功';
+      } catch {
+        if (live()) rowMenuError.value = '复制失败，请重新打开菜单重试。';
+      }
+      if (live()) keepShareFocusVisible();
+    } else if (value.kind === 'unavailable' || value.kind === 'album_required')
+      shareUnavailable(value.kind);
+    else rowMenuError.value = '暂时无法完成此分享。';
+  } catch (cause) {
+    if (live()) shareFailed(cause);
+  }
+}
 async function chooseRowMenu(key: string) {
   const target = rowTarget.value;
   const item = rowMenuItems.value.find((entry) => entry.key === key);
@@ -521,6 +617,10 @@ async function chooseRowMenu(key: string) {
         live: () => rowTargetLive(target),
       },
     );
+    return;
+  }
+  if (key === 'share' && info?.canShare) {
+    await prepareRowShare(target);
     return;
   }
   if (key === 'copy' && info?.copyLink) {
@@ -1465,6 +1565,19 @@ function keyboard(event: KeyboardEvent) {
       @login="emit('login')"
     />
     <Teleport to="body">
+      <ModalTransition
+        :return-focus="() => rowShareOpener"
+        :fallback-focus="collectionFallback"
+        @left="keepShareFocusVisible"
+      >
+        <HistoryRowShareDialog
+          v-if="rowShare"
+          :key="rowShare.stage"
+          :modules="rowShare.stage === 'qr' ? rowShare.modules : undefined"
+          @choose="chooseRowShare"
+          @close="cancelRowShare"
+        />
+      </ModalTransition>
       <ModalTransition :return-focus="() => uncollectOpener" :fallback-focus="collectionFallback">
         <VoicePodcastUncollectDialog
           v-if="uncollect"
