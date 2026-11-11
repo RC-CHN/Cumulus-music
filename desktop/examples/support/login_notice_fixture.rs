@@ -255,20 +255,11 @@ impl HttpBackend for Service {
                 ));
             }
             if path == "/api/login/token/refresh/v1" {
-                // The inherited fixture enables both official login flags.
-                // After adopting the new QR account, the production renewal
-                // pump performs one check. Model a complete headerless reply;
-                // do not silently accept an unexpected account or credential.
-                if mode != "qr_authorize"
-                    || uid != Some(5)
-                    || data["clientUserId"] != "5"
-                    || data["refreshToken"] != "fixture-refresh"
-                    || data["_scver"] != "1"
-                    || data["_sign"].as_str().is_none_or(|value| value.is_empty())
-                {
-                    return Err(Error::Response("synthetic QR renewal context"));
-                }
-                return Ok(auth::reply(json!({"code":200}), None));
+                // Both login flags are enabled, but adopting a verified account
+                // never supplies a native foreground event. The separate
+                // renewal probe covers the request after actual reactivation.
+                self.unexpected.fetch_add(1, Ordering::SeqCst);
+                return Err(Error::Response("unexpected renewal during QR adoption"));
             }
             if path == "/api/login" {
                 if data["fromPage"] != "JSK"

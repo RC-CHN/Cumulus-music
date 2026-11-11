@@ -115,6 +115,7 @@ def main():
         assert state['syntheticDeviceContext'] and state['nativeClientSignPresent'] is False
         assert state['windowsDeclaration'] and isinstance(state['nativeClientSignPresent'], bool)
         assert state['fixture']['unexpectedRequests'] == 0, (state['stage'], state['fixture']['modePaths'])
+        assert state['fixture']['paths'].get('/api/login/token/refresh/v1', 0) == 0, state['stage']
         badge_reads = {} if index == 0 else {'2': 1}
         if index == len(states) - 1:
             badge_reads['5'] = 1
@@ -179,14 +180,11 @@ def main():
     requests = fixture['paths']
     assert requests.get('/api/login') == 11
     assert requests.get('/api/login/penalty/status') == 3
-    assert requests.get('/api/login/token/refresh/v1') == 1
-    assert fixture['modePaths']['qr_authorize'].get('/api/login/token/refresh/v1') == 1
+    assert requests.get('/api/login/token/refresh/v1', 0) == 0
     assert fixture['communityBadgeReads'] == {'2': 1, '5': 1}
     assert {mode: paths[badge] for mode, paths in fixture['modePaths'].items() if badge in paths} == {
         'seed_old': 1, 'qr_authorize': 1,
     }
-    for state in states[:-1]:
-        assert state['fixture']['paths'].get('/api/login/token/refresh/v1', 0) == 0
     for mode in ['seed_old', 'risk_8810', 'risk_10004', 'disabled', 'upgrade_8820', 'upgrade_8810',
                  'penalty_upgrade', 'penalty_identity', 'penalty_unknown', 'qr_seed', 'qr_authorize']:
         assert fixture['modePaths'][mode].get('/api/login') == 1, mode

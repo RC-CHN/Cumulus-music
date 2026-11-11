@@ -296,10 +296,10 @@
     await stage('security_qr_identity_pending_light', { expectNickname: '邮箱验证账号', code: 803, identityReadBeforeAdoption: true });
     await mode('release');
     await wait(() => ready() && !one('dialog') && one('.account-button').textContent.includes('短信验证账号'), 'verified candidate adopted after identity read');
-    await nativeWait(snapshot => snapshot.paths['/api/login/token/refresh/v1'] === 1,
-      'one official-policy renewal check after verified account adoption');
-    await nativeWait(snapshot => snapshot.communityBadgeReads['5'] === 1,
+    const adopted = await nativeWait(snapshot => snapshot.communityBadgeReads['5'] === 1,
       'one passive followed-song badge read after the verified QR account adoption');
+    assert(!adopted.paths['/api/login/token/refresh/v1'],
+      'verified QR adoption does not synthesize a native foreground renewal event');
     await stage('security_qr_adopted_light', { expectNickname: '短信验证账号', code: 803 });
     await emit('complete', { ok: true, stageCount: count, loginNotices: true,
       expectNickname: '短信验证账号', returnedToPhone: true, noPasswordReplay: true,
