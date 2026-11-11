@@ -72,14 +72,36 @@
     await wait(() => bar().dataset.state === 'paused', 'native paused');
   }
   async function seek(seconds) {
-    const input = one('[aria-label="播放进度"]');
-    assert(input && !input.disabled, 'native seek control');
-    input.value = String(seconds);
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    await wait(
-      () => Math.abs(Number(bar().dataset.position) - seconds) < .3 && !input.disabled,
-      'native seek to ' + seconds,
-    );
+    const { playId, trackId } = bar().dataset;
+    assert(playId && trackId, 'native seek source identity');
+    const current = () => {
+      const view = bar();
+      assert(view?.dataset.playId === playId && view.dataset.trackId === trackId,
+        'native seek source changed');
+      return view;
+    };
+    assert(current().dataset.state === 'paused', 'native seek must start paused');
+    const slider = () => one('[aria-label="播放进度"]');
+    let dispatched;
+    // The paused view can render before its action releases the busy lock.
+    // Wait for the same source's real control, then dispatch exactly once.
+    await wait(() => {
+      const view = current();
+      const input = slider();
+      const min = Number(input?.min), max = Number(input?.max);
+      if (view.dataset.state !== 'paused' || !input || input.disabled ||
+        !Number.isFinite(min) || !Number.isFinite(max) ||
+        max <= min || seconds < min || seconds > max) return false;
+      dispatched = input;
+      input.value = String(seconds);
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, 'native seek control ready');
+    await wait(() => {
+      const view = current();
+      return view.dataset.state === 'paused' && slider() === dispatched && !dispatched.disabled &&
+        Math.abs(Number(view.dataset.position) - seconds) < .3;
+    }, 'native seek to ' + seconds);
   }
   function seekNearEnd() {
     // The 30-second local PCM reaches real libmpv EOF; no fake engine event.
