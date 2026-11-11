@@ -5,13 +5,16 @@ import os
 from pathlib import Path
 import sqlite3
 import subprocess
+import sys
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--legacy', action='store_true')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--legacy', action='store_true')
+    modes.add_argument('--ordinary-expiry', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     assert not root.exists(), 'proof directory must be new'
@@ -20,12 +23,19 @@ def main():
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_PROOF_SMALL='1')
     if args.legacy:
         env['CUMULUS_PROOF_LEGACY'] = '1'
+    if args.ordinary_expiry:
+        env['CUMULUS_PROOF_ORDINARY_EXPIRY'] = '1'
     with root.with_suffix('.log').open('x', encoding='utf-8') as log:
         result = subprocess.run([str(args.binary.resolve())], env=env, stdout=log, stderr=log, timeout=180)
     assert result.returncode == 0, f'UI probe exited {result.returncode}; inspect {root.with_suffix(".log")}'
     run = root / 'first'
     complete = json.loads((run / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] is True and complete['legacyPolicy'] == args.legacy
+    if args.ordinary_expiry:
+        assert complete['ordinaryJskExpiry'] is True
+        audit = Path(__file__).resolve().parents[2] / 'desktop/examples/audit_login_interception_probe.py'
+        subprocess.run([sys.executable, str(audit), str(root), '--without-screenshots'], check=True)
+        return
     states = [('restored', 0, 'authenticated'), ('retained', 1, 'authenticated'),
               ('expired', 2, 'expired'), ('login', 2, 'expired')]
     if args.legacy:

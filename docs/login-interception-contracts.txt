@@ -69,7 +69,12 @@ SessionRenewal新增PolicyDisabled；缺凭据优先显示缺凭据。主界面�
   通过实际类型化 IPC 驱动一条封闭的后台失败读；检查原请求不重放、无二维码或
   登录弹窗、纯文本提示、焦点与路径不变、登录回退不重复原因及约 7 秒后消失。
   独立审计命令不变。
-  Rust 用例另核对新进程不读网络且无临时标记；最终实际运行证据待集成。
+  Rust 用例另核对新进程不读网络且无临时标记。`82539224` 的隔离 Linux
+  WebView 通过普通失效 5 态（提示实际 7168 ms）、JSK action 2 的 4 态和旧版
+  引导 6 态。普通用例保留本地路径和焦点，无自动扫码，登录回退只显示通用说明；
+  另外在 Linux 验证了 Windows CI 使用的无截图驱动。三套独立审计及截图在
+  `.build/ui-proof/phase318-319-cloud-auth/webview-auth-{ordinary,action2,classic}/`。
+  两平台 CI 接在原登录分组；这份报告不代表 Windows 运行或真实服务校验。
 
 验证入口
  node desktop/tests/login_interception_official.cjs core/tests/fixtures/login_interception.json

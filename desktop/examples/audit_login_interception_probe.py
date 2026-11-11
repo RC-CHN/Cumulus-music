@@ -7,7 +7,10 @@ import sqlite3
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('root', type=Path)
-root = parser.parse_args().root.resolve()
+parser.add_argument('--without-screenshots', action='store_true',
+                    help='audit the same native and DOM receipts from the Windows runner')
+args = parser.parse_args()
+root = args.root.resolve()
 run = root / 'first'
 complete = json.loads((run / 'complete.json').read_text(encoding='utf-8'))
 legacy = complete.get('legacyPolicy', False)
@@ -31,7 +34,9 @@ for name, checks, status in states:
     row = json.loads(raw)
     assert row['nativeAccount']['status'] == status
     assert row['validationRequests'] == checks and row['searchRequests'] == checks
-    assert row['realMusicNetworkRequests'] == 0 and path.with_suffix('.png').is_file()
+    assert row['realMusicNetworkRequests'] == 0
+    if not args.without_screenshots:
+        assert path.with_suffix('.png').is_file()
     assert row['fixtureRequests'].get('/api/login/token/refresh/v1', 0) == 0
     if legacy:
         assert row['queueCounts'] == [0 if status == 'expired' else 1, 1, 1]
@@ -76,9 +81,10 @@ if legacy:
         receipts = db.execute("SELECT value FROM state WHERE owner='2' AND kind='login-queue-reset-v1'").fetchall()
         assert receipts == [('"cleared"',)]
 assert complete['ok']
-assert json.loads((run / 'capture.json').read_text())['ok']
+if not args.without_screenshots:
+    assert json.loads((run / 'capture.json').read_text())['ok']
 result = {'ok': True, 'syntheticOnly': True, 'realMusicRequests': 0,
-          'screenshots': len(states), 'failedSearchesNotReplayed': True,
+          'screenshots': 0 if args.without_screenshots else len(states), 'failedSearchesNotReplayed': True,
           'validTokenRetainedAccount': True, 'explicitInvalidationClearedCredentials': True,
           'nativeEventReachedUi': True, 'reloginEntryOpened': not ordinary,
           'ordinaryJskExpiryNotice': ordinary, 'localRouteAndFocusRetained': ordinary,

@@ -979,6 +979,7 @@ jobs:
           python scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe.exe --root .build/ci-loudness-ui-windows --runtime .build/package-stage/windows-x64/native --filter-library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
           python scripts/ci/loudness_ui_smoke.py --runtime-fault --binary .build/target/debug/examples/loudness_ui_probe.exe --root .build/ci-effect-runtime-windows --runtime .build/package-stage/windows-x64/native --filter-library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows
+          python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-ordinary-windows --ordinary-expiry
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows-legacy --legacy
           python scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe.exe --root .build/ci-scroll-windows
           python scripts/ci/playback_power_guide_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-power-guide-windows --runtime .build/package-stage/windows-x64/native
@@ -1040,6 +1041,7 @@ jobs:
           python scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-menu-exit-windows --runtime .build/package-stage/windows-x64/native --exit
           python scripts/ci/lyric_report_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-lyric-report-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-page-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_filter_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --frontend-dist frontend/dist --root .build/ci-cloud-filter-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-batch-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/cloud_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/cloud_toolbar_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-toolbar-windows --runtime .build/package-stage/windows-x64/native
@@ -2007,6 +2009,8 @@ jobs:
             --example login_interception_ui_probe --example scroll_ui_probe
           xvfb-run -a dbus-run-session -- /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
+          sh scripts/ci/loopback_only.sh --synthetic-online env CUMULUS_PROOF_ORDINARY_EXPIRY=1 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login-ordinary-linux --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 5 --small
+          python3 desktop/examples/audit_login_interception_probe.py .build/ci-login-ordinary-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_power_guide_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-power-guide-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/system_master_volume_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-master-volume-linux --screenshots
@@ -2534,6 +2538,7 @@ jobs:
             ' sh "$(id -un)" "$@"
           }
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-page-linux
+          sh scripts/ci/loopback_only.sh --synthetic-online env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/cloud_filter_smoke.py --binary .build/target/debug/examples/mini_ui_probe --frontend-dist frontend/dist --root .build/ci-cloud-filter-linux --screenshots
           sudo unshare --net --fork runuser -u "$(id -un)" -- env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 CUMULUS_TEST_WINDOW_MANAGER=openbox LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1366x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/cloud_capacity_smoke.py --binary .build/target/debug/examples/mini_ui_probe --frontend-dist frontend/dist --root .build/ci-cloud-capacity-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-batch-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-menu-linux
