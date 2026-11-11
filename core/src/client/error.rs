@@ -329,6 +329,11 @@ impl From<Error> for ClientError {
                     "专辑歌曲列表已更新，请刷新专辑后重新拖入",
                     true,
                 ),
+                Error::State("search menu song is unavailable") => (
+                    "search_menu_song_unavailable",
+                    "因版权原因，该歌曲暂时无法播放",
+                    false,
+                ),
                 Error::State("selected search song is unavailable online") => (
                     "search_group_anchor_unavailable",
                     "这首歌当前无法播放，请从同组中可播放的歌曲打开菜单",

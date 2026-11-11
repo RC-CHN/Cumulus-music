@@ -235,7 +235,49 @@ pub(super) async fn confirmed_plain_skip_denial(
     if !super::skip_policy::plain_copyright_denial(item) {
         return Ok(false);
     }
-    let id = identifier(&item.resource["id"])?;
+    no_managed_publication(session, token, identifier(&item.resource["id"])?).await
+}
+
+/// M/3085 checks the clicked catalog song before M/308 adds it to the queue.
+/// Only prove the common no-copyright case. Purchases, trial, substitutes,
+/// cloud/local tracks and even ambiguous download publications are not denials
+/// in this predicate; they still need their own source and entitlement checks.
+pub(crate) async fn confirmed_plain_search_menu_denial(
+    session: &Arc<AccountSession>,
+    token: &SessionToken,
+    id: &str,
+    song: &Value,
+    privilege: Option<&Value>,
+) -> Result<bool> {
+    let privilege = privilege.unwrap_or(&song["privilege"]);
+    if id.len() > 32
+        || identifier(&song["id"]).ok().as_deref() != Some(id)
+        || (!privilege["id"].is_null() && identifier(&privilege["id"]).ok().as_deref() != Some(id))
+        || privilege["st"].as_i64() != Some(-200)
+        || privilege["pl"].as_i64() != Some(0)
+        || privilege["flag"].as_u64() != Some(0)
+        || js_truthy(&privilege["cs"])
+        || [
+            "programId",
+            "audio",
+            "radio",
+            "offlineId",
+            "noCopyrightRcmds",
+        ]
+        .into_iter()
+        .any(|field| js_truthy(&song[field]))
+        || !super::skip_policy::plain_copyright_metadata(song, privilege)
+    {
+        return Ok(false);
+    }
+    no_managed_publication(session, token, id.to_owned()).await
+}
+
+async fn no_managed_publication(
+    session: &Arc<AccountSession>,
+    token: &SessionToken,
+    id: String,
+) -> Result<bool> {
     let publications = download::snapshot(session, token, HashSet::from([id])).await?;
     session.check_generation(token)?;
     Ok(publications.is_empty())

@@ -391,6 +391,24 @@ impl MusicClient {
             .await
     }
 
+    pub(super) async fn check_retained_search_menu(
+        &self,
+        token: &SessionToken,
+        snapshot: &QueueClickSnapshot,
+    ) -> Result<()> {
+        let current = self.player.controller().await?.snapshot();
+        self.session.check_generation(token)?;
+        if self.player.selection.load(Ordering::Acquire) != snapshot.attempt
+            || self.focus.snapshot()? != snapshot.focus
+        {
+            return Err(Error::StaleResponse);
+        }
+        if current.fence() != snapshot.before.fence() {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
+
     async fn queue_click_snapshot_for(
         &self,
         token: &SessionToken,
@@ -471,11 +489,13 @@ impl MusicClient {
         token: &SessionToken,
         snapshot: &QueueClickSnapshot,
         id: &str,
-        lease: u64,
     ) -> Result<Option<PlaybackSnapshot>> {
         if !current_table_song(&snapshot.before, TableSong::Catalog(id)) {
             return Ok(None);
         }
+        let lease = self
+            .claim_native_media(token, Owner::Audio, snapshot.focus)
+            .await?;
         let _room = self
             .together
             .gate

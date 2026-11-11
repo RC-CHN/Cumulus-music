@@ -2320,6 +2320,38 @@ test('search menu queue feedback requires a live native mutation and renews the 
   }
 });
 
+test('search menu playback denial preserves the current player and reports copyright without Add or retry', async () => {
+  const message = '因版权原因，该歌曲暂时无法播放';
+  const f = fixture({
+    playSelection: async () => {
+      throw { code: 'search_menu_song_unavailable', message, retryable: false };
+    },
+  });
+  try {
+    await f.player.connect(account());
+    const paused = { ...state('2', '1', 'current'), state: 'paused', queueRevision: '7' } as const;
+    f.emit(paused);
+    const result = await f.player.searchQueueMenuPlay(
+      {
+        kind: 'search_result_menu_play',
+        id: '101',
+        quality: 'standard',
+        expected_play_id: 'current',
+        expected_queue_revision: '7',
+      },
+      () => true,
+    );
+    assert.equal(result, undefined);
+    assert.deepEqual(f.player.view.value, paused);
+    assert.equal(f.player.errorCode.value, 'search_menu_song_unavailable');
+    assert.equal(f.player.error.value, message);
+    assert.equal(f.player.canRetry.value, false);
+    assert.equal(f.player.searchQueueAdded.value, false);
+  } finally {
+    f.player.dispose();
+  }
+});
+
 test('the finished looping bottom bar uses the rendered EOF receipt without a legacy retry', async () => {
   const actions: PlayerAction[] = [];
   const finished: PlayerView = {

@@ -25,6 +25,7 @@ struct Backend {
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
     search_menu_revision: AtomicU64,
+    search_menu_denied_detail: AtomicU64,
     deny_url_id: AtomicU64,
     playlist_cloud_song_id: AtomicU64,
     unavailable_url_id: AtomicU64,
@@ -359,6 +360,10 @@ impl Api for Backend {
                     let mut response = json!({"code":200,"songs":ids.iter().map(|v|json!({"id":v["id"],"name":"曲目","ar":[{"id":12,"name":"歌手"}],"al":{"id":7,"name":"专辑","picUrl":"http://p1.music.126.net/image.jpg?token=SECRET"},"dt":120000,"url":"https://private/?secret=SECRET","cookie":"SECRET"})).collect::<Vec<_>>()});
                     if id == self.playlist_cloud_song_id.load(Ordering::SeqCst) {
                         response["privileges"] = json!([{"id":id,"cs":1}]);
+                    }
+                    if id == self.search_menu_denied_detail.load(Ordering::SeqCst) {
+                        response["privileges"] =
+                            json!([{"id":id,"st":-200,"pl":0,"fee":0,"flag":0,"payed":0}]);
                     }
                     let denied = self.artist_batch_blocked_song.load(Ordering::SeqCst);
                     if ids.iter().any(|song| song["id"].as_str().and_then(|id| id.parse().ok()) == Some(denied)) {

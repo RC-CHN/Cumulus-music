@@ -309,7 +309,7 @@ async fn search_menu_play_moves_the_same_source_copy_and_current_play_only_resum
 async fn search_menu_play_rejects_stale_open_and_late_detail_without_touching_the_new_queue() {
     let (_dir, api, _, client, _) = fixture();
     let old = client.play_selection("1", songs("11")).await.unwrap();
-    let next = client.play_selection("1", songs("12")).await.unwrap();
+    client.play_selection("1", songs("12")).await.unwrap();
     let initial_calls = api.calls.lock().unwrap().len();
     assert!(matches!(
         client
@@ -323,24 +323,71 @@ async fn search_menu_play_rejects_stale_open_and_late_detail_without_touching_th
             .any(|path| path.ends_with("/v3/song/detail"))
     );
 
-    api.hold_id.store(31, Ordering::SeqCst);
-    let pending = {
-        let client = client.clone();
-        tokio::spawn(async move {
-            client
-                .play_selection("1", search_menu_play("31", &next))
-                .await
-        })
+    for (id, superseding) in [(31, "13"), (32, "14")] {
+        let before = client.player_snapshot("1").await.unwrap();
+        api.hold_id.store(id, Ordering::SeqCst);
+        api.search_menu_denied_detail.store(32, Ordering::SeqCst);
+        let pending = {
+            let client = client.clone();
+            tokio::spawn(async move {
+                client
+                    .play_selection("1", search_menu_play(&id.to_string(), &before))
+                    .await
+            })
+        };
+        api.started.notified().await;
+        let replacement = client
+            .play_selection("1", songs(superseding))
+            .await
+            .unwrap();
+        api.release.notify_one();
+        assert!(matches!(pending.await.unwrap(), Err(Error::StaleResponse)));
+        let current = client.player_snapshot("1").await.unwrap();
+        assert_eq!(current.play_id, replacement.play_id);
+        assert_eq!(current.queue_revision, replacement.queue_revision);
+        assert_eq!(
+            queue(&client).await,
+            [(superseding.into(), replacement.entry_id.unwrap())]
+        );
+    }
+}
+
+#[tokio::test]
+async fn search_menu_play_rejects_confirmed_copyright_denial_before_replacing_the_paused_decoder() {
+    let device = Arc::new(support::Device::default());
+    let (_dir, api, _, client, _) = fixture_with_device(device.clone());
+    api.playlist_trial.enable_media_trace();
+    client.play_selection("1", songs("11")).await.unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let before_queue = queue(&client).await;
+    let before_loads = device.state.lock().unwrap().loads;
+    api.search_menu_denied_detail.store(31, Ordering::SeqCst);
+
+    let Err(error) = client
+        .play_selection("1", search_menu_play("31", &paused))
+        .await
+    else {
+        panic!("the copyright-restricted song was accepted");
     };
-    api.started.notified().await;
-    let replacement = client.play_selection("1", songs("13")).await.unwrap();
-    api.release.notify_one();
-    assert!(matches!(pending.await.unwrap(), Err(Error::StaleResponse)));
+    assert!(matches!(
+        error,
+        Error::State("search menu song is unavailable")
+    ));
+    let public = cumulus_core::client::ClientError::from(error);
+    assert_eq!(public.code, "search_menu_song_unavailable");
+    assert_eq!(public.message, "因版权原因，该歌曲暂时无法播放");
+    assert!(!public.retryable);
+
     let current = client.player_snapshot("1").await.unwrap();
-    assert_eq!(current.play_id, replacement.play_id);
-    assert_eq!(current.queue_revision, replacement.queue_revision);
-    assert_eq!(
-        queue(&client).await,
-        [("13".into(), replacement.entry_id.unwrap())]
-    );
+    assert_eq!(current.state, PlaybackStatus::Paused);
+    assert_eq!(current.entry_id, paused.entry_id);
+    assert_eq!(current.play_id, paused.play_id);
+    assert_eq!(current.queue_revision, paused.queue_revision);
+    assert_eq!(current.position, paused.position);
+    assert_eq!(queue(&client).await, before_queue);
+    assert_eq!(device.state.lock().unwrap().loads, before_loads);
+    assert!(api.playlist_trial.modes("31").is_empty());
 }

@@ -329,9 +329,11 @@ fn assert_search_online(f: &Fixture, level: &str) {
 }
 
 #[tokio::test]
-async fn search_menu_play_starts_from_empty_queue_using_the_same_verified_download() {
+async fn search_menu_play_uses_the_same_verified_download_despite_online_copyright_denial() {
     let f = Fixture::new();
     let (_, completed) = f.completed().await;
+    f.api.song.lock().unwrap()["privilege"] =
+        json!({"id":123,"st":-200,"pl":0,"fee":0,"flag":0,"payed":0});
     let path = fs::canonicalize(completed.tasks[0].path.as_ref().unwrap()).unwrap();
     let initial = f.client.player_snapshot("1").await.unwrap();
     let played = f

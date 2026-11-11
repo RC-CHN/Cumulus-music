@@ -67,8 +67,6 @@ pub struct OrdinarySkipOutcome {
 pub(super) fn plain_copyright_denial(entry: &QueueEntry) -> bool {
     let resource = &entry.resource;
     let song = &resource["song"];
-    let privilege = &song["privilege"];
-    let value = |raw, normalized| privilege.get(raw).unwrap_or(&privilege[normalized]);
     if [
         "path",
         "local_id",
@@ -80,14 +78,25 @@ pub(super) fn plain_copyright_denial(entry: &QueueEntry) -> bool {
     ]
     .into_iter()
     .any(|key| !resource[key].is_null())
-        || ["voiceId", "voice_id", "fileId", "isOfflineDownOnline"]
-            .into_iter()
-            .any(|key| js_truthy(&song[key]))
         || !entry.visible_in_queue()
         || identifier(&song["id"])
             .ok()
             .zip(identifier(&resource["id"]).ok())
             .is_none_or(|(a, b)| a != b || a.len() > 32)
+    {
+        return false;
+    }
+    plain_copyright_metadata(song, &song["privilege"])
+}
+
+pub(super) fn plain_copyright_metadata(
+    song: &serde_json::Value,
+    privilege: &serde_json::Value,
+) -> bool {
+    let value = |raw, normalized| privilege.get(raw).unwrap_or(&privilege[normalized]);
+    if ["voiceId", "voice_id", "fileId", "isOfflineDownOnline"]
+        .into_iter()
+        .any(|key| js_truthy(&song[key]))
         || !(song["noCopyrightRcmd"].is_null()
             || song["noCopyrightRcmd"]["type"].as_i64() == Some(0))
         || privilege["fee"].as_i64() != Some(0)

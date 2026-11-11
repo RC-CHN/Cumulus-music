@@ -551,6 +551,7 @@ impl MusicClient {
         if let PlaySelection::ListenedBookChapter { revision, key } = &input {
             self.check_listened_chapter(&token, revision, *key)?;
         }
+        let search_menu_play = retained == Some(RetainedRow::SearchMenuPlay);
         let retained_album =
             retained.is_some() && matches!(&input, PlaySelection::AlbumDetail { row: Some(_), .. });
         let preserve = if let PlaySelection::SearchResultMenuPlay {
@@ -587,10 +588,16 @@ impl MusicClient {
         let (lease, attempt) = if let Some(prepared) = &prepared {
             (None, prepared.observed)
         } else if let Some(snapshot) = &preserve {
-            let lease = self
-                .claim_native_media(&token, Owner::Audio, snapshot.focus)
-                .await?;
-            (Some(lease), snapshot.attempt)
+            let lease = if search_menu_play {
+                // A denied new menu selection must not take media focus.
+                None
+            } else {
+                Some(
+                    self.claim_native_media(&token, Owner::Audio, snapshot.focus)
+                        .await?,
+                )
+            };
+            (lease, snapshot.attempt)
         } else {
             let lease = self.claim_media(&token, Owner::Audio).await?;
             (
@@ -614,10 +621,10 @@ impl MusicClient {
             self.session.with_token(&token, |_| Ok(()))?;
             return project(&state, &token);
         }
-        if let (PlaySelection::SearchResultMenuPlay { id, .. }, Some(snapshot), Some(lease)) =
-            (&input, &preserve, lease)
+        if let (PlaySelection::SearchResultMenuPlay { id, .. }, Some(snapshot)) =
+            (&input, &preserve)
             && let Some(state) = self
-                .resume_retained_search_menu_track(&token, snapshot, id, lease)
+                .resume_retained_search_menu_track(&token, snapshot, id)
                 .await?
         {
             self.session.with_token(&token, |_| Ok(()))?;
@@ -1674,6 +1681,22 @@ impl MusicClient {
                 })
                 .await?;
             for (id, song) in chunk.iter().zip(songs.songs) {
+                if search_menu_play
+                    && let Some(snapshot) = preserve.as_ref()
+                    && let Some(id) = id.as_str()
+                    && let Some(song) = song.as_ref()
+                    && crate::playback::preflight::confirmed_plain_search_menu_denial(
+                        &self.session,
+                        &token,
+                        id,
+                        song,
+                        songs.privileges.get(id),
+                    )
+                    .await?
+                {
+                    self.check_retained_search_menu(&token, snapshot).await?;
+                    return Err(Error::State("search menu song is unavailable"));
+                }
                 let song = song
                     .as_ref()
                     .map(|song| {
@@ -1706,10 +1729,20 @@ impl MusicClient {
             return Err(Error::State("selected song is unavailable"));
         }
         let state = if let (Some(snapshot), Some(retained)) = (preserve, retained) {
-            let lease = lease.ok_or(Error::StaleResponse)?;
             if self.player.selection.load(Ordering::Acquire) != attempt {
                 return Err(Error::StaleResponse);
             }
+            let lease = if search_menu_play {
+                let (lease, ()) = self.reserve_prepared_audio(&token, snapshot.focus, || {
+                    if self.player.selection.load(Ordering::Acquire) != attempt {
+                        return Err(Error::StaleResponse);
+                    }
+                    Ok(())
+                })?;
+                self.finish_media_claim(&token, Owner::Audio, lease).await?
+            } else {
+                lease.ok_or(Error::StaleResponse)?
+            };
             self.focus.check(lease, Owner::Audio)?;
             if retained_album {
                 self.play_retained_album_rows(
