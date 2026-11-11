@@ -24,12 +24,14 @@ export interface HistoryRowMenuTarget {
   clicked_id: string;
   selected_ids: string[];
 }
+export type HistorySongRowDownloadTarget = HistoryRowMenuTarget & { history_kind: 'song' };
 export interface HistoryRowMenuInfo {
   comment: {
     resource: { kind: 'track' | 'voice'; id: string };
     count: number | null;
   } | null;
   copyLink: string | null;
+  songDownload?: { kind: 'download' | 'copyright_blocked' | 'unavailable' };
   voiceFile?: { kind: 'download' } | { kind: 'reveal'; receipt: string } | { kind: 'unavailable' };
 }
 export interface HistoryRowMenuClient {

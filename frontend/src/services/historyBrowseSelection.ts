@@ -56,6 +56,7 @@ import type {
   HistoryPage,
   HistoryQueueKind,
   HistoryRowMenuTarget,
+  HistorySongRowDownloadTarget,
 } from './history';
 
 function historyBrowseRows(
@@ -88,6 +89,20 @@ export function historyBrowseSongCollectionRows(
   target: HistoryCollectRowTarget,
 ) {
   return historyBrowseRows(page, 'song', target)?.rows;
+}
+
+/** Freeze only the native history IDs, without changing the clicked row or gesture order. */
+export function historyBrowseSongDownloadTarget(
+  page: HistoryPage,
+  target: HistoryRowMenuTarget,
+): HistorySongRowDownloadTarget | undefined {
+  if (target.history_kind !== 'song' || !historyBrowseRows(page, 'song', target)) return;
+  return {
+    history_kind: 'song',
+    revision: target.revision,
+    clicked_id: target.clicked_id,
+    selected_ids: [...target.selected_ids],
+  };
 }
 
 /** Resolve display labels without converting a browse gesture into batch order. */

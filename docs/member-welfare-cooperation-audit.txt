@@ -134,7 +134,9 @@ Cumulus：账号菜单到福利清单的只读范围
   播放器 Stop 还是窗口清理，新探针会记录退出阶段以便复查。
   更新后的原生宿主在本机 Linux WebKitGTK 通过 8 态，四组正常退出、访客和对照
   弹窗均关闭并恢复焦点、播放器一直空闲。报告：
-  `.build/ui-proof/welfare-exit-lifecycle-verified/report.json`。Windows 仍待 CI 验证。
+  `.build/ui-proof/welfare-exit-lifecycle-verified/report.json`。同一修复在
+  Windows CI 43041618828、作业 130601730347 也通过 8 态和四组正常退出，
+  未访问真实账号；该专项结果不代表同一 CI 的 Linux 作业通过。
 - 未来只有恢复可证明的同版本安全目标，才独立实现用户明确确认后的原生浏览器交接；
   测试必须覆盖任意域、协议、凭据和重定向拒绝，不能用允许任意福利 URL 的办法承接。
 - WPS 单独保留边界：Windows 的真实只读注册表投影技术上可实现且可用临时

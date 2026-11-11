@@ -15,6 +15,7 @@ import {
   historyBrowseMenuIds,
   historyBrowseRemovalIds,
   historyBrowseSongCollectionRows,
+  historyBrowseSongDownloadTarget,
   historyBrowseSongMenuBlocked,
   historyBrowseTableGroup,
   historyBrowseVoiceDownloadTracks,
@@ -433,6 +434,62 @@ test('history song row collection uses gesture order instead of display order or
     historyBrowseSongCollectionRows(snapshot, { ...target, revision: 'replaced' }),
     undefined,
   );
+});
+
+test('history song row download binds the clicked row independently of the frozen group', () => {
+  const snapshot = page();
+  snapshot.entries = ['1', '2', '3'].map((id) => ({
+    id,
+    resource: {
+      kind: 'song',
+      track: {
+        id,
+        name: `歌曲 ${id}`,
+        artists: [],
+        album: '',
+        coverUrl: null,
+        durationMs: 1000,
+        fee: 0,
+        local: false,
+        missing: false,
+      },
+    },
+    playedAt: 1,
+    device: '',
+    origin: 'remote',
+    playProgress: null,
+    listened: null,
+  }));
+  const target = {
+    history_kind: 'song' as const,
+    revision: snapshot.revision,
+    clicked_id: '2',
+    selected_ids: ['3', '1'],
+    name: '不作为下载授权',
+  };
+  const frozen = historyBrowseSongDownloadTarget(snapshot, target);
+  assert.deepEqual(frozen, {
+    history_kind: 'song',
+    revision: snapshot.revision,
+    clicked_id: '2',
+    selected_ids: ['3', '1'],
+  });
+  target.selected_ids.reverse();
+  assert.deepEqual(frozen?.selected_ids, ['3', '1']);
+  assert.deepEqual(
+    historyBrowseSongDownloadTarget(snapshot, { ...target, selected_ids: [] })?.selected_ids,
+    [],
+  );
+  for (const invalid of [
+    { ...target, revision: 'stale' },
+    { ...target, clicked_id: '99' },
+    { ...target, selected_ids: ['3', '3'] },
+    { ...target, selected_ids: ['3', '99'] },
+    { ...target, selected_ids: ['3'] },
+    { ...target, history_kind: 'voice' as const },
+  ]) {
+    assert.equal(historyBrowseSongDownloadTarget(snapshot, invalid), undefined);
+  }
 });
 
 test('history voice row download resolves the frozen gesture and rejects a mismatched episode', () => {

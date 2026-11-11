@@ -89,6 +89,12 @@ fn privilege(track: &Value) -> Privilege {
     }
 }
 
+/// The download picker receives a resource array, so only M3085's second
+/// filter applies. It does not promote the first member of a selection.
+pub(in crate::client) fn download_picker_collectable(track: &Value) -> bool {
+    privilege(track).allowed()
+}
+
 fn catalog_identity(row: &HistoryRecord, row_menu: bool) -> Option<&str> {
     let track = &row.resource;
     // History local origin is device provenance. Only the typed local

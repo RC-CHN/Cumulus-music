@@ -58,12 +58,21 @@ pub(crate) enum SongBatchAdmission {
 
 pub(crate) struct HistoryBatchSource {
     pub revision: String,
+    pub row_clicked: Option<String>,
     pub offline: BTreeMap<String, String>,
 }
 
 impl HistoryBatchSource {
     fn verify_in(&self, tx: &StateTransaction<'_>, owner: &str) -> Result<()> {
         if HistoryService::snapshot_in(tx, owner, HistoryKind::Song)?.revision != self.revision {
+            return Err(Error::QueueChanged);
+        }
+        if let Some(clicked) = &self.row_clicked
+            && tx
+                .playback_download_rows(owner, clicked, PlaybackDownloadKind::Song)?
+                .iter()
+                .any(|row| row.status == "complete")
+        {
             return Err(Error::QueueChanged);
         }
         for (song, task_id) in &self.offline {

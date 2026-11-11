@@ -16,6 +16,16 @@
   const rows = () => all('.history-window input[type="checkbox"]', page());
   const selected = () => rows().filter(node => node.checked).map(node => node.getAttribute('aria-label').slice(-2));
   const feedback = () => text(q('.track-action-feedback')) ?? null;
+  const rowProof = window.__historySongRowDownloadProof === true;
+  const songRow = id => q(`[data-history-row-id="${id}"]`, page());
+  const more = id => q(`[data-history-row-more="${id}"]`, page());
+  const rowMenu = () => q('[role="menu"][aria-label="播放记录操作"]:not([inert])');
+  const rowItem = key => q(`[data-menu-key="${key}"]`, rowMenu());
+  const keys = () => all('[data-menu-key]', rowMenu()).map(item => item.dataset.menuKey);
+  const browseIds = () => all('[data-history-row-id][aria-selected="true"]', page())
+    .map(node => node.dataset.historyRowId).sort();
+  const browsing = () => page()?.dataset.historyView === 'browse' &&
+    page()?.dataset.historyCategory === '歌曲' && page()?.getAttribute('aria-busy') === 'false';
   const stages = [];
   let epoch, step = 'startup';
   async function wait(observe, label) {
@@ -43,13 +53,13 @@
       completed: complete.tasks.map(row => ({ id: row.track.id, source: row.source, quality: row.actualQuality,
         encrypted: row.encrypted, bytes: row.bytes, path: row.path })).sort((a, b) => a.id.localeCompare(b.id)) };
   }
-  async function capture(name) {
+  async function capture(name, rowFacts = {}) {
     stages.push(name);
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await emit(`ux_${String(stages.length).padStart(2, '0')}_${name}`, {
       selected: selected(), title: text(q('h2', modal() ?? null)) ?? null,
       feedback: feedback(), destinations: destinations(), quality: !!quality(),
-      returnFocus: document.activeElement === trigger(), ...await facts(),
+      returnFocus: document.activeElement === trigger(), ...await facts(), ...rowFacts,
     });
   }
   async function openPicker() {
@@ -65,6 +75,136 @@
       return active.length === 0 && same(completed.map(row => row.id), ids);
     }, `Rust published ${ids.join(',')} with no active task`);
   }
+  async function openSongRow(ids, clicked, gesture, expectedKeys) {
+    for (const [index, id] of ids.entries()) {
+      const target = songRow(id);
+      assert(ready(target), 'mounted song row ' + id);
+      target.dispatchEvent(new MouseEvent('click', {
+        bubbles: true, cancelable: true, button: 0, ctrlKey: index > 0,
+      }));
+    }
+    const anchor = more(clicked);
+    assert(ready(anchor), 'enabled song More for ' + clicked);
+    anchor.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    anchor.focus({ preventScroll: true });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    let previous, stableAt;
+    await wait(() => {
+      if (!browsing() || more(clicked) !== anchor || document.activeElement !== anchor) return;
+      const bounds = anchor.getBoundingClientRect();
+      const current = [bounds.left, bounds.top, bounds.width, bounds.height];
+      if (!same(previous, current)) {
+        previous = current;
+        stableAt = performance.now();
+        return;
+      }
+      return performance.now() - stableAt >= 105;
+    }, 'settled song row anchor ' + clicked);
+    if (gesture === 'ctrl-context') {
+      const target = songRow(clicked);
+      const bounds = target.getBoundingClientRect();
+      assert(!target.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true, cancelable: true, button: 2, ctrlKey: true,
+        clientX: bounds.left + 18, clientY: bounds.top + 12,
+      })), 'Ctrl+right-click handled by song history');
+    } else if (gesture === 'keyboard') {
+      assert(!anchor.dispatchEvent(new KeyboardEvent('keydown', {
+        bubbles: true, cancelable: true, key: 'F10', shiftKey: true,
+      })), 'Shift+F10 handled by song history');
+    } else anchor.click();
+    await wait(() => rowMenu() && anchor.getAttribute('aria-expanded') === 'true',
+      'visible song history row menu');
+    assert(same(keys(), expectedKeys), 'official song history row menu keys ' + keys().join(','));
+    assert(same(browseIds(), [...ids].sort()), 'retains exact selected song rows');
+    if (rowItem('download')) assert(text(rowItem('download')) === '下载', 'official Download label');
+    return { anchor, receipt: { clicked, selectedIds: ids, gesture, menuKeys: keys() } };
+  }
+  async function rowCapture(name, target, moreFacts = {}) {
+    assert(browsing() && same(browseIds(), [...target.receipt.selectedIds].sort()),
+      'download preserves History route and exact browse selection');
+    let menuPaint = {};
+    if (name === 'row_blocked_group' || name === 'row_completed_menu') {
+      const panel = await wait(() => {
+        const current = rowMenu();
+        if (current?.getClientRects().length && !current.classList.contains('menu-enter-active')
+            && Number(getComputedStyle(current).opacity) >= .99) return current;
+      }, 'row menu transition settled');
+      const box = panel.getBoundingClientRect();
+      menuPaint = { screenX, screenY, ratio: devicePixelRatio,
+        paintSamples: [{ x: box.left + box.width / 2, y: box.top + 2,
+          color: getComputedStyle(panel).backgroundColor }] };
+    }
+    await capture(name, { ...target.receipt, stayedInHistory: true,
+      returnFocus: document.activeElement === target.anchor, ...menuPaint, ...moreFacts });
+  }
+  async function dismissRow(target) {
+    rowMenu().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(() => !rowMenu() && document.activeElement === target.anchor, 'menu restores clicked More');
+  }
+  async function rowPicker() {
+    click(rowItem('download'));
+    await wait(() => text(q('h2', modal())) === '下载到歌单' &&
+      ready(q('[data-playlist-id="81"]', modal())) && same(destinations(), ['81']),
+    'clicked unliked anchor opens owned playlist picker');
+    assert(!quality(), 'ordinary row downloads have no quality chooser');
+  }
+  async function runRows() {
+    await wait(() => browsing() && ['1', '2', '3', '4', '5', '6'].every(id => ready(more(id))),
+      'six synthetic SONG browse rows ready');
+    const blocked = await openSongRow(['1', '5'], '6', 'ctrl-context',
+      ['play', 'next', 'collect', 'download']);
+    const item = rowItem('download');
+    assert(item.disabled && item.title === '暂无版权', 'all copyright-blocked songs disable Download');
+    item.click();
+    assert(!modal() && !quality(), 'disabled action cannot mount any dialog');
+    await rowCapture('row_blocked_group', blocked, { downloadDisabled: item.disabled, copyrightHint: item.title });
+    await dismissRow(blocked);
+
+    const ids = ['3', '1', '2'];
+    const pickerKeys = ['play', 'next', 'collect', 'download'];
+    const first = await openSongRow(ids, '5', 'ctrl-context', pickerKeys);
+    assert(ready(rowItem('download')), 'mixed group enables Download even when clicked anchor is blocked');
+    await rowPicker();
+    await rowCapture('row_picker', first);
+    click(q('[aria-label="关闭歌曲下载"]', modal()));
+    await wait(() => !modal() && document.activeElement === first.anchor,
+      'cancel restores More on the original clicked outside row');
+    await rowCapture('row_cancelled', first);
+    const second = await openSongRow(ids, '5', 'ctrl-context', pickerKeys);
+    await rowPicker();
+    await rowCapture('row_reopened', second);
+    click(q('[data-playlist-id="81"]', modal()));
+    await wait(() => !modal() && feedback() === '已添加 2 首到下载列表，跳过 1 首' &&
+      document.activeElement === second.anchor, 'confirmed row group stays on History and reports the skip');
+    await published(['2', '3']);
+    await rowCapture('row_published', second);
+
+    const single = await openSongRow(['4'], '4', 'button',
+      ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove']);
+    let chooserMounted = false;
+    const watchChooser = new MutationObserver(records => {
+      const chooser = 'dialog[data-search-group-download-picker],dialog[data-search-group-purchased]';
+      chooserMounted ||= records.some(record => record.target instanceof Element &&
+        record.target.matches(chooser) || [...record.addedNodes].some(node =>
+        node instanceof Element && (node.matches(chooser) || q(chooser, node))));
+    });
+    watchChooser.observe(document.body, { childList: true, subtree: true, attributes: true,
+      attributeFilter: ['open'] });
+    try {
+      click(rowItem('download'));
+      await wait(() => feedback() === '已添加 1 首到下载列表' && !modal() && !quality() &&
+        document.activeElement === single.anchor, 'liked singleton directly starts a download');
+      await published(['2', '3', '4']);
+      assert(!chooserMounted, 'liked singleton never mounts a chooser');
+    } finally { watchChooser.disconnect(); }
+    await rowCapture('row_liked_singleton', single, { chooserMounted });
+
+    const completed = await openSongRow(['2'], '2', 'keyboard',
+      ['play', 'next', 'comments', 'collect', 'copy', 'remove']);
+    assert(!rowItem('download'), 'completed song no longer exposes Download');
+    await rowCapture('row_completed_menu', completed, { downloadVisible: false });
+    await dismissRow(completed);
+  }
   try {
     epoch = await wait(async () => {
       const value = await invoke('account_snapshot');
@@ -79,6 +219,11 @@
       options: { ...saved.options, quality: 'standard', container: 'audio', tags: false, cover: false, lyrics: false },
     } });
     click(await wait(() => all('.sidebar button').find(node => ready(node) && text(node) === '最近播放'), 'Recently Played sidebar'));
+    if (rowProof) {
+      await runRows();
+      await emit('complete', { ok: true, stages, row: true });
+      return;
+    }
     click(await wait(() => {
       const menu = q('[data-history-menu] button.menu-trigger', page());
       return page()?.dataset.historyCategory === '歌曲' && ready(menu) && menu;
@@ -114,7 +259,8 @@
     await emit('complete', { ok: true, stages });
   } catch (error) {
     await emit('failed', { ok: false, step, error: error?.message ?? String(error),
-      diagnostics: { selected: selected(), feedback: feedback(), destinations: destinations(),
+      diagnostics: { selected: selected(), browse: browseIds(), menu: keys(),
+        feedback: feedback(), destinations: destinations(),
         pickerMessage: text(q('.collect-load', modal() ?? null)), facts: epoch ? await facts().catch(() => null) : null },
     });
   }

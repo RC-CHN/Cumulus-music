@@ -263,6 +263,20 @@ impl MusicClient {
         let system_liked = matches!(choice, Choice::SystemLiked(_));
         let check = self.search_group_playlist_permission(&lease.0, system_liked)?;
         let plan = &lease.0;
+        let mutation = || {
+            check()?;
+            plan.check_history_row_downloads(&self.session)
+        };
+        if plan.observed.history_row().is_some()
+            && plan
+                .destination
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?
+                .attempt
+                .is_none()
+        {
+            mutation()?;
+        }
         let (attempt, first) = {
             let mut destination = plan.destination.lock().map_err(|_| Error::LockPoisoned)?;
             if destination.creation.is_some() {
@@ -328,7 +342,7 @@ impl MusicClient {
                             destination,
                             &plan.collection,
                             &attempt.operation,
-                            &check,
+                            &mutation,
                         )
                         .await?
                 } else if system_liked {
@@ -422,13 +436,13 @@ impl MusicClient {
             return Ok(SearchGroupDownloadReply::DirectoryRequired);
         }
         check()?;
-        // History carries the original data.from.selectedData into the picker.
-        // The favorite action reverses that separate selection, not the
-        // surviving download array as it does for Search.
-        let songs = if plan.observed.history_revision().is_some() {
-            plan.songs.clone()
-        } else {
+        // The history toolbar carries a separate selectedData into the
+        // picker. Row menus and Search instead let M3085 reverse the same
+        // surviving resource array in place before download dispatch.
+        let songs = if plan.observed.downloads_through_picker_reverse() {
             plan.songs.iter().rev().cloned().collect()
+        } else {
+            plan.songs.clone()
         };
         let admission = plan.playlist_admission(proof);
         self.enqueue_search_download(epoch, lease, songs, admission, true)

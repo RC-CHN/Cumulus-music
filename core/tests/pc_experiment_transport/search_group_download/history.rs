@@ -1,6 +1,6 @@
 use super::*;
 use cumulus_core::{
-    client::dto::HistorySelectionScope,
+    client::dto::{HistoryRowMenuTarget, HistorySelectionScope},
     download::service::DownloadTask,
     history::{HistoryKind, HistoryRecord, HistoryService},
 };
@@ -67,6 +67,26 @@ fn prepare_history(session: &AccountSession, history: &HistoryService) -> C {
         target: HistorySelectionScope {
             revision: snapshot.revision,
             ids: SELECTION.map(|id| id.to_string()).to_vec(),
+        },
+    }
+}
+
+fn prepare_row(
+    session: &AccountSession,
+    history: &HistoryService,
+    clicked: u64,
+    gesture: &[u64],
+) -> C {
+    let revision = history
+        .snapshot_for(&session.token().unwrap(), HistoryKind::Song)
+        .unwrap()
+        .revision;
+    C::PrepareHistoryRow {
+        target: HistoryRowMenuTarget {
+            history_kind: HistoryKind::Song,
+            revision,
+            clicked_id: clicked.to_string(),
+            selected_ids: gesture.iter().map(u64::to_string).collect(),
         },
     }
 }
@@ -515,4 +535,247 @@ async fn history_download_unliked_anchor_collects_original_selection_and_downloa
     http.wait(8).await;
     let calls = http.calls();
     assert!(calls[6..].iter().all(|call| call.path == AUTH));
+}
+
+#[tokio::test]
+async fn history_row_download_collects_survivors_in_gesture_order_and_reverses_tasks_after_picker()
+{
+    let root = tempfile::tempdir().unwrap();
+    let (api, http) = vinyl_http(
+        root.path(),
+        &[COOKIE],
+        [
+            json!({"code":200,"ids":[41,61]}).into(),
+            json!({"code":200,"playlist":[playlist()],"more":false}).into(),
+            json!({"code":200,"playlist":[],"more":false}).into(),
+            detail(&[]),
+            json!({"code":200}).into(),
+            detail(&[41, 61]),
+            deny_media(),
+            deny_media(),
+        ],
+    );
+    configure_picker(root.path());
+    let (client, session, epoch) = client(root.path(), api);
+    directory(&client, &epoch, root.path()).await;
+    let history = HistoryService::new(session.clone()).unwrap();
+    let service = DownloadService::new(session.clone()).unwrap();
+    // The selection is independent of the unliked clicked song. The
+    // copyright-down member still has positive collection privilege, so
+    // only the row-specific survivor projection excludes it from the write.
+    let mut blocked = catalog_song(ANCHOR, 2);
+    blocked["privilege"]["st"] = json!(-100);
+    for (song, position) in [
+        (catalog_song(71, 1), 4),
+        (blocked, 3),
+        (catalog_song(61, 0), 2),
+        (catalog_song(41, 1), 1),
+    ] {
+        record(&session, &history, song, position);
+    }
+    assert!(matches!(
+        client
+            .search_group_download(&epoch, prepare_row(&session, &history, 999, &[41, 52, 61]))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let R::Prepared {
+        decision: D::PlaylistRequired,
+        receipt: Some(receipt),
+        eligible_count: 2,
+        omitted_count: 1,
+        ..
+    } = client
+        .search_group_download(&epoch, prepare_row(&session, &history, 71, &[41, 52, 61]))
+        .await
+        .unwrap()
+    else {
+        panic!("the unliked clicked row opens the picker for two survivors");
+    };
+    assert_eq!(http.calls().len(), 1);
+    assert!(service.list().unwrap().is_empty());
+    client
+        .search_group_download(
+            &epoch,
+            C::Destinations {
+                receipt: receipt.clone(),
+                sort: PlaylistCollectSort::Default,
+                page: 0,
+            },
+        )
+        .await
+        .unwrap();
+    let result = client
+        .search_group_download(
+            &epoch,
+            C::Choose {
+                receipt: receipt.clone(),
+                playlist_id: "81".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let chosen = serde_json::to_value(result).unwrap();
+    assert_eq!(chosen["result"]["phase"], "confirmed");
+    assert!(service.list().unwrap().is_empty());
+    let calls = http.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [LIKED, LIST, STAR_LIST, DETAIL, ADD, DETAIL]
+    );
+    assert_eq!(calls[4].payload["trackIds"], r#"["41","61"]"#);
+    let continuation = chosen["result"]["continuation"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let R::Accepted { result } = client
+        .search_group_download(
+            &epoch,
+            C::StartFromPlaylist {
+                receipt,
+                continuation,
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("only confirmed playlist selection admits the row downloads");
+    };
+    assert_eq!(
+        result
+            .accepted
+            .iter()
+            .map(|id| service.get(id).unwrap().song_id)
+            .collect::<Vec<_>>(),
+        ["61", "41"],
+    );
+    http.wait(8).await;
+    assert!(http.calls()[6..].iter().all(|call| call.path == AUTH));
+}
+
+#[tokio::test]
+async fn history_row_download_rechecks_clicked_outside_group_before_native_admission() {
+    let root = tempfile::tempdir().unwrap();
+    let (api, http) = vinyl_http(
+        root.path(),
+        &[COOKIE],
+        [
+            json!({"code":200,"ids":[71]}).into(),
+            deny_media(),
+            deny_media(),
+        ],
+    );
+    let (client, session, epoch) = client(root.path(), api);
+    directory(&client, &epoch, root.path()).await;
+    let history = HistoryService::new(session.clone()).unwrap();
+    for id in [41, 61, 71, 72] {
+        record(&session, &history, catalog_song(id, 2), id);
+    }
+    let prepare = || prepare_row(&session, &history, 71, &[41, 61]);
+    let receipt = decision(&client, &epoch, prepare(), D::Ready)
+        .await
+        .unwrap();
+    let service = DownloadService::new(session.clone()).unwrap();
+    let mut clicked = service
+        .create_default(&json!(71), DownloadOptions::default())
+        .unwrap();
+    clicked.status = DownloadStatus::Complete;
+    clicked.phase = DownloadPhase::Complete;
+    clicked.completed_ms = Some(clicked.created_ms);
+    clicked.song = Some(catalog_song(71, 2));
+    save_task(root.path(), &clicked);
+    assert!(matches!(
+        client
+            .search_group_download(&epoch, C::Start { receipt })
+            .await,
+        Err(Error::QueueChanged | Error::StaleResponse)
+    ));
+    assert!(
+        decision(&client, &epoch, prepare(), D::AnchorUnavailable)
+            .await
+            .is_none()
+    );
+    assert_eq!(http.calls().len(), 1);
+    assert_eq!(service.list().unwrap().len(), 1);
+    StateStore::open(root.path().join("host"))
+        .unwrap()
+        .delete("71", TASKS, &clicked.id)
+        .unwrap();
+
+    let receipt = decision(&client, &epoch, prepare(), D::Ready)
+        .await
+        .unwrap();
+    let R::Accepted { result } = client
+        .search_group_download(&epoch, C::Start { receipt })
+        .await
+        .unwrap()
+    else {
+        panic!("the liked clicked song starts the frozen selection directly");
+    };
+    assert_eq!(
+        result
+            .accepted
+            .iter()
+            .map(|id| service.get(id).unwrap().song_id)
+            .collect::<Vec<_>>(),
+        ["41", "61"],
+    );
+    http.wait(3).await;
+    assert!(http.calls()[1..].iter().all(|call| call.path == AUTH));
+}
+
+#[tokio::test]
+async fn history_row_download_checks_paid_clicked_song_without_using_its_bitrate_for_another_song()
+{
+    for paid in [0, 2] {
+        let root = tempfile::tempdir().unwrap();
+        let replies = if paid > 0 {
+            vec![json!({"code":200,"ids":[72]}).into(), deny_media()]
+        } else {
+            Vec::new()
+        };
+        let (api, http) = vinyl_http(root.path(), &[COOKIE], replies);
+        let (client, session, epoch) = client(root.path(), api);
+        directory(&client, &epoch, root.path()).await;
+        let history = HistoryService::new(session.clone()).unwrap();
+        let mut clicked = catalog_song(72, 1);
+        clicked["privilege"]["fee"] = json!(4);
+        clicked["privilege"]["payed"] = json!(paid);
+        clicked["privilege"]["dl"] = json!(0);
+        let mut blocked = catalog_song(52, 1);
+        blocked["privilege"]["st"] = json!(-100);
+        record(&session, &history, clicked, 3);
+        record(&session, &history, blocked, 2);
+        record(&session, &history, catalog_song(41, 1), 1);
+        let target = prepare_row(&session, &history, 72, &[41, 52]);
+        let service = DownloadService::new(session.clone()).unwrap();
+        if paid == 0 {
+            assert!(
+                decision(&client, &epoch, target, D::Unavailable)
+                    .await
+                    .is_none()
+            );
+            assert!(http.calls().is_empty());
+            assert!(service.list().unwrap().is_empty());
+        } else {
+            let receipt = decision(&client, &epoch, target, D::Ready).await.unwrap();
+            let R::Accepted { result } = client
+                .search_group_download(&epoch, C::Start { receipt })
+                .await
+                .unwrap()
+            else {
+                panic!("the paid clicked row does not supply the survivor bitrate");
+            };
+            assert_eq!(result.accepted.len(), 1);
+            assert_eq!(service.get(&result.accepted[0]).unwrap().song_id, "41");
+            http.wait(2).await;
+            let calls = http.calls();
+            assert_eq!(calls[0].path, LIKED);
+            assert_eq!(calls[1].path, AUTH);
+            assert_eq!(calls[1].payload["id"], "41");
+        }
+    }
 }

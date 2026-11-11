@@ -290,8 +290,9 @@
     select(['8']);
     await openMenu('8', 'button', ['8'], 'play', false);
     assert(disabled(nextItem()), 'all blocked selection disables both playback actions');
-    assert(same(menuKeys(), ['play', 'next', 'comments', 'collect', 'remove']) &&
-      ready(menuItem('comments')) && ready(menuItem('collect')),
+    assert(same(menuKeys(), ['play', 'next', 'comments', 'collect', 'download', 'remove']) &&
+      ready(menuItem('comments')) && ready(menuItem('collect')) &&
+      disabled(menuItem('download')) && menuItem('download').title === '暂无版权',
       'copyright-blocked song keeps comments but omits copy');
     playItem().click();
     const blocked = await capture('play_blocked', playSeedIds, {
@@ -356,7 +357,7 @@
   const deleteDialog = () => one('dialog[open][aria-labelledby="history-confirm-title"]:not([inert])');
   const copyNotice = () => text(one('.history-row-menu-notice[role="status"]', page()));
   const back = () => one('button[aria-label="返回上一页"]');
-  const singleActions = ['play', 'next', 'comments', 'collect', 'copy', 'remove'];
+  const singleActions = ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove'];
   const voiceActions = ['play', 'next', 'comments', 'download', 'copy', 'remove'];
   async function openActions(kind, ids, clicked, gesture, expected) {
     const title = kind === 'song' ? '歌曲' : '声音';
@@ -444,7 +445,7 @@
     await copyPublic('voice', '10', voiceIds, queueIds);
 
     const remove = ['10', '7'];
-    const groupActions = ['play', 'next', 'collect', 'remove'];
+    const groupActions = ['play', 'next', 'collect', 'download', 'remove'];
     const before = await openActions('song', remove, '7', 'contextmenu', groupActions);
     const confirmation = await confirmDelete();
     await capture('actions_delete_confirm', queueIds, {

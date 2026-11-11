@@ -97,7 +97,8 @@ impl MusicClient {
         let check = self.search_group_creation_permission(plan)?;
         let mutation = || {
             check()?;
-            self.require_unliked_search_anchor(plan)
+            self.require_unliked_search_anchor(plan)?;
+            plan.check_history_row_downloads(&self.session)
         };
         let name = match request {
             Request::Create { name, .. } => Some(playlist_name(name)?),

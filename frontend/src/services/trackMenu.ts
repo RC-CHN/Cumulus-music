@@ -31,6 +31,10 @@ export interface SongGroupDownloadRequest {
   epoch: string;
   prepare: SongGroupDownloadPrepare;
   live: () => boolean;
+  presentation?: {
+    canPresent: () => boolean;
+    expired: () => void;
+  };
 }
 
 // UI-only request: playback retains the originating list and its ordering.

@@ -45,6 +45,10 @@ RC.2 后的独立候选已在真实 Linux WebView 验证 [普通播客下载音�
 检查点。取消不写入，无资格不弹窗，两个多选分支各提交一次并回读。截图和报告在
 `.build/ui-proof/phase301-history-song-row-collect/`，写入仅作用于合成歌单。
 
+[最近播放歌曲行的下载](play-history-contracts.txt)通过 7 个 Linux WebKitGTK
+检查点。行菜单按点中项的完成状态显示、按原组选区的版权状态禁用；合成验收分别核对
+歌单添加和下载任务顺序。证据在 `.build/ui-proof/phase302-history-song-row-download-final/`。
+
 ## 2026-11-09 集成验收
 
 集成源码 `d6d6664d7ad27ed5eef82e596410099f50150baf`（本机；不等同于 RC 的主线提交）。锁定 Rust/Node 下，格式、严格 Clippy、Rust 2718 通过／27 忽略、前端 1008 通过、类型检查和构建均完成。实窗为隔离 Linux GTK/WebKit 和原生 libmpv；账号、媒体、写入及 Windows 端点均为合成，未接实体声卡或 Windows 设备。哈希、逐态 JSON 与原图在 `.build/ui-proof/phase134-combined/`。

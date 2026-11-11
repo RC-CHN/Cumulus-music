@@ -426,9 +426,12 @@ function voiceShareReturn() {
 function canRestoreDownloadFocus() {
   return historyFocusGuard.value?.() ?? true;
 }
+function historyGroupDownload(group: SongGroupDownloadRequest | undefined) {
+  return group?.prepare.kind === 'prepare_history' || group?.prepare.kind === 'prepare_history_row';
+}
 function showHistoryDownload(input: SongGroupDownloadRequest, opener: HTMLElement) {
   if (
-    input.prepare.kind !== 'prepare_history' ||
+    !historyGroupDownload(input) ||
     !input.live() ||
     !opener.isConnected ||
     songGroupDownloadActive.value
@@ -438,7 +441,7 @@ function showHistoryDownload(input: SongGroupDownloadRequest, opener: HTMLElemen
   returnFocus = opener;
   historyFocusGuard.value = input.live;
   historyDownload.value = input;
-  void startSongGroupDownload({
+  return startSongGroupDownload({
     ...input,
     live: () => historyDownload.value === input && input.live(),
   });
@@ -448,21 +451,22 @@ function groupMembershipUnknown(group: SongGroupDownloadRequest) {
     ? '暂未核实所选歌曲的喜欢状态，未添加下载任务。'
     : '暂未核实右击歌曲的喜欢状态，未添加下载任务。';
 }
+function discardSongDownloadPlan(group: SongGroupDownloadRequest, receipt: string) {
+  void client.searchGroupDownload(group.epoch, { kind: 'cancel', receipt }).catch(() => {});
+}
 async function startSongGroupDownload(group: SongGroupDownloadRequest) {
   if (!group.live() || groupDownloadBusy.value) return;
   const attempt = sequence;
   const live = () => attempt === sequence && group.live();
+  const canPresent = () => live() && (group.presentation?.canPresent() ?? true);
   groupDownloadBusy.value = true;
   let receipt: string | undefined;
   let omitted = 0;
   try {
     const plan = await client.searchGroupDownload(group.epoch, group.prepare);
     if (plan.kind !== 'prepared' || plan.epoch !== group.epoch) return;
-    if (!live()) {
-      if (plan.receipt)
-        void client
-          .searchGroupDownload(group.epoch, { kind: 'cancel', receipt: plan.receipt })
-          .catch(() => {});
+    if (!canPresent()) {
+      if (plan.receipt) discardSongDownloadPlan(group, plan.receipt);
       return;
     }
     switch (plan.decision) {
@@ -500,9 +504,11 @@ async function startSongGroupDownload(group: SongGroupDownloadRequest) {
         return;
       case 'anchor_unavailable':
         feedback(
-          group.prepare.kind === 'prepare_history'
-            ? '所选歌曲没有可添加的新下载任务。'
-            : '右击的歌曲已有本地音频，未添加下载任务。',
+          group.prepare.kind === 'prepare_history_row'
+            ? '点中的歌曲已下载或有匹配的本机文件，未添加下载任务。'
+            : group.prepare.kind === 'prepare_history'
+              ? '所选歌曲没有可添加的新下载任务。'
+              : '右击的歌曲已有本地音频，未添加下载任务。',
         );
         return;
       case 'already_available':
@@ -524,14 +530,22 @@ async function startSongGroupDownload(group: SongGroupDownloadRequest) {
     ) {
       feedback(searchDownloadResult(response.result.accepted.length, omitted));
     }
-  } catch (issue) {
+  } catch (cause) {
     if (!live()) return;
     if (receipt) {
       clearTimeout(timer);
       message.value = '下载任务的接纳结果未确认。';
       downloadFeedback.value = { group, receipt, omitted, action: 'check' };
-    } else {
-      feedback(failure(issue).message);
+    } else if (canPresent()) {
+      const issue = failure(cause);
+      if (group.presentation && ['profile_changed', 'session_expired'].includes(issue.code))
+        group.presentation.expired();
+      else
+        feedback(
+          group.presentation && ['stale', 'snapshot_changed', 'queue_changed'].includes(issue.code)
+            ? '播放记录已更新，请重新打开菜单。'
+            : issue.message,
+        );
     }
   } finally {
     groupDownloadBusy.value = false;
@@ -541,10 +555,7 @@ function closeSearchPurchase(cancel: boolean) {
   const target = purchaseChooser.value;
   purchaseChooser.value = undefined;
   purchaseQualityMismatch.value = false;
-  if (cancel && target)
-    void client
-      .searchGroupDownload(target.group.epoch, { kind: 'cancel', receipt: target.receipt })
-      .catch(() => {});
+  if (cancel && target) discardSongDownloadPlan(target.group, target.receipt);
 }
 function openSearchPurchaseGuide(): Promise<void> {
   const target = purchaseChooser.value;
@@ -564,7 +575,17 @@ async function confirmSearchPurchase(quality: SearchPurchasedQuality) {
       receipt,
       quality,
     });
-    if (!live()) return;
+    if (!live()) {
+      if (
+        group.prepare.kind === 'prepare_history_row' &&
+        (reply.kind === 'directory_required' ||
+          ((reply.kind === 'quality_confirmed' || reply.kind === 'existing_quality_mismatch') &&
+            reply.epoch === group.epoch &&
+            reply.receipt === receipt))
+      )
+        discardSongDownloadPlan(group, receipt);
+      return;
+    }
     if (
       reply.kind === 'accepted' &&
       reply.result.epoch === group.epoch &&
@@ -615,7 +636,8 @@ function askSearchDownloadDirectory(group: SongGroupDownloadRequest) {
   downloadFeedback.value = { group, action: 'settings' };
 }
 function closeSearchDownloadPicker() {
-  const history = downloadPicker.value?.group.prepare.kind === 'prepare_history';
+  const history = historyGroupDownload(downloadPicker.value?.group);
+  const focusGuard = historyFocusGuard.value;
   downloadPicker.value = undefined;
   const target = returnFocus;
   if (target)
@@ -624,6 +646,7 @@ function closeSearchDownloadPicker() {
       if (
         target.isConnected &&
         returnFocus === target &&
+        historyFocusGuard.value === focusGuard &&
         canRestoreDownloadFocus() &&
         (history
           ? !document.querySelector('dialog[open]')
@@ -891,7 +914,7 @@ defineExpose({ show, showQueue, close, showHistoryDownload, songGroupDownloadAct
     :epoch="downloadPicker.group.epoch"
     :receipt="downloadPicker.receipt"
     :live="downloadPicker.group.live"
-    :cancel-unsubmitted-on-unmount="downloadPicker.group.prepare.kind === 'prepare_history'"
+    :cancel-unsubmitted-on-unmount="historyGroupDownload(downloadPicker.group)"
     @close="closeSearchDownloadPicker"
     @accepted="searchDownloadPicked"
     @directory="searchDownloadPickerDirectory"

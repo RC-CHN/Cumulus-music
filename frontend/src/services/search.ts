@@ -278,7 +278,8 @@ export type SearchGroupDownloadSort = 'default' | 'recently';
 export type SearchPurchasedQuality = import('./voiceSongs').VoiceSongPurchasedQuality;
 export type SongGroupDownloadPrepare =
   | ({ kind: 'prepare' } & SearchGroupDownloadSelection)
-  | { kind: 'prepare_history'; target: import('./history').HistorySelectionScope };
+  | { kind: 'prepare_history'; target: import('./history').HistorySelectionScope }
+  | { kind: 'prepare_history_row'; target: import('./history').HistorySongRowDownloadTarget };
 export type SearchGroupDownloadCommand =
   | SongGroupDownloadPrepare
   | { kind: 'start' | 'status' | 'cancel' | 'reconcile'; receipt: string }

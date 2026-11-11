@@ -1,5 +1,9 @@
 <script lang="ts">
-import type { HistoryQueueKind, HistoryRowMenuTarget } from '../services/history';
+import type {
+  HistoryQueueKind,
+  HistoryRowMenuTarget,
+  HistorySongRowDownloadTarget,
+} from '../services/history';
 
 export interface HistoryCommentReturn {
   kind: HistoryQueueKind;
@@ -15,10 +19,14 @@ export interface HistoryRowMenuVisit {
   routeIdentity: object;
   live: () => boolean;
 }
-export interface HistoryVoiceRowDownloadRequest extends HistoryRowMenuVisit {
-  target: HistoryRowMenuTarget;
+interface HistoryRowDownloadRequest<T extends HistoryRowMenuTarget> extends HistoryRowMenuVisit {
+  target: T;
   opener: HTMLElement;
   preparing: (active: boolean) => void;
+}
+export type HistorySongRowDownloadRequest = HistoryRowDownloadRequest<HistorySongRowDownloadTarget>;
+export interface HistoryVoiceRowDownloadRequest
+  extends HistoryRowDownloadRequest<HistoryRowMenuTarget> {
   feedback: (message: string, failed?: boolean) => void;
   accepted: (count: number) => void;
 }
@@ -114,6 +122,7 @@ const emit = defineEmits<{
     selectionCurrent: () => boolean,
   ];
   downloadVoices: [target: HistorySelectionScope];
+  rowSongDownload: [request: HistorySongRowDownloadRequest];
   rowVoiceDownload: [request: HistoryVoiceRowDownloadRequest];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   rowComments: [resource: CommentResource, title: string, opener: HistoryCommentReturn];
@@ -238,7 +247,7 @@ const rowTarget = shallowRef<BrowseMenuTarget>();
 const rowMenuInfo = shallowRef<{ target: BrowseMenuTarget; value: HistoryRowMenuInfo }>();
 const rowMenuNotice = ref('');
 const rowMenuError = ref('');
-const rowVoicePreparing = shallowRef<BrowseMenuTarget>();
+const rowDownloadPreparing = shallowRef<BrowseMenuTarget>();
 const rowQueueReady = computed(() => props.rowQueueReady && !loading.value && !busy.value);
 function sameBrowseScope(target: BrowseMenuTarget) {
   return (
@@ -282,6 +291,7 @@ const rowMenuItems = computed<MenuItem[]>(() => {
   const target = rowTarget.value;
   if (!target || !rowMenuLive.value) return [];
   const info = rowMenuInfo.value?.target === target ? rowMenuInfo.value.value : undefined;
+  const songDownload = target.kind === 'song' ? info?.songDownload : undefined;
   const voiceFile = target.kind === 'voice' ? info?.voiceFile : undefined;
   const ids = historyBrowseRemovalIds(target.clickedId, target.tableGroup);
   const blocked = rowMenuCopyrightBlocked(target);
@@ -315,9 +325,23 @@ const rowMenuItems = computed<MenuItem[]>(() => {
           },
         ]
       : []),
-    ...(voiceFile?.kind === 'download'
-      ? [{ key: 'download', label: '下载', icon: 'download' }]
-      : []),
+    ...(songDownload?.kind === 'download' || songDownload?.kind === 'copyright_blocked'
+      ? [
+          {
+            key: 'download',
+            label: '下载',
+            icon: 'download',
+            disabled:
+              songDownload.kind === 'copyright_blocked' ||
+              props.downloadingSongs ||
+              loading.value ||
+              busy.value,
+            hint: songDownload.kind === 'copyright_blocked' ? '暂无版权' : undefined,
+          },
+        ]
+      : voiceFile?.kind === 'download'
+        ? [{ key: 'download', label: '下载', icon: 'download' }]
+        : []),
     ...(info?.copyLink ? [{ key: 'copy', label: '复制链接', icon: 'copy' }] : []),
     ...(voiceFile?.kind === 'reveal'
       ? [{ key: 'reveal', label: '打开文件所在目录', icon: 'folder' }]
@@ -339,7 +363,7 @@ function closeRowMenu() {
   rowMenu.value?.close();
   rowTarget.value = undefined;
   rowMenuInfo.value = undefined;
-  rowVoicePreparing.value = undefined;
+  rowDownloadPreparing.value = undefined;
 }
 watch(rowMenuLive, (live) => {
   if (!live) closeRowMenu();
@@ -508,19 +532,29 @@ async function chooseRowMenu(key: string) {
     return;
   }
   const voiceFile = target.kind === 'voice' ? info?.voiceFile : undefined;
-  if (key === 'download' && voiceFile?.kind === 'download') {
+  if (key === 'download') {
     if (loading.value || busy.value) return;
     const live = () => rowTargetLive(target);
-    emit('rowVoiceDownload', {
-      target: rowMenuScope(target),
+    const scope = rowMenuScope(target);
+    const request = {
       epoch: target.epoch,
       routeIdentity: target.routeIdentity,
       opener: target.anchor,
       live,
-      preparing: (active) => {
-        if (active && live()) rowVoicePreparing.value = target;
-        else if (!active && rowVoicePreparing.value === target) rowVoicePreparing.value = undefined;
+      preparing: (active: boolean) => {
+        if (active && live()) rowDownloadPreparing.value = target;
+        else if (!active && rowDownloadPreparing.value === target)
+          rowDownloadPreparing.value = undefined;
       },
+    };
+    if (target.kind === 'song' && info?.songDownload?.kind === 'download') {
+      emit('rowSongDownload', { ...request, target: { ...scope, history_kind: 'song' } });
+      return;
+    }
+    if (voiceFile?.kind !== 'download') return;
+    emit('rowVoiceDownload', {
+      ...request,
+      target: scope,
       feedback: (message, failed) => {
         if (!live()) return;
         if (failed) rowMenuError.value = message;
@@ -1112,7 +1146,7 @@ function keyboard(event: KeyboardEvent) {
         collectFeedback ||
         rowMenuNotice ||
         rowMenuError ||
-        rowVoicePreparing ||
+        rowDownloadPreparing ||
         addNotice ||
         batchError ||
         error ||
@@ -1134,7 +1168,7 @@ function keyboard(event: KeyboardEvent) {
         {{ addNotice }}
       </p>
       <p
-        v-if="rowVoicePreparing"
+        v-if="rowDownloadPreparing"
         class="history-outcome history-row-download-loading"
         role="status"
       >

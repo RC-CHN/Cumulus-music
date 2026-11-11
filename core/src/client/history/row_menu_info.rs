@@ -1,7 +1,8 @@
 //! Read-only M556/M622 menu adornments bound to the current native history.
 use super::{
     AccountData, HistoryRowComment, HistoryRowCommentResource, HistoryRowMenuInfo,
-    HistoryRowMenuTarget, MusicClient, row_menu, song_download, voice_file_menu,
+    HistoryRowMenuTarget, HistorySongDownloadMenu, MusicClient, row_menu, song_download,
+    voice_file_menu,
 };
 use crate::{
     Error, Result,
@@ -18,6 +19,7 @@ struct MenuProjection {
     info: HistoryRowMenuInfo,
     count_target: Option<(ResourceKind, String)>,
     clicked_program: Option<Episode>,
+    clicked_song: Option<String>,
 }
 
 fn public_id(kind: HistoryKind, row: &HistoryRecord) -> Option<String> {
@@ -55,18 +57,48 @@ fn project(snapshot: &HistorySnapshot, target: &HistoryRowMenuTarget) -> Result<
         return Err(Error::QueueChanged);
     }
     let selection = row_menu::resolve(snapshot, &target.clicked_id, &target.selected_ids)?;
+    let clicked = selection.clicked;
+    let has_group = !selection.selected.is_empty();
+    let (song_download, clicked_song) = if snapshot.kind == HistoryKind::Song {
+        use song_download::{HistorySongDownloadProjection, HistorySongDownloadSource};
+        // Comment and Copy still operate on larger selections; the download
+        // branch alone has the bounded song-job limit.
+        match HistorySongDownloadProjection::project_resolved_row(selection, snapshot) {
+            Ok(rows)
+                if matches!(
+                    rows.row_anchor_source(),
+                    HistorySongDownloadSource::Catalog | HistorySongDownloadSource::DownloadTask(_)
+                ) =>
+            {
+                let menu = if rows.row_copyright_blocked() {
+                    HistorySongDownloadMenu::CopyrightBlocked
+                } else {
+                    HistorySongDownloadMenu::Download
+                };
+                (Some(menu), Some(rows.anchor.id.clone()))
+            }
+            Ok(_) | Err(Error::InvalidInput(_)) => {
+                (Some(HistorySongDownloadMenu::Unavailable), None)
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        (None, None)
+    };
     let mut projection = MenuProjection {
         info: HistoryRowMenuInfo {
             comment: None,
             copy_link: None,
+            song_download,
             voice_file: None,
         },
         count_target: None,
         clicked_program: (snapshot.kind == HistoryKind::Voice)
-            .then(|| voice_file_menu::episode(selection.clicked).ok())
+            .then(|| voice_file_menu::episode(clicked).ok())
             .flatten(),
+        clicked_song,
     };
-    let Some(id) = public_id(snapshot.kind, selection.clicked) else {
+    let Some(id) = public_id(snapshot.kind, clicked) else {
         return Ok(projection);
     };
     let (kind, path) = match snapshot.kind {
@@ -78,12 +110,10 @@ fn project(snapshot: &HistorySnapshot, target: &HistoryRowMenuTarget) -> Result<
     // hides both entries. M622 tests the row's own from.selectedData;
     // history places its group in parentData, so a Voice shows clicked actions.
     projection.count_target = Some((kind, id.clone()));
-    if kind == ResourceKind::Track && !selection.selected.is_empty() {
+    if kind == ResourceKind::Track && has_group {
         return Ok(projection);
     }
-    if kind == ResourceKind::Voice
-        || row_menu::song_copyright_blocked(selection.clicked) != Some(true)
-    {
+    if kind == ResourceKind::Voice || row_menu::song_copyright_blocked(clicked) != Some(true) {
         // M198 supplies this path. Do not put the account's userid/uct2
         // attribution in the renderer or in the copied public link.
         projection.info.copy_link = Some(format!("https://music.163.com/{path}?id={id}"));
@@ -121,6 +151,21 @@ impl MusicClient {
             self.session.require_api(&token, &api)?;
             if let Some(comment) = &mut menu.info.comment {
                 comment.count = count;
+            }
+        }
+        if let Some(song) = menu.clicked_song
+            && token.uid.is_some()
+        {
+            let local = self.local.context().await?;
+            let owner = token.clone();
+            let session = self.session.clone();
+            let unavailable = tokio::task::spawn_blocking(move || {
+                song_download::row_hidden(&local.library, &session, &owner, &song)
+            })
+            .await
+            .map_err(|_| Error::State("history song menu inspection stopped"))??;
+            if unavailable {
+                menu.info.song_download = Some(HistorySongDownloadMenu::Unavailable);
             }
         }
         let observation = if target.history_kind == HistoryKind::Voice {

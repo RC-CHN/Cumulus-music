@@ -133,8 +133,9 @@
     await wait(() => ready(rowItem('collect')) && anchor.getAttribute('aria-expanded') === 'true',
       'row Collect action shown for ' + clicked);
     const keys = rowKeys();
-    const expected = ids.length === 1 ? ['play', 'next', 'comments', 'collect', 'copy', 'remove'] :
-      ['play', 'next', 'collect', ...(gesture === 'ctrl-context' ? [] : ['remove'])];
+    const expected = ids.length === 1 ?
+      ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove'] :
+      ['play', 'next', 'collect', 'download', ...(gesture === 'ctrl-context' ? [] : ['remove'])];
     assert(text(rowItem('collect')) === '收藏' && same(keys, expected),
       'official song action order and group scope');
     assert(same(browseIds(), [...ids].sort()), 'exact song browse selection retained');

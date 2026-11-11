@@ -256,6 +256,7 @@ async fn history_download_rechecks_completed_anchor_inside_the_admission_transac
             anchor: "42".into(),
             source: HistoryBatchSource {
                 revision: revision.clone(),
+                row_clicked: None,
                 offline: BTreeMap::from([("42".into(), anchor.id.clone())]),
             },
         },

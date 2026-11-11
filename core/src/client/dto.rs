@@ -15,7 +15,7 @@ pub use super::history::{
     HistoryCollectTarget, HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage,
     HistoryPlaylistCard, HistoryRadioCollection, HistoryResource, HistoryRowComment,
     HistoryRowCommentResource, HistoryRowMenuInfo, HistoryRowMenuTarget, HistorySelectionScope,
-    HistoryVoiceFileMenu, ListenedBooksPage, ListenedBooksQuery,
+    HistorySongDownloadMenu, HistoryVoiceFileMenu, ListenedBooksPage, ListenedBooksQuery,
 };
 pub use super::local::{
     DirectoryChoice, DirectorySelection, LocalCollectPlan, LocalCollectResult,

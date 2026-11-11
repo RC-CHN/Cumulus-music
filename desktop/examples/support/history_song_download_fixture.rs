@@ -26,8 +26,10 @@ struct State {
     members: Vec<String>,
 }
 
-#[derive(Default)]
-pub struct Fixture(Mutex<State>);
+pub struct Fixture {
+    row_menu: bool,
+    state: Mutex<State>,
+}
 
 fn playlist(id: &str, owner: u64, name: &str, songs: &[String]) -> Value {
     json!({"id":id,"userId":owner,"creator":{"userId":owner,"nickname":"合成创作者"},
@@ -42,6 +44,13 @@ fn song(id: u64) -> Value {
 }
 
 impl Fixture {
+    pub fn new(row_menu: bool) -> Self {
+        Self {
+            row_menu,
+            state: Mutex::new(State::default()),
+        }
+    }
+
     pub fn report(&self, store: &StateStore) -> Value {
         let tasks = store.values("2", "download_tasks_v1").unwrap();
         let batch = store.get("2", "download_song_batch_v1", "last").unwrap();
@@ -55,7 +64,7 @@ impl Fixture {
                 json!({"song":task["song_id"],"status":task["status"],"dispatch":task["dispatch"]})
             })
             .collect::<Vec<_>>();
-        let state = self.0.lock().unwrap();
+        let state = self.state.lock().unwrap();
         json!({"calls":state.calls,"members":state.members,"batchOrder":order,"taskCount":tasks.len()})
     }
 
@@ -77,7 +86,7 @@ impl Fixture {
         if path == DETAIL && !matches!(args["id"].as_str(), Some("81" | "91")) {
             return None;
         }
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         let bad = || Error::Response("unexpected history song download fixture request");
         Some((|| {
             if cached && path != LIKED {
@@ -85,20 +94,29 @@ impl Fixture {
             }
             Ok(match path {
                 HISTORY if args == &json!({"limit":300}) => {
-                    json!({"code":200,"data":{"list":(1..=4).map(song).collect::<Vec<_>>()}})
+                    let total = if self.row_menu { 6 } else { 4 };
+                    json!({"code":200,"data":{"list":(1..=total).map(song).collect::<Vec<_>>()}})
                 }
                 PRIVILEGE => {
                     let ids: Vec<String> =
                         serde_json::from_str(args["ids"].as_str().ok_or_else(bad)?)?;
                     if args.as_object().is_none_or(|values| values.len() != 1)
-                        || ids
-                            .iter()
-                            .any(|id| !matches!(id.as_str(), "1" | "2" | "3" | "4"))
+                        || ids.iter().any(|id| match id.as_str() {
+                            "1" | "2" | "3" | "4" => false,
+                            "5" | "6" => !self.row_menu,
+                            _ => true,
+                        })
                     {
                         return Err(bad());
                     }
-                    json!({"code":200,"data":ids.iter().map(|id|json!({"id":id,"fee":0,"subp":1,
-                        "st":if id=="1" {-100}else{0},"dl":if id=="1" {0}else{128000},"pl":128000}))
+                    if self.row_menu {
+                        state.calls.push(json!({"kind":"privileges","ids":ids}));
+                    }
+                    json!({"code":200,"data":ids.iter().map(|id|{
+                        let blocked = matches!(id.as_str(), "1" | "5");
+                        json!({"id":id,"fee":0,"subp":1,"st":if blocked {-100}else{0},
+                              "dl":if blocked {0}else{128000},"pl":128000})
+                    })
                         .collect::<Vec<_>>()})
                 }
                 LIKED if args == &json!({"uid":"2"}) => {
@@ -158,17 +176,22 @@ impl Fixture {
     }
 
     pub fn add(&self, path: &str, args: Value) -> Result<Value> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
         state
             .calls
             .push(json!({"kind":"guarded_add","path":path,"args":args}));
+        let songs = if self.row_menu {
+            vec!["3", "2"]
+        } else {
+            vec!["1", "2", "3"]
+        };
         if path != ADD
-            || args != json!({"pid":"81","op":"add","trackIds":r#"["1","2","3"]"#})
+            || args != json!({"pid":"81","op":"add","trackIds":serde_json::to_string(&songs)?})
             || !state.members.is_empty()
         {
             return Err(Error::Response("unexpected history song download add"));
         }
-        state.members = ["1", "2", "3"].into_iter().map(str::to_owned).collect();
+        state.members = songs.into_iter().map(str::to_owned).collect();
         Ok(json!({"code":200}))
     }
 }
@@ -186,7 +209,7 @@ impl MediaBackend for Fixture {
             if request.offset != 0 {
                 return Err(Error::State("unexpected synthetic song transfer"));
             }
-            self.0
+            self.state
                 .lock()
                 .unwrap()
                 .calls

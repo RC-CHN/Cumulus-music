@@ -72,12 +72,13 @@ def audit_row(output, screenshots, runtime):
     complete, rows, hashes = captures(output, screenshots, ROW_STAGES)
     assert complete['row']
     singleton, cancelled, denied, group, first, fallback, second = rows
-    single_menu = ['play', 'next', 'comments', 'collect', 'copy', 'remove']
+    single_menu = ['play', 'next', 'comments', 'collect', 'download', 'copy', 'remove']
     for case, clicked, selection, gesture, keys in (
         ((singleton, cancelled), '2', ['2'], 'keyboard', single_menu),
         ((denied,), '3', ['3'], 'button', single_menu),
-        ((group, first), '6', ['4', '2', '1'], 'ctrl-context', ['play', 'next', 'collect']),
-        ((fallback, second), '2', ['5', '2', '3'], 'button', ['play', 'next', 'collect', 'remove']),
+        ((group, first), '6', ['4', '2', '1'], 'ctrl-context', ['play', 'next', 'collect', 'download']),
+        ((fallback, second), '2', ['5', '2', '3'], 'button',
+         ['play', 'next', 'collect', 'download', 'remove']),
     ):
         for row in case:
             assert (row['clicked'], row['selectedIds'], row['gesture'], row['menuKeys']) == (

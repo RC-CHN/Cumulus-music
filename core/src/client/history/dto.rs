@@ -28,7 +28,16 @@ pub struct HistoryRowMenuInfo {
     pub comment: Option<HistoryRowComment>,
     pub copy_link: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub song_download: Option<HistorySongDownloadMenu>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_file: Option<HistoryVoiceFileMenu>,
+}
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum HistorySongDownloadMenu {
+    Download,
+    CopyrightBlocked,
+    Unavailable,
 }
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

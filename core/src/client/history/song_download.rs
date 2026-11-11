@@ -1,9 +1,12 @@
 //! Bind the history Download button to its native, ordered SONG selection.
-use super::{HistoryCollectTarget, HistorySelectionScope};
+use super::{HistoryCollectTarget, HistoryRowMenuTarget, HistorySelectionScope, row_menu};
 use crate::{
     Error, Result,
+    account::{AccountSession, SessionToken},
     history::{HistoryKind, HistoryRecord, HistorySnapshot},
+    library::LocalLibrary,
     protocol::{api::identifier, wire::serialization::js_truthy},
+    storage::PlaybackDownloadKind,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -12,6 +15,8 @@ const MAX_ROWS: usize = 600;
 
 /// No renderer metadata or separately supplied anchor is accepted.
 pub type HistorySongDownloadTarget = HistorySelectionScope;
+
+pub(in crate::client) use super::song_collection::download_picker_collectable;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::client) enum HistorySongDownloadSource<'a> {
@@ -36,6 +41,49 @@ pub(in crate::client) struct HistorySongDownloadProjection<'a> {
 }
 
 impl<'a> HistorySongDownloadProjection<'a> {
+    pub(in crate::client) fn project_row(
+        target: &HistoryRowMenuTarget,
+        snapshot: &'a HistorySnapshot,
+    ) -> Result<Self> {
+        if target.history_kind != HistoryKind::Song || snapshot.kind != HistoryKind::Song {
+            return Err(Error::InvalidInput("history song download requires songs"));
+        }
+        if target.revision != snapshot.revision {
+            return Err(Error::QueueChanged);
+        }
+        if target.selected_ids.len() > MAX_ROWS {
+            return Err(Error::InvalidInput("invalid history song download size"));
+        }
+        let selection = row_menu::resolve(snapshot, &target.clicked_id, &target.selected_ids)?;
+        Self::project_resolved_row(selection, snapshot)
+    }
+
+    pub(super) fn project_resolved_row(
+        selection: row_menu::ResolvedRows<'a>,
+        snapshot: &'a HistorySnapshot,
+    ) -> Result<Self> {
+        if selection.selected.len() > MAX_ROWS {
+            return Err(Error::InvalidInput("invalid history song download size"));
+        }
+        let anchor = selection.clicked;
+        let selected = if selection.selected.is_empty() {
+            vec![anchor]
+        } else {
+            selection.selected
+        };
+        Ok(Self {
+            anchor,
+            rows: selected
+                .into_iter()
+                .map(|record| HistorySongDownloadRow {
+                    record,
+                    source: row_source(record),
+                })
+                .collect(),
+            snapshot,
+        })
+    }
+
     pub(in crate::client) fn project(
         target: &HistorySongDownloadTarget,
         snapshot: &'a HistorySnapshot,
@@ -94,6 +142,75 @@ impl<'a> HistorySongDownloadProjection<'a> {
         ids.retain(|id| ordinary.contains(id.as_str()));
         Ok(ids)
     }
+
+    /// The row picker receives only the surviving resource array. A row
+    /// wrapped around an exact completed Song task may be filtered but must
+    /// never be rewritten based solely on the renderer or on a file name.
+    pub(in crate::client) fn row_download_candidates(&self) -> Vec<(String, String)> {
+        self.rows
+            .iter()
+            .map(|row| row.record)
+            .chain(std::iter::once(self.anchor))
+            .filter_map(|row| match row_source(row) {
+                HistorySongDownloadSource::DownloadTask(task) => {
+                    Some((row.id.clone(), task.to_owned()))
+                }
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    pub(in crate::client) fn row_anchor_source(&self) -> HistorySongDownloadSource<'a> {
+        row_source(self.anchor)
+    }
+
+    pub(super) fn row_copyright_blocked(&self) -> bool {
+        self.rows.iter().all(|row| {
+            matches!(
+                row.source,
+                HistorySongDownloadSource::Catalog | HistorySongDownloadSource::DownloadTask(_)
+            ) && row_menu::song_copyright_blocked(row.record) == Some(true)
+        })
+    }
+}
+
+pub(in crate::client) fn row_hidden(
+    library: &LocalLibrary,
+    session: &AccountSession,
+    owner: &SessionToken,
+    song: &str,
+) -> Result<bool> {
+    let store = session.persistent_store()?;
+    let complete = session.with_token(owner, |uid| {
+        store.read_snapshot(|tx| {
+            Ok(tx
+                .playback_download_rows(uid, song, PlaybackDownloadKind::Song)?
+                .iter()
+                .any(|task| task.status == "complete"))
+        })
+    })?;
+    Ok(complete
+        || !library
+            .matched_online_song_ids(session, owner, &[song].into_iter().collect())?
+            .is_empty())
+}
+
+fn row_source(row: &HistoryRecord) -> HistorySongDownloadSource<'_> {
+    let song = &row.resource;
+    if song["fileId"].as_str().is_some_and(|id| !id.is_empty())
+        || song["fileId"].as_u64().is_some_and(|id| id != 0)
+    {
+        return HistorySongDownloadSource::Local;
+    }
+    if ["songType", "t"]
+        .into_iter()
+        .any(|key| song[key].as_i64() == Some(1) || song[key].as_str() == Some("1"))
+    {
+        return HistorySongDownloadSource::Cloud;
+    }
+    source(row)
 }
 
 fn any_truthy(resource: &Value, keys: &[&str]) -> bool {
@@ -182,6 +299,35 @@ mod tests {
             revision: "displayed".into(),
             ids: ids.iter().map(|id| (*id).into()).collect(),
         }
+    }
+
+    #[test]
+    fn history_download_row_does_not_promote_or_append_its_independent_clicked_anchor() {
+        let history = snapshot(vec![
+            song("9", json!({})),
+            song("7", json!({"privilege":{"st":-1}})),
+            song("5", json!({"privilege":{"status":-100}})),
+        ]);
+        let mut target = HistoryRowMenuTarget {
+            history_kind: HistoryKind::Song,
+            revision: history.revision.clone(),
+            clicked_id: "9".into(),
+            selected_ids: vec!["5".into(), "7".into()],
+        };
+        let projected = HistorySongDownloadProjection::project_row(&target, &history).unwrap();
+        assert_eq!(projected.anchor.id, "9");
+        assert!(
+            projected
+                .rows
+                .iter()
+                .map(|row| row.record.id.as_str())
+                .eq(["5", "7"])
+        );
+        assert!(projected.row_copyright_blocked());
+        target.selected_ids.clear();
+        let projected = HistorySongDownloadProjection::project_row(&target, &history).unwrap();
+        assert!(!projected.row_copyright_blocked());
+        assert_eq!(projected.rows[0].record.id, "9");
     }
 
     #[test]

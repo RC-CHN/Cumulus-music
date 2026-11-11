@@ -14,8 +14,8 @@ use crate::{
             purchased::{Offer, purchased_qualities},
         },
         dto::{
-            AccountData, DownloadResult, HistorySelectionScope, PlaylistCollectPage,
-            PlaylistCollectSort,
+            AccountData, DownloadResult, HistoryRowMenuTarget, HistorySelectionScope,
+            PlaylistCollectPage, PlaylistCollectSort,
         },
     },
     download::service::{ExistingSongAdmission, HistoryBatchSource, SongBatchAdmission},
@@ -185,6 +185,9 @@ pub enum SearchGroupDownloadCommand {
     },
     PrepareHistory {
         target: HistorySelectionScope,
+    },
+    PrepareHistoryRow {
+        target: HistoryRowMenuTarget,
     },
     Start {
         receipt: String,
@@ -356,6 +359,10 @@ impl Observed {
             Source::History(source) => source.selection_count,
             Source::Search(_) => self.rows.len(),
         }
+    }
+
+    fn downloads_through_picker_reverse(&self) -> bool {
+        self.history_revision().is_none() || self.history_row().is_some()
     }
 }
 struct PlanDraft {
@@ -648,8 +655,20 @@ impl MusicClient {
                     .await
             }
             C::PrepareHistory { target } => {
-                self.prepare_history_group_download(epoch, token, target)
-                    .await
+                self.prepare_history_group_download(
+                    epoch,
+                    token,
+                    history::PrepareTarget::Batch(target),
+                )
+                .await
+            }
+            C::PrepareHistoryRow { target } => {
+                self.prepare_history_group_download(
+                    epoch,
+                    token,
+                    history::PrepareTarget::Row(target),
+                )
+                .await
             }
             C::Cancel { receipt } => {
                 host.cancel(&token, &receipt)?;
@@ -824,10 +843,9 @@ impl MusicClient {
                 },
                 move || {
                     check()?;
-                    let anchor = observed
-                        .history_revision()
-                        .is_none()
-                        .then_some(observed.anchor.as_str());
+                    let anchor = (observed.history_revision().is_none()
+                        || observed.history_row().is_some())
+                    .then_some(observed.anchor.as_str());
                     let ids = check_songs
                         .iter()
                         .map(String::as_str)
@@ -887,7 +905,17 @@ impl MusicClient {
         let candidate = observed.clone();
         let (songs, existing, collection, offers, decision, existing_purchased_quality) =
             tokio::task::spawn_blocking(move || {
-                let ids = candidate.rows.iter().map(|(id, _)| id.as_str()).collect();
+                let row = candidate.history_row();
+                let ids = candidate
+                    .rows
+                    .iter()
+                    .map(|(id, _)| id.as_str())
+                    .chain(
+                        row.into_iter()
+                            .flat_map(|row| row.unresolved.iter().map(String::as_str)),
+                    )
+                    .chain(row.map(|_| candidate.anchor.as_str()))
+                    .collect();
                 let matched =
                     local
                         .library
@@ -902,12 +930,38 @@ impl MusicClient {
                 };
                 let mut offers = Vec::new();
                 let mut first_filter_count = 0;
-                let mut already_available = 0;
+                let mut already_available = row.map_or(0, |row| row.known_local_count);
                 let mut copyright_blocked = 0;
                 let mut unverified_purchase = false;
                 let mut existing_quality = None;
                 let decision = session.with_token(&candidate.owner, |owner| {
                     store.read_snapshot(|tx| {
+                        if let Some(row) = row {
+                            let complete = |id| -> Result<bool> {
+                                Ok(tx
+                                    .playback_download_rows(owner, id, PlaybackDownloadKind::Song)?
+                                    .iter()
+                                    .any(|task| task.status == "complete"))
+                            };
+                            if matched.contains(candidate.anchor.as_str())
+                                || complete(&candidate.anchor)?
+                            {
+                                return Ok(D::AnchorUnavailable);
+                            }
+                            if row.unsupported {
+                                return Ok(D::Unavailable);
+                            }
+                            for id in &row.unresolved {
+                                // Unknown catalogue rights cannot disappear and
+                                // silently promote a different row into the
+                                // singleton branch. Known physical omissions can.
+                                if matched.contains(id.as_str()) || complete(id)? {
+                                    already_available += 1;
+                                } else {
+                                    return Ok(D::Unavailable);
+                                }
+                            }
+                        }
                         for (id, right) in &candidate.rows {
                             let tasks =
                                 tx.playback_download_rows(owner, id, PlaybackDownloadKind::Song)?;
@@ -932,7 +986,7 @@ impl MusicClient {
                                 unverified_purchase = true;
                                 continue;
                             }
-                            if !history && right.collectable {
+                            if (!history || row.is_some()) && right.collectable {
                                 collection.push(id.clone());
                             }
                             offers.extend(right.offer);

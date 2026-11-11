@@ -151,6 +151,7 @@ import FollowNewSongPage from './components/catalog/FollowNewSongPage.vue';
 import HistoryPage, {
   type HistoryCommentReturn,
   type HistoryRowMenuVisit,
+  type HistorySongRowDownloadRequest,
   type HistoryVoiceRowDownloadRequest,
 } from './components/HistoryPage.vue';
 import ListenedBooksPage from './components/history/ListenedBooksPage.vue';
@@ -178,6 +179,7 @@ import type {
 } from './services/history';
 import {
   historyBrowseSongCollectionRows,
+  historyBrowseSongDownloadTarget,
   historyBrowseVoiceDownloadTracks,
 } from './services/historyBrowseSelection';
 import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
@@ -958,6 +960,77 @@ async function openHistoryVoiceRowDownload(request: HistoryVoiceRowDownloadReque
     request.preparing(false);
   }
 }
+async function openHistorySongRowDownload(request: HistorySongRowDownloadRequest) {
+  const { target, epoch, routeIdentity, opener } = request;
+  const route = music.page.value;
+  const snapshot = recent.page.value;
+  const actions = trackActions.value;
+  const current = () =>
+    music.page.value === route &&
+    music.account.value.epoch === epoch &&
+    recent.page.value?.kind === 'song' &&
+    recent.page.value.revision === target.revision &&
+    !recent.loading.value &&
+    !recent.busy.value &&
+    opener.isConnected &&
+    request.live();
+  const anotherModal = () =>
+    !!(
+      playlistDialog.value ||
+      downloadDialog.value ||
+      loginOpen.value ||
+      accountsOpen.value ||
+      modalDepth.value ||
+      document.querySelector('dialog[open], [aria-modal="true"]')
+    );
+  if (
+    route !== routeIdentity ||
+    route.kind !== 'history' ||
+    route.scope !== 'song' ||
+    route.batch === true ||
+    !snapshot ||
+    !current() ||
+    anotherModal() ||
+    !actions ||
+    actions.songGroupDownloadActive
+  )
+    return;
+  const scope = historyBrowseSongDownloadTarget(snapshot, target);
+  if (!scope) return;
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  const live = () => signedIn.value && current();
+  opener.focus({ preventScroll: true });
+  let interrupted = false;
+  const stop = watch(
+    [playlistDialog, downloadDialog, loginOpen, accountsOpen, modalDepth],
+    () => {
+      if (anotherModal()) interrupted = true;
+    },
+    { flush: 'sync' },
+  );
+  request.preparing(true);
+  try {
+    await actions.showHistoryDownload(
+      {
+        epoch,
+        prepare: { kind: 'prepare_history_row', target: scope },
+        live,
+        presentation: {
+          canPresent: () =>
+            !interrupted && live() && document.activeElement === opener && !anotherModal(),
+          expired: () => void music.bootstrap(false),
+        },
+      },
+      opener,
+    );
+  } finally {
+    stop();
+    request.preparing(false);
+  }
+}
 function openHistorySongDownload(
   target: HistorySelectionScope,
   opener: HTMLElement,
@@ -988,7 +1061,7 @@ function openHistorySongDownload(
     return;
   }
   if (loginOpen.value || accountsOpen.value || document.querySelector('dialog[open]')) return;
-  trackActions.value?.showHistoryDownload(
+  void trackActions.value?.showHistoryDownload(
     {
       epoch,
       prepare: { kind: 'prepare_history', target: { revision: snapshot.revision, ids } },
@@ -6810,6 +6883,7 @@ onUnmounted(() => {
                 @collect-songs="openHistoryCollection"
                 @download-songs="openHistorySongDownload"
                 @download-voices="openHistoryVoiceDownload"
+                @row-song-download="openHistorySongRowDownload"
                 @row-voice-download="openHistoryVoiceRowDownload"
                 :batch-selection="selectHistoryBatch"
                 :radio-selection="selectHistoryRadio"
