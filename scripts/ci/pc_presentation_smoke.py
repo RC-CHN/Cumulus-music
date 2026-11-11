@@ -88,6 +88,12 @@ def verify(root, repository, screenshots, windows):
     paused = stages["paused"]["nativePlayer"]
     queue = stages["paused"]["nativeQueue"]
     assert paused["state"] == "paused" and paused["position"] > 2
+    settlement = stages["paused"]["pauseSettlement"]
+    first, observed = settlement["first"], settlement["observed"]
+    assert settlement["quietMs"] >= 450 and int(observed["revision"]) - int(first["revision"]) >= 2
+    clock_identity = ("epoch", "playId", "entryId", "queueRevision")
+    assert all(first[key] == observed[key] == paused[key] for key in (*clock_identity, "state", "position"))
+    assert all(not value["nativeSeeking"] and value["error"] is None for value in (first, observed, paused))
     assert [row["track"]["id"] for row in queue["tracks"]] == ["1"]
     controls = {"current_control", "back_control"}
     treatments = {"initial", "paused", "current_treatment", "temporary_failure", "back_treatment"}
@@ -97,9 +103,8 @@ def verify(root, repository, screenshots, windows):
         bar, state = stage["playerbar"], stage["nativePlayer"]
         assert bar["state"] == state["state"]
         if label != "initial":
-            assert state["state"] == "paused" and state["playId"] == paused["playId"]
-            assert state["entryId"] == paused["entryId"] and stage["nativeQueue"] == queue
-            assert state["queueRevision"] == paused["queueRevision"]
+            assert state["state"] == "paused" and not state["nativeSeeking"] and state["error"] is None
+            assert all(state[key] == paused[key] for key in clock_identity) and stage["nativeQueue"] == queue
             assert abs(state["position"] - paused["position"]) < .04
             assert bar["playId"] == state["playId"] and bar["trackId"] == "1" and bar["position"] > 2
             assert bar["title"] == state["track"]["name"]

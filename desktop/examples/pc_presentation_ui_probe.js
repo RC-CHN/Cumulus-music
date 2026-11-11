@@ -43,14 +43,40 @@
       trackId: node.dataset.trackId ?? null, position: Number(node.dataset.position),
       title: one('.playerbar .now-copy button')?.textContent.trim() ?? null };
   };
-  let step = 'startup', epoch, count = 0, nonce = 0, paused;
+  let step = 'startup', epoch, count = 0, nonce = 0, paused, pauseSettlement, lastClock;
   let core, originalProjection, stopEvents, holdProjection = false, heldProjection = false, releaseProjection;
   const events = [], commands = [], projections = [];
   const native = () => invoke('player_snapshot', { epoch });
   const presentation = () => invoke('pc_presentation', { epoch });
-  const samePaused = (state) => state.state === 'paused' && state.playId === paused.playId
-    && state.entryId === paused.entryId && state.queueRevision === paused.queueRevision
+  const clock = ({ epoch, revision, state, playId, entryId, queueRevision, position, nativeSeeking, error }) =>
+    ({ epoch, revision, state, playId, entryId, queueRevision, position, nativeSeeking, error });
+  const clockIdentity = ['epoch', 'playId', 'entryId', 'queueRevision'];
+  const samePaused = (state) => state.state === 'paused' && !state.nativeSeeking && !state.error
+    && clockIdentity.every((key) => state[key] === paused[key])
     && Math.abs(state.position - paused.position) < .04;
+  async function settlePause(playing) {
+    step = 'pause_clock';
+    let first, since;
+    await wait(async () => {
+      const observed = lastClock = clock(await native());
+      const now = performance.now();
+      assert(clockIdentity.every((key) => observed[key] === playing[key]) && !observed.error,
+        'pausing retains the exact native selection');
+      const eligible = observed.state === 'paused' && !observed.nativeSeeking
+        && Number.isFinite(observed.position) && observed.position >= playing.position - .04;
+      // Pause can be acknowledged before the decoder publishes its last
+      // position. Freeze the baseline only after the native clock settles.
+      if (!eligible || !first || observed.position !== first.position) {
+        first = eligible ? observed : undefined;
+        since = now;
+      }
+      pauseSettlement = { first: first ?? null, observed, quietMs: now - since };
+      if (!first || pauseSettlement.quietMs < 450 ||
+        BigInt(observed.revision) - BigInt(first.revision) < 2n) return false;
+      paused = observed;
+      return true;
+    }, 'native paused position did not settle');
+  }
   function layout(treatment) {
     assert(footerCount() === (treatment ? 3 : 0), 'all three footer lanes match the native cohort');
     assert(keys(best()).join(',') === (treatment ? 'artist:100,artist:101,artist:102' : 'artist:100,artist:101'), 'best-match projection keeps official first three/two');
@@ -85,6 +111,7 @@
     step = label;
     await wait(() => !one('.page-enter-active,.page-leave-active'), 'page settled ' + label);
     const state = await native();
+    lastClock = clock(state);
     if (paused) assert(samePaused(state), 'presentation leaves paused native playback untouched');
     await wait(() => {
       const current = bar();
@@ -108,6 +135,7 @@
       focusSearch: focused === one('[aria-label="搜索音乐"]'), reasonTitle: one('.search-reason-page h1')?.textContent ?? null,
       publicPresentation: await presentation(), presentationEvents: [...events], refreshCommands: [...commands],
       receiptProjections: [...projections], playerbar: bar(), heldProjection,
+      ...(label === 'paused' ? { pauseSettlement } : {}),
       noOverflow: document.documentElement.scrollWidth <= innerWidth });
     await wait(() => window.__searchFooterRecorded === stage, 'native actor and PNG receipt recorded ' + stage);
   }
@@ -144,10 +172,16 @@
     layout(true);
     await capture('initial');
     click(cover('1'));
-    await wait(async () => { const state = await native(); return state.state === 'playing' && state.position > 2
-      && cover('1')?.getAttribute('aria-label')?.startsWith('暂停') && bar()?.position > 2; }, 'real null-output clock and rendered song cover');
+    let playing;
+    await wait(async () => {
+      const state = await native();
+      if (state.state !== 'playing' || state.track?.id !== '1' || state.position <= 2
+        || !cover('1')?.getAttribute('aria-label')?.startsWith('暂停') || !(bar()?.position > 2)) return false;
+      playing = clock(state);
+      return true;
+    }, 'real null-output clock and rendered song cover');
     click(cover('1'));
-    await wait(async () => { const state = await native(); if (state.state !== 'paused') return false; paused = state; return true; }, 'pause the real decoder');
+    await settlePause(playing);
     panel().scrollTop = 70;
     await wait(() => panel().scrollTop === 70, 'nonzero search viewport');
     const top = panel().scrollTop;
@@ -197,7 +231,8 @@
       realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, step, error: String(error), stack: error.stack,
-      page: one('.main-content')?.innerText.slice(0, 1500), refreshCommands: commands, receiptProjections: projections });
+      page: one('.main-content')?.innerText.slice(0, 1500), refreshCommands: commands,
+      receiptProjections: projections, pauseSettlement, lastClock });
   } finally {
     releaseProjection?.();
     stopEvents?.();
