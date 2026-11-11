@@ -40,6 +40,7 @@
   const renamed = "Cumulus Synthetic Flow Edited";
   const description = "Synthetic main-flow readback";
   let last = "bootstrap";
+  let songMenuDiagnostic;
   async function stage(name, extra) {
     last = name;
     check(document.documentElement.scrollWidth <= innerWidth, "viewport overflow");
@@ -235,6 +236,41 @@
         one(`${songPanel} ${songRow}`)?.textContent.includes("合成主流程歌曲"),
       "search song result");
     }
+    async function openSongResultMenu(label) {
+      const anchor = () => one(`${songPanel} ${songRow} .track-more`);
+      const trigger = await wait(anchor, label + " trigger");
+      trigger.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+      trigger.focus({ preventScroll: true });
+      let previous, stableSince;
+      await wait(() => {
+        const panel = one(songPanel);
+        const bounds = trigger.getBoundingClientRect();
+        const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+        const frame = [bounds.left, bounds.top, bounds.width, bounds.height, panel?.scrollTop].join(",");
+        songMenuDiagnostic = { label, anchorConnected: trigger.isConnected, hittable: trigger.contains(hit),
+          panelBusy: panel?.getAttribute("aria-busy"), controls: trigger.getAttribute("aria-controls") };
+        if (trigger !== anchor() || document.activeElement !== trigger || trigger.disabled ||
+            panel?.getAttribute("aria-busy") !== "false" || !trigger.contains(hit) ||
+            trigger.closest(".page-enter-active,.search-results-enter-active")) {
+          previous = undefined;
+          return false;
+        }
+        if (previous !== frame) {
+          previous = frame;
+          stableSince = performance.now();
+          return false;
+        }
+        return performance.now() - stableSince >= 100;
+      }, label + " stable anchor");
+      trigger.click();
+      return () => {
+        const controlled = document.getElementById(trigger.getAttribute("aria-controls") ?? "");
+        songMenuDiagnostic = { ...songMenuDiagnostic, controls: trigger.getAttribute("aria-controls"),
+          expanded: trigger.getAttribute("aria-expanded"), panelVisible: controlled?.style.visibility };
+        return controlled?.classList.contains("song-action-menu") &&
+          controlled.style.visibility === "visible" && !controlled.closest("[inert]") ? controlled : null;
+      };
+    }
     await search();
     await stage("search");
     const decoderGate = !window.__mainFlowOrdinaryHttps && !window.__mainFlowLoadingStep;
@@ -422,8 +458,8 @@
     check(edited.name === renamed && edited.description === description, "playlist edit readback");
     await stage("playlist_edited");
     await search();
-    await click(() => one(`${songPanel} ${songRow} .track-more`), "open exact search result menu");
-    await click(() => button("收藏", one(".song-action-menu")), "choose playlist destination");
+    const collectSongMenu = await openSongResultMenu("open exact search result menu");
+    await click(() => button("收藏", collectSongMenu()), "choose playlist destination");
     await click(() => one(`.playlist-collect-dialog[open] [data-playlist-id="${created.id}"]`), "add search song to exact private playlist");
     await wait(() => !one(".playlist-dialog"), "confirmed add closes picker");
     const privateSongs = async () => {
@@ -457,8 +493,8 @@
     await click(() => one(".download-dialog button.primary"), "save isolated download settings");
     await wait(() => !one(".download-dialog"), "settings saved");
     await search();
-    await click(() => one(`${songPanel} ${songRow} .track-more`), "song menu");
-    await click(() => button("下载", one(".song-action-menu")), "download song");
+    const downloadSongMenu = await openSongResultMenu("song menu");
+    await click(() => button("下载", downloadSongMenu()), "download song");
     await click(() => one(".download-dialog button.primary"), "submit download");
     await click(() => button("下载管理"), "download queue navigation");
     await click(() => one("#download-tab-active"), "active download tab");
@@ -535,6 +571,6 @@
     await wait(() => window.__mainFlowDownloadDisposed === true, "native disposal ledger checkpoint");
     await stage("complete", { ok: true, allInOneWebView: true });
   } catch (error) {
-    await emit("failed", { ok: false, last, playerState: state(), playbackMessage: one(".playback-message")?.textContent?.trim(), reason: String(error?.message ?? error) });
+    await emit("failed", { ok: false, last, playerState: state(), playbackMessage: one(".playback-message")?.textContent?.trim(), reason: String(error?.message ?? error), songMenuDiagnostic });
   }
 })();
