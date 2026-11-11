@@ -129,11 +129,15 @@ impl MusicClient {
         let (source, accepted_task_ids) = tokio::task::spawn_blocking(move || {
             let (batch, accepted) = Batch::capture(&context, task_ids)?;
             let source = Arc::new(Source {
-                context,
+                session: context.session.clone(),
+                token: context.token.clone(),
                 api,
                 credentials,
                 receipt: uuid::Uuid::new_v4().simple().to_string(),
-                selection: Selection::Batch(batch),
+                selection: Selection::Batch {
+                    batch,
+                    context: Box::new(context),
+                },
                 created: Instant::now(),
             });
             Ok::<_, Error>((source, accepted))

@@ -22,7 +22,9 @@ pub use local_membership::{
     PlaylistMixedReorderReceipt,
 };
 pub use service::PlaylistService;
-pub(crate) use service::{GroupDownloadLikedOrigin, GroupDownloadPlaylistProof};
+pub(crate) use service::{
+    GroupDownloadLikedOrigin, GroupDownloadPlaylistProof, HistoryCollectDestination,
+};
 pub(crate) use snapshot::playlist_entry_id;
 pub use snapshot::{PlaylistList, PlaylistSnapshot, PlaylistSummary};
 pub use types::*;

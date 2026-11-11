@@ -25,6 +25,7 @@ export function useDownloadCollectCreation(
 
   function settle(value: DownloadCollectCreation, scope: DownloadCollectScope) {
     const { create, add } = value;
+    const songs = scope.origin === 'history' ? '所选歌曲' : '这首歌';
     if (
       value.receipt !== scope.receipt ||
       create.kind !== 'create' ||
@@ -57,13 +58,13 @@ export function useDownloadCollectCreation(
       notice.value = add ? '收藏结果待核对。' : '创建歌单结果待核对。';
     } else if (value.canAdd) {
       phase.value = 'created_ready';
-      notice.value = '歌单已创建，可以继续收藏这首歌。';
+      notice.value = `歌单已创建，可以继续收藏${songs}。`;
     } else {
       phase.value = 'failed';
       notice.value =
         create.phase === 'confirmed'
           ? add
-            ? '歌单已创建，但未能收藏这首歌。'
+            ? `歌单已创建，但未能收藏${songs}。`
             : '已观察到新歌单，但缺少创建回执，未收藏歌曲。'
           : '未能创建歌单，未收藏歌曲。';
     }

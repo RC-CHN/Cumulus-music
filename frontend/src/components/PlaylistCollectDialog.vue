@@ -213,7 +213,7 @@ function startCreate() {
   created.value = '';
   if (props.downloadCollection) {
     name.value = '';
-    privateList.value = false;
+    privateList.value = props.downloadCollection.origin === 'history';
   }
   creating.value = true;
 }
@@ -347,7 +347,10 @@ async function reconcile() {
     class="playlist-dialog playlist-collect-dialog"
     aria-labelledby="collect-title"
     :aria-busy="busy"
-    :data-download-collect="downloadCollection ? '' : undefined"
+    :data-download-collect="
+      downloadCollection && downloadCollection.origin !== 'history' ? '' : undefined
+    "
+    :data-history-collect="downloadCollection?.origin === 'history' ? '' : undefined"
     @cancel.prevent="close"
   >
     <header>
@@ -377,7 +380,17 @@ async function reconcile() {
       {{ tracks.length === 1 ? `收藏${tracks[0]?.name}` : `收藏${tracks.length}首歌曲` }}
     </p>
     <p
-      v-if="downloadCollection?.ownedOnly && selectionSummary"
+      v-if="downloadCollection?.origin === 'history' && selectionSummary"
+      class="collect-selection-summary"
+      role="status"
+    >
+      所选播放记录共 {{ selectionSummary.total }} 项，将收藏 {{ tracks.length }} 首歌曲。<template
+        v-if="selectionSummary.unsupported"
+        >{{ selectionSummary.unsupported }} 项无法收藏，已略过。</template
+      >
+    </p>
+    <p
+      v-else-if="downloadCollection?.ownedOnly && selectionSummary"
       class="collect-selection-summary"
       role="status"
     >

@@ -3,7 +3,9 @@ use super::{Lease, MusicClient, Source, playlists, with_visit};
 use crate::{
     Error, Result,
     client::dto::{AccountData, PlaylistMutationView},
-    playlist::{PlaylistCommand, PlaylistMutation, PlaylistService, TrackChange},
+    playlist::{
+        HistoryCollectDestination, PlaylistCommand, PlaylistMutation, PlaylistService, TrackChange,
+    },
     protocol::api::playlist_name,
 };
 use serde::{Deserialize, Serialize};
@@ -37,12 +39,12 @@ impl CreationAttempt {
         Ok(())
     }
 
-    fn check_add(&self, record: &PlaylistMutation, playlist: &str, song: &str) -> Result<()> {
+    fn check_add(&self, record: &PlaylistMutation, playlist: &str, songs: &[String]) -> Result<()> {
         if record.operation_id != self.add_id
             || record.system_liked_group
             || record.playlist_id.as_deref() != Some(playlist)
             || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
-                if id == playlist && ids.len() == 1 && ids[0] == song)
+                if id == playlist && ids == songs)
         {
             return Err(Error::StaleResponse);
         }
@@ -102,8 +104,7 @@ impl MusicClient {
         use DownloadCollectCreationCommand as Command;
         let source = self.download_collection(epoch, receipt)?;
         source.require_creation()?;
-        let song = source.single_song()?;
-        let ctx = &source.context;
+        let songs = source.alternate_destination_songs()?;
         let slot = &self.downloads.inner.collect;
         let requested = match &command {
             Command::Create {
@@ -144,11 +145,11 @@ impl MusicClient {
             source.require_creation()?;
             with_visit(slot, &source, |_| Ok(()))
         };
-        let service = PlaylistService::new(ctx.session.clone())?;
+        let service = PlaylistService::new(source.session.clone())?;
         let mut create = if first {
             let result = service
                 .guarded_create_download_collection(
-                    &ctx.token,
+                    &source.token,
                     &attempt.create_id,
                     &attempt.name,
                     attempt.private,
@@ -157,7 +158,7 @@ impl MusicClient {
                 .await;
             match result {
                 Ok(record) => record,
-                Err(error) => match service.operation_for(&ctx.token, &attempt.create_id)? {
+                Err(error) => match service.operation_for(&source.token, &attempt.create_id)? {
                     Some(record) => record,
                     None if matches!(error.root(), Error::Transport(_)) => {
                         // A guarded create saves its Sending record before
@@ -180,7 +181,7 @@ impl MusicClient {
             }
         } else {
             service
-                .operation_for(&ctx.token, &attempt.create_id)?
+                .operation_for(&source.token, &attempt.create_id)?
                 .ok_or(Error::StaleResponse)?
         };
         attempt.check_create(&create)?;
@@ -188,38 +189,50 @@ impl MusicClient {
         let readback = matches!(command, Command::Status { reconcile: true });
         if readback && create.phase.pending() {
             create = service
-                .reconcile_guarded_create(&ctx.token, &attempt.create_id, &check)
+                .reconcile_guarded_create(&source.token, &attempt.create_id, &check)
                 .await?;
             attempt.check_create(&create)?;
         }
         let confirmed = create
             .confirmed_created_target()
             .map(|(id, _, _)| id.to_owned());
-        let mut add = service.operation_for(&ctx.token, &attempt.add_id)?;
+        let mut add = service.operation_for(&source.token, &attempt.add_id)?;
         if let Some(record) = &add {
             attempt.check_add(
                 record,
                 confirmed.as_deref().ok_or(Error::StaleResponse)?,
-                song,
+                songs,
             )?;
         }
         let submit_add = first || matches!(command, Command::AddCreated {});
         if submit_add && add.is_none() {
             if confirmed.is_some() {
                 check()?;
-                let result = service
-                    .guarded_collect_created_download(
-                        &ctx.token,
-                        &attempt.create_id,
-                        std::slice::from_ref(song),
-                        &attempt.add_id,
-                        &check,
-                    )
-                    .await;
+                let result = if source.history() {
+                    service
+                        .guarded_collect_history(
+                            &source.token,
+                            HistoryCollectDestination::Created(&attempt.create_id),
+                            songs,
+                            &attempt.add_id,
+                            &check,
+                        )
+                        .await
+                } else {
+                    service
+                        .guarded_collect_created_download(
+                            &source.token,
+                            &attempt.create_id,
+                            songs,
+                            &attempt.add_id,
+                            &check,
+                        )
+                        .await
+                };
                 add = Some(match result {
                     Ok(record) => record,
                     Err(error) => service
-                        .operation_for(&ctx.token, &attempt.add_id)?
+                        .operation_for(&source.token, &attempt.add_id)?
                         .ok_or(error)?,
                 });
             } else if !first {
@@ -229,10 +242,10 @@ impl MusicClient {
             add = Some(
                 service
                     .reconcile_guarded_collect(
-                        &ctx.token,
+                        &source.token,
                         &attempt.add_id,
                         confirmed.as_deref().ok_or(Error::StaleResponse)?,
-                        std::slice::from_ref(song),
+                        songs,
                         false,
                         &check,
                     )
@@ -243,11 +256,11 @@ impl MusicClient {
             attempt.check_add(
                 record,
                 confirmed.as_deref().ok_or(Error::StaleResponse)?,
-                song,
+                songs,
             )?;
         }
         check()?;
-        let value = ctx.session.with_token(&ctx.token, |uid| {
+        let value = source.session.with_token(&source.token, |uid| {
             let can_add = add.is_none() && confirmed.is_some();
             Ok(DownloadCollectCreation {
                 receipt: receipt.into(),

@@ -526,8 +526,8 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   「批量操作」进入 /historyPlaylist/batch/track 或 /historyPlaylist/batch/voice，
   从零选择；Back 返回原分类，复用同一账号已读取的列表，不额外刷新历史。
   Cumulus 普通歌曲和声音表不再显示批量勾选栏，
-  选中播放、加队列、声音下载和删除在独立批量视图中。歌曲批量下载、歌曲批量收藏和
-  歌曲页头「收藏全部」仍需分别迁移；清空保留 Cumulus 已有确认和恢复日志。
+  选中播放、加队列、声音下载、歌曲收藏和删除在独立批量视图中。歌曲页头另有独立的
+  「收藏全部」按钮；歌曲批量下载仍需按独立的官方流程迁移。清空保留确认和恢复日志。
 - Add All 的载荷 resource 是空对象；M622 按 listType 生成 track／voice，
   完整列表放在 from.listData。M3085:215–219、243–252、290–311、431–456、
   564–585 取全量列表，不使用 selectedData、搜索匹配或当前虚拟切窗。
@@ -627,3 +627,33 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   两份完成文件逐字节等于合成 MP3；取消、受限与重复不建任务。报告为
   .build/ui-proof/phase293-history-voice-compact/audit.json。Windows CI 接入同一合成夹具，
   本地实窗结果不代表 Windows 或真实账号实测。
+
+最近播放歌曲「收藏全部」与「收藏」
+- HistoryPlay.jsx:166–173,294–303,350–358,397–412：歌曲页头在「播放全部」和「更多」
+  之间显示独立的「收藏全部」，空列表禁用，声音等分类没有此入口。Action.favorite /
+  ResourceType.track，resource 是完整合并列表，不传 selectedData。即使当前筛选只显示一行，
+  收藏仍基于完整快照。HistoryPlayBatchTrack.tsx:51–64,97–112 则传首条及按历史原序的
+  from.selectedData，Scene.history；批量入口从零选择，只在勾选后可按。
+- 官方 M3085:764–792、M3160:1061：页头应用第二段 `subPriv` 筛选，保留数值零、null、
+  缺字段或正值，去掉负值等非正的真值，按原显示倒序写入。批量先取缺字段或正值；如果全组
+  没有满足第一段的行，只试原组选区的第一条，再应用第二段过滤。两次逆序相抵，提交保持
+  历史原序。取消不写入。缺失或冲突的权益证据不会被当成允许，也不会把另一个零值项升级为
+  首条回退；没有可收藏项时提示并留在当前历史页。
+- Tauri `history_collect_prepare` 仅接账号代次和 {kind,revision,ids?}。历史服务按原生快照
+  冻结曲目，允许上限为本机和远端各 300 条；不按 WebView 传入的名称或权限做授权。
+  本机播放记录未保留 privilege 时，用 /api/song/enhance/privilege {ids} 无试听场景参数读取；
+  只接受有匹配 ID 的结果，不合并重复或外部 ID。离线历史必须核对同账号已完成的普通歌曲
+  下载任务和同一目录曲 ID，提交时再复核，纯本地路径、云盘、节目和不明映射均不会自动转为歌曲。
+- 沿用 M3132:140–143,227–237,387–431 的 /api/user/playlist/v2
+  {uid,offset,limit:10,sortType} 分页；只允许当前票据实际展示过、提交前仍属于当前账号的目标。
+  「我喜欢的音乐」另由原生核对其系统歌单和成员。新建时显式提交 /api/playlist/create
+  {uid,name,privacy}，默认勾选私密；只有成功回执的 ID 通过详情验证后才进入添加。添加为一次
+  /api/v1/playlist/manipulate/tracks {pid,trackIds,op:"add"}，没有 `imme`；不会为超过 100 条
+  拆成多个写入。502 重复作为明确拒绝。请求丢回执时保留精确操作，重新核对仅做读取，
+  不重复创建或发送添加。该入口未模拟 M3160:1143–1206 的本地占位／云盘上传，未附加
+  M3160 的当前播放队列来源追踪。真实账号写入不在验证范围。
+- Rust 投影和集成共 28 项通过，含 125 首的一次写入、无权限筛选、脱离历史快照与取消、
+  有效离线曲目的原生身份、迟到的权限响应、重复 502 和原下载收藏回归。隔离 Linux
+  WebView 六态核对实际按钮、取消零写入、焦点恢复、目标所有权、两条精确写入及回读，另有
+  原页头回归 10 态。截图与报告见 .build/ui-proof/phase294-history-song-collect/audit.json；
+  Windows 使用同一合成夹具，结果由此提交的 CI 单独确认。

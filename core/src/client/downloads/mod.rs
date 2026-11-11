@@ -25,7 +25,7 @@ use crate::{
 };
 pub use collect::{
     DownloadBatchCollectPlan, DownloadCollectCreation, DownloadCollectCreationCommand,
-    DownloadCollectPlan, DownloadLikedDestination,
+    DownloadCollectPlan, DownloadLikedDestination, HistoryCollectPlan,
 };
 pub use dto::*;
 pub use quality::DownloadQualityPreferences;

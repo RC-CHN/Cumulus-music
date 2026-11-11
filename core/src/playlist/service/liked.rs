@@ -372,7 +372,7 @@ pub(super) fn matches(record: &PlaylistMutation, observed: &Value, uid: &str) ->
         return Err(Error::State("invalid system liked journal command"));
     };
     if record.playlist_id.as_ref() != Some(id)
-        || !(1..=GuardedPlaylistAdd::MAX_SONGS).contains(&ids.len())
+        || !(1..=GuardedPlaylistAdd::MAX_HISTORY_SONGS).contains(&ids.len())
     {
         return Err(Error::State("invalid system liked journal destination"));
     }

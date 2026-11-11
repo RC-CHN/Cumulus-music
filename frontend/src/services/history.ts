@@ -8,6 +8,15 @@ export interface HistorySelectionScope {
   revision: string;
   ids: string[];
 }
+export type HistoryCollectTarget =
+  | { kind: 'all'; revision: string }
+  | ({ kind: 'selected' } & HistorySelectionScope);
+export interface HistoryCollectPlan {
+  receipt: string | null;
+  canCreate: boolean;
+  selectedCount: number;
+  songIds: string[];
+}
 export type HistoryRadioKind = Extract<HistoryKind, 'podcast' | 'audiobook'>;
 export type HistoryRadioMenuAction = 'play' | 'next';
 export const historyTabs: { kind: HistoryKind; label: string }[] = [
@@ -92,6 +101,10 @@ export interface HistoryClient {
     kind: HistoryKind,
     refresh: boolean,
   ): Promise<AccountData<HistoryPage>>;
+  historyCollectPrepare(
+    epoch: string,
+    target: HistoryCollectTarget,
+  ): Promise<AccountData<HistoryCollectPlan>>;
   historyCommand(
     epoch: string,
     kind: HistoryKind,

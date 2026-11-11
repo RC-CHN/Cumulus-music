@@ -1,5 +1,7 @@
 #[path = "download_collection/creation.rs"]
 mod creation;
+#[path = "download_collection/history.rs"]
+mod history;
 
 use super::Fixture;
 use cumulus_core::{
@@ -26,7 +28,11 @@ struct Transport {
     saved: Mutex<Vec<String>>,
     pending: Mutex<Vec<String>>,
     lost: AtomicBool,
+    duplicate: AtomicBool,
     hold: AtomicBool,
+    hold_privileges: AtomicBool,
+    privilege_requests: Mutex<Vec<Value>>,
+    privileges: Mutex<Vec<Value>>,
     changed: AtomicBool,
     detail_special: AtomicU8,
     entered: Notify,
@@ -70,6 +76,14 @@ impl Api for Transport {
                     );
                     Ok(json!({"code":200,"playlist":row}))
                 }
+                "/api/song/enhance/privilege" => {
+                    self.privilege_requests.lock().unwrap().push(payload);
+                    if self.hold_privileges.swap(false, Ordering::AcqRel) {
+                        self.entered.notify_one();
+                        self.release.notified().await;
+                    }
+                    Ok(json!({"code":200,"data":*self.privileges.lock().unwrap()}))
+                }
                 _ => panic!("unexpected generic collection request {path}"),
             }
         })
@@ -97,6 +111,9 @@ impl Api for Transport {
             let ids: Vec<String> =
                 serde_json::from_str(payload["trackIds"].as_str().unwrap()).unwrap();
             self.writes.lock().unwrap().push(payload);
+            if self.duplicate.load(Ordering::Acquire) {
+                return Ok(json!({"code":502}));
+            }
             if self.lost.load(Ordering::Acquire) {
                 self.pending.lock().unwrap().extend(ids);
                 Err(Error::Transport("synthetic collection reply lost".into()))

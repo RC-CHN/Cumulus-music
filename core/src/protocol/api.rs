@@ -150,9 +150,20 @@ impl GuardedPlaylistAdd {
     pub(crate) const PATH: &str = "/api/v1/playlist/manipulate/tracks";
 
     pub(crate) const MAX_SONGS: usize = 100;
+    // Recent history can merge 300 device rows with 300 service rows. Its
+    // guarded collector preserves one intent and one ordered service write.
+    pub(crate) const MAX_HISTORY_SONGS: usize = 600;
 
     pub(crate) fn new(playlist: String, songs: Vec<String>) -> Result<Self> {
-        if !(1..=Self::MAX_SONGS).contains(&songs.len()) {
+        Self::with_limit(playlist, songs, Self::MAX_SONGS)
+    }
+
+    pub(crate) fn new_history(playlist: String, songs: Vec<String>) -> Result<Self> {
+        Self::with_limit(playlist, songs, Self::MAX_HISTORY_SONGS)
+    }
+
+    fn with_limit(playlist: String, songs: Vec<String>, max: usize) -> Result<Self> {
+        if !(1..=max).contains(&songs.len()) {
             return Err(Error::InvalidInput("invalid guarded add selection"));
         }
         Ok(Self { playlist, songs })

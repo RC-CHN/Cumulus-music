@@ -1,4 +1,6 @@
 mod batch_scope;
+mod song_collection;
+pub use song_collection::HistoryCollectTarget;
 mod dto;
 mod radio_chapter;
 mod radio_collection;

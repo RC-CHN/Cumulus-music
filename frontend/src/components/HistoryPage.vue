@@ -21,6 +21,7 @@ import {
   historyTime,
   selectedHistoryBatch,
   type HistoryAction,
+  type HistoryCollectTarget,
   type HistoryCommand,
   type HistoryEntry,
   type HistoryKind,
@@ -38,6 +39,8 @@ const props = defineProps<{
   account: AccountView;
   playable: boolean;
   batchMode: boolean;
+  collecting?: boolean;
+  collectFeedback?: { message: string; failed?: boolean };
   batchSelection: (
     kind: HistoryQueueKind,
     revision: string,
@@ -57,6 +60,7 @@ const emit = defineEmits<{
   batch: [kind: HistoryQueueKind];
   leaveBatch: [];
   play: [kind: HistoryKind, revision: string, ids: string[], index: number];
+  collectSongs: [target: HistoryCollectTarget, opener: HTMLElement];
   downloadVoices: [target: HistorySelectionScope];
   chapter: [kind: 'podcast' | 'audiobook', revision: string, id: string];
   open: [resource: HistoryResource];
@@ -358,6 +362,41 @@ function downloadSelectedVoices() {
     return;
   emit('downloadVoices', { revision: snapshot.revision, ids: [...ids] });
 }
+function collectSelectedSongs(event: MouseEvent) {
+  const snapshot = page.value;
+  const ids = selectedBatch.value;
+  if (
+    !props.batchMode ||
+    props.collecting ||
+    kind.value !== 'song' ||
+    snapshot?.kind !== 'song' ||
+    loading.value ||
+    busy.value ||
+    !ids.length ||
+    !(event.currentTarget instanceof HTMLElement)
+  )
+    return;
+  emit(
+    'collectSongs',
+    { kind: 'selected', revision: snapshot.revision, ids: [...ids] },
+    event.currentTarget,
+  );
+}
+function collectAllSongs(event: MouseEvent) {
+  const snapshot = page.value;
+  if (
+    props.batchMode ||
+    props.collecting ||
+    kind.value !== 'song' ||
+    snapshot?.kind !== 'song' ||
+    !snapshot.entries.length ||
+    loading.value ||
+    busy.value ||
+    !(event.currentTarget instanceof HTMLElement)
+  )
+    return;
+  emit('collectSongs', { kind: 'all', revision: snapshot.revision }, event.currentTarget);
+}
 function chooseHeader(key: string) {
   const snapshot = page.value;
   if (
@@ -481,6 +520,16 @@ function keyboard(event: KeyboardEvent) {
       >
         <Icon name="play" />播放全部
       </button>
+      <button
+        v-if="kind === 'song' && !batchMode"
+        type="button"
+        class="secondary history-collect-all"
+        :disabled="loading || busy || !page?.entries.length"
+        :aria-disabled="collecting"
+        @click="collectAllSongs"
+      >
+        <Icon name="collect" />收藏全部
+      </button>
       <ActionMenu
         v-if="listKind && !batchMode"
         data-history-menu
@@ -505,6 +554,16 @@ function keyboard(event: KeyboardEvent) {
         @click="runQueueAction({ kind: 'add', ids: selectedBatch })"
       >
         <Icon name="plus" />添加到播放列表
+      </button>
+      <button
+        v-if="batchMode && kind === 'song'"
+        type="button"
+        class="secondary history-collect-selected"
+        :disabled="loading || busy || !selectedBatch.length"
+        :aria-disabled="collecting"
+        @click="collectSelectedSongs"
+      >
+        <Icon name="collect" />收藏
       </button>
       <button
         v-if="batchMode && kind === 'voice'"
@@ -574,9 +633,25 @@ function keyboard(event: KeyboardEvent) {
       重新读取收藏
     </button>
     <div
-      v-if="addNotice || batchError || error || uncertain || activeOperations.length || latest"
+      v-if="
+        collectFeedback ||
+        addNotice ||
+        batchError ||
+        error ||
+        uncertain ||
+        activeOperations.length ||
+        latest
+      "
       class="history-notices"
     >
+      <p
+        v-if="collectFeedback"
+        :class="collectFeedback.failed ? 'catalog-error' : 'history-outcome'"
+        :role="collectFeedback.failed ? 'alert' : 'status'"
+        class="history-collect-feedback"
+      >
+        {{ collectFeedback.message }}
+      </p>
       <p v-if="addNotice" class="history-outcome history-add-notice" role="status">
         {{ addNotice }}
       </p>

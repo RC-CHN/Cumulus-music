@@ -316,6 +316,7 @@ export function createTauriClient(): CoreClient {
     collectionPage: (epoch, query, refresh) => invoke('collection_page', { epoch, query, refresh }),
     listenedBooks: (epoch, query) => invoke('listened_books', { epoch, query }),
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
+    historyCollectPrepare: (epoch, target) => invoke('history_collect_prepare', { epoch, target }),
     historySyncPreference: (epoch, action) => invoke('history_sync_preference', { epoch, action }),
     onHistorySyncChanged: (handler) =>
       listen<AccountData<HistorySyncState>>('cumulus:history-sync-changed', (event) =>

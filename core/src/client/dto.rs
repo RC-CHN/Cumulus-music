@@ -6,15 +6,15 @@ pub use super::downloads::{
     DownloadCollectCreationCommand, DownloadCollectPlan, DownloadCommand, DownloadFailure,
     DownloadJobView, DownloadLikedDestination, DownloadQualityPreferences, DownloadQuery,
     DownloadResult, DownloadShareAccess, DownloadSkip, DownloadSkipReason, DownloadSort,
-    DownloadTab, DownloadTaskView, DownloadsView, SongDownloadState, TaskControl,
-    VoiceDownloadConfirmation, VoiceDownloadPreparation,
+    DownloadTab, DownloadTaskView, DownloadsView, HistoryCollectPlan, SongDownloadState,
+    TaskControl, VoiceDownloadConfirmation, VoiceDownloadPreparation,
 };
 pub use super::external_import::{ExternalImportAction, ExternalImportView};
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};
 pub use super::history::{
-    HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage, HistoryPlaylistCard,
-    HistoryRadioCollection, HistoryResource, HistorySelectionScope, ListenedBooksPage,
-    ListenedBooksQuery,
+    HistoryCollectTarget, HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage,
+    HistoryPlaylistCard, HistoryRadioCollection, HistoryResource, HistorySelectionScope,
+    ListenedBooksPage, ListenedBooksQuery,
 };
 pub use super::local::{
     DirectoryChoice, DirectorySelection, LocalCollectPlan, LocalCollectResult,

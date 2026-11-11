@@ -17,6 +17,20 @@ fn require_collect_window<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn history_collect_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: HistoryCollectTarget,
+) -> Result<AccountData<HistoryCollectPlan>, ClientError> {
+    require_collect_window(&window)?;
+    client
+        .history_collect_prepare(&epoch, target)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn download_collect_prepare<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

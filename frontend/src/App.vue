@@ -160,6 +160,7 @@ import LikeRecoveryNotice from './components/LikeRecoveryNotice.vue';
 import { useLikeRecovery } from './composables/useLikeRecovery';
 import { useHistory } from './composables/useHistory';
 import type {
+  HistoryCollectTarget,
   HistoryKind,
   HistoryQueueAction,
   HistoryQueueKind,
@@ -2812,6 +2813,154 @@ watch(playlistDialog, (next, previous) => {
   if (retired && retired !== active)
     void core.downloadCollectCancel(retired.epoch, retired.receipt).catch(() => {});
 });
+type HistoryCollectVisit = {
+  route: Page;
+  snapshot: NonNullable<typeof recent.page.value>;
+  epoch: string;
+  opener: HTMLElement;
+};
+const historyCollectPreparing = shallowRef<HistoryCollectVisit>();
+const historyCollectReturn = shallowRef<HistoryCollectVisit>();
+const historyCollectStatus = shallowRef<{
+  visit: HistoryCollectVisit;
+  message: string;
+  failed?: boolean;
+}>();
+function historyCollectCurrent(visit: HistoryCollectVisit) {
+  return (
+    music.signedIn.value &&
+    music.account.value.epoch === visit.epoch &&
+    music.page.value === visit.route &&
+    recent.page.value === visit.snapshot
+  );
+}
+const historyCollectFeedback = computed(() => {
+  const status = historyCollectStatus.value;
+  return status && historyCollectCurrent(status.visit) ? status : undefined;
+});
+watch(
+  [recent.page, music.page, () => music.account.value.epoch, () => music.account.value.status],
+  () => {
+    const preparing = historyCollectPreparing.value;
+    if (preparing && !historyCollectCurrent(preparing)) historyCollectPreparing.value = undefined;
+    const active = historyCollectReturn.value;
+    if (
+      active &&
+      !historyCollectCurrent(active) &&
+      playlistDialog.value?.kind === 'tracks' &&
+      playlistDialog.value.downloadCollection?.origin === 'history'
+    )
+      playlistDialog.value = undefined;
+  },
+  { flush: 'sync' },
+);
+async function openHistoryCollection(target: HistoryCollectTarget, opener: HTMLElement) {
+  const route = music.page.value;
+  const snapshot = recent.page.value;
+  if (
+    historyCollectPreparing.value ||
+    playlistDialog.value ||
+    !opener.isConnected ||
+    route.kind !== 'history' ||
+    route.scope !== 'song' ||
+    (route.batch === true) !== (target.kind === 'selected') ||
+    snapshot?.kind !== 'song' ||
+    snapshot.revision !== target.revision ||
+    recent.loading.value ||
+    recent.busy.value
+  )
+    return;
+  const wanted = target.kind === 'selected' ? new Set(target.ids) : undefined;
+  const rows = wanted ? snapshot.entries.filter((row) => wanted.has(row.id)) : snapshot.entries;
+  if (
+    !rows.length ||
+    (target.kind === 'selected' &&
+      (rows.length !== target.ids.length || rows.some((row, i) => row.id !== target.ids[i])))
+  )
+    return;
+  if (!music.signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  if (loginOpen.value || accountsOpen.value || document.querySelector('dialog[open]')) return;
+  const focus = document.activeElement;
+  const visit: HistoryCollectVisit = { route, snapshot, epoch: music.account.value.epoch, opener };
+  historyCollectPreparing.value = visit;
+  historyCollectStatus.value = undefined;
+  const current = () =>
+    historyCollectPreparing.value === visit &&
+    historyCollectCurrent(visit) &&
+    opener.isConnected &&
+    focus === document.activeElement &&
+    !playlistDialog.value &&
+    !loginOpen.value &&
+    !accountsOpen.value &&
+    !document.querySelector('dialog[open]');
+  try {
+    const result = await core.historyCollectPrepare(visit.epoch, target);
+    const { receipt, canCreate, selectedCount, songIds } = result.value;
+    const discard = () => {
+      if (receipt) void core.downloadCollectCancel(result.epoch, receipt).catch(() => {});
+    };
+    if (result.epoch !== visit.epoch || !current()) {
+      discard();
+      return;
+    }
+    const byId = new Map<string, TrackView>();
+    for (const { id, resource } of rows) {
+      if (resource.kind === 'song' && resource.track.id === id) byId.set(id, resource.track);
+    }
+    const tracks = songIds.flatMap((id) => {
+      const track = byId.get(id);
+      return track ? [track] : [];
+    });
+    if (
+      selectedCount !== rows.length ||
+      !!receipt !== !!songIds.length ||
+      tracks.length !== songIds.length ||
+      new Set(songIds).size !== songIds.length
+    ) {
+      discard();
+      historyCollectStatus.value = { visit, message: '收藏范围已变化，请重新选择。', failed: true };
+      return;
+    }
+    if (!receipt) {
+      historyCollectStatus.value = { visit, message: '所选播放记录没有可收藏的歌曲。' };
+      return;
+    }
+    historyCollectReturn.value = visit;
+    playlistDialog.value = {
+      kind: 'tracks',
+      tracks,
+      selectionSummary: {
+        total: selectedCount,
+        unsupported: selectedCount - tracks.length,
+        duplicates: 0,
+      },
+      downloadCollection: { epoch: visit.epoch, receipt, canCreate, origin: 'history' },
+    };
+  } catch (error) {
+    if (!current()) return;
+    const issue = failure(error);
+    if (['session_expired', 'profile_changed'].includes(issue.code)) void music.bootstrap(false);
+    else historyCollectStatus.value = { visit, message: issue.message, failed: true };
+  } finally {
+    if (historyCollectPreparing.value === visit) historyCollectPreparing.value = undefined;
+  }
+}
+function playlistCollectionCompleted(created: boolean) {
+  const visit = historyCollectReturn.value;
+  if (
+    playlistDialog.value?.kind === 'tracks' &&
+    playlistDialog.value.downloadCollection?.origin === 'history'
+  ) {
+    if (visit && historyCollectCurrent(visit))
+      historyCollectStatus.value = {
+        visit,
+        message: created ? '已收藏到新歌单。' : '已收藏到歌单。',
+      };
+  } else if (created) downloads.notice.value = '已收藏到新歌单。';
+}
 const importDialog = ref<InstanceType<typeof PlaylistImportPreview>>();
 function openExternalPlaylistImport(anchor: HTMLElement, origin: 'sidebar' | 'library') {
   if (signedIn.value) void importDialog.value?.show(anchor, origin);
@@ -2920,7 +3069,15 @@ function applyQueueMenu(key: QueueMenuAction, input: QueueMenuRequest) {
       });
   }
 }
-function queueCollectionFallback() {
+function playlistCollectionFallback() {
+  const visit = historyCollectReturn.value;
+  if (visit) {
+    return (
+      visit.opener
+        .closest('.history-page')
+        ?.querySelector<HTMLElement>('.history-heading button:not(:disabled)') ?? null
+    );
+  }
   if (!queueCollectionReturn.value) return null;
   return (
     document.querySelector<HTMLElement>('.queue-panel [aria-label="关闭播放队列"]') ??
@@ -2929,6 +3086,7 @@ function queueCollectionFallback() {
 }
 function collectionLeft() {
   if (!playlistDialog.value) {
+    historyCollectReturn.value = undefined;
     queueCollectionReturn.value = undefined;
     queueCollectionOwner.value = '';
   }
@@ -6313,6 +6471,8 @@ onUnmounted(() => {
                 :model="recent"
                 :account="account"
                 :batch-mode="page.batch === true"
+                :collecting="!!historyCollectPreparing"
+                :collect-feedback="historyCollectFeedback"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
@@ -6320,6 +6480,7 @@ onUnmounted(() => {
                 @batch="music.navigate({ kind: 'history', scope: $event, batch: true })"
                 @leave-batch="music.back()"
                 @play="playHistory"
+                @collect-songs="openHistoryCollection"
                 @download-voices="openHistoryVoiceDownload"
                 :batch-selection="selectHistoryBatch"
                 :radio-selection="selectHistoryRadio"
@@ -7859,10 +8020,13 @@ onUnmounted(() => {
     />
     <ModalTransition
       :restore-focus="
-        !playlistEditor && (!queueCollectionReturn || queueCollectionOwner === account.epoch)
+        !playlistEditor &&
+        (historyCollectReturn
+          ? historyCollectReturn.route === page && historyCollectReturn.epoch === account.epoch
+          : !queueCollectionReturn || queueCollectionOwner === account.epoch)
       "
-      :return-focus="() => queueCollectionReturn ?? null"
-      :fallback-focus="queueCollectionFallback"
+      :return-focus="() => historyCollectReturn?.opener ?? queueCollectionReturn ?? null"
+      :fallback-focus="playlistCollectionFallback"
       @left="collectionLeft"
     >
       <PlaylistCollectDialog
@@ -7874,8 +8038,9 @@ onUnmounted(() => {
         :ordinary-catalog="playlistDialog.ordinaryCatalog"
         :selection-summary="playlistDialog.selectionSummary"
         :download-collection="playlistDialog.downloadCollection"
+        @collected="playlistCollectionCompleted(false)"
         @download-creation-changed="music.resources()"
-        @download-creation-complete="downloads.notice.value = '已收藏到新歌单。'"
+        @download-creation-complete="playlistCollectionCompleted(true)"
         :playlists="playlists"
         @close="playlistDialog = undefined"
         @expired="music.bootstrap(false)"

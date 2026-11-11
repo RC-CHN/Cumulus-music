@@ -92,6 +92,13 @@ enum AddDestination<'a> {
     Created(&'a str),
     SystemLiked(&'a str),
     DownloadSystemLiked(&'a str),
+    History(HistoryCollectDestination<'a>),
+}
+
+pub(crate) enum HistoryCollectDestination<'a> {
+    Existing(&'a str),
+    Created(&'a str),
+    SystemLiked(&'a str),
 }
 
 struct WriteGuard<'a> {
@@ -99,6 +106,7 @@ struct WriteGuard<'a> {
     credentials: &'a PlaylistAddPermission<'a>,
     system_liked_group: bool,
     local_picker: bool,
+    history_picker: bool,
 }
 pub struct PlaylistService {
     session: Arc<AccountSession>,
@@ -475,20 +483,27 @@ impl PlaylistService {
         .await
     }
 
-    pub(crate) async fn guarded_collect_download_liked(
+    pub(crate) async fn guarded_collect_history(
         &self,
         token: &SessionToken,
-        playlist: &str,
-        song: &str,
+        destination: HistoryCollectDestination<'_>,
+        songs: &[String],
         operation_id: &str,
         permission: &PlaylistAddPermission<'_>,
     ) -> Result<PlaylistMutation> {
-        self.guarded_collect_download_liked_group(
+        let scope: fn(&dyn Api) -> Result<Option<String>> = match destination {
+            HistoryCollectDestination::SystemLiked(_) => {
+                |api| api.download_system_liked_scope_revision()
+            }
+            _ => |api| api.download_collection_scope_revision(),
+        };
+        self.guarded_add_songs(
             token,
-            playlist,
-            &[song.into()],
+            AddDestination::History(destination),
+            songs,
             operation_id,
             permission,
+            scope,
         )
         .await
     }
@@ -522,6 +537,26 @@ impl PlaylistService {
         scope: fn(&dyn Api) -> Result<Option<String>>,
     ) -> Result<PlaylistMutation> {
         let uid = self.owner(token)?;
+        let (destination, history_picker) = match destination {
+            AddDestination::History(destination) => (
+                match destination {
+                    HistoryCollectDestination::Existing(playlist) => {
+                        AddDestination::DownloadPicker {
+                            playlist,
+                            regular_only: false,
+                        }
+                    }
+                    HistoryCollectDestination::Created(operation) => {
+                        AddDestination::DownloadCreated(operation)
+                    }
+                    HistoryCollectDestination::SystemLiked(playlist) => {
+                        AddDestination::DownloadSystemLiked(playlist)
+                    }
+                },
+                true,
+            ),
+            other => (other, false),
+        };
         let local_picker = matches!(destination, AddDestination::LocalPicker(_));
         let regular_picker = local_picker
             || matches!(
@@ -535,7 +570,12 @@ impl PlaylistService {
             destination,
             AddDestination::SystemLiked(_) | AddDestination::DownloadSystemLiked(_)
         );
-        if !(1..=GuardedPlaylistAdd::MAX_SONGS).contains(&songs.len()) {
+        let max_songs = if history_picker {
+            GuardedPlaylistAdd::MAX_HISTORY_SONGS
+        } else {
+            GuardedPlaylistAdd::MAX_SONGS
+        };
+        if !(1..=max_songs).contains(&songs.len()) {
             return Err(Error::InvalidInput("invalid guarded add selection"));
         }
         if operation_id.len() != 32 || !operation_id.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -594,7 +634,9 @@ impl PlaylistService {
                             .ok_or(Error::StaleResponse)?;
                         (identifier(&json!(playlist))?, Some((name, private)))
                     }
-                    AddDestination::SystemLiked(_) | AddDestination::DownloadSystemLiked(_) => {
+                    AddDestination::SystemLiked(_)
+                    | AddDestination::DownloadSystemLiked(_)
+                    | AddDestination::History(_) => {
                         unreachable!()
                     }
                 };
@@ -653,6 +695,7 @@ impl PlaylistService {
                     serde_json::to_value(liked)?,
                 )
             }
+            AddDestination::History(_) => unreachable!("history destination normalized"),
         };
         check()?;
         let mut command = PlaylistCommand::Tracks {
@@ -673,6 +716,7 @@ impl PlaylistService {
                 credentials: &credentials,
                 system_liked_group,
                 local_picker,
+                history_picker,
             }),
         )
         .await
@@ -845,6 +889,7 @@ impl PlaylistService {
                 credentials: &credentials,
                 system_liked_group: false,
                 local_picker: false,
+                history_picker: false,
             }),
         )
         .await
@@ -860,6 +905,7 @@ impl PlaylistService {
         guard: Option<WriteGuard<'_>>,
     ) -> Result<PlaylistMutation> {
         let local_picker = guard.as_ref().is_some_and(|guard| guard.local_picker);
+        let history_picker = guard.as_ref().is_some_and(|guard| guard.history_picker);
         let mut record = PlaylistMutation {
             operation_id: operation_id.into(),
             playlist_id: command.playlist_id().map(str::to_owned),
@@ -876,7 +922,7 @@ impl PlaylistService {
         };
         // M3160 sends the selected IDs even when already present; its 502
         // duplicate branch is visible failure, not an optimistic success.
-        let unchanged = if local_picker {
+        let unchanged = if local_picker || history_picker {
             false
         } else if record.system_liked_group {
             liked::matches(&record, &before, uid)?
@@ -916,6 +962,7 @@ impl PlaylistService {
                         command,
                         guard.permission,
                         &marker.dispatched,
+                        history_picker,
                     )
                     .await;
                 }
@@ -938,7 +985,7 @@ impl PlaylistService {
                 }
             }
             Err(error) => {
-                if local_picker && error.is_service_code(502) {
+                if (local_picker || history_picker) && error.is_service_code(502) {
                     record.phase = PlaylistPhase::Rejected;
                     record.codes = operation::error_codes(&error);
                     record.error_class = Some("service".into());

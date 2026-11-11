@@ -1,17 +1,23 @@
-//! Receipt-bound collection from completed downloads.
+//! Shared receipt-bound playlist picker for downloads and recently played songs.
 mod batch;
 mod creation;
+mod history;
 mod liked;
 use super::{Context, MusicClient, resource::catalogue_track_id};
 use crate::{
     Error, Result,
+    account::{AccountSession, SessionToken},
     client::{
         content::PLAYLIST_COLLECT_LAST_PAGE,
-        dto::{AccountData, PlaylistCollectPage, PlaylistCollectSort, PlaylistMutationView},
+        dto::{
+            AccountData, HistoryCollectTarget, PlaylistCollectPage, PlaylistCollectSort,
+            PlaylistMutationView,
+        },
         playlists,
     },
     download::service::DownloadTask,
-    playlist::{PlaylistCommand, PlaylistService, TrackChange},
+    history::{HistoryKind, HistoryService},
+    playlist::{HistoryCollectDestination, PlaylistCommand, PlaylistService, TrackChange},
     protocol::{
         api::{Api, identifier},
         wire::serialization::js_truthy,
@@ -20,6 +26,7 @@ use crate::{
 pub use batch::DownloadBatchCollectPlan;
 use creation::CreationAttempt;
 pub use creation::{DownloadCollectCreation, DownloadCollectCreationCommand};
+pub use history::HistoryCollectPlan;
 pub use liked::DownloadLikedDestination;
 use serde::Serialize;
 use serde_json::Value;
@@ -75,11 +82,24 @@ pub(super) fn eligible(task: &DownloadTask) -> bool {
 }
 
 enum Selection {
-    Single { task: String, songs: [String; 1] },
-    Batch(batch::Batch),
+    Single {
+        task: String,
+        songs: [String; 1],
+        context: Box<Context>,
+    },
+    Batch {
+        batch: batch::Batch,
+        context: Box<Context>,
+    },
+    History {
+        target: HistoryCollectTarget,
+        songs: Vec<String>,
+        offline: Option<Box<history::OfflineSources>>,
+    },
 }
 struct Source {
-    context: Context,
+    session: Arc<AccountSession>,
+    token: SessionToken,
     api: Arc<dyn Api>,
     credentials: String,
     receipt: String,
@@ -91,26 +111,30 @@ impl Source {
     fn songs(&self) -> &[String] {
         match &self.selection {
             Selection::Single { songs, .. } => songs,
-            Selection::Batch(batch) => &batch.songs,
+            Selection::Batch { batch, .. } => &batch.songs,
+            Selection::History { songs, .. } => songs,
         }
     }
 
     fn is_batch(&self) -> bool {
-        matches!(self.selection, Selection::Batch(_))
+        matches!(self.selection, Selection::Batch { .. })
     }
 
-    fn single_song(&self) -> Result<&String> {
-        match &self.selection {
-            Selection::Single { songs: [song], .. } => Ok(song),
-            Selection::Batch(_) => Err(Error::InvalidInput(
-                "batch collection requires an existing ordinary playlist",
-            )),
+    fn history(&self) -> bool {
+        matches!(self.selection, Selection::History { .. })
+    }
+
+    fn alternate_destination_songs(&self) -> Result<&[String]> {
+        if self.is_batch() {
+            return Err(Error::InvalidInput(
+                "download batch requires an existing ordinary playlist",
+            ));
         }
+        Ok(self.songs())
     }
 
     fn require(&self) -> Result<()> {
-        let ctx = &self.context;
-        ctx.session.require_api(&ctx.token, &self.api)?;
+        self.session.require_api(&self.token, &self.api)?;
         if self.created.elapsed() >= VISIT_LIMIT
             || self.api.download_collection_scope_revision()?.as_deref() != Some(&self.credentials)
         {
@@ -120,14 +144,29 @@ impl Source {
             Selection::Single {
                 task,
                 songs: [song],
+                context,
             } => {
-                if catalogued_song(&ctx.service.get_for(&ctx.token, task)?).as_ref() != Some(song) {
+                if catalogued_song(&context.service.get_for(&self.token, task)?).as_ref()
+                    != Some(song)
+                {
                     return Err(Error::StaleResponse);
                 }
             }
-            Selection::Batch(batch) => batch.require(ctx)?,
+            Selection::Batch { batch, context } => batch.require(context)?,
+            Selection::History {
+                target, offline, ..
+            } => {
+                let current = HistoryService::new(self.session.clone())?
+                    .snapshot_for(&self.token, HistoryKind::Song)?;
+                if current.revision != target.revision() {
+                    return Err(Error::QueueChanged);
+                }
+                if let Some(offline) = offline {
+                    offline.require()?;
+                }
+            }
         }
-        ctx.guard()
+        self.session.with_token(&self.token, |_| Ok(()))
     }
 }
 
@@ -196,8 +235,7 @@ impl MusicClient {
             .map_err(|_| Error::LockPoisoned)?
             .as_ref()
             .filter(|v| {
-                v.source.receipt == receipt
-                    && v.source.context.token.generation.to_string() == epoch
+                v.source.receipt == receipt && v.source.token.generation.to_string() == epoch
             })
             .map(|v| v.source.clone())
             .ok_or(Error::StaleResponse)?;
@@ -221,13 +259,15 @@ impl MusicClient {
             .ok_or(Error::State("guarded download collection is unavailable"))?;
         let receipt = uuid::Uuid::new_v4().simple().to_string();
         let source = Arc::new(Source {
-            context,
+            session: context.session.clone(),
+            token: context.token.clone(),
             api,
             credentials,
             receipt: receipt.clone(),
             selection: Selection::Single {
                 task: task_id.into(),
                 songs: [song],
+                context: Box::new(context),
             },
             created: Instant::now(),
         });
@@ -269,15 +309,15 @@ impl MusicClient {
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
         if self.downloads.inner.collect_prepare.load(Ordering::Acquire) != ticket
-            || slot.as_ref().is_some_and(|visit| {
-                visit.source.context.token.generation > source.context.token.generation
-            })
+            || slot
+                .as_ref()
+                .is_some_and(|visit| visit.source.token.generation > source.token.generation)
         {
             return Err(Error::StaleResponse);
         }
         if slot
             .as_ref()
-            .is_some_and(|visit| visit.busy && visit.source.context.token == source.context.token)
+            .is_some_and(|visit| visit.busy && visit.source.token == source.token)
         {
             return Err(Error::MutationBusy);
         }
@@ -301,8 +341,7 @@ impl MusicClient {
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
         if slot.as_ref().is_some_and(|visit| {
-            visit.source.receipt == receipt
-                && visit.source.context.token.generation.to_string() == epoch
+            visit.source.receipt == receipt && visit.source.token.generation.to_string() == epoch
         }) {
             *slot = None;
         }
@@ -362,7 +401,6 @@ impl MusicClient {
         playlist: &str,
     ) -> Result<AccountData<PlaylistMutationView>> {
         let source = self.download_collection(epoch, receipt)?;
-        let ctx = &source.context;
         let slot = &self.downloads.inner.collect;
         let attempt = with_visit(slot, &source, |visit| {
             if visit.busy {
@@ -403,39 +441,52 @@ impl MusicClient {
             // wins the final synchronous dispatch permission.
             with_visit(slot, &source, |_| Ok(()))
         };
-        let service = PlaylistService::new(ctx.session.clone())?;
-        let record = if let Some(previous) =
-            service.operation_for(&ctx.token, &attempt.operation)?
-        {
-            previous
-        } else {
-            let attempted = service
-                .guarded_collect_download(
-                    &ctx.token,
-                    playlist,
-                    source.songs(),
-                    source.is_batch(),
-                    &attempt.operation,
-                    &check,
-                )
-                .await;
-            match attempted {
-                Ok(record) => record,
-                Err(error) => {
-                    // A response or readback error after admission must retain
-                    // this exact operation, never infer it from another UI.
-                    if let Some(record) = service.operation_for(&ctx.token, &attempt.operation)? {
-                        record
-                    } else {
-                        with_visit(slot, &source, |visit| {
-                            visit.attempt = None;
-                            Ok(())
-                        })?;
-                        return Err(error);
+        let service = PlaylistService::new(source.session.clone())?;
+        let record =
+            if let Some(previous) = service.operation_for(&source.token, &attempt.operation)? {
+                previous
+            } else {
+                let attempted = if source.history() {
+                    service
+                        .guarded_collect_history(
+                            &source.token,
+                            HistoryCollectDestination::Existing(playlist),
+                            source.songs(),
+                            &attempt.operation,
+                            &check,
+                        )
+                        .await
+                } else {
+                    service
+                        .guarded_collect_download(
+                            &source.token,
+                            playlist,
+                            source.songs(),
+                            source.is_batch(),
+                            &attempt.operation,
+                            &check,
+                        )
+                        .await
+                };
+                match attempted {
+                    Ok(record) => record,
+                    Err(error) => {
+                        // A response or readback error after admission must retain
+                        // this exact operation, never infer it from another UI.
+                        if let Some(record) =
+                            service.operation_for(&source.token, &attempt.operation)?
+                        {
+                            record
+                        } else {
+                            with_visit(slot, &source, |visit| {
+                                visit.attempt = None;
+                                Ok(())
+                            })?;
+                            return Err(error);
+                        }
                     }
                 }
-            }
-        };
+            };
         check()?;
         if record.operation_id != attempt.operation
             || record.system_liked_group
@@ -446,9 +497,9 @@ impl MusicClient {
                 "download collection result belongs to another action",
             ));
         }
-        let value = ctx
+        let value = source
             .session
-            .with_token(&ctx.token, |uid| playlists::view(record, uid))?;
+            .with_token(&source.token, |uid| playlists::view(record, uid))?;
         Ok(AccountData {
             epoch: epoch.into(),
             value,

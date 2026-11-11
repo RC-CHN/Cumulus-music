@@ -1,14 +1,14 @@
 //! Synthetic history endpoints for real WebView UX checks. No network transport.
 use cumulus_core::{
     Error,
-    protocol::api::{Api, ApiFuture},
+    protocol::api::{Api, ApiFuture, GuardedPlaylistAdd, PlaylistAddPermission},
 };
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU8, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
 };
 #[derive(Default)]
@@ -24,6 +24,7 @@ pub struct Library {
     pub reads: AtomicUsize,
     pub writes: AtomicUsize,
     pub downloads: Option<Arc<super::history_download_fixture::Fixture>>,
+    pub song_collect: Option<super::history_song_collect_fixture::Fixture>,
 }
 impl Library {
     pub fn with_chapters() -> Self {
@@ -312,8 +313,43 @@ fn resource(kind: &str, id: u64) -> Value {
     }
 }
 impl Api for Library {
+    fn download_collection_scope_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self
+            .song_collect
+            .as_ref()
+            .map(|_| super::history_song_collect_fixture::REVISION.to_owned()))
+    }
+
+    fn request_guarded_playlist_add<'a>(
+        &'a self,
+        write: GuardedPlaylistAdd,
+        permission: &'a PlaylistAddPermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let fixture = self
+                .song_collect
+                .as_ref()
+                .ok_or(Error::State("guarded playlist add is unavailable"))?;
+            let (path, args) = write.into_request()?;
+            permission()?;
+            dispatched.store(true, Ordering::Release);
+            fixture.add(path, args)
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self
+                .song_collect
+                .as_ref()
+                .and_then(|fixture| fixture.response(path, &args, cache))
+            {
+                if path == "/api/play-record/song/list" {
+                    self.reads.fetch_add(1, Ordering::SeqCst);
+                }
+                return result;
+            }
             if let Some(result) = self
                 .downloads
                 .as_ref()

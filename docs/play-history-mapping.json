@@ -256,6 +256,35 @@
         "Existing tasks remain managed by the downloads ledger; local matching requires a verified association",
         "No live account or real payment in the test"
       ]
+    },
+    {
+      "feature": "Collect all recent songs or an explicit song history selection",
+      "official": [
+        "HistoryPlay.jsx:166–173,294–303,350–358,397–412",
+        "HistoryPlayBatchTrack.tsx:51–64,97–112",
+        "M3085:764–792; M3132:140–143,227–237,387–431; M3160:1061,1143–1266"
+      ],
+      "rust": [
+        "core/src/client/history/song_collection.rs",
+        "core/src/client/downloads/collect/history.rs",
+        "core/src/client/downloads/collect.rs",
+        "core/src/playlist/service.rs"
+      ],
+      "ui": [
+        "desktop/src/downloads.rs history_collect_prepare",
+        "frontend/src/components/HistoryPage.vue standalone Collect All and batch Collect",
+        "frontend/src/components/PlaylistCollectDialog.vue"
+      ],
+      "tests": [
+        "core/src/client/history/song_collection.rs pure projection tests",
+        "core/tests/support/download_collection/history.rs",
+        "scripts/ci/history_song_collect_smoke.py and desktop/examples/history_song_collect_ui_probe.js"
+      ],
+      "desktopEvidence": ".build/ui-proof/phase294-history-song-collect/audit.json: 6 actual Linux WebView states and PNGs, two guarded playlist writes with exact order and readback, 10 header regression states; Windows pending",
+      "boundaries": [
+        "Local placeholders, private-cloud promotion and queue referral metadata are outside this path",
+        "No automatic re-dispatch after a lost acknowledgment; no real account writes during tests"
+      ]
     }
   ],
   "alternativeClientSources": [],

@@ -95,6 +95,7 @@ pub(super) async fn send_guarded(
     command: PlaylistCommand,
     permission: &PlaylistAddPermission<'_>,
     dispatched: &AtomicBool,
+    history_picker: bool,
 ) -> Result<Ack> {
     let created = match command {
         PlaylistCommand::Tracks {
@@ -103,12 +104,13 @@ pub(super) async fn send_guarded(
             ids,
             ..
         } => {
+            let write = if history_picker {
+                GuardedPlaylistAdd::new_history(id, ids)?
+            } else {
+                GuardedPlaylistAdd::new(id, ids)?
+            };
             let response = api
-                .request_guarded_playlist_add(
-                    GuardedPlaylistAdd::new(id, ids)?,
-                    permission,
-                    dispatched,
-                )
+                .request_guarded_playlist_add(write, permission, dispatched)
                 .await?;
             validate_response(GuardedPlaylistAdd::PATH, response, &[200])?;
             None

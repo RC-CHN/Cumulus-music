@@ -23,6 +23,11 @@
   flex-wrap: wrap;
   gap: 10px;
 }
+.history-tools .history-collect-all {
+  min-width: 94px;
+  height: 40px;
+  border-radius: 8px;
+}
 .history-tools [data-history-menu] .menu-trigger {
   width: 40px;
   height: 40px;

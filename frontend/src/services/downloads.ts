@@ -196,6 +196,7 @@ export interface DownloadCollectScope {
   receipt: string;
   canCreate: boolean;
   ownedOnly?: boolean;
+  origin?: 'history';
 }
 export interface DownloadBatchCollectPlan {
   receipt: string;

@@ -32,13 +32,12 @@ impl MusicClient {
         receipt: &str,
     ) -> Result<AccountData<Option<DownloadLikedDestination>>> {
         let source = self.download_collection(epoch, receipt)?;
-        if source.single_song().is_err() {
+        if source.alternate_destination_songs().is_err() {
             return Ok(AccountData {
                 epoch: epoch.into(),
                 value: None,
             });
         }
-        let ctx = &source.context;
         let slot = &self.downloads.inner.collect;
         let target_receipt = uuid::Uuid::new_v4().simple().to_string();
         with_visit(slot, &source, |visit| {
@@ -73,9 +72,9 @@ impl MusicClient {
                 Ok(())
             })
         };
-        let service = PlaylistService::new(ctx.session.clone())?;
+        let service = PlaylistService::new(source.session.clone())?;
         let id = service
-            .download_system_liked_destination(&ctx.token, &current)
+            .download_system_liked_destination(&source.token, &current)
             .await?;
         current()?;
         let value = with_visit(slot, &source, |visit| {
@@ -108,8 +107,7 @@ impl MusicClient {
         reconcile: bool,
     ) -> Result<AccountData<PlaylistMutationView>> {
         let source = self.download_collection(epoch, receipt)?;
-        let song = source.single_song()?;
-        let ctx = &source.context;
+        let songs = source.alternate_destination_songs()?;
         let slot = &self.downloads.inner.collect;
         let (attempt, revision) = with_visit(slot, &source, |visit| {
             if visit.busy {
@@ -151,16 +149,16 @@ impl MusicClient {
             verify_origin(&source, &revision)?;
             with_visit(slot, &source, |_| Ok(()))
         };
-        let service = PlaylistService::new(ctx.session.clone())?;
-        let previous = service.operation_for(&ctx.token, &attempt.operation)?;
+        let service = PlaylistService::new(source.session.clone())?;
+        let previous = service.operation_for(&source.token, &attempt.operation)?;
         let record = match previous {
             Some(previous) if reconcile && previous.phase.pending() => {
                 service
                     .reconcile_guarded_collect(
-                        &ctx.token,
+                        &source.token,
                         &attempt.operation,
                         &attempt.playlist,
-                        std::slice::from_ref(song),
+                        songs,
                         true,
                         &check,
                     )
@@ -168,41 +166,57 @@ impl MusicClient {
             }
             Some(previous) => previous,
             None if reconcile => return Err(Error::StaleResponse),
-            None => match service
-                .guarded_collect_download_liked(
-                    &ctx.token,
-                    &attempt.playlist,
-                    song,
-                    &attempt.operation,
-                    &check,
-                )
-                .await
-            {
-                Ok(record) => record,
-                Err(error) => {
-                    if let Some(record) = service.operation_for(&ctx.token, &attempt.operation)? {
-                        record
-                    } else {
-                        with_visit(slot, &source, |visit| {
-                            visit.attempt = None;
-                            Ok(())
-                        })?;
-                        return Err(error);
+            None => {
+                let outcome = if source.history() {
+                    service
+                        .guarded_collect_history(
+                            &source.token,
+                            HistoryCollectDestination::SystemLiked(&attempt.playlist),
+                            songs,
+                            &attempt.operation,
+                            &check,
+                        )
+                        .await
+                } else {
+                    service
+                        .guarded_collect_download_liked_group(
+                            &source.token,
+                            &attempt.playlist,
+                            songs,
+                            &attempt.operation,
+                            &check,
+                        )
+                        .await
+                };
+                match outcome {
+                    Ok(record) => record,
+                    Err(error) => {
+                        if let Some(record) =
+                            service.operation_for(&source.token, &attempt.operation)?
+                        {
+                            record
+                        } else {
+                            with_visit(slot, &source, |visit| {
+                                visit.attempt = None;
+                                Ok(())
+                            })?;
+                            return Err(error);
+                        }
                     }
                 }
-            },
+            }
         };
         check()?;
         if record.operation_id != attempt.operation
             || !record.system_liked_group
             || !matches!(&record.command, PlaylistCommand::Tracks { id, change: TrackChange::Add, ids, .. }
-                if id == &attempt.playlist && ids.as_slice() == std::slice::from_ref(song))
+                if id == &attempt.playlist && ids.as_slice() == songs)
         {
             return Err(Error::StaleResponse);
         }
-        let value = ctx
+        let value = source
             .session
-            .with_token(&ctx.token, |uid| playlists::view(record, uid))?;
+            .with_token(&source.token, |uid| playlists::view(record, uid))?;
         Ok(AccountData {
             epoch: epoch.into(),
             value,
