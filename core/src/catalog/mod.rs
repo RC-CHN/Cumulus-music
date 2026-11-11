@@ -8,6 +8,7 @@ pub mod metadata;
 mod privileges;
 pub mod queue_more;
 pub mod rankings;
+pub(crate) mod same_recording;
 pub mod search;
 pub mod vertical_zone;
 pub use album::{AlbumDetailSource, AlbumDetails, AlbumReadState};
@@ -17,6 +18,7 @@ pub use api::{
 };
 pub use artist::{ArtistApi, ArtistPageRequest};
 pub(crate) use privileges::merge_song_privileges;
+pub(crate) use same_recording::same_recording_details;
 
 /// Official M/21 R chooses id || albumId before converting to decimal text.
 pub(crate) fn album_identifier(value: &serde_json::Value) -> crate::Result<String> {
