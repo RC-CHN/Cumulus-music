@@ -4,7 +4,7 @@
   const one = selector => document.querySelector(selector);
   const all = selector => [...document.querySelectorAll(selector)];
   const assert = (ok, message) => { if (!ok) throw Error(message); };
-  const wait = async (test, label) => { for (let i = 0; i < 180; i++) { if (test()) return; await sleep(100); } throw Error(label); };
+  const wait = async (test, label, attempts = 180) => { for (let i = 0; i < attempts; i++) { if (test()) return; await sleep(100); } throw Error(label); };
   const click = node => { assert(node && !node.disabled, 'unavailable control'); node.focus({preventScroll: true}); node.click(); };
   const emit = (stage, rest = {}) => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {event: 'ux-proof', payload: {stage, ...rest}});
   const rect = node => { const r = node.getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}; };
@@ -404,8 +404,24 @@
     const marker=()=>one('.lyric-browse-time');
     scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:500}));
     await wait(()=>scroller.parentElement.classList.contains('browsing'),'timeline browsing');
-    lyric.scrollIntoView({block:'center',behavior:'instant'});
-    await wait(()=>marker()?.textContent.trim()==='00:07' && lyric.classList.contains('browsed'),'centered lyric timeline');
+    const centerError = () => {
+      const row = rect(lyric), viewport = rect(scroller);
+      return (row.y + row.bottom - viewport.y - viewport.bottom) / 2;
+    };
+    // Move only the lyrics viewport, so an ancestor scroll or an earlier
+    // smooth follow cannot determine where this manual gesture lands.
+    scroller.scrollTo({top:scroller.scrollTop + centerError(),behavior:'instant'});
+    try {
+      await wait(()=>Math.abs(centerError())<=2 && marker()?.textContent.trim()==='00:07' &&
+        lyric.classList.contains('browsed'),'centered lyric timeline',30);
+    } catch (error) {
+      // The paused browse marker expires after five seconds. Capture geometry
+      // while it is still meaningful instead of extending the general wait.
+      throw Error(`${error.message}: ${JSON.stringify({ scrollTop:scroller.scrollTop,
+        centerError:centerError(), marker:marker()?.textContent.trim(),
+        browsed:scroller.querySelector('.lyric-line.browsed')?.dataset.line,
+        browsing:scroller.parentElement.classList.contains('browsing') })}`);
+    }
     assert(hit(marker()) && one('.playerbar').dataset.state==='paused','timeline is reachable without changing playback');
     await capture('lyric_timeline');
     click(marker());
