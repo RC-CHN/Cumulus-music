@@ -12,6 +12,7 @@ use cumulus_core::{
     playback::engine::Cancellation,
 };
 use serde::Serialize;
+use tauri::Manager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[derive(Serialize)]
@@ -83,7 +84,6 @@ mod tests {
 #[tauri::command]
 pub(crate) async fn player_song_share_choose<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
-    app: tauri::AppHandle<R>,
     client: tauri::State<'_, MusicClient>,
     streams: tauri::State<'_, PlayerStreams>,
     epoch: String,
@@ -93,6 +93,7 @@ pub(crate) async fn player_song_share_choose<R: tauri::Runtime>(
 ) -> Result<AccountData<PlayerSongShareChannel>, ClientError> {
     require_main(&window)?;
     let lease = streams.ready_lease(&epoch).ok_or(Error::StaleResponse)?;
+    let app = window.app_handle().clone();
     let reply = client
         .player_song_share_choose_with(
             &epoch,
