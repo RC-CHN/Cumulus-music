@@ -37,7 +37,11 @@ import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
-import type { AlbumQueueDropGesture, PlayerView } from './services/player';
+import type {
+  AlbumQueueDropGesture,
+  PlayerView,
+  SearchLyricQueueDropGesture,
+} from './services/player';
 import type { SearchHotPlaybackTarget, SearchHotTarget, SearchItem } from './services/search';
 import {
   searchCardIsCurrent,
@@ -5328,6 +5332,14 @@ const canDropSearchSong = computed(
     player.queueOpen.value &&
     queuePanel.value?.canDrop === true,
 );
+const canDropSearchLyric = computed(
+  () =>
+    account.value.status === 'authenticated' &&
+    page.value.kind === 'search' &&
+    page.value.category === 'lyrics' &&
+    player.queueOpen.value &&
+    queuePanel.value?.canDrop === true,
+);
 const canDropAlbumSong = computed(
   () =>
     account.value.status === 'authenticated' &&
@@ -5378,6 +5390,21 @@ function startSearchQueueDrop(
       page.value === route &&
       account.value.epoch === epoch &&
       selectionCurrent(),
+  });
+}
+function startSearchLyricQueueDrop(event: PointerEvent, gesture: SearchLyricQueueDropGesture) {
+  if (!canDropSearchLyric.value || !gesture.current()) return;
+  const route = page.value;
+  const epoch = account.value.epoch;
+  queuePanel.value?.beginDrop(event, {
+    ...gesture,
+    kind: 'search_lyrics',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    current: () =>
+      canDropSearchLyric.value &&
+      page.value === route &&
+      account.value.epoch === epoch &&
+      gesture.current(),
   });
 }
 function startPlaylistQueueDrop(
@@ -7265,6 +7292,7 @@ onUnmounted(() => {
                 :playable="signedIn && player.ready.value && !player.busy.value"
                 :queueable="searchCollectionQueueable"
                 :queue-drop-enabled="canDropSearchSong"
+                :lyric-queue-drop-enabled="canDropSearchLyric"
                 :voice-queueable="ordinaryVoiceQueueable"
                 :card-queue-feedback="searchCardQueueFeedback"
                 :lyric-collection-feedback="lyricCollectFeedback"
@@ -7317,6 +7345,7 @@ onUnmounted(() => {
                 @queue-card="queueSearchCard"
                 @queue-voice="queueSearchVoice"
                 @queue-drag="startSearchQueueDrop"
+                @lyric-queue-drag="startSearchLyricQueueDrop"
                 @playlist-download="
                   (list) => page.kind === 'search' && signedIn && playlistAction(list, 'download')
                 "

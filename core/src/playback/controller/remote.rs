@@ -494,6 +494,16 @@ impl Actor {
         self.update_queue_with_source(value, reply, None).await
     }
 
+    pub(super) async fn apply_search_lyric_drop(
+        &mut self,
+        value: super::QueueUpdate,
+        reply: &Response,
+        authority: &crate::playback::engine::Cancellation,
+    ) -> Result<Option<LoadOptions>> {
+        self.update_queue_inner(value, Some(reply), None, false, Some(authority), None)
+            .await
+    }
+
     pub(super) async fn insert_next(
         &mut self,
         value: super::QueueUpdate,

@@ -18,6 +18,9 @@ use std::{
 };
 use uuid::Uuid;
 
+mod queue_drop;
+pub use queue_drop::LyricQueueDropRow;
+
 const MAX_GROUP: usize = 500;
 const MAX_OBSERVED: usize = 10_100; // last valid offset plus the bounded remote page
 const LIFETIME: Duration = Duration::from_secs(30 * 60);
@@ -47,27 +50,32 @@ pub(super) struct Rights {
 pub(super) struct Observation {
     id: String,
     right: Option<Rights>,
+    index: Option<usize>,
 }
 
-pub(super) fn observe(raw: &Value, track: Option<&TrackView>) -> Option<Observation> {
+pub(super) fn observe(raw: &Value, projected: Option<(&TrackView, usize)>) -> Option<Observation> {
     let song = raw.get("song")?;
     let id = identifier(&song["id"]).ok()?;
     if id.len() > 128 || id.starts_with('0') {
         return None;
     }
-    let right = track.and_then(|track| {
+    let right = projected.and_then(|(track, _)| {
         if super::song_comment::observe_lyric(raw, track).as_deref() != Some(id.as_str())
             || !super::queue_drop::bounded_track(track)
             || [song, raw].iter().any(|source| {
-                [
-                    "isOfflineDownOnline",
-                    "audio",
-                    "radio",
-                    "noCopyrightRcmd",
-                    "noCopyrightRcmds",
-                ]
-                .iter()
-                .any(|key| js_truthy(&source[*key]))
+                ["t", "songType"].iter().any(|key| source[*key] == "1")
+                    || [
+                        "isOfflineDownOnline",
+                        "path",
+                        "audio",
+                        "radio",
+                        "mainTrackId",
+                        "downloadTaskId",
+                        "noCopyrightRcmd",
+                        "noCopyrightRcmds",
+                    ]
+                    .iter()
+                    .any(|key| js_truthy(&source[*key]))
             })
         {
             return None;
@@ -99,7 +107,11 @@ pub(super) fn observe(raw: &Value, track: Option<&TrackView>) -> Option<Observat
         }
         Some(right)
     });
-    Some(Observation { id, right })
+    Some(Observation {
+        id,
+        right,
+        index: projected.map(|(_, index)| index),
+    })
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -119,6 +131,7 @@ struct Episode {
     next_offset: Option<usize>,
     seen: HashMap<String, Option<Rights>>,
     rows: HashMap<Uuid, TrackView>,
+    drops: queue_drop::Grants,
 }
 
 impl Episode {
@@ -179,6 +192,7 @@ impl LyricGroupPlayback {
                 next_offset: Some(0),
                 seen: HashMap::new(),
                 rows: HashMap::new(),
+                drops: queue_drop::Grants::default(),
             });
         }
         let Some(episode) = state.as_ref().filter(|episode| {
@@ -235,16 +249,16 @@ impl LyricGroupPlayback {
         }
         episode.next_offset =
             (view.more && view.next_offset > read.offset).then_some(view.next_offset);
-        for Observation { id, right } in observed {
+        for Observation { id, right, .. } in &observed {
             episode
                 .seen
-                .entry(id)
+                .entry(id.clone())
                 .and_modify(|previous| {
-                    if *previous != right {
+                    if *previous != *right {
                         *previous = None;
                     }
                 })
-                .or_insert(right);
+                .or_insert(*right);
         }
         // Late pages can reveal a contradictory duplicate. Retire every old
         // receipt for that ID, including any being used by a held action.
@@ -252,23 +266,33 @@ impl LyricGroupPlayback {
         episode
             .rows
             .retain(|_, row| seen.get(&row.id).is_some_and(Option::is_some));
-        for item in &mut section.items {
-            let SearchItem::Song {
+        episode.drops.retain(&episode.rows);
+        for Observation { id, right, index } in observed {
+            let (Some(right), Some(index)) = (right, index) else {
+                continue;
+            };
+            if seen.get(&id) != Some(&Some(right)) {
+                continue;
+            }
+            let Some(SearchItem::Song {
                 track,
                 lyric_group_playback,
+                lyric_queue_drop,
                 ..
-            } = item
+            }) = section
+                .items
+                .get_mut(index)
+                .filter(|item| matches!(item, SearchItem::Song { track, .. } if track.id == id))
             else {
                 continue;
             };
-            if let Some(Some(right)) = episode.seen.get(&track.id) {
-                let receipt = Uuid::new_v4();
-                episode.rows.insert(receipt, track.clone());
-                *lyric_group_playback = Some(Box::new(LyricGroupPlaybackRow {
-                    receipt: receipt.simple().to_string(),
-                    right: right.kind,
-                }));
-            }
+            let receipt = Uuid::new_v4();
+            episode.rows.insert(receipt, track.clone());
+            *lyric_group_playback = Some(Box::new(LyricGroupPlaybackRow {
+                receipt: receipt.simple().to_string(),
+                right: right.kind,
+            }));
+            *lyric_queue_drop = Some(Box::new(episode.drops.issue(id, receipt, right.kind)));
         }
         Ok(())
     }

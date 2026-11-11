@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SearchPodcastRowGesture } from '../../services/player';
+import type { SearchLyricQueueDropGesture, SearchPodcastRowGesture } from '../../services/player';
 import type { SearchVoiceMenuTarget } from '../../services/search';
 import type {
   TrackCurrentToggle,
@@ -39,7 +39,9 @@ import {
   lyricGroupIndexes,
   lyricResultKey,
   lyricSelectionOnly,
+  type LyricSelection,
 } from '../../services/searchLyricSelection';
+import { lyricQueueDropTickets } from '../../services/searchLyricQueueDrop';
 import { SEARCH_PLAYBACK_ROW_LIMIT, useSearchResults } from '../../composables/useSearchResults';
 import { useSearchPodcastFollow } from '../../composables/useSearchPodcastFollow';
 import { useSearchSongShare } from '../../composables/useSearchSongShare';
@@ -90,6 +92,7 @@ const props = defineProps<{
   playable: boolean;
   queueable: boolean;
   queueDropEnabled: boolean;
+  lyricQueueDropEnabled: boolean;
   voiceQueueable: boolean;
   cardQueueFeedback: string;
   lyricCollectionFeedback?: { message: string; failed?: boolean };
@@ -149,6 +152,7 @@ const emit = defineEmits<{
     rows: { receipt: string; trackId: string }[],
     current: () => boolean,
   ];
+  lyricQueueDrag: [event: PointerEvent, gesture: SearchLyricQueueDropGesture];
   queueVoice: [id: string];
   cardComments: [item: SearchItem];
   cardDownload: [item: SearchItem];
@@ -641,6 +645,9 @@ const renderedLyrics = computed(() =>
 );
 const {
   selection: lyricSelection,
+  pointerDown: lyricPointerDown,
+  pointerCancel: lyricPointerCancel,
+  nativeDrag: lyricNativeDrag,
   mouseDown: lyricMouseDown,
   mouseUp: lyricMouseUp,
   clearBackground: clearLyricBackground,
@@ -653,7 +660,47 @@ const {
   panel,
   lyricBody,
   lyricWindow.focus,
+  { enabled: () => props.lyricQueueDropEnabled, start: startLyricQueueDrop },
 );
+function startLyricQueueDrop(
+  event: PointerEvent,
+  hit: { row: HTMLElement; index: number; id: string },
+  selection: LyricSelection,
+  selectionCurrent: () => boolean,
+  dragStarted: () => void,
+) {
+  const owner = panel.value;
+  const snapshot = view.value;
+  const section = snapshot?.sections[0];
+  const displayed = lyricItems.value;
+  const { epoch } = props.account;
+  const visit = props.searchId;
+  const generation = loadGeneration;
+  const current = () =>
+    props.lyricQueueDropEnabled &&
+    props.account.status === 'authenticated' &&
+    props.account.epoch === epoch &&
+    props.searchId === visit &&
+    category.value === 'lyrics' &&
+    section?.category === 'lyrics' &&
+    !loading.value &&
+    generation === loadGeneration &&
+    view.value === snapshot &&
+    lyricItems.value === displayed &&
+    displayed[hit.index]?.track.id === hit.id &&
+    panel.value === owner &&
+    !!owner?.isConnected &&
+    owner.contains(hit.row) &&
+    hit.row.parentElement === lyricBody.value &&
+    hit.row.dataset.resultKey === lyricResultKey(hit.index, hit.id) &&
+    !hit.row.closest('[inert], .page-leave-active, .search-results-leave-active') &&
+    selectionCurrent();
+  if (!current()) return false;
+  const tickets = lyricQueueDropTickets(displayed, hit.index, selection.ids);
+  if (!tickets) return false;
+  emit('lyricQueueDrag', event, { ...tickets, current, dragStarted });
+  return true;
+}
 function lyricFocus(event: FocusEvent) {
   const row = (event.target as Element | null)?.closest<HTMLElement>('[data-lyric-index]');
   if (row) lyricWindow.focus(Number(row.dataset.lyricIndex));
@@ -1340,8 +1387,11 @@ onBeforeUnmount(() => {
                 @focus.self="lyricTableFocus"
                 @focusin="lyricFocus"
                 @focusout="lyricBlur"
+                @pointerdown="lyricPointerDown"
+                @pointercancel="lyricPointerCancel"
                 @mousedown="lyricMouseDown"
                 @mouseup="lyricMouseUp"
+                @dragstart="lyricNativeDrag"
                 @keydown="lyricSelectionKey"
               >
                 <div

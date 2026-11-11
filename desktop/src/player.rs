@@ -369,7 +369,9 @@ pub async fn player_action<R: tauri::Runtime>(
     }
     if matches!(
         &action,
-        PlayerAction::SearchGroupNextPlay { .. } | PlayerAction::SearchLyricGroupPlayback { .. }
+        PlayerAction::SearchGroupNextPlay { .. }
+            | PlayerAction::SearchLyricGroupPlayback { .. }
+            | PlayerAction::DropSearchLyricsIntoQueue { .. }
     ) && window.label() != "main"
     {
         return Err(Error::InvalidInput("search selection requires the main window").into());

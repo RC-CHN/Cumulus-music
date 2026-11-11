@@ -40,6 +40,7 @@ impl Actor {
                 | PlaybackCommand::QueuePodcastBrowse { .. }
                 | PlaybackCommand::TogglePodcastRank { .. }
                 | PlaybackCommand::ApplySearchGroupNext { .. }
+                | PlaybackCommand::ApplySearchLyricDrop(_)
                 | PlaybackCommand::ApplySearchGroupPlay { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
@@ -169,6 +170,7 @@ impl Actor {
         }
         if let PlaybackCommand::UpdateQueue(value)
         | PlaybackCommand::InsertNext(value)
+        | PlaybackCommand::ApplySearchLyricDrop(value)
         | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::PlayPodcastBrowse { update: value, .. }
         | PlaybackCommand::QueuePodcastBrowse { update: value, .. }
@@ -336,6 +338,12 @@ impl Actor {
                 .update_queue(value, Some(&request.reply))
                 .await
                 .map(|value| options = value),
+            PlaybackCommand::ApplySearchLyricDrop(update) => {
+                let authority = &request.guard.as_ref().expect("guarded lyric drop").1;
+                self.apply_search_lyric_drop(update, &request.reply, authority)
+                    .await
+                    .map(|value| options = value)
+            }
             PlaybackCommand::ApplySearchGroupNext {
                 update,
                 first_source,

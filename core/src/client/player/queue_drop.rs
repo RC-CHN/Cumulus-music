@@ -28,6 +28,11 @@ pub(super) enum DropSource {
         rows: Vec<super::super::search::SearchDropRow>,
         quality: Quality,
     },
+    Lyrics {
+        anchor: String,
+        rows: Vec<String>,
+        quality: Quality,
+    },
     Local {
         query: LocalQuery,
         revision: String,
@@ -101,19 +106,17 @@ impl MusicClient {
         };
         // M/3085 passes offset=gap-1. M/308 treats -1 as the current
         // display index, or forces -1 (front) when nothing is selected.
-        let boundary = if matches!(&source, DropSource::MixedPlaylist { .. })
-            && (boundary == 0 || queue.current.is_none())
-        {
-            queue
-                .items
-                .iter()
-                .position(|entry| Some(&entry.entry_id) == queue.current.as_ref())
-                .map_or(0, |index| index + 1)
+        let boundary = if matches!(
+            &source,
+            DropSource::MixedPlaylist { .. } | DropSource::Lyrics { .. }
+        ) {
+            resolve_offset_boundary(&queue, boundary)
         } else {
             boundary
         };
         let attempt = self.player.selection.load(Ordering::Acquire);
         let mut mixed_guard = None;
+        let mut lyric_guard = None;
         let mut _mixed_local_lease = None;
         let (resources, origin) = match source {
             DropSource::Album {
@@ -128,6 +131,43 @@ impl MusicClient {
                     .iter()
                     .map(|row| super::queue_playlist::queue_resource_for_track(row, quality))
                     .collect();
+                (
+                    resources,
+                    json!({"kind":"songs","scene":"search","label":"搜索页"}),
+                )
+            }
+            DropSource::Lyrics {
+                anchor,
+                rows,
+                quality,
+            } => {
+                let auth = self.auth.pending_guard();
+                auth()?;
+                let api = self.session.native_api(&token)?;
+                self.session
+                    .with_verified_profile(&token, &api, |_, _| Ok(()))?;
+                let credentials = api
+                    .lyric_group_playback_credential_revision()?
+                    .ok_or(Error::StaleResponse)?;
+                let pages = self.search.lyric_groups.clone();
+                let mut chosen = pages.resolve_drop(&token, &api, &credentials, &anchor, &rows)?;
+                let resources = std::mem::take(&mut chosen.tracks)
+                    .iter()
+                    .map(|row| super::queue_playlist::queue_resource_for_track(row, quality))
+                    .collect();
+                let session = self.session.clone();
+                let owner = token.clone();
+                lyric_guard = Some(Cancellation::new(move || {
+                    auth().is_ok()
+                        && session.require_api(&owner, &api).is_ok()
+                        && api
+                            .lyric_group_playback_credential_revision()
+                            .ok()
+                            .flatten()
+                            .as_ref()
+                            == Some(&credentials)
+                        && pages.drop_current(&chosen)
+                }));
                 (
                     resources,
                     json!({"kind":"songs","scene":"search","label":"搜索页"}),
@@ -285,18 +325,27 @@ impl MusicClient {
         }
         insert_drop(&mut queue, &resources, &origin, boundary)?;
         let expected = before.fence();
+        let update = QueueUpdate {
+            expected: expected.clone(),
+            queue,
+            transport: None,
+        };
+        let command = if lyric_guard.is_some() {
+            PlaybackCommand::ApplySearchLyricDrop(update)
+        } else {
+            PlaybackCommand::UpdateQueue(update)
+        };
         let value = controller
             .command_guarded(
                 &token,
-                PlaybackCommand::UpdateQueue(QueueUpdate {
-                    expected: expected.clone(),
-                    queue,
-                    transport: None,
-                }),
+                command,
                 expected,
                 Cancellation::new(move || {
                     selection.load(Ordering::Acquire) == attempt
                         && mixed_guard
+                            .as_ref()
+                            .is_none_or(|guard| !guard.is_cancelled())
+                        && lyric_guard
                             .as_ref()
                             .is_none_or(|guard| !guard.is_cancelled())
                 }),
@@ -304,6 +353,18 @@ impl MusicClient {
             .await?;
         self.session.check_generation(&token)?;
         project(&value, &token)
+    }
+}
+
+fn resolve_offset_boundary(queue: &QueueSnapshot, boundary: usize) -> usize {
+    if boundary == 0 || queue.current.is_none() {
+        queue
+            .items
+            .iter()
+            .position(|entry| Some(&entry.entry_id) == queue.current.as_ref())
+            .map_or(0, |index| index + 1)
+    } else {
+        boundary
     }
 }
 

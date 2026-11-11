@@ -967,6 +967,30 @@ impl MusicClient {
                     )
                     .await;
             }
+            PlayerAction::DropSearchLyricsIntoQueue {
+                anchor,
+                rows,
+                quality,
+                expected_queue_revision,
+                expected_play_id,
+                before_entry_id,
+            } => {
+                return self
+                    .drop_into_queue(
+                        epoch,
+                        DropSource::Lyrics {
+                            anchor,
+                            rows,
+                            quality,
+                        },
+                        DropTarget {
+                            expected_queue_revision,
+                            expected_play_id,
+                            before_entry_id,
+                        },
+                    )
+                    .await;
+            }
             PlayerAction::DropLocalIntoQueue {
                 query,
                 revision,
@@ -2025,6 +2049,7 @@ impl MusicClient {
             | PlayerAction::DropPlaylistSongsIntoQueue { .. }
             | PlayerAction::DropMixedPlaylistSongsIntoQueue { .. }
             | PlayerAction::DropSearchSongsIntoQueue { .. }
+            | PlayerAction::DropSearchLyricsIntoQueue { .. }
             | PlayerAction::DropAlbumSongsIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
             | PlayerAction::QueueVerticalZonePlaylistAll { .. }

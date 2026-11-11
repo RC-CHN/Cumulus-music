@@ -2,6 +2,9 @@ use super::*;
 use cumulus_core::playback::{PlaybackMode, controller::PlaybackStatus};
 use std::time::Duration;
 
+#[path = "search_lyric_queue_drop.rs"]
+mod queue_drop;
+
 pub(super) fn response(payload: &Value) -> Value {
     let ids = if payload["offset"] == 0 {
         &[11_u32, 12, 13][..]

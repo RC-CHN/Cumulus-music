@@ -1280,6 +1280,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             quality: source.quality,
             ...target,
           };
+        if (source.kind === 'search_lyrics')
+          return {
+            kind: 'drop_search_lyrics_into_queue',
+            anchor: source.anchor,
+            rows: source.rows,
+            quality: source.quality,
+            ...target,
+          };
         if (source.kind === 'mixed_playlist')
           return {
             kind: 'drop_mixed_playlist_songs_into_queue',

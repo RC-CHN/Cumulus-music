@@ -56,6 +56,8 @@ pub enum SearchItem {
             skip_serializing_if = "Option::is_none"
         )]
         lyric_group_collection_receipt: Option<String>,
+        #[serde(rename = "lyricQueueDrop", skip_serializing_if = "Option::is_none")]
+        lyric_queue_drop: Option<Box<super::LyricQueueDropRow>>,
         #[serde(rename = "songShareReceipt", skip_serializing_if = "Option::is_none")]
         song_share_receipt: Option<Box<str>>,
         #[serde(
@@ -998,6 +1000,7 @@ fn item(
                 song_comment_menu: None,
                 lyric_group_playback: None,
                 lyric_group_collection_receipt: None,
+                lyric_queue_drop: None,
                 song_share_receipt: None,
                 song_public_link_available: false,
                 mv_id,
@@ -1459,20 +1462,21 @@ pub(super) fn project(
             _ => item(kind, base, uid, lyric, None, false),
         };
         if lyrics {
-            let track = match &projected {
-                Ok(Some(SearchItem::Song { track, .. })) => Some(track),
+            let indexed_track = match &projected {
+                Ok(Some(SearchItem::Song { track, .. })) => Some((track, section.items.len())),
                 _ => None,
             };
-            if let Some(observation) = super::lyric_group::observe(resource, track) {
+            if let Some(observation) = super::lyric_group::observe(resource, indexed_track) {
                 result.lyric_group_rows.push(observation);
             }
-            if let Some(observation) = super::group_download::lyrics::observe(
-                resource,
-                track.map(|track| (track, section.items.len())),
-            ) {
+            if let Some(observation) =
+                super::group_download::lyrics::observe(resource, indexed_track)
+            {
                 result.lyric_download_rows.push(observation);
             }
-            if let Some(observation) = super::lyric_collection::observe(resource, track) {
+            if let Some(observation) =
+                super::lyric_collection::observe(resource, indexed_track.map(|(track, _)| track))
+            {
                 result.lyric_group_collection_rows.push(observation);
             }
         }

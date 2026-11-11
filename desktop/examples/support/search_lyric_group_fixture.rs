@@ -6,6 +6,7 @@ use std::sync::{LazyLock, Mutex};
 const LYRICS: &str = "/api/search/resource/lyric";
 const WORD: &str = "合成歌词组选曲";
 const REOPEN: &str = "合成歌词组选曲再查";
+const DROP_WORD: &str = "合成歌词拖入队列";
 pub const CREDENTIAL_REVISION: &str = "synthetic-lyric-group-playback";
 
 #[derive(Default)]
@@ -21,6 +22,10 @@ pub fn enabled() -> bool {
     std::env::var("CUMULUS_SEARCH_LYRIC_GROUP_PROOF").as_deref() == Ok("1")
 }
 
+pub fn drop_enabled() -> bool {
+    enabled() && std::env::var("CUMULUS_SEARCH_LYRIC_DROP_PROOF").as_deref() == Ok("1")
+}
+
 pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>> {
     if !enabled() || path != LYRICS {
         return None;
@@ -32,13 +37,19 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         .push(json!({"path":path,"args":args,"cached":cached}));
     let keyword = args["keyword"].as_str();
     let offset = args["offset"].as_u64();
+    let accepted = if drop_enabled() {
+        keyword == Some(DROP_WORD) && offset == Some(0)
+    } else {
+        matches!(keyword, Some(WORD | REOPEN))
+    };
     if cached
-        || !matches!(keyword, Some(WORD | REOPEN))
+        || !accepted
         || *args != json!({"keyword":keyword,"scene":"normal","limit":10,"offset":offset})
     {
         return Some(Err(Error::Response("unexpected lyric group query")));
     }
     let ids: &[u64] = match offset {
+        Some(0) if drop_enabled() => &[101, 102, 103, 101, 104],
         Some(0) => &[101, 102, 103, 101, 104, 105, 106, 107, 108, 109],
         Some(10) => &[110, 111, 112],
         _ => return Some(Err(Error::Response("unexpected lyric group offset"))),
@@ -54,7 +65,7 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         })
         .collect::<Vec<_>>();
     Some(Ok(
-        json!({"code":200,"data":{"totalCount":13,"resources":resources}}),
+        json!({"code":200,"data":{"totalCount":if drop_enabled(){5}else{13},"resources":resources}}),
     ))
 }
 
@@ -71,6 +82,12 @@ pub fn record_media(ids: &[Value], args: &Value) -> Result<()> {
         .unwrap()
         .media
         .push(json!({"id":id,"trialMode":args["trialMode"],"level":args["level"]}));
+    if drop_enabled() {
+        return match id {
+            Some(91) if args["trialMode"] == -1 && args["level"] == "standard" => Ok(()),
+            _ => Err(Error::Response("lyric drop requested extra media")),
+        };
+    }
     match id {
         Some(91 | 92) => Ok(()),
         Some(101 | 103..=112) if args["trialMode"] == 42 => Ok(()),

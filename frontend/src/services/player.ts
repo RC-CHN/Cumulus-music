@@ -364,6 +364,18 @@ export type SearchQueueDropSource = {
   quality: Quality;
   current: () => boolean;
 };
+export interface SearchLyricQueueDropTickets {
+  anchor: string;
+  rows: string[];
+}
+export type SearchLyricQueueDropGesture = SearchLyricQueueDropTickets & {
+  current: () => boolean;
+  dragStarted: () => void;
+};
+export type SearchLyricQueueDropSource = SearchLyricQueueDropGesture & {
+  kind: 'search_lyrics';
+  quality: Quality;
+};
 export type AlbumQueueDropGesture = {
   id: string;
   revision: string;
@@ -379,6 +391,7 @@ export type QueueDropSource =
   | PlaylistQueueDropSource
   | MixedPlaylistQueueDropSource
   | SearchQueueDropSource
+  | SearchLyricQueueDropSource
   | AlbumQueueDropSource;
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
 type AlbumDetailSelection = {
@@ -713,6 +726,13 @@ export type PlayerAction =
       expected_play_id: string | null;
       before_entry_id: string | null;
     }
+  | ({
+      kind: 'drop_search_lyrics_into_queue';
+      quality: Quality;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
+    } & SearchLyricQueueDropTickets)
   | {
       kind: 'drop_album_songs_into_queue';
       id: string;

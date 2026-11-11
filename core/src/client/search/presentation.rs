@@ -307,6 +307,7 @@ mod tests {
                         song_comment_menu: None,
                         lyric_group_playback: None,
                         lyric_group_collection_receipt: None,
+                        lyric_queue_drop: None,
                         song_share_receipt: None,
                         song_public_link_available: false,
                         mv_id: Some("9".into()),
@@ -373,6 +374,7 @@ mod tests {
             "explicit",
             "originalRecording",
             "queueDropReceipt",
+            "lyricQueueDrop",
         ] {
             assert!(!value.contains(forbidden));
         }

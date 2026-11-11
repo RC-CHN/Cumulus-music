@@ -797,6 +797,16 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             }}),
         ),
         (
+            "player_action",
+            json!({"epoch":"0","action":{
+                "kind":"drop_search_lyrics_into_queue",
+                "anchor":"11111111111111111111111111111111",
+                "rows":["11111111111111111111111111111111"],
+                "quality":"standard","expected_play_id":null,
+                "expected_queue_revision":"0","before_entry_id":null
+            }}),
+        ),
+        (
             "play_selection",
             json!({"epoch":"0","selection":{"kind":"songs","ids":["1"],"index":0,"quality":"lossless"}}),
         ),

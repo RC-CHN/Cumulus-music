@@ -10,7 +10,7 @@ pub use group_download::{
 };
 pub(super) mod lyric_collection;
 pub(super) mod lyric_group;
-pub use lyric_group::{LyricGroupOperation, LyricGroupPlaybackRow};
+pub use lyric_group::{LyricGroupOperation, LyricGroupPlaybackRow, LyricQueueDropRow};
 mod lyrics;
 pub(super) mod podcast_playback;
 mod presentation;

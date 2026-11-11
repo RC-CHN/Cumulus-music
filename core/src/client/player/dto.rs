@@ -740,6 +740,14 @@ pub enum PlayerAction {
         expected_play_id: Option<String>,
         before_entry_id: Option<String>,
     },
+    DropSearchLyricsIntoQueue {
+        anchor: String,
+        rows: Vec<String>,
+        quality: Quality,
+        expected_queue_revision: String,
+        expected_play_id: Option<String>,
+        before_entry_id: Option<String>,
+    },
     DropAlbumSongsIntoQueue {
         id: String,
         revision: String,

@@ -173,6 +173,7 @@ WebKit 实际核对六条路径，共 60 个截图状态：直达、已有歌单
 - [精品歌单](playlist-detail-ui-contracts.txt)已接通分类入口、独立标签、原游标续页和详情返回。[单曲和歌词搜索](desktop-player-contracts.txt)可暂停或继续当前正在解码加载的歌，Linux 隔离主流程核对播放实例、音源授权和加载次数不变。
 - [歌词搜索组播放](search-lyrics-ui-contracts.txt)以实际点击行作为起播锚点，按有序歌曲 ID 保留选区与续页，并用独立原生回执处理组播放、下一首及版权失败。Linux 合成实窗通过 9 态。
 - [歌词搜索组收藏与下载](search-lyrics-ui-contracts.txt)各有独立原生回执；Linux 实窗通过收藏 6 态和下载 11 态，核对选中顺序、独立点击行、取消、未决回读、实际 FLAC 落盘及已下载隐藏。两条桌面流程均为隔离合成验收，真实会员和 Windows 运行另验。
+- [歌词搜索拖入队列](search-lyric-queue-drop-contracts.txt)使用独立命中回执；Linux 实窗 12 态通过真实 X11 指针验证精确落点、版权过滤、重复命中、切分类撤销及暂停实例不变。Windows 验证由对应提交的 CI 独立执行。
 - [乐签详情](desktop-member-contracts.txt)已接通原曲喜欢、暂停/继续、奖励进度和专用会员二维码；没有新增领奖入口。[前瞻限幅器](core-effects-material-routing.txt)已有原生对照的离线 PCM 内核、有限输入输出缓冲和尾部排空；正式播放器和完整音效图未接入。
 - 歌单详情切换曲目、评论、收藏者不增加返回步骤，离开再返回时恢复页签和滚动位置。搜索声音的结果行和综合卡按单集 ID 控制当前正在加载的同一实例；Linux 隔离桌面验证首载期间暂停/继续，未重复解码加载。[歌单详情](playlist-detail-ui-contracts.txt) · [声音搜索](search-card-ui-contracts.txt)
 - [消息中心](message-drawer-contracts.txt)已接通后台未读计数轮询、私信/评论/@我/通知及会话历史读取；打开会话立即清除对应联系人在本机的未读角标。[一键全读](message-read-all-contracts.txt)使用独立确认、持久回执和只读核对。会话/私信删除、会话内纯文本回复及一键全读均不以真实账号写入作为测试。[新歌发布](follow-new-song-contracts.txt)可从关注歌手页读取发布流，独立播放官方最新列表；取消新歌通知走单独确认与持久化回执。限幅流的[离线重置](core-effects-material-routing.txt)已与官方原生对照，实际桌面播放跳转不使用这条音效链。

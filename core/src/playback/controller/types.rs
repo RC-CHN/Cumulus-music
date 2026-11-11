@@ -276,6 +276,8 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    /// Queue-only Lyrics insertion; validate its live native visit again at install.
+    ApplySearchLyricDrop(QueueUpdate),
     ApplyTogetherExternalQueue(TogetherExternalQueueUpdate),
     RecallPrefill(RecallPrefill),
     /// Explicit next-play insertion; only this durable edit starts a chorus read.

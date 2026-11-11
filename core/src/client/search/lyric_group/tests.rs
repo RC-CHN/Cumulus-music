@@ -244,3 +244,110 @@ fn lyric_authority_only_publishes_current_contiguous_authentic_results() {
         Err(Error::StaleResponse)
     ));
 }
+
+fn drop_receipt(view: &SearchResultView, index: usize) -> Option<String> {
+    serde_json::to_value(view).unwrap()["sections"][0]["items"][index]["lyricQueueDrop"]["receipt"]
+        .as_str()
+        .map(str::to_owned)
+}
+
+#[test]
+fn lyric_drop_grants_bind_exact_hits_and_revoke_ambiguous_public_identity() {
+    let cache = LyricGroupPlayback::default();
+    let api: Arc<dyn Api> = Arc::new(Wire::default());
+    let token = SessionToken {
+        uid: Some("9".into()),
+        generation: 1,
+    };
+    let first = query(0);
+    let read = cache
+        .begin(&token, &api, &first, Some("0".into()))
+        .unwrap()
+        .unwrap();
+    let mut page = result(
+        first,
+        vec![
+            hit("1", "第一段", 0, 320000),
+            hit("1", "第二段", 0, 320000),
+            hit("2", "另一首", 0, 320000),
+        ],
+    );
+    cache.capture(&token, &api, read, &mut page).unwrap();
+    let a = drop_receipt(&page, 0).unwrap();
+    let duplicate = drop_receipt(&page, 1).unwrap();
+    let b = drop_receipt(&page, 2).unwrap();
+    assert_ne!(a, duplicate);
+    assert_ne!(a, receipt(&page, 0).unwrap());
+    let singleton = cache
+        .resolve_drop(
+            &token,
+            &api,
+            "0",
+            &duplicate,
+            std::slice::from_ref(&duplicate),
+        )
+        .unwrap();
+    assert_eq!(singleton.tracks[0].id, "1");
+    assert!(matches!(
+        cache.resolve_drop(&token, &api, "0", &duplicate, std::slice::from_ref(&a)),
+        Err(Error::InvalidInput(_))
+    ));
+    let group = cache
+        .resolve_drop(&token, &api, "0", &duplicate, &[b.clone(), a.clone()])
+        .unwrap();
+    assert_eq!(
+        group
+            .tracks
+            .iter()
+            .map(|track| track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["2", "1"]
+    );
+    assert!(matches!(
+        cache.resolve_drop(
+            &token,
+            &api,
+            "0",
+            &duplicate,
+            &[b.clone(), duplicate.clone()]
+        ),
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(matches!(
+        cache.resolve_drop(&token, &api, "0", &b, &[a.clone(), duplicate.clone()]),
+        Err(Error::InvalidInput(_))
+    ));
+
+    let second = query(3);
+    let read = cache
+        .begin(&token, &api, &second, Some("0".into()))
+        .unwrap()
+        .unwrap();
+    let mut private_duplicate = hit("1", "同名私有歌曲", 0, 320000);
+    private_duplicate["song"]["privilege"]["cs"] = json!(true);
+    let mut trial = hit("3", "试听曲目", 0, 320000);
+    trial["song"]["privilege"]["flag"] = json!(1 << 10);
+    let mut next = result(
+        second,
+        vec![private_duplicate, trial, hit("4", "第四首", 0, 320000)],
+    );
+    cache.capture(&token, &api, read, &mut next).unwrap();
+    assert!(drop_receipt(&next, 0).is_none() && drop_receipt(&next, 1).is_none());
+    assert!(drop_receipt(&next, 2).is_some());
+    assert!(!cache.drop_current(&singleton));
+    assert!(!cache.drop_current(&group));
+    assert!(matches!(
+        cache.resolve_drop(&token, &api, "0", &duplicate, &[b.clone(), a]),
+        Err(Error::StaleResponse)
+    ));
+
+    let fresh = query(0);
+    let _read = cache
+        .begin(&token, &api, &fresh, Some("0".into()))
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        cache.resolve_drop(&token, &api, "0", &b, std::slice::from_ref(&b)),
+        Err(Error::StaleResponse)
+    ));
+}

@@ -74,6 +74,7 @@ export type SearchItem =
       songCommentMenu?: SongRowCommentMenu;
       lyricGroupPlayback?: { receipt: string; right: 'playable' | 'copyright_blocked' };
       lyricGroupCollectionReceipt?: string;
+      lyricQueueDrop?: { receipt: string; right: 'playable' | 'copyright_blocked' };
       songPublicLinkAvailable?: boolean;
       groupNextRight?: 'playable' | 'copyright_blocked';
       groupDownload?: { receipt: string; right: 'ordinary' | 'purchased' | 'copyright_blocked' };

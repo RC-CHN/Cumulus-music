@@ -228,12 +228,18 @@ impl MusicClient {
         // Keep the public presentation flag, never carry candidate rows into the guest reply.
         view.song_share_rows.clear();
         view.song_comment_rows.clear();
+        view.lyric_group_rows.clear();
+        view.lyric_download_rows.clear();
+        view.lyric_group_collection_rows.clear();
         for section in &mut view.sections {
             let returned = section.items.len();
             section.items.retain_mut(|item| {
                 match item {
                     SearchItem::Song {
                         queue_drop_receipt,
+                        lyric_queue_drop,
+                        lyric_group_playback,
+                        lyric_group_collection_receipt,
                         group_next_right,
                         group_download,
                         hint,
@@ -242,6 +248,9 @@ impl MusicClient {
                         ..
                     } => {
                         *queue_drop_receipt = None;
+                        *lyric_queue_drop = None;
+                        *lyric_group_playback = None;
+                        *lyric_group_collection_receipt = None;
                         *group_next_right = None;
                         *group_download = None;
                         *hint = None;
