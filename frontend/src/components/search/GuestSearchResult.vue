@@ -3,11 +3,21 @@ import { computed } from 'vue';
 import { artworkAt } from '../../services/artwork';
 import { searchCardKey } from '../../services/searchCards';
 import type { SearchItem } from '../../services/search';
+import type { MenuItem } from '../../services/menu';
 import Icon from '../Icon.vue';
+import ActionMenu from '../ActionMenu.vue';
 import SearchMatchText from './SearchMatchText.vue';
 
-const props = defineProps<{ item: SearchItem; keyword: string }>();
-const emit = defineEmits<{ search: [word: string] }>();
+const props = defineProps<{
+  item: SearchItem;
+  keyword: string;
+  songPublicLinkAvailable?: boolean;
+}>();
+const emit = defineEmits<{ search: [word: string]; songLinkAction: [action: 'share' | 'copy'] }>();
+const songLinkItems: MenuItem[] = [
+  { key: 'share', label: '分享', icon: 'share' },
+  { key: 'copy', label: '复制链接', icon: 'copy' },
+];
 const display = computed<[string, string, string | null]>(() => {
   const item = props.item;
   switch (item.kind) {
@@ -58,6 +68,19 @@ const cover = computed(() => (display.value[2] ? artworkAt(display.value[2], 120
           {{ item.excerpt.join(' / ') }}
         </small>
       </div>
+      <ActionMenu
+        v-if="songPublicLinkAvailable && item.kind === 'song'"
+        class="guest-search-more"
+        :label="`更多：${item.track.name}`"
+        catalog-key="guest-search-song-share"
+        variant="song"
+        :items="songLinkItems"
+        @select="
+          (key) => {
+            if (key === 'share' || key === 'copy') emit('songLinkAction', key);
+          }
+        "
+      />
     </template>
   </article>
 </template>
@@ -90,6 +113,11 @@ const cover = computed(() => (display.value[2] ? artworkAt(display.value[2], 120
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.guest-search-more {
+  margin-inline-start: auto;
+  /* WebKitGTK's overlay scrollbar can intercept input inside the panel edge. */
+  margin-inline-end: 20px;
 }
 .guest-search-copy span,
 .guest-search-copy small {

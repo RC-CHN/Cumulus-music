@@ -30,7 +30,8 @@ recovered-client/docs/product/models/page_searchResults.txt：页签、分类、
 - 综合页按服务区块顺序展示已知资源；最佳匹配横排，分类卡片按资源区分。
   综合单曲改为最多六项的双列卡片，
   分类卡片只预览一行；标题与箭头跳转分类。详见search-preview-ui-contracts.txt。
-  单曲分类仍沿用有界虚拟列表。歌手/用户/MV按恢复源码以13项连续
+  单曲分类仍沿用有界虚拟列表；单曲行的专用分享和独立复制见
+  search-song-share-contracts.txt。歌手/用户/MV按恢复源码以13项连续
   加载并有界渲染；歌单、专辑、声音和播客按10项连续加载，保留歌单显式分页。分类与详情返回的位置恢复见
   search-scroll-ui-contracts.txt，不声称官方完整WaterfallGrid内部算法已恢复。
 - 单曲操作为播放全部/收藏全部；收藏窗口明确显示当前页数量，选择已有自建歌单后

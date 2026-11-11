@@ -4,6 +4,7 @@ import type { SearchVoiceMenuTarget } from '../../services/search';
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
+  TrackMenuSelectionScope,
   TrackPendingToggle,
 } from '../../services/trackMenu';
 import type { ArtistCardRequest } from '../../services/artistCards';
@@ -35,11 +36,13 @@ import {
 import { useLyricWindow } from '../../composables/useLyricWindow';
 import { SEARCH_PLAYBACK_ROW_LIMIT, useSearchResults } from '../../composables/useSearchResults';
 import { useSearchPodcastFollow } from '../../composables/useSearchPodcastFollow';
+import { useSearchSongShare } from '../../composables/useSearchSongShare';
 import { useMotion } from '../../composables/useMotion';
 import { createPageTransition } from '../../services/pageTransition';
 import { useCore } from '../../services/core';
 import ModalTransition from '../ModalTransition.vue';
 import TrackShareDialog from '../TrackShareDialog.vue';
+import HistoryRowShareDialog from '../history/HistoryRowShareDialog.vue';
 import TrackTable from '../TrackTable.vue';
 import TrackRow from '../TrackRow.vue';
 import SearchLyricExtra from './SearchLyricExtra.vue';
@@ -53,6 +56,7 @@ import {
   searchVoiceLinkSection,
   searchMvLinkSection,
   searchResourceShare,
+  searchSongPublicLink,
   type SearchPendingVoiceToggle,
   type SearchQueueRequest,
   type SearchResourceLinkRequest,
@@ -143,6 +147,7 @@ const emit = defineEmits<{
   cardDownload: [item: SearchItem];
 }>();
 const core = useCore();
+const songShare = useSearchSongShare(core, () => emit('expired'));
 const model = useSearchResults(core, () => emit('expired'), props.memory);
 const { view, loading, error, loadingMore, moreError, manualMore } = model;
 const category = computed(() => props.category ?? 'all'),
@@ -296,11 +301,16 @@ function oneRowPreview(section: SearchSection) {
     ['playlists', 'artists', 'albums', 'podcasts', 'mvs', 'users'].includes(section.category ?? '')
   );
 }
-function showTrackMenu(request: TrackMenuRequest) {
+function showTrackMenu(
+  request: TrackMenuRequest,
+  section?: SearchSection,
+  selection?: TrackMenuSelectionScope,
+) {
   const owner = panel.value;
   const snapshot = view.value;
   const { epoch } = props.account;
   const visit = props.searchId;
+  const generation = loadGeneration;
   const tab = category.value;
   const current = () =>
     props.account.status === 'authenticated' &&
@@ -312,11 +322,80 @@ function showTrackMenu(request: TrackMenuRequest) {
     panel.value === owner &&
     !!owner?.isConnected &&
     !owner.closest('[inert], .page-leave-active, .search-results-leave-active');
+  let searchSongLinks: TrackMenuRequest['searchSongLinks'];
+  if (tab === 'songs') {
+    songShare.clearFeedback();
+    const item =
+      section?.category === 'songs' && snapshot?.sections.includes(section)
+        ? section.items.find((item) => item.kind === 'song' && item.track === request.track)
+        : undefined;
+    const receipt = item?.kind === 'song' ? item.songShareReceipt : undefined;
+    const publicLink = item && searchSongPublicLink(item);
+    const target = receipt ? { receipt, trackId: request.track.id } : undefined;
+    const live = () =>
+      loadGeneration === generation &&
+      !!selection &&
+      !selection.multiple &&
+      selection.live() &&
+      current();
+    searchSongLinks = {
+      shareAvailable: () => !!target && !!publicLink && live(),
+      copyLink: () => (live() ? publicLink : undefined),
+      openShare(anchor) {
+        if (!target || !publicLink || !anchor || !owner?.contains(anchor) || !live()) return;
+        void songShare.open(
+          {
+            epoch,
+            target,
+            live,
+            fallbackFocus: () =>
+              tabs.value?.querySelector<HTMLElement>('[aria-selected=true]') ?? null,
+          },
+          anchor,
+        );
+      },
+    };
+  }
   emit('more', {
     ...request,
     nextOrigin: 'search',
     searchSinglePlay: props.account.status === 'authenticated' ? current : undefined,
+    searchSongLinks,
   });
+}
+function guestSongPublicLink(item: SearchItem) {
+  return props.guestReady === true &&
+    category.value === 'songs' &&
+    (props.account.status === 'unknown' || props.account.status === 'signed_out')
+    ? searchSongPublicLink(item)
+    : undefined;
+}
+function guestSongLinkAction(section: SearchSection, item: SearchItem, action: 'share' | 'copy') {
+  const owner = panel.value;
+  const snapshot = view.value;
+  const epoch = props.account.epoch;
+  const visit = props.searchId;
+  const generation = loadGeneration;
+  const link = guestSongPublicLink(item);
+  const live = () =>
+    !!link &&
+    guestSongPublicLink(item) === link &&
+    props.account.epoch === epoch &&
+    props.searchId === visit &&
+    loadGeneration === generation &&
+    !loading.value &&
+    view.value === snapshot &&
+    panel.value === owner &&
+    !!owner?.isConnected &&
+    !owner.closest('[inert], .page-leave-active, .search-results-leave-active') &&
+    section.category === 'songs' &&
+    snapshot?.sections.includes(section) === true &&
+    section.items.includes(item);
+  if (!link || !live()) return;
+  if (action === 'share') {
+    songShare.clearFeedback();
+    emit('login');
+  } else void songShare.copyPublic(link, live);
 }
 function showSelectedTrackMenu(
   section: SearchSection,
@@ -734,6 +813,7 @@ async function restore() {
 }
 async function load(reuse = false) {
   clearResourceLink();
+  songShare.reset();
   restoring = true;
   cancelAnimationFrame(frame);
   clearTimeout(scrollDeadline);
@@ -835,6 +915,7 @@ watch(
 );
 onBeforeUnmount(() => {
   clearResourceLink();
+  songShare.reset();
   checkpoint(true, hotDeparture, activeCategory === 'all' && props.detailDeparture());
   loadGeneration++;
   observer?.disconnect();
@@ -880,6 +961,14 @@ onBeforeUnmount(() => {
       </p>
       <p v-if="cardQueueFeedback" class="search-voice-next-notice" role="status">
         {{ cardQueueFeedback }}
+      </p>
+      <p
+        v-if="songShare.feedback.value"
+        class="search-voice-next-notice"
+        :role="songShare.feedback.value.error ? 'alert' : 'status'"
+        data-search-song-share-status
+      >
+        {{ songShare.feedback.value.text }}
       </p>
       <p
         v-if="resourceLinkStatus"
@@ -1078,7 +1167,9 @@ onBeforeUnmount(() => {
               <GuestSearchResult
                 :item="item"
                 :keyword="matchKeyword"
+                :song-public-link-available="!!guestSongPublicLink(item)"
                 @search="emit('search', $event)"
+                @song-link-action="guestSongLinkAction(section, item, $event)"
               />
             </SearchCardGrid>
             <div
@@ -1231,7 +1322,7 @@ onBeforeUnmount(() => {
               @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
               @toggle-pending="(target, anchor) => emit('togglePendingTrack', target, anchor)"
               @like="emit('like', $event)"
-              @more="showTrackMenu"
+              @more="(request, selection) => showTrackMenu(request, section, selection)"
               @selected-more="
                 (request, anchor, rows, current) =>
                   showSelectedTrackMenu(section, request, anchor, rows, current)
@@ -1383,6 +1474,25 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </Transition>
+    <Teleport to="body">
+      <ModalTransition
+        :return-focus="songShare.returnFocus"
+        :fallback-focus="songShare.fallbackFocus"
+        :restore-focus="songShare.restoreFocus.value"
+        @left="songShare.keepFocusVisible"
+      >
+        <HistoryRowShareDialog
+          v-if="songShare.dialog.value"
+          :key="songShare.dialog.value.stage"
+          data-search-song-share-dialog
+          :modules="
+            songShare.dialog.value.stage === 'qr' ? songShare.dialog.value.modules : undefined
+          "
+          @choose="songShare.choose"
+          @close="songShare.close()"
+        />
+      </ModalTransition>
+    </Teleport>
     <ModalTransition
       :return-focus="() => resourceLinkAnchor"
       :restore-focus="resourceLinkRestoreFocus"

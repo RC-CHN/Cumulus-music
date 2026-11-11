@@ -1891,8 +1891,145 @@
       assert(resumed.playId===paused.playId&&resumed.queueRevision===paused.queueRevision&&
         resumed.position>=paused.position&&!one('[data-search-queue-add-tip]'),
         'current result Play continues its decoder without changing or acknowledging the queue');
-      await capture('search_menu_play_resumes_current_decoder');
-      await emit('complete',{ok:true,searchNextVerified:true,searchNextNoopVerified:true,searchMenuPlayVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      const searchIdentity=state=>({epoch,playId:state.playId,entryId:state.entryId,queueRevision:state.queueRevision});
+      await capture('search_menu_play_resumes_current_decoder',
+        window.__cumulusSearchSongShareProof?searchIdentity(resumed):{});
+      let songShareProof;
+      if(window.__cumulusSearchSongShareProof){
+        const clicked='3', clipboard='https://music.163.com/song?id=3';
+        const clipboardMarker='Cumulus synthetic search share clipboard marker';
+        const expectedIdentity=searchIdentity(resumed);
+        const originalQueue=JSON.stringify((await queue()).tracks.map(row=>[row.entryId,row.track.id]));
+        await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+        await wait(()=>one('.playerbar')?.dataset.state==='paused','freeze the existing decoder for share checks');
+
+        const more=()=>resultRow()?.querySelector('[data-result-action="more"]');
+        const actionMenu=()=>one('.song-action-menu:not([inert])');
+        const action=name=>actionMenu()?.querySelector(`[data-menu-key="${name}"]`);
+        const dialog=mode=>one(`dialog[open][data-search-song-share-dialog][data-history-share-dialog${mode?`="${mode}"`:''}]:not([inert])`);
+        const dialogButton=(node,choice)=>node.querySelector(`[data-history-share-channel="${choice}"]`);
+        const status=()=>one('[data-search-song-share-status]')?.textContent.trim();
+        const restored=()=>!actionMenu()&&!dialog()&&document.activeElement===more();
+        const choices=['微信好友','复制链接'];
+
+        async function unchanged(){
+          const current=await player();
+          const identity=searchIdentity(current);
+          assert(current.state==='paused'&&JSON.stringify(identity)===JSON.stringify(expectedIdentity)&&
+            JSON.stringify((await queue()).tracks.map(row=>[row.entryId,row.track.id]))===originalQueue,
+          'search sharing leaves the native decoder and exact queue intact');
+          return {...identity,queueUnchanged:true};
+        }
+        async function shareStage(label,evidence){
+          await capture(label,{...(await unchanged()),clicked,...evidence});
+        }
+        async function clipboardMatches(expected){
+          window.__searchClipboardAck=undefined;
+          await emit('search-clipboard-check',{expected});
+          await wait(()=>typeof window.__searchClipboardAck==='boolean','system clipboard readback');
+          assert(window.__searchClipboardAck,'native clipboard content exactly matches synthetic expectation');
+          return true;
+        }
+        async function openMenu(){
+          click(more());
+          await wait(actionMenu,'dedicated search song menu');
+        }
+        async function openShare(){
+          await openMenu();
+          assert(action('share')?.textContent.trim()==='分享','dedicated singleton has Share');
+          click(action('share'));
+          await wait(()=>!actionMenu()&&dialog('chooser')&&
+            document.activeElement===dialog('chooser').querySelector('header button'),
+            'signed local chooser has initial close focus');
+          const chooser=dialog('chooser');
+          const labels=[...chooser.querySelectorAll('[data-history-share-channel]')].map(node=>node.textContent.trim());
+          assert(chooser.querySelector('h2')?.textContent.trim()==='分享到'&&
+            document.activeElement.getAttribute('aria-label')==='关闭分享'&&
+            JSON.stringify(labels)===JSON.stringify(choices),'chooser exposes only recovered local channels');
+          return chooser;
+        }
+        function qrModules(svg){
+          const [x,y,w,h]=svg.getAttribute('viewBox').split(/\s+/).map(Number), size=w-8;
+          const d=svg.querySelector('path')?.getAttribute('d')??'';
+          assert(x===0&&y===0&&w===h&&size>=21&&size<=177&&(size-21)%4===0&&d,
+            'rendered QR has a square native module grid and quiet zone');
+          const matrix=Array.from({length:size},()=>Array(size).fill('0'));
+          const shapes=[...d.matchAll(/M(\d+) (\d+)h1v1h-1z/g)];
+          assert(shapes.map(m=>m[0]).join(' ')===d,'rendered QR path consists of exactly unit squares');
+          for(const [,col,row] of shapes){
+            const c=Number(col)-4,r=Number(row)-4;
+            assert(matrix[r]?.[c]==='0','QR quiet zone remains clear and modules are unique');
+            matrix[r][c]='1';
+          }
+          return matrix.map(row=>row.join(''));
+        }
+
+        await openMenu();
+        click(action('copy'));
+        await wait(()=>!actionMenu()&&!dialog()&&one('.track-action-feedback')?.textContent.trim()==='链接已复制',
+          'direct Copy stays independent of the share chooser');
+        await shareStage('search_song_direct_copy',{
+          clipboard,nativeClipboard:await clipboardMatches(clipboard),notice:'链接已复制',
+        });
+
+        const selectedIds=['3','2'];
+        function selectRow(id,ctrlKey=false){
+          const row=one(`#search-result-panel .track-row[data-track-id="${id}"]`);
+          assert(row,'selectable sealed search row '+id);
+          row.dispatchEvent(new PointerEvent('pointerdown',{pointerType:'mouse',button:0,buttons:1,ctrlKey,bubbles:true}));
+          row.dispatchEvent(new MouseEvent('click',{button:0,ctrlKey,bubbles:true}));
+        }
+        const selected=()=>all('#search-result-panel .track-row[aria-selected="true"]').map(row=>row.dataset.trackId);
+        selectRow(selectedIds[0]);
+        selectRow(selectedIds[1],true);
+        await wait(()=>selected().length===2&&selectedIds.every(id=>selected().includes(id)),'two dedicated rows selected in gesture order');
+        await openMenu();
+        assert(!action('share')&&!action('copy'),'retained group More hides Share and independent Copy');
+        await shareStage('search_song_share_group_hidden',{selectedIds,shareHidden:true,copyHidden:true});
+        key(document.activeElement,'Escape');
+        await wait(()=>!actionMenu(),'dismiss multi-selection More');
+        selectRow(clicked);
+        await wait(()=>JSON.stringify(selected())===JSON.stringify([clicked]),'select only the clicked Song');
+
+        const initial=await openShare();
+        assert(!initial.dispatchEvent(new Event('cancel',{cancelable:true})),'native dialog cancel is intercepted');
+        await wait(restored,'cancel returns to the exact source More control');
+        await shareStage('search_song_share_cancelled',{choices,focusRestored:true});
+
+        await invoke('copy_text',{text:clipboardMarker});
+        const nativeClipboardMarker=await clipboardMatches(clipboardMarker);
+        click(dialogButton(await openShare(),'copy'));
+        await wait(()=>restored()&&status()==='当前资源暂不支持分享。','late rights denial closes and restores the clicked row');
+        await shareStage('search_song_share_late_denied',{
+          clipboardMarker,nativeClipboardMarker,nativeClipboardUnchanged:await clipboardMatches(clipboardMarker),
+          notice:status(),focusRestored:true,
+        });
+
+        const copy=await openShare();
+        const markerBeforeCopy=await clipboardMatches(clipboardMarker);
+        click(dialogButton(copy,'copy'));
+        await wait(()=>restored()&&status()==='复制成功','authorized Copy closes and restores the clicked row');
+        await shareStage('search_song_share_copied',{
+          clipboard,clipboardMarker,nativeClipboardMarker:markerBeforeCopy,
+          nativeClipboard:await clipboardMatches(clipboard),notice:status(),focusRestored:true,
+        });
+
+        click(dialogButton(await openShare(),'wechat_qr'));
+        await wait(()=>dialog('wechat_qr')?.querySelector('svg[data-history-share-qr]')&&
+          document.activeElement===dialog('wechat_qr').querySelector('header button'),'native QR shows with its close control focused');
+        const qr=dialog('wechat_qr'), svg=qr.querySelector('svg[data-history-share-qr]');
+        const title=qr.querySelector('h2').textContent.trim(), hint=qr.querySelector('p').textContent.trim();
+        const qrWidth=Number(svg.getAttribute('width'));
+        assert(title==='分享到微信'&&hint==='打开微信, 扫一扫'&&qrWidth===180&&
+          document.activeElement.getAttribute('aria-label')==='关闭微信分享二维码',
+          'QR dialog matches recovered visual labels and size');
+        await shareStage('search_song_share_wechat_qr',{title,hint,qrWidth,qrModules:qrModules(svg)});
+        click(qr.querySelector('header button'));
+        await wait(restored,'closing QR returns to the clicked More control');
+        songShareProof={...(await unchanged()),verified:true,focusRestored:true};
+      }
+      await emit('complete',{ok:true,searchNextVerified:true,searchNextNoopVerified:true,searchMenuPlayVerified:true,
+        stageCount:count,songShareProof,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchPeopleCategoriesProof){

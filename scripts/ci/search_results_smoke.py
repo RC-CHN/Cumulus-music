@@ -10,13 +10,71 @@ import stat
 import sys
 from threading import Event
 import time
+from history_row_next_smoke import share_qr_payload
 from motion_smoke import launch
 from search_signed_trace import assignment_arguments, comprehensive_reads
+
+
+SEARCH_NEXT_STAGES = (
+    'search_result_queued_without_interrupting', 'search_next_uses_search_authorization',
+    'search_menu_play_repositions_same_source', 'search_menu_play_resumes_current_decoder',
+)
+SEARCH_SONG_SHARE_STAGES = (
+    'search_song_direct_copy', 'search_song_share_group_hidden', 'search_song_share_cancelled',
+    'search_song_share_late_denied', 'search_song_share_copied', 'search_song_share_wechat_qr',
+)
+SEARCH_SONG_SHARE_URL = 'https://music.163.com/song?id=3'
+SEARCH_SONG_SHARE_CLIPBOARD_MARKER = 'Cumulus synthetic search share clipboard marker'
 
 
 def signed_result_reads(complete, result_reads, expected_total):
     repository = Path(__file__).resolve().parents[2]
     return comprehensive_reads(complete, assignment_arguments(repository), result_reads, expected_total)
+
+
+def verify_search_song_share(first, complete):
+    labels = SEARCH_NEXT_STAGES + SEARCH_SONG_SHARE_STAGES
+    paths = sorted(first.glob('ux_*.json'))
+    assert [path.stem for path in paths] == [f'ux_{i:02}_{label}' for i, label in enumerate(labels, 1)]
+    rows = [json.loads(path.read_text(encoding='utf-8')) for path in paths]
+    assert [row['label'] for row in rows] == list(labels)
+    exact = [dict(path='/api/song/enhance/privilege', args={'ids': '["3"]'}, cached=False,
+                  sharePrivilege=right) for right in (1, 1, 0, 1, 1, 1, 1)]
+    for row, count in zip(rows, (0, 0, 0, 0, 0, 0, 1, 3, 5, 7), strict=True):
+        assert row['searchSongShareCalls'] == exact[:count], (row['label'], row['searchSongShareCalls'])
+    assert complete['searchSongShareCalls'] == exact
+    direct, group, cancelled, denied, copied, qr = rows[len(SEARCH_NEXT_STAGES):]
+    identity = {key: rows[len(SEARCH_NEXT_STAGES) - 1][key]
+                for key in ('epoch', 'playId', 'entryId', 'queueRevision')}
+    assert all(isinstance(value, str) and value for value in identity.values()), identity
+    assert complete['songShareProof'] == dict(verified=True, focusRestored=True, queueUnchanged=True,
+                                             **identity)
+    assert all(row['clicked'] == '3' and row['queueUnchanged'] is True for row in (
+        direct, group, cancelled, denied, copied, qr,
+    ))
+    assert all({key: row[key] for key in identity} == identity
+               for row in (direct, group, cancelled, denied, copied, qr))
+    for row in (*rows[len(SEARCH_NEXT_STAGES) - 1:], complete):
+        native = row['nativePlayer']
+        assert {key: native[key] for key in identity} == identity and native['track']['id'] == '3'
+    assert (direct['clipboard'], direct['nativeClipboard'], direct['notice']) == (
+        SEARCH_SONG_SHARE_URL, True, '链接已复制',
+    )
+    assert group['shareHidden'] is group['copyHidden'] is True and group['selectedIds'] == ['3', '2']
+    assert cancelled['choices'] == ['微信好友', '复制链接'] and cancelled['focusRestored'] is True
+    for row in (denied, copied):
+        assert row['clipboardMarker'] == SEARCH_SONG_SHARE_CLIPBOARD_MARKER
+        assert row['nativeClipboardMarker'] is True
+    assert denied['notice'] == '当前资源暂不支持分享。' and denied['nativeClipboardUnchanged'] is True
+    assert denied['focusRestored'] is True
+    assert (copied['clipboard'], copied['nativeClipboard'], copied['notice'], copied['focusRestored']) == (
+        SEARCH_SONG_SHARE_URL, True, '复制成功', True,
+    )
+    assert (qr['title'], qr['hint'], qr['qrWidth']) == ('分享到微信', '打开微信, 扫一扫', 180)
+    assert share_qr_payload(qr['qrModules']) == SEARCH_SONG_SHARE_URL
+    return dict(songSharePrivilegeReads=len(exact), songShareQrDecoded=SEARCH_SONG_SHARE_URL,
+                songShareDirectCopyBypassedRights=True, songShareNativeClipboard=True,
+                songShareQueuePreserved=True)
 
 
 def drag_playlist_column(output, cancelled, capture):
@@ -244,7 +302,8 @@ def main():
         parser.error('--trusted-playlist-pointer requires --playlist-creator under isolated Xvfb')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith('CUMULUS_') and k.upper() != 'CUMULUS_SEARCH_SONG_SHARE_PROOF'}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_SEARCH_UI_PROOF='1')
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
@@ -268,7 +327,8 @@ def main():
     if args.people_categories:
         prefix = 'window.__cumulusSearchPeopleCategoriesProof = true;\n'
     if args.search_next:
-        prefix = 'window.__cumulusSearchNextProof = true;\n'
+        prefix = 'window.__cumulusSearchNextProof = true;\nwindow.__cumulusSearchSongShareProof = true;\n'
+        env['CUMULUS_SEARCH_SONG_SHARE_PROOF'] = '1'
     if args.song_waterfall:
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
     if args.voice_author:
@@ -800,10 +860,14 @@ def main():
                 'peopleCategoriesVerified' if args.people_categories else
                 'originalCorrectionVerified' if args.correction_original else
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
-        stages = 8 if args.voice_direct else 4 if args.people_categories or args.correction_original or args.search_next else 3 if args.card_matches else 2
+        stages = (len(SEARCH_NEXT_STAGES) + len(SEARCH_SONG_SHARE_STAGES) if args.search_next else
+                  8 if args.voice_direct else 4 if args.people_categories or args.correction_original else
+                  3 if args.card_matches else 2)
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
+        share_report = {}
         if args.search_next:
             assert complete['searchNextNoopVerified'] and complete['searchMenuPlayVerified']
+            share_report = verify_search_song_share(root / 'first', complete)
         if args.people_categories:
             assert complete['searchArtistMenuVerified']
         if args.card_matches:
@@ -835,8 +899,8 @@ def main():
             assert all(stage['sourceAudio']['loads'] == 1 for stage in stages_by_label.values())
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (stages if args.screenshots else 0)
-        report = dict(complete, actualWebView=True)
-        if args.voice_direct:
+        report = dict(complete, actualWebView=True, **share_report)
+        if args.voice_direct or args.search_next:
             (root / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
         print(json.dumps(report))
         return

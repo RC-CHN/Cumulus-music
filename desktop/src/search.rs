@@ -56,6 +56,50 @@ pub async fn search_results<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn search_song_share_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: SearchSongShareTarget,
+) -> Result<AccountData<HistoryRowSharePreparation>, ClientError> {
+    search_window(&window)?;
+    client
+        .search_song_share_prepare(&epoch, target)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn search_song_share_choose<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: SearchSongShareTarget,
+    offer: String,
+    choice: HistoryRowShareChoice,
+) -> Result<AccountData<HistoryRowShareOutcome>, ClientError> {
+    search_window(&window)?;
+    client
+        .search_song_share_choose(&epoch, target, &offer, choice)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn search_song_share_cancel<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: SearchSongShareTarget,
+    offer: String,
+) -> Result<(), ClientError> {
+    search_window(&window)?;
+    client
+        .search_song_share_cancel(&epoch, target, &offer)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn search_group_download<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

@@ -6,7 +6,7 @@ import type { RemoteSkinClient } from './remoteSkins';
 import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
 import type { ArtistOnboardingClient } from './artistOnboarding';
-import type { SearchClient, SearchResultsClient } from './search';
+import type { SearchClient, SearchResultsClient, SearchSongShareClient } from './search';
 import type { PcPresentationClient } from './pcPresentation';
 import type { NativeLikesClient } from './nativeLikes';
 import type { LikeRecoveryClient } from './likeRecovery';
@@ -131,6 +131,7 @@ export interface CoreClient
     PcPresentationClient,
     SearchClient,
     SearchResultsClient,
+    SearchSongShareClient,
     DiscoveryHomeClient,
     VerticalZoneClient,
     OrdinaryEssentialClient,

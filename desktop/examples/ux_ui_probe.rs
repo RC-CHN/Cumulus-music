@@ -258,6 +258,40 @@ impl Api for Library {
         .then(|| "synthetic-search-group-next".into()))
     }
 
+    fn search_song_share_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        if !search_signed_fixture::song_share_enabled() {
+            return Ok(None);
+        }
+        self.signed_search
+            .as_ref()
+            .ok_or(cumulus_core::Error::State(
+                "missing sealed search share transport",
+            ))?
+            .client
+            .search_song_share_credential_revision()
+    }
+
+    fn request_search_song_share_privilege<'a>(
+        &'a self,
+        id: &'a str,
+        revision: &'a str,
+        permission: &'a (dyn Fn() -> cumulus_core::Result<()> + Send + Sync),
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if !search_signed_fixture::song_share_enabled() {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            self.signed_search
+                .as_ref()
+                .ok_or(cumulus_core::Error::State(
+                    "missing sealed search share transport",
+                ))?
+                .client
+                .request_search_song_share_privilege(id, revision, permission)
+                .await
+        })
+    }
+
     fn lyric_bounty_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(self
             .lyric_bounty
@@ -771,6 +805,12 @@ impl Api for Library {
             }
             if let Some(response) = search_download_ui_fixture::response(path, &args, cached) {
                 return response;
+            }
+            if search_signed_fixture::song_share_enabled() && path == "/api/song/enhance/privilege"
+            {
+                return Err(cumulus_core::Error::State(
+                    "search share proof requires the guarded privilege transport",
+                ));
             }
             if let Some(response) = search_fixture::mv_preview_privileges(path, &args, cached) {
                 return response;
@@ -1404,6 +1444,10 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        let guest_login = guest_search.as_ref().map(|_| Arc::new(guest_search_fixture::LoginWire::default()));
+        if let Some(wire) = guest_login.as_ref() {
+            client = client.with_login_providers(Some(wire.clone()), None);
+        }
         if audio_effect_tabs_proof || effect_peq_fixture::applied_catalogue() || headphone_header_proof {
             tauri::async_runtime::block_on(async {
                 assert_eq!(client.restore_account().await?.status,
@@ -1677,10 +1721,15 @@ fn main() {
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
+                if search_signed_fixture::song_share_enabled() {
+                    value["searchSongShareCalls"] = json!(signed_search.as_ref()
+                        .expect("sealed search song share").song_share_calls());
+                }
                 if let Some(calls) = search_fixture::group_next_media_calls() { value["searchGroupNextMedia"] = json!(calls); }
                 if let Some(calls) = search_fixture::offline_result_calls() { value["offlineResultCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::correction_result_calls() { value["correctionResultCalls"] = json!(calls); }
                 if let Some((_,wire))=guest_search.as_ref() {value["guestSearchCalls"]=json!(wire.report());}
+                if let Some(wire) = guest_login.as_ref() {value["guestShareLoginCalls"]=json!(wire.report());}
                 if std::env::var_os("CUMULUS_SEARCH_CARDS_PROOF").is_some() {
                     value["searchCardArtistSongCalls"] =
                         json!(*SEARCH_CARD_ARTIST_SONG_CALLS.lock().unwrap());

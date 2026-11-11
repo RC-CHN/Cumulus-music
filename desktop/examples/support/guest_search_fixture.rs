@@ -170,3 +170,57 @@ impl HttpBackend for Wire {
         })
     }
 }
+
+/// A fresh QR candidate uses its own native backend and cannot borrow the
+/// anonymous search cookie. No account can be authorized by this fixture.
+#[derive(Default)]
+pub struct LoginWire(Mutex<Vec<String>>);
+
+impl LoginWire {
+    pub fn report(&self) -> Vec<String> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl HttpBackend for LoginWire {
+    fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
+        Box::pin(async move {
+            const KEY: &str = "synthetic-guest-share-login";
+            assert_eq!(plan.route, WireRoute::Eapi);
+            assert_eq!(plan.url.origin(), ApiOrigin::Pc.url().origin());
+            let mut fields = url::form_urlencoded::parse(&plan.body);
+            let (key, encrypted) = fields.next().expect("isolated login EAPI body");
+            assert_eq!(key, "params");
+            assert!(fields.next().is_none());
+            let (path, args) = eapi::unwrap(&encrypted)?;
+            assert_eq!(
+                plan.url.path(),
+                ApiOrigin::Pc.request_url(WireRoute::Eapi, &path)?.path()
+            );
+            if let Some(cookie) = plan.headers.get("Cookie") {
+                assert!(cookie.split(';').map(str::trim).all(|pair| {
+                    !pair.starts_with("MUSIC_A=") && !pair.starts_with("MUSIC_U=")
+                }));
+            }
+            assert_eq!(args["type"], "3");
+            let response = match path.as_str() {
+                "/api/login/qrcode/unikey" => json!({"code":200,"unikey":KEY}),
+                "/api/login/qrcode/client/login" => {
+                    assert_eq!(args["key"], KEY);
+                    assert_eq!(args["secureCaptcha"], "");
+                    json!({"code":801})
+                }
+                _ => return Err(Error::State("unexpected sealed guest QR request")),
+            };
+            self.0.lock().unwrap().push(path);
+            Ok(HttpReply {
+                status: 200,
+                body: serde_json::to_vec(&response)?,
+                body_status: BodyStatus::Complete,
+                set_cookies: vec![],
+                refresh_token: None,
+                metadata: Default::default(),
+            })
+        })
+    }
+}

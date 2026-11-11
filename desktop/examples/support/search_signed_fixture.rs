@@ -27,6 +27,8 @@ use std::{
 };
 
 const ACCOUNT: &str = "/api/w/nuser/account/get";
+const SONG_SHARE_PRIVILEGE: &str = "/api/song/enhance/privilege";
+const SONG_SHARE_SCHEDULE: [i64; 7] = [1, 1, 0, 1, 1, 1, 1];
 const MUSIC_U: &str = "synthetic-search-signed-session";
 const SIGN: &str = "synthetic-search-signed-client-sign";
 const VERSION: &str = "3.1.42.205594";
@@ -121,6 +123,10 @@ pub struct SignedSearch {
 pub fn song_speed_enabled() -> bool {
     std::env::var("CUMULUS_SONG_SPEED_PROOF").as_deref() == Ok("1")
 }
+pub fn song_share_enabled() -> bool {
+    super::search_fixture::enabled()
+        && std::env::var_os("CUMULUS_SEARCH_SONG_SHARE_PROOF").is_some()
+}
 pub fn presentation_enabled() -> bool {
     std::env::var("CUMULUS_PC_PRESENTATION_PROOF").as_deref() == Ok("1")
 }
@@ -171,6 +177,7 @@ impl SignedSearch {
             initial_mode: mode,
             account_restored: AtomicBool::new(false),
             calls: Mutex::default(),
+            song_share_calls: Mutex::default(),
         });
         let context = Arc::new(RequestContext::from_pc(
             config,
@@ -226,6 +233,10 @@ impl SignedSearch {
         Ok(())
     }
 
+    pub fn song_share_calls(&self) -> Vec<Value> {
+        self.backend.song_share_calls.lock().unwrap().clone()
+    }
+
     pub fn full_reads(&self) -> usize {
         self.backend
             .calls
@@ -244,6 +255,7 @@ struct Backend {
     server: Arc<Mutex<ServerState>>,
     account_restored: AtomicBool,
     calls: Mutex<Vec<Value>>,
+    song_share_calls: Mutex<Vec<Value>>,
 }
 impl HttpBackend for Backend {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
@@ -277,7 +289,9 @@ impl HttpBackend for Backend {
                 notice::enabled() && matches!(path.as_str(), notice::SETTINGS | notice::DAILY_V3);
             let correction_path = super::search_fixture::correction_proof_enabled()
                 && path == "/api/search/pc/complex/page";
-            if (!copyright_path
+            let song_share_path = song_share_enabled() && path == SONG_SHARE_PRIVILEGE;
+            if (!song_share_path
+                && !copyright_path
                 && !daily_path
                 && !correction_path
                 && !matches!(path.as_str(), ACCOUNT | ASSIGNMENT_PATH))
@@ -335,6 +349,25 @@ impl HttpBackend for Backend {
                 typed["needCorrect"] = json!(false);
                 super::search_fixture::response(&path, &typed)
                     .ok_or(Error::State("missing correction response"))??
+            } else if song_share_path {
+                // The dedicated native read must cross the real scoped EAPI
+                // implementation above, with the restored cookie and no cache.
+                if !self.account_restored.load(Ordering::Acquire)
+                    || plan.url.query().is_some()
+                    || args != json!({"ids":"[\"3\"]"})
+                {
+                    return Err(Error::Response(
+                        "invalid sealed search song share privilege",
+                    ));
+                }
+                let mut calls = self.song_share_calls.lock().unwrap();
+                let share_privilege = *SONG_SHARE_SCHEDULE.get(calls.len()).ok_or(
+                    Error::Response("unexpected extra search song share privilege"),
+                )?;
+                calls.push(json!({
+                    "path":path, "args":args, "cached":false, "sharePrivilege":share_privilege,
+                }));
+                json!({"code":200,"data":[{"id":"3","sp":share_privilege}]})
             } else if copyright_path {
                 if !self.account_restored.load(Ordering::Acquire) {
                     return Err(Error::State(

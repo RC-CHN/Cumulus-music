@@ -37,6 +37,11 @@ export interface SongGroupDownloadRequest {
   };
 }
 
+export interface TrackMenuSelectionScope {
+  multiple: boolean;
+  live: () => boolean;
+}
+
 // UI-only request: playback retains the originating list and its ordering.
 export interface TrackMenuRequest {
   track: TrackView;
@@ -44,6 +49,12 @@ export interface TrackMenuRequest {
   play: () => void;
   nextOrigin?: 'search';
   searchSinglePlay?: () => boolean;
+  /** Dedicated Songs scope even when no public link or share offer is available. */
+  searchSongLinks?: {
+    shareAvailable: () => boolean;
+    openShare: (anchor: HTMLElement | undefined) => void;
+    copyLink: () => string | undefined;
+  };
   searchGroup?: {
     epoch: string;
     download?: import('./search').SearchGroupDownloadSelection;

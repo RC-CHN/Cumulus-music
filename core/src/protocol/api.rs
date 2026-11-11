@@ -1232,6 +1232,20 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Optional exact PC account scope for an ordinary Song share privilege read.
+    fn search_song_share_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_search_song_share_privilege<'a>(
+        &'a self,
+        _id: &'a str,
+        _revision: &'a str,
+        _permission: &'a (dyn Fn() -> Result<()> + Send + Sync),
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("search song sharing authority unavailable")) })
+    }
+
     /// Internal authority for a default search context from this credential set.
     fn search_default_context_revision(&self) -> Result<Option<String>> {
         Ok(None)

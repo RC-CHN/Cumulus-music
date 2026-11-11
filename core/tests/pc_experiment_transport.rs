@@ -21,6 +21,8 @@ mod search_group_download;
 mod search_podcast_batches;
 #[path = "pc_experiment_transport/search_presentation.rs"]
 mod search_presentation;
+#[path = "pc_experiment_transport/search_song_share.rs"]
+mod search_song_share;
 mod support;
 #[path = "pc_experiment_transport/vinyl_wiki.rs"]
 mod vinyl_wiki;

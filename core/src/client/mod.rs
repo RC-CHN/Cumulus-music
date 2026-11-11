@@ -84,6 +84,7 @@ mod report_receipt;
 mod scene_fm;
 mod search;
 mod settings;
+mod share;
 mod shortcut_preferences;
 pub mod style_home;
 pub mod style_tags;

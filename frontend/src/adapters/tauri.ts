@@ -118,6 +118,12 @@ export function createTauriClient(): CoreClient {
         ...(correctionReceipt ? { correctionReceipt } : {}),
       }),
     searchGroupDownload: (epoch, command) => invoke('search_group_download', { epoch, command }),
+    searchSongSharePrepare: (epoch, target) =>
+      invoke('search_song_share_prepare', { epoch, target }),
+    searchSongShareChoose: (epoch, target, offer, choice) =>
+      invoke('search_song_share_choose', { epoch, target, offer, choice }),
+    searchSongShareCancel: (epoch, target, offer) =>
+      invoke('search_song_share_cancel', { epoch, target, offer }),
     openSearchGroupPurchasedQualityGuide: (epoch, receipt) =>
       invoke('open_search_group_purchased_quality_guide', { target: { epoch, receipt } }),
     searchReasonPage: (epoch, target) => invoke('search_reason_page', { epoch, target }),

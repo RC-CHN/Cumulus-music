@@ -2,6 +2,7 @@
 import type {
   TrackCurrentToggle,
   TrackMenuRequest,
+  TrackMenuSelectionScope,
   TrackPendingToggle,
   TrackPlayGesture,
 } from '../services/trackMenu';
@@ -54,7 +55,7 @@ const emit = defineEmits<{
   play: [index: number, gesture?: TrackPlayGesture];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   togglePending: [target: TrackPendingToggle, anchor: HTMLButtonElement];
-  more: [request: TrackMenuRequest];
+  more: [request: TrackMenuRequest, selection?: TrackMenuSelectionScope];
   selectedMore: [
     request: TrackMenuRequest,
     anchor: number,
@@ -153,23 +154,37 @@ function targetRow(event: MouseEvent) {
   const track = props.tracks[index];
   if (track?.id === element.dataset.trackId) return { element, track, index };
 }
+function emitRowMore(request: TrackMenuRequest) {
+  const scope = props.playlistSelectionScope;
+  const captured = selection.value;
+  emit(
+    'more',
+    request,
+    scope
+      ? {
+          multiple: captured.ids.size > 1,
+          live: () => props.playlistSelectionScope === scope && selection.value === captured,
+        }
+      : undefined,
+  );
+}
 function forwardMore(request: TrackMenuRequest) {
   if (
     !props.selectedMenuEnabled ||
     !props.playlistSelectionScope ||
     (request.event.type !== 'contextmenu' && request.event.type !== 'keydown')
   ) {
-    emit('more', request);
+    emitRowMore(request);
     return;
   }
   const id = request.track.id;
   if (!selected.value.has(id)) {
     selection.value = playlistRowRelease(id);
-    emit('more', request);
+    emitRowMore(request);
     return;
   }
   if (selected.value.size <= 1) {
-    emit('more', request);
+    emitRowMore(request);
     return;
   }
   const captured = selection.value;

@@ -16,6 +16,7 @@ import {
   searchVoiceSelection,
   searchVoiceProgram,
   searchResourceShare,
+  searchSongPublicLink,
 } from '../src/services/searchCards.ts';
 import type { CoreClient, TrackView } from '../src/services/contracts.ts';
 import type { SearchItem, SearchSection } from '../src/services/search.ts';
@@ -29,6 +30,32 @@ const podcast = {
   kind: 'podcast',
   podcast: { id: '7', unavailable: false },
 } as Extract<SearchItem, { kind: 'podcast' }>;
+
+test('a Song link uses its native public marker independently of share permission', () => {
+  const row = {
+    kind: 'song',
+    track: { id: '17', fee: 4 },
+    songPublicLinkAvailable: true,
+  } as Extract<SearchItem, { kind: 'song' }>;
+  assert.equal(searchSongPublicLink(row), 'https://music.163.com/song?id=17');
+  assert.equal(
+    searchSongPublicLink({
+      ...row,
+      songPublicLinkAvailable: undefined,
+      songShareReceipt: 'opaque-share-capability',
+    }),
+    undefined,
+  );
+  for (const invalid of [
+    { id: '17&userid=8' },
+    { id: '01' },
+    { id: '9'.repeat(129) },
+    { local: true },
+    { missing: true },
+    { voiceId: '17' },
+  ])
+    assert.equal(searchSongPublicLink({ ...row, track: { ...row.track, ...invalid } }), undefined);
+});
 
 test('ordinary search links use the observed public program even without a playable radio', () => {
   const row = {

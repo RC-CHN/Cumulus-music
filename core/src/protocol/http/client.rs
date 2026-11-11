@@ -42,6 +42,8 @@ pub struct ResponseInfo {
     pub metadata: BTreeMap<String, String>,
 }
 
+const SEARCH_SONG_SHARE_PATH: &str = "/api/song/enhance/privilege";
+
 pub struct MusicHttpClient {
     credentials: Arc<Credentials>,
     profile: ClientProfile,
@@ -101,6 +103,7 @@ enum RequestBinding<'a> {
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     PlaybackChorus(&'a PlaybackChorusPermission<'a>),
     EffectCatalogue(&'a crate::protocol::api::EffectCataloguePermission<'a>),
+    SearchSongShare(&'a (dyn Fn() -> Result<()> + Send + Sync)),
     PodcastBadge {
         permission: &'a crate::protocol::api::PodcastBadgePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -948,6 +951,25 @@ impl MusicHttpClient {
                 {
                     return Err(Error::CredentialChanged);
                 }
+                permission()?;
+            }
+            if let Some(RequestBinding::SearchSongShare(permission)) = binding {
+                let current = self.credentials.request_credentials(&target)?;
+                if path != SEARCH_SONG_SHARE_PATH
+                    || origin != super::ApiOrigin::Pc
+                    || route != WireRoute::Eapi
+                    || self.anonymous_store
+                    || cache
+                    || current.revision != snapshot.revision
+                    || current.device_id != snapshot.device_id
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                self.check_account_cookie_scope(
+                    &current,
+                    ["/api/w/nuser/account/get", "/api/search/song/list/page"],
+                )?;
                 permission()?;
             }
             if let Some(RequestBinding::EffectCatalogue(permission)) = binding {
@@ -1925,6 +1947,46 @@ impl Api for MusicHttpClient {
 
     fn search_privilege_credential_revision(&self) -> Result<Option<String>> {
         Ok(Some(self.credentials.login_credentials()?.revision))
+    }
+
+    fn search_song_share_credential_revision(&self) -> Result<Option<String>> {
+        let origin = self.credentials.origin();
+        if origin != super::ApiOrigin::Pc || self.anonymous_store {
+            return Ok(None);
+        }
+        let target = origin.request_url(WireRoute::Eapi, SEARCH_SONG_SHARE_PATH)?;
+        let snapshot = self.credentials.request_credentials(&target)?;
+        self.check_account_cookie_scope(
+            &snapshot,
+            ["/api/w/nuser/account/get", "/api/search/song/list/page"],
+        )?;
+        Ok(Some(snapshot.revision))
+    }
+
+    fn request_search_song_share_privilege<'a>(
+        &'a self,
+        id: &'a str,
+        revision: &'a str,
+        permission: &'a (dyn Fn() -> Result<()> + Send + Sync),
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if id.len() > 128 || id.starts_with('0') {
+                return Err(Error::InvalidInput("invalid public song id"));
+            }
+            let id = crate::protocol::api::identifier(&json!(id))?;
+            let payload = json!({"ids": serde_json::to_string(&[id])?});
+            let response = self
+                .execute(
+                    SEARCH_SONG_SHARE_PATH,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::SearchSongShare(permission)),
+                )
+                .await?;
+            crate::protocol::api::validate_response(SEARCH_SONG_SHARE_PATH, response, &[200])
+        })
     }
 
     fn search_default_context_revision(&self) -> Result<Option<String>> {

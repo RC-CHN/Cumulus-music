@@ -130,8 +130,8 @@ pub use super::search::{
     SearchGroupDownloadReply, SearchGroupDownloadRow, SearchGroupDownloadTarget,
     SearchHistoryCommand, SearchHotAction, SearchHotTarget, SearchItem, SearchPresentationItem,
     SearchPresentationPatch, SearchPresentationSection, SearchPrivilegePatch, SearchQualityBadge,
-    SearchReasonPage, SearchResultQuery, SearchResultView, SearchSection, SearchVoiceMenu,
-    SearchVoiceMenuTarget,
+    SearchReasonPage, SearchResultQuery, SearchResultView, SearchSection, SearchSongShareTarget,
+    SearchVoiceMenu, SearchVoiceMenuTarget,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

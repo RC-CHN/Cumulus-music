@@ -4,6 +4,11 @@ import type { AlbumCard, ArtistCard, CatalogVideoCard } from './catalog';
 import type { EpisodeView, PodcastCard } from './podcast';
 import type { FollowUser } from './collections';
 import type { SearchTextPart } from './searchMatch';
+import type {
+  HistoryRowShareChoice,
+  HistoryRowShareOutcome,
+  HistoryRowSharePreparation,
+} from './history';
 export const searchCategories = [
   { key: 'all', title: '综合', unit: '' },
   { key: 'songs', title: '单曲', unit: '首单曲' },
@@ -63,6 +68,8 @@ export type SearchItem =
       track: TrackView;
       excerpt: string[];
       queueDropReceipt?: string;
+      songShareReceipt?: string;
+      songPublicLinkAvailable?: boolean;
       groupNextRight?: 'playable' | 'copyright_blocked';
       groupDownload?: { receipt: string; right: 'ordinary' | 'purchased' | 'copyright_blocked' };
       excerptTruncated?: boolean;
@@ -357,6 +364,19 @@ export type SearchGroupDownloadReply =
   | { kind: 'creation'; result: SearchGroupDownloadCreation }
   | { kind: 'pending' | 'not_started' | 'cancelled' | 'directory_required' };
 
+export interface SearchSongShareClient {
+  searchSongSharePrepare(
+    epoch: string,
+    target: SearchSongShareTarget,
+  ): Promise<AccountData<HistoryRowSharePreparation>>;
+  searchSongShareChoose(
+    epoch: string,
+    target: SearchSongShareTarget,
+    offer: string,
+    choice: HistoryRowShareChoice,
+  ): Promise<AccountData<HistoryRowShareOutcome>>;
+  searchSongShareCancel(epoch: string, target: SearchSongShareTarget, offer: string): Promise<void>;
+}
 export interface SearchClient {
   searchGroupDownload(
     epoch: string,
@@ -373,6 +393,10 @@ export interface SearchClient {
     target: SearchVoiceMenuTarget,
   ): Promise<AccountData<SearchVoiceMenu>>;
   searchOpenVoiceDirectory(epoch: string, target: SearchVoiceMenuTarget): Promise<void>;
+}
+export interface SearchSongShareTarget {
+  receipt: string;
+  trackId: string;
 }
 export interface SearchVoiceMenuTarget {
   receipt: string;

@@ -209,6 +209,9 @@ const items = computed<MenuItem[]>(() => {
     ? !selection.allCopyrightBlocked
     : available && !input.playUnavailable && !input.episode?.copyrightBlocked;
   const link = !selection && !input.episode?.copyrightBlocked && songLink(track);
+  const searchLinks = input.searchSongLinks;
+  const shareAvailable = searchLinks ? searchLinks.shareAvailable() : !!link;
+  const copyAvailable = searchLinks ? !!searchLinks.copyLink() : !!link;
   return [
     {
       key: 'play',
@@ -253,12 +256,8 @@ const items = computed<MenuItem[]>(() => {
       : groupDownload && groupDownload.available()
         ? [{ key: 'download', label: '下载', icon: 'download', disabled: groupDownload.busy() }]
         : []),
-    ...(available && link
-      ? [
-          { key: 'share', label: '分享', icon: 'share' },
-          { key: 'copy', label: '复制链接', icon: 'copy' },
-        ]
-      : []),
+    ...(available && shareAvailable ? [{ key: 'share', label: '分享', icon: 'share' }] : []),
+    ...(available && copyAvailable ? [{ key: 'copy', label: '复制链接', icon: 'copy' }] : []),
     ...(mixedRemoval ? [{ key: 'edit-divider', label: '', separator: true }, removeMixed] : []),
     ...(playlist.value?.owned && !playlist.value.favorite && !track.local && !input.mixedLocal
       ? [
@@ -390,27 +389,37 @@ async function copy() {
   const episode = request.value?.episode;
   if (episode && (!episode.live() || episode.selection || episode.copyrightBlocked)) return;
   const track = queue?.info.track ?? request.value?.track;
-  const link =
-    queue?.kind === 'voice'
+  const searchLinks = queue ? undefined : request.value?.searchSongLinks;
+  const link = searchLinks
+    ? searchLinks.copyLink()
+    : queue?.kind === 'voice'
       ? podcastProgramPublicLink(queue.info.voiceId)
       : track && songLink(track);
   if (!link || copying.value) return;
   const attempt = sequence;
+  const current = () =>
+    attempt === sequence &&
+    (!queue || queue.live()) &&
+    (!searchLinks || searchLinks.copyLink() === link);
   retrying.value = !!document.activeElement?.closest('.track-action-feedback');
   copying.value = true;
   message.value = '正在复制链接…';
   failed.value = false;
   try {
     await client.copyText(link);
-    if (attempt === sequence && (!queue || queue.live())) {
+    if (current()) {
       const retryFocused = document.activeElement?.closest('.track-action-feedback');
       feedback('链接已复制');
       if (retryFocused && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
     }
   } catch {
-    if (attempt === sequence && (!queue || queue.live())) feedback('复制链接失败，请重试', true);
+    if (current()) feedback('复制链接失败，请重试', true);
   } finally {
     if (attempt === sequence) {
+      if (searchLinks && !current()) {
+        message.value = '';
+        failed.value = false;
+      }
       copying.value = false;
       retrying.value = false;
     }
@@ -821,8 +830,11 @@ async function select(key: string) {
     else emit('comments', track);
   } else if (key === 'remove' && playlist.value) emit('remove', track, playlist.value);
   else if (key === 'manage' && playlist.value) emit('manage', track, playlist.value);
-  else if (key === 'share') shared.value = track;
-  else if (key === 'copy') await copy();
+  else if (key === 'share') {
+    if (input.searchSongLinks) {
+      if (input.searchSongLinks.shareAvailable()) input.searchSongLinks.openShare(returnFocus);
+    } else shared.value = track;
+  } else if (key === 'copy') await copy();
   else if (key === 'next') {
     const view = props.player.view.value;
     if (!view) return;

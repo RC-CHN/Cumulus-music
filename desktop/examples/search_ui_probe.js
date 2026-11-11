@@ -56,6 +56,7 @@
     held = false;
   const checks = [], activationReads = [];
   let activationSubmissions = 0;
+  const guestLoginIpc = [];
   const nativeFetch = window.fetch;
   window.fetch = async function (url, options) {
     const match = String(url).endsWith("/search_discovery");
@@ -66,6 +67,10 @@
     }
     const delay = query?.kind === holdKind ? gate : undefined;
     const response = await nativeFetch.call(window, url, options);
+    if (window.__cumulusGuestSearchProof && response.ok) {
+      const endpoint = String(url).split("/").pop();
+      if (["begin_qr", "poll_qr", "cancel_qr"].includes(endpoint)) guestLoginIpc.push(endpoint);
+    }
     if (delay) {
       held = true;
       await delay;
@@ -222,13 +227,119 @@
         "guest song category",
       );
       assert(!button("播放全部") && !button("收藏全部"), "account controls are not emitted by guest rows");
-      await capture("guest_search_songs");
+      const rowKey = "song:1";
+      const songPanel = () => one('.search-result-panel[aria-labelledby="search-tab-songs"]');
+      const songRow = () => songPanel()?.querySelector(
+        '[data-result-section="单曲"] [data-grid-index="0"] .guest-search-result',
+      );
+      const more = () => songRow()?.querySelector('.guest-search-more button[aria-haspopup="menu"]');
+      const diagnoseMore = () => {
+        const row = songRow(), trigger = more(), rect = trigger?.getBoundingClientRect();
+        const at = rect && document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return {
+          expectedRowKey: rowKey, rowKey: row?.dataset.resultKey, viewport: [innerWidth, innerHeight],
+          row: row?.outerHTML.slice(0, 1800), trigger: trigger?.outerHTML,
+          bounds: rect?.toJSON(), elementFromPoint: at?.outerHTML.slice(0, 1200),
+          ancestors: trigger && [trigger, trigger.parentElement, row, songPanel()].filter(Boolean)
+            .map((node) => [node.className, getComputedStyle(node).pointerEvents, node.inert]),
+          visibleRowKeys: rows().slice(0, 6).map((node) => node.dataset.resultKey),
+        };
+      };
+      const waitForMore = (observe, message) => wait(observe, message).catch(() => {
+        throw Error(`${message}: ${JSON.stringify(diagnoseMore())}`);
+      });
+      const activeMenu = (trigger) => {
+        const id = trigger.getAttribute("aria-controls");
+        const menu = id && document.getElementById(id);
+        return menu && !menu.closest("[inert]") ? menu : null;
+      };
+      const shareSurfaces = () => ({
+        login: !!one("dialog[open].login-dialog"),
+        qr: !!one("[data-history-share-qr]"),
+        chooser: !!one("dialog[open][data-history-share-dialog]"),
+      });
+      await waitForMore(() => songRow()?.dataset.resultKey === rowKey && more()?.isConnected,
+        "first sealed guest Song has an eligible More control");
+      const trigger = more();
+      trigger.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      let lastBounds;
+      await waitForMore(() => {
+        if (more() !== trigger || trigger.disabled || trigger.closest("[inert]")) return false;
+        const { x, y, width, height } = trigger.getBoundingClientRect();
+        const bounds = JSON.stringify([x, y, width, height].map((value) => Math.round(value * 10)));
+        const stable = bounds === lastBounds;
+        lastBounds = bounds;
+        return stable && width > 0 && height > 0 && hit(trigger);
+      }, "visible eligible guest Song More accepts input at settled bounds");
+      click(trigger);
+      await wait(() => {
+        const menu = activeMenu(trigger);
+        return trigger.getAttribute("aria-expanded") === "true" && menu &&
+          menu.querySelector('[data-menu-key="share"]') === document.activeElement;
+      }, "eligible guest Song offers keyboard-focused Share");
+      const menu = activeMenu(trigger);
+      const items = [...menu.querySelectorAll('[role="menuitem"]')].map((item) => ({
+        key: item.dataset.menuKey, label: item.textContent.trim(), enabled: !item.disabled,
+      }));
+      assert(JSON.stringify(items) === JSON.stringify([
+        { key: "share", label: "分享", enabled: true },
+        { key: "copy", label: "复制链接", enabled: true },
+      ]), "guest Song offers Share and independent Copy in official order");
+      const opened = { rowKey, items, focusKey: document.activeElement.dataset.menuKey, ...shareSurfaces() };
+      assert(!opened.login && !opened.qr && !opened.chooser, "viewing menu does not open login, chooser, or QR");
+      await capture("guest_search_songs", { guestSongShareMenu: opened });
+
+      const closedOnTrigger = () => !activeMenu(trigger) && trigger.getAttribute("aria-expanded") === "false" &&
+        document.activeElement === trigger;
+      key(menu, "Escape");
+      await wait(closedOnTrigger, "Escape restores the same eligible guest Song More");
+      const dismissed = { rowKey, focusRestored: more() === trigger, ...shareSurfaces() };
+      assert(dismissed.focusRestored && !dismissed.login && !dismissed.qr && !dismissed.chooser,
+        "guest menu dismissal leaves login, chooser, and QR closed");
+      async function openChoice(name) {
+        assert(hit(trigger), "guest More is still pointer reachable");
+        click(trigger);
+        await wait(() => activeMenu(trigger)?.querySelector(`[data-menu-key="${name}"]`),
+          "guest Song menu reopens for " + name);
+        const choice = activeMenu(trigger).querySelector(`[data-menu-key="${name}"]`);
+        await wait(() => hit(choice), "guest Song menu item is pointer reachable: " + name);
+        return choice;
+      }
+      const clipboard = "https://music.163.com/song?id=1";
+      click(await openChoice("copy"));
+      await wait(() => one('[data-search-song-share-status]')?.textContent.trim() === "链接已复制" && closedOnTrigger(),
+        "guest independent Copy returns to the exact Song row");
+      window.__searchClipboardAck = undefined;
+      await emit("search-clipboard-check", { expected: clipboard });
+      await wait(() => typeof window.__searchClipboardAck === "boolean", "native guest clipboard readback");
+      assert(window.__searchClipboardAck && guestLoginIpc.length === 0,
+        "guest Copy wrote only the public link, without login IPC");
+      const copied = { rowKey, clipboard, nativeClipboard: true, focusRestored: true, ...shareSurfaces() };
+      assert(!copied.login && !copied.qr && !copied.chooser, "independent guest Copy opens no modal");
+      await capture("guest_search_share_copy", { guestSongShareCopied: copied });
+
+      click(await openChoice("share"));
+      const loginQr = () => one('dialog[open].login-dialog svg[aria-label="网易云音乐登录二维码"]');
+      await wait(() => loginQr() && guestLoginIpc.includes("poll_qr"), "guest Share opens a sealed waiting login QR");
+      const login = { rowKey, loginQr: true, ...shareSurfaces() };
+      assert(login.login && !login.qr && !login.chooser, "guest Share only opens login, not the signed share chooser");
+      await capture("guest_search_share_login", { guestSongShareLogin: login });
+
+      const closeLogin = one('dialog[open].login-dialog button[aria-label="关闭登录"]');
+      await wait(() => hit(closeLogin), "guest sign-in close control is pointer reachable");
+      click(closeLogin);
+      await wait(() => !shareSurfaces().login && guestLoginIpc.at(-1) === "cancel_qr" && closedOnTrigger(),
+        "closing login cancels the candidate and returns focus to the exact More");
+      const cancelled = { rowKey, focusRestored: true, ...shareSurfaces() };
       click(button("返回上一页"));
       await wait(
         () => heading() === keyword && one('[data-category="all"][aria-selected="true"]') && comprehensiveRows(),
         "Back to guest comprehensive results",
       );
-      await capture("guest_search_back");
+      await capture("guest_search_back", {
+        guestSongShareDismissed: dismissed, guestSongShareLoginCancelled: cancelled,
+      });
       input().focus();
       type("");
       key(input(), "Enter");
@@ -236,7 +347,7 @@
       assert(!document.body.textContent.includes("synthetic-default-context-native-only"));
       await capture("guest_search_default");
       await emit("complete", { ok: true, stageCount: count, guestSearchVerified: true,
-        realMusicRequests: 0, realAccountWrites: 0 });
+        guestLoginIpc, realMusicRequests: 0, realAccountWrites: 0 });
       return;
     }
     if (window.__cumulusSearchDefaultRecoveryProof) {

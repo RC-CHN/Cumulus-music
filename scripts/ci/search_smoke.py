@@ -118,13 +118,51 @@ def verify_podcast_browse_around(root, capture):
 
 def verify_guest_search(root, capture):
     directory = root / 'first'
+
+    def stage(name):
+        return json.loads((directory / f'{name}.json').read_text(encoding='utf-8'))
+
+    comprehensive = stage('ux_03_guest_search_results')
+    menu = stage('ux_04_guest_search_songs')
+    copied = stage('ux_05_guest_search_share_copy')
+    login = stage('ux_06_guest_search_share_login')
+    dismissed = stage('ux_07_guest_search_back')
     complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['guestSearchVerified'] and complete['stageCount'] == 6
+    assert complete['ok'] and complete['guestSearchVerified'] and complete['stageCount'] == 8
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'idle', complete['nativePlayer']['state']
-    assert len(list(directory.glob('ux_*.png'))) == (6 if capture else 0)
+    assert len(list(directory.glob('ux_*.png'))) == (8 if capture else 0)
+    no_share_surface = dict(login=False, qr=False, chooser=False)
+    assert menu['guestSongShareMenu'] == dict(
+        rowKey='song:1', items=[dict(key='share', label='分享', enabled=True),
+                                dict(key='copy', label='复制链接', enabled=True)],
+        focusKey='share', **no_share_surface)
+    focus_restored = dict(rowKey='song:1', focusRestored=True, **no_share_surface)
+    assert dismissed['guestSongShareDismissed'] == focus_restored
+    assert dismissed['guestSongShareLoginCancelled'] == focus_restored
+    assert copied['guestSongShareCopied'] == dict(
+        clipboard='https://music.163.com/song?id=1', nativeClipboard=True, **focus_restored)
+    assert login['guestSongShareLogin'] == dict(
+        rowKey='song:1', loginQr=True, login=True, qr=False, chooser=False)
+    assert all(snapshot['guestShareLoginCalls'] == [] for snapshot in (comprehensive, menu, copied))
+    login_paths = complete['guestShareLoginCalls']
+    assert login_paths[0] == '/api/login/qrcode/unikey' and len(login_paths) >= 2, login_paths
+    assert set(login_paths[1:]) == {'/api/login/qrcode/client/login'}, login_paths
+    assert dismissed['guestShareLoginCalls'] == login_paths
+    assert login_paths[:len(login['guestShareLoginCalls'])] == login['guestShareLoginCalls']
+    ipc = complete['guestLoginIpc']
+    assert ipc[0] == 'begin_qr' and ipc[-1] == 'cancel_qr' and set(ipc[1:-1]) == {'poll_qr'}, ipc
+    before_calls = comprehensive['guestSearchCalls']
+    menu_calls = menu['guestSearchCalls']
+    dismissed_calls = dismissed['guestSearchCalls']
+    assert menu_calls[:-1] == before_calls and menu_calls[-1]['path'] == '/api/search/song/list/page'
+    assert copied['guestSearchCalls'] == login['guestSearchCalls'] == menu_calls
+    assert dismissed_calls[:-1] == menu_calls
+    assert dismissed_calls[-1]['path'] == '/api/search/pc/complex/page'
     calls = complete['guestSearchCalls']
+    assert calls[:len(dismissed_calls)] == dismissed_calls
     paths = [call['path'] for call in calls]
+    assert '/api/song/enhance/privilege' not in paths and '/api/login/qrcode/unikey' not in paths
     assert paths[:2] == ['/api/w/nuser/account/get', '/api/register/anonimous'], paths
     assert calls[1]['args'] == {'usernameVerified': True}
     assert all(call['signedPcContextVerified'] for call in calls)
@@ -143,7 +181,11 @@ def verify_guest_search(root, capture):
     suggestions = [call['args'] for call in calls if call['path'] == '/api/search/pc/suggest/keyword/get']
     assert {'keyword': '合成游客查询'} in suggestions, suggestions
     report = dict(ok=True, actualWebView=True, guestSearchVerified=True,
-                  nativeGuestRequests=len(calls), stages=6, screenshots=6 if capture else 0,
+                  guestSongShareMenuVerified=True, guestSongShareFocusRestored=True,
+                  guestSongShareMenuRequests=0, independentGuestCopy=True,
+                  isolatedGuestLoginQr=True, isolatedGuestLoginCancelled=True,
+                  nativeGuestRequests=len(calls), nativeGuestShareLoginCalls=login_paths,
+                  stages=8, screenshots=8 if capture else 0,
                   realMusicRequests=0, realAccountWrites=0)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

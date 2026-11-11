@@ -1402,6 +1402,17 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if super::search_signed_fixture::song_share_enabled()
+        && category == "songs"
+        && args["keyword"] == "合成下一首"
+    {
+        // Real row menu gestures need unique table identities. The four
+        // preexisting playback checks still use this same ordinary result 3.
+        assert_eq!(args["offset"], 0);
+        response["data"]["hasMore"] = false.into();
+        response["data"]["totalCount"] = 3.into();
+        return Some(Ok(response));
+    }
     let offline_songs = offline_proof_enabled() && category == "songs";
     if mode == "voice_next" && category == "all" {
         let best = response["data"]["blocks"]

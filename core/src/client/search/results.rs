@@ -23,6 +23,13 @@ pub enum SearchItem {
         group_next_right: Option<super::SearchNextRight>,
         #[serde(rename = "groupDownload", skip_serializing_if = "Option::is_none")]
         group_download: Option<super::SearchGroupDownloadRow>,
+        #[serde(rename = "songShareReceipt", skip_serializing_if = "Option::is_none")]
+        song_share_receipt: Option<String>,
+        #[serde(
+            rename = "songPublicLinkAvailable",
+            skip_serializing_if = "std::ops::Not::not"
+        )]
+        song_public_link_available: bool,
         #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
         mv_id: Option<String>,
         #[serde(rename = "replacementMv", skip_serializing_if = "std::ops::Not::not")]
@@ -233,6 +240,8 @@ pub struct SearchResultView {
     pub hot_explanation: Option<SearchHotExplanation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_layout: Option<SearchPreviewLayout>,
+    #[serde(skip)]
+    pub(super) song_share_rows: Vec<Option<super::song_share::Song>>,
 }
 impl MusicClient {
     /// Enabled by the production desktop host. Test/research hosts opt in
@@ -315,6 +324,9 @@ impl MusicClient {
                 };
                 let download_credentials = (query.category == SearchCategory::Songs)
                     .then(|| api.song_card_download_scope_revision().ok().flatten())
+                    .flatten();
+                let share_credentials = (query.category == SearchCategory::Songs)
+                    .then(|| api.search_song_share_credential_revision().ok().flatten())
                     .flatten();
                 let group_credentials = (query.category == SearchCategory::Songs)
                     .then(|| api.search_privilege_credential_revision().ok().flatten())
@@ -545,6 +557,17 @@ impl MusicClient {
                         .capture(token, &api, credentials, &mut view)?;
                 }
                 if view.query.category == SearchCategory::Songs {
+                    let share_revision = if self.login_pending()? {
+                        None
+                    } else {
+                        share_credentials.filter(|before| {
+                            api.search_song_share_credential_revision()
+                                .ok()
+                                .flatten()
+                                .as_ref()
+                                == Some(before)
+                        })
+                    };
                     let group = group_credentials.filter(|before| {
                         api.search_privilege_credential_revision()
                             .ok()
@@ -572,6 +595,9 @@ impl MusicClient {
                     };
                     self.session.require_api(token, &api)?;
                     self.session.with_token(token, |_| {
+                        self.search
+                            .song_shares
+                            .capture(token, &api, share_revision, &mut view)?;
                         view.publish_download_receipts(
                             &self.search.group_downloads,
                             token,
@@ -844,6 +870,8 @@ fn item(
                 queue_drop_receipt: None,
                 group_next_right: None,
                 group_download: None,
+                song_share_receipt: None,
+                song_public_link_available: false,
                 mv_id,
                 replacement_mv: is_replacement,
                 vip_badge: None,
@@ -1039,6 +1067,7 @@ impl SearchResultView {
             tabs: None,
             hot_explanation: None,
             preview_layout: None,
+            song_share_rows: vec![],
         }
     }
 }
@@ -1302,10 +1331,14 @@ pub(super) fn project(
                         queue_drop_receipt,
                         group_next_right,
                         group_download,
+                        song_public_link_available,
                         table_hint,
                         ..
                     } = &mut item
                 {
+                    let public_song = super::song_share::Song::observe(base, track);
+                    *song_public_link_available = public_song.is_some();
+                    result.song_share_rows.push(public_song);
                     *table_hint = track_hint::song_table(base, resource, &query.keyword);
                     if !track.missing
                         && !track.local

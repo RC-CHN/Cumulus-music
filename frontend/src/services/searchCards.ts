@@ -16,6 +16,17 @@ import {
 } from './catalogCards.ts';
 import { podcastProgramPublicLink, type PodcastProgramShare } from './podcast.ts';
 import { searchLiteral } from './searchMatch.ts';
+import { songLink } from './trackMenu.ts';
+
+export function searchSongPublicLink(item: SearchItem) {
+  return item.kind === 'song' &&
+    item.songPublicLinkAvailable === true &&
+    !item.track.missing &&
+    item.track.voiceId == null &&
+    item.track.id.length <= 128
+    ? songLink(item.track)
+    : undefined;
+}
 
 export interface SearchResourceLinkRequest {
   item: Extract<SearchItem, { kind: 'voice' | 'mv' }>;
