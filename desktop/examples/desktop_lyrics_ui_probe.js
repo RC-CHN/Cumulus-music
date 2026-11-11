@@ -19,6 +19,22 @@
   };
   const lyric = source => fixture('eval', {source});
   const read = () => lyric("return await window.__TAURI_INTERNALS__.invoke('desktop_lyric_read',{generation:location.hash.split('=')[1]});");
+  const transportMatches = async (before, playing) => {
+    const observed = await lyric(`
+      try {
+        const {generation, media} = await window.__TAURI_INTERNALS__.invoke('desktop_lyric_read',{generation:location.hash.split('=')[1]});
+        return {generation,epoch:media.epoch,audioPlayId:media.selection.audioPlayId,playing:media.playing};
+      } catch (error) {
+        // A read spanning the playback transition deliberately rejects its old controls.
+        if (error?.code === 'stale') return {stale:true};
+        throw error;
+      }
+    `);
+    if (observed.stale) return false;
+    assert(observed.generation === before.generation && observed.epoch === before.media.epoch &&
+      observed.audioPlayId === before.media.selection.audioPlayId, 'desktop lyric transport changed window, account or player');
+    return observed.playing === playing;
+  };
   const settings = () => invoke('desktop_lyric_settings', {epoch});
   const ready = () => wait(async () => (await settings()).visible && (await read()).state === 'ready', 'lyric ready');
   const facts = `const rect=n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
@@ -83,8 +99,8 @@
       const before=await read(); assert(before.lyrics.frame.timedWords && before.lyrics.frame.lines[0].words.length>0,'YRC words');
       assert(await lyric("try{await window.__TAURI_INTERNALS__.invoke('account_snapshot');return false}catch{return true}"),'main IPC exposed');
       assert(await invoke('desktop_lyric_read',{generation:before.generation}).then(()=>false,()=>true),'lyric IPC exposed to main');
-      await clickLyric('播放'); await wait(async()=>(await read()).media.playing,'lyric play');
-      await sleep(300); await clickLyric('暂停'); await wait(async()=>!(await read()).media.playing,'lyric pause');
+      await clickLyric('播放'); await wait(()=>transportMatches(before,true),'lyric play');
+      await sleep(300); await clickLyric('暂停'); await wait(()=>transportMatches(before,false),'lyric pause');
       assert((await read()).media.selection.audioPlayId===before.media.selection.audioPlayId,'second player');
       await ready();
       await wait(()=>lyric("return !!document.querySelector('[aria-label=\"播放\"]:not(:disabled)')&&!!document.querySelector('[aria-label=\"歌词延后半秒\"]:not(:disabled)');"),'displayed paused lyric controls');
@@ -156,7 +172,33 @@
       one('.desktop-lyric-settings [role="alert"]').scrollIntoView({block:'center',behavior:'instant'}); await capture('save_failed',true); await fixture('storage',{fail:false}); click(button('还原草稿'));
       await fixture('storage',{corrupt:true}); await wait(async()=>!(await settings()).visible,'damaged prefs close window');
       await wait(()=>button('恢复默认桌面歌词设置'),'repair entry'); button('恢复默认桌面歌词设置').scrollIntoView({block:'center',behavior:'instant'}); await capture('damaged_settings',true); click(button('恢复默认桌面歌词设置'));
-      await wait(()=>one('[aria-label="显示桌面歌词"]'),'repaired'); await open(); field('桌面歌词字号','30'); await apply();
+      await wait(()=>one('[aria-label="显示桌面歌词"]'),'repaired'); await open();
+      const repaired=await read();
+      const sameRepairedWindow=state=>state.generation===repaired.generation &&
+        state.media.epoch===epoch && state.media.selection.audioPlayId===repaired.media.selection.audioPlayId;
+      assert(sameRepairedWindow(repaired) && repaired.preferences.current.appearance.fontSize===36,'repaired lyric defaults and account');
+      let revision,stableSince;
+      await wait(async()=>{
+        const state=await settings();
+        assert(state.epoch===epoch && state.visible && !state.opening && state.preferences.current,'repaired lyric window stays open for the same account');
+        const next=state.preferences.current.revision;
+        if(next!==revision){revision=next;stableSince=performance.now();return false;}
+        return performance.now()-stableSince>=650;
+      },'repaired geometry revision settles');
+      // Window geometry persists through the same revision as the style. A
+      // native read does not update the settings form's expected revision.
+      const refresh=()=>one('[aria-label="刷新桌面歌词设置"]');
+      await wait(()=>refresh() && !refresh().disabled,'repaired settings refresh enabled');
+      click(refresh());
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+      const font=()=>one('[aria-label="桌面歌词字号"]');
+      await wait(()=>one('.desktop-lyric-settings')?.getAttribute('aria-busy')==='false' &&
+        font()?.value==='36' && !font().matches(':disabled'),'refreshed default style form ready');
+      assert(sameRepairedWindow(await read()),'refresh retains the repaired lyric window');
+      field('桌面歌词字号','30'); await apply();
+      const applied=await read();
+      assert(sameRepairedWindow(applied) && applied.preferences.current.appearance.fontSize===30 &&
+        (await settings()).preferences.current.appearance.fontSize===30,'one style save restores font 30 in the repaired window');
       await clickLyric('锁定桌面歌词'); await wait(async()=>(await read()).locked,'final lock');
       checks.push('failed save preserves appearance','damaged storage explicit repair');
     }
