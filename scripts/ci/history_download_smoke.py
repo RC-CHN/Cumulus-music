@@ -9,6 +9,7 @@ import socket
 import sys
 
 from motion_smoke import launch
+from voice_song_download_smoke import published_mp3
 
 
 STAGES = ['single_choice', 'cancel_no_task', 'restricted', 'batch_choice', 'published', 'duplicates']
@@ -65,12 +66,9 @@ def audit(root, output, screenshots):
     assert not states['published']['active'] and not duplicates['active']
     audio = (ROOT / 'core/tests/fixtures/tag_audio/seed.mp3').read_bytes()
     paths = set()
-    destination = (root / 'run/media').resolve(strict=True)
+    destination = root / 'run/media/电台节目'
     for index, task in enumerate(tasks, 1):
-        path = Path(task['path'])
-        assert not path.is_symlink()
-        path = path.resolve(strict=True)
-        assert path.is_relative_to(destination)
+        path = published_mp3(task['path'], destination)
         assert (task['voice'], task['media'], task['quality'], task['source']) == (
             str(index), str(1000 + index), 'standard', 'voice',
         )
