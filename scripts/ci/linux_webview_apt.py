@@ -13,8 +13,8 @@ import tempfile
 import time
 
 from linux_webview_apt_mirrors import (
-    DIRECT_HTTPS_REFRESH, AptDeadline, acquire, configured_source, deadline_command, direct_sources, preflight,
-    verify_fresh_indexes,
+    DIRECT_HTTPS_REFRESH, AptDeadline, AptIndexRegression, acquire, configured_source,
+    deadline_command, direct_sources, preflight, verify_fresh_indexes,
 )
 from linux_webview_probe_artifact import run_identity
 
@@ -245,7 +245,7 @@ def install(args):
             if mirror is None:
                 return apt, None
             if mirror.uri not in sources:
-                variant = workspace / f'mirror-{len(sources)}'
+                variant = workspace / f'mirror-{len(private_lists)}'
                 variant.mkdir(mode=0o755)
                 parts, lists = variant / 'sources.list.d', variant / 'lists'
                 direct_sources(source, parts, mirror.uri)
@@ -263,7 +263,13 @@ def install(args):
             refresh = DIRECT_HTTPS_REFRESH if mirror is not None else ()
             timed('update', [*selected, *refresh, '-o', 'APT::Update::Error-Mode=any', 'update'], env, limit)
             if mirror is not None:
-                verify_fresh_indexes(mirror, lists)
+                try:
+                    verify_fresh_indexes(mirror, lists)
+                except AptIndexRegression:
+                    # A revalidation must start with empty lists, so even a
+                    # conditional HTTP response cannot reuse this snapshot.
+                    sources.pop(mirror.uri)
+                    raise
 
         def prepare(mirror):
             if args.reuse:

@@ -100,10 +100,32 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
                     self.assertEqual(events, [*before_install, ('fresh plan', 'MIT'),
                                               ('download-only', 'MIT', DIRECT_DOWNLOAD_DEADLINE), 'normal install'])
                 else:
-                    with self.assertRaisesRegex(AptIndexRegression, 'MIT noble regressed'), acquire(
+                    with self.assertRaisesRegex(AptIndexRegression, 'Canonical noble regressed'), acquire(
                             update, *args[1:], (CANONICAL, older)):
                         self.fail('the fallback cannot install from an index below the first route’s floor')
-                    self.assertEqual(events, before_install)
+                    self.assertEqual(events, [*before_install, 'discard archives',
+                                              ('update', 'Canonical', DIRECT_UPDATE_DEADLINE)])
+
+    def test_revalidation_after_both_cdn_edges_regress_keeps_both_signed_date_floors(self):
+        args, events = self.fixture()
+        newer_update = NOW + timedelta(hours=1)
+        secondary = Mirror(MIT.name, MIT.uri,
+                           {**MIT.dates, 'noble-updates': newer_update}, MIT.seconds)
+        calls = []
+
+        def update(mirror, limit):
+            calls.append((mirror.name, limit, mirror.dates.copy()))
+            if len(calls) < 3:
+                raise AptIndexRegression('temporary signed edge regression')
+            self.assertEqual(mirror.dates['noble-updates'], newer_update)
+            self.assertEqual(mirror.dates['noble-security'], NOW)
+
+        with acquire(update, *args[1:], (CANONICAL, secondary)) as ready:
+            self.assertEqual(ready[0].name, CANONICAL.name)
+            events.append('normal install')
+        self.assertEqual([name for name, _, _ in calls], [CANONICAL.name, MIT.name, CANONICAL.name])
+        self.assertEqual(events, ['discard archives', 'discard archives', ('fresh plan', 'Canonical'),
+                                  ('download-only', 'Canonical', DIRECT_DOWNLOAD_DEADLINE), 'normal install'])
 
     def test_signed_index_regression_cannot_fall_back_to_an_unverified_route(self):
         args, events = self.fixture(fail_update=AptIndexRegression('signed index regression'))
@@ -265,7 +287,7 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
                         with self.assertRaises(AptIndexRegression), acquire(update, *args[1:], routes):
                             self.fail('must not install with a real rollback after Apt preflight')
                         self.assertEqual([event[0] for event in events if isinstance(event, tuple)],
-                                         ['update', 'update'])
+                                         ['update', 'update', 'update'])
                     else:
                         with acquire(update, *args[1:], routes) as ready:
                             self.assertEqual(ready, (routes[0], True))

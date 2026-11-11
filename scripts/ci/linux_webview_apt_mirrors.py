@@ -254,8 +254,14 @@ def acquire(update, prepare, download, reset, routes):
         prepare(None)
         yield None, False
         return
+    # Both CDN edges can briefly serve a valid, previous signed Release.
+    # Revalidate the preferred route once if both independent updates
+    # regress; ordinary timeouts keep their existing two-attempt budget.
+    can_revalidate = len(routes) == 2 and all(route is not None for route in routes)
+    attempts = (*routes, routes[0]) if can_revalidate else routes
     date_floor = None
-    for index, mirror in enumerate(routes):
+    regressions = 0
+    for index, mirror in enumerate(attempts):
         if mirror is not None and date_floor is not None:
             mirror = replace(mirror, dates={suite: max(mirror.dates[suite], date_floor[suite]) for suite in SUITES})
         name = mirror.name if mirror is not None else 'stock'
@@ -265,15 +271,18 @@ def acquire(update, prepare, download, reset, routes):
             prepare(mirror)
             download(mirror, DIRECT_DOWNLOAD_DEADLINE if mirror is not None else DOWNLOAD_DEADLINE)
         except (AptDeadline, AptIndexRegression) as error:
-            if index + 1 == len(routes):
+            if index + 1 == len(attempts):
                 raise
-            next_mirror = routes[index + 1]
+            next_mirror = attempts[index + 1]
             # A regressed mirror can only switch to a separately preflighted
             # route, never to one without independent signed freshness checks.
             if isinstance(error, AptIndexRegression):
                 if mirror is None or next_mirror is None:
                     raise
                 date_floor = mirror.dates
+                regressions += 1
+            if index + 1 == len(routes) and regressions != 2:
+                raise
             print(f'{error}; retry with {next_mirror.name if next_mirror else "stock"}', flush=True)
             reset()
         else:
