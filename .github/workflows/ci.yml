@@ -2057,6 +2057,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/queue_room_smoke.py --room-loss --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-loss-linux --screenshots
           sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/together_external_selection_smoke.py --binary .build/target/debug/examples/shared_queue_ui_probe --root .build/ci-together-external-selection-linux --screenshots
+          sh scripts/ci/loopback_only.sh env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 -B scripts/ci/together_leave_record_smoke.py --binary .build/target/debug/examples/shared_queue_ui_probe --root .build/ci-together-leave-record-linux --screenshots
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_report_smoke.py --binary .build/target/debug/examples/profile_report_ui_probe --root .build/ci-profile-report-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_report_smoke.py --binary .build/target/debug/examples/comment_report_ui_probe --root .build/ci-comment-report-linux
@@ -2320,6 +2321,21 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/mpris_smoke.py --binary .build/target/debug/examples/mpris_probe --root .build/ci-mpris-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
+      - name: Preserve Linux Together leave-record receipts
+        if: matrix.shard == 'playback-podcasts'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: proof-linux-together-leave-record-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .build/ci-together-leave-record-linux/report.json
+            .build/ci-together-leave-record-linux/run/leave_*.json
+            .build/ci-together-leave-record-linux/run/leave_*.png
+            .build/ci-together-leave-record-linux/run/paint-leave_*.json
+            .build/ci-together-leave-record-linux/run/host-final.json
+            .build/ci-together-leave-record-linux/run/complete.json
+          if-no-files-found: error
+          retention-days: 7
       - *linux_webview_disk_after
       - *linux_webview_failure_checkpoints
       - *linux_webview_failure_checkpoints_upload
