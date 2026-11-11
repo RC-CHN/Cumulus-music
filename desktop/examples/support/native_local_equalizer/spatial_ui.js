@@ -12,6 +12,10 @@
   const spatial = () => one('.equalizer-dialog [data-spatial-status]');
   const launcher = () => one('.playerbar .equalizer-toggle');
   const master = () => control('启用均衡器和增强音效');
+  const common = () => one('dialog.audio-effects-panel[open]');
+  const commonTab = (key) => common()?.querySelector(`[data-audio-effect-tab="${key}"]`);
+  const commonMaster = () => common()?.querySelector('.audio-effects-master[data-spatial-master-key]');
+  const commonProof = {};
   const transport = () => one('.playerbar .play-toggle');
   const tone = ['低音增益', '高音增益'];
   const sliders = ['环绕深度', '环绕强度'];
@@ -156,6 +160,61 @@
     click(control('关闭均衡器'));
     await wait(() => !dialog(), 'closed EQ dialog');
   }
+  async function openCommon() {
+    const trigger = await wait(() => {
+      const node = one('.playerbar .audio-effects-trigger');
+      return visible(node) && node;
+    }, 'visible ordinary audio effect entry');
+    click(trigger);
+    await wait(() => commonTab('catalogue')?.getAttribute('aria-selected') === 'true',
+      'common effect modal opens on catalogue');
+  }
+  async function closeCommon() {
+    click(common()?.querySelector('[aria-label="关闭音效"]'));
+    await wait(() => !one('dialog.audio-effects-panel'), 'closed common effect modal');
+  }
+  async function requireSpatialRejection(view, overrides = {}) {
+    const rejected = await invoke('player_action', { epoch, action: {
+      kind: 'spatial_equalizer_master', play_id: view.playId,
+      expected_queue_revision: view.queueRevision, expected_revision: view.equalizer.revision,
+      bypassed: !view.equalizer.settings.master_bypassed, ...overrides,
+    }}).then(() => false, () => true);
+    assert(rejected, 'unsupported or stale common switch is rejected natively');
+    const next = await snapshot();
+    assert(next.equalizer.revision === view.equalizer.revision &&
+      !!next.equalizer.settings.master_bypassed === !!view.equalizer.settings.master_bypassed &&
+      samePlay(next, view), 'rejected common switch did not save or alter playback');
+  }
+  async function toggleCommon(before, bypassed) {
+    await closeEq();
+    await openCommon();
+    const button = await wait(() => {
+      const node = commonMaster();
+      return visible(node) && node.getAttribute('aria-checked') === String(bypassed) && node;
+    }, 'enabled shared spatial switch reflects the confirmed old state');
+    const other = bypassed ? 'devices' : 'equalizer';
+    click(commonTab(other));
+    await wait(() => commonTab(other)?.getAttribute('aria-selected') === 'true' &&
+      commonMaster() === button, 'the same spatial switch follows the selected tab');
+    if (other === 'equalizer') assert(!master(), 'embedded EQ does not duplicate the shared switch');
+    click(button);
+    assert(button.getAttribute('aria-checked') === String(bypassed),
+      'shared spatial state waits for native acknowledgement');
+    const applied = await wait(async () => {
+      const view = await snapshot();
+      return samePlay(view, before) && view.equalizer.revision !== before.equalizer.revision &&
+        view.equalizer.spatial_master_available &&
+        view.equalizer.spatial_status === (bypassed ? 'bypassed' : 'configured') &&
+        !!view.equalizer.settings.master_bypassed === bypassed &&
+        commonMaster() === button && button.getAttribute('aria-checked') === String(!bypassed) &&
+        button.getAttribute('aria-disabled') !== 'true' && view;
+    }, 'one acknowledged shared spatial change preserves playback identity');
+    commonProof[bypassed ? 'off' : 'on'] = { from: 'catalogue', to: other,
+      priorRevision: before.equalizer.revision, revision: applied.equalizer.revision };
+    await closeCommon();
+    await openEq();
+    return equalizer(before.equalizer.revision, [6, 8], bypassed ? 'bypassed' : 'configured');
+  }
   async function playback(read, label) {
     return wait(async () => {
       const view = await snapshot();
@@ -248,6 +307,12 @@
     'spatial-only stock save does not restart or enable GEQ');
     await stage('ux_01_stock_saved', saved);
     await closeEq();
+    assert(!saved.equalizer.spatial_master_available, 'stock PCM does not grant spatial master control');
+    await openCommon();
+    assert(!commonMaster(), 'no spatial master is rendered for the stock decoder');
+    await requireSpatialRejection(saved);
+    commonProof.stockRejected = true;
+    await closeCommon();
 
     await openFile(2);
     const playing = await playback((view) => view.state === 'playing' &&
@@ -262,12 +327,15 @@
     assert(samePlay(hot, paused) && hot.state === 'paused', 'hot apply preserves paused native play');
     await stage('ux_02_hot_paused', hot);
 
-    click(master());
-    const off = await equalizer(hot.equalizer.revision, [6, 8], 'bypassed');
+    assert(hot.equalizer.spatial_master_available, 'native owned worker admits spatial-only master');
+    await requireSpatialRejection(hot, { play_id: stock.playId });
+    await requireSpatialRejection(hot, { expected_queue_revision: (BigInt(hot.queueRevision) + 1n).toString() });
+    await requireSpatialRejection(hot, { expected_revision: paused.equalizer.revision });
+    commonProof.staleRejected = true;
+    const off = await toggleCommon(hot, true);
     assert(samePlay(off, hot) && off.equalizer.settings.master_bypassed, 'master retains saved sliders');
     await stage('ux_03_master_off', off);
-    click(master());
-    const on = await equalizer(off.equalizer.revision, [6, 8], 'configured');
+    const on = await toggleCommon(off, false);
     assert(samePlay(on, off) && !on.equalizer.settings.master_bypassed, 'master re-applies same graph');
     await stage('ux_04_master_on', on);
     await closeEq();
@@ -322,7 +390,7 @@
     'one enhanced reset clears tone and spatial, keeps completed source');
     await stage('ux_07_reset', reset);
     await emit({ stage: 'complete', ok: true, stageCount: 7, epoch,
-      startedSpatial: playing.equalizer.spatial_status === 'processing',
+      startedSpatial: playing.equalizer.spatial_status === 'processing', commonProof,
       ...(indexedWave ? { indexedLocalId: localId, indexedNavigation } : {}) });
   } catch (error) {
     await emit({ stage: 'failed', ok: false, last, error: String(error), epoch,

@@ -175,6 +175,17 @@ def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100, in
         assert not row['native']['seeks'] and not row['native']['eof_entries']
     assert off['durable']['settings']['master_bypassed']
     assert not on['durable']['settings'].get('master_bypassed')
+    assert complete['commonProof'] == {
+        'stockRejected': True, 'staleRejected': True,
+        'off': {'from': 'catalogue', 'to': 'devices',
+                'priorRevision': hot['player']['equalizer']['revision'],
+                'revision': off['player']['equalizer']['revision']},
+        'on': {'from': 'catalogue', 'to': 'equalizer',
+               'priorRevision': off['player']['equalizer']['revision'],
+               'revision': on['player']['equalizer']['revision']},
+    }
+    assert all(row['player']['equalizer']['spatial_master_available'] for row in (hot, off, on))
+    assert not any(row['player']['equalizer']['spatial_master_available'] for row in (stock, ended, reset))
     identity = lambda row: tuple(row['player'][key] for key in ('playId', 'entryId', 'queueRevision'))
     assert all(identity(row) == identity(hot) for row in stages[1:])
     assert sought['player']['state'] == 'paused' and not sought['player']['nativeSeeking']
