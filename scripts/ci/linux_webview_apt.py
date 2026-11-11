@@ -260,7 +260,8 @@ def install(args):
             # Do not derive authority from any artifact or an index update
             # that silently used stale metadata after a transport failure.
             selected, lists = transaction(mirror)
-            timed('update', [*selected, '-o', 'APT::Update::Error-Mode=any', 'update'], env, limit)
+            refresh = ['-o', 'Acquire::https::No-Cache=true'] if mirror is not None else []
+            timed('update', [*selected, *refresh, '-o', 'APT::Update::Error-Mode=any', 'update'], env, limit)
             if mirror is not None:
                 verify_fresh_indexes(mirror, lists)
 

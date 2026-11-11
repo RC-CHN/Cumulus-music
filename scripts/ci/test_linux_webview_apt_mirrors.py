@@ -11,7 +11,7 @@ from unittest.mock import patch
 from linux_webview_apt import DIRECT_INDEX_OPTIONS, timed
 from linux_webview_apt_mirrors import (
     DIRECT_DOWNLOAD_DEADLINE, DIRECT_MIRRORS, DIRECT_UPDATE_DEADLINE, DOWNLOAD_DEADLINE, KEYRING,
-    MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE, AptDeadline, Mirror, acquire, deadline_command,
+    MAX_POCKET_AGE, SUITES, UPDATE_DEADLINE, AptDeadline, AptIndexRegression, Mirror, acquire, deadline_command,
     direct_sources, preflight, release_date,
     signed_noble_suites, verify_fresh_indexes,
 )
@@ -72,6 +72,43 @@ class LinuxWebViewAptMirrors(unittest.TestCase):
             ('update', 'Canonical', DIRECT_UPDATE_DEADLINE), 'discard archives',
             ('update', 'MIT', DIRECT_UPDATE_DEADLINE), ('fresh plan', 'MIT'),
         ])
+
+    def test_signed_index_regression_retries_one_mirror_without_lowering_the_date_floor(self):
+        older = Mirror(MIT.name, MIT.uri, dict.fromkeys(SUITES, NOW - timedelta(hours=8)), MIT.seconds)
+        for final_date in (NOW, NOW - timedelta(hours=8)):
+            with self.subTest(final_date=final_date), tempfile.TemporaryDirectory() as work:
+                args, events = self.fixture()
+                lists = Path(work)
+                for route in (CANONICAL, MIT):
+                    prefix = route.uri.split('://')[1].rstrip('/').replace('/', '_')
+                    for suite in SUITES:
+                        (lists / f'{prefix}_dists_{suite}_InRelease').write_bytes(b'signed fixture')
+
+                def update(mirror, limit):
+                    events.append(('update', mirror.name, limit))
+                    date = NOW - timedelta(hours=8) if mirror.name == 'Canonical' else final_date
+                    with patch('linux_webview_apt_mirrors.release_date', return_value=date):
+                        verify_fresh_indexes(mirror, lists)
+
+                before_install = [('update', 'Canonical', DIRECT_UPDATE_DEADLINE), 'discard archives',
+                                  ('update', 'MIT', DIRECT_UPDATE_DEADLINE)]
+                if final_date == NOW:
+                    with acquire(update, *args[1:], (CANONICAL, older)) as ready:
+                        self.assertEqual(ready, (MIT, True))
+                        events.append('normal install')
+                    self.assertEqual(events, [*before_install, ('fresh plan', 'MIT'),
+                                              ('download-only', 'MIT', DIRECT_DOWNLOAD_DEADLINE), 'normal install'])
+                else:
+                    with self.assertRaisesRegex(AptIndexRegression, 'MIT noble regressed'), acquire(
+                            update, *args[1:], (CANONICAL, older)):
+                        self.fail('the fallback cannot install from an index below the first route’s floor')
+                    self.assertEqual(events, before_install)
+
+    def test_signed_index_regression_cannot_fall_back_to_an_unverified_route(self):
+        args, events = self.fixture(fail_update=AptIndexRegression('signed index regression'))
+        with self.assertRaises(AptIndexRegression), acquire(*args, (CANONICAL, None)):
+            self.fail('cannot install after index regression without another verified preflight')
+        self.assertEqual(events, [('update', 'Canonical', DIRECT_UPDATE_DEADLINE)])
 
     def test_unknown_image_has_stock_behavior_and_no_ready_mirrors_try_stock_once(self):
         for routes, limit, downloaded in ((None, None, False), ((None,), UPDATE_DEADLINE, True)):

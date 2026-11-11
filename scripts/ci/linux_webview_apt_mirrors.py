@@ -2,7 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -47,6 +47,10 @@ DIRECT_MIRRORS = (
 class AptDeadline(RuntimeError):
     def __init__(self, stage, seconds):
         super().__init__(f'APT {stage} exceeded {seconds}s without touching dpkg')
+
+
+class AptIndexRegression(ValueError):
+    """An authentic, unexpired snapshot older than this mirror's preflight."""
 
 
 @dataclass(frozen=True)
@@ -154,6 +158,7 @@ def probe_suite(uri, suite, now):
     try:
         result = subprocess.run([
             'curl', '--disable', '--proto', '=https', '--silent', '--show-error',
+            '--header', 'Cache-Control: no-cache',
             '--connect-timeout', '4', '--max-time', str(PROBE_TIMEOUT),
             '--max-filesize', str(MAX_RELEASE), '--write-out', '\n%{http_code}',
             f'{uri}dists/{suite}/InRelease',
@@ -213,7 +218,8 @@ def verify_fresh_indexes(mirror, lists):
         with path.open('rb') as file:
             updated = release_date(file.read(MAX_RELEASE + 1), suite, now)
         if updated < mirror.dates[suite]:
-            raise ValueError(f'APT {mirror.name} {suite} regressed behind its verified preflight')
+            raise AptIndexRegression(f'APT {mirror.name} {suite} regressed behind its verified preflight '
+                                     f'({updated.isoformat()} < {mirror.dates[suite].isoformat()})')
 
 
 def deadline_command(args, limit):
@@ -226,23 +232,32 @@ def deadline_command(args, limit):
 
 @contextmanager
 def acquire(update, prepare, download, reset, routes):
-    """Retry only a pre-install deadline; never a trust or installation error."""
+    """Retry a download deadline or authentic mirror regression before installation."""
     if routes is None:
         update(None, None)
         prepare(None)
         yield None, False
         return
+    date_floor = None
     for index, mirror in enumerate(routes):
+        if mirror is not None and date_floor is not None:
+            mirror = replace(mirror, dates={suite: max(mirror.dates[suite], date_floor[suite]) for suite in SUITES})
         name = mirror.name if mirror is not None else 'stock'
         print(f'APT acquisition via {name}', flush=True)
         try:
             update(mirror, DIRECT_UPDATE_DEADLINE if mirror is not None else UPDATE_DEADLINE)
             prepare(mirror)
             download(mirror, DIRECT_DOWNLOAD_DEADLINE if mirror is not None else DOWNLOAD_DEADLINE)
-        except AptDeadline as error:
+        except (AptDeadline, AptIndexRegression) as error:
             if index + 1 == len(routes):
                 raise
             next_mirror = routes[index + 1]
+            # A regressed mirror can only switch to a separately preflighted
+            # route, never to one without independent signed freshness checks.
+            if isinstance(error, AptIndexRegression):
+                if mirror is None or next_mirror is None:
+                    raise
+                date_floor = mirror.dates
             print(f'{error}; retry with {next_mirror.name if next_mirror else "stock"}', flush=True)
             reset()
         else:
