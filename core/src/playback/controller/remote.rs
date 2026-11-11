@@ -226,9 +226,9 @@ impl Actor {
         Ok(update.start.then(LoadOptions::default))
     }
 
-    pub(super) fn apply_history_add(
+    pub(super) async fn apply_history_batch(
         &mut self,
-        update: super::HistoryQueueUpdate,
+        mut update: super::HistoryQueueUpdate,
         reply: &Response,
         authority: &crate::playback::engine::Cancellation,
     ) -> Result<Option<LoadOptions>> {
@@ -241,7 +241,8 @@ impl Actor {
         {
             return Err(Error::MutationBusy);
         }
-        if self.queue.is_empty() != update.start
+        if self.queue.is_empty() != update.was_empty
+            || (!update.start && update.was_empty)
             || (update.start && update.queue.selected().is_none())
             || (!update.start && self.queue.selected() != update.queue.selected())
         {
@@ -251,6 +252,44 @@ impl Actor {
             return Err(Error::StaleResponse);
         }
         authority.check()?;
+        let retained = if update.start && self.state.active() {
+            self.loaded.as_ref().and_then(|loaded| {
+                let mut selected = update.queue.selected()?;
+                if self.queue.selected().as_ref() != Some(&loaded.item)
+                    || selected.entry_id != loaded.item.entry_id
+                {
+                    return None;
+                }
+                // Replace stamps the current preference for ordinary songs.
+                // That stamp alone does not change the actual loaded media.
+                let unstamp = |mut value: serde_json::Value| {
+                    if let Some(object) = value.as_object_mut() {
+                        object.remove("quality_preference_revision");
+                    }
+                    value
+                };
+                if unstamp(selected.resource.clone()) != unstamp(loaded.item.resource.clone()) {
+                    return None;
+                }
+                selected.resource = loaded.item.resource.clone();
+                Some(selected)
+            })
+        } else {
+            None
+        };
+        if update.start && !update.was_empty {
+            self.save_position()?;
+            authority.check()?;
+        }
+        if let Some(retained) = &retained {
+            let selected = update
+                .queue
+                .items
+                .iter_mut()
+                .find(|item| item.entry_id == retained.entry_id)
+                .ok_or(Error::QueueChanged)?;
+            *selected = retained.clone();
+        }
         let store = self.session.persistent_store()?;
         crate::history::HistoryService::new(self.session.clone())?.with_matching_revision(
             &self.token,
@@ -274,6 +313,13 @@ impl Actor {
                 self.queue.install(update.queue)
             },
         )?;
+        if let Some(retained) = retained {
+            self.loaded.as_mut().expect("retained history decoder").item = retained;
+            if self.state == PlaybackStatus::Paused {
+                self.pause(false).await?;
+            }
+            return Ok(None);
+        }
         Ok(update.start.then(|| LoadOptions {
             history_shuffle_anchor: update.shuffle_anchor,
             ..LoadOptions::default()

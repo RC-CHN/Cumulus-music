@@ -46,7 +46,7 @@ impl Actor {
                 | PlaybackCommand::MoveDisplayed(_)
                 | PlaybackCommand::RetainCurrentQueueAndPlay(_)
                 | PlaybackCommand::ApplyLocalBatch(_)
-                | PlaybackCommand::ApplyHistoryAdd(_)
+                | PlaybackCommand::ApplyHistoryBatch(_)
                 | PlaybackCommand::ApplyOfflinePlaylistQueue(_)
                 | PlaybackCommand::ApplyTogetherExternalQueue(_)
                 | PlaybackCommand::RecallPrefill(_)
@@ -126,7 +126,7 @@ impl Actor {
                 | PlaybackCommand::RepairQuality
         ) && !matches!(&request.command, PlaybackCommand::ApplyLocalBatch(update) if !update.start)
             && !matches!(&request.command, PlaybackCommand::ApplyOfflinePlaylistQueue(update) if !update.start)
-            && !matches!(&request.command, PlaybackCommand::ApplyHistoryAdd(update) if !update.start)
+            && !matches!(&request.command, PlaybackCommand::ApplyHistoryBatch(update) if !update.start)
         {
             // A user/remote transport intent wins over a delayed UI connect.
             self.startup_pending = false;
@@ -186,7 +186,7 @@ impl Actor {
             self.reply(request.reply, Err(Error::QueueChanged));
             return;
         }
-        if let PlaybackCommand::ApplyHistoryAdd(value) = &request.command
+        if let PlaybackCommand::ApplyHistoryBatch(value) = &request.command
             && value.expected != self.snapshot().fence()
         {
             self.reply(request.reply, Err(Error::QueueChanged));
@@ -411,9 +411,10 @@ impl Actor {
                     .await
                     .map(|value| options = value)
             }
-            PlaybackCommand::ApplyHistoryAdd(update) => {
+            PlaybackCommand::ApplyHistoryBatch(update) => {
                 let authority = &request.guard.as_ref().expect("guarded history batch").1;
-                self.apply_history_add(update, &request.reply, authority)
+                self.apply_history_batch(update, &request.reply, authority)
+                    .await
                     .map(|value| options = value)
             }
             PlaybackCommand::ApplyOfflinePlaylistQueue(update) => {

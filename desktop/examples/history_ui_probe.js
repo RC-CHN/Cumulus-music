@@ -80,11 +80,47 @@
     await emit('fixture',{mode:'normal'});
     const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
     const {epoch}=await invoke('account_snapshot');
+    async function pauseSettled(playing){
+      const receipt=await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+      assert(receipt.state==='paused'&&receipt.playId===playing.playId&&receipt.entryId===playing.entryId,
+        'selected history incumbent paused');
+      let previous, matches=0;
+      for(let i=0;i<30;i++){
+        await sleep(100);
+        const current=await invoke('player_snapshot',{epoch});
+        assert(current.state==='paused'&&current.playId===receipt.playId&&current.entryId===receipt.entryId,
+          'same native play remains paused');
+        matches=Number.isFinite(current.position)&&current.position===previous?matches+1:0;
+        if(matches===2)return current;
+        previous=current.position;
+      }
+      throw Error('paused history clock did not settle');
+    }
     for(const [label,kind] of [['歌曲','catalog'],['声音','voice']]){
       await tab(label);
+      const historyKind=kind==='catalog'?'song':'voice';
+      const {value:seed}=await invoke('history_page',{epoch,kind:historyKind,refresh:false});
+      await invoke('play_selection',{epoch,selection:{
+        kind:'history',history_kind:historyKind,revision:seed.revision,ids:['5','6','7'],index:1,quality:'standard',
+      }});
+      const incumbent=await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+      assert(incumbent.state==='paused'&&(incumbent.track.voiceId??incumbent.track.id)==='6',
+        'existing ordinary history queue seeded');
+      const refresh=()=>one('[aria-label="刷新播放记录"]:not(:disabled)');
+      await wait(()=>ready()&&refresh(),'history refresh enabled after seeding playback');
+      click(refresh());
+      // The click starts an async read; the old DOM can still report ready
+      // until Vue paints it. Select rows only from the resulting snapshot.
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      await wait(()=>ready()&&refresh()&&one('.play-toggle')?.getAttribute('aria-label')==='播放'&&
+        one('.now-copy button')?.title===incumbent.track.name,'old paused queue and latest history are visible');
       const play=one('.history-play-selected'),add=one('.history-add-selected');
       assert(play?.disabled&&add?.disabled,'no history selection');
-      for(const id of [3,2])click(one(`input[aria-label="选择 合成记录 ${id}"]`));
+      const initialCheck=id=>one(`input[aria-label="选择 合成记录 ${id}"]`);
+      for(const id of [3,2]){
+        click(initialCheck(id));
+        await wait(()=>initialCheck(id)?.checked,'current history row selected '+id);
+      }
       await wait(()=>!play.disabled,"selected history action enabled");
       click(play);
       let player;
@@ -96,13 +132,12 @@
       assert(player,'selected history '+kind+' did not advance');
       const queue=await invoke('player_queue',{epoch});
       const batchTracks=queue.tracks.map(row=>row.track.voiceId??row.track.id);
-      assert(batchTracks.join(',')==='2,3','selected history queue follows displayed order');
-      const held=await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
-      assert(held.state==='paused'&&held.playId===player.playId,'selected history incumbent paused');
+      assert(player.playId!==incumbent.playId&&batchTracks.join(',')==='5,6,2,3,7',
+        'play selected inserts displayed rows and retains the existing queue');
+      const held=await pauseSettled(player);
       // Playback refreshes native local history and can replace a remote title
       // on the same ID. Resolve the new visible labels from the post-pause
       // receipt, then wait for that projection instead of reusing old rows.
-      const historyKind=kind==='catalog'?'song':'voice';
       const {value:latest}=await invoke('history_page',{epoch,kind:historyKind,refresh:false});
       const rowLabel=id=>{
         const row=latest.entries.find(entry=>entry.id===String(id));
@@ -125,7 +160,7 @@
       const after=await invoke('player_snapshot',{epoch});
       const addedQueue=await invoke('player_queue',{epoch});
       const addedTracks=addedQueue.tracks.map(row=>row.track.voiceId??row.track.id);
-      assert(addedTracks.join(',')==='2,4,3','selected history add inserts after current');
+      assert(addedTracks.join(',')==='5,6,2,4,3,7','selected history add inserts after current');
       assert(after.state==='paused'&&after.playId===held.playId&&after.entryId===held.entryId&&
         after.position===held.position,'selected history add preserves paused transport');
       await capture('selected_'+kind+'_playback',{batchTracks,playbackKind:player.resourceKind,

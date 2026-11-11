@@ -140,9 +140,9 @@ impl MusicClient {
             PlaySelection::SearchVoiceMenu { .. } => Err(Error::InvalidInput(
                 "search voice menu playback requires a preparation ticket",
             )),
-            PlaySelection::HistoryAdd { .. } => Err(Error::InvalidInput(
-                "history batch add requires a preparation ticket",
-            )),
+            PlaySelection::HistoryAdd { .. } | PlaySelection::HistoryBatchPlay { .. } => Err(
+                Error::InvalidInput("history batch requires a preparation ticket"),
+            ),
             PlaySelection::HistoryRadioChapter { .. } => Err(Error::InvalidInput(
                 "history chapter playback requires a preparation ticket",
             )),
@@ -270,10 +270,16 @@ impl MusicClient {
             revision,
             ids,
             quality,
+        }
+        | PlaySelection::HistoryBatchPlay {
+            history_kind,
+            revision,
+            ids,
+            quality,
         } = &input
         {
             return self
-                .history_add(
+                .history_batch(
                     &token,
                     super::super::history::Selection {
                         kind: *history_kind,
@@ -283,6 +289,7 @@ impl MusicClient {
                         quality: *quality,
                     },
                     prepared.as_ref().ok_or(Error::StaleResponse)?,
+                    matches!(input, PlaySelection::HistoryBatchPlay { .. }),
                 )
                 .await;
         }
@@ -1457,6 +1464,7 @@ impl MusicClient {
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::HistoryAdd { .. }
+                    | PlaySelection::HistoryBatchPlay { .. }
                     | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::HistoryRadioChapter { .. }
                     | PlaySelection::Local { .. }

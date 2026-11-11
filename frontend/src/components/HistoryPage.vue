@@ -17,7 +17,7 @@ import {
   historyPending,
   historyTabs,
   historyTime,
-  selectedHistoryPlayback,
+  selectedHistoryBatch,
   type HistoryAction,
   type HistoryCommand,
   type HistoryEntry,
@@ -29,7 +29,12 @@ const props = defineProps<{
   model: HistoryModel;
   account: AccountView;
   playable: boolean;
-  addSelection: (kind: 'song' | 'voice', revision: string, ids: string[]) => Promise<boolean>;
+  batchSelection: (
+    kind: 'song' | 'voice',
+    revision: string,
+    ids: string[],
+    action: 'play' | 'add',
+  ) => Promise<boolean>;
   currentId?: string;
   currentVoiceId?: string;
 }>();
@@ -56,23 +61,16 @@ const allSelected = computed(
   () => entries.value.length > 0 && entries.value.every((e) => selected.value.has(e.id)),
 );
 const listKind = computed(() => kind.value === 'song' || kind.value === 'voice');
-const selectedForPlayback = computed(() =>
+const selectedBatch = computed(() =>
   page.value?.kind === kind.value
-    ? selectedHistoryPlayback(kind.value, entries.value, selected.value)
-    : [],
-);
-// The official selectedData comes from the displayed list, including selected
-// rows whose admission must still be checked in native code.
-const selectedForAdd = computed(() =>
-  listKind.value && page.value?.kind === kind.value
-    ? entries.value.filter((entry) => selected.value.has(entry.id)).map((entry) => entry.id)
+    ? selectedHistoryBatch(kind.value, entries.value, selected.value)
     : [],
 );
 const addNotice = ref('');
-const addError = ref('');
+const batchError = ref('');
 watch([kind, keyword, () => props.account.epoch], () => {
   addNotice.value = '';
-  addError.value = '';
+  batchError.value = '';
 });
 const label = computed(() => historyTabs.find((t) => t.kind === kind.value)?.label ?? '记录');
 const activeOperations = computed(() => page.value?.operations.filter(historyPending) ?? []);
@@ -209,21 +207,9 @@ function play(entry?: HistoryEntry) {
     index,
   );
 }
-function playSelected() {
+async function runSelected(action: 'play' | 'add') {
   const snapshot = page.value;
-  if (
-    !snapshot ||
-    !props.playable ||
-    loading.value ||
-    busy.value ||
-    !selectedForPlayback.value.length
-  )
-    return;
-  emit('play', snapshot.kind, snapshot.revision, selectedForPlayback.value, 0);
-}
-async function addSelected() {
-  const snapshot = page.value;
-  const ids = selectedForAdd.value;
+  const ids = selectedBatch.value;
   if (
     !snapshot ||
     (snapshot.kind !== 'song' && snapshot.kind !== 'voice') ||
@@ -238,15 +224,19 @@ async function addSelected() {
   const current = () =>
     epoch === props.account.epoch && snapshot.kind === kind.value && scope === keyword.value;
   addNotice.value = '';
-  addError.value = '';
+  batchError.value = '';
   try {
-    if ((await props.addSelection(snapshot.kind, snapshot.revision, ids)) && current())
+    if (
+      (await props.batchSelection(snapshot.kind, snapshot.revision, ids, action)) &&
+      action === 'add' &&
+      current()
+    )
       addNotice.value = '已添加到播放列表';
   } catch (cause) {
     if (!current()) return;
     const issue = failure(cause);
     if (issue.code === 'profile_changed' || issue.code === 'session_expired') emit('expired');
-    addError.value = issue.message;
+    batchError.value = issue.message;
   }
 }
 function playChapter(entry: HistoryEntry) {
@@ -354,8 +344,8 @@ function keyboard(event: KeyboardEvent) {
       <button
         v-if="listKind"
         class="secondary history-play-selected"
-        :disabled="!playable || loading || busy || !selectedForPlayback.length"
-        @click="playSelected"
+        :disabled="!playable || loading || busy || !selectedBatch.length"
+        @click="runSelected('play')"
       >
         <Icon name="play" />播放选中
       </button>
@@ -363,8 +353,8 @@ function keyboard(event: KeyboardEvent) {
         v-if="listKind"
         type="button"
         class="secondary history-add-selected"
-        :disabled="!playable || loading || busy || !selectedForAdd.length"
-        @click="addSelected"
+        :disabled="!playable || loading || busy || !selectedBatch.length"
+        @click="runSelected('add')"
       >
         <Icon name="plus" />添加到播放列表
       </button>
@@ -425,13 +415,13 @@ function keyboard(event: KeyboardEvent) {
       重新读取收藏
     </button>
     <div
-      v-if="addNotice || addError || error || uncertain || activeOperations.length || latest"
+      v-if="addNotice || batchError || error || uncertain || activeOperations.length || latest"
       class="history-notices"
     >
       <p v-if="addNotice" class="history-outcome history-add-notice" role="status">
         {{ addNotice }}
       </p>
-      <p v-if="addError" class="catalog-error history-add-error" role="alert">{{ addError }}</p>
+      <p v-if="batchError" class="catalog-error history-add-error" role="alert">{{ batchError }}</p>
       <div v-if="error" class="catalog-error" role="alert">
         {{ error }}<span v-if="page"> · 保留上次读取的内容</span
         ><button class="text-button" :disabled="loading || busy" @click="model.refresh">

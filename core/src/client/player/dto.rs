@@ -380,6 +380,12 @@ pub enum PlaySelection {
         ids: Vec<String>,
         quality: Quality,
     },
+    HistoryBatchPlay {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        ids: Vec<String>,
+        quality: Quality,
+    },
     Catalog {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         index: usize,

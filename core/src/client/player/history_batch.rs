@@ -1,4 +1,4 @@
-//! M3085 history Add -> M308 play=false -> M1384 ordinary queue insertion.
+//! M3085 history Add and Play use the M1384 ordinary queue insertion.
 mod shuffle;
 use super::{MusicClient, PlayerResourceKind, PlayerView, identity, mapping, project};
 use crate::{
@@ -18,11 +18,12 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
 impl MusicClient {
-    pub(super) async fn history_add(
+    pub(super) async fn history_batch(
         &self,
         token: &SessionToken,
         selection: Selection<'_>,
         prepared: &super::prepared_selection::PreparedSelection,
+        play: bool,
     ) -> Result<PlayerView> {
         let room = self.together_detached_guard(token);
         room.check()?;
@@ -31,7 +32,7 @@ impl MusicClient {
         let (before, queue) = controller.queue_with_state(token).await?;
         prepared.check(self, &before)?;
         if before.fm || queue.intelligence.is_some() {
-            return Err(Error::State("history add requires an ordinary queue"));
+            return Err(Error::State("history batch requires an ordinary queue"));
         }
         if matches!(
             before.state,
@@ -42,29 +43,37 @@ impl MusicClient {
         let kind = selection.kind;
         let revision = selection.revision.to_owned();
         let (resources, source) = self
-            .history_selection_for_queue(token, selection, prepared.observed)
+            .history_selection_for_queue(token, selection, prepared.observed, play)
             .await?;
         let pending = self.pending_preparation_guard(prepared, controller.clone());
         room.check()?;
         pending.check()?;
-        let start = queue.items.is_empty();
-        let shuffle_anchor =
-            if start && queue.mode == PlaybackMode::Random && kind == HistoryKind::Voice {
-                match resources.first() {
-                    Some(first) => {
-                        self.history_shuffle_anchor(token, first, &pending, &room)
-                            .await?
-                    }
-                    None => None,
+        let was_empty = queue.items.is_empty();
+        let start = was_empty || play;
+        // The official Add button dispatches a voice resource, while the
+        // Play button dispatches an audio resource. M3085 uses different
+        // resume keys; only Add has a verified first-program bookmark here.
+        let shuffle_anchor = if was_empty
+            && !play
+            && queue.mode == PlaybackMode::Random
+            && kind == HistoryKind::Voice
+        {
+            match resources.first() {
+                Some(first) => {
+                    self.history_shuffle_anchor(token, first, &pending, &room)
+                        .await?
                 }
-            } else {
-                None
-            };
+                None => None,
+            }
+        } else {
+            None
+        };
         pending.check()?;
         let queue = plan(
             queue,
             resources,
             source,
+            start,
             shuffle_anchor.as_ref().map(|binding| &binding.anchor),
             &mut rand::rng(),
         )?;
@@ -72,6 +81,7 @@ impl MusicClient {
             expected: before.fence(),
             queue,
             start,
+            was_empty,
             kind,
             revision,
             shuffle_anchor,
@@ -106,7 +116,7 @@ impl MusicClient {
             });
             self.submit_selection_with_source(
                 token,
-                PlaybackCommand::ApplyHistoryAdd(update),
+                PlaybackCommand::ApplyHistoryBatch(update),
                 prepared.observed,
                 None,
                 Some(prepared),
@@ -130,6 +140,7 @@ fn plan(
     mut queue: QueueSnapshot,
     mut resources: Vec<Value>,
     source: Value,
+    start: bool,
     shuffle_anchor: Option<&ShuffleAnchor>,
     rng: &mut impl Rng,
 ) -> Result<QueueSnapshot> {
@@ -145,7 +156,6 @@ fn plan(
     resources.retain(|row| {
         history_key(row).is_some_and(|(kind, id)| seen.insert((kind, id.to_owned())))
     });
-    let start = queue.items.is_empty();
     let incumbent = queue.selected();
     let incumbent_key = incumbent
         .as_ref()
@@ -188,15 +198,15 @@ fn plan(
             *stored = incumbent;
         }
     }
-    if next.mode == PlaybackMode::Random {
-        let entries: HashMap<_, _> = next
-            .items
-            .iter()
-            .filter_map(|row| history_key(&row.resource).map(|key| (key, row.entry_id.as_str())))
-            .collect();
-        let entry_id =
-            |key: &(PlayerResourceKind, String)| entries.get(&(key.0, key.1.as_str())).copied();
-        let first = entry_id(first).ok_or(Error::QueueChanged)?;
+    let entries: HashMap<_, _> = next
+        .items
+        .iter()
+        .filter_map(|row| history_key(&row.resource).map(|key| (key, row.entry_id.as_str())))
+        .collect();
+    let entry_id =
+        |key: &(PlayerResourceKind, String)| entries.get(&(key.0, key.1.as_str())).copied();
+    let first = entry_id(first).ok_or(Error::QueueChanged)?;
+    let start_id = if next.mode == PlaybackMode::Random {
         let in_batch = selected.iter().filter_map(entry_id).collect();
         let start_id = start.then(|| {
             if let Some(anchor) = shuffle_anchor {
@@ -210,9 +220,12 @@ fn plan(
             .ok_or(Error::QueueChanged)
         });
         next.order = super::local_batch::random_order(&next, &in_batch, first, !start, rng);
-        if let Some(id) = start_id {
-            next.current = Some(id?);
-        }
+        start_id.transpose()?
+    } else {
+        start.then(|| first.to_owned())
+    };
+    if let Some(id) = start_id {
+        next.current = Some(id);
     }
     Ok(next)
 }

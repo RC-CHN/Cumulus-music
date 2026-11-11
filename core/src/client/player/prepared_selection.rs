@@ -171,7 +171,7 @@ impl MusicClient {
             token,
             prepared,
             update.expected.clone(),
-            PlaybackCommand::ApplyHistoryAdd(update),
+            PlaybackCommand::ApplyHistoryBatch(update),
             source,
         )
         .await
@@ -295,6 +295,7 @@ impl MusicClient {
                 | PlaySelection::PodcastLikedPageEpisode { .. }
                 | PlaySelection::HistoryRadioChapter { .. }
                 | PlaySelection::HistoryAdd { .. }
+                | PlaySelection::HistoryBatchPlay { .. }
                 | PlaySelection::Songs { .. }
         ) {
             return Err(Error::InvalidInput(

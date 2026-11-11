@@ -172,6 +172,7 @@ pub struct HistoryQueueUpdate {
     pub(crate) expected: PlaybackFence,
     pub(crate) queue: QueueSnapshot,
     pub(crate) start: bool,
+    pub(crate) was_empty: bool,
     pub(crate) kind: crate::history::HistoryKind,
     pub(crate) revision: String,
     pub(crate) shuffle_anchor: Option<HistoryShuffleAnchor>,
@@ -299,7 +300,7 @@ pub enum PlaybackCommand {
         liked_visit: Option<crate::podcast::LikedPageQueueFence>,
     },
     ApplyLocalBatch(LocalBatchUpdate),
-    ApplyHistoryAdd(HistoryQueueUpdate),
+    ApplyHistoryBatch(HistoryQueueUpdate),
     ApplyOfflinePlaylistQueue(OfflinePlaylistQueueUpdate),
     /// Explicit ordinary search row selection. Only this load may prefer an
     /// already authorized download; the queue keeps the catalog resource.

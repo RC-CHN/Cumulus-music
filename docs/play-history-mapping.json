@@ -142,15 +142,15 @@
       ]
     },
     {
-      "feature": "Batch Add selected songs or voices to the current history playback queue",
+      "feature": "Batch Play or Add selected songs or voices within the current queue",
       "official": [
-        "HistoryPlayBatchTrack.tsx:51–58,128–155",
-        "HistoryPlayBatchVoice.tsx:51–58,96–138",
+        "HistoryPlayBatchTrack.tsx:51–79,128–155",
+        "HistoryPlayBatchVoice.tsx:51–78,96–138",
         "M3085:243–296,297–311,564–585; M308:3148–3249",
         "M1384:2604–2657,5241–5298,5366–5376,5695–5727; M213:109–128; M176:34–62"
       ],
       "rust": [
-        "core/src/client/player/history_add.rs",
+        "core/src/client/player/history_batch.rs",
         "core/src/client/history/selection.rs",
         "core/src/history/service.rs",
         "core/src/playback/controller/remote.rs"
@@ -160,12 +160,12 @@
         "frontend/src/App.vue"
       ],
       "tests": [
-        "core/tests/client_history.rs history_add",
+        "core/tests/client_history.rs history_add/history_batch_play",
         "desktop/examples/history_ui_probe.js + scripts/ci/catalog_smoke.py --history"
       ],
       "boundaries": [
         "Ordinary queues only; Together, FM and intelligence use separate coordinators",
-        "Existing selected Play replacement behavior is unchanged",
+        "An already active native decoder continues only for the exact admitted media",
         "Unregistered download-map discovery and official same-recording substitutions not covered",
         "No real account writes, Windows WebView or physical audio output proof"
       ]

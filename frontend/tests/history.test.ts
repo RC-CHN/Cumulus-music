@@ -4,7 +4,7 @@ import { useHistory } from '../src/composables/useHistory.ts';
 import {
   historyTime,
   historyOutcome,
-  selectedHistoryPlayback,
+  selectedHistoryBatch,
   type HistoryEntry,
   type HistoryClient,
   type HistoryCommand,
@@ -244,7 +244,7 @@ test('local history remains reachable before login and after a guest 301', async
   }
 });
 
-test('selected history playback uses visible snapshot order and excludes unavailable or other-kind rows', () => {
+test('history batch keeps visible selection order and leaves admission to core', () => {
   const row = (id: string, resource: HistoryEntry['resource']): HistoryEntry => ({
     id,
     resource,
@@ -303,7 +303,11 @@ test('selected history playback uses visible snapshot order and excludes unavail
     'voice-missing',
     'voice-recent',
   ]);
-  assert.deepEqual(selectedHistoryPlayback('song', rows, selected), ['recent', 'old']);
-  assert.deepEqual(selectedHistoryPlayback('voice', rows, selected), ['voice-recent', 'voice-old']);
-  assert.deepEqual(selectedHistoryPlayback('playlist', rows, selected), []);
+  assert.deepEqual(selectedHistoryBatch('song', rows, selected), ['recent', 'missing', 'old']);
+  assert.deepEqual(selectedHistoryBatch('voice', rows, selected), [
+    'voice-recent',
+    'voice-missing',
+    'voice-old',
+  ]);
+  assert.deepEqual(selectedHistoryBatch('playlist', rows, selected), []);
 });

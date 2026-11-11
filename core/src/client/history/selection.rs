@@ -22,6 +22,13 @@ pub(in crate::client) struct Selection<'a> {
     pub quality: Quality,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SelectionMode {
+    Direct,
+    BatchAdd,
+    BatchPlay,
+}
+
 impl MusicClient {
     /// The WebView supplies only IDs from its displayed native snapshot. File
     /// paths, source metadata, permission requests and queue expansion stay here.
@@ -31,7 +38,7 @@ impl MusicClient {
         selection: Selection<'_>,
         attempt: u64,
     ) -> Result<(Vec<Value>, usize, Value)> {
-        self.history_selection_inner(token, selection, attempt, true)
+        self.history_selection_inner(token, selection, attempt, SelectionMode::Direct)
             .await
     }
 
@@ -40,6 +47,7 @@ impl MusicClient {
         token: &SessionToken,
         selection: Selection<'_>,
         attempt: u64,
+        play: bool,
     ) -> Result<(Vec<Value>, Value)> {
         if !matches!(selection.kind, HistoryKind::Song | HistoryKind::Voice) {
             return Err(Error::InvalidInput(
@@ -47,7 +55,16 @@ impl MusicClient {
             ));
         }
         let (resources, _, source) = self
-            .history_selection_inner(token, selection, attempt, false)
+            .history_selection_inner(
+                token,
+                selection,
+                attempt,
+                if play {
+                    SelectionMode::BatchPlay
+                } else {
+                    SelectionMode::BatchAdd
+                },
+            )
             .await?;
         Ok((resources, source))
     }
@@ -57,7 +74,7 @@ impl MusicClient {
         token: &SessionToken,
         selection: Selection<'_>,
         attempt: u64,
-        require_play_index: bool,
+        mode: SelectionMode,
     ) -> Result<(Vec<Value>, usize, Value)> {
         let Selection {
             kind,
@@ -103,8 +120,14 @@ impl MusicClient {
         }
         let (resources, index, source) = match kind {
             HistoryKind::Song => (
-                self.history_songs(token, &chosen, quality, &guard, !require_play_index)
-                    .await?,
+                self.history_songs(
+                    token,
+                    &chosen,
+                    quality,
+                    &guard,
+                    mode != SelectionMode::Direct,
+                )
+                .await?,
                 index,
                 json!({"kind":"history","history_kind":"song","scene":"history"}),
             ),
@@ -114,6 +137,14 @@ impl MusicClient {
                     .iter()
                     .map(|r| Episode::from_official(&r.resource))
                     .collect::<Result<Vec<_>>>()?;
+                // A history row can be selected even when the published
+                // episode is gray. Do not expand or resolve it for Play.
+                let voices = voices
+                    .into_iter()
+                    .filter(|episode| {
+                        mode != SelectionMode::BatchPlay || episode.raw["grayDisplay"] != true
+                    })
+                    .collect();
                 (
                     self.history_voices(token, voices, &guard).await?,
                     index,
@@ -209,7 +240,9 @@ impl MusicClient {
         if history.snapshot_for(token, kind)?.revision != revision {
             return Err(Error::QueueChanged);
         }
-        if require_play_index && resources.get(index).is_none_or(|r| r["missing"] == true) {
+        if mode == SelectionMode::Direct
+            && resources.get(index).is_none_or(|r| r["missing"] == true)
+        {
             return Err(Error::State("selected history resource is unavailable"));
         }
         Ok((resources, index, source))

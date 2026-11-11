@@ -4,7 +4,7 @@ pub use volume_diagnosis::{OutputDiagnosticRead, VolumeDiagnosisDismissal};
 mod chorus;
 mod comment_count;
 mod dto;
-mod history_add;
+mod history_batch;
 mod identity;
 mod intelligence;
 mod local_batch;

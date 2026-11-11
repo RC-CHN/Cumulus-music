@@ -168,6 +168,7 @@ impl Api for Backend {
                 }
                 "/api/dj/program/detail" => {
                     let (id, radio_id) = match p["id"].as_str() {
+                        Some(id @ ("1" | "2" | "3" | "4")) => (id.parse().unwrap(), 8),
                         Some("5") => (5, 8),
                         Some("6") => (6, 22),
                         Some("7") => (7, 22),
@@ -1166,6 +1167,147 @@ async fn history_batch_ids(f: &Fixture) -> Vec<String> {
         .collect()
 }
 
+async fn history_play_request(
+    f: &Fixture,
+    kind: HistoryKind,
+    ids: &[&str],
+) -> (String, PlaySelection) {
+    let (ticket, selection) = history_add_request(f, kind, ids).await;
+    let PlaySelection::HistoryAdd {
+        history_kind,
+        revision,
+        ids,
+        quality,
+    } = selection
+    else {
+        unreachable!("history add request")
+    };
+    (
+        ticket,
+        PlaySelection::HistoryBatchPlay {
+            history_kind,
+            revision,
+            ids,
+            quality,
+        },
+    )
+}
+
+#[tokio::test]
+async fn history_batch_play_inserts_after_current_and_preserves_both_sides() {
+    for kind in [HistoryKind::Song, HistoryKind::Voice] {
+        let f = fixture(true);
+        let epoch = f.epoch();
+        seed_history_batch(
+            &f,
+            kind,
+            &[(1, 500), (2, 400), (3, 300), (4, 200), (5, 100)],
+        );
+        let mut incumbent = f
+            .selection(kind, ["1", "4", "5"].map(str::to_owned).to_vec())
+            .await;
+        if let PlaySelection::History { index, .. } = &mut incumbent {
+            *index = 1;
+        }
+        let before = f.client.play_selection(&epoch, incumbent).await.unwrap();
+        let selected: &[&str] = if kind == HistoryKind::Voice {
+            // The selected gray programme lacks a main song. A Play batch
+            // skips it before any programme lookup or media authorization.
+            f.history
+                .record_for(
+                    &f.session.token().unwrap(),
+                    kind,
+                    HistoryRecord::local(
+                        kind,
+                        json!({"id":8,"name":"unavailable","grayDisplay":true}),
+                        600,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            &["8", "2", "3"]
+        } else {
+            &["2", "3"]
+        };
+        let (ticket, selection) = history_play_request(&f, kind, selected).await;
+        let current = f
+            .client
+            .commit_prepared_selection(&epoch, &ticket, selection)
+            .await
+            .unwrap();
+        assert_eq!(history_batch_ids(&f).await, ["1", "4", "2", "3", "5"]);
+        assert_eq!(serde_json::to_value(current.state).unwrap(), "playing");
+        assert_ne!(current.play_id, before.play_id);
+        let track = current.track.unwrap();
+        if kind == HistoryKind::Voice {
+            assert_eq!(track.voice_id.as_deref(), Some("2"));
+            assert_eq!(track.id, "1002");
+        } else {
+            assert_eq!(track.id, "2");
+        }
+    }
+}
+
+#[tokio::test]
+async fn history_batch_play_resumes_the_same_selected_decoder() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    seed_history_batch(&f, HistoryKind::Song, &[(2, 300), (3, 200), (4, 100)]);
+    let start = f
+        .selection(HistoryKind::Song, vec!["2".into(), "4".into()])
+        .await;
+    f.client.play_selection(&epoch, start).await.unwrap();
+    f.client
+        .player_action(&epoch, PlayerAction::Seek { seconds: 12.0 })
+        .await
+        .unwrap();
+    let paused = f
+        .client
+        .player_action(&epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let loads = f.device.state.lock().unwrap().loads;
+    let (ticket, selection) = history_play_request(&f, HistoryKind::Song, &["2", "3"]).await;
+    let result = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket, selection)
+        .await
+        .unwrap();
+    assert_eq!(history_batch_ids(&f).await, ["2", "3", "4"]);
+    assert_eq!(result.play_id, paused.play_id);
+    assert_eq!(result.entry_id, paused.entry_id);
+    assert_eq!(result.position, paused.position);
+    assert_eq!(serde_json::to_value(result.state).unwrap(), "playing");
+    assert_eq!(f.device.state.lock().unwrap().loads, loads);
+}
+
+#[tokio::test]
+async fn history_batch_play_shuffles_only_within_the_admitted_batch() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let kind = HistoryKind::Song;
+    seed_history_batch(&f, kind, &[(1, 500), (2, 400), (3, 300), (4, 200)]);
+    let initial = f.selection(kind, vec!["1".into(), "4".into()]).await;
+    f.client.play_selection(&epoch, initial).await.unwrap();
+    f.client
+        .player_action(
+            &epoch,
+            PlayerAction::Mode {
+                mode: cumulus_core::playback::PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    let (ticket, selection) = history_play_request(&f, kind, &["2", "3"]).await;
+    let result = f
+        .client
+        .commit_prepared_selection(&epoch, &ticket, selection)
+        .await
+        .unwrap();
+    assert!(matches!(result.track.unwrap().id.as_str(), "2" | "3"));
+    assert_eq!(history_batch_ids(&f).await, ["1", "2", "3", "4"]);
+}
+
 #[tokio::test]
 async fn history_add_to_empty_starts_the_first_displayed_episode() {
     let f = fixture(true);
@@ -1287,8 +1429,11 @@ async fn history_add_moves_duplicates_after_current_without_touching_paused_tran
 }
 
 #[tokio::test]
-async fn history_add_rejects_unordered_or_retired_selection_without_a_queue_change() {
-    for retire in ["order", "history", "control", "account"] {
+async fn history_batch_rejects_unordered_or_retired_selection_without_a_queue_change() {
+    for (play, retire) in [false, true]
+        .into_iter()
+        .flat_map(|play| ["order", "history", "control", "account"].map(|retire| (play, retire)))
+    {
         let f = fixture(true);
         let epoch = f.epoch();
         seed_history_batch(&f, HistoryKind::Song, &[(1, 200), (2, 100)]);
@@ -1297,7 +1442,11 @@ async fn history_add_rejects_unordered_or_retired_selection_without_a_queue_chan
         } else {
             ["1", "2"]
         };
-        let (ticket, selection) = history_add_request(&f, HistoryKind::Song, &ids).await;
+        let (ticket, selection) = if play {
+            history_play_request(&f, HistoryKind::Song, &ids).await
+        } else {
+            history_add_request(&f, HistoryKind::Song, &ids).await
+        };
         if retire == "order" {
             assert!(matches!(
                 f.client

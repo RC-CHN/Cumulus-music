@@ -281,10 +281,24 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
 最近播放：播放选中
 - 官方恢复证据：packages/pc/src/pages/history-playlist/components/HistoryPlayBatchTrack.tsx:55–79
   和 HistoryPlayBatchVoice.tsx:55–78 将所选内容以 Action.play/Scene.history 交给播放器。
-- Cumulus 在歌曲、声音标签提供“播放选中”，按当前可见列表的快照顺序提交已勾选且可播放
-  的记录 ID（不是点击勾选的顺序，也不是媒体 ID）。没有可播放选项时按钮禁用。
-- 沿用已有 History 播放命令，原生校验账号、快照版本、顺序与可播放性。此动作不会提交历史
-  删除或同步变更；队列仍遵循 Cumulus 原有历史播放语义。
+- 普通点击的 selectedData 优先于 listData（M3085:243–296）；M3085:297–311、564–585
+  保留 play=true、clear=false。M308:3148–3152 把当前 displayOrder 作为插入锚点；
+  M1384:5241–5345 删除重复项，插到锚点后，保留容量允许的旧前后缀，再以 Playing
+  状态加载选择；M213:130–134 未指定目标时取首个准入项，M1384:5267 的随机模式从
+  准入批次取一项。M308:1669–1685 对仍是同一资源的已播放项不重新开始，暂停则继续。
+- Cumulus 的「播放选中」与「添加到播放列表」提交同一份按显示顺序的已勾选行，
+  包括需由原生判断权限的行。原生使用 `history_batch_play` 或 `history_add` 类型和
+  单次 prepare/commit 票据，复用账号／历史版本、队列、播放代次和媒体焦点校验。
+  播放选中在节目详情或媒体请求之前排除已明确标灰的声音。
+  播放选中插入后开始第一条准入资源，随机模式只从插入批次选；同媒体及同一已装载
+  entry 能继续现有解码和时间线。不能确认媒体一致时按新选择走正常授权，避免把
+  旧下载、节目媒体或文件指纹当作新授权。行播放和播放全部沿用各自旧入口。
+- 声音的「播放选中」在官方派发的是 `audio`，而「添加到播放列表」派发 `voice`；
+  M3085:431–454 对两种类型使用不同续播键。Cumulus 只在下文已核验的空队列添加
+  分支使用首节目随机锚点。批量播放保留随机选择与实际解码时的普通节目续播检查；
+  未把 `audio` 专用历史锚点推断成相同语义。
+- 本动作不发送远端历史写入、不扩大在线准入。未恢复的同音频替代和官方下载映射
+  仍按下文边界；一起听、FM 和智能队列由各自协调器处理。
 
 最近播放：播客和有声书行内选章
 - 官方 3.1.42.205594 的 HistoryDjRadio.tsx、HistoryAudiobook.tsx 向
@@ -480,8 +494,7 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   M213:109–128 区分节目资源 ID 和解码歌曲 ID。M176:34–62 和 M1384:5267、
   5366–5376、5695–5727 另处理随机播放；空队列未指定 playId 才随机选择首个播放项，
   已有队列给第一条插入项安排随机下一首。M7:138–140 固定本版本使用文件队列。
-  现有「播放选中」仍保留 Cumulus 的 Replace 行为；官方批量 Header
-  的 Action.play 也会按插入路径开始选中曲目，后者差异留作独立修改。
+  批量 Header 的 Action.play 走同一插入路径但开始播放，见上文「播放选中」。
 - 前端用单次 prepare/commit 播放票据，仅提交分类、历史快照版本、当前显示的有序 ID
   和选用音质。原生读取当前账号／访客所有者的快照，拒绝其他类别、未知 ID、重复／
   逆序 ID 和过期快照。元数据读取后再核对历史版本、原生队列／播放控制／音频焦点、
@@ -509,6 +522,6 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   媒体加载，不写入队列；超出解码时长、记录已变或用户显式定位不使用
   旧断点。已有队列及非随机分支保持之前路径。此增量的封闭签名夹具位于
   core/tests/pc_experiment_transport/history_shuffle.rs，未据此宣称实窗或真实账号通过。
-- 可执行：core/tests/client_history.rs 的 history_add 定向测试；现有
-  scripts/ci/catalog_smoke.py --history 在歌曲、声音的原 WebView 阶段增加实际按钮、
-  选中项插入顺序和暂停状态断言，合成数据，检查阶段数保持不变。
+- 可执行：core/tests/client_history.rs 的 history_add / history_batch_play 定向测试；
+  scripts/ci/catalog_smoke.py --history 在歌曲、声音的 WebView 阶段先建立含前缀、
+  当前项和后缀的队列，再点击两个实际按钮，核对插入顺序、起播和暂停状态。

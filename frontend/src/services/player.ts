@@ -480,7 +480,7 @@ export type PlaySelection =
       quality: Quality;
     }
   | {
-      kind: 'history_add';
+      kind: 'history_add' | 'history_batch_play';
       history_kind: 'song' | 'voice';
       revision: string;
       ids: string[];
