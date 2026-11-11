@@ -132,9 +132,23 @@ export function directorySettingsDescription(preview: DownloadDirectoryPreview) 
       return '无法写入该目录，请选择可写的子文件夹。';
     case 'insufficient_space':
       return '该目录存储空间不足，请重新选择目录。';
-    case 'ready':
+    case 'ready': {
+      const destination = displayDownloadDirectory(preview.target);
       return preview.moveExisting
-        ? `将下载目录更改为 ${preview.target}。转移音乐文件可能花费较长时间，是否继续？`
-        : `将下载目录更改为 ${preview.target}。是否继续？`;
+        ? `将下载目录更改为 ${destination}。转移音乐文件可能花费较长时间，是否继续？`
+        : `将下载目录更改为 ${destination}。是否继续？`;
+    }
   }
+}
+
+// Native canonical Windows paths use the verbatim namespace. Keep that exact
+// path in the command; use the familiar drive/share spelling in the UI.
+export function displayDownloadDirectory(path: string) {
+  const slash = '\\';
+  const verbatim = slash.repeat(2) + '?' + slash;
+  if (!path.startsWith(verbatim)) return path;
+  const plain = path.slice(verbatim.length);
+  if (plain.toLowerCase().startsWith('unc' + slash)) return slash.repeat(2) + plain.slice(4);
+  if (/^[a-z]:/i.test(plain) && plain[2] === slash) return plain;
+  return path;
 }

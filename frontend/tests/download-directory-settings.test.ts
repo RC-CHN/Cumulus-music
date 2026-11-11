@@ -2,9 +2,22 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   createDownloadDirectorySettings,
+  displayDownloadDirectory,
   type DownloadDirectorySettingsOwner,
 } from '../src/composables/useDownloadDirectorySettings.ts';
 import type { DownloadDirectoryPreview, DownloadResult } from '../src/services/downloads.ts';
+
+test('display removes the Windows verbatim prefix only for drive and share paths', () => {
+  const slash = '\\';
+  const prefix = slash.repeat(2) + '?' + slash;
+  const local = ['D:', 'Music', 'Album'].join(slash);
+  const share = ['server', 'Music', 'Album'].join(slash);
+  const volume = prefix + 'Volume{sample}' + slash + 'Music';
+  assert.equal(displayDownloadDirectory(prefix + local), local);
+  assert.equal(displayDownloadDirectory(prefix + 'UNC' + slash + share), slash.repeat(2) + share);
+  assert.equal(displayDownloadDirectory(volume), volume);
+  assert.equal(displayDownloadDirectory('/home/listener/Music'), '/home/listener/Music');
+});
 
 type Ports = Parameters<typeof createDownloadDirectorySettings>[0];
 const preview: DownloadDirectoryPreview = {

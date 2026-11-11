@@ -5,6 +5,7 @@ import type { DownloadModel } from '../../composables/useDownloads';
 import {
   createDownloadDirectorySettings,
   directorySettingsDescription,
+  displayDownloadDirectory,
   type DownloadDirectorySettingsOwner,
 } from '../../composables/useDownloadDirectorySettings';
 import { useControlFocus } from '../../composables/useControlFocus';
@@ -20,6 +21,8 @@ const props = defineProps<{
 const emit = defineEmits<{ downloads: []; preferences: []; expired: [] }>();
 const core = useCore();
 const opener = ref<HTMLButtonElement>();
+const manage = ref<HTMLButtonElement>();
+const migrationStatus = ref<HTMLElement>();
 let alive = true;
 const scope = computed<DownloadDirectorySettingsOwner | undefined>((previous) => {
   const visit = props.visit();
@@ -30,6 +33,10 @@ const scope = computed<DownloadDirectorySettingsOwner | undefined>((previous) =>
 const downloads = computed(() => {
   const view = props.model.view.value;
   return view?.epoch === scope.value?.epoch ? view : undefined;
+});
+const displayedRoot = computed(() => {
+  const root = downloads.value?.directory?.root;
+  return root ? displayDownloadDirectory(root) : undefined;
 });
 const migration = computed(() => downloads.value?.migration);
 const blocked = () =>
@@ -81,6 +88,7 @@ const status = computed(() => {
   return `正在迁移下载目录：${done} / ${value.items.length} 项。`;
 });
 const returnFocus = () => opener.value ?? null;
+const fallbackFocus = () => migrationStatus.value ?? manage.value ?? null;
 const mayRestoreFocus = computed(
   () => !!dialogOwner.value && directory.live(dialogOwner.value) && !repick.value,
 );
@@ -132,7 +140,7 @@ function check(event: MouseEvent) {
         {{
           account.status !== 'authenticated'
             ? '登录后可设置下载目录'
-            : downloads?.directory?.root ||
+            : displayedRoot ||
               (downloads ? '未设置' : model.readError.value ? '暂时无法读取' : '正在读取…')
         }}
       </p>
@@ -153,7 +161,14 @@ function check(event: MouseEvent) {
     >
       {{ activity === 'picking' ? '正在选择下载目录…' : '正在检查下载目录…' }}
     </p>
-    <p v-if="status" class="settings-note" role="status" data-download-directory-migration>
+    <p
+      v-if="status"
+      ref="migrationStatus"
+      class="settings-note"
+      role="status"
+      tabindex="-1"
+      data-download-directory-migration
+    >
       {{ status }}
     </p>
     <p v-if="feedback" class="settings-note" role="status">{{ feedback.text }}</p>
@@ -168,9 +183,16 @@ function check(event: MouseEvent) {
         核对当前目录
       </button>
       <button type="button" class="secondary" @click="emit('preferences')">音质与下载选项</button>
-      <button type="button" class="secondary" @click="emit('downloads')">打开下载管理</button>
+      <button ref="manage" type="button" class="secondary" @click="emit('downloads')">
+        打开下载管理
+      </button>
     </div>
-    <ModalTransition :return-focus="returnFocus" :restore-focus="mayRestoreFocus" @left="left">
+    <ModalTransition
+      :return-focus="returnFocus"
+      :fallback-focus="fallbackFocus"
+      :restore-focus="mayRestoreFocus"
+      @left="left"
+    >
       <SettingsConfirm
         v-if="confirmation"
         title="更改下载目录"
