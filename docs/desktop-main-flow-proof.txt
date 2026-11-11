@@ -285,6 +285,20 @@ Cumulus 桌面主流程验收
   此次使用封闭合成后端和 libmpv 空输出，没有用本次运行证明真实服务、
   系统级断网或物理声卡。
 
+集成源码 1f333913 的 Linux 复验（2026-11-12）
+  同一份锁定构建的正式 cumulus 程序用独立 Xvfb/DBus、无外部网络和私有
+  PipeWire null sink 实际打开窗口。合成本地文件的原生时钟推进，暂停后时钟
+  保持，音频监测由非零样本变为零；未访问物理声卡。
+  正式程序回执：.build/ui-proof/phase328-330-desktop-batch/webview/ordinary-app/report.json。
+
+  同源生产 Vue/IPC 的 main_flow_ui_probe 在只有回环且无默认路由的命名空间
+  运行 --missing-download，22 个状态、21 张截图；合成 QR 登录写入和新进程
+  恢复、搜索/推荐、libmpv 播放控制、隔离歌单回读、断点 Range 恢复、离线
+  本地播放和丢失成品后的显式选择均有实窗及 SQLite 回执，真实请求和写入为零。
+  运行日志与回执：.build/ui-proof/phase328-330-desktop-batch/main-flow-route-free-JK0aAE/。
+  旧的一次探针误留模拟默认路由，打开下载菜单时产生一条合成评论计数读取；
+  无路由复验保持既有零离线读取断言。此批不替代真实账号或 Windows 验证。
+
 主分支生产 Vue 的普通 HTTPS 音源合成回归（Linux，手工运行）
 
   该模式复用 main_flow_ui_probe 和既有生产 Vue/IPC 主流程。合成服务给
