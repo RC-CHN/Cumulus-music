@@ -2842,6 +2842,7 @@ jobs:
             .build/ci-current-song-download-directory-linux/first/complete.json
             .build/ci-current-song-download-directory-linux/first/ux_*.json
             .build/ci-current-song-download-directory-linux/first/ux_*.png
+            .build/ci-current-song-download-directory-linux/first/paint-ux_08_settings.json
           if-no-files-found: error
           retention-days: 7
       - name: Measure Linux WebView disk after smoke

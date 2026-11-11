@@ -117,6 +117,8 @@ def verify(root, mode, fixture):
         settings = stages['settings']['dom']
         assert settings['settings'] and settings['settingsFocus'] and settings['settingsDirectoryAction']
         assert not settings['ordinary'] and complete['tasks'] == []
+        sample, = read(output / 'paint-ux_08_settings.json')['samples']
+        assert sample['region'] == 'download-settings-heading' and sample['ok'] and sample['nearColorPixels'] >= 3
         assert not set(MUTATIONS).intersection(kinds(native))
         assert not any((root / 'media').rglob('*'))
         digest = None

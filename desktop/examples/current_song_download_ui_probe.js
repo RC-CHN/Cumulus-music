@@ -67,6 +67,20 @@
   const command = (command) => invoke('download_command', { epoch, command });
   async function capture(label) {
     await wait(() => !one('dialog.modal-enter-active,dialog.modal-leave-active'), 'settled dialog');
+    let paint = {};
+    if (label === 'settings') {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      assert(renderedSettings(), 'settings still visible after paint frames');
+      const heading = one('#settings-download', downloadSettings());
+      const text = document.createRange();
+      text.selectNodeContents(heading);
+      const rect = text.getBoundingClientRect();
+      paint = {
+        screenX, screenY, ratio: devicePixelRatio,
+        paintRegions: [{ name: 'download-settings-heading', left: rect.left, top: rect.top,
+          width: rect.width, height: rect.height, color: getComputedStyle(heading).color, present: true }],
+      };
+    }
     const [player, queue] = await Promise.all([nativePlayer(), nativeQueue()]);
     const current = { epoch: player.epoch, playId: player.playId, entryId: player.entryId,
       trackId: player.track?.id, state: player.state, position: player.position, kind: player.resourceKind,
@@ -74,7 +88,7 @@
       queue: queue.tracks.map((row) => [row.entryId, row.track.id]) };
     if (incumbent) assert(JSON.stringify(current) === JSON.stringify(incumbent), 'purchase flow preserves paused player and queue');
     const id = `ux_${String(++checkpoint).padStart(2, '0')}_${label}`;
-    await emit(id, { mode, current, visible: document.visibilityState === 'visible',
+    await emit(id, { mode, current, visible: document.visibilityState === 'visible', ...paint,
       dom: { quality: !!quality(), ordinary: !!download(), picker: !!picker(),
         status: badge()?.dataset.downloadState, focus: document.activeElement === badge(),
         settings: label === 'settings' && renderedSettings(),
