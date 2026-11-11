@@ -5019,7 +5019,8 @@ watch(
       status === 'authenticated' ? epoch : '',
       tag === '推荐' ? null : tag,
     );
-    if (choice && tag && status === 'authenticated') playlistTagBrowse.rememberChoiceTag(epoch, tag);
+    if (choice && tag && status === 'authenticated')
+      playlistTagBrowse.rememberChoiceTag(epoch, tag);
   },
   { immediate: true, flush: 'sync' },
 );
