@@ -60,11 +60,15 @@ fn main() {
                         let mode = value["mode"].as_u64().filter(|v| *v <= 6).expect("probe fixture mode");
                         fixture.mode.store(mode as u8, Ordering::SeqCst);
                     }
-                    "complete" | "failed" | "home" | "dark" | "seeded_style" | "ranking" | "recent_style" | "retry" | "privacy" | "ux_recall_ready" | "ux_recall_closed" | "ux_recall_playing" => {
+                    "complete" | "failed" | "home" | "dark" | "seeded_style" | "ranking" | "playlist_square" | "recent_style" | "retry" | "privacy" | "ux_recall_ready" | "ux_recall_closed" | "ux_recall_playing" => {
                         let calls = fixture.calls.lock().unwrap();
                         value["paths"] = json!(calls.iter().map(|(path, _, _)| path).collect::<Vec<_>>());
                         value["styleCalls"] = json!(calls.iter().filter(|(path, _, _)| matches!(path.as_str(),
                             "/api/homepage/category/daily/song/list" | "/api/homepage/daily/song/config/get"))
+                            .collect::<Vec<_>>());
+                        value["squareCalls"] = json!(calls.iter()
+                            .filter(|(path, _, _)| matches!(path.as_str(),
+                                "/api/playlist/square/block/page" | "/api/playlist/category/list"))
                             .collect::<Vec<_>>());
                         if recall {
                             value["guideShown"] = json!(store.get("42", "home-recall-v1", "guide-shown").unwrap() == Some(json!(true)));

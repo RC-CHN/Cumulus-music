@@ -44,7 +44,7 @@ def main():
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
         stages = ('ux_recall_ready', 'ux_recall_closed', 'ux_recall_playing')
     else:
-        stages = ('home', 'dark', 'seeded_style', 'ranking', 'recent_style', 'retry', 'privacy')
+        stages = ('home', 'dark', 'seeded_style', 'ranking', 'playlist_square', 'recent_style', 'retry', 'privacy')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
         try:
@@ -88,6 +88,25 @@ def main():
         ['/api/homepage/category/daily/song/list',
          {'source': 'homepage', 'categoryId': '18', 'tagId': '21', 'songId': '81,82'}, False],
     ], seeded['styleCalls']
+    home = json.loads((output / 'home.json').read_text(encoding='utf-8'))
+    square = json.loads((output / 'playlist_square.json').read_text(encoding='utf-8'))
+    assert not home['squareCalls'], 'recommendation square read before opening a heading'
+    assert square['squareCalls'] == [
+        ['/api/playlist/square/block/page', {'cursor': '', 'newStyle': True}, False],
+    ], 'initial default feed read differs'
+    assert complete['squareCalls'] == square['squareCalls'] + [
+        ['/api/playlist/category/list', {'cat': '官方', 'limit': 24, 'newStyle': True}, False],
+    ], 'warm destination or Back refetched an already loaded category'
+    visits = complete['squareVisits']
+    assert [(visit['source'], visit['openedTag']) for visit in visits] == [
+        ('playlists', '推荐'), ('radar', '官方'),
+    ], visits
+    for visit in visits:
+        assert visit['focus'] == visit['source'] + ':square', visit
+        assert all(abs(before - after) <= 1 for before, after in zip(
+            visit['before'], visit['after'], strict=True)), visit
+        assert visit['before'][1] == 80, visit
+    assert visits[0]['before'][0] < visits[1]['before'][0], visits
     retry = json.loads((output / 'retry.json').read_text(encoding='utf-8'))
     privacy = json.loads((output / 'privacy.json').read_text(encoding='utf-8'))
     paths = [path for path in privacy['paths'][len(retry['paths']):]

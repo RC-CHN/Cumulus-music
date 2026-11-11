@@ -88,6 +88,40 @@
     await wait(() => one('.discovery-home')?.scrollTop === 40, 'return restores page scroll');
     await wait(() => document.activeElement?.dataset.homeCard === opener.dataset.homeCard, 'return restores card focus');
 
+    assert(!one('[data-home-section=recent] h2 button'), 'ordinary recent heading stays static');
+    const squareVisits = [];
+    const squareTag = () => one('.playlist-tag-browse .page-heading p')?.textContent.trim();
+    const squareTab = () => one('.choice-tabs button[aria-current="page"]')?.textContent.trim();
+    const officialCard = () => one('.playlist-tag-browse [aria-label="合成广场官方歌单"]');
+    const back = () => click(one('[aria-label="返回上一页"]'));
+    for (const source of ['playlists', 'radar']) {
+      const key = source + ':square';
+      const heading = () => one(`[data-home-card="${key}"]`);
+      assert(heading()?.matches('h2 button') && heading().querySelector('svg'), 'actionable heading with chevron');
+      heading().scrollIntoView({ block: 'center' });
+      await sleep(140);
+      const viewport = () => [one('.discovery-home')?.scrollTop, one('[data-home-rail=playlists]')?.scrollLeft];
+      const before = viewport();
+      click(heading());
+      const first = source === 'playlists';
+      await wait(() => !one('.discovery-home') && squareTab() === '歌单广场' &&
+        squareTag() === (first ? '推荐' : '官方') && (first
+          ? one('[data-square-card="0:861"]')?.textContent.includes('合成广场歌单')
+          : officialCard()), 'home heading opens the expected playlist square category');
+      const openedTag = squareTag();
+      if (first) {
+        await capture('playlist_square');
+        const official = all('.playlist-catalogue-controls button')
+          .find((button) => button.textContent.trim() === '官方');
+        click(official);
+        await wait(() => squareTag() === '官方' && officialCard(), 'choose and load the official category');
+      }
+      back();
+      await wait(() => document.activeElement === heading() &&
+        viewport().every((offset, index) => Math.abs(offset - before[index]) <= 1), 'playlist square Back restores the exact heading and scroll');
+      squareVisits.push({ source, openedTag, before, after: viewport(), focus: document.activeElement.dataset.homeCard });
+    }
+
     const styleCard = one('[data-home-card^="recent:recent_style:"]');
     assert(styleCard && styleCard.textContent.includes('合成最近风格') &&
       !styleCard.outerHTML.includes('PRIVATE'), 'bounded recent style row');
@@ -123,7 +157,7 @@
     await capture('privacy');
     click(one('.discovery-home .empty-state button'));
     await wait(() => document.activeElement?.id === 'settings-privacy' || one('#settings-privacy'), 'official privacy settings anchor');
-    await emit('complete', { ok: true, realAccount: false });
+    await emit('complete', { ok: true, realAccount: false, squareVisits });
   } catch (error) {
     await emit('failed', { ok: false, error: String(error), sections: roots(),
       page: one('.main-content')?.textContent.trim().slice(0, 300),

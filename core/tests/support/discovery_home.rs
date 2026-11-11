@@ -247,6 +247,23 @@ impl Api for Fixture {
                     json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","md5":"fixture","expi":300,"level":"standard"}]})
                 }
                 "/api/user/playlist" => json!({"code":200,"playlist":[],"more":false}),
+                "/api/playlist/category/list" => {
+                    assert_eq!(args, json!({"cat":"官方","limit":24,"newStyle":true}));
+                    assert!(!sensitive);
+                    json!({"code":200,"playlists":[{"id":862,"name":"合成广场官方歌单"}],
+                        "playlistIds":[862]})
+                }
+                "/api/playlist/square/block/page" => {
+                    assert_eq!(args, json!({"cursor":"","newStyle":true}));
+                    assert!(!sensitive);
+                    json!({"code":200,"data":{"hasMore":false,"blocks":[{
+                        "showType":"PLAYLIST_SQUARE_SINGLE_SLID",
+                        "creatives":[{"creativeType":"list","resources":[{
+                            "resourceType":"playlist","resourceId":861,
+                            "uiElement":{"mainTitle":{"title":"合成广场歌单"}}
+                        }]}]
+                    }]}})
+                }
                 "/api/v6/playlist/detail" | "/api/v3/playlist/detail" => {
                     json!({"code":200,"playlist":{"id":701,"name":"合成歌单701","trackIds":[],"tracks":[],"creator":{"userId":42,"nickname":"发现测试账号"}},"privileges":[]})
                 }
