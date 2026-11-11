@@ -2599,7 +2599,12 @@
     click(button('仍然搜索“合成错词”'));await wait(()=>ready()&&one('[data-category="all"]').getAttribute('aria-selected')==='true'&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),'original term sent with correction disabled');
     await capture('correction_disabled');
     click(button('返回上一页'));await wait(()=>ready()&&one('[data-category="playlists"]').getAttribute('aria-selected')==='true'&&one('.search-correction')?.textContent.includes('合成正词')&&one('.search-result-grid')?.dataset.loadedCount==='20','back restores corrected route and its appended results');
-    await fixture('empty');await fresh('合成空结果');await choose('lyrics');await capture('empty');assert(one('.search-result-panel').textContent.includes('没有找到'),'empty copy');
+    await fixture('empty');await fresh('合成空结果');await choose('lyrics');await capture('empty');
+    const emptyLyrics=one('#search-result-panel .search-empty-category');
+    assert(emptyLyrics?.textContent.trim()==='咱搜不到关于“合成空结果”的任何歌词呀！'&&
+      emptyLyrics.querySelector('.search-empty-keyword')?.textContent==='合成空结果'&&
+      !one('#search-result-panel .search-lyric-result, #search-result-panel .search-load-more'),
+      'terminal lyric empty shows the effective keyword and category without a continuation');
     await fixture('result_error');await fresh('合成失败结果');await choose('albums');await capture('error');
     const retryPanel=one('#search-result-panel');
     click(button('重新加载'));
