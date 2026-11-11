@@ -240,8 +240,11 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
       if (current()) throw value;
     }
   }
-  async function command(input: DownloadCommand): Promise<DownloadResult | undefined> {
-    if (!epoch || busy.value) return;
+  async function command(
+    input: DownloadCommand,
+    expectedEpoch?: string,
+  ): Promise<DownloadResult | undefined> {
+    if (!epoch || busy.value || (expectedEpoch !== undefined && expectedEpoch !== epoch)) return;
     const version = generation,
       captured = epoch;
     const label = downloadCommandLabel(input);

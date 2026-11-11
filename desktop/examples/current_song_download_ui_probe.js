@@ -14,6 +14,8 @@
   const picker = () => modal('[data-search-group-download-picker]');
   const download = () => modal('.download-dialog');
   const downloadSettings = () => one('section[aria-labelledby="settings-download"]');
+  const settingsDirectoryPath = () =>
+    one('[data-download-directory-path]', downloadSettings() ?? null)?.textContent.trim() ?? null;
   const notice = () => one('.player-download-notice', bar());
   const byLabel = (label, root) => one(`[aria-label="${label}"]`, root);
   const byText = (text, root) => all('button', root).find((node) => node.textContent.trim() === text);
@@ -40,6 +42,8 @@
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let epoch, checkpoint = 0, last, incumbent;
   const actions = [], legacyWrites = [];
+  const directoryChooserCalls = [], directoryPreviewCalls = [];
+  let cancelNativeChooser, directoryChooserCancelled = false;
   const preferences = { quality: 'standard', tags: false, cover: false, lyrics: false, container: 'audio' };
   const expectedTiers = ['hires', 'lossless', 'exhigh', 'standard'];
 
@@ -94,6 +98,7 @@
         settings: label === 'settings' && renderedSettings(),
         settingsFocus: document.activeElement === one('#settings-download', downloadSettings() ?? null),
         settingsDirectoryAction: enabled(byText('更改目录', downloadSettings() ?? null)),
+        settingsDirectoryPath: settingsDirectoryPath(),
         tiers: all('[data-voice-purchased-quality]', quality() ?? null).map((row) => row.value),
         selected: one('[data-voice-purchased-quality]:checked', quality() ?? null)?.value ?? null,
         destinations: all('[data-playlist-id]', picker() ?? null).map((row) => row.dataset.playlistId),
@@ -139,6 +144,21 @@
     const oldDownload = client.downloadCommand;
     const guide = client.openCurrentSongPurchasedQualityGuide;
     assert(typeof native === 'function' && typeof guide === 'function', 'typed production desktop adapter');
+    if (mode === 'directory') {
+      const preview = client.downloadDirectoryPreview;
+      assert(typeof client.pickDownloadDirectory === 'function' && typeof preview === 'function',
+        'typed native directory selection and preview adapters are installed');
+      // Intercept only the system picker handoff. The actual Settings component
+      // invokes the typed adapter and consumes a delayed native Cancel result.
+      client.pickDownloadDirectory = (owner) => {
+        directoryChooserCalls.push(owner);
+        return new Promise((resolve) => { cancelNativeChooser = () => resolve(null); });
+      };
+      client.downloadDirectoryPreview = (...args) => {
+        directoryPreviewCalls.push(args[0]);
+        return preview.apply(client, args);
+      };
+    }
     client.playerCurrentSongDownload = async (owner, target, action) => {
       const current = { kind: action.kind, epoch: owner, ...target,
         quality: action.quality ?? action.options?.quality, options: action.options };
@@ -248,13 +268,19 @@
       'settled and visible download settings with heading focus');
       await capture('settings');
       const edit = byText('更改目录', downloadSettings());
-      await click(() => edit, 'open the directory form directly from Settings');
-      await wait(() => download() && one('h2', download())?.textContent.trim() === '音质与下载',
-        'existing native directory configuration opened');
-      const input = one('[aria-label="下载目录"]', download());
-      assert(input && !input.value, 'missing directory remains unconfigured');
-      await click(() => byLabel('关闭下载对话框', download()), 'leave settings without selecting directory');
-      await wait(() => !download() && document.activeElement === edit, 'configuration closes back to Settings');
+      assert(settingsDirectoryPath() === '未设置', 'current empty directory is shown inline');
+      await click(() => edit, 'open system directory picker directly from Settings');
+      await wait(() => directoryChooserCalls.length === 1 && edit.disabled && cancelNativeChooser,
+        'one native chooser call, pending control disabled');
+      assert(directoryChooserCalls[0] === epoch && !one('dialog[open]'),
+        'exact account goes directly to native picker without another Settings dialog');
+      edit.click();
+      cancelNativeChooser();
+      await wait(() => !edit.disabled && document.activeElement === edit && !one('dialog[open]'),
+        'native Cancel restores exact directory button focus');
+      directoryChooserCancelled = true;
+      assert(directoryChooserCalls.length === 1 && !directoryPreviewCalls.length && !legacyWrites.length &&
+        settingsDirectoryPath() === '未设置', 'cancel never previews or commits, preserving the inline path');
     } else {
       await wait(async () => badge()?.dataset.downloadState === 'complete' &&
         (await sessionTaskRows('completed')).tasks.some((row) => row.track.id === '2' && row.status === 'complete'),
@@ -269,9 +295,11 @@
     const task = ({ id, track, status, source, requestedQuality, actualQuality }) =>
       ({ id, trackId: track.id, status, source, requestedQuality, actualQuality });
     await emit('complete', { ok: true, mode, stageCount: checkpoint, realAccountWrites: 0,
-      realMusicRequests: 0, actions, legacyWrites, tasks: complete.tasks.map(task) });
+      realMusicRequests: 0, actions, legacyWrites, tasks: complete.tasks.map(task),
+      directoryChooserCalls, directoryPreviewCalls, directoryChooserCancelled,
+      settingsDirectoryPath: settingsDirectoryPath() });
   } catch (error) {
     await emit('failed', { ok: false, mode, stageCount: checkpoint, last, error: String(error),
-      stack: error.stack, actions, legacyWrites, active: document.activeElement?.outerHTML.slice(0, 300) });
+      stack: error.stack, actions, legacyWrites, directoryChooserCalls, directoryPreviewCalls, active: document.activeElement?.outerHTML.slice(0, 300) });
   }
 })();

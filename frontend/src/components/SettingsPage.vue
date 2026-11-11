@@ -17,6 +17,8 @@ import {
   type SettingsOperation,
 } from '../services/settings';
 import SettingsConfirm from './settings/SettingsConfirm.vue';
+import SettingsDownloadDirectory from './settings/SettingsDownloadDirectory.vue';
+import type { DownloadModel } from '../composables/useDownloads';
 import AboutSupport from './settings/AboutSupport.vue';
 import ModalTransition from './ModalTransition.vue';
 import Icon from './Icon.vue';
@@ -50,6 +52,8 @@ const props = defineProps<{
   player: PlayerModel;
   relay: RelayModel;
   publication: RelayPublicationModel;
+  downloadModel: DownloadModel;
+  downloadDirectoryVisit: () => object | undefined;
   accountDetail?: AccountDetailKind;
   quickLoginGuide?: boolean;
 }>();
@@ -58,7 +62,7 @@ const emit = defineEmits<{
   accounts: [];
   quickLoginEnabled: [];
   downloads: [];
-  configureDownload: [];
+  downloadPreferences: [];
   accountDetail: [kind: AccountDetailKind];
   blacklistProfile: [id: string];
   blacklistUpdated: [id: string, result: ProfileBlacklistResult];
@@ -562,13 +566,14 @@ function accept(op: SettingsOperation) {
       <DailyNotificationSettings :epoch="account.epoch" />
       <section class="settings-section" aria-labelledby="settings-download">
         <h2 id="settings-download" tabindex="-1">下载</h2>
-        <div class="settings-section-content">
-          <p class="settings-note">设置下载目录、音质、格式和歌词选项。</p>
-          <div class="settings-download-actions">
-            <button class="secondary" @click="emit('configureDownload')">更改目录</button>
-            <button class="secondary" @click="emit('downloads')">打开下载管理</button>
-          </div>
-        </div>
+        <SettingsDownloadDirectory
+          :account="account"
+          :model="downloadModel"
+          :visit="downloadDirectoryVisit"
+          @downloads="emit('downloads')"
+          @preferences="emit('downloadPreferences')"
+          @expired="emit('expired')"
+        />
       </section>
       <PlaybackCache />
       <AboutSupport />

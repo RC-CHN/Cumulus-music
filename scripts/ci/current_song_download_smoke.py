@@ -116,6 +116,9 @@ def verify(root, mode, fixture):
         assert stages['directory']['dom']['notice'].startswith('请先设置下载目录')
         settings = stages['settings']['dom']
         assert settings['settings'] and settings['settingsFocus'] and settings['settingsDirectoryAction']
+        assert settings['settingsDirectoryPath'] == complete['settingsDirectoryPath'] == '未设置'
+        assert complete['directoryChooserCalls'] == [stages['settings']['current']['epoch']]
+        assert complete['directoryChooserCancelled'] and complete['directoryPreviewCalls'] == []
         assert not settings['ordinary'] and complete['tasks'] == []
         sample, = read(output / 'paint-ux_08_settings.json')['samples']
         assert sample['region'] == 'download-settings-heading' and sample['ok'] and sample['nearColorPixels'] >= 3
@@ -123,6 +126,8 @@ def verify(root, mode, fixture):
         assert not any((root / 'media').rglob('*'))
         digest = None
     else:
+        assert not complete['directoryChooserCalls'] and not complete['directoryPreviewCalls']
+        assert not complete['directoryChooserCancelled']
         assert started['result'] == 'started' and started['startedCount'] == 1
         assert stages['transferred']['dom']['status'] == 'complete'
         task, = complete['tasks']

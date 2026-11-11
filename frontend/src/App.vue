@@ -4415,6 +4415,10 @@ function downloadReturnFocus() {
 const downloads = useDownloads(undefined, () => {
   void music.bootstrap(false);
 });
+function downloadDirectoryVisit() {
+  const route = music.page.value;
+  return route.kind === 'settings' && !route.accountDetail ? route : undefined;
+}
 const downloadPageRef = ref<InstanceType<typeof DownloadPage>>();
 watch(
   music.page,
@@ -6569,6 +6573,7 @@ watch(
   () => [
     page.value.kind,
     page.value.kind === 'downloads' ? page.value.downloadVisit : undefined,
+    !!downloadDirectoryVisit(),
     !!downloadDialog.value,
     !!currentSongDownload.value,
     !!playlistActions.value?.downloadOpen,
@@ -6576,6 +6581,7 @@ watch(
   () =>
     downloads.show(
       page.value.kind === 'downloads' ||
+        !!downloadDirectoryVisit() ||
         !!downloadDialog.value ||
         !!currentSongDownload.value ||
         !!playlistActions.value?.downloadOpen,
@@ -7307,6 +7313,8 @@ onUnmounted(() => {
                 :relay="relay"
                 :publication="publication"
                 :account="account"
+                :download-model="downloads"
+                :download-directory-visit="downloadDirectoryVisit"
                 :account-detail="page.accountDetail"
                 :quick-login-guide="
                   quickLoginGuide?.route === page && quickLoginGuide.epoch === account.epoch
@@ -7317,7 +7325,7 @@ onUnmounted(() => {
                 @blacklist-profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @blacklist-updated="profileBlacklistUpdated"
                 @downloads="music.navigate({ kind: 'downloads' })"
-                @configure-download="downloadDialog = { kind: 'settings' }"
+                @download-preferences="downloadDialog = { kind: 'settings' }"
                 @account-detail="
                   (kind) => music.navigate({ kind: 'settings', accountDetail: kind })
                 "

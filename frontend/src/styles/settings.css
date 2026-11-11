@@ -99,6 +99,22 @@
 .settings-section-content > p:first-child {
   margin-top: 4px;
 }
+.settings-download-directory {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.settings-download-path {
+  min-width: min(100%, 120px);
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.settings-confirm p {
+  overflow-wrap: anywhere;
+}
 .settings-download-actions {
   display: flex;
   flex-wrap: wrap;

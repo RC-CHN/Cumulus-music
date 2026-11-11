@@ -34,6 +34,13 @@ export interface DirectorySettings {
   file_type: number;
   revision: string;
 }
+export interface DownloadDirectoryPreview {
+  epoch: string;
+  target: string;
+  revision: string | null;
+  decision: 'ready' | 'same_directory' | 'not_writable' | 'insufficient_space';
+  moveExisting: boolean;
+}
 export interface DownloadTask {
   id: string;
   source: 'song' | 'cloud' | 'mv' | 'voice';
@@ -147,6 +154,7 @@ export type DownloadCommand =
   | { kind: 'preferences'; revision: string; options: DownloadOptions }
   | { kind: 'configure'; root: string; path_type: number; file_type: number }
   | { kind: 'migrate'; root: string }
+  | { kind: 'change_directory'; root: string; revision: string | null }
   | { kind: 'migration' | 'file_operation'; operation_id: string; cancel: boolean }
   | { kind: 'file'; task_id: string; action: 'move' | 'delete' | 'forget'; target: string | null }
   | { kind: 'rename'; task_id: string; name: string }
@@ -280,6 +288,7 @@ export interface DownloadClient {
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;
   pickDownloadDirectory(epoch: string): Promise<string | null>;
+  downloadDirectoryPreview(epoch: string, root: string): Promise<DownloadDirectoryPreview>;
   openDownloadDirectory(epoch: string, taskId: string | null): Promise<void>;
 }
 export type DownloadDialogTarget =

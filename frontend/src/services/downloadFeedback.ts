@@ -64,6 +64,8 @@ export function downloadCommandLabel(command: DownloadCommand): string {
       return '保存下载目录';
     case 'migrate':
       return '迁移下载目录';
+    case 'change_directory':
+      return '更改下载目录';
     case 'migration':
       return command.cancel ? '取消目录迁移' : '继续目录迁移';
     case 'delete_files':
